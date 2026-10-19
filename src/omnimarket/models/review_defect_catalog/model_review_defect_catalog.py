@@ -21,6 +21,8 @@ _SEMVER_PATTERN = (
     r"(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?"
     r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
 )
+# The plan's 5,000-token ceiling for the rendered catalog section; a request may only tighten it.
+MAX_REVIEW_DEFECT_TOKEN_BUDGET = 5000
 
 
 class ModelReviewDefectEnforcement(BaseModel):
@@ -95,7 +97,9 @@ class ModelReviewDefectCatalogRequest(BaseModel):
     catalog_text: str | None = None
     repository: str = Field(..., min_length=1)
     requested_version: str | None = None
-    token_budget: int | None = Field(default=None, ge=1)
+    token_budget: int | None = Field(
+        default=None, ge=1, le=MAX_REVIEW_DEFECT_TOKEN_BUDGET
+    )
     enforced_codes: tuple[str, ...] = ()
 
 
@@ -118,6 +122,7 @@ class ModelReviewDefectCatalogResult(BaseModel):
 
 
 __all__ = [
+    "MAX_REVIEW_DEFECT_TOKEN_BUDGET",
     "ModelReviewDefectCatalog",
     "ModelReviewDefectCatalogRequest",
     "ModelReviewDefectCatalogResult",

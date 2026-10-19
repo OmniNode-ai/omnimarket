@@ -16,12 +16,14 @@ from typing import Any
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
 from omnimarket.enums.enum_review_defect_catalog import (
     EnumReviewDefectCatalogOutcome,
     EnumReviewDefectCatalogRefusal,
 )
 from omnimarket.models.review_defect_catalog import (
+    MAX_REVIEW_DEFECT_TOKEN_BUDGET,
     ModelReviewDefectCatalogRequest,
     ModelReviewDefectCatalogResult,
 )
@@ -205,6 +207,16 @@ def test_rendered_section_over_budget_is_refused() -> None:
         EnumReviewDefectCatalogRefusal.SECTION_OVER_BUDGET,
     )
     _resolved(_resolve(token_budget=5000))
+
+
+def test_token_budget_above_the_ceiling_is_refused() -> None:
+    with pytest.raises(ValidationError):
+        ModelReviewDefectCatalogRequest(
+            repository=REPO, token_budget=MAX_REVIEW_DEFECT_TOKEN_BUDGET + 1
+        )
+    ModelReviewDefectCatalogRequest(
+        repository=REPO, token_budget=MAX_REVIEW_DEFECT_TOKEN_BUDGET
+    )
 
 
 def test_unknown_enforced_code_is_refused() -> None:

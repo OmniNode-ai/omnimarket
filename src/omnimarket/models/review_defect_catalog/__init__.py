@@ -3,6 +3,7 @@
 """Shared typed interfaces for the review defect catalog."""
 
 from omnimarket.models.review_defect_catalog.model_review_defect_catalog import (
+    MAX_REVIEW_DEFECT_TOKEN_BUDGET,
     ModelReviewDefectCatalog,
     ModelReviewDefectCatalogRequest,
     ModelReviewDefectCatalogResult,
@@ -11,6 +12,7 @@ from omnimarket.models.review_defect_catalog.model_review_defect_catalog import 
 )
 
 __all__ = [
+    "MAX_REVIEW_DEFECT_TOKEN_BUDGET",
     "ModelReviewDefectCatalog",
     "ModelReviewDefectCatalogRequest",
     "ModelReviewDefectCatalogResult",
