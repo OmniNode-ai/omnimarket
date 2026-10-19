@@ -419,6 +419,13 @@ requirements:
     acceptance:
       - id: "AC75"
         statement: "AC75: a landing decision event maps to one STATUS row per action, recorded outcome, DEGRADED reason and violation, an idle tick and a withheld observe-only action map to no row, a redelivered event appends once, and the ledger host subscribes to the landing decision completed topic -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_landing_mirror/test_landing_decision.py tests/unit/work_ledger_bus/test_landing_decision.py -q -p no:randomly"
+  - id: "req-dev-cause-lane-receiver"
+    statement: "A dev cause-lane request that node_pr_lifecycle_orchestrator publishes for a red landing-branch head reaches a node that starts one cause lane per dispatch key, so ruling 2026-10-14T03:57:46Z item 5 (a component alarm starts a fix lane) has a receiver."
+    acceptance:
+      - id: "AC76"
+        statement: "AC76: the receiver starts one lane for a request, answers duplicate for a redelivery and for a restart, keeps a failed start's key taken and says so, answers dry_run and takes no key while act is false, and fails at load when acting without its host environment -- falsifier: uv run pytest tests/nodes/node_dev_cause_lane_receiver_effect/test_dev_cause_lane_receiver_omn17427.py -q -p no:randomly --no-cov fails, or passes with a ledger that forgets (the negative control starts two lanes)"
+      - id: "AC77"
+        statement: "AC77: the red-CI chain gate refuses a receiver contract that no longer takes the dev cause-lane request topic as its command topic or routes it to a deleted handler module, and the required lint job and the dev-cause-lane-receiver pre-commit hook run the receiver suite -- falsifier: uv run pytest tests/ci/test_red_ci_bus_chain_omn20730.py -q -p no:randomly --no-cov -k 'receiver'"
   - id: "req-review-lab-rubric-measured"
     statement: "The review task class records the lab model's measured adequacy against the lab-first bar."
     acceptance:
@@ -427,8 +434,8 @@ requirements:
   - id: "req-rehome-leaf-nodes-s2"
     statement: "The friction synthesis and host thermal observe nodes live in omnimarket with their contracts, handlers, models and tests."
     acceptance:
-      - id: "AC91"
-        statement: "AC91: node_friction_synthesis_effect and node_host_thermal_observe_effect resolve from omnimarket, each contract names an omnimarket terminal event, and their handlers produce the accounting and thermal reading the nodes had before the move -- falsifier: uv run pytest tests/nodes/node_friction_synthesis_effect/test_friction_synthesis.py tests/nodes/node_friction_synthesis_effect/test_golden_chain_friction_synthesis_effect.py tests/nodes/node_host_thermal_observe_effect/test_host_thermal_observe.py tests/nodes/node_host_thermal_observe_effect/test_golden_chain_host_thermal_observe_effect.py -q -p no:randomly"
+      - id: "AC92"
+        statement: "AC92: node_friction_synthesis_effect and node_host_thermal_observe_effect resolve from omnimarket, each contract names an omnimarket terminal event, and their handlers produce the accounting and thermal reading the nodes had before the move -- falsifier: uv run pytest tests/nodes/node_friction_synthesis_effect/test_friction_synthesis.py tests/nodes/node_friction_synthesis_effect/test_golden_chain_friction_synthesis_effect.py tests/nodes/node_host_thermal_observe_effect/test_host_thermal_observe.py tests/nodes/node_host_thermal_observe_effect/test_golden_chain_host_thermal_observe_effect.py -q -p no:randomly"
   - id: "req-lab-fill-repeat-limit"
     statement: "Lab-fill stops re-dispatching a ticket whose last repeat_limit lanes all ended blocked, partial or no-op: the cooldown no longer releases it, and only a change to the ticket or its pull requests does, for ordinary tickets and for DoD-verify lanes alike."
     acceptance:
@@ -444,11 +451,26 @@ requirements:
     acceptance:
       - id: "AC80"
         statement: "AC80: the hostile-reviewer workflow clones omniintelligence at 921b322b8e43f695961a06a04759dc88bb3e88ff and at no other sha -- falsifier: uv run pytest tests/ci/test_hostile_reviewer_pin_overflow_deadline_omn17427.py -q fails at the merge base, which pins aeba95945f22b3027d4010b53cb01b3f1217923c"
+  - id: "req-rehome-automation-liveness-overlay-check"
+    statement: "The automation-liveness overlay completeness check lives in the portable node package; the private overlay data stays in the private repository and is passed in by path."
+    acceptance:
+      - id: "AC91"
+        statement: "AC91: the node scans installers, reports a finding for each unit, installer, missing source and contradicted lifecycle state the overlay does not cover, and its console script reads a private checkout's overlay by path -- falsifier: uv run pytest tests/nodes/node_automation_liveness_overlay_check_compute/test_automation_liveness_installer_scan_omn20804.py tests/nodes/node_automation_liveness_overlay_check_compute/test_automation_liveness_overlay_refuses_gaps_omn20804.py -q fails when the node is absent"
   - id: "req-ci-summary-sweep-provenance-and-unreadable-runs"
     statement: "CI Summary's external sweep reads a check-run's Actions run id from its check suite when its URLs carry none, and an unreadable or malformed workflow-runs file exempts nothing instead of crashing the gate."
     acceptance:
       - id: "AC81"
         statement: "AC81: a check-run whose run id comes only from check_suite.workflow_run.id or check_suite.workflow_run_id is exempt when that run's event is a known non-pull-request event and swept otherwise, and an empty, invalid-JSON or non-list workflow-runs file still sweeps an unregistered red to a failing main() verdict -- falsifier: the focused check-suite provenance and unreadable-index tests fail against the dev gate"
+  - id: "req-ruling-guard-paths-spelled"
+    statement: "The park ladder handler and the operator capture handlers are spelled by path in a required lint step and a pre-commit hook, so the ruling audit reads the rulings they carry as wired."
+    acceptance:
+      - id: "AC82"
+        statement: "AC82: the lint step and the pre-commit hook of the landing decision park ladder name handler_pr_landing_decision.py, and the operator-capture-nodes step and hook run the two capture test directories and name handler_capture_process.py and handler_utterance_classify.py -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q -k park_ladder_wiring fails at the merge base"
+  - id: "req-hostile-reviewer-codex-fallback"
+    statement: "When a hostile-reviewer run's requested review routes produce no review output, the review runs on the Codex route the node contract declares, the completed event records which engine reviewed and which routes it replaced, and a run where no engine reviewed returns FAILED instead of a clean pass."
+    acceptance:
+      - id: "AC83"
+        statement: "AC83: node_hostile_reviewer_orchestrator falls back to the contract-declared codex route when no requested route produced review output, records fallback_engine and fallback_for on the completed event, treats a route that returns empty text or no findings array as failed, and returns FAILED when the fallback also produces nothing -- falsifier: uv run pytest tests/test_hostile_reviewer_codex_fallback.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -605,18 +627,24 @@ evidence_requirements:
     description: "AC75: the landing decision mapping writes one row per action, outcome, degraded reason and violation, none for an idle tick, and the host appends a redelivered event once."
     command: "uv run pytest tests/unit/nodes/node_work_ledger_landing_mirror/test_landing_decision.py tests/unit/work_ledger_bus/test_landing_decision.py -q -p no:randomly"
   - kind: "tests"
+    description: "AC76 and AC77: the dev cause-lane receiver's suite and the chain gate's receiver leg."
+    command: "uv run pytest tests/nodes/node_dev_cause_lane_receiver_effect/test_dev_cause_lane_receiver_omn17427.py tests/ci/test_red_ci_bus_chain_omn20730.py -q -p no:randomly --no-cov"
+  - kind: "tests"
     description: "AC78: the review class records its measured lab verdict, earned against the policy bar, and the shipped contracts still pass the lab-first check."
     command: "uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q -p no:randomly --no-cov"
   - kind: "tests"
     description: "AC79: the summarization gate refuses an answer over a stated word limit and waives the rule for a prompt with no limit."
     command: "uv run pytest tests/unit/delegation/test_omn17427_summarization_word_limit.py tests/test_omn19320_check_register.py -q"
   - kind: "tests"
-    description: "AC91: the friction synthesis and host thermal observe node tests pass in omnimarket."
+    description: "AC92: the friction synthesis and host thermal observe node tests pass in omnimarket."
     command: "uv run pytest tests/nodes/node_friction_synthesis_effect/test_friction_synthesis.py tests/nodes/node_friction_synthesis_effect/test_golden_chain_friction_synthesis_effect.py tests/nodes/node_host_thermal_observe_effect/test_host_thermal_observe.py tests/nodes/node_host_thermal_observe_effect/test_golden_chain_host_thermal_observe_effect.py -q -p no:randomly"
   - kind: "tests"
     description: "AC81: check-suite run provenance and unreadable workflow-runs files in the external sweep."
     command: >-
       uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -p no:cacheprovider -k "test_check_suite_run_id_establishes_provenance or test_unreadable_index_still_sweeps"
+  - kind: "tests"
+    description: "AC82: the park ladder wiring names its handler and the operator capture nodes pass their tests."
+    command: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py tests/unit/nodes/node_operator_capture_effect tests/unit/nodes/node_operator_capture_compute -q -n 0 -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -1567,6 +1595,29 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_work_ledger_landing_mirror/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys, yaml; c = yaml.safe_load(sys.stdin.read()); topics = c["runtime_dispatch"]["subscribe_topics"]; assert len(topics) == 1 and topics[0].endswith("pr-landing-decision-completed.v1"); print("landing decision ledger mirror deploy probe: PASS")'
+  - id: "dod-omn17427-ac76-dev-cause-lane-receiver"
+    description: "The receiver starts one lane per dispatch key, answers duplicate for a redelivery and a restart, keeps a failed start's key, and answers dry_run while act is false."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_dev_cause_lane_receiver_effect/test_dev_cause_lane_receiver_omn17427.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC76"]
+  - id: "dod-omn17427-ac77-receiver-chain-leg"
+    description: "The chain gate refuses a receiver contract that drops the request topic or names a deleted handler module."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_red_ci_bus_chain_omn20730.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC77"]
+  - id: "dod-omn17427-dev-cause-lane-receiver-probe"
+    description: "Deploy probe. GitHub serves the receiver handler at the checked-out HEAD, defining HandlerDevCauseLaneStart and taking the dispatch key before it calls the runner. It fails at the merge base, where the handler does not exist, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_dev_cause_lane_receiver_effect/handlers/handler_dev_cause_lane_start.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert "class HandlerDevCauseLaneStart" in source and source.index("self._ledger.claim(") < source.index("self._runner.start("); print("dev cause-lane receiver deploy probe: PASS")'
   - id: "dod-omn17427-review-lab-rubric-measured"
     description: "The review class records verdict fail with its 25 of 60 measurement, and the verdict is the one that measurement earns against the policy bar. The recorded-measurement test fails at the merge base, where the class reads unmeasured."
     source: "manual"
@@ -1589,14 +1640,14 @@ dod_evidence:
           print("review lab rubric deploy probe: PASS")
           PY
         cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn17427-ac91-rehome-leaf-nodes-s2"
+  - id: "dod-omn17427-ac92-rehome-leaf-nodes-s2"
     description: "The friction synthesis and host thermal observe node tests pass against the omnimarket copies."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_friction_synthesis_effect/test_friction_synthesis.py tests/nodes/node_friction_synthesis_effect/test_golden_chain_friction_synthesis_effect.py tests/nodes/node_host_thermal_observe_effect/test_host_thermal_observe.py tests/nodes/node_host_thermal_observe_effect/test_golden_chain_host_thermal_observe_effect.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC91"]
+    binds_ac: ["AC92"]
   - id: "dod-omn17427-ac76-lab-fill-repeat-limit"
     description: "The lab-fill repeat-limit hold passes for ordinary tickets and DoD-verify lanes."
     source: "manual"
@@ -1642,6 +1693,21 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/hostile-reviewer.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F -- "OMNIINTELLIGENCE_SHA 921b322b8e43f695961a06a04759dc88bb3e88ff"
+  - id: "dod-omn17427-ac91-liveness-overlay-check"
+    description: "The overlay completeness check node and its console script pass the focused suite."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_automation_liveness_overlay_check_compute/test_automation_liveness_installer_scan_omn20804.py tests/nodes/node_automation_liveness_overlay_check_compute/test_automation_liveness_overlay_refuses_gaps_omn20804.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC91"]
+  - id: "dod-omn17427-liveness-overlay-check-deploy-probe"
+    description: "Deploy probe. GitHub serves the overlay check node contract at the checked-out HEAD with its console script declared. It fails at the merge base, where the node does not exist, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_automation_liveness_overlay_check_compute/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys, yaml; c = yaml.safe_load(sys.stdin.read()); assert "onex-automation-liveness-check" in c["entry_points"]["console_scripts"]; print("automation liveness overlay check deploy probe: PASS")'
   - id: "dod-omn17427-ac79-sweep-provenance-unreadable-runs"
     description: "The external sweep reads run provenance from the check suite and an unreadable or malformed workflow-runs file still sweeps an unregistered red. The tests fail against the dev gate, which reads only URLs and raises on a malformed payload."
     source: "manual"
@@ -1668,3 +1734,33 @@ dod_evidence:
           print("external sweep provenance deploy probe: PASS")
           PY
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac80-ruling-guard-paths"
+    description: "The park ladder wiring tests require the handler path in the lint step and hook names, and the operator capture nodes pass their tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py tests/unit/nodes/node_operator_capture_effect tests/unit/nodes/node_operator_capture_compute -q -n 0 -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC82"]
+  - id: "dod-omn17427-ac80-ruling-paths-probe"
+    description: "Deploy probe. GitHub serves the pre-commit config at the checked-out HEAD with the operator-capture-nodes hook naming handler_capture_process.py. It fails at the merge base, where the hook does not exist, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/.pre-commit-config.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert "id: operator-capture-nodes" in source and "handler_capture_process.py" in source; print("ruling guard paths deploy probe: PASS")'
+  - id: "dod-omn17427-ac72-hostile-reviewer-codex-fallback"
+    description: "The hostile-reviewer Codex fallback chain passes: an offline primary is reviewed by Codex and the engine is recorded, a healthy primary never touches the fallback, both engines offline is FAILED, and a silent primary counts as offline."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_hostile_reviewer_codex_fallback.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC83"]
+  - id: "dod-omn17427-codex-fallback-deploy-probe"
+    description: "Deploy probe. GitHub serves the hostile-reviewer orchestrator handler at the checked-out HEAD with the fallback route and the fallback fields. It fails at the merge base, which has neither, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_hostile_reviewer_orchestrator/handlers/handler_hostile_reviewer_orchestrator.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("_fallback_route", "fallback_engine", "fallback_for")); print("hostile-reviewer codex fallback deploy probe: PASS")'

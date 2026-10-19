@@ -1,0 +1,84 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Review Equivalence Reducer (OMN-21190)
+#
+# Pure REDUCER: owns equivalence-edge admission, rejection and revocation over
+# candidate matches (from node_finding_aggregator_compute) between occurrence keys.
+# Every applied decision creates a new graph revision; a revocation names the keys
+# whose transferred labels must be relabelled.
+---
+name: node_review_equivalence_reducer
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Folds one admit, reject or revoke decision into the equivalence graph. An admitted
+  edge says occurrence key A is the same defect as B, with the evidence for the match;
+  a defect key is shared only along admitted edges. Each applied decision advances the
+  graph revision; a repeat of a standing decision and a command the graph cannot take
+  change nothing. The caller owns the state and passes it on every call.
+
+input_model:
+  name: ModelEquivalenceReducerInput
+  module: omnimarket.nodes.node_review_equivalence_reducer.models.model_review_equivalence
+  description: "The current graph state and one decision."
+
+output_model:
+  name: ModelEquivalenceReducerOutput
+  module: omnimarket.nodes.node_review_equivalence_reducer.models.model_review_equivalence
+  description: "The new graph state, the outcome, revisions before and after, and the keys to relabel."
+
+handler:
+  module: omnimarket.nodes.node_review_equivalence_reducer.handlers.handler_review_equivalence_reducer
+  class: HandlerReviewEquivalenceReducer
+  input_model: omnimarket.nodes.node_review_equivalence_reducer.models.model_review_equivalence.ModelEquivalenceReducerInput
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: review_equivalence
+      handler:
+        name: HandlerReviewEquivalenceReducer
+        module: omnimarket.nodes.node_review_equivalence_reducer.handlers.handler_review_equivalence_reducer
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles:
+    - effects
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.review-equivalence-decide.v1
+  terminal_events:
+    success: onex.evt.omnimarket.review-equivalence-decided.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.review-equivalence-decide.v1
+  publish_topics:
+    - onex.evt.omnimarket.review-equivalence-decided.v1
+
+terminal_event: onex.evt.omnimarket.review-equivalence-decided.v1
+
+# The decided event carries the new graph revision and the keys to relabel; the label
+# reducer that reads it is a later item of the review-learning plan.
+externally_consumed_topics:
+  - onex.evt.omnimarket.review-equivalence-decided.v1
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+metadata:
+  transport_type: kafka
+  description: "Review equivalence edges and graph revisions - pure REDUCER"
+  author: "OmniNode Team"
+  tags:
+    - "reducer"
+    - "review"
+    - "equivalence"
+  related_tickets:
+    - "OMN-21190"
