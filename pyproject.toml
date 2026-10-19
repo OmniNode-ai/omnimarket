@@ -352,6 +352,7 @@ node_checkpoint_capture_effect = "omnimarket.nodes.node_checkpoint_capture_effec
 node_exemplar_admission_compute = "omnimarket.nodes.node_exemplar_admission_compute"
 node_external_deadman_check_compute = "omnimarket.nodes.node_external_deadman_check_compute"
 node_context_compaction_manifest_compute = "omnimarket.nodes.node_context_compaction_manifest_compute"
+node_context_round_one_eval_compute = "omnimarket.nodes.node_context_round_one_eval_compute"
 node_context_invariants_select_compute = "omnimarket.nodes.node_context_invariants_select_compute"
 node_context_replay_eval_compute = "omnimarket.nodes.node_context_replay_eval_compute"
 node_context_gate_cascade_compute = "omnimarket.nodes.node_context_gate_cascade_compute"
