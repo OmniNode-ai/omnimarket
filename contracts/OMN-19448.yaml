@@ -127,6 +127,14 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_pre_dispatch_refusal_cause_omn19448.py -q -p no:cacheprovider"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn19448-credential-refusal-cause"
+    description: "Ticket AC3: the lab readback of 2026-10-19T04:19Z found 7 failed rows written after the refused-before-dispatch fix with a NULL terminal_failure_cause, each a one-rung ladder refused for a missing provider credential (failure_class provider_credential_missing, acceptance_reason provider_call_failed). The projection now falls back to the delegate-skill producer's own cause reading when the terminal declared none and neither the gate nor a capacity refusal decided the ladder, so such a row names provider_error. The tests fail at the merge base for the credential-missing and the auth-failed ladders; the controls show a declared cause still wins, a ladder that records nothing stays unclassified and a capacity refusal keeps the quota cause."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_credential_refusal_cause_derived_omn19448.py -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
   - id: "dod-omn19448-pre-dispatch-container-smoke"
     description: "Hosted deploy probe for the delegate-skill handler: a disposable container mounts the checked-out source read-only and checks that the pre-dispatch refusal names the refused_before_dispatch cause. The probe is absent at the merge base and present at the head; the behavioural proof stays in the test_passes check of dod-omn19448-refused-before-dispatch-cause."
     source: "manual"

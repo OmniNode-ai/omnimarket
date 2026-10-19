@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_compaction_loss_compute
+version: 1.0.0
+description: Pairs each Claude Code compaction's replaced window with its summary and scores which
+  must-carry items survive, with recall per item kind and the dropped items.
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+pack: core
+node_role: compute
+display_name: Compaction Loss Compute
+entry_points:
+  onex.nodes:
+    node_compaction_loss_compute: omnimarket.nodes.node_compaction_loss_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+- omnibase_core>=0.39.0
+license: MIT
+tags:
+- compute
+- context
+- compaction

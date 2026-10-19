@@ -21,6 +21,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.models.model_review_finding import EnumFindingCategory
+from omnimarket.models.model_review_target_snapshot import ModelReviewTargetSnapshot
 from omnimarket.review.prompt_builder import ModelPromptBuilderOutput
 from omnimarket.review.response_parser import ModelParseResult
 
@@ -155,6 +156,14 @@ class ModelGithubDiffResolvedEvent(BaseModel):
     file_path: str | None = Field(default=None)
     content: str = Field(..., description="Resolved unified diff or file content.")
     content_chars: int = Field(default=0, ge=0)
+    snapshot: ModelReviewTargetSnapshot | None = Field(
+        default=None,
+        description=(
+            "Head sha, base sha and diff digest read together (OMN-21189), or an "
+            "unavailable snapshot with the reason. None only on an event recorded "
+            "before the field existed."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
