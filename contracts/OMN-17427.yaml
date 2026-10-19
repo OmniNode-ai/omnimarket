@@ -440,6 +440,11 @@ requirements:
     acceptance:
       - id: "AC78"
         statement: "AC78: the review class declares lab_rubric verdict fail with its 25 of 60 measurement for Qwen3.8-27B, the recorded verdict is the one that measurement earns against the policy bar, and the shipped contracts still pass the lab-first routing check -- falsifier: uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q -p no:randomly --no-cov -k review_measurement fails while the class reads unmeasured"
+  - id: "req-rehome-leaf-nodes-s2"
+    statement: "The friction synthesis and host thermal observe nodes live in omnimarket with their contracts, handlers, models and tests."
+    acceptance:
+      - id: "AC92"
+        statement: "AC92: node_friction_synthesis_effect and node_host_thermal_observe_effect resolve from omnimarket, each contract names an omnimarket terminal event, and their handlers produce the accounting and thermal reading the nodes had before the move -- falsifier: uv run pytest tests/nodes/node_friction_synthesis_effect/test_friction_synthesis.py tests/nodes/node_friction_synthesis_effect/test_golden_chain_friction_synthesis_effect.py tests/nodes/node_host_thermal_observe_effect/test_host_thermal_observe.py tests/nodes/node_host_thermal_observe_effect/test_golden_chain_host_thermal_observe_effect.py -q -p no:randomly"
   - id: "req-lab-fill-repeat-limit"
     statement: "Lab-fill stops re-dispatching a ticket whose last repeat_limit lanes all ended blocked, partial or no-op: the cooldown no longer releases it, and only a change to the ticket or its pull requests does, for ordinary tickets and for DoD-verify lanes alike."
     acceptance:
@@ -480,6 +485,16 @@ requirements:
     acceptance:
       - id: "AC83"
         statement: "AC83: node_hostile_reviewer_orchestrator falls back to the contract-declared codex route when no requested route produced review output, records fallback_engine and fallback_for on the completed event, treats a route that returns empty text or no findings array as failed, and returns FAILED when the fallback also produces nothing -- falsifier: uv run pytest tests/test_hostile_reviewer_codex_fallback.py -q fails at the merge base"
+  - id: "req-dead-occ-observers-deleted"
+    statement: "The two report-only OCC observer nodes that no workflow, bus producer or node calls are deleted from omnimarket, so their change-control repository slugs and clone paths leave the code."
+    acceptance:
+      - id: "AC76"
+        statement: "AC76: node_occ_attestation_observe and node_occ_observation_effect, their tests and their pyproject entry points are absent while node_occ_companion_effect stays -- falsifier: uv run pytest tests/unit/workflows/test_ci_off_change_control_omn20074.py -q -k observer fails at the merge base"
+  - id: "req-served-model-cache-reconciliation"
+    statement: "Both inference boundaries refresh a cached served-model mismatch before refusing a call after a provider replaces its model, and retain the refusal when the refresh is unreadable or still mismatches."
+    acceptance:
+      - id: "AC83"
+        statement: "AC83: a model replacement at the same endpoint completes without waiting for cache expiry, while an unreadable or mismatching refresh sends no completion request -- falsifier: the cached_model_list and cached_mismatch regression tests fail before the reconciliation change"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -647,6 +662,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC79: the summarization gate refuses an answer over a stated word limit and waives the rule for a prompt with no limit."
     command: "uv run pytest tests/unit/delegation/test_omn17427_summarization_word_limit.py tests/test_omn19320_check_register.py -q"
+  - kind: "tests"
+    description: "AC92: the friction synthesis and host thermal observe node tests pass in omnimarket."
+    command: "uv run pytest tests/nodes/node_friction_synthesis_effect/test_friction_synthesis.py tests/nodes/node_friction_synthesis_effect/test_golden_chain_friction_synthesis_effect.py tests/nodes/node_host_thermal_observe_effect/test_host_thermal_observe.py tests/nodes/node_host_thermal_observe_effect/test_golden_chain_host_thermal_observe_effect.py -q -p no:randomly"
   - kind: "tests"
     description: "AC81: check-suite run provenance and unreadable workflow-runs files in the external sweep."
     command: >-
@@ -1680,6 +1698,14 @@ dod_evidence:
           print("review lab rubric deploy probe: PASS")
           PY
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac92-rehome-leaf-nodes-s2"
+    description: "The friction synthesis and host thermal observe node tests pass against the omnimarket copies."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_friction_synthesis_effect/test_friction_synthesis.py tests/nodes/node_friction_synthesis_effect/test_golden_chain_friction_synthesis_effect.py tests/nodes/node_host_thermal_observe_effect/test_host_thermal_observe.py tests/nodes/node_host_thermal_observe_effect/test_golden_chain_host_thermal_observe_effect.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC92"]
   - id: "dod-omn17427-ac76-lab-fill-repeat-limit"
     description: "The lab-fill repeat-limit hold passes for ordinary tickets and DoD-verify lanes."
     source: "manual"
@@ -1819,3 +1845,33 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_hostile_reviewer_orchestrator/handlers/handler_hostile_reviewer_orchestrator.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("_fallback_route", "fallback_engine", "fallback_for")); print("hostile-reviewer codex fallback deploy probe: PASS")'
+  - id: "dod-omn17427-ac76-dead-occ-observers"
+    description: "The two OCC observer node packages, their tests and their entry points are absent and the companion effect node remains."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/workflows/test_ci_off_change_control_omn20074.py -q -k observer"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC76"]
+  - id: "dod-omn17427-dead-occ-observers-deploy-probe"
+    description: "Deploy probe. GitHub serves pyproject.toml at the checked-out HEAD with no entry point for the two observer nodes and one for node_occ_companion_effect. It fails at the merge base, which registers both, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/pyproject.toml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert "node_occ_attestation_observe = " not in source; assert "node_occ_observation_effect = " not in source; assert "node_occ_companion_effect = " in source; print("dead occ observers deploy probe: PASS")'
+  - id: "dod-omn17427-ac83-served-model-cache"
+    description: "Both inference boundaries reconcile a cached model mismatch and retain a refusal without fresh matching evidence."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn17098_inference_intent_served_model_guard.py tests/unit/nodes/node_llm_delegation_call_effect/test_handler_llm_delegation_call.py -q --no-cov -k 'cached_model_list or cached_mismatch'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC83"]
+  - id: "dod-omn17427-served-model-cache-deploy-probe"
+    description: "Deploy probe. A real loopback provider replaces its served model at the same endpoint, and the inference handler completes with the new model before cache expiry. An unreadable or mismatching model listing still refuses the call. The hosted runner needs uv and this checkout, with no external provider or credentials."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/delegation/test_omn17098_inference_intent_served_model_guard.py -q --no-cov -k 'cached_model_list or cached_mismatch'"
+        cwd: "${OMNI_HOME}/omnimarket"

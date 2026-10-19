@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_thermal_observe_effect
+version: 0.1.0
+description: >
+  Reads the CPU package and DIMM temperature, load, CPU busy and iowait, memory, swap, GPU and fans of the host it runs on and appends one reading to that host's own series; reports temperature by load bucket and by hour.
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_host_thermal_observe_effect: omnimarket.nodes.node_host_thermal_observe_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem
+dependencies: []
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- effect
+- lab
+pack: operator_tooling
+display_name: Host Thermal Observe Effect
+node_role: effect
