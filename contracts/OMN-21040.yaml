@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-21040
+title: the swarm dispatch orchestrator reads the message shapes its downstream nodes publish, and a run ends in one terminal event
+summary: The swarm dispatch orchestrator read the decomposer result at a top-level subtasks key although the
+  decomposer publishes it under decomposition.subtasks, read each fan-out outcome from status and result_text
+  although fan-out publishes execution_status and response_text, and sent the aggregator a Python repr instead
+  of JSON. It now reads and sends the shapes the producers publish, a run with no reachable endpoint ends in
+  exactly one swarm-dispatch-failed event, and a phase result it cannot read ends the run in one
+  swarm-dispatch-failed event instead of raising. The real fan-out queue pair wiring is a follow-up and is not
+  part of this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-swarm-chain-shapes
+  statement: Each downstream swarm node's real result, published as an event payload, is parsed by the orchestrator,
+    and a dispatch run reaches exactly one terminal event.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: with the real decomposer, registry, fan-out and aggregator handlers wired to the orchestrator
+      through an in-memory bus, a dispatch command reaches exactly one terminal event, and a run with no reachable
+      endpoint ends with one swarm-dispatch-failed event and no decompose, select or fan-out command -- falsifier:
+      uv run pytest tests/test_swarm_dispatch_chain.py -q fails at the merge base with 6 failures and passes at
+      the head'
+evidence_requirements:
+- kind: tests
+  description: The swarm dispatch chain on an in-memory bus, the orchestrator's own tests and the schema alignment.
+  command: uv run pytest tests/test_swarm_dispatch_chain.py tests/test_swarm_schema_alignment.py src/omnimarket/nodes/node_swarm_dispatch_orchestrator/tests -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21040-ac1-chain
+  description: The chain test reaches one terminal event with the real handlers wired through the in-memory bus.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_swarm_dispatch_chain.py -q
+  binds_ac:
+  - AC1
+- id: dod-omn21040-deploy-probe
+  description: 'Deploy source identity probe: GitHub serves the swarm dispatch handler at the checked-out commit
+    with the json import required by its aggregator serialization. The probe fails on a head missing that import.
+    This checks published source identity, not a running deployment. The AC1 chain test checks runtime behavior.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: >-
+      bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_swarm_dispatch_orchestrator/handlers/handler_swarm_dispatch.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c "^import json$"'

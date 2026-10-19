@@ -1,0 +1,25 @@
+name: node_tool_result_reduce_compute
+version: "1.0.0"
+description: "Conservative Bash output reduction preserving command status and diagnostics"
+omnibase_core_compat: ">=0.47.44,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_tool_result_reduce_compute: "omnimarket.nodes.node_tool_result_reduce_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.47.44"
+  - "pydantic>=2.0"
+authors: ["OmniNode Platform Team"]
+license: MIT
+tags: [compute, bash, tool-result, deterministic]
+pack: pipeline
+display_name: "Tool Result Reduce Compute"
+node_role: compute
+tickets: [OMN-21120]
