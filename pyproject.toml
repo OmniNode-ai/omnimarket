@@ -306,6 +306,8 @@ Homepage = "https://github.com/OmniNode-ai/omnimarket"
 Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
+node_friction_synthesis_effect = "omnimarket.nodes.node_friction_synthesis_effect"
+node_host_thermal_observe_effect = "omnimarket.nodes.node_host_thermal_observe_effect"
 node_patch_apply_dispatch_effect = "omnimarket.nodes.node_patch_apply_dispatch_effect"
 node_internal_release_path_guard_compute = "omnimarket.nodes.node_internal_release_path_guard_compute"
 node_work_ledger_bus_mirror = "omnimarket.nodes.node_work_ledger_bus_mirror"
@@ -354,6 +356,7 @@ node_compact_package_read_effect = "omnimarket.nodes.node_compact_package_read_e
 node_exemplar_admission_compute = "omnimarket.nodes.node_exemplar_admission_compute"
 node_external_deadman_check_compute = "omnimarket.nodes.node_external_deadman_check_compute"
 node_context_compaction_manifest_compute = "omnimarket.nodes.node_context_compaction_manifest_compute"
+node_compaction_loss_compute = "omnimarket.nodes.node_compaction_loss_compute"
 node_context_round_one_eval_compute = "omnimarket.nodes.node_context_round_one_eval_compute"
 node_context_invariants_select_compute = "omnimarket.nodes.node_context_invariants_select_compute"
 node_context_replay_eval_compute = "omnimarket.nodes.node_context_replay_eval_compute"
@@ -420,6 +423,7 @@ node_delegation_answer_gate_compute = "omnimarket.nodes.node_delegation_answer_g
 node_lab_first_routing_check_compute = "omnimarket.nodes.node_lab_first_routing_check_compute"
 node_glm_allowance_compute = "omnimarket.nodes.node_glm_allowance_compute"
 node_claude_review_budget_compute = "omnimarket.nodes.node_claude_review_budget_compute"
+node_review_quota_reducer = "omnimarket.nodes.node_review_quota_reducer"
 node_glm_usage_record_compute = "omnimarket.nodes.node_glm_usage_record_compute"
 node_delegation_eval_sample_compute = "omnimarket.nodes.node_delegation_eval_sample_compute"
 node_delegation_acceptance_judge_compute = "omnimarket.nodes.node_delegation_acceptance_judge_compute"
@@ -535,7 +539,10 @@ node_review_prompt_builder_compute = "omnimarket.nodes.node_review_prompt_builde
 node_review_response_parser_compute = "omnimarket.nodes.node_review_response_parser_compute"
 node_review_convergence_compute = "omnimarket.nodes.node_review_convergence_compute"
 node_reviewer_eval_effect = "omnimarket.nodes.node_reviewer_eval_effect"
+node_review_replay_set_effect = "omnimarket.nodes.node_review_replay_set_effect"
+node_claude_review_batch_effect = "omnimarket.nodes.node_claude_review_batch_effect"
 node_review_finding_disposition_compute = "omnimarket.nodes.node_review_finding_disposition_compute"
+node_review_record_compute = "omnimarket.nodes.node_review_record_compute"
 node_review_finding_identity_compute = "omnimarket.nodes.node_review_finding_identity_compute"
 node_review_equivalence_reducer = "omnimarket.nodes.node_review_equivalence_reducer"
 node_github_diff_effect = "omnimarket.nodes.node_github_diff_effect"
@@ -731,9 +738,7 @@ node_occ_companion_compute = "omnimarket.nodes.node_occ_companion_compute"
 node_occ_state_effect = "omnimarket.nodes.node_occ_state_effect"
 node_occ_companion_effect = "omnimarket.nodes.node_occ_companion_effect"
 node_occ_autoauthor_window = "omnimarket.nodes.node_occ_autoauthor_window"
-node_occ_attestation_observe = "omnimarket.nodes.node_occ_attestation_observe"
 node_occ_observation_projection = "omnimarket.nodes.node_occ_observation_projection"
-node_occ_observation_effect = "omnimarket.nodes.node_occ_observation_effect"
 node_occ_observation_source_effect = "omnimarket.nodes.node_occ_observation_source_effect"
 # OMN-14920: push-validation EFFECT (gateway P2 tenant #1)
 node_push_validation_effect = "omnimarket.nodes.node_push_validation_effect"
@@ -957,6 +962,7 @@ node_architecture_discovery_orchestrator = "omnimarket.nodes.node_architecture_d
 node_dev_tag_pin_mover_compute = "omnimarket.nodes.node_dev_tag_pin_mover_compute"
 
 [project.scripts]
+onex-host-thermal = "omnimarket.nodes.node_host_thermal_observe_effect.handlers.handler_host_thermal_cli:main"
 onex-automation-liveness-check = "omnimarket.handlers.handler_automation_liveness_overlay_check_cli:main"
 onex-patch-apply-dispatch = "omnimarket.nodes.node_patch_apply_dispatch_effect.handlers.handler_patch_apply_dispatch_cli:main"
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
@@ -1409,6 +1415,8 @@ ignore = [
 # CLI entrypoint for the SWE-discriminator smoke battery (OMN-13988) — prints
 # progress/results to stdout like the sibling recorder scripts.
 "src/omnimarket/delegation/swe_discriminator/run_smoke.py" = ["T201"]
+"src/omnimarket/nodes/node_friction_synthesis_effect/handlers/handler_friction_synthesis_cli.py" = ["T201"]
+"src/omnimarket/nodes/node_host_thermal_observe_effect/handlers/handler_host_thermal_cli.py" = ["T201"]
 # OMN-18300 delegation ladder. The runner and the bundle builder are CLIs and
 # print their tables to stdout, like the recorder script above. The scorer tests
 # reach into private helpers on purpose (that is what they test), assert on the

@@ -27,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 from collections.abc import Awaitable, Callable
 from importlib import resources
 from pathlib import Path
@@ -44,6 +45,7 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
 )
 from omnimarket.lab_work.bus import _bytes, _subscribe
 from omnimarket.models.operator_capture import (
+    ASSISTANT_REPLY_KIND,
     OPERATOR_PROMPT_KIND,
     ModelCaptureProcessResult,
     ModelOperatorCaptureReceipt,
@@ -68,6 +70,9 @@ NODE = "node_operator_capture_effect"
 GROUP_SERVICE = "omnimarket"
 DEFAULT_RETRY_SECONDS = 300.0
 _KIND_NEEDLE = OPERATOR_PROMPT_KIND.encode("utf-8")
+_REPLY_NEEDLE = ASSISTANT_REPLY_KIND.encode("utf-8")
+#: The orchestrator lane the operator's words are promoted for (OMN-19513); unset: no promotion.
+PROMOTION_LANE_ENV = "ONEX_OPERATOR_PROMOTION_LANE"
 
 
 class ProtocolOperatorCaptureHandler(Protocol):
@@ -117,6 +122,27 @@ def operator_prompt_of(value: bytes) -> ModelOperatorPromptRecord | None:
     return record
 
 
+def assistant_reply_of(value: bytes) -> ModelOperatorPromptRecord | None:
+    """The record when this message is the last chunk of an assistant reply, else None.
+
+    The last chunk, because a reply ends with the question the operator answers next.
+    """
+    if _REPLY_NEEDLE not in value:
+        return None
+    payload = unwrap_envelope(value)
+    if payload is None:
+        return None
+    try:
+        record = ModelOperatorPromptRecord.model_validate(payload)
+    except ValidationError:
+        return None
+    if not record.is_assistant_reply or record.chunk_index != record.chunk_count - 1:
+        return None
+    if not record.content.strip():
+        return None
+    return record
+
+
 class OperatorCaptureHost:
     """Serve operator prompts from the content-capture topic on the ledger host."""
 
@@ -137,6 +163,7 @@ class OperatorCaptureHost:
         self._retry_task: asyncio.Task[None] | None = None
         self.skipped = 0
         self.handled = 0
+        self.replies = 0
 
     @property
     def topics(self) -> ModelOperatorCaptureTopics:
@@ -168,7 +195,13 @@ class OperatorCaptureHost:
     async def _on_message(self, message: ProtocolBusMessage) -> None:
         record = operator_prompt_of(message.value)
         if record is None:
-            self.skipped += 1
+            reply = assistant_reply_of(message.value)
+            if reply is None:
+                self.skipped += 1
+                return
+            async with self._lock:
+                await asyncio.to_thread(self._handler.handle, reply)
+            self.replies += 1
             return
         # A failure to take the prompt into the store raises out of the callback, so the
         # bus redelivers it instead of advancing past it.
@@ -224,6 +257,7 @@ def ledger_host_capture(
     host_name: str,
     bus_lane: str | None,
     retry_seconds: float = DEFAULT_RETRY_SECONDS,
+    promotion_lane: str | None = None,
 ) -> OperatorCaptureHost:
     """The capture host the work-ledger serve process runs beside its own.
 
@@ -237,14 +271,17 @@ def ledger_host_capture(
         host_name=host_name,
         delegate=onex_delegate_runner(bus_lane),
         append=runner_ledger_appender(append_runner),
+        promotion_lane=promotion_lane or os.environ.get(PROMOTION_LANE_ENV) or None,
     )
     return OperatorCaptureHost(bus, handler, retry_seconds=retry_seconds)
 
 
 __all__ = [
     "DEFAULT_RETRY_SECONDS",
+    "PROMOTION_LANE_ENV",
     "OperatorCaptureHost",
     "ProtocolOperatorCaptureHandler",
+    "assistant_reply_of",
     "capture_group_id",
     "ledger_host_capture",
     "load_operator_capture_topics",

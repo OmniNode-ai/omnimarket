@@ -1,0 +1,84 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeReviewQuotaReducer
+#
+# Admission of frontier reviews against a preregistered weekly quota per route:
+#
+#   handle(ModelReviewQuotaRequest) -> ModelReviewQuotaDecision
+#
+# Every covered model call reserves room here first, so independent producers
+# cannot multiply a route's quota. The routes, the quotas, the pilot window and
+# the cutting rule are the sealed preregistration.v1.yaml beside this node; the
+# reducer loads it only when its bytes hash to preregistration.v1.yaml.sha256.
+# No clock (the time is in the request), no I/O after the load, no model call.
+name: "node_review_quota_reducer"
+contract_name: "node_review_quota_reducer"
+node_name: "node_review_quota_reducer"
+lifecycle: experimental
+node_type: "REDUCER_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure definition-B reducer for review-learning collection quota: reserves,
+  consumes and releases one request id against its route's weekly quota under
+  the sealed preregistration, admitting a review only while its route has room
+  and refusing it otherwise (route not preregistered, quota window full,
+  collection not started or closed, preregistration hash mismatch).
+preregistration:
+  file: "preregistration.v1.yaml"
+  sha256_file: "preregistration.v1.yaml.sha256"
+input_model:
+  name: "ModelReviewQuotaRequest"
+  module: "omnimarket.nodes.node_review_quota_reducer.models.model_review_quota"
+  description: "One command on one request id, the clock, the collection start, the preregistration hash and the prior state."
+output_model:
+  name: "ModelReviewQuotaDecision"
+  module: "omnimarket.nodes.node_review_quota_reducer.models.model_review_quota"
+  description: "Whether the command was applied, the reason, the window, the phase, the quota, the use and the state after."
+handler:
+  module: "omnimarket.nodes.node_review_quota_reducer.handlers.handler_review_quota_reducer"
+  class: "HandlerReviewQuotaReducer"
+  input_model: "omnimarket.nodes.node_review_quota_reducer.models.model_review_quota.ModelReviewQuotaRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_review_quota_reducer.handlers.handler_review_quota_reducer:HandlerReviewQuotaReducer"
+  handlers:
+    - operation: "review_quota_decide"
+      handler:
+        name: "HandlerReviewQuotaReducer"
+        module: "omnimarket.nodes.node_review_quota_reducer.handlers.handler_review_quota_reducer"
+# A producer asks before each covered model call; the decided event is what the
+# collection report counts admissions and refusals from.
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.review-quota-decide-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.review-quota-decided.v1"
+    failure: "onex.evt.omnimarket.review-quota-decide-failed.v1"
+externally_consumed_topics:
+  - "onex.evt.omnimarket.review-quota-decided.v1"
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+replay:
+  deterministic: true
+metadata:
+  description: "Admits a frontier review only while its route's preregistered weekly quota has room."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-10-19"
+  tags:
+    - reducer
+    - review
+    - quota
+    - preregistration
+    - pure

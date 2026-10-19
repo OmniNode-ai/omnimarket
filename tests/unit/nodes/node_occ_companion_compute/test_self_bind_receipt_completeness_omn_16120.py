@@ -23,11 +23,10 @@ WHY REFUSAL AND NOT SYNTHESIS. The receipt's ``probe_command`` /
 ``probe_stdout`` / ``exit_code`` are an OBSERVATION of the OCC PR, and
 ``compute_companion_plan`` is pure — it has no way to make one. Manufacturing a
 plausible probe here would mint exactly the "surrogate that reads as proof"
-OMN-16892 removed from the sibling producer. The two live callers
-(``node_occ_companion_effect._observe_occ_probe`` and
-``node_occ_attestation_observe._attest_companion``) both already observe the OCC
-PR and both set ``occ_probe`` in the same ``model_copy`` that sets
-``occ_pr_number``, each behind a total fallback — so failing closed refuses no
+OMN-16892 removed from the sibling producer. The live caller
+(``node_occ_companion_effect._observe_occ_probe``) already observes the OCC
+PR and sets ``occ_probe`` in the same ``model_copy`` that sets
+``occ_pr_number``, behind a total fallback — so failing closed refuses no
 shape that exists today and makes the gap unshippable rather than silent.
 
 WHY IT WAS NOT ALREADY COVERED. ``assert_receipt_keys_match_declarations``

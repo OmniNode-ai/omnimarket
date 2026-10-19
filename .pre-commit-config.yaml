@@ -1535,6 +1535,17 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-20910: a contract's container check is a command on a PR writer with
+      # no docker. SYNC with the ci.yml lint step "Container checks pass the
+      # PR-writer prerequisite without docker (OMN-20910)".
+      - id: contract-prerequisite-verifier-host-tools
+        name: Container checks pass the PR-writer prerequisite without docker (OMN-20910)
+        language: system
+        entry: uv run pytest tests/ci/test_contract_prerequisite_verifier_host_tools_omn20910.py -q -n 0 -p no:randomly --no-cov
+        files: ^(contracts/[^/]+\.yaml|src/omnimarket/nodes/node_dod_verify/services/(contract_prerequisite|evidence_collector)\.py|tests/ci/test_contract_prerequisite_verifier_host_tools_omn20910\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-20967: no Anthropic key value in a workflow. SYNC with the ci.yml
       # lint step "No Anthropic key value in a workflow (OMN-20967)".
       - id: anthropic-key-prefix-workflows

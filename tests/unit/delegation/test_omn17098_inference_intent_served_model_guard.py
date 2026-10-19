@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -178,3 +179,39 @@ def test_endpoint_without_a_models_listing_is_no_evidence_not_a_mismatch() -> No
     assert not response.error_message
     assert response.model_used == _CONFIGURED_MODEL
     assert len(server.chat_posts) == 1
+
+
+def test_cached_model_list_is_reconciled_after_the_endpoint_changes_models() -> None:
+    served_ids = [_SERVED_MODEL]
+    with _StubOpenAiServer(200, served_ids) as server:
+        handler = HandlerInferenceIntent()
+        first = handler.handle(_intent(server.chat_url, _SERVED_MODEL))
+        assert not first.error_message
+
+        served_ids[:] = [_CONFIGURED_MODEL]
+        response = handler.handle(_intent(server.chat_url, _CONFIGURED_MODEL))
+
+    assert not response.error_message
+    assert response.model_used == _CONFIGURED_MODEL
+    assert [post["model"] for post in server.chat_posts] == [
+        _SERVED_MODEL,
+        _CONFIGURED_MODEL,
+    ]
+
+
+@pytest.mark.parametrize("models_status", [200, 404])
+def test_cached_mismatch_stays_refused_without_new_matching_evidence(
+    models_status: int,
+) -> None:
+    with _StubOpenAiServer(models_status, [_SERVED_MODEL]) as server:
+        transport.served_models_cache[server.chat_url] = (
+            time.monotonic(),
+            frozenset({_SERVED_MODEL}),
+        )
+        handler = HandlerInferenceIntent()
+        for _ in range(2):
+            response = handler.handle(_intent(server.chat_url, _CONFIGURED_MODEL))
+            assert response.error_message
+            assert "model_attribution_mismatch" in response.error_message
+
+    assert server.chat_posts == []

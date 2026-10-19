@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_host_thermal_observe_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Reads the host it runs on (CPU package and DIMM temperature the way the lane placement probe reads them,
+  load, CPU busy and iowait, memory and swap, GPU temperature and utilization, fan speeds) and appends one
+  row to that host's own series, so the question whether a hot host cools when it is unloaded has an answer.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: observe
+      handler:
+        name: HandlerHostThermalObserve
+        module: omnimarket.nodes.node_host_thermal_observe_effect.handlers.handler_host_thermal_observe
+      input_model: omnimarket.nodes.node_host_thermal_observe_effect.models.model_host_thermal_observe_request.ModelHostThermalObserveRequest
+      output_model: omnimarket.nodes.node_host_thermal_observe_effect.models.model_host_thermal_reading.ModelHostThermalReading
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  side_effects:
+    - appends one JSON line to readings.jsonl in the host's thermal state directory
+    - replaces latest.json in that directory
+  runtime_profiles:
+    - effects
+
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.host-thermal-observe-requested.v1]
+  publish_topics: [onex.evt.omnimarket.host-thermal-observed.v1]
+
+terminal_event: onex.evt.omnimarket.host-thermal-observed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.host-thermal-observe-requested.v1
+externally_consumed_topics: [onex.evt.omnimarket.host-thermal-observed.v1]
+
+metadata:
+  ticket: OMN-17427
+  transport_type: cli
+lifecycle: experimental
