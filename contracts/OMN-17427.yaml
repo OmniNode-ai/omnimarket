@@ -439,6 +439,11 @@ requirements:
     acceptance:
       - id: "AC80"
         statement: "AC80: the hostile-reviewer workflow clones omniintelligence at 921b322b8e43f695961a06a04759dc88bb3e88ff and at no other sha -- falsifier: uv run pytest tests/ci/test_hostile_reviewer_pin_overflow_deadline_omn17427.py -q fails at the merge base, which pins aeba95945f22b3027d4010b53cb01b3f1217923c"
+  - id: "req-rehome-automation-liveness-overlay-check"
+    statement: "The automation-liveness overlay completeness check lives in the portable node package; the private overlay data stays in the private repository and is passed in by path."
+    acceptance:
+      - id: "AC91"
+        statement: "AC91: the node scans installers, reports a finding for each unit, installer, missing source and contradicted lifecycle state the overlay does not cover, and its console script reads a private checkout's overlay by path -- falsifier: uv run pytest tests/nodes/node_automation_liveness_overlay_check_compute/test_automation_liveness_installer_scan_omn20804.py tests/nodes/node_automation_liveness_overlay_check_compute/test_automation_liveness_overlay_refuses_gaps_omn20804.py -q fails when the node is absent"
   - id: "req-ci-summary-sweep-provenance-and-unreadable-runs"
     statement: "CI Summary's external sweep reads a check-run's Actions run id from its check suite when its URLs carry none, and an unreadable or malformed workflow-runs file exempts nothing instead of crashing the gate."
     acceptance:
@@ -1626,6 +1631,21 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/hostile-reviewer.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F -- "OMNIINTELLIGENCE_SHA 921b322b8e43f695961a06a04759dc88bb3e88ff"
+  - id: "dod-omn17427-ac91-liveness-overlay-check"
+    description: "The overlay completeness check node and its console script pass the focused suite."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_automation_liveness_overlay_check_compute/test_automation_liveness_installer_scan_omn20804.py tests/nodes/node_automation_liveness_overlay_check_compute/test_automation_liveness_overlay_refuses_gaps_omn20804.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC91"]
+  - id: "dod-omn17427-liveness-overlay-check-deploy-probe"
+    description: "Deploy probe. GitHub serves the overlay check node contract at the checked-out HEAD with its console script declared. It fails at the merge base, where the node does not exist, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_automation_liveness_overlay_check_compute/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys, yaml; c = yaml.safe_load(sys.stdin.read()); assert "onex-automation-liveness-check" in c["entry_points"]["console_scripts"]; print("automation liveness overlay check deploy probe: PASS")'
   - id: "dod-omn17427-ac79-sweep-provenance-unreadable-runs"
     description: "The external sweep reads run provenance from the check suite and an unreadable or malformed workflow-runs file still sweeps an unregistered red. The tests fail against the dev gate, which reads only URLs and raises on a malformed payload."
     source: "manual"
