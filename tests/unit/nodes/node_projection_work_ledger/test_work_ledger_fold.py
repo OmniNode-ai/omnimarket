@@ -9,19 +9,19 @@ from datetime import UTC, datetime
 
 import pytest
 
+from omnimarket.enums.enum_work_ledger_entity_kind import (
+    EnumWorkLedgerEntityKind,
+    EnumWorkLedgerStateOp,
+)
 from omnimarket.events.model_ledger_row_event import (
     ModelLedgerRowEventBase,
 )
-from omnimarket.nodes.node_projection_work_ledger.handlers.work_ledger_fold import (
+from omnimarket.handlers.work_ledger_fold import (
     WorkLedgerFoldError,
     apply_ops,
     fold_row,
 )
-from omnimarket.nodes.node_projection_work_ledger.models.enum_work_ledger_entity_kind import (
-    EnumWorkLedgerEntityKind,
-    EnumWorkLedgerStateOp,
-)
-from omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_fold_request import (
+from omnimarket.models.model_work_ledger_fold_request import (
     ModelWorkLedgerFoldRequest,
 )
 
