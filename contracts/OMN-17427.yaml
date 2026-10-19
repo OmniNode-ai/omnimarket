@@ -455,6 +455,8 @@ requirements:
     acceptance:
       - id: "AC105"
         statement: "AC105: node_lab_sli_compute returns one verdict per row of its contract sli_table (ok, breach, unknown or not_applicable) with the row's own severity, an indicator with no reading is unknown and never ok, and a reading for an unknown or repeated indicator is rejected; node_lab_sli_alert_effect pushes the operator and requests a fix lane for SEV1, requests a fix lane for SEV2, batches SEV3 and dark indicators into one fix lane, never acts on SEV4, suppresses a still-firing indicator inside its severity's renotify window and records each delivery; node_lab_sli_collect_effect reads the PR watcher state, host probes and the scheduler and lists any unreadable source; node_lab_sli_board_compute keeps the per-indicator history and renders every indicator with its severity and trend -- falsifier: uv run pytest tests/nodes/node_lab_sli_compute/test_golden_chain_lab_sli.py tests/nodes/node_lab_sli_compute/test_error_chain_lab_sli.py tests/nodes/node_lab_sli_compute/test_golden_chain_lab_sli_collect.py -q fails at the merge base"
+      - id: "AC107"
+        statement: "AC107: with no lab_sli_pack overlay, or one whose status is disabled, each of node_lab_sli_collect_effect, node_lab_sli_compute, node_lab_sli_alert_effect and node_lab_sli_board_compute constructs and then refuses handle() with LabSliPackDisabledError before any probe or push; status enabled runs the node; any other status is refused as a broken overlay -- falsifier: uv run pytest tests/nodes/node_lab_sli_compute/test_lab_sli_pack_gate.py -q fails at the merge base"
   - id: "req-review-lab-rubric-measured"
     statement: "The review task class records the lab model's measured adequacy against the lab-first bar."
     acceptance:
@@ -572,6 +574,13 @@ requirements:
     acceptance:
       - id: "AC105"
         statement: "AC105: the thirteen correct causal answers in tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py, one of them the verbatim Qwen3.8-27B answer from lab delegation run 16de1829-24b4-4563-919f-2a19d28b2d88, pass step_by_step_explanation, and the six non-explanations, including \"enthusiasm\" and \", sometimes\" which hold a connective's letters inside a word, are still vetoed -- falsifier: uv run pytest tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py -q fails at the merge base"
+  - id: "req-private-hosted-minutes-watch"
+    statement: "Once a day, one read of the organization's billing usage for the month sums GitHub-hosted Actions minutes per repository and per UTC day, appends one ledger STATUS row for the day, and raises one alert through the alert channel when any repository used any billed hosted minute that day."
+    acceptance:
+      - id: "AC107"
+        statement: "AC107: from fixture billing JSON, node_private_hosted_minutes_watch_effect counts only Actions minutes with a positive gross amount on a GitHub-hosted sku, per repository and per UTC day, and carries workflow names when the usage items name them -- falsifier: uv run pytest tests/unit/nodes/node_private_hosted_minutes_watch_effect/test_hosted_minutes_tally.py -q fails on a free public item, a self-hosted item or a non-Actions item that is counted"
+      - id: "AC108"
+        statement: "AC108: one watch run makes one billing read, sends the alert before it appends the STATUS row that records the alert outcome, never sends or appends twice for one day, appends a STATUS row on a quiet day, refuses before the billing read when ONEX_LEDGER_PATH is unset, and exits nonzero when the alert channel is dead or unconfigured -- falsifier: uv run pytest tests/unit/nodes/node_private_hosted_minutes_watch_effect/test_handler_private_hosted_minutes_watch.py tests/unit/nodes/node_private_hosted_minutes_watch_effect/test_main.py -q fails on a second send, a second append or a healthy exit with a dead alert"
   - id: "req-compaction-pack-build-over-pack-orchestrator"
     statement: "The compaction orchestrator's package build has a live port over the context-pack orchestrator: it requests the compaction_orchestrator profile at the command's session barrier for the envelope tenant, installs the built package with the pack's identities, and falls back pack_build_failed on any failed or incomplete build."
     acceptance:
@@ -757,6 +766,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC105: the lab SLI golden and error chains pass: one verdict per table row with its own severity, dark sources unknown, severity-driven actions with per-indicator dedup, collector readings, and the board with history and trend."
     command: "uv run pytest tests/nodes/node_lab_sli_compute/test_golden_chain_lab_sli.py tests/nodes/node_lab_sli_compute/test_error_chain_lab_sli.py tests/nodes/node_lab_sli_compute/test_golden_chain_lab_sli_collect.py -q"
+  - kind: "tests"
+    description: "AC107: the lab SLI pack constructs but refuses handle before any probe or push unless a deployment explicitly enables its overlay, and rejects a broken status."
+    command: "uv run pytest tests/nodes/node_lab_sli_compute/test_lab_sli_pack_gate.py -q"
   - kind: "tests"
     description: "AC104: the occ-autobind producer retries a timed-out OCC clone once and no other clone failure."
     command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_clone_timeout_retry_omn_15447.py -q"
@@ -2020,6 +2032,14 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_lab_sli_compute/test_golden_chain_lab_sli.py tests/nodes/node_lab_sli_compute/test_error_chain_lab_sli.py tests/nodes/node_lab_sli_compute/test_golden_chain_lab_sli_collect.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC105"]
+  - id: "dod-omn17427-ac107-lab-sli-pack-opt-in"
+    description: "The lab SLI pack constructs but refuses handle before any probe or push when absent or disabled, runs when explicitly enabled, and refuses every other status as a broken overlay."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_sli_compute/test_lab_sli_pack_gate.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC107"]
   - id: "dod-omn17427-lab-sli-deploy-probe"
     description: "Deploy probe. GitHub serves node_lab_sli_compute's contract at the checked-out HEAD with an sli_table using all four severities. It fails at the merge base, which has no such node, and needs only GitHub access and Python on the hosted runner."
     source: "manual"
@@ -2248,6 +2268,29 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py tests/unit/delegation/test_step_by_step_causal_prose_omn19401.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-private-hosted-minutes-tally"
+    description: "The pure tally over fixture billing JSON counts billed GitHub-hosted Actions minutes per repository and per day and excludes free, self-hosted and non-Actions items. The node and its tests are absent at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_private_hosted_minutes_watch_effect/test_hosted_minutes_tally.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC107"]
+  - id: "dod-omn17427-private-hosted-minutes-watch"
+    description: "One billing read per run, the alert before the STATUS row, one send and one append per day, a STATUS row on a quiet day, fail-fast on an unset ledger path, and a nonzero exit on a dead or unconfigured alert channel, with fakes for gh, the ledger command and the alert channel."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_private_hosted_minutes_watch_effect/test_handler_private_hosted_minutes_watch.py tests/unit/nodes/node_private_hosted_minutes_watch_effect/test_main.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC108"]
+  - id: "dod-omn17427-private-hosted-minutes-deploy-probe"
+    description: "Deploy probe. Run the node's whole focused suite on the hosted runner with fakes for gh, the ledger command and the alert channel; it needs the locked dependencies and no credentials or network. This exercises the checked-out node, not an installed host timer."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_private_hosted_minutes_watch_effect -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac109-compaction-pack-build"
     description: "The compaction orchestrator builds through HandlerCompactionPackBuild over the context-pack orchestrator with fixture sources: install with the pack identities, one candidate for two invocations, reads at the barrier for the access tenant, and pack_build_failed on a failed or incomplete build. At the merge base the test module fails to collect."

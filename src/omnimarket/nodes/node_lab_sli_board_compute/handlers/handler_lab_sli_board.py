@@ -10,12 +10,14 @@ on the result.
 from __future__ import annotations
 
 import html
+from collections.abc import Mapping
 from functools import lru_cache
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.enums.enum_lab_sli import EnumLabSliSeverity, EnumLabSliStatus
+from omnimarket.handlers.lab_sli_pack_gate import require_lab_sli_pack
 from omnimarket.models.lab_sli import (
     ModelLabSliBoard,
     ModelLabSliBoardRequest,
@@ -115,10 +117,17 @@ def _value(e: ModelLabSliEvaluated) -> str:
 class HandlerLabSliBoard:
     """One page, every indicator, its severity and its trend."""
 
-    def __init__(self, config: ModelLabSliBoardConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: ModelLabSliBoardConfig | None = None,
+        *,
+        environ: Mapping[str, str] | None = None,
+    ) -> None:
+        self._environ = environ
         self._config = config if config is not None else _contract_config()
 
     def handle(self, request: ModelLabSliBoardRequest) -> ModelLabSliBoard:
+        require_lab_sli_pack("node_lab_sli_board_compute", self._environ)
         projection = fold(
             request.projection,
             request.evaluation.evaluations,

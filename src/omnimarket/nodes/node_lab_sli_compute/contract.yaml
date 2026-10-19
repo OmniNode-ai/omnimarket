@@ -22,6 +22,9 @@ description: >
   indicator with no reading is unknown, never ok: a dark source is itself a
   finding. A reading naming an indicator absent from the table, or a repeated
   one, is rejected and listed. No clock read, no state, no I/O.
+  This node belongs to the lab SLI pack, is off by default and refuses until
+  a deployment enables the pack with `status: enabled` in
+  <root>/lab_sli_pack/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS.
 
 handler:
   module: omnimarket.nodes.node_lab_sli_compute.handlers.handler_lab_sli_evaluate
