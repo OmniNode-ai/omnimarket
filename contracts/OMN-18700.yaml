@@ -23,12 +23,6 @@ dod_evidence:
         check_value: "uv run pytest \"tests/unit/delegation/test_response_contract_conformance_classes_omn18700.py::test_each_contract_reports_a_rate_and_counts_for_every_failure_class\" -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
-    ac_bindings:
-      - label: "AC2"
-        criterion_hash: "afe5bbdb77149bbdfec82a3708b8e45b9350b20bbfe8e54d35511e0ef6a639b4"
-        proposed_by: "lane=dod-closeout-bind-2026-10-18T2045Z-c3"
-        accepted_by: "lane=dod-closeout-accept-2026-10-18T2045Z-c3"
-        accepted_at: "2026-10-18T21:18:56Z"
   - id: "dod-omn-18700-ac3-contract-failure-not-bar-miss"
     description: "AC3 binding (accepted 2026-10-18T2045Z, proposed by lane=dod-closeout-bind-2026-10-18T2045Z-c3, accepted by lane=dod-closeout-accept-2026-10-18T2045Z-c3). A local answer rejected on the declared contract, with the cloud rung answering, is a failed trial of class contract_nonconformant in family model_contract, not a quality-gate miss or a cloud pass. Re-run at origin/dev 5457fa2aa PASSED; at the parent of 47871f791 the test file does not import."
     source: "manual"
@@ -37,7 +31,15 @@ dod_evidence:
         check_value: "uv run pytest \"tests/unit/delegation/test_response_contract_conformance_classes_omn18700.py::test_a_rejected_local_answer_on_the_contract_is_a_contract_failure_not_a_bar_miss\" -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
-    ac_bindings:
+context:
+  ac_binding_provenance:
+    "dod-omn-18700-ac2-rate-and-failure-counts":
+      - label: "AC2"
+        criterion_hash: "afe5bbdb77149bbdfec82a3708b8e45b9350b20bbfe8e54d35511e0ef6a639b4"
+        proposed_by: "lane=dod-closeout-bind-2026-10-18T2045Z-c3"
+        accepted_by: "lane=dod-closeout-accept-2026-10-18T2045Z-c3"
+        accepted_at: "2026-10-18T21:18:56Z"
+    "dod-omn-18700-ac3-contract-failure-not-bar-miss":
       - label: "AC3"
         criterion_hash: "9a67218c224124ff786c3fae38b088cacf4a67b0dc806a76f22051bdc810ac4c"
         proposed_by: "lane=dod-closeout-bind-2026-10-18T2045Z-c3"
