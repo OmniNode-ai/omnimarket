@@ -1,0 +1,26 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 101 and seed -6694704739580172049 with 12 workers on 32 cores with 9102MB heap and 64MB offheap memory [pid: 1] (Linux 7.0.0-34-generic amd64, Eclipse Adoptium 17.0.20.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file CompactionLifecycle.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/TLC.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module CompactionLifecycle
+Starting... (2026-10-17 22:20:16)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-17 22:20:16.
+Progress(14) at 2026-10-17 22:20:19: 2,310,342 states generated (2,310,342 s/min), 583,122 distinct states found (583,122 ds/min), 258,012 states left on queue.
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 3.5E-5
+  based on the actual fingerprints:  val = 3.1E-6
+74600251 states generated, 10022920 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 27.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 13 and the 95th percentile is 4).
+Finished in 52s at (2026-10-17 22:21:08)
+exit=0

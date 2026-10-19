@@ -682,6 +682,12 @@ jobs:
       # 'agent-call-adapter-model'.
       - name: Agent-call adapter model (OMN-21096)
         run: uv run pytest tests/formal/test_agent_call_adapter_model.py -q -n 0 -p no:randomly --no-cov
+      # OMN-21104: the compaction lifecycle model (formal/compaction_lifecycle) passes
+      # its design configs, each property fails on a one-knob mutation, the results
+      # match the committed model, configs and outputs, and the verdict approves the
+      # model's digest. SYNC with pre-commit hook 'compaction-lifecycle-model'.
+      - name: Compaction lifecycle model and verdict (OMN-21104)
+        run: uv run pytest tests/formal/test_compaction_lifecycle_model.py -q -n 0 -p no:randomly --no-cov
       # OMN-20601: routing decisions come from overlays, never from omnimarket code
       # (ruling 2026-10-10T17:54:30Z). Inventory of routing sources, overlay
       # precedence, and a ratchet on route-selecting code. SYNC with pre-commit hook
@@ -3997,7 +4003,11 @@ jobs:
   # (no release wait; no users yet), so a STALE red shows here and holds no PR.
   # Unconditional: no `if:`, no `needs:`. Controls prove stale source is refused
   # and old docs are accepted before measuring origin/dev, never the PR head.
-  # When red, dispatch the Release Cut workflow (.github/workflows/release-cut.yml).
+  # OMN-17427: a commit reached by the newest vX.Y.Z or any dev merge tag
+  # (dev-merge-tag.yml) is published, because internal consumers pin the dev
+  # merge tag (ruling 2026-10-16T09:35:49Z); controls prove a dev-tagged old
+  # source commit passes and a malformed dev tag covers nothing.
+  # When red, the dev merge tagger stopped; check .github/workflows/dev-merge-tag.yml.
   release-staleness:
     name: Release Staleness (OMN-18010)
     runs-on: ubuntu-latest
@@ -4023,7 +4033,7 @@ jobs:
           }
 
           measure() {
-            local repo="$1" tags tag commits commit paths timestamp now age_seconds
+            local repo="$1" tags release tag commits commit paths timestamp now age_seconds
             local unreleased=0 packaged=0 oldest_epoch='' oldest='-' age_hours=0.0
             local verdict=FRESH result=0
             # Every git read checks its exit status explicitly: measure is called
@@ -4032,18 +4042,32 @@ jobs:
               measurement_error; return 2;
             }
             tags=$(git -C "$repo" tag --list) || { measurement_error; return 2; }
-            tag=$(printf '%s\n' "$tags" |
+            release=$(printf '%s\n' "$tags" |
               awk '/^v[0-9]+\.[0-9]+\.[0-9]+$/ {print substr($0, 2)}' |
               LC_ALL=C sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1) || {
               measurement_error; return 2;
             }
-            if [ -z "$tag" ]; then
-              echo 'Cannot measure release staleness: no vX.Y.Z release tag' >&2
+            # OMN-17427: internal consumers pin the dev merge tag
+            # (.github/workflows/dev-merge-tag.yml, ruling 2026-10-16T09:35:49Z),
+            # so a commit a dev-<YYYYMMDDHHMMSS>-<sha12> tag reaches is published.
+            local -a pins=()
+            local dev_pattern='^dev-[0-9]{14}-[0-9a-f]{12}$' name dev_tag=''
+            if [ -n "$release" ]; then pins+=("v$release"); fi
+            # Names sort by time, so the last match in C order is the newest.
+            while IFS= read -r name; do
+              if [[ "$name" =~ $dev_pattern ]]; then
+                pins+=("$name")
+                dev_tag="$name"
+              fi
+            done < <(printf '%s\n' "$tags" | LC_ALL=C sort)
+            if [ "${#pins[@]}" -eq 0 ]; then
+              echo 'Cannot measure release staleness: no vX.Y.Z release or dev merge tag' >&2
               measurement_error
               return 2
             fi
-            tag="v$tag"
-            commits=$(git -C "$repo" rev-list "$tag..refs/remotes/origin/dev") || {
+            tag="${dev_tag:-v$release}"
+            commits=$(printf '%s\n' refs/remotes/origin/dev "${pins[@]/#/^refs/tags/}" |
+              git -C "$repo" rev-list --stdin) || {
               measurement_error; return 2;
             }
             # Inspect each reachable commit, including merged branch commits;
@@ -4090,7 +4114,7 @@ jobs:
           controls=$(mktemp -d)
           trap 'rm -rf "$controls"' EXIT
           control_now=$(date +%s)
-          for kind in src docs; do
+          for kind in src docs devtag baddevtag; do
             repo="$controls/$kind"
             git init -q "$repo"
             mkdir -p "$repo/src" "$repo/docs"
@@ -4101,10 +4125,10 @@ jobs:
               git -C "$repo" -c user.name=control -c user.email=control@example.invalid \
                 -c commit.gpgsign=false commit -qm base
             git -C "$repo" -c tag.gpgsign=false tag v0.0.1
-            if [ "$kind" = src ]; then
-              path=src/x.py
-            else
+            if [ "$kind" = docs ]; then
               path=docs/x.md
+            else
+              path=src/x.py
             fi
             printf 'unreleased\n' >> "$repo/$path"
             git -C "$repo" add "$path"
@@ -4112,11 +4136,18 @@ jobs:
               GIT_COMMITTER_DATE="@$((control_now - 72 * 3600)) +0000" \
               git -C "$repo" -c user.name=control -c user.email=control@example.invalid \
                 -c commit.gpgsign=false commit -qm unreleased
-            git -C "$repo" update-ref refs/remotes/origin/dev "$(git -C "$repo" rev-parse HEAD)"
+            head=$(git -C "$repo" rev-parse HEAD)
+            # A dev merge tag covers the old source commit; a malformed one never does.
+            if [ "$kind" = devtag ]; then
+              git -C "$repo" tag "dev-20000101000000-${head:0:12}"
+            elif [ "$kind" = baddevtag ]; then
+              git -C "$repo" tag dev-latest
+            fi
+            git -C "$repo" update-ref refs/remotes/origin/dev "$head"
             status=0
             measure "$repo" || status=$?
             expected=0
-            if [ "$kind" = src ]; then expected=1; fi
+            if [ "$kind" = src ] || [ "$kind" = baddevtag ]; then expected=1; fi
             if [ "$status" -ne "$expected" ]; then
               echo "POSITIVE CONTROL FAILED: $kind returned $status, expected $expected"
               exit 1
@@ -4126,7 +4157,8 @@ jobs:
           status=0
           measure . || status=$?
           if [ "$status" -eq 1 ]; then
-            echo 'Release debt is stale: dispatch the Release Cut workflow (.github/workflows/release-cut.yml).'
+            echo 'Release debt is stale: no dev merge tag covers a packaged dev commit older than 24 hours.'
+            echo 'Check the Dev Merge Tag workflow (.github/workflows/dev-merge-tag.yml); for an outside user, dispatch the Release Cut workflow (.github/workflows/release-cut.yml).'
           fi
           if [ "$status" -ne 0 ]; then exit 1; fi
 

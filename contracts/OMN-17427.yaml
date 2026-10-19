@@ -361,6 +361,11 @@ requirements:
     acceptance:
       - id: "AC66"
         statement: "AC66: the sixteen removed prose files are absent and README.md has three to five lines including the public knowledge_base link -- falsifier: uv run pytest tests/ci/test_repository_prose_removed_omn17427.py -q"
+  - id: "req-docs-assets-evidence-removed"
+    statement: "The unreferenced logo set, closed-ticket evidence records and ADR inventory under docs/ live in the knowledge base archive and are removed here; the files a test, script or workflow reads stay."
+    acceptance:
+      - id: "AC76"
+        statement: "AC76: the thirty-three unreferenced docs files are absent, the three files a test or workflow reads are present and docs holds no empty directory -- falsifier: uv run pytest tests/ci/test_docs_assets_evidence_removed_omn17427.py -q"
   - id: "req-linear-triage-local-github"
     statement: "node_linear_triage runs on a host that holds no GitHub token by reading PR state from the PR watcher state and the canonical clones, reports an unreadable state instead of an empty answer, and keeps its implementing-PR gate."
     acceptance:
@@ -470,6 +475,11 @@ requirements:
     acceptance:
       - id: "AC81"
         statement: "AC81: a check-run whose run id comes only from check_suite.workflow_run.id or check_suite.workflow_run_id is exempt when that run's event is a known non-pull-request event and swept otherwise, and an empty, invalid-JSON or non-list workflow-runs file still sweeps an unregistered red to a failing main() verdict -- falsifier: the focused check-suite provenance and unreadable-index tests fail against the dev gate"
+  - id: "req-rehome-lab-nodes-slice-3"
+    statement: "The hourly tick effect, the lab disk growth effect and the lab fill receipt table compute live in the portable node package with their handlers, contracts and bus topics."
+    acceptance:
+      - id: "AC94"
+        statement: "AC94: each of the three nodes resolves its onex.nodes entry point to the omnimarket package, runs its handler through the declared contract, and keeps the topics it declared in the source repository under the omnimarket namespace -- falsifier: uv run pytest tests/nodes/node_hourly_tick_effect/test_golden_chain_hourly_tick_effect.py tests/nodes/node_hourly_tick_effect/test_hourly_tick.py tests/nodes/node_lab_disk_growth_effect/test_golden_chain_lab_disk_growth_effect.py tests/nodes/node_lab_disk_growth_effect/test_lab_disk_growth_cli.py tests/nodes/node_lab_disk_growth_effect/test_lab_disk_growth_effect.py tests/nodes/node_lab_fill_receipt_table_compute/test_golden_chain_lab_fill_receipt_table_compute.py tests/nodes/node_lab_fill_receipt_table_compute/test_lab_fill_receipt_table.py -q fails when a node is absent"
   - id: "req-ruling-guard-paths-spelled"
     statement: "The park ladder handler and the operator capture handlers are spelled by path in a required lint step and a pre-commit hook, so the ruling audit reads the rulings they carry as wired."
     acceptance:
@@ -490,13 +500,27 @@ requirements:
     acceptance:
       - id: "AC83"
         statement: "AC83: a model replacement at the same endpoint completes without waiting for cache expiry, while an unreadable or mismatching refresh sends no completion request -- falsifier: the cached_model_list and cached_mismatch regression tests fail before the reconciliation change"
+  - id: "req-delegate-skill-trace-id-stored"
+    statement: "delegation_events.trace_id is written from the delegate-skill terminal's own trace_id by both projection writers, and a later terminal that carries none keeps the stored value."
+    acceptance:
+      - id: "AC93"
+        statement: "AC93: the sync and async delegate-skill row builders store the terminal's trace_id as text, leave the column NULL when the terminal carries none, and keep a stored trace_id across a later sparse terminal -- falsifier: uv run pytest tests/unit/delegation/test_delegate_skill_trace_id_omn19448.py -q fails at the merge base"
+  - id: "req-release-staleness-dev-merge-tags"
+    statement: "Release staleness counts commits reached by immutable dev merge tags as published while preserving the age limit for untagged packaged commits."
+    acceptance:
+      - id: "AC95"
+        statement: "AC95: a dev merge tag covers packaged commits after the last version release and supplies a measurable base when no version release exists."
+      - id: "AC96"
+        statement: "AC96: an untagged packaged commit after a dev merge tag still ages against the 24-hour limit, and malformed dev tag names do not cover stale debt."
+      - id: "AC97"
+        statement: "AC97: changing the dev tag matcher to ignore valid dev merge tags makes the workflow's devtag positive control refuse the measurement."
   - id: "req-brief-drafting-class"
     statement: "Lane brief drafting is a task class on the lab Qwen rung alone, accepted only by the brief checker, with the shell parts of a brief filled by code and a refusal in a shell part regenerated by code instead of sent back to the model."
     acceptance:
-      - id: "AC93"
-        statement: "AC93: task_class_contracts.v1.yaml declares brief_drafting as an internal class that no prompt selects, with tier_order local alone and max_escalations 0, resolving the Qwen model on the local tier and none on any other tier, and declares the brief checker as its external acceptance with title, premises and task as the only free-text slots -- falsifier: uv run pytest tests/unit/delegation/test_brief_drafting_class_omn17427.py -q fails at the merge base"
-      - id: "AC94"
-        statement: "AC94: node_lane_brief_draft_compute assembles a brief with every shell part pasted byte for byte and refuses a draft that wrote a shell part or an identifier its fact table lacks, and its gate accepts only checker exit 0, regenerates a refused shell part once in code, redrafts a free-text refusal while attempts remain and otherwise hands the brief to Claude -- falsifier: uv run pytest tests/nodes/node_lane_brief_draft_compute -q fails at the merge base"
+      - id: "AC98"
+        statement: "AC98: task_class_contracts.v1.yaml declares brief_drafting as an internal class that no prompt selects, with tier_order local alone and max_escalations 0, resolving the Qwen model on the local tier and none on any other tier, and declares the brief checker as its external acceptance with title, premises and task as the only free-text slots -- falsifier: uv run pytest tests/unit/delegation/test_brief_drafting_class_omn17427.py -q fails at the merge base"
+      - id: "AC99"
+        statement: "AC99: node_lane_brief_draft_compute assembles a brief with every shell part pasted byte for byte and refuses a draft that wrote a shell part or an identifier its fact table lacks, and its gate accepts only checker exit 0, regenerates a refused shell part once in code, redrafts a free-text refusal while attempts remain and otherwise hands the brief to Claude -- falsifier: uv run pytest tests/nodes/node_lane_brief_draft_compute -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -1498,6 +1522,34 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_repository_prose_removed_omn17427.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC66"]
+  - id: "dod-omn17427-ac76-docs-assets-evidence-removed"
+    description: "The unreferenced docs files are absent and the read ones stay. It fails at the merge base, where the thirty-three files exist."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_docs_assets_evidence_removed_omn17427.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC76"]
+  - id: "dod-omn17427-docs-assets-evidence-deploy-probe"
+    description: "Deploy probe. The hosted runner checks the removed and retained docs paths at this head using Python and this checkout."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          python3 - <<'PY'
+          import ast
+          from pathlib import Path
+          root = Path.cwd()
+          tree = ast.parse((root / "tests/ci/test_docs_assets_evidence_removed_omn17427.py").read_text())
+          paths = {node.targets[0].id: ast.literal_eval(node.value) for node in tree.body if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name) and node.targets[0].id in {"REMOVED_DOCS_FILES", "KEPT_BECAUSE_READ"}}
+          assert len(paths["REMOVED_DOCS_FILES"]) == 33
+          assert all(not (root / path).exists() for path in paths["REMOVED_DOCS_FILES"])
+          assert len(paths["KEPT_BECAUSE_READ"]) == 3
+          assert all((root / path).is_file() for path in paths["KEPT_BECAUSE_READ"])
+          assert not [path for path in (root / "docs").rglob("*") if path.is_dir() and not any(path.iterdir())]
+          print("docs assets and evidence deploy probe: PASS")
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac61-linear-triage-local-github"
     description: "The local GitHub PR reads and the handler's local source pass their focused tests."
     source: "manual"
@@ -1794,6 +1846,29 @@ dod_evidence:
           print("external sweep provenance deploy probe: PASS")
           PY
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac94-rehome-lab-nodes-slice-3"
+    description: "The hourly tick, lab disk growth and lab fill receipt table nodes pass their focused suites in the portable package."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_hourly_tick_effect/test_golden_chain_hourly_tick_effect.py tests/nodes/node_hourly_tick_effect/test_hourly_tick.py tests/nodes/node_lab_disk_growth_effect/test_golden_chain_lab_disk_growth_effect.py tests/nodes/node_lab_disk_growth_effect/test_lab_disk_growth_cli.py tests/nodes/node_lab_disk_growth_effect/test_lab_disk_growth_effect.py tests/nodes/node_lab_fill_receipt_table_compute/test_golden_chain_lab_fill_receipt_table_compute.py tests/nodes/node_lab_fill_receipt_table_compute/test_lab_fill_receipt_table.py -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC94"]
+  - id: "dod-omn17427-rehome-lab-nodes-slice-3-deploy-probe"
+    description: "Deploy probe. The checked-out package lists the three nodes as onex.nodes entry points and their contracts parse. It fails at the merge base, where the nodes are absent, and needs only Python and this checkout."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          python3 - <<'PY'
+          import pathlib, yaml
+          for name in ("node_hourly_tick_effect", "node_lab_disk_growth_effect", "node_lab_fill_receipt_table_compute"):
+              contract = yaml.safe_load(pathlib.Path(f"src/omnimarket/nodes/{name}/contract.yaml").read_text())
+              assert contract["name"] == name, name
+              assert f"{name} = " in pathlib.Path("pyproject.toml").read_text(), name
+          print("rehome lab nodes slice 3 deploy probe: PASS")
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac80-ruling-guard-paths"
     description: "The park ladder wiring tests require the handler path in the lint step and hook names, and the operator capture nodes pass their tests."
     source: "manual"
@@ -1854,6 +1929,68 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/delegation/test_omn17098_inference_intent_served_model_guard.py -q --no-cov -k 'cached_model_list or cached_mismatch'"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac93-delegate-skill-trace-id"
+    description: "Both projection writers store a delegate-skill terminal's trace_id. Before the change 5 of the 7 tests fail (the trace is dropped); after it all pass. A lab replay of a real delegate-skill-failed terminal through the sync writer stores its trace_id at the head and NULL at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_delegate_skill_trace_id_omn19448.py -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC93"]
+  - id: "dod-omn17427-delegate-skill-trace-id-deploy-probe"
+    description: "Deploy probe. The checked-out source of both delegate-skill row builders names the terminal's trace_id column. It fails at the merge base, where neither builder writes it, and needs only a shell and this checkout on the hosted runner; the behavioural proof stays in the test_passes check bound to AC93."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          sh -c 'set -eu; for f in src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py src/omnimarket/nodes/node_projection_delegation/handlers/handler_delegation.py; do grep -Fq "row[\"trace_id\"] = str(event.trace_id)" "$f"; done; echo "delegate-skill trace_id deploy probe: PASS"'
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-release-staleness-dev-tags-published"
+    description: "Immutable dev merge tags cover packaged release debt and work without a version release. These tests fail against the merge-base workflow, which only counts version tags."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_release_staleness_gate_omn18010.py -q -p no:randomly --no-cov -k 'test_dev_merge_tag_covers_packaged_commit_past_the_release or test_dev_tag_alone_is_a_measurable_base'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC95"]
+  - id: "dod-omn17427-release-staleness-untagged-debt"
+    description: "Untagged packaged commits still age and malformed dev tags do not publish them. The tests read the real measurement after the workflow's four controls."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_release_staleness_gate_omn18010.py -q -p no:randomly --no-cov -k 'test_untagged_packaged_commit_after_dev_tag_still_ages or test_malformed_dev_tag_cannot_cover_stale_debt'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC96"]
+  - id: "dod-omn17427-release-staleness-devtag-control"
+    description: "Ignoring valid dev merge tags trips the devtag positive control before the real measurement. The merge-base workflow has no dev tag matcher or devtag control."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_release_staleness_gate_omn18010.py::test_ignored_dev_tags_are_refused_by_positive_control -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC97"]
+  - id: "dod-omn17427-release-staleness-devtag-deploy-probe"
+    description: "Deploy probe. Execute the checked-out workflow's measurement on temporary git histories: tagged old packaged commits are fresh, a dev tag works without a release, and an untagged old packaged commit stays stale. The hosted runner needs Python, the locked test dependencies, bash, git and GNU date; no service or credentials are needed. This is a workflow runtime readback, not a running application deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run python - <<'PY'
+          import runpy
+          import tempfile
+          from pathlib import Path
+          probe = runpy.run_path("tests/ci/test_release_staleness_gate_omn18010.py")
+          for name in (
+              "test_dev_merge_tag_covers_packaged_commit_past_the_release",
+              "test_dev_tag_alone_is_a_measurable_base",
+              "test_untagged_packaged_commit_after_dev_tag_still_ages",
+          ):
+              with tempfile.TemporaryDirectory() as directory:
+                  probe[name](Path(directory))
+              print(name + ": PASS")
+          print("release staleness deploy probe: PASS")
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac82-brief-drafting-class"
     description: "The brief_drafting class is internal, local-only, resolves Qwen and declares the brief checker as its acceptance."
     source: "manual"
@@ -1861,7 +1998,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/delegation/test_brief_drafting_class_omn17427.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC93"]
+    binds_ac: ["AC98"]
   - id: "dod-omn17427-ac83-lane-brief-draft-node"
     description: "The lane brief draft node assembles around code-filled shell parts, refuses a draft that wrote one, and gates on the checker's exit code."
     source: "manual"
@@ -1869,7 +2006,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_lane_brief_draft_compute/test_assemble_lane_brief.py tests/nodes/node_lane_brief_draft_compute/test_gate_lane_brief_draft.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC94"]
+    binds_ac: ["AC99"]
   - id: "dod-omn17427-brief-drafting-deploy-probe"
     description: "Deploy probe. GitHub serves the task-class contract at the checked-out HEAD declaring brief_drafting with the brief checker as its external acceptance. It fails at the merge base, which declares neither, and needs only GitHub access and Python on the hosted runner."
     source: "manual"

@@ -59,6 +59,11 @@ requirements:
     acceptance:
       - id: "AC13"
         statement: "AC13: each item goes admission, call, parse, verdict with an event per step in order; a refused item is never submitted; a failed call releases its reservation; a truncated, unparseable or empty answer is degraded and never passed; a diff that no longer matches the manifest is refused -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/nodes/node_claude_review_batch_effect/test_claude_review_batch.py -q -p no:randomly --no-cov fails at the merge base"
+  - id: "req-defect-catalog-node"
+    statement: "node_review_defect_catalog_compute validates the review defect-code catalog, refuses a duplicate or reused code, a family-letter mismatch, an enforced_by entry with no validator version and a section over its token budget, and renders the reviewer's catalog section and allowed-code set for one repository."
+    acceptance:
+      - id: "AC8"
+        statement: "AC8: the packaged catalog resolves within 5,000 rendered tokens and each refusal has a passing positive control -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/nodes/node_review_defect_catalog_compute/test_review_defect_catalog.py -q -n 0 --no-cov fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "The workflow reads the overlay at every roster site."
@@ -180,3 +185,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_claude_review_batch_effect/test_claude_review_batch.py -q -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC13"]
+  - id: "dod-omn20910-ac8-defect-catalog-node"
+    description: "The defect-code catalog node validates and renders the packaged catalog; every refusal has a positive control."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_review_defect_catalog_compute/test_review_defect_catalog.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8"]

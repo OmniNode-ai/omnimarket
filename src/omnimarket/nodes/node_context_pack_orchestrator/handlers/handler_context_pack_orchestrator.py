@@ -8,8 +8,12 @@ name, reads each tier the profile selects from the source bound to that factor t
 renders it. A required tier whose source answers anything but ``resolved`` fails the build
 ``REQUIRED_FACTOR_MISSING``; an optional tier's other statuses are listed per tier and the
 tier is omitted. Optional tiers that do not fit the budget are dropped lowest precedence
-first and listed in ``excluded_by_budget``; required tiers over budget fail the build
-``TOKEN_BUDGET_EXCEEDED`` and are never truncated.
+first and listed in ``excluded_by_budget``. When the required tiers alone are still over
+budget, each required tier is selected inside its share of the budget: the entries the
+request cites first, then the newest, whole entries only and never truncated (OMN-21111).
+``OPERATOR_WORDS_UNRECORDED`` is carried whole (the carry rule). A cited entry that does not
+fit, or a tier left with no entry, fails the build ``TOKEN_BUDGET_EXCEEDED``. Each tier is
+read at its own revision when the request names one in ``tier_revisions``.
 
 Identities follow plan section 6: ``candidate_id`` is uuid5 over the build's inputs,
 contracts and ``implementation_identity``; ``assembly_hash`` is the pack hash over the
@@ -317,7 +321,7 @@ class HandlerContextPackOrchestrator:
         admitted = frozenset(evaluated.admitted_factors)
         required = set(profile.required_factors)
         session_scopes = _session_scopes(request)
-        revision = request.session_barrier or request.newest_turn or "head"
+        default_revision = request.session_barrier or request.newest_turn or "head"
 
         reads: list[tuple[EnumContextFactor, ModelContextSourceResult]] = []
         for factor in _selected_factors(profile, admitted):
@@ -338,7 +342,7 @@ class HandlerContextPackOrchestrator:
                 task_kind=task_kind,
                 caller_scope=request.caller_scope,
                 access=command.access,
-                revision=revision,
+                revision=request.tier_revisions.get(factor, default_revision),
             )
             try:
                 answer = source.handle(source_request)
@@ -411,6 +415,33 @@ class HandlerContextPackOrchestrator:
                 t.model_copy(update={"included": False}) if t.factor in dropped else t
                 for t in tiers
             ]
+        if sum(tier_tokens.values()) > profile.token_budget:
+            selected = _select_required_tiers(
+                entries_by_factor, profile.token_budget, frozenset(request.cited_refs)
+            )
+            if isinstance(selected, str):
+                return _failed(
+                    request,
+                    EnumContextPackFailure.TOKEN_BUDGET_EXCEEDED,
+                    selected,
+                    profile=profile,
+                    profile_content_hash=content_hash,
+                    tiers=tuple(tiers),
+                )
+            tiers = [
+                t.model_copy(
+                    update={
+                        "entry_count": len(selected[t.factor]),
+                        "token_estimate": _tokens(selected[t.factor]),
+                        "trimmed_entry_count": len(entries_by_factor[t.factor])
+                        - len(selected[t.factor]),
+                    }
+                )
+                if t.factor in selected
+                else t
+                for t in tiers
+            ]
+            entries_by_factor.update(selected)
 
         all_entries = [e for entries in entries_by_factor.values() for e in entries]
         if not all_entries:
@@ -449,6 +480,25 @@ class HandlerContextPackOrchestrator:
                                 request.session_id,
                                 request.newest_turn,
                                 request.manifest_case,
+                                # Present only when set, so a request without them
+                                # keeps its candidate.
+                                *(
+                                    [
+                                        {
+                                            f.value: r
+                                            for f, r in sorted(
+                                                request.tier_revisions.items()
+                                            )
+                                        }
+                                    ]
+                                    if request.tier_revisions
+                                    else []
+                                ),
+                                *(
+                                    [sorted(request.cited_refs)]
+                                    if request.cited_refs
+                                    else []
+                                ),
                             ]
                         ),
                         "version_vector_hash": version_vector_hash,
@@ -613,6 +663,105 @@ class HandlerContextPackOrchestrator:
                     ),
                 )
         return tuple(refs.values())
+
+
+# Carried whole and verbatim: only an operator's review row removes a prompt (carry rule).
+_NEVER_TRIMMED = frozenset({EnumContextFactor.OPERATOR_WORDS_UNRECORDED})
+
+
+def _tokens(entries: tuple[ModelContextSourceEntry, ...]) -> int:
+    return sum(_token_estimate(e.text) for e in entries)
+
+
+def _is_cited(entry: ModelContextSourceEntry, cited: frozenset[str]) -> bool:
+    if entry.source_ref is not None and entry.source_ref in cited:
+        return True
+    head = _ROW_HEAD.match(entry.text)
+    return head is not None and head.group("ts") in cited
+
+
+def _select_within_tier(
+    factor: EnumContextFactor,
+    entries: tuple[ModelContextSourceEntry, ...],
+    budget: int,
+    cited: frozenset[str],
+) -> tuple[ModelContextSourceEntry, ...] | str:
+    """Cited entries first, then the newest, whole entries only, to ``budget``.
+
+    Returns the kept entries in source order, or the reason the tier cannot fit.
+    """
+    indexed = list(enumerate(entries))
+    newest_first = sorted(
+        indexed, key=lambda pair: (-pair[1].as_of.timestamp(), pair[0])
+    )
+    kept: set[int] = set()
+    used = 0
+    for index, entry in newest_first:
+        if _is_cited(entry, cited):
+            used += _token_estimate(entry.text)
+            kept.add(index)
+    if used > budget:
+        return (
+            f"{factor.value}: cited entries need {used} tokens, over the tier "
+            f"budget {budget}"
+        )
+    for index, entry in newest_first:
+        if index in kept:
+            continue
+        cost = _token_estimate(entry.text)
+        if used + cost > budget:
+            break
+        used += cost
+        kept.add(index)
+    if not kept:
+        return (
+            f"{factor.value}: no entry fits the tier budget {budget} "
+            f"(newest entry {_token_estimate(newest_first[0][1].text)} tokens)"
+        )
+    return tuple(entry for index, entry in indexed if index in kept)
+
+
+def _select_required_tiers(
+    entries_by_factor: Mapping[EnumContextFactor, tuple[ModelContextSourceEntry, ...]],
+    budget: int,
+    cited: frozenset[str],
+) -> dict[EnumContextFactor, tuple[ModelContextSourceEntry, ...]] | str:
+    """Share the budget across the tiers left and select inside those over their share.
+
+    Tiers that are never trimmed are charged first. The rest share what remains, smallest
+    first: a tier within an equal share of what is left is kept whole, and every larger
+    tier is selected inside that share.
+    """
+    fixed = sum(
+        _tokens(entries)
+        for factor, entries in entries_by_factor.items()
+        if factor in _NEVER_TRIMMED
+    )
+    remaining = budget - fixed
+    if remaining < 0:
+        return (
+            f"tiers carried whole need {fixed} tokens, over the budget {budget}: "
+            + ", ".join(
+                f.value for f in sorted(entries_by_factor) if f in _NEVER_TRIMMED
+            )
+        )
+    trimmable = sorted(
+        (f for f in entries_by_factor if f not in _NEVER_TRIMMED),
+        key=lambda f: (_tokens(entries_by_factor[f]), f.value),
+    )
+    selected: dict[EnumContextFactor, tuple[ModelContextSourceEntry, ...]] = {}
+    for position, factor in enumerate(trimmable):
+        entries = entries_by_factor[factor]
+        share = remaining // (len(trimmable) - position)
+        if _tokens(entries) <= share:
+            remaining -= _tokens(entries)
+            continue
+        chosen = _select_within_tier(factor, entries, share, cited)
+        if isinstance(chosen, str):
+            return chosen
+        selected[factor] = chosen
+        remaining -= _tokens(chosen)
+    return selected
 
 
 def _unique_by_ref(
