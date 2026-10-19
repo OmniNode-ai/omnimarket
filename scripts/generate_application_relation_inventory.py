@@ -31,6 +31,12 @@ from omnibase_core.models.contracts.subcontracts.model_db_table_declaration impo
 )
 from pydantic import ValidationError
 
+# Keep safe constructors while using LibYAML for the repository-wide census.
+# Fall back to the Python implementation when LibYAML is not installed.
+_CONTRACT_SAFE_LOADER: type[yaml.SafeLoader] | type[yaml.CSafeLoader] = getattr(
+    yaml, "CSafeLoader", yaml.SafeLoader
+)
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 NODES_ROOT = REPO_ROOT / "src" / "omnimarket" / "nodes"
 DEFAULT_OUTPUT = REPO_ROOT / "docs" / "evidence" / "OMN-15423-relation-inventory.json"
@@ -302,7 +308,10 @@ def _load_contracts() -> tuple[
         return typed.model_dump(mode="python")
 
     for path in sorted(NODES_ROOT.glob("*/contract.yaml")):
-        payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        payload = (
+            yaml.load(path.read_text(encoding="utf-8"), Loader=_CONTRACT_SAFE_LOADER)
+            or {}
+        )
         node = path.parent.name
         contracts[node] = payload
         for raw_declaration in (payload.get("db_io") or {}).get("db_tables") or []:
@@ -314,7 +323,12 @@ def _load_contracts() -> tuple[
             item["contract"] = str(path.relative_to(REPO_ROOT))
             declarations[str(declaration["name"]).lower()].append(item)
 
-    service_payload = yaml.safe_load(SERVICE_MANIFEST.read_text(encoding="utf-8")) or {}
+    service_payload = (
+        yaml.load(
+            SERVICE_MANIFEST.read_text(encoding="utf-8"), Loader=_CONTRACT_SAFE_LOADER
+        )
+        or {}
+    )
     if service_payload.get("owner_declaration") != SERVICE_OWNER:
         raise ValueError(f"{SERVICE_MANIFEST} must declare owner {SERVICE_OWNER!r}")
     for raw_declaration in (service_payload.get("db_io") or {}).get("db_tables") or []:
