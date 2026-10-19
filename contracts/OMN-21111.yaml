@@ -34,6 +34,15 @@ requirements:
         statement: "AC8: cited entries that do not fit their tier's share fail the build TOKEN_BUDGET_EXCEEDED and are never dropped; operator_words_unrecorded is carried whole and never trimmed -- falsifier: a build that succeeds with a cited entry missing, or an operator_words_unrecorded tier trimmed."
       - id: "AC9"
         statement: "AC9: a tier named in tier_revisions is read at that revision and every other tier at the request-wide revision, and tier_revisions enter candidate_id only when set -- falsifier: a source request at the wrong revision, or the same candidate_id with and without tier_revisions."
+  - id: "req-context-source-nodes"
+    statement: "Canonical source nodes for the factors the 2026-10-19 replay evaluation filled with scratch adapters: open_work and orchestration_state from the work ledger, lane_rules and architecture_patterns from the guidance files, and a live-mode operator_words_unrecorded read of the session transcript."
+    acceptance:
+      - id: "AC10"
+        statement: "AC10: node_context_source_work_state_effect returns, at a row-stamp watermark, each unanswered MSG addressed to the session lanes (self-sent by default) and each open CLAIM of those lanes or naming them as parent, as whole ledger rows; an ACKed message, a closed claim, a row after the watermark or one older than the horizon is not returned -- falsifier: any of those returned, or a named open row missing."
+      - id: "AC11"
+        statement: "AC11: node_context_source_guidance_effect returns exactly the guidance sections its contract names for lane_rules and architecture_patterns, each equal to the GuidanceSectionParser section text, reading the caller repository's file for a repository path and nothing outside the root -- falsifier: a section that differs from the parser's, an unnamed section returned, or a read outside the root."
+      - id: "AC12"
+        statement: "AC12: live mode of node_session_context_sources_effect carries each operator-typed transcript prompt at or before the watermark that no covers row, review row or RULING/OPERATOR-CONSENT quote records, and never a tool result, meta record, compaction summary or sidechain record -- falsifier: a recorded prompt carried, an unrecorded one dropped, or a non-operator record carried."
 evidence_requirements:
   - kind: "tests"
     description: "AC1 to AC5 in the node tests and the golden chain."
@@ -168,3 +177,50 @@ dod_evidence:
           assert src[F.LANE_RULES].revisions == ["2026-10-19T07:36:00Z"] and src[F.INVARIANTS].revisions == ["head"], {f.value: s.revisions for f, s in src.items()}
           print("kept", kept, "trimmed", tier.trimmed_entry_count, "revisions", {f.value: s.revisions for f, s in src.items()})
           '
+  - id: "dod-omn21111-ac10"
+    description: "AC10: open work and orchestration state from folded ledger rows, with the watermark, horizon, tenant and failed-read cases."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_context_source_work_state_effect/test_context_source_work_state.py -q -p no:randomly --no-cov"
+    binds_ac: ["AC10"]
+  - id: "dod-omn21111-ac11"
+    description: "AC11: named guidance sections whole, the repository placeholder, and reads outside the root refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_context_source_guidance_effect/test_context_source_guidance.py -q -p no:randomly --no-cov"
+    binds_ac: ["AC11"]
+  - id: "dod-omn21111-ac12"
+    description: "AC12: live operator words from a transcript, recorded by covers rows and ruling quotes, with the typed refusals."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_session_context_sources_effect/test_session_context_sources.py -q -p no:randomly --no-cov -k live"
+    binds_ac: ["AC12"]
+  - id: "dod-omn21111-deploy-hosted-sources"
+    description: "Hosted deploy probe. The hosted runner runs uv run --frozen --no-dev in the checkout, folds a two-row ledger through the work-state source and asserts the unanswered self-addressed MSG comes back whole while the ACKed one does not, then reads a one-prompt transcript in live mode and asserts the prompt a ruling quotes is not carried. It fails at the merge base, which has no work-state node and refuses live mode. The hosted runner can run it; no lab route is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run --frozen --no-dev python -c '
+          import json, pathlib, tempfile
+          from omnibase_core.enums.enum_context_factor import EnumContextFactor as F
+          from omnibase_core.models.context.model_context_access import ModelContextAccess as A
+          from omnibase_core.models.context.model_context_caller_scope import ModelContextCallerScope as C
+          from omnibase_core.models.context.model_context_source_request import ModelContextSourceRequest as Q
+          from omnimarket.nodes.node_context_source_ledger_effect.handlers.ledger_row_reader import MarkdownLedgerRowReader as M
+          from omnimarket.nodes.node_context_source_work_state_effect import HandlerContextSourceWorkState as W
+          from omnimarket.nodes.node_session_context_sources_effect.handlers.handler_session_context_sources import HandlerSessionContextSources as S
+          d = pathlib.Path(tempfile.mkdtemp())
+          rows = ["2026-10-19T07:00:00Z | MSG | from=o | id=2026-10-19T07:00:00Z-o | to=o | ticket=OMN-1 | open note", "2026-10-19T07:01:00Z | MSG | from=o | id=2026-10-19T07:01:00Z-o | to=o | ticket=OMN-1 | answered note", "2026-10-19T07:02:00Z | ACK | lane=o | re=2026-10-19T07:01:00Z-o | ticket=OMN-1 | ok", "2026-10-19T07:03:00Z | RULING | lane=o | ticket=OMN-1 | kind=decision | \"ship it\" | x"]
+          (d / "L.md").write_text("\n".join(rows) + "\n")
+          r = W(reader=M([d / "L.md"]), tenant_ids=["t"]).handle(Q(factor=F.OPEN_WORK, scopes=(), caller_scope=C(lane="o"), access=A(tenant_id="t"), revision="2026-10-19T08:00:00Z"))
+          assert [e.text for e in r.entries] == [rows[0]], r
+          (d / "s").mkdir()
+          u = lambda i, t, c: json.dumps({"type": "user", "uuid": i, "timestamp": t, "message": {"content": c}})
+          (d / "s" / "x.jsonl").write_text(u("a", "2026-10-19T06:00:00Z", "ship it") + "\n" + u("b", "2026-10-19T06:01:00Z", "keep this") + "\n")
+          o = S(env={"ONEX_SESSION_TRANSCRIPT_ROOT": str(d / "s"), "ONEX_LEDGER_PATH": str(d / "L.md")}).handle(Q(factor=F.OPERATOR_WORDS_UNRECORDED, scopes=("session:x",), access=A(tenant_id="t"), revision="2026-10-19T08:00:00Z"))
+          assert [e.text for e in o.entries] == ["keep this"], o
+          print(len(r.entries), len(o.entries))'

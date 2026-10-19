@@ -22,8 +22,11 @@ The carry rule is in `carry_rule`.
 REPO_STATE is `unavailable` in pinned mode where the case excludes it, and always in live mode;
 it is never filled from a cwd.
 
-`session:<session_id>` is live mode. Its captured-row reader is not built yet: every live factor
-but REPO_STATE is refused with a typed error.
+`session:<session_id>` is live mode (OMN-21111). OPERATOR_WORDS_UNRECORDED reads the session's
+transcript under ONEX_SESSION_TRANSCRIPT_ROOT and the markdown ledger at ONEX_LEDGER_PATH (both
+required, no default) up to the request's revision when that is a row stamp, and applies the same
+carry rule; a RULING or OPERATOR-CONSENT row also records the words it quotes verbatim
+(`live_transcript_reader`). Any other live factor but REPO_STATE is refused with a typed error.
 """
 
 from __future__ import annotations
@@ -33,7 +36,7 @@ import json
 import os
 import re
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -59,6 +62,14 @@ from omnibase_core.models.context.model_context_source_span import (
 
 from omnimarket.nodes.node_session_context_sources_effect.handlers.carry_rule import (
     carry,
+)
+from omnimarket.nodes.node_session_context_sources_effect.handlers.live_transcript_reader import (
+    LEDGER_PATH_ENV,
+    TRANSCRIPT_ROOT_ENV,
+    ledger_lines,
+    quote_citations,
+    transcript_path,
+    transcript_prompts,
 )
 from omnimarket.nodes.node_session_context_sources_effect.models import (
     EnumCarryDisposition,
@@ -281,10 +292,15 @@ class HandlerSessionContextSources:
                 return ModelContextSourceResult(
                     status=EnumContextSourceStatus.UNAVAILABLE
                 )
-            return _fail(
-                EnumSessionSourceFailure.LIVE_MODE_NOT_BUILT,
-                f"live mode does not serve {request.factor.value} yet",
-            )
+            if request.factor is not EnumContextFactor.OPERATOR_WORDS_UNRECORDED:
+                return _fail(
+                    EnumSessionSourceFailure.FACTOR_NOT_SERVED,
+                    f"live mode does not serve {request.factor.value}",
+                )
+            try:
+                return self._live(request, scope.removeprefix(SESSION_SCOPE))
+            except _ReadFailureError as failure:
+                return _fail(failure.failure, failure.message)
         if request.factor not in PINNED_FACTORS:
             return _fail(
                 EnumSessionSourceFailure.FACTOR_NOT_SERVED,
@@ -347,41 +363,89 @@ class HandlerSessionContextSources:
         records, summaries = _chain_records(chain, chain_path)
         prompts = _operator_prompts(records, summaries, chain_path)
         citations, ranges = _ledger_rows(prefixes)
-        decisions = carry(prompts, citations, ranges)
-        carried = [
-            d for d in decisions if d.disposition is EnumCarryDisposition.CARRIED
-        ]
-        counts = {
-            disposition.value: sum(1 for d in decisions if d.disposition is disposition)
-            for disposition in EnumCarryDisposition
-        }
-        counts["unconfirmed_origin"] = sum(
-            1 for d in carried if d.prompt.origin is EnumPromptOrigin.PROMPT_UNCONFIRMED
-        )
-        entries = tuple(
-            ModelContextSourceEntry(
-                factor=EnumContextFactor.OPERATOR_WORDS_UNRECORDED,
-                text=d.prompt.text,
-                source_ref=d.prompt.source_ref,
-                span=ModelContextSourceSpan(
-                    unit=EnumContextSpanUnit.CHARACTER, start=0, end=len(d.prompt.text)
-                ),
-                text_sha256=_sha(d.prompt.text.encode("utf-8")),
-                status=EnumContextSourceStatus.RESOLVED,
-                verbatim_verified=True,
-                as_of=d.prompt.said_at,
+        return _carried(prompts, citations, ranges)
+
+    def _live(
+        self, request: ModelContextSourceRequest, session_id: str
+    ) -> ModelContextSourceResult:
+        env = os.environ if self._env is None else self._env
+        root = env.get(TRANSCRIPT_ROOT_ENV, "")
+        if not root or not Path(root).is_dir():
+            raise _ReadFailureError(
+                EnumSessionSourceFailure.TRANSCRIPT_ROOT_MISSING,
+                f"{TRANSCRIPT_ROOT_ENV} is required, has no default, and must name a directory",
             )
-            for d in carried
+        path = transcript_path(Path(root), session_id)
+        if path is None or not path.is_file():
+            raise _ReadFailureError(
+                EnumSessionSourceFailure.TRANSCRIPT_NOT_FOUND,
+                f"session {session_id} has no transcript under {TRANSCRIPT_ROOT_ENV}",
+            )
+        ledger = env.get(LEDGER_PATH_ENV, "")
+        if not ledger or not Path(ledger).is_file():
+            raise _ReadFailureError(
+                EnumSessionSourceFailure.LEDGER_MISSING,
+                f"{LEDGER_PATH_ENV} is required, has no default, and must name the ledger file",
+            )
+        watermark = request.revision if _ROW_STAMP.match(request.revision) else None
+        until = (
+            datetime.strptime(watermark, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+            if watermark
+            else None
         )
-        return ModelContextSourceResult(
-            status=(
-                EnumContextSourceStatus.RESOLVED
-                if entries
-                else EnumContextSourceStatus.UNRESOLVED
+        prompts = transcript_prompts(
+            path.read_text(encoding="utf-8").splitlines(), path.name, until=until
+        )
+        rows = ledger_lines(Path(ledger).read_text(encoding="utf-8"), until=watermark)
+        citations, ranges = _ledger_rows(["\n".join(rows).encode("utf-8")])
+        citations.extend(quote_citations(prompts, rows))
+        return _carried(prompts, citations, ranges)
+
+
+def _carried(
+    prompts: list[ModelSessionPrompt],
+    citations: list[ModelPromptCitation],
+    ranges: list[ModelReviewedRange],
+) -> ModelContextSourceResult:
+    """The carry rule's CARRIED prompts as entries, with every disposition counted."""
+    decisions = carry(prompts, citations, ranges)
+    carried = [d for d in decisions if d.disposition is EnumCarryDisposition.CARRIED]
+    counts = {
+        disposition.value: sum(1 for d in decisions if d.disposition is disposition)
+        for disposition in EnumCarryDisposition
+    }
+    counts["unconfirmed_origin"] = sum(
+        1 for d in carried if d.prompt.origin is EnumPromptOrigin.PROMPT_UNCONFIRMED
+    )
+    entries = tuple(
+        ModelContextSourceEntry(
+            factor=EnumContextFactor.OPERATOR_WORDS_UNRECORDED,
+            text=d.prompt.text,
+            source_ref=d.prompt.source_ref,
+            span=ModelContextSourceSpan(
+                unit=EnumContextSpanUnit.CHARACTER, start=0, end=len(d.prompt.text)
             ),
-            entries=entries,
-            entry_counts=counts,
+            text_sha256=_sha(d.prompt.text.encode("utf-8")),
+            status=EnumContextSourceStatus.RESOLVED,
+            verbatim_verified=True,
+            as_of=d.prompt.said_at,
         )
+        for d in carried
+    )
+    return ModelContextSourceResult(
+        status=(
+            EnumContextSourceStatus.RESOLVED
+            if entries
+            else EnumContextSourceStatus.UNRESOLVED
+        ),
+        entries=entries,
+        entry_counts=counts,
+    )
 
 
-__all__ = ["REPLAY_ROOT_ENV", "HandlerSessionContextSources"]
+__all__ = [
+    "LEDGER_PATH_ENV",
+    "REPLAY_ROOT_ENV",
+    "TRANSCRIPT_ROOT_ENV",
+    "HandlerSessionContextSources",
+]
