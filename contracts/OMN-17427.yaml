@@ -528,6 +528,11 @@ requirements:
         statement: "AC99: register-tenant-key anthropic preserves the discovered model and expiry through its catalog event when no plan is named."
       - id: "AC100"
         statement: "AC100: api_native can still be named explicitly, automatic Anthropic plan detection makes no provider request, and GLM detection still refuses a Coding Plan-only key."
+  - id: "req-step-by-step-causal-connectives"
+    statement: "The step_by_step_explanation check accepts a correct causal explanation walked through with a connective outside the six OMN-19401 shipped, matched only at the start of a word, and still vetoes an answer that asserts without explaining."
+    acceptance:
+      - id: "AC101"
+        statement: "AC101: the thirteen correct causal answers in tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py, one of them the verbatim Qwen3.8-27B answer from lab delegation run 16de1829-24b4-4563-919f-2a19d28b2d88, pass step_by_step_explanation, and the six non-explanations, including \"enthusiasm\" and \", sometimes\" which hold a connective's letters inside a word, are still vetoed -- falsifier: uv run pytest tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -705,6 +710,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC82: the park ladder wiring names its handler and the operator capture nodes pass their tests."
     command: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py tests/unit/nodes/node_operator_capture_effect tests/unit/nodes/node_operator_capture_compute -q -n 0 -p no:randomly"
+  - kind: "tests"
+    description: "AC101: correct causal answers pass step_by_step_explanation and non-explanations are still vetoed."
+    command: "uv run pytest tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -2043,4 +2051,19 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/cli/test_omn20990_models_add_anthropic.py tests/unit/cli/test_omn17099_register_tenant_key.py -q -n 0 --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-causal-connectives"
+    description: "The causal connective fixture proves correct causal answers pass step_by_step_explanation and non-explanations are still vetoed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC101"]
+  - id: "dod-omn17427-causal-connectives-deploy-probe"
+    description: "Deploy probe. The quality gate handler's step_by_step_explanation check is run over the causal connective fixture and the OMN-19401 causal prose tests: every correct causal answer passes and every non-explanation is vetoed. The hosted runner needs uv and this checkout, with no external provider or credentials."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py tests/unit/delegation/test_step_by_step_causal_prose_omn19401.py -q"
         cwd: "${OMNI_HOME}/omnimarket"

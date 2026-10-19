@@ -500,6 +500,12 @@ _HEURISTIC_CONTAINS_ANY_CHECKS: dict[str, tuple[str, tuple[str, ...]]] = {
     # phrasing without loosening the check into a no-op: it is still a
     # reject-only substring gate, just no longer blind to the other legitimate
     # way to walk a mechanism through in prose.
+    # OMN-17427: correct causal answers walked through with any other
+    # connective ("thus", "hence", ", so", "which means", "leads to", ...) were
+    # still vetoed (fixture: tests/unit/delegation/
+    # test_step_by_step_causal_fixture_omn17427.py). Those markers start with a
+    # space, so they match only at a word start: "enthusiasm" does not carry
+    # "thus" and ", sometimes" does not carry ", so ".
     "step_by_step_explanation": (
         "TASK_MISMATCH",
         (
@@ -513,6 +519,24 @@ _HEURISTIC_CONTAINS_ANY_CHECKS: dict[str, tuple[str, tuple[str, ...]]] = {
             "since",
             "as a result",
             "this means",
+            " thus",
+            " hence",
+            ", so ",
+            "; so ",
+            ". so ",
+            " which means",
+            " that means",
+            " leads to",
+            " led to",
+            " due to",
+            " results in",
+            " resulted in",
+            " in turn",
+            " which is why",
+            " that is why",
+            " as a consequence",
+            " causes",
+            " caused",
         ),
     ),
     "methodical_analysis": (
@@ -1644,9 +1668,14 @@ def _check_contains_any(
     category: str,
     markers: tuple[str, ...],
 ) -> str | None:
-    """Heuristic: content must contain at least one marker from a contract check."""
-    lowered = content.lower()
-    if any(marker in lowered for marker in markers):
+    """Heuristic: content must contain at least one marker from a contract check.
+
+    Markers match the lowercased content with its whitespace collapsed and one
+    leading space, so a marker that starts with a space matches only at the
+    start of a word, including the content's first word and a line's first.
+    """
+    haystack = " " + " ".join(content.lower().split())
+    if any(marker in haystack for marker in markers):
         return None
     return f"{category}: failed {check_name}"
 
