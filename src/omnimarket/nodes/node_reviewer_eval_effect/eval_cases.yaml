@@ -1,0 +1,103 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# The hostile reviewer's eval set (OMN-17427). Each case is one pull request head
+# from recorded history, labelled by what happened after the reviewer ran:
+#   true_catch       the reviewer blocked and a later fix of the flagged code confirmed it
+#   overturned_block the reviewer blocked and the finding was shown wrong on the facts
+#   known_clean      the head merged with the gate green and nothing reverted it since
+# The set only grows: CI refuses a change that drops a case, flips a label or lowers
+# the baseline. Add a case for every new overturned block and every confirmed catch.
+# The baseline is the recorded gate's own score on this set.
+---
+schema_version: reviewer_eval_cases.v1
+baseline:
+  recall: 1.0
+  false_block_rate: 0.25
+cases:
+  - case_id: omnimarket-3943-e2816be3
+    repo: OmniNode-ai/omnimarket
+    pr: 3943
+    head_sha: e2816be3594654f786cd09805e67542408441bb4
+    label: true_catch
+    recorded_verdict: blocked
+    finding: "exec of caller reference_source"
+    evidence: >-
+      fix ac5774ee2771dfb68bbc8d0e44ecf6fe1119e119 (constrain reference_source in doc-check
+      to arithmetic subset) was pushed on this head for the blocking finding, ledger STATUS
+      2026-10-15T13:06:07Z; the PR merged with the fix as 01e253de0
+  - case_id: omnimarket-3926-4aef5ee8
+    repo: OmniNode-ai/omnimarket
+    pr: 3926
+    head_sha: 4aef5ee85f60fa1963b9ed1efd43d6d84a0b8f56
+    label: true_catch
+    recorded_verdict: blocked
+    finding: "symlink swap after the sandbox check"
+    evidence: >-
+      fix a4dc590ddc8715febff8a4529fac1317a85dbc70 (open _write_file path components with
+      O_NOFOLLOW) was pushed on this head for the blocking finding, ledger STATUS
+      2026-10-15T13:06:16Z; the PR merged with the fix as 23274118a
+  - case_id: omnimarket-4063-d25be197
+    repo: OmniNode-ai/omnimarket
+    pr: 4063
+    head_sha: d25be197856ff515cd1fd1d5e13396f03a54a91f
+    label: overturned_block
+    recorded_verdict: blocked
+    finding: >-
+      Test file is syntactically invalid Python
+      (tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_tick.py)
+    evidence: >-
+      the named file parses with ast.parse at this head; the PR merged as 0f01c0195
+  - case_id: omniclaude-2752-44a954a3
+    repo: OmniNode-ai/omniclaude
+    pr: 2752
+    head_sha: 44a954a3ed53442c1913bc2e0007366283742524
+    label: overturned_block
+    recorded_verdict: blocked
+    finding: "two blocking findings that the quoted PR_REPOS and DEFAULT_REPOS lists hold a quote character"
+    evidence: >-
+      bash joins the adjacent quoted segments, so neither list holds a quote character;
+      eac9e8aeb95e4296f21b2c75a9a014ff2e315435 added tests that evaluate both lines and pin
+      the value, ledger MSG 2026-10-15T02:32:46Z; the PR merged as 2d2faf100
+  - case_id: omnimarket-4046-279ca8ff
+    repo: OmniNode-ai/omnimarket
+    pr: 4046
+    head_sha: 279ca8ff3ea1e101e168218f00522f147f4e7247
+    label: known_clean
+    recorded_verdict: passed
+    evidence: merged as d6c4dc4df with Hostile Review Gate success at this head; no revert on dev
+  - case_id: omnimarket-4047-4bd1cd2a
+    repo: OmniNode-ai/omnimarket
+    pr: 4047
+    head_sha: 4bd1cd2a2202695573548bacaaf9117abb9d7f15
+    label: known_clean
+    recorded_verdict: passed
+    evidence: merged as fc024dd73 with Hostile Review Gate success at this head; no revert on dev
+  - case_id: omnimarket-4056-d9871c30
+    repo: OmniNode-ai/omnimarket
+    pr: 4056
+    head_sha: d9871c30a4288e124190328d9f1e9439a66cacd5
+    label: known_clean
+    recorded_verdict: passed
+    evidence: merged as c40d03c60 with Hostile Review Gate success at this head; no revert on dev
+  - case_id: omnimarket-4063-38ed0bd5
+    repo: OmniNode-ai/omnimarket
+    pr: 4063
+    head_sha: 38ed0bd58dabca2eb2e45be717dd830755ab5bc3
+    label: known_clean
+    recorded_verdict: passed
+    evidence: merged as 0f01c0195 with Hostile Review Gate success at this head; no revert on dev
+  - case_id: omnimarket-4075-6c0c1a23
+    repo: OmniNode-ai/omnimarket
+    pr: 4075
+    head_sha: 6c0c1a23c20068e0055b5dc118eaf736ee5a0cff
+    label: known_clean
+    recorded_verdict: passed
+    evidence: merged as 1174e4d20 with Hostile Review Gate success at this head; no revert on dev
+  - case_id: omnimarket-4080-12f2319c
+    repo: OmniNode-ai/omnimarket
+    pr: 4080
+    head_sha: 12f2319c8110581e642cc6eaf46df60b3ef567d8
+    label: known_clean
+    recorded_verdict: passed
+    evidence: merged as 028bc35ef with Hostile Review Gate success at this head; no revert on dev
