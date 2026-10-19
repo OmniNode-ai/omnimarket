@@ -38,6 +38,11 @@ requirements:
     acceptance:
       - id: "AC5"
         statement: "AC5: completed and failed terminals carrying null, measured, estimated or unknown provenance append once after redelivery, preserve the typed fields, and malformed provenance is refused -- falsifier: uv run pytest tests/unit/work_ledger_bus/test_delegation_terminal.py -q --no-cov"
+  - id: "req-operator-words-promotion"
+    statement: "The operator's captured words become one RULING, OPERATOR-CONSENT or orchestrator inbox MSG through the capture's own append path, joined to the assistant reply they answered; the decision never writes a question or a scope of its own."
+    acceptance:
+      - id: "AC7"
+        statement: "AC7: the 2026-10-18 reviewer words joined to their question become one RULING with the words verbatim and the session link, the key-approval words and words with no joined question go to the orchestrator inbox, a plain yes to a proposal naming both scope lists becomes an OPERATOR-CONSENT with the scopes copied, and the effect appends the row after the capture rows with no double on resume -- falsifier: uv run pytest tests/unit/nodes/node_operator_capture_compute/test_words_promotion.py tests/unit/nodes/node_operator_capture_effect/test_words_promotion_effect.py -q --no-cov fails with the promotion handler absent"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 and AC2: registry passthrough and the raw-value wire model, plus the projection and emit-effect suites over the converted fixtures."
@@ -102,3 +107,10 @@ dod_evidence:
         check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_claude_hook_events/models/model_claude_hook_event_wire.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"    producer_seq:\" > /dev/null'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
+  - id: "dod-omn19513-ac7-operator-words-promotion"
+    description: "AC7: operator words become a RULING, an OPERATOR-CONSENT or an orchestrator inbox MSG through the capture effect."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_operator_capture_compute/test_words_promotion.py tests/unit/nodes/node_operator_capture_effect/test_words_promotion_effect.py -q --no-cov"
+    binds_ac: ["AC7"]

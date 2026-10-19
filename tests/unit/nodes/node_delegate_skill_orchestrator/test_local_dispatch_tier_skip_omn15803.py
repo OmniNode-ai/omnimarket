@@ -44,9 +44,11 @@ import functools
 import textwrap
 from collections.abc import Generator
 from pathlib import Path
+from typing import cast
 from uuid import uuid4
 
 import pytest
+import yaml
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
@@ -363,3 +365,54 @@ def test_escalation_never_reattempts_the_identical_backend(
     assert len(attempts) == 2
     assert result["status"] == "failed"
     assert result["escalation_count"] == 1
+
+
+@pytest.mark.usefixtures("_fixture_env")
+def test_every_attempt_tier_declares_the_backend_and_model_that_served_it(
+    tmp_path: Path,
+) -> None:
+    """OMN-18831 AC4 falsifier: an attempt's recorded tier agrees with the backend
+    that served it; a run that escalates to the cloud records no attempt whose
+    tier and model disagree.
+    """
+    effect = _AlwaysTransportFailEffect()
+    port = LocalDelegationDispatchPort(
+        effect_handler=effect,
+        evidence_db_path=tmp_path / "d.sqlite",
+        effect_process_boundary=False,
+    )
+    result = _dispatch(port, correlation_id=uuid4())
+
+    config = cast(
+        "dict[str, list[dict[str, object]]]", yaml.safe_load(_ROUTING_TIERS_YAML)
+    )
+    tier_models: dict[str, set[tuple[str, str]]] = {}
+    for tier in config["tiers"]:
+        tier_name = cast("str", tier["name"])
+        tier_models[tier_name] = {
+            (cast("str", model["id"]), cast("str", model["backend_id"]))
+            for model in cast("list[dict[str, object]]", tier["models"])
+            if "research" in cast("list[str]", model["use_for"])
+        }
+
+    attempts = result["attempts"]
+    assert isinstance(attempts, list)
+    assert len(attempts) >= 2, "expected at least local + cloud attempts"
+    typed_attempts = cast("list[dict[str, object]]", attempts)
+    assert any(attempt["tier"] != "local" for attempt in typed_attempts)
+
+    for attempt in typed_attempts:
+        tier_name = cast("str", attempt["tier"])
+        model_id = cast("str", attempt["model_id"])
+        backend_id = cast("str", attempt["backend_id"])
+        message = (
+            f"attempt tier={tier_name!r}, model_id={model_id!r}, "
+            f"backend_id={backend_id!r} must match a declared research route"
+        )
+        assert tier_name in tier_models, message
+        assert (model_id, backend_id) in tier_models[tier_name], message
+
+    assert len(effect.calls) == len(attempts)
+    for i, attempt in enumerate(typed_attempts):
+        assert effect.calls[i][1] == attempt["model_id"]
+        assert effect.calls[i][2] == attempt["tier"]
