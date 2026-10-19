@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# OMN-17427: resume patches that blocked lanes leave are dispatched to an apply-and-land lane.
+name: patch_apply_dispatch_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+description: >
+  Find the resume patches blocked lanes leave under .onex_state/hook-preflight and the reports they
+  name, dispatch one apply-and-land lane per patch through the remote-lane runner with the patch and
+  report in the brief, and close out a patch whose change is on the default branch or that is older
+  than 48 hours. A patch a live CLAIM holds is left alone. Each dispatch and close-out is one STATUS
+  row; the tick's typed result is its terminal event.
+input_model:
+  module: omnimarket.nodes.node_patch_apply_dispatch_effect.models.model_patch_apply_dispatch_request
+  name: ModelPatchApplyDispatchRequest
+output_model:
+  module: omnimarket.nodes.node_patch_apply_dispatch_effect.models.model_patch_apply_dispatch_result
+  name: ModelPatchApplyDispatchResult
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: tick
+      handler:
+        name: HandlerPatchApplyDispatch
+        module: omnimarket.nodes.node_patch_apply_dispatch_effect.handlers.handler_patch_apply_dispatch
+      input_model: omnimarket.nodes.node_patch_apply_dispatch_effect.models.model_patch_apply_dispatch_request.ModelPatchApplyDispatchRequest
+      output_model: omnimarket.nodes.node_patch_apply_dispatch_effect.models.model_patch_apply_dispatch_result.ModelPatchApplyDispatchResult
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.patch-apply-dispatch.v1]
+  publish_topics: [onex.evt.omnimarket.patch-apply-dispatch-completed.v1]
+terminal_event: onex.evt.omnimarket.patch-apply-dispatch-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.patch-apply-dispatch.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.patch-apply-dispatch-completed.v1
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: true
+  side_effects:
+    - reads saved patches, lane reports, the ledger and the registry clones (scratch index, nothing checked out)
+    - writes a brief and starts one remote-lane run for each patch dispatched
+    - moves a closed-out patch into its lane directory's closed/ with a closed.json record
+    - appends STATUS rows to the ledger and writes the heartbeat last-run.json
+metadata:
+  ticket: OMN-17427
+  transport_type: inmemory

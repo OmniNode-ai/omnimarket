@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Compaction round-one evaluation scorer (OMN-21141), plan task TE.4.
+# The runner that drives each rung through the routing contract, records its calls and
+# replays them is the caller; this node only scores recorded runs against the TE.1 labels.
+# Requests and results carry ids, offsets, kinds, hashes, grades and costs only, no text.
+name: context_round_one_eval_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Score recorded rung runs against labelled propositions: proposition-rule recall per case
+  and in total, every negative control per rung, whole against chunked, the positive control,
+  next action and duplicate work against the native and no-events baselines, precision,
+  latency and token cost, candidate and assembly identity across rungs, and replay hashes.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: score_round_one
+      handler:
+        name: HandlerRoundOneEval
+        module: omnimarket.nodes.node_context_round_one_eval_compute.handlers.handler_round_one_eval
+      input_model: omnimarket.nodes.node_context_round_one_eval_compute.models.model_round_one_eval.ModelRoundOneEvalRequest
+      output_model: omnimarket.nodes.node_context_round_one_eval_compute.models.model_round_one_eval.ModelRoundOneEvalResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+terminal_event: onex.evt.omnimarket.context-round-one-eval-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.context-round-one-eval-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-round-one-eval-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.context-round-one-eval-requested.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.context-round-one-eval-completed.v1
+
+metadata:
+  ticket: OMN-21141
+  transport_type: kafka

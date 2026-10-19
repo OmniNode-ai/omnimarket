@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_checkpoint_capture_effect
+version: 1.0.0
+description: Journals a written session checkpoint as a checkpoint content record
+  through the onex plugin's content-capture entry.
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+pack: core
+node_role: effect
+display_name: Checkpoint Capture Effect
+entry_points:
+  onex.nodes:
+    node_checkpoint_capture_effect: omnimarket.nodes.node_checkpoint_capture_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem_write
+dependencies:
+- omnibase_core>=0.39.0
+license: MIT
+tags:
+- effect
+- hooks
+- capture

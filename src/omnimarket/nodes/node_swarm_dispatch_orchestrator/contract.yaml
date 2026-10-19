@@ -188,9 +188,11 @@ state_machine:
       to_state: COMPLETED
       trigger: terminal
     # OMN-19548: FAILED was declared with no edge into it. transition_failed
-    # ("Any state -> FAILED") takes these edges; in production only the
-    # RECEIVED edge has a caller (handle_async), because route_event raises instead
-    # of failing the run. That gap is recorded on OMN-19548.
+    # ("Any state -> FAILED") takes these edges. Callers: handle_async (RECEIVED),
+    # transition_health_checked when no endpoint is reachable (HEALTH_CHECKED), and
+    # route_event when a phase result cannot be read (any non-terminal state). An
+    # out-of-order event still raises InvalidFSMTransitionError and leaves the run
+    # as it was; an event for a run already COMPLETED or FAILED is ignored.
     - version: {major: 1, minor: 0, patch: 0}
       transition_name: received_to_failed
       from_state: RECEIVED

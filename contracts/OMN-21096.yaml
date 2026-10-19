@@ -1,0 +1,75 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21096"
+title: "Model the Agent-call adapter"
+summary: >-
+  Model-before-build for Track B of the context and delegation adapter plan (task TB.1). A TLA+
+  model, formal/agent_call_adapter/AgentCallAdapter.tla, covers the Claude Code binding and
+  adapter for a model-raised foreground Agent call (client states received, journalled as
+  observe, published, admission unknown, awaiting, answered, refused, native) and the
+  delegate-skill orchestrator's client-call claim row (claimed, admitted, not_admitted,
+  observed, dispatch_intended, terminal, guarded by generation), with an orchestrator crash
+  between every pair of steps, lease expiry and takeover, a stale owner writing after takeover,
+  broker and drainer redelivery, a binding reload re-run, a conflicting command with the same
+  key, a server mode change in flight, and client and server disagreeing on mode. The design
+  config passes the six invariants the plan names; each invariant fails on a mutation that flips
+  one design knob. tests/formal/test_agent_call_adapter_model.py checks the committed results
+  against the committed model, configs and outputs; ci.yml and the agent-call-adapter-model
+  pre-commit hook run it.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-agent-call-adapter-model"
+    statement: |-
+      The Agent-call adapter and the client-call claim are modelled in TLA+ before they are built, with the plan's six invariants checked under every named fault and each invariant failing on a one-knob mutation.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: The design config of formal/agent_call_adapter checks NativeOnlyWhenConfirmedNotDispatched, RequiredAllowlistedNeverNative, AtMostOneDispatchPerClientCall, ConflictNeverReachesOriginal, ObserveNeverDispatches and AnswerOnlyOnAcceptedResult and TLC reports no error -- falsifier: uv run pytest tests/formal/test_agent_call_adapter_model.py -k design_passes_every_property
+      - id: "AC2"
+        statement: |-
+          AC2: Each of the six invariants has at least one mutant config that flips exactly one design knob, checks only that invariant, and whose committed TLC output reports it violated -- falsifier: uv run pytest tests/formal/test_agent_call_adapter_model.py -k "fails_on_mutation or every_property_has_a_mutant or every_design_knob_is_mutated"
+      - id: "AC3"
+        statement: |-
+          AC3: results/SUMMARY.txt names the sha256 of the committed model, every config and every output, so a model or config change without a TLC re-run fails, and the ci.yml lint step and the agent-call-adapter-model pre-commit hook run the check -- falsifier: uv run pytest tests/formal/test_agent_call_adapter_model.py -k results_are_for_the_committed_model_configs_and_outputs
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC3: the Agent-call adapter model, its configs and its TLC results agree."
+    command: "uv run pytest tests/formal/test_agent_call_adapter_model.py -q -n 0 -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21096-ac1-design-passes"
+    description: "AC1: the design config checks the six invariants and TypeOK, and its committed TLC output reports no error (63,029,693 distinct states, depth 30)."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/formal/test_agent_call_adapter_model.py -k design_passes_every_property -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21096-ac2-mutants"
+    description: "AC2: ten mutants, each flipping one design knob, each violating the invariant it targets in its own committed TLC output."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/formal/test_agent_call_adapter_model.py -k \"fails_on_mutation or every_property_has_a_mutant or every_design_knob_is_mutated\" -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21096-ac3-results-pinned"
+    description: "AC3: SUMMARY.txt digests match the committed model, configs and outputs."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/formal/test_agent_call_adapter_model.py -k results_are_for_the_committed_model_configs_and_outputs -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21096-deploy-summary"
+    description: "Deploy probe: read formal/agent_call_adapter/results/SUMMARY.txt at the checked-out commit from GitHub and require the design row to read PASS. The base has no such file and fails this probe. The command uses GitHub and the hosted runner checkout without a lab path."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/formal/agent_call_adapter/results/SUMMARY.txt?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -cE '^AgentCallAdapter_design cfg_sha256=[0-9a-f]{64} out_sha256=[0-9a-f]{64} result=PASS$' | grep -qx 1

@@ -1,0 +1,487 @@
+{
+  "blocker_missing": {
+    "mismatches": [
+      {
+        "actual": "absent",
+        "claim": {
+          "evidence": [],
+          "expected": null,
+          "kind": "blocker_on_X",
+          "ref": "blocker"
+        },
+        "evidence": [],
+        "expected": "quoted gh pr view --json evidence",
+        "reason": "blocker claim lacks quoted gh pr view --json evidence",
+        "status": "failed"
+      }
+    ],
+    "results": [
+      {
+        "actual": "absent",
+        "claim": {
+          "evidence": [],
+          "expected": null,
+          "kind": "blocker_on_X",
+          "ref": "blocker"
+        },
+        "evidence": [],
+        "expected": "quoted gh pr view --json evidence",
+        "reason": "blocker claim lacks quoted gh pr view --json evidence",
+        "status": "failed"
+      }
+    ]
+  },
+  "blocker_quoted": {
+    "mismatches": [],
+    "results": [
+      {
+        "actual": null,
+        "claim": {
+          "evidence": [
+            "gh pr view 12 --json state"
+          ],
+          "expected": null,
+          "kind": "blocker_on_X",
+          "ref": "blocker"
+        },
+        "evidence": [
+          "gh pr view 12 --json state"
+        ],
+        "expected": null,
+        "reason": "blocker claim includes quoted gh pr view --json evidence",
+        "status": "verified"
+      }
+    ]
+  },
+  "empty": {
+    "mismatches": [],
+    "results": []
+  },
+  "linear_conflicting": {
+    "mismatches": [
+      {
+        "actual": "{\"state\":\"Todo\"}",
+        "claim": {
+          "evidence": [
+            "{\"state\":\"Todo\"}"
+          ],
+          "expected": "Done",
+          "kind": "linear_state",
+          "ref": "ticket"
+        },
+        "evidence": [],
+        "expected": "Done",
+        "reason": "Linear evidence does not match expected state",
+        "status": "failed"
+      }
+    ],
+    "results": [
+      {
+        "actual": "{\"state\":\"Todo\"}",
+        "claim": {
+          "evidence": [
+            "{\"state\":\"Todo\"}"
+          ],
+          "expected": "Done",
+          "kind": "linear_state",
+          "ref": "ticket"
+        },
+        "evidence": [],
+        "expected": "Done",
+        "reason": "Linear evidence does not match expected state",
+        "status": "failed"
+      }
+    ]
+  },
+  "linear_matching": {
+    "mismatches": [],
+    "results": [
+      {
+        "actual": "Done",
+        "claim": {
+          "evidence": [
+            "{\"state\":\"Done\"}"
+          ],
+          "expected": "Done",
+          "kind": "linear_state",
+          "ref": "ticket"
+        },
+        "evidence": [],
+        "expected": "Done",
+        "reason": "Linear evidence matches expected state",
+        "status": "verified"
+      }
+    ]
+  },
+  "linear_missing_evidence": {
+    "mismatches": [],
+    "results": [
+      {
+        "actual": null,
+        "claim": {
+          "evidence": [],
+          "expected": "Done",
+          "kind": "linear_state",
+          "ref": "ticket"
+        },
+        "evidence": [],
+        "expected": "Done",
+        "reason": "Linear API resolver is not wired in this bounded slice",
+        "status": "skipped"
+      }
+    ]
+  },
+  "linear_missing_expected": {
+    "mismatches": [],
+    "results": [
+      {
+        "actual": null,
+        "claim": {
+          "evidence": [],
+          "expected": null,
+          "kind": "linear_state",
+          "ref": "ticket"
+        },
+        "evidence": [],
+        "expected": null,
+        "reason": "linear_state claim lacks expected state",
+        "status": "skipped"
+      }
+    ]
+  },
+  "missing_pr_context": {
+    "mismatches": [],
+    "results": [
+      {
+        "actual": null,
+        "claim": {
+          "evidence": [],
+          "expected": null,
+          "kind": "pr_merged",
+          "ref": "unqualified"
+        },
+        "evidence": [],
+        "expected": null,
+        "reason": "PR claim lacks repository context",
+        "status": "skipped"
+      },
+      {
+        "actual": null,
+        "claim": {
+          "evidence": [],
+          "expected": null,
+          "kind": "pr_opened",
+          "ref": "unqualified"
+        },
+        "evidence": [],
+        "expected": null,
+        "reason": "PR claim lacks repository context",
+        "status": "skipped"
+      },
+      {
+        "actual": null,
+        "claim": {
+          "evidence": [],
+          "expected": null,
+          "kind": "ci_passing",
+          "ref": "unqualified"
+        },
+        "evidence": [],
+        "expected": null,
+        "reason": "CI claim lacks repository context",
+        "status": "skipped"
+      }
+    ]
+  },
+  "mixed": {
+    "mismatches": [
+      {
+        "actual": "absent",
+        "claim": {
+          "evidence": [],
+          "expected": null,
+          "kind": "blocker_on_X",
+          "ref": "blocker"
+        },
+        "evidence": [],
+        "expected": "quoted gh pr view --json evidence",
+        "reason": "blocker claim lacks quoted gh pr view --json evidence",
+        "status": "failed"
+      },
+      {
+        "actual": "{\"resolved\": false}",
+        "claim": {
+          "evidence": [
+            "{\"resolved\": false}"
+          ],
+          "expected": null,
+          "kind": "thread_resolved",
+          "ref": "thread"
+        },
+        "evidence": [],
+        "expected": "resolved true",
+        "reason": "thread evidence does not mark the thread resolved",
+        "status": "failed"
+      },
+      {
+        "actual": "{\"state\":\"Todo\"}",
+        "claim": {
+          "evidence": [
+            "{\"state\":\"Todo\"}"
+          ],
+          "expected": "Done",
+          "kind": "linear_state",
+          "ref": "ticket"
+        },
+        "evidence": [],
+        "expected": "Done",
+        "reason": "Linear evidence does not match expected state",
+        "status": "failed"
+      }
+    ],
+    "results": [
+      {
+        "actual": null,
+        "claim": {
+          "evidence": [],
+          "expected": null,
+          "kind": "pr_merged",
+          "ref": "unqualified"
+        },
+        "evidence": [],
+        "expected": null,
+        "reason": "PR claim lacks repository context",
+        "status": "skipped"
+      },
+      {
+        "actual": null,
+        "claim": {
+          "evidence": [],
+          "expected": null,
+          "kind": "pr_opened",
+          "ref": "unqualified"
+        },
+        "evidence": [],
+        "expected": null,
+        "reason": "PR claim lacks repository context",
+        "status": "skipped"
+      },
+      {
+        "actual": null,
+        "claim": {
+          "evidence": [],
+          "expected": null,
+          "kind": "ci_passing",
+          "ref": "unqualified"
+        },
+        "evidence": [],
+        "expected": null,
+        "reason": "CI claim lacks repository context",
+        "status": "skipped"
+      },
+      {
+        "actual": "absent",
+        "claim": {
+          "evidence": [],
+          "expected": null,
+          "kind": "blocker_on_X",
+          "ref": "blocker"
+        },
+        "evidence": [],
+        "expected": "quoted gh pr view --json evidence",
+        "reason": "blocker claim lacks quoted gh pr view --json evidence",
+        "status": "failed"
+      },
+      {
+        "actual": null,
+        "claim": {
+          "evidence": [
+            "gh pr view 12 --json state"
+          ],
+          "expected": null,
+          "kind": "blocker_on_X",
+          "ref": "blocker"
+        },
+        "evidence": [
+          "gh pr view 12 --json state"
+        ],
+        "expected": null,
+        "reason": "blocker claim includes quoted gh pr view --json evidence",
+        "status": "verified"
+      },
+      {
+        "actual": null,
+        "claim": {
+          "evidence": [],
+          "expected": null,
+          "kind": "thread_resolved",
+          "ref": "thread"
+        },
+        "evidence": [],
+        "expected": null,
+        "reason": "thread resolver requires GraphQL evidence in this bounded slice",
+        "status": "skipped"
+      },
+      {
+        "actual": null,
+        "claim": {
+          "evidence": [
+            "{\"isResolved\": true}"
+          ],
+          "expected": null,
+          "kind": "thread_resolved",
+          "ref": "thread"
+        },
+        "evidence": [],
+        "expected": null,
+        "reason": "thread evidence marks the thread resolved",
+        "status": "verified"
+      },
+      {
+        "actual": "{\"resolved\": false}",
+        "claim": {
+          "evidence": [
+            "{\"resolved\": false}"
+          ],
+          "expected": null,
+          "kind": "thread_resolved",
+          "ref": "thread"
+        },
+        "evidence": [],
+        "expected": "resolved true",
+        "reason": "thread evidence does not mark the thread resolved",
+        "status": "failed"
+      },
+      {
+        "actual": null,
+        "claim": {
+          "evidence": [],
+          "expected": null,
+          "kind": "linear_state",
+          "ref": "ticket"
+        },
+        "evidence": [],
+        "expected": null,
+        "reason": "linear_state claim lacks expected state",
+        "status": "skipped"
+      },
+      {
+        "actual": null,
+        "claim": {
+          "evidence": [],
+          "expected": "Done",
+          "kind": "linear_state",
+          "ref": "ticket"
+        },
+        "evidence": [],
+        "expected": "Done",
+        "reason": "Linear API resolver is not wired in this bounded slice",
+        "status": "skipped"
+      },
+      {
+        "actual": "Done",
+        "claim": {
+          "evidence": [
+            "{\"state\":\"Done\"}"
+          ],
+          "expected": "Done",
+          "kind": "linear_state",
+          "ref": "ticket"
+        },
+        "evidence": [],
+        "expected": "Done",
+        "reason": "Linear evidence matches expected state",
+        "status": "verified"
+      },
+      {
+        "actual": "{\"state\":\"Todo\"}",
+        "claim": {
+          "evidence": [
+            "{\"state\":\"Todo\"}"
+          ],
+          "expected": "Done",
+          "kind": "linear_state",
+          "ref": "ticket"
+        },
+        "evidence": [],
+        "expected": "Done",
+        "reason": "Linear evidence does not match expected state",
+        "status": "failed"
+      }
+    ]
+  },
+  "thread_missing": {
+    "mismatches": [],
+    "results": [
+      {
+        "actual": null,
+        "claim": {
+          "evidence": [],
+          "expected": null,
+          "kind": "thread_resolved",
+          "ref": "thread"
+        },
+        "evidence": [],
+        "expected": null,
+        "reason": "thread resolver requires GraphQL evidence in this bounded slice",
+        "status": "skipped"
+      }
+    ]
+  },
+  "thread_resolved": {
+    "mismatches": [],
+    "results": [
+      {
+        "actual": null,
+        "claim": {
+          "evidence": [
+            "{\"isResolved\": true}"
+          ],
+          "expected": null,
+          "kind": "thread_resolved",
+          "ref": "thread"
+        },
+        "evidence": [],
+        "expected": null,
+        "reason": "thread evidence marks the thread resolved",
+        "status": "verified"
+      }
+    ]
+  },
+  "thread_unresolved": {
+    "mismatches": [
+      {
+        "actual": "{\"resolved\": false}",
+        "claim": {
+          "evidence": [
+            "{\"resolved\": false}"
+          ],
+          "expected": null,
+          "kind": "thread_resolved",
+          "ref": "thread"
+        },
+        "evidence": [],
+        "expected": "resolved true",
+        "reason": "thread evidence does not mark the thread resolved",
+        "status": "failed"
+      }
+    ],
+    "results": [
+      {
+        "actual": "{\"resolved\": false}",
+        "claim": {
+          "evidence": [
+            "{\"resolved\": false}"
+          ],
+          "expected": null,
+          "kind": "thread_resolved",
+          "ref": "thread"
+        },
+        "evidence": [],
+        "expected": "resolved true",
+        "reason": "thread evidence does not mark the thread resolved",
+        "status": "failed"
+      }
+    ]
+  }
+}
