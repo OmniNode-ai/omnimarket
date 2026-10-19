@@ -11,7 +11,10 @@ first, for each prompt in the inbox:
    prompt is never lost to a model outage;
 3. every decision or preference is checked against the earlier rulings for drift;
 4. the rows are appended through the ledger's own append command, one by one;
-5. only when every row is appended is the prompt removed from the inbox and its record written
+5. with a promotion lane, the words also become one RULING, OPERATOR-CONSENT or orchestrator
+   inbox MSG (node_operator_capture_compute's promote_operator_words, joined to the session's
+   assistant reply before the prompt), planned and appended with the capture rows (OMN-19513);
+6. only when every row is appended is the prompt removed from the inbox and its record written
    to ``captures.jsonl``. A failed append leaves the prompt in the inbox for the next run, which
    is the session-start digest's pending count until it clears.
 """
@@ -32,6 +35,7 @@ from omnimarket.models.operator_capture import (
     ModelUtterance,
     ModelUtteranceClassification,
     ModelUtteranceClassifyRequest,
+    ModelWordsPromotionRequest,
 )
 from omnimarket.nodes.node_operator_capture_compute.handlers.handler_capture_rows import (
     STAMP_FORMAT,
@@ -46,6 +50,9 @@ from omnimarket.nodes.node_operator_capture_compute.handlers.handler_utterance_c
     HandlerUtteranceClassify,
     build_classify_prompt,
     is_machine_injection,
+)
+from omnimarket.nodes.node_operator_capture_compute.handlers.handler_words_promotion import (
+    HandlerWordsPromotion,
 )
 from omnimarket.nodes.node_operator_capture_effect.handlers import capture_store
 from omnimarket.nodes.node_operator_capture_effect.handlers.capture_ports import (
@@ -114,7 +121,7 @@ class HandlerCaptureProcess:
                 # A run that appended part of this prompt's rows planned them; the rest go out
                 # as planned (restamped to now), never reclassified, so no row is written twice.
                 stamp = (self._now or datetime.now(UTC)).strftime(STAMP_FORMAT)
-                rows = tuple(stamp + str(r)[20:] for r in planned)
+                rows = tuple(_restamp(str(r), stamp) for r in planned)
                 classification = None
             elif is_machine_injection(text):
                 capture_store.record_capture(
@@ -205,6 +212,7 @@ class HandlerCaptureProcess:
                             item=item, prior=prior, said_at=utterance.captured_at
                         )
                     )
+        stamp = self._now or datetime.now(UTC)
         rows = (
             HandlerCaptureRows()
             .handle(
@@ -212,12 +220,37 @@ class HandlerCaptureProcess:
                     utterance=utterance,
                     classification=classification,
                     drift=drift,
-                    stamp=self._now or datetime.now(UTC),
+                    stamp=stamp,
                 )
             )
             .rows
         )
+        if request.promotion_lane and rows:
+            # The operator's words also become a RULING, an OPERATOR-CONSENT or an inbox MSG
+            # to the orchestrator, planned with the capture rows so a crash writes none twice.
+            promotion = HandlerWordsPromotion().handle(
+                ModelWordsPromotionRequest(
+                    utterance=utterance,
+                    classification=classification,
+                    drift=drift,
+                    reply=capture_store.reply_before(
+                        request.store_dir,
+                        session_id=utterance.session_id,
+                        at=utterance.captured_at,
+                    ),
+                    lane=request.promotion_lane,
+                    stamp=stamp,
+                )
+            )
+            rows += promotion.rows
         return classification, rows
+
+
+def _restamp(row: str, stamp: str) -> str:
+    """The planned row stamped now; a message's id carries its stamp, so it moves with it."""
+    old = row[:20]
+    out = stamp + row[20:]
+    return out.replace(f" | id={old}-", f" | id={stamp}-", 1)
 
 
 def _summary(

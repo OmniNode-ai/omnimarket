@@ -37,6 +37,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from omnimarket.delegation.deciding_cause import ladder_is_gate_decided
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillAttemptRecord,
+    resolve_terminal_failure_cause,
 )
 
 # Typed transport failure classes that mean "the provider refused for capacity
@@ -127,6 +128,7 @@ def _ladder_cause(
     ladder: tuple[ModelDelegateSkillAttemptRecord, ...],
     *,
     has_quota_refusal: bool,
+    error_message: str = "",
 ) -> EnumDelegationTerminalFailureCause | None:
     """The cause a failed ladder shows when its terminal declared none.
 
@@ -134,6 +136,12 @@ def _ladder_cause(
     capacity refusal on a later rung did not decide a run the gate had already
     refused (OMN-19004). A rung that records no typed decision never reached
     the gate and is not read as a refusal.
+
+    A ladder neither the gate nor a capacity refusal decided (a rung refused
+    for a missing credential, a rejected key, a provider fault) takes the
+    delegate-skill producer's own reading, so the projected row and the
+    response cannot disagree (OMN-19448 AC3). That reading is ``None`` when the
+    ladder and the outer error record nothing.
     """
     if not any(a.quality_gate_passed for a in ladder) and ladder_is_gate_decided(
         [(a.acceptance_decision, a.acceptance_reason) for a in ladder]
@@ -141,7 +149,7 @@ def _ladder_cause(
         return EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
     if has_quota_refusal:
         return EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
-    return None
+    return resolve_terminal_failure_cause(ladder, error_message=error_message)
 
 
 def reduce_delegation_attempts(
@@ -198,7 +206,11 @@ def reduce_delegation_attempts(
                 attempt_history=ladder,
                 quota_refusal_count=len(quota_refusals),
             )
-        cause = _ladder_cause(ladder, has_quota_refusal=bool(quota_refusals))
+        cause = _ladder_cause(
+            ladder,
+            has_quota_refusal=bool(quota_refusals),
+            error_message=error_message,
+        )
         return ModelDelegationAttemptReduction(
             terminal_ok=False,
             terminal_failure_cause=cause,
