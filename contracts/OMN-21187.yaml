@@ -42,7 +42,7 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_review_quota_reducer/test_review_quota_reducer.py -q -k 'under_quota or at_quota or not_on_the_preregistered or per_route or per_week or idempotent'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
-  - id: "dod-omn21187-deploy-preregistration-on-the-published-head"
+  - id: "dod-omn21187-deploy-preregistration-published"
     description: "Hosted deploy source probe at the evaluated commit: the preregistration file published at this commit hashes to the value its published sidecar states. The pre-change tree has neither file, so the fetch fails."
     source: "manual"
     checks:
