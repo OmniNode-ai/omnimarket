@@ -528,6 +528,13 @@ requirements:
         statement: "AC99: register-tenant-key anthropic preserves the discovered model and expiry through its catalog event when no plan is named."
       - id: "AC100"
         statement: "AC100: api_native can still be named explicitly, automatic Anthropic plan detection makes no provider request, and GLM detection still refuses a Coding Plan-only key."
+  - id: "req-closer-gateway-loop-and-box-ticks"
+    statement: "The gateway read client answers from under a running event loop, and the closer's decide_ticket names the description with exactly the acceptance boxes dod_verify verified ticked, holding open a ticket whose box no verified check covers."
+    acceptance:
+      - id: "AC101"
+        statement: "AC101: read_over_bus called from inside a running event loop returns the gateway's typed result instead of raising that asyncio.run cannot be called from a running event loop."
+      - id: "AC102"
+        statement: "AC102: decide_ticket given a description ticks only the boxes whose criterion has a verified accepted check, renders the evidence comment, and stays open with nothing ticked when any unchecked box names no criterion or has no verified check."
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -2044,3 +2051,27 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/cli/test_omn20990_models_add_anthropic.py tests/unit/cli/test_omn17099_register_tenant_key.py -q -n 0 --no-cov --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-gateway-read-running-loop"
+    description: "The gateway read client returns the bus answer when called under a running event loop. The new case fails at the merge base with asyncio.run cannot be called from a running event loop."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/scm/test_handler_gateway_read_client.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC101"]
+  - id: "dod-omn17427-closer-box-ticks"
+    description: "decide_ticket ticks only verified criteria's boxes and holds a ticket with an unlabelled or unverified box. All five cases fail at the merge base, where decide_ticket takes no description."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute/test_closer_ac_ticks_dod_closeout_sweep_compute.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC102"]
+  - id: "dod-omn17427-closer-unblock-deploy-probe"
+    description: "Deploy probe. Run the gateway client and closer tick cases from this checkout with skips refused. The hosted runner needs the locked dependencies and this checkout, with no bus, credential or Linear access; this checks the packaged handlers, not a running deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/handlers/scm/test_handler_gateway_read_client.py tests/nodes/node_dod_closeout_sweep_compute/test_closer_ac_ticks_dod_closeout_sweep_compute.py -q -n 0 --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC101", "AC102"]
