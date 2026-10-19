@@ -1,0 +1,133 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Metering Summary Refresh Compute (OMN-17427)
+#
+# The shared-lane producer of the metering refresh. Pure definition-B compute:
+#   handle(ModelDelegationTerminalRefreshTrigger) -> ModelMeteringSummaryRefreshRequested | None
+#   handle(ModelRuntimeTick) -> ModelMeteringSummaryRefreshRequested | None
+# The runtime publishes the returned command on terminal_event, which
+# node_projection_metering_summary consumes: it reads the tenant's
+# delegation_events and folds them into metering_summary.
+name: node_metering_summary_refresh_compute
+contract_name: node_metering_summary_refresh_compute
+node_name: node_metering_summary_refresh_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Requests the metering summary refresh on the shared lanes. A delegation
+  terminal asks for its tenant's UTC day and all-time row; once per
+  config.metering_summary_refresh.schedule interval the runtime tick asks for
+  every tenant whole, the backstop for a lost or early terminal refresh and the
+  backfill of every tenant's existing runs on the first window after a deploy.
+  No clock read, no state, no I/O.
+
+handler_routing:
+  routing_strategy: operation_match
+  # Each entry is scoped to its own topic, so no entry spans the event and
+  # intent categories.
+  handlers:
+    - operation: refresh_on_delegation_terminal
+      topic: onex.evt.omnimarket.delegate-skill-completed.v1
+      handler:
+        name: HandlerMeteringSummaryRefreshOnTerminal
+        module: omnimarket.nodes.node_metering_summary_refresh_compute.handlers.handler_metering_summary_refresh_on_terminal
+      input_model: omnimarket.nodes.node_metering_summary_refresh_compute.models.ModelDelegationTerminalRefreshTrigger
+      output_model: omnimarket.models.model_metering_summary_refresh_requested.ModelMeteringSummaryRefreshRequested
+    - operation: refresh_on_delegation_terminal
+      topic: onex.evt.omnimarket.delegate-skill-failed.v1
+      handler:
+        name: HandlerMeteringSummaryRefreshOnTerminal
+        module: omnimarket.nodes.node_metering_summary_refresh_compute.handlers.handler_metering_summary_refresh_on_terminal
+      input_model: omnimarket.nodes.node_metering_summary_refresh_compute.models.ModelDelegationTerminalRefreshTrigger
+      output_model: omnimarket.models.model_metering_summary_refresh_requested.ModelMeteringSummaryRefreshRequested
+    - operation: refresh_on_delegation_terminal
+      topic: onex.evt.omnibase-infra.delegation-completed.v1
+      handler:
+        name: HandlerMeteringSummaryRefreshOnTerminal
+        module: omnimarket.nodes.node_metering_summary_refresh_compute.handlers.handler_metering_summary_refresh_on_terminal
+      input_model: omnimarket.nodes.node_metering_summary_refresh_compute.models.ModelDelegationTerminalRefreshTrigger
+      output_model: omnimarket.models.model_metering_summary_refresh_requested.ModelMeteringSummaryRefreshRequested
+    - operation: refresh_on_delegation_terminal
+      topic: onex.evt.omnibase-infra.delegation-failed.v1
+      handler:
+        name: HandlerMeteringSummaryRefreshOnTerminal
+        module: omnimarket.nodes.node_metering_summary_refresh_compute.handlers.handler_metering_summary_refresh_on_terminal
+      input_model: omnimarket.nodes.node_metering_summary_refresh_compute.models.ModelDelegationTerminalRefreshTrigger
+      output_model: omnimarket.models.model_metering_summary_refresh_requested.ModelMeteringSummaryRefreshRequested
+    - operation: refresh_on_schedule
+      topic: onex.intent.platform.runtime-tick.v1
+      handler:
+        name: HandlerMeteringSummaryRefreshSchedule
+        module: omnimarket.nodes.node_metering_summary_refresh_compute.handlers.handler_metering_summary_refresh_schedule
+      input_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      output_model: omnimarket.models.model_metering_summary_refresh_requested.ModelMeteringSummaryRefreshRequested
+
+handler:
+  module: omnimarket.nodes.node_metering_summary_refresh_compute.handlers.handler_metering_summary_refresh_on_terminal
+  class: HandlerMeteringSummaryRefreshOnTerminal
+  input_model: omnimarket.nodes.node_metering_summary_refresh_compute.models.ModelDelegationTerminalRefreshTrigger
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+input_subscriptions:
+  - topic: "onex.evt.omnimarket.delegate-skill-completed.v1"
+    operation: "refresh_on_delegation_terminal"
+  - topic: "onex.evt.omnimarket.delegate-skill-failed.v1"
+    operation: "refresh_on_delegation_terminal"
+  - topic: "onex.evt.omnibase-infra.delegation-completed.v1"
+    operation: "refresh_on_delegation_terminal"
+  - topic: "onex.evt.omnibase-infra.delegation-failed.v1"
+    operation: "refresh_on_delegation_terminal"
+  - topic: "onex.intent.platform.runtime-tick.v1"
+    operation: "refresh_on_schedule"
+
+output_model:
+  name: ModelMeteringSummaryRefreshRequested
+  module: omnimarket.models.model_metering_summary_refresh_requested
+  description: The refresh command, or no output for a terminal with no tenant or a tick that opens no window.
+
+config:
+  metering_summary_refresh:
+    schedule:
+      workflow: metering-summary-refresh
+      # Every 15 minutes: the longest a run waits for its rows when its
+      # terminal refresh is lost or read before the run's row was durable.
+      interval_seconds: 900
+      offset_seconds: 0
+
+# The command the runtime publishes on the handler's behalf.
+terminal_event: onex.cmd.omnimarket.metering-summary-refresh-requested.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.delegate-skill-completed.v1
+    - onex.evt.omnimarket.delegate-skill-failed.v1
+    - onex.evt.omnibase-infra.delegation-completed.v1
+    - onex.evt.omnibase-infra.delegation-failed.v1
+    - onex.intent.platform.runtime-tick.v1
+  publish_topics:
+    - onex.cmd.omnimarket.metering-summary-refresh-requested.v1
+
+dod_evidence:
+  - test: tests/nodes/node_metering_summary_refresh_compute/test_metering_summary_refresh_producer.py::test_terminal_asks_for_its_tenants_day
+    description: A delegation terminal requests its tenant's UTC day and all-time row
+  - test: tests/nodes/node_metering_summary_refresh_compute/test_metering_summary_refresh_producer.py::test_tick_refreshes_every_tenant_whole_once_per_interval
+    description: The schedule requests every tenant whole once per interval
+  - test: tests/nodes/node_metering_summary_refresh_compute/test_metering_summary_refresh_producer.py::test_contract_publishes_the_command_the_projection_consumes
+    description: The published command is the one the metering projection subscribes
+
+metadata:
+  description: "Delegation-terminal and runtime-tick producer of the metering summary refresh"
+  author: "OmniNode Team"
+  license: MIT
+  created: "2026-10-19"
+  tags: [compute, metering, schedule, pure]
+  related_tickets: ["OMN-17427"]

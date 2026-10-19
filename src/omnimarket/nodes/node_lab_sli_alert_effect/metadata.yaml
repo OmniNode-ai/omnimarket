@@ -1,0 +1,24 @@
+name: node_lab_sli_alert_effect
+version: "0.1.0"
+description: "Acts on lab SLI breaches per severity: push, fix lane or batched fix lane, deduplicated per indicator"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_lab_sli_alert_effect: "omnimarket.nodes.node_lab_sli_alert_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: publish_event
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "observability", "alerting", "lab", "sli", "OMN-17427"]
+pack: "pipeline"
+display_name: "Lab SLI Alert"
+node_role: "effect"
