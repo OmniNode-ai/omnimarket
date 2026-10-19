@@ -168,6 +168,9 @@ _EVIDENCE: tuple[tuple[str, str, ModelNamedTestRun], ...] = (
         "Report: the service handled 42 requests in the last hour.",
         _run(),
     ),
+    # OMN-19401: the unit marker is evaluated only where the prompt says the repo
+    # marks its tests, so this set is the one that runs it.
+    (_GOOD_CODE, f"{_CODE_PROMPT} Mark every test with @pytest.mark.unit.", _run()),
 )
 
 
