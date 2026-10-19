@@ -1,0 +1,49 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21122"
+title: "Compaction loss: pair each compaction's replaced window with its summary and score what survives"
+summary: >-
+  node_compaction_loss_compute splits a Claude Code transcript at each compact_boundary record into the window the compaction replaced and the summary that replaced it, keyed by session and the boundary uuid, extracts the window's must-carry items (lane CLAIMs, promises, rulings and consents, PRs, tickets, operator instructions and silent mode) and reports which survive in the summary, with recall per item kind, the dropped items, and an eval case carrying the replay eval presence-case field names so a context pack is judged on the same items. Pure compute; the caller reads the transcript or the captured compact rows.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21122-compaction-loss-compute"
+    statement: "node_compaction_loss_compute pairs each compaction with its replaced window and scores the must-carry items that survive in its summary."
+    acceptance:
+      - id: "AC5"
+        statement: "AC5: a transcript splits into one pair per compact_boundary keyed by its uuid, the window opens with the previous summary and leaves out tool results, thinking and meta records, and each must-carry kind is scored with recall per kind and the dropped items listed -- falsifier: uv run pytest tests/test_golden_chain_compaction_loss_compute.py -q --no-cov -k 'pairs_then_scores or no_boundary or paraphrased'"
+      - id: "AC6"
+        statement: "AC6: a summary equal to its window keeps every item, an empty window has no items and no recall, a malformed request is refused, and the contract declares its topics and resolves its handlers -- falsifier: uv run pytest tests/test_golden_chain_compaction_loss_compute.py -q --no-cov -k 'identical or empty_window or error_chain or contract or entry_point'"
+evidence_requirements:
+  - kind: "tests"
+    description: "Compaction loss compute tests for OMN-21122."
+    command: "uv run pytest tests/test_golden_chain_compaction_loss_compute.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21122-ac5-loss-pairs"
+    description: "Pairs per boundary, the window's contents, and recall per kind with the dropped items."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_compaction_loss_compute.py -q --no-cov -k 'pairs_then_scores or no_boundary or paraphrased'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn21122-ac6-loss-controls"
+    description: "Full-recall positive control, empty window, refused request, contract topics and handlers."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_compaction_loss_compute.py -q --no-cov -k 'identical or empty_window or error_chain or contract or entry_point'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn21122-deploy-probe"
+    description: "Deploy probe: the handler read from GitHub at the checked-out commit defines HandlerCompactionLoss. A head without it fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_compaction_loss_compute/handlers/handler_compaction_loss.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'class HandlerCompactionLoss'"
+        cwd: "${OMNI_HOME}/omnimarket"
