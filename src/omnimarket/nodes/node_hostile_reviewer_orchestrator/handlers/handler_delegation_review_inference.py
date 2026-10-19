@@ -23,6 +23,16 @@ from omnimarket.inference.protocol_config import ModelInferenceProtocolSelection
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
+from omnimarket.models.delegation.wire.model_delegate_skill_response import (
+    ModelDelegateSkillResponse,
+)
+from omnimarket.models.model_inference_provenance import (
+    UNKNOWN,
+    ModelInferenceProvenance,
+    ModelServedInferenceResult,
+    ModelServedSettings,
+    ModelServedUsage,
+)
 
 if TYPE_CHECKING:
     from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
@@ -57,6 +67,27 @@ class HandlerDelegationReviewInference(ModelInferenceAdapter):
         response_format: ModelInferenceJsonObjectResponseFormat | None = None,
         protocol_selection: ModelInferenceProtocolSelection | None = None,
     ) -> str:
+        served = await self.infer_with_provenance(
+            model_key=model_key,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            timeout_seconds=timeout_seconds,
+            temperature=temperature,
+            response_format=response_format,
+            protocol_selection=protocol_selection,
+        )
+        return served.text
+
+    async def infer_with_provenance(
+        self,
+        model_key: str,
+        system_prompt: str,
+        user_prompt: str,
+        timeout_seconds: float,
+        temperature: float | None = None,
+        response_format: ModelInferenceJsonObjectResponseFormat | None = None,
+        protocol_selection: ModelInferenceProtocolSelection | None = None,
+    ) -> ModelServedInferenceResult:
         if protocol_selection is not None:
             raise ValueError(
                 "the delegation review route does not take a provider protocol selection"
@@ -85,7 +116,41 @@ class HandlerDelegationReviewInference(ModelInferenceAdapter):
                 f"review delegation for route {model_key!r} did not complete "
                 f"(status={response.status}): {response.error_message}"
             )
-        return response.response
+        return ModelServedInferenceResult(
+            text=response.response,
+            provenance=_provenance_from_response(response, temperature),
+        )
+
+
+def _provenance_from_response(
+    response: ModelDelegateSkillResponse, temperature: float | None
+) -> ModelInferenceProvenance:
+    """Read the served model and usage the delegation node reported.
+
+    A text-only response may omit provenance entirely. The typed response metrics
+    default to zero, so a call that reports no tokens at all also reads
+    ``unknown`` rather than zero.
+    """
+    metrics = getattr(response, "metrics", None)
+    reported = metrics is not None and (
+        metrics.input_tokens or metrics.output_tokens or metrics.total_tokens
+    )
+    usage = (
+        ModelServedUsage(
+            input_tokens=metrics.input_tokens,
+            output_tokens=metrics.output_tokens,
+            total_tokens=metrics.total_tokens,
+        )
+        if metrics is not None and reported
+        else ModelServedUsage()
+    )
+    return ModelInferenceProvenance(
+        served_model=getattr(response, "model_name", None) or UNKNOWN,
+        settings=ModelServedSettings(
+            temperature=UNKNOWN if temperature is None else temperature
+        ),
+        usage=usage,
+    )
 
 
 __all__: list[str] = ["REVIEW_TASK_TYPE", "HandlerDelegationReviewInference"]

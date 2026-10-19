@@ -20,6 +20,11 @@ M4_REPOSITORIES = frozenset(
     {"omnibase_core", "omnibase_infra", "omnimarket", "omniclaude", "omnidash"}
 )
 
+# Executables the verifier host (the hosted runner) provides for a command
+# check. The PR writer has no docker, and a container smoke runs only where the
+# check is verified, so authoring judges these names as commands (OMN-20910).
+VERIFIER_HOST_TOOLS = frozenset({"docker"})
+
 
 def cited_tickets(text: str) -> tuple[str, ...]:
     """The receipt-gate title rule: sorted, distinct, case-sensitive OMN ids."""
@@ -99,7 +104,9 @@ def contract_prerequisite(ticket: str, text: str | None) -> str | None:
                 value = check.get("command") or check.get("check_value") or ""
                 if not isinstance(value, str):
                     return f"{path}: check value must be a string."
-                reason = _invalid_check_value_reason(value)
+                reason = _invalid_check_value_reason(
+                    value, verifier_host_tools=VERIFIER_HOST_TOOLS
+                )
                 if reason:
                     return f"{path}: INVALID_CHECK_VALUE_NOT_A_COMMAND: {reason}"
     # Reuse the verifier's binding/retirement logic. Authorship must declare

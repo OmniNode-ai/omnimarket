@@ -20,6 +20,11 @@ requirements:
         statement: "AC4: the fallback share excludes control boundaries, and a zero fallback share without a control boundary exceeding its reduced budget is reported as a falsifier -- falsifier: a zero share accepted with no positive control."
       - id: "AC5"
         statement: "AC5: the contract subscribes the restricted onex.cmd.omniintelligence request topic, publishes one onex.evt.omnimarket result topic, resolves its three handlers and models, and the node is an onex.nodes entry point -- falsifier: a contract test failure."
+  - id: "req-lane-brief-profile"
+    statement: "A lane_brief context profile, data only, so the shared pack nodes build a lane-brief pack with a profile change and no bespoke code (finding of the 2026-10-19 replay evaluation)."
+    acceptance:
+      - id: "AC6"
+        statement: "AC6: the lane_brief profile resolves by name with the packaged routing contract, the shared builder assembles lane_rules ahead of operator_rulings, and a build without lane_rules fails with required_factor_missing -- falsifier: a resolve failure, a different chunk order, or a pack built without lane_rules."
 evidence_requirements:
   - kind: "tests"
     description: "AC1 to AC5 in the node tests and the golden chain."
@@ -64,6 +69,13 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_golden_chain_context_replay_eval_compute.py -q -p no:randomly --no-cov"
     binds_ac: ["AC5"]
+  - id: "dod-omn21111-ac6"
+    description: "AC6: the lane_brief profile resolves, builds rules first through the shared builder, and fails closed without lane_rules."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/pack/test_lane_brief_profile.py -q -p no:randomly --no-cov"
+    binds_ac: ["AC6"]
   - id: "dod-omn21111-deploy-hosted-score"
     description: "Hosted deploy probe. The hosted runner runs uv run --frozen --no-dev in the checkout and sizes one over-budget boundary through the product handler, asserting the two oldest carried prompts are named and the re-sum reproduces, then scores one package that lacks an expected quote and asserts the case fails. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
     source: "manual"

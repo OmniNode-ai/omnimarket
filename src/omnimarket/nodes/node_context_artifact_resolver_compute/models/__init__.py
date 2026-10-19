@@ -3,7 +3,6 @@
 """Models for node_context_artifact_resolver_compute."""
 
 from omnimarket.nodes.node_context_artifact_resolver_compute.models.model_artifact_resolver_request import (
-    CANONICAL_FACTOR_PRECEDENCE,
     ModelArtifactResolverRequest,
 )
 from omnimarket.nodes.node_context_artifact_resolver_compute.models.model_artifact_resolver_result import (
@@ -15,7 +14,6 @@ from omnimarket.nodes.node_context_artifact_resolver_compute.models.model_artifa
 )
 
 __all__ = [
-    "CANONICAL_FACTOR_PRECEDENCE",
     "EnumArtifactResolverStatus",
     "ModelArtifactResolverRequest",
     "ModelArtifactResolverResult",

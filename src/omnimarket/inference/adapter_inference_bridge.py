@@ -24,6 +24,7 @@ import logging
 import os
 import subprocess
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from typing import Final, Literal
 
 import httpx
@@ -33,9 +34,14 @@ from omnimarket.inference.protocol_config import (
     ModelInferenceProtocolSelection,
     apply_inference_protocol,
 )
+from omnimarket.models.model_inference_provenance import (
+    ModelInferenceProvenance,
+    ModelServedInferenceResult,
+)
 
 logger = logging.getLogger(__name__)
 
+_MAX_TOKENS: Final = 2048
 _RESERVED_EXTRA_HEADER_NAMES: Final[frozenset[str]] = frozenset(
     {"authorization", "content-type"}
 )
@@ -60,6 +66,47 @@ class ModelInferenceAdapter(ABC):
     ) -> str:
         """Send prompt to a model and return raw response text."""
         ...
+
+    async def infer_with_provenance(
+        self,
+        model_key: str,
+        system_prompt: str,
+        user_prompt: str,
+        timeout_seconds: float,
+        temperature: float | None = None,
+        response_format: ModelInferenceJsonObjectResponseFormat | None = None,
+        protocol_selection: ModelInferenceProtocolSelection | None = None,
+    ) -> ModelServedInferenceResult:
+        """Return the response text with the served model, settings and usage.
+
+        An adapter that reports none of them keeps this default: the text with
+        every provenance field ``unknown`` (OMN-21189).
+        """
+        if (
+            temperature is None
+            and response_format is None
+            and protocol_selection is None
+        ):
+            # An adapter whose infer predates the optional arguments keeps working.
+            text = await self.infer(
+                model_key=model_key,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                timeout_seconds=timeout_seconds,
+            )
+        else:
+            text = await self.infer(
+                model_key=model_key,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                timeout_seconds=timeout_seconds,
+                temperature=temperature,
+                response_format=response_format,
+                protocol_selection=protocol_selection,
+            )
+        return ModelServedInferenceResult(
+            text=text, provenance=ModelInferenceProvenance()
+        )
 
 
 class ModelInferenceJsonObjectResponseFormat(BaseModel):
@@ -133,6 +180,45 @@ class AdapterInferenceBridge(ModelInferenceAdapter):
             protocol_selection,
         )
 
+    async def infer_with_provenance(
+        self,
+        model_key: str,
+        system_prompt: str,
+        user_prompt: str,
+        timeout_seconds: float,
+        temperature: float | None = None,
+        response_format: ModelInferenceJsonObjectResponseFormat | None = None,
+        protocol_selection: ModelInferenceProtocolSelection | None = None,
+    ) -> ModelServedInferenceResult:
+        model_cfg = self._config.model_configs.get(model_key)
+        if model_cfg is None or str(model_cfg.get("transport", "http")) == "cli":
+            # A cli route reports no served model, settings or usage.
+            return await super().infer_with_provenance(
+                model_key=model_key,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                timeout_seconds=timeout_seconds,
+                temperature=temperature,
+                response_format=response_format,
+                protocol_selection=protocol_selection,
+            )
+        reported: list[ModelInferenceProvenance] = []
+        text = await self._call_http_model(
+            model_key,
+            model_cfg,
+            system_prompt,
+            user_prompt,
+            timeout_seconds,
+            temperature,
+            response_format,
+            protocol_selection,
+            on_provenance=reported.append,
+        )
+        return ModelServedInferenceResult(
+            text=text,
+            provenance=reported[0] if reported else ModelInferenceProvenance(),
+        )
+
     async def _call_http_model(
         self,
         model_key: str,
@@ -143,6 +229,7 @@ class AdapterInferenceBridge(ModelInferenceAdapter):
         temperature: float | None,
         response_format: ModelInferenceJsonObjectResponseFormat | None,
         protocol_selection: ModelInferenceProtocolSelection | None,
+        on_provenance: Callable[[ModelInferenceProvenance], None] | None = None,
     ) -> str:
         base_url = str(cfg.get("base_url", ""))
         if not base_url:
@@ -201,7 +288,7 @@ class AdapterInferenceBridge(ModelInferenceAdapter):
                 {"role": "system", "content": shaped_system_prompt},
                 {"role": "user", "content": shaped_user_prompt},
             ],
-            "max_tokens": 2048,
+            "max_tokens": _MAX_TOKENS,
             "temperature": float(raw_temperature),
         }
         payload.update(protocol_request_options)
@@ -247,6 +334,14 @@ class AdapterInferenceBridge(ModelInferenceAdapter):
                     f"or reasoning_content text: {message!r}"
                 )
                 raise ValueError(msg)
+            if on_provenance is not None:
+                on_provenance(
+                    ModelInferenceProvenance.from_chat_completion(
+                        data,
+                        temperature=float(raw_temperature),
+                        max_tokens=_MAX_TOKENS,
+                    )
+                )
             return str(content)
 
     async def _call_cli_model(
@@ -261,18 +356,26 @@ class AdapterInferenceBridge(ModelInferenceAdapter):
         if not cli_command:
             msg = f"Model route {model_key!r} is missing cli_command"
             raise ValueError(msg)
+        raw_cli_args = cfg.get("cli_args", [])
+        if not isinstance(raw_cli_args, list) or not all(
+            isinstance(arg, str) and "\x00" not in arg for arg in raw_cli_args
+        ):
+            msg = f"Model route {model_key!r} cli_args must be a list of strings"
+            raise ValueError(msg)
+        cli_args: list[str] = list(raw_cli_args)
         combined_prompt = f"{system_prompt}\n\n{user_prompt}"
         # Non-blocking subprocess dispatch: a synchronous subprocess.run() here
         # would stall the event loop for the full CLI-model latency, starving
         # every concurrent infer() / review / grader task on the same loop.
         proc = await asyncio.create_subprocess_exec(
             cli_command,
+            *cli_args,
             combined_prompt,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
         try:
-            stdout_bytes, _stderr_bytes = await asyncio.wait_for(
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(
                 proc.communicate(), timeout=timeout_seconds
             )
         except TimeoutError as exc:
@@ -282,10 +385,16 @@ class AdapterInferenceBridge(ModelInferenceAdapter):
             proc.kill()
             await proc.wait()
             raise subprocess.TimeoutExpired(
-                cmd=[cli_command, combined_prompt], timeout=timeout_seconds
+                cmd=[cli_command, *cli_args, combined_prompt], timeout=timeout_seconds
             ) from exc
-        # check=False semantics preserved: non-zero exit is tolerated; we return
-        # whatever the CLI wrote to stdout regardless of returncode.
+        # check=False semantics preserved by default: non-zero exit is tolerated;
+        # we return whatever the CLI wrote to stdout regardless of returncode.
+        # A route that sets fail_on_nonzero_exit (the Codex review fallback,
+        # OMN-17427) treats a failed engine as no review rather than as output.
+        if cfg.get("fail_on_nonzero_exit") and proc.returncode:
+            detail = stderr_bytes.decode(errors="replace").strip()[-500:]
+            msg = f"Model route {model_key!r} CLI exited {proc.returncode}: {detail}"
+            raise RuntimeError(msg)
         return stdout_bytes.decode().strip()
 
 

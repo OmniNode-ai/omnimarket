@@ -26,7 +26,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "Synthetic scorer and runtime-adapter checks only; the live evaluation report is pending."
-    command: "uv run --frozen pytest tests/nodes/node_context_selection_policy_compute/test_selection_evaluation.py -q -p no:randomly --no-cov"
+    command: "uv run pytest tests/nodes/node_context_selection_policy_compute/test_selection_evaluation.py -q -p no:randomly --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
