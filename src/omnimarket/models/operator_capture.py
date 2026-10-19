@@ -214,6 +214,10 @@ class ModelCaptureProcessRequest(BaseModel):
     ledger_path: Path
     max_captures: int = Field(default=20, ge=1)
     delegate: bool = True
+    promotion_lane: str | None = Field(
+        default=None,
+        description="the orchestrator lane operator words are promoted for; None: no promotion",
+    )
 
 
 class ModelCaptureProcessResult(BaseModel):
@@ -246,10 +250,55 @@ class ModelCaptureDigestResult(BaseModel):
     push_error: str | None = None
 
 
+class EnumPromotionVerdict(StrEnum):
+    """What one operator prompt's words become beyond their capture rows (OMN-19513)."""
+
+    RULING = "ruling"
+    OPERATOR_CONSENT = "operator_consent"
+    INBOX = "inbox"
+    NONE = "none"
+
+
+class ModelWordsPromotionRequest(BaseModel):
+    """One classified operator prompt and the assistant reply it answered (OMN-19513).
+
+    ``reply`` is the session's assistant reply captured before the prompt, joined by the
+    capture store; None when none was captured. ``lane`` is the orchestrator lane: a RULING or
+    OPERATOR-CONSENT row is written under it and an inbox MSG is addressed to it.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    utterance: ModelUtterance
+    classification: ModelUtteranceClassification
+    drift: dict[str, ModelRulingDrift] = Field(default_factory=dict)
+    reply: str | None = None
+    lane: str = Field(min_length=1)
+    sender_lane: str = Field(default="operator-promotion", min_length=1)
+    prompt_id: str | None = None
+    stamp: datetime
+    min_confidence: float = Field(default=0.8, ge=0.0, le=1.0)
+    max_question_chars: int = Field(default=400, ge=80)
+
+
+class ModelWordsPromotion(BaseModel):
+    """The verdict, the rows to append (none, one RULING, CONSENT or MSG), and why."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    verdict: EnumPromotionVerdict
+    rows: tuple[str, ...] = ()
+    question: str | None = None
+    reason: str
+
+
 #: The content kind the capture producer gives a prompt whose transcript origin is human: the
 #: operator typed it (omniclaude hook_content_capture, recorded at Stop). Lane briefs, scheduled
 #: prompts, task notifications and compaction summaries never carry it.
 OPERATOR_PROMPT_KIND = "operator_prompt"
+#: The content kind of the assistant's reply at Stop; the capture keeps the latest few per
+#: session so the next operator prompt is joined to the question it answered (OMN-19513).
+ASSISTANT_REPLY_KIND = "assistant_reply"
 
 
 class ModelOperatorPromptRecord(BaseModel):
@@ -278,6 +327,10 @@ class ModelOperatorPromptRecord(BaseModel):
     def is_operator_prompt(self) -> bool:
         return self.content_kind == OPERATOR_PROMPT_KIND
 
+    @property
+    def is_assistant_reply(self) -> bool:
+        return self.content_kind == ASSISTANT_REPLY_KIND
+
 
 class EnumOperatorCaptureStatus(StrEnum):
     """What the capture did with one operator prompt from the bus."""
@@ -285,6 +338,7 @@ class EnumOperatorCaptureStatus(StrEnum):
     RECORDED = "recorded"
     PENDING = "pending"
     DUPLICATE = "duplicate"
+    REPLY_NOTED = "reply_noted"
 
 
 class ModelOperatorCaptureReceipt(BaseModel):
@@ -310,10 +364,12 @@ class ModelOperatorCaptureTopics(BaseModel):
 
 
 __all__ = [
+    "ASSISTANT_REPLY_KIND",
     "OPERATOR_PROMPT_KIND",
     "EnumClassifierSource",
     "EnumDriftRelation",
     "EnumOperatorCaptureStatus",
+    "EnumPromotionVerdict",
     "EnumPromptOrigin",
     "EnumUtteranceKind",
     "ModelCaptureDigestRequest",
@@ -336,4 +392,6 @@ __all__ = [
     "ModelUtteranceClassification",
     "ModelUtteranceClassifyRequest",
     "ModelUtteranceItem",
+    "ModelWordsPromotion",
+    "ModelWordsPromotionRequest",
 ]

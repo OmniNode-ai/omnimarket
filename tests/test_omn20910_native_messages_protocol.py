@@ -378,6 +378,14 @@ class TestStopReasonReachesTheParser:
         ] * 2
         assert finished[0].cache_creation_input_tokens > 0
         assert finished[1].cache_read_input_tokens > 0
+        # The review cost record is built from the same observation's figures.
+        assert finished[0].cache_write_5m_tokens is not None
+        assert finished[0].cache_write_1h_tokens is not None
+        assert (
+            finished[0].cache_write_5m_tokens + finished[0].cache_write_1h_tokens
+            == finished[0].cache_creation_input_tokens
+        )
+        assert finished[1].cache_read_tokens == finished[1].cache_read_input_tokens
 
 
 class TestCallsNamingNoPlanKeepTheCompatibilityRow:

@@ -20,6 +20,9 @@ from omnimarket.models.delegation.prompt_text_block import (
     ModelPromptMessage,
     ModelPromptTextBlock,
 )
+from omnimarket.models.review_cost.model_review_call_provenance import (
+    ModelReviewCallProvenance,
+)
 
 #: Anthropic allows at most four cache breakpoints in one request.
 MAX_CACHE_BREAKPOINTS = 4
@@ -153,6 +156,12 @@ class ModelLlmDelegationCallRequest(BaseModel):
     fallback at the effect boundary when ``secret_ref``'s dotted convention
     mapping misses — distinct from ``secret_ref``, never a substitute for it.
     ``None`` when the backend config declares no ``api_key_env``."""
+
+    review: ModelReviewCallProvenance | None = Field(default=None)
+    """OMN-20910: the Hostile Review run this call is made for, copied by the
+    review gateway from the review's request metadata. When set, the effect
+    records the cost of every provider attempt of this call under it. ``None``
+    (the default) records nothing, so no other caller is affected."""
 
     # OMN-20910: the native Anthropic Messages protocol. ``openai_chat`` (the
     # default) is the OpenAI-compatible path every caller used before; a call

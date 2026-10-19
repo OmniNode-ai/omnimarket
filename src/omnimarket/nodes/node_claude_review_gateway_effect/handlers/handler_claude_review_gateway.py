@@ -73,11 +73,13 @@ from fastapi.responses import JSONResponse
 
 from omnimarket.enums.enum_anthropic_stop_reason import EnumAnthropicStopReason
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.enums.enum_review_call_attempt_kind import EnumReviewCallAttemptKind
 from omnimarket.events.llm_delegation_call import ModelLlmDelegationCallRequest
 from omnimarket.models.delegation.prompt_text_block import (
     ModelPromptMessage,
     ModelPromptTextBlock,
 )
+from omnimarket.models.review_cost import ModelReviewCallProvenance
 from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway import (
     ModelClaudeReviewGatewayRequest,
     ModelReviewGatewayKey,
@@ -186,6 +188,67 @@ def review_repository(payload: Mapping[str, Any]) -> str | None:
     if not isinstance(repository, str):
         return None
     return repository.strip() or None
+
+
+def _metadata_text(metadata: Mapping[str, Any], key: str) -> str | None:
+    value = metadata.get(key)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def _metadata_count(metadata: Mapping[str, Any], key: str, default: int) -> int | None:
+    """A non-negative integer from metadata (a digit string counts), else ``None``."""
+    value = metadata.get(key, default)
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
+    return value if isinstance(value, int) and value >= 0 else None
+
+
+def review_provenance(payload: Mapping[str, Any]) -> ModelReviewCallProvenance | None:
+    """The review this call is made for, from metadata, or none (OMN-20910).
+
+    All of the repository, run, pull request, head, voter and persona must be
+    named; a call that names only part of it is served but not recorded as a
+    review's, so a cost record never carries a guessed identity.
+    """
+    metadata = payload.get("metadata")
+    if not isinstance(metadata, Mapping):
+        return None
+    texts = {
+        key: _metadata_text(metadata, key)
+        for key in ("repository", "review_run_id", "head_sha", "voter_id", "persona_id")
+    }
+    pr_number = _metadata_count(metadata, "pr", 0)
+    chunk_index = _metadata_count(metadata, "chunk_index", 0)
+    chunk_count = _metadata_count(metadata, "chunk_count", 1)
+    if (
+        any(value is None for value in texts.values())
+        or not pr_number
+        or chunk_index is None
+        or not chunk_count
+    ):
+        return None
+    try:
+        return ModelReviewCallProvenance(
+            review_run_id=str(texts["review_run_id"]),
+            repository=str(texts["repository"]),
+            pr_number=pr_number,
+            head_sha=str(texts["head_sha"]),
+            voter_id=str(texts["voter_id"]),
+            persona_id=str(texts["persona_id"]),
+            chunk_index=chunk_index,
+            chunk_count=chunk_count,
+            attempt_kind=EnumReviewCallAttemptKind(
+                _metadata_text(metadata, "attempt_kind") or "first"
+            ),
+            catalog_version=_metadata_text(metadata, "catalog_version") or "",
+            prompt_version=_metadata_text(metadata, "prompt_version") or "",
+        )
+    except ValueError:
+        return None
 
 
 def _not_expired(value: object, now: datetime) -> bool:
@@ -373,6 +436,7 @@ def translate_chat_request(
         messages=(ModelPromptMessage(role="user", blocks=user_blocks),),
         tool_schema=tool_schema,
         tool_choice=tool_choice,
+        review=review_provenance(payload),
     )
 
 
