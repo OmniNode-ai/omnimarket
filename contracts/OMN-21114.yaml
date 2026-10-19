@@ -9,17 +9,17 @@ requirements:
   - id: "req-latency-qualification-node"
     statement: "The tabulation node of plan task TA.12: the per-cell table, the proposed class ceiling and precompute deadline, and the falsifiers that withhold or reject them."
     acceptance:
-      - id: "N1"
-        statement: "N1: per size, host and temperature the node reports the round-trip count and nearest-rank p50, p95 and max for the deterministic build, the model-written section and their per-round-trip total -- falsifier: a percentile that differs from the sorted-sample nearest rank, or a total taken from the phase percentiles."
-      - id: "N2"
-        statement: "N2: the class ceiling and the precompute deadline are proposed only for a complete table (every required size and host, 20 cold and 20 warm round trips per cell), each is the worst total p95 plus its margin or slack, and neither is below that p95 -- falsifier: a proposal for an incomplete table, or a proposal below the worst total p95."
-      - id: "N3"
-        statement: "N3: a missing size, a missing host, a cell short of 20 round trips, or a caller candidate deadline below the measured p95 is listed as a falsifier, and a duplicate round_trip_id or a negative or non-finite duration is refused -- falsifier: an incomplete or padded table accepted."
-      - id: "N4"
-        statement: "N4: the contract subscribes the restricted onex.cmd.omniintelligence request topic, publishes one onex.evt.omnimarket result topic, resolves its handler and models, and the node is an onex.nodes entry point -- falsifier: a contract test failure."
+      - id: "DoD1"
+        statement: "DoD1: per size, host and temperature the node reports the round-trip count and nearest-rank p50, p95 and max for the deterministic build, the model-written section and their per-round-trip total -- falsifier: a percentile that differs from the sorted-sample nearest rank, or a total taken from the phase percentiles."
+      - id: "DoD2"
+        statement: "DoD2: the class ceiling and the precompute deadline are proposed only for a complete table (every required size and host, 20 cold and 20 warm round trips per cell), each is the worst total p95 plus its margin or slack, and neither is below that p95 -- falsifier: a proposal for an incomplete table, or a proposal below the worst total p95."
+      - id: "DoD3"
+        statement: "DoD3: a missing size, a missing host, a cell short of 20 round trips, or a caller candidate deadline below the measured p95 is listed as a falsifier, and a duplicate round_trip_id or a negative or non-finite duration is refused -- falsifier: an incomplete or padded table accepted."
+      - id: "DoD4"
+        statement: "DoD4: the contract subscribes the restricted onex.cmd.omniintelligence request topic, publishes one onex.evt.omnimarket result topic, resolves its handler and models, and the node is an onex.nodes entry point -- falsifier: a contract test failure."
 evidence_requirements:
   - kind: "tests"
-    description: "N1 to N4 in the node tests and the golden chain."
+    description: "DoD1 to DoD4 in the node tests and the golden chain."
     command: "uv run pytest tests/nodes/node_context_compaction_latency_compute tests/test_golden_chain_context_compaction_latency_compute.py -q -p no:randomly --no-cov"
 emergency_bypass:
   enabled: false
@@ -27,29 +27,29 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-omn21114-n1"
-    description: "N1: nearest-rank percentiles per size, host and temperature, one cell per combination, and a total summed per round trip."
-    binds_ac: ["N1"]
+    description: "DoD1: nearest-rank percentiles per size, host and temperature, one cell per combination, and a total summed per round trip."
+    binds_ac: ["DoD1"]
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_context_compaction_latency_compute/test_latency_qualification.py -q -p no:randomly --no-cov -k 'nearest_rank or one_cell_per or total_is_summed or deterministic_for'"
   - id: "dod-omn21114-n2"
-    description: "N2: proposals are the worst total p95 plus margin or slack, never below it, and withheld for an incomplete table."
-    binds_ac: ["N2"]
+    description: "DoD2: proposals are the worst total p95 plus margin or slack, never below it, and withheld for an incomplete table."
+    binds_ac: ["DoD2"]
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_context_compaction_latency_compute/test_latency_qualification.py -q -p no:randomly --no-cov -k 'proposals_are_not_below or precompute_slack or missing_size or missing_host'"
   - id: "dod-omn21114-n3"
-    description: "N3: missing size, host and short cell are listed, a candidate below the p95 is listed, a candidate against an incomplete table is unchecked, and padded or invalid input is refused."
-    binds_ac: ["N3"]
+    description: "DoD3: missing size, host and short cell are listed, a candidate below the p95 is listed, a candidate against an incomplete table is unchecked, and padded or invalid input is refused."
+    binds_ac: ["DoD3"]
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_context_compaction_latency_compute/test_latency_qualification.py -q -p no:randomly --no-cov -k 'too_few_warm or duplicate_round_trip or candidate or non_finite or fewer_than_twenty or one_required_host'"
   - id: "dod-omn21114-n4"
-    description: "N4: contract topics, handler and model resolution, entry point and the golden chain."
-    binds_ac: ["N4"]
+    description: "DoD4: contract topics, handler and model resolution, entry point and the golden chain."
+    binds_ac: ["DoD4"]
     source: "manual"
     checks:
       - check_type: "test_passes"
