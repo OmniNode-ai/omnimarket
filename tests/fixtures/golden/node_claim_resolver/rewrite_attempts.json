@@ -1,0 +1,16 @@
+{
+  "attempts": [
+    {
+      "outcome": "rejected",
+      "reason": "quality_gate_refused: repeated_deterministic_floor",
+      "stage": "draft"
+    },
+    {
+      "outcome": "accepted",
+      "reason": "verify_flip_bundle: all seven assertions hold",
+      "stage": "revision"
+    }
+  ],
+  "node_id": "omnimarket.nodes.node_claim_resolver",
+  "target_acceptance_fraction": 0.7
+}

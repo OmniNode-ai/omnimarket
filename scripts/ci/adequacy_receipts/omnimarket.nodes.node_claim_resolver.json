@@ -1,0 +1,32 @@
+{
+  "receipt_schema": "adequacy_receipt.v1",
+  "node_id": "omnimarket.nodes.node_claim_resolver",
+  "handler_module": "omnimarket.nodes.node_claim_resolver.handlers.handler_claim_resolver",
+  "handler_module_sha256": "sha256:16554c11f52e0db58e735f636064675b21df9daa17fc31b895f03dab9dc98e97",
+  "recorded_at": "2026-10-15T15:56:59.246862+00:00",
+  "recorder_schema": "adequacy_receipt.v1",
+  "candidate_count": 12,
+  "selected_count": 12,
+  "selected_input_hashes": [
+    "sha256:25048f8b2ba618ddf5be7421adca03ada94c5ca124df9c45af9c93ef6a27e7e7",
+    "sha256:1c82aff96483ca847afffb45050fe3efa348a6949d2d42781ef84b27276c95b8",
+    "sha256:b23835fc648b28dd639f63e73b65d18ef0115a9ea997a6cda22850ef9ff5aa7a",
+    "sha256:a9643e02e1b743855c9bfd6c4f881fa89fc187c1b5ce993b94c533eca76480db",
+    "sha256:90087786462890da7e47411d9cb7d0c9b97720ad7aad2305135e47377af2fe34",
+    "sha256:02df21b534d8e44df7864495567d99af36c890cedead937aaeead052c700b360",
+    "sha256:81af88e5b7e01958a20c571b031ddecd6322d2191a75bbabf7ba384f276378af",
+    "sha256:e3c3234591c6de6e2cce92d4db2fe624ec876a5f1a02d56290e90a9808574971",
+    "sha256:5751f8b4f4dea601d299601d0e74dc88a928d2acd8ab709c076b8e54fc93a767",
+    "sha256:1a0d7ff71bc6e5bbddfca447373e9e0dde5e145571e3ddaf2a0bf5e262fecb4e",
+    "sha256:522e4eb012c5ec78d3cb0001eb4569ff06529b85391468d9b45296159783dc0f",
+    "sha256:aef79318868dc8d67ffefe58c58f2fc7672cd35d2ee7928f31e6de5ed2d53d4e"
+  ],
+  "branch_coverage_pct": 37.09,
+  "coverage_target": 80.0,
+  "meets_target": false,
+  "uncovered_waiver": {
+    "reason": "The replay pool executes evidence-only and missing-context requests without external commands. Command-backed resolver branches and import-time definitions are outside this pool. The complete module is AST-identical to the git base after the sole verify-to-handle rename; existing FakeRunner unit tests exercise command-backed success and failure without external reads.",
+    "uncovered_branch_count": 33
+  },
+  "volatile_mask": []
+}
