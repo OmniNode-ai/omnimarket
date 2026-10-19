@@ -100,9 +100,9 @@ class HandlerReviewQuotaReducer:
         self, request: ModelReviewQuotaRequest, existing: ModelReviewQuotaEntry | None
     ) -> ModelReviewQuotaDecision:
         prereg = self._prereg
-        quota = prereg.quota_for(request.route_id)
-        if quota is None:
+        if not prereg.is_eligible(request.route_id):
             return self._refuse(request, EnumReviewQuotaReason.ROUTE_NOT_ELIGIBLE)
+        quota = prereg.quota_for(request.route_id)
         started = request.collection_started_at
         if started is None or request.as_of < started:
             return self._refuse(
@@ -224,7 +224,8 @@ class HandlerReviewQuotaReducer:
         quota: int | None = None,
         applied: bool = True,
     ) -> ModelReviewQuotaDecision:
-        quota = quota if quota is not None else self._prereg.quota_for(request.route_id)
+        if quota is None and self._prereg.is_eligible(request.route_id):
+            quota = self._prereg.quota_for(request.route_id)
         used = (
             self._used(state, request.route_id, window) if window is not None else None
         )

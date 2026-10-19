@@ -31,6 +31,7 @@ from omnimarket.nodes.node_review_quota_reducer.models import (
     ModelReviewQuotaEntry,
     ModelReviewQuotaRequest,
     ModelReviewQuotaState,
+    RouteNotEligibleError,
 )
 
 NODE_DIR = (
@@ -133,6 +134,14 @@ def test_unchanged_preregistration_loads() -> None:
     assert prereg.quota_for(ROUTE) == 120
 
 
+def test_quota_for_an_unlisted_route_raises() -> None:
+    prereg = load_preregistration()
+    assert prereg.is_eligible("some_unlisted_route") is False
+    assert prereg.is_eligible(ROUTE) is True
+    with pytest.raises(RouteNotEligibleError, match="some_unlisted_route"):
+        prereg.quota_for("some_unlisted_route")
+
+
 # --- AC2: admission against the route quota -------------------------------
 
 
@@ -157,12 +166,14 @@ def test_at_quota_fixture_is_refused_and_state_is_unchanged() -> None:
 
 
 def test_route_not_on_the_preregistered_list_is_refused() -> None:
+    state = _state_with(1)
     result = HandlerReviewQuotaReducer().handle(
-        _request("r-new", route_id="some_unlisted_route")
+        _request("r-new", route_id="some_unlisted_route", state=state)
     )
     assert result.applied is False
     assert result.reason is EnumReviewQuotaReason.ROUTE_NOT_ELIGIBLE
-    assert result.state.entries == ()
+    assert result.quota is None
+    assert result.state == state
 
 
 def test_quota_is_per_route() -> None:

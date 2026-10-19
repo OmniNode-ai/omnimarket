@@ -10,6 +10,7 @@ from omnimarket.nodes.node_review_quota_reducer.models.model_review_quota import
     ModelReviewQuotaRequest,
     ModelReviewQuotaRoute,
     ModelReviewQuotaState,
+    RouteNotEligibleError,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "ModelReviewQuotaRequest",
     "ModelReviewQuotaRoute",
     "ModelReviewQuotaState",
+    "RouteNotEligibleError",
 ]

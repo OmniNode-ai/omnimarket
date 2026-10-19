@@ -15,6 +15,10 @@ from omnimarket.enums.enum_review_quota import (
 )
 
 
+class RouteNotEligibleError(LookupError):
+    """The route is not on the preregistered list."""
+
+
 class ModelReviewQuotaRoute(BaseModel):
     """One preregistered route and its weekly quota."""
 
@@ -45,12 +49,18 @@ class ModelReviewQuotaPreregistration(BaseModel):
     collection: ModelReviewQuotaCollection
     eligible_routes: tuple[ModelReviewQuotaRoute, ...]
 
-    def quota_for(self, route_id: str) -> int | None:
-        """The route's weekly quota, or None when the route is not on the list."""
+    def is_eligible(self, route_id: str) -> bool:
+        """Whether the route is on the preregistered list."""
+        return any(route.route_id == route_id for route in self.eligible_routes)
+
+    def quota_for(self, route_id: str) -> int:
+        """The route's weekly quota, or RouteNotEligibleError when it is not on the list."""
         for route in self.eligible_routes:
             if route.route_id == route_id:
                 return route.weekly_quota
-        return None
+        raise RouteNotEligibleError(
+            f"Route {route_id!r} is not on the preregistered list"
+        )
 
 
 class ModelReviewQuotaEntry(BaseModel):
