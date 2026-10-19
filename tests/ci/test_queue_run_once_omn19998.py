@@ -400,6 +400,8 @@ def test_required_js_gate_reports_and_refuses_route_failure(result):
         ("red-producer", 1),
         ("unreadable-producer", 1),
         ("no-marker", 1),
+        ("queue-off", 0),
+        ("queue-unreadable", 1),
     ],
 )
 def test_dev_reuses_queue_tree_across_squash_commit_identity(
@@ -415,6 +417,7 @@ def test_dev_reuses_queue_tree_across_squash_commit_identity(
         f"{repo}/actions/runs/123": f"merge_group .github/workflows/ci.yml {queued}",
         f"{repo}/git/commits/{queued}": tree,
         f"{repo}/actions/runs/123/jobs?filter=latest&per_page=100": "completed success",
+        f"{repo}/rules/branches/dev?per_page=100": "1",
     }
     if scenario == "pr-producer":
         table[f"{repo}/actions/runs/123"] = (
@@ -432,8 +435,12 @@ def test_dev_reuses_queue_tree_across_squash_commit_identity(
         )
     elif scenario == "unreadable-producer":
         del table[f"{repo}/actions/runs/123"]
-    elif scenario == "no-marker":
+    elif scenario in {"no-marker", "queue-off", "queue-unreadable"}:
         table[f"{repo}/actions/artifacts?name=full-suite-pass-{tree}&per_page=100"] = ""
+        if scenario == "queue-off":
+            table[f"{repo}/rules/branches/dev?per_page=100"] = "0"
+        elif scenario == "queue-unreadable":
+            del table[f"{repo}/rules/branches/dev?per_page=100"]
     fixture = tmp_path / "api.json"
     fixture.write_text(json.dumps(table))
     gh = tmp_path / "gh"
@@ -465,6 +472,17 @@ def test_dev_reuses_queue_tree_across_squash_commit_identity(
         check=False,
     )
     assert result.returncode == expected, result.stdout + result.stderr
+    if scenario == "queue-off":
+        assert "::warning::No merge_queue rule is active on dev" in result.stdout
+
+
+def test_dev_verdict_is_strict_while_a_queue_rule_is_active():
+    jobs = yaml.safe_load(CI.read_text())["jobs"]
+    script = jobs["dev-suite-reuse-verdict"]["steps"][0]["run"]
+    assert 'select(.type == "merge_queue")' in script
+    assert script.index('done <<< "$markers"') < script.index(
+        "exit 0", script.index('if [ "$queue_rules" = "0" ]; then')
+    )
 
 
 def test_queue_provenance_jq_filters_match_api_shapes():
@@ -503,6 +521,10 @@ def test_queue_provenance_jq_filters_match_api_shapes():
             },
             "completed success",
         ),
+        (
+            [{"type": "merge_queue", "ruleset_id": 14745045}, {"type": "pull_request"}],
+            "1",
+        ),
     ]
     assert len(filters) == len(fixtures)
     for expression, (payload, expected) in zip(filters, fixtures, strict=True):
@@ -514,3 +536,11 @@ def test_queue_provenance_jq_filters_match_api_shapes():
             check=True,
         )
         assert result.stdout.strip() == expected
+    result = subprocess.run(
+        ["jq", "-r", filters[-1]],
+        input=json.dumps([{"type": "pull_request"}]),
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    assert result.stdout.strip() == "0"
