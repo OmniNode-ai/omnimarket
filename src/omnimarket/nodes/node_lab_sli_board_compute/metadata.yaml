@@ -1,0 +1,24 @@
+name: node_lab_sli_board_compute
+version: "0.1.0"
+description: "Folds lab SLI verdicts into history and renders the one-page lab SLI board"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_lab_sli_board_compute: "omnimarket.nodes.node_lab_sli_board_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "observability", "board", "lab", "sli", "OMN-17427"]
+pack: "pipeline"
+display_name: "Lab SLI Board"
+node_role: "compute"
