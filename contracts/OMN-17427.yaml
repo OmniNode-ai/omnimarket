@@ -424,6 +424,11 @@ requirements:
     acceptance:
       - id: "AC76"
         statement: "AC76: a ticket two of whose consecutive lab-fill lanes ended blocked or partial stays held under unchanged-input with the repeated count in its caller reason long after the six-hour cooldown, is released by a ticket update read against the baseline, and is taken as a DoD-verify lane only after the ticket is updated; one unchanged lane is still retried after the cooldown and a done lane between two resets the count -- falsifier: uv run pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_selection_compute.py tests/nodes/node_lab_fill_selection_compute/test_lab_fill_dod_verify_fallback.py -k 'repeat or unchanged' -q fails at the merge base"
+  - id: "req-summarization-word-limit"
+    statement: "A summarization answer longer than the word limit its prompt states is refused by the delegation quality gate."
+    acceptance:
+      - id: "AC79"
+        statement: "AC79: the summarization definition of done carries within_word_limit when the prompt states an at-most-N-words limit, an answer over that limit is refused, an answer at the limit and a prompt with no limit pass, and no other task class carries the check -- falsifier: uv run pytest tests/unit/delegation/test_omn17427_summarization_word_limit.py -q fails"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -582,6 +587,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC78: the review class records its measured lab verdict, earned against the policy bar, and the shipped contracts still pass the lab-first check."
     command: "uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q -p no:randomly --no-cov"
+  - kind: "tests"
+    description: "AC79: the summarization gate refuses an answer over a stated word limit and waives the rule for a prompt with no limit."
+    command: "uv run pytest tests/unit/delegation/test_omn17427_summarization_word_limit.py tests/test_omn19320_check_register.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -1554,3 +1562,18 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_selection_compute/handlers/handler_lab_fill_selection.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("_repeat_count", "repeat_limit", "_updated_after")); print("lab-fill repeat-limit deploy probe: PASS")'
+  - id: "dod-omn17427-ac74-summarization-word-limit"
+    description: "The summarization gate refuses an answer over a stated word limit, passes one at the limit, and waives the rule for a prompt with no limit."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn17427_summarization_word_limit.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC79"]
+  - id: "dod-omn17427-summarization-word-limit-probe"
+    description: "Deploy probe. GitHub serves the summarization definition of done at the checked-out HEAD declaring within_word_limit. The probe fails at the merge base, which has no such check, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/task_class_contracts.v1.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F -- "- within_word_limit"
