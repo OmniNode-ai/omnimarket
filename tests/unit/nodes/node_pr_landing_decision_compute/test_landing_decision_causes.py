@@ -1698,6 +1698,9 @@ def test_park_operator_only_needs_other_blockers_never_ask() -> None:
         assert world.cause(key).operator_need is None, kind
 
 
+PARK_LADDER_HANDLER = "src/omnimarket/nodes/node_pr_landing_decision_compute/handlers/handler_pr_landing_decision.py"
+
+
 def _assert_park_ladder_command(command: str) -> None:
     """The wiring must run the whole causes file, including the retry tests."""
     root = Path(__file__).resolve().parents[4]
@@ -1721,6 +1724,8 @@ def test_park_ladder_wiring_precommit_runs_the_full_causes_file() -> None:
     assert len(hooks) == 1
     hook = hooks[0]
     _assert_park_ladder_command(hook["entry"])
+    # The ruling audit reads the ladder wired only when the hook names the handler that decides it.
+    assert PARK_LADDER_HANDLER in hook["name"]
     assert hook["language"] == "system"
     assert hook["stages"] == ["pre-commit"]
     assert hook["pass_filenames"] is False
@@ -1739,10 +1744,11 @@ def test_park_ladder_wiring_required_lint_runs_the_full_causes_file() -> None:
     steps = [
         step
         for step in workflow["jobs"]["lint"]["steps"]
-        if step.get("name") == "Landing decision park ladder (OMN-20890)"
+        if step.get("name", "").startswith("Landing decision park ladder")
     ]
     assert len(steps) == 1
     step = steps[0]
+    assert PARK_LADDER_HANDLER in step["name"]
     _assert_park_ladder_command(step["run"])
     assert not step.get("continue-on-error", False)
     assert "if" not in step
