@@ -2205,4 +2205,3 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/handlers/scm/test_handler_gateway_read_client.py tests/nodes/node_dod_closeout_sweep_compute/test_closer_ac_ticks_dod_closeout_sweep_compute.py -q -n 0 --no-cov --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC105", "AC106"]
