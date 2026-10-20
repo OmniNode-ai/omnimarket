@@ -1,0 +1,81 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21206"
+title: "Overview and Delegation Evidence views count tokens and runs over every run and savings over measured runs, from one token source and a fixed row choice"
+summary: >-
+  Overview and Delegation Evidence count all runs and their own tokens,
+  measured-only money, and excluded provenance classes, using one fixed
+  estimate ordering. This tests-first stage declares the real falsifiers;
+  it does not claim they pass or that postdeploy reconciliation has run.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-ac1"
+    statement: "Preserve the live ticket criterion AC1 and its falsifier."
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: projection_cost_savings_overview serves tokens_total and its run count over every combined row of the tenant, and total_cost_usd and total_savings_usd over measured rows only, with an excluded unknown-cost run count beside them -- falsifier: a real-Postgres pytest over a fixture holding measured, estimated and unknown rows fails when the token total leaves out the unknown rows or the savings total includes them
+  - id: "req-ac2"
+    statement: "Preserve the live ticket criterion AC2 and its falsifier."
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: projection_delegation_savings serves cumulative_savings_usd and cumulative_local_cost_usd over measured rows only, with the same excluded count -- falsifier: the same pytest run against delegation.savings
+  - id: "req-ac3"
+    statement: "Preserve the live ticket criterion AC3 and its falsifier."
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: both views take a run's tokens from delegation_events tokens_input plus tokens_output, so Overview's token total equals delegation.token-usage total_tokens for the same tenant -- falsifier: the same pytest asserting equality, and the OMN-21203 reconciliation SQL re-run on the development lane showing equal token headlines
+  - id: "req-ac4"
+    statement: "Preserve the live ticket criterion AC4 and its falsifier."
+    acceptance:
+      - id: "AC4"
+        statement: |-
+          AC4: when several savings_estimates rows share a session, both views pick the same row on every read -- falsifier: a real-Postgres pytest with two tied rows that differ in tokens reads each view 20 times and finds one value
+evidence_requirements:
+  - kind: "tests"
+    description: "Hosted disposable PostgreSQL proof; never run against a shared development database. RED and GREEN receipts are required."
+    command: "uv run pytest tests/test_omn21206_view_population_real_postgres.py -q -n 0 -p no:randomly --no-cov"
+  - kind: "tests"
+    description: "Local SQLite measured totals, zero versus unknown and one-time existing-store upgrade, using disposable files."
+    command: "uv run pytest tests/unit/projection/test_omn21206_sqlite_savings_population.py -q -n 0 -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21206-population"
+    description: "Real PostgreSQL fixtures assert all combined runs and tokens, measured-only monetary totals and excluded provenance counts for separate tenants."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21206_view_population_real_postgres.py -q -n 0 -p no:randomly --no-cov -k 'all_runs_and_tokens_but_only_measured_money or each_view_excludes_unmeasured_money_independently'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21206-evidence"
+    description: "Real PostgreSQL fixtures independently assert measured-only Delegation Evidence money and excluded provenance counts."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21206_view_population_real_postgres.py -q -n 0 -p no:randomly --no-cov -k 'all_runs_and_tokens_but_only_measured_money or each_view_excludes_unmeasured_money_independently'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21206-tokens"
+    description: "The real PostgreSQL fixture asserts event-owned tokens plus the explicitly supported savings-only rows. The separate sanctioned postdeploy reconciliation required by AC3 remains outstanding; this item proves the fixture half only."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21206_view_population_real_postgres.py -q -n 0 -p no:randomly --no-cov -k 'tokens_equal_events_plus_savings_only_rows'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21206-row-choice"
+    description: "Real PostgreSQL reads both views in twenty fresh transactions with tied estimates and also checks that later updates outrank creation time. Exact expected values reject a stable but wrong row."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21206_view_population_real_postgres.py -q -n 0 -p no:randomly --no-cov -k 'tied_estimates_choose_highest_primary_key_every_transaction or earlier_created_but_later_updated_row_wins_in_both_views'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
