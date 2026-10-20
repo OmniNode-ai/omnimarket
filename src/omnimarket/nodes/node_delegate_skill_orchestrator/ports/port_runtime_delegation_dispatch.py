@@ -132,6 +132,8 @@ class RuntimeDelegationDispatchPort:
         attribution: Mapping[str, str] | None = None,
         model: str | None = None,
         named_tests: ModelNamedTestSpec | None = None,
+        trace_id: UUID | None = None,
+        queue_wait_ms: int | None = None,
     ) -> dict[str, object]:
         # OMN-21077: tests run where the workspace is, and a deployed lane has no
         # access to the caller's workspace. Refused rather than dropped, so a
@@ -157,6 +159,10 @@ class RuntimeDelegationDispatchPort:
         # deployed lane, whose handler stamps the caller onto its own terminal;
         # only the in-process port writes an evidence terminal of its own.
         del attribution
+        # OMN-19448: accepted and unused, for the same reason. The deployed
+        # lane's handler copies the command's trace_id and measures the queue
+        # wait itself; only the in-process port's evidence terminal needs them.
+        del trace_id, queue_wait_ms
         # OMN-18931: the canonical delegation request this port publishes does
         # not carry the no-escalation policy at the Core floor this package
         # locks, so a true value cannot reach the consumer. Refused rather than

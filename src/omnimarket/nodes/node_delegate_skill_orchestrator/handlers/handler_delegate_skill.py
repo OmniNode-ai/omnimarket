@@ -196,6 +196,8 @@ class ProtocolDelegationDispatchPort(Protocol):
         attribution: Mapping[str, str] | None = None,
         model: str | None = None,
         named_tests: ModelNamedTestSpec | None = None,
+        trace_id: UUID | None = None,
+        queue_wait_ms: int | None = None,
     ) -> dict[str, object]: ...
 
 
@@ -264,6 +266,38 @@ def _attribution_dispatch_kwargs(
     if attribution:
         return {"attribution": attribution}
     return {}
+
+
+class _TerminalMeasureDispatchKwargs(TypedDict, total=False):
+    """Terminal trace and measured queue wait for accepting ports (OMN-19448).
+
+    These are evidence only: an older runtime port or an uninspectable dispatch
+    must keep working without receiving unknown keywords.
+    """
+
+    trace_id: UUID
+    queue_wait_ms: int
+
+
+def _terminal_measure_dispatch_kwargs(
+    request: ModelDelegateSkillRequest,
+    queue_wait_ms: int | None,
+    dispatch: Callable[..., object],
+) -> _TerminalMeasureDispatchKwargs:
+    try:
+        parameters = inspect.signature(dispatch).parameters
+    except (TypeError, ValueError):
+        return {}
+    accepts_kwargs = any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    )
+    kwargs: _TerminalMeasureDispatchKwargs = {}
+    if request.trace_id is not None and ("trace_id" in parameters or accepts_kwargs):
+        kwargs["trace_id"] = request.trace_id
+    if queue_wait_ms is not None and ("queue_wait_ms" in parameters or accepts_kwargs):
+        kwargs["queue_wait_ms"] = queue_wait_ms
+    return kwargs
 
 
 class _NamedTestsDispatchKwargs(TypedDict, total=False):
@@ -1530,6 +1564,10 @@ class HandlerDelegateSkill:
                     # OMN-21077: only when named -- see _NamedTestsDispatchKwargs.
                     **_named_tests_dispatch_kwargs(
                         request, self._dispatch_port.dispatch
+                    ),
+                    # OMN-19448: evidence only, when the port accepts the keywords.
+                    **_terminal_measure_dispatch_kwargs(
+                        request, queue_wait_ms, self._dispatch_port.dispatch
                     ),
                 ),
                 timeout=float(
