@@ -20,6 +20,7 @@ from collections.abc import Callable
 from decimal import Decimal
 from functools import cache
 
+import yaml
 from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
 
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
@@ -30,9 +31,8 @@ from omnimarket.inference.task_class_authority import (
     TaskClassSelectionError,
     load_task_class_authority,
 )
-from omnimarket.nodes.node_delegation_routing_reducer.models.model_delegation_config import (
-    ModelDelegationConfig,
-    parse_delegation_config_yaml,
+from omnimarket.models.delegation.model_packaged_routing_tiers import (
+    ModelPackagedRoutingTiers,
 )
 from omnimarket.nodes.node_metering_summary_compute import (
     ModelCounterfactualBaseline,
@@ -54,7 +54,7 @@ from omnimarket.nodes.node_prompt_cost_estimate_compute.models import (
     ModelTaskTypeSavings,
     ModelUnpricedModel,
 )
-from omnimarket.pricing import ROUTING_TIERS_YAML
+from omnimarket.routing.routing_tiers_path import ROUTING_TIERS_PACKAGED_DEFAULT_PATH
 
 # The tier that runs on the operator's own GPUs. A visitor has none, so the
 # ladder is read from the first tier past it.
@@ -69,8 +69,11 @@ BaselineResolver = Callable[[str], ModelCounterfactualBaseline | None]
 
 
 @cache
-def _routing_config() -> ModelDelegationConfig:
-    return parse_delegation_config_yaml(ROUTING_TIERS_YAML.read_text())
+def _routing_config() -> ModelPackagedRoutingTiers:
+    """The packaged tier ladder: what the product routes, not one deployment's."""
+    return ModelPackagedRoutingTiers.model_validate(
+        yaml.safe_load(ROUTING_TIERS_PACKAGED_DEFAULT_PATH.read_text(encoding="utf-8"))
+    )
 
 
 @cache
@@ -85,7 +88,7 @@ def _backend_models() -> dict[str, str]:
     The committed contract alone: an operator's local overlay must not change
     what a public estimate recommends.
     """
-    path = ROUTING_TIERS_YAML.parent / "bifrost_delegation.yaml"
+    path = ROUTING_TIERS_PACKAGED_DEFAULT_PATH.parent / "bifrost_delegation.yaml"
     config = load_bifrost_delegation_config_payload(
         path.read_bytes(), None, contract_source=str(path)
     )
@@ -130,7 +133,7 @@ def delegate_candidates(task_type: str) -> tuple[tuple[str, str], ...]:
         if tier is None or tier_name == _LOCAL_TIER:
             continue
         candidates.extend(
-            (tier_name, served.get(model.backend_ref or "", model.id))
+            (tier_name, served.get(model.backend_id, model.id))
             for model in tier.models
             if not model.use_for or task_type in model.use_for
         )

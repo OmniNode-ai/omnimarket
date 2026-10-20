@@ -18,7 +18,7 @@ dependencies:
   - "omnibase-infra>=0.38.3"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["compute", "savings", "estimate", "deterministic"]
+tags: ["compute", "savings", "estimate", "deterministic", "in_process"]
 pack: "core"
 display_name: "Prompt Cost Estimate"
 node_role: "compute"

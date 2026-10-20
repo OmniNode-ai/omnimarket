@@ -384,7 +384,6 @@ node_house_routing_overlay_effect = "omnimarket.nodes.node_house_routing_overlay
 node_metering_summary_compute = "omnimarket.nodes.node_metering_summary_compute"
 node_metering_summary_refresh_compute = "omnimarket.nodes.node_metering_summary_refresh_compute"
 node_savings_estimate_compute = "omnimarket.nodes.node_savings_estimate_compute"
-node_prompt_cost_estimate_compute = "omnimarket.nodes.node_prompt_cost_estimate_compute"
 node_claude_code_history_read_effect = "omnimarket.nodes.node_claude_code_history_read_effect"
 node_claude_code_hook_adapter_effect = "omnimarket.nodes.node_claude_code_hook_adapter_effect"
 node_claude_code_binding_render_compute = "omnimarket.nodes.node_claude_code_binding_render_compute"
