@@ -382,8 +382,13 @@ class ModelGenerationBenchmark(BaseModel):
             "run with no corpus. Fed back into the repair loop."
         ),
     )
-    cost_inference_usd: float = Field(
-        default=0.0, description="Estimated inference cost in USD"
+    cost_inference_usd: float | None = Field(
+        default=None,
+        description=(
+            "Estimated inference cost in USD. None when the pricing surface has "
+            "no price for the run's model, or when a payload names no cost "
+            "(OMN-20834): unpriced, never free."
+        ),
     )
     reference_chains: list[str] = Field(
         default_factory=list,

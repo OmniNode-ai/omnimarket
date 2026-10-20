@@ -1,6 +1,6 @@
 name: node_claude_review_budget_compute
-version: "0.1.0"
-description: "the Claude review key that can afford a call and keep its reserve this cycle, or none and why"
+version: "0.2.0"
+description: "Per-model block-wise maximum review charge and the key that keeps its cycle reserve"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:

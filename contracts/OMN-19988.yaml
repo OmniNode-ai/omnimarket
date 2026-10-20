@@ -13,6 +13,9 @@ requirements:
       - id: "AC1"
         statement: |-
           AC1: In mode 2 stopping one compose service turns its row `DOWN` and opens one `SERVICE_DOWN` alert with nobody running a status command; a failing health check turns `UNHEALTHY`; losing the observer or broker turns every row `STALE` after the deadline; a replay of the same health events changes no row -- falsifier: the omnimarket test run with uv run pytest fails any case
+      - id: "AC3"
+        statement: |-
+          AC3: A mode 1 install shows mode `native` and its versions with no compose rows -- falsifier: the lab step's page read
 evidence_requirements:
   - kind: "tests"
     description: "The compute and the store-neutral write give DOWN with one SERVICE_DOWN alert for a stopped service, UNHEALTHY for a failing health check, STALE after the deadline and not before, and no change on a replayed or late report, through the real SQLite adapter; they cannot be collected at the merge base, where the modules do not exist."
@@ -23,6 +26,9 @@ evidence_requirements:
   - kind: "tests"
     description: "Ownership half only; the cursor sequence is declared once, with its domain and owner."
     command: "uv run pytest tests/test_omn19988_local_environment_cursor_ownership_declared.py -q"
+  - kind: "tests"
+    description: "Mode 1: a dashboard start writes one native row carrying the installed versions and no compose rows, through the store-neutral write on a real SQLite store; the handler and the test do not exist at the merge base."
+    command: "uv run pytest tests/test_omn19988_native_environment_report.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -51,3 +57,11 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn19988_local_environment_cursor_ownership_declared.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn19988-ac3-native-row-store-half"
+    description: "The store half of AC3, mode 1. A start of the dashboard through HandlerLocalDashboardServe writes exactly one native row and no compose rows, carrying the installed versions and the store, over a real local SQLite store; an install with no tenant gets no row. It does not prove the page read on a lab host, which is AC3's own falsifier."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19988_native_environment_report.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
