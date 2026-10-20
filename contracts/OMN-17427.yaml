@@ -623,6 +623,11 @@ requirements:
     acceptance:
       - id: "AC113"
         statement: "AC113: HandlerCompactionPackBuild over HandlerContextPackOrchestrator with fixture sources installs a package whose prepared receipt carries the pack's candidate_id and assembly_hash, two invocations on the same inputs share candidate_id and assembly_hash with different activation_ids, every source is read at the barrier revision for the access tenant, and a missing required tier, a failed build or an OK build missing an identity or messages replies native with pack_build_failed -- falsifier: uv run pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build.py -q fails at the merge base, where the module does not exist"
+  - id: "req-pack-orchestrator-tier-source-binding"
+    statement: "The context-pack orchestrator resolves the source node for each tier from its contract's context_tier_sources block, so its zero-argument runtime construction reads operator_rulings, open_work, orchestration_state, operator_words_unrecorded, repo_state, lane_rules and architecture_patterns from their source nodes instead of answering every tier unavailable."
+    acceptance:
+      - id: "AC150"
+        statement: "AC150: HandlerContextPackOrchestrator() binds each factor named in context_tier_sources to one instance per source node, every required factor of the compaction_orchestrator profile is bound, an explicit empty mapping binds nothing, loading opens no database connection, and an unknown factor, an unknown node or a node whose contract does not take ModelContextSourceRequest is refused -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator/test_tier_source_binding.py -q fails at the merge base, where the module tier_source_binding does not exist"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -821,6 +826,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC140: the adapter mints an invocation_id per invocation and the compaction verdict installs only a matching, hash-verified reply for that invocation."
     command: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_verdict.py -q"
+  - kind: "tests"
+    description: "AC150: the context-pack orchestrator binds its tier sources from the contract's context_tier_sources block."
+    command: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_tier_source_binding.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -2491,4 +2499,19 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build.py -q -n 0 -p no:randomly --no-cov -k test_compaction_installs_the_pack_built_through_the_adapter"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac150-pack-tier-source-binding"
+    description: "The context-pack orchestrator's zero-argument construction binds each factor of its contract's context_tier_sources block to its source node's handler, one instance per node, and refuses an unknown factor, an unknown node or a node that does not take ModelContextSourceRequest. At the merge base the test module fails to collect."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_tier_source_binding.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC150"]
+  - id: "dod-omn17427-pack-tier-source-binding-deploy-probe"
+    description: "Deploy probe. In the checked-out package, HandlerContextPackOrchestrator constructed with no arguments binds every required factor of the compaction_orchestrator profile to a source. It fails at the merge base, which has no tier_source_binding module, and needs only uv and this checkout on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_tier_source_binding.py -q -n 0 -p no:randomly --no-cov -k test_zero_argument_orchestrator_binds_the_contract_sources"
         cwd: "${OMNI_HOME}/omnimarket"
