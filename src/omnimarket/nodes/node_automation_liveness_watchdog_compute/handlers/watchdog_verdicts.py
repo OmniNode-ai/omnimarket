@@ -181,11 +181,17 @@ def evaluate_process(
             key=lambda e: e.triggered_at,
         )
         if late:
-            return RawVerdict(
-                _V.TRIGGER_UNANSWERED,
-                _R.ANSWER_PAST_DEADLINE,
-                f"{late[0].match_key} unanswered since {late[0].triggered_at.isoformat()}",
+            oldest = late[0]
+            waited = int(_age(now, oldest.triggered_at) // 60)
+            text = (
+                f"{oldest.match_key} unanswered since "
+                f"{oldest.triggered_at.isoformat()} ({waited} min)"
             )
+            if len(late) > 1:
+                text += f"; {len(late) - 1} more unanswered"
+            if oldest.detail:
+                text += f"; last decision: {oldest.detail}"
+            return RawVerdict(_V.TRIGGER_UNANSWERED, _R.ANSWER_PAST_DEADLINE, text)
 
     if (
         facts.open_run_started_at is not None

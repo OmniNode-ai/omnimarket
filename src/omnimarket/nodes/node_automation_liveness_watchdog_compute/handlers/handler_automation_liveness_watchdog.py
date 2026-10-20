@@ -416,6 +416,7 @@ class HandlerAutomationLivenessWatchdog:
                     delivery_due_at=delivery_due_at(
                         severity, now, timing.delivery_budget_seconds
                     ),
+                    detail=raw.detail,
                 )
                 opened.append(_raised(episode))
 
@@ -472,6 +473,7 @@ def _raised(episode: ModelWatchdogEpisode) -> ModelAutomationAlarmRaised:
         delivery_due_at=episode.delivery_due_at,
         evidence_ref=f"watchdog:{episode.process_id}@{episode.host}",
         action=f"{action}:{episode.process_id}",
+        detail=episode.detail,
     )
 
 
