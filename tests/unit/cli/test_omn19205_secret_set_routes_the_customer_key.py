@@ -48,7 +48,9 @@ from omnimarket.routing.delegation_backend_resolution import (
 from omnimarket.routing.local_byok_route import substitute_local_byok_route
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
-pytestmark = pytest.mark.unit
+# OMN-21059: every shipped row has the customer choose the model; this file
+# exercises the catalogue-pick path, which a row reaches with that flag off.
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("catalogue_picks_models")]
 
 _HOUSE_REF = "llm.glm.api_key"
 _VALUE = "sk-customer-glm-key"

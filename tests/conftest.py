@@ -155,6 +155,29 @@ def promoted_context_profile_routing(
 
 
 @pytest.fixture
+def catalogue_picks_models(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every BYOK catalogue row picks its own model, as rows did before OMN-21059.
+
+    OMN-21059 has the customer choose the model on every shipped row. The
+    catalogue-pick path (registration picks from ``model_preference``, a call
+    re-aims once) stays reachable from a row that sets ``customer_chooses_model``
+    false, and the tests that exercise that path opt in here.
+    """
+    from omnimarket.routing import byok_provider_backends as catalogue
+
+    plans = {
+        key: row.model_copy(update={"customer_chooses_model": False})
+        for key, row in catalogue.load_byok_plan_catalog().items()
+    }
+    providers = {
+        key: row.model_copy(update={"customer_chooses_model": False})
+        for key, row in catalogue.load_byok_provider_catalog().items()
+    }
+    monkeypatch.setattr(catalogue, "load_byok_plan_catalog", lambda: plans)
+    monkeypatch.setattr(catalogue, "load_byok_provider_catalog", lambda: providers)
+
+
+@pytest.fixture
 def event_bus() -> EventBusInmemory:
     """Create a fresh in-memory event bus for testing."""
     return EventBusInmemory(environment="test", group="omnimarket-test")

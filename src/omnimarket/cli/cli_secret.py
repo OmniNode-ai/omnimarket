@@ -1365,8 +1365,9 @@ models_group = click.Group(
     multiple=True,
     help=(
         "A model your key runs, checked against the provider's list for it; "
-        "repeat it to choose several, first is tried first. For OpenRouter you "
-        "choose it: without --model a terminal is asked and a script is refused. "
+        "repeat it to choose several, first is tried first. You choose it for "
+        "every provider: without --model a terminal is asked and a script is "
+        "refused (onex models suggest-model names one from your key's list). "
         "For local, the one model the server runs."
     ),
 )
@@ -1520,6 +1521,39 @@ def default_model(provider: str) -> None:
     except ModelSetupRefusedError as refusal:
         raise click.ClickException(str(refusal)) from None
     click.echo(result.models[0])
+
+
+@models_group.command("suggest-model")
+@click.argument("provider", type=_model_choice)
+def suggest_model(provider: str) -> None:
+    """Print the model PROVIDER's own list offers your key, as a suggestion only.
+
+    OMN-21059. Every provider's key runs only models its owner chose, so
+    registration never picks one. This reads the key (stdin when piped, else a
+    hidden prompt), asks the provider which models that key can use, and prints
+    the best match among the catalogue's preferred families. Nothing is stored:
+    the model counts as chosen only when it is passed on, as in
+
+        onex models add gemini --model MODEL_ID
+    """
+    name = provider.lower()
+    backend = resolve_byok_provider_backend(name)
+    if backend is None:
+        raise click.ClickException(
+            f"{_MODEL_LABELS.get(name, name)} has no model list to suggest from; "
+            f"name a model with onex models add {name} --model <model id>"
+        )
+    discovery = discover_byok_model_sync(backend, _read_model_key(name))
+    refusal = describe_discovery_refusal(discovery)
+    if refusal is not None:
+        raise click.ClickException(refusal)
+    if discovery.model is None:
+        raise click.ClickException(
+            f"could not read {_MODEL_LABELS[name]}'s model list just now, so no "
+            f"model can be suggested. Name one with onex models add {name} "
+            "--model <model id>"
+        )
+    click.echo(discovery.model)
 
 
 def _edit_model_list(
