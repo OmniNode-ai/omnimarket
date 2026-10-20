@@ -86,6 +86,7 @@ from omnimarket.nodes.node_local_secret_store_effect.models.model_local_secret_r
 )
 from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup import (
     LOCAL_URL_PROVIDER,
+    OVERLAY_DEFAULT_PROVIDERS,
     PROVIDERS,
     HandlerModelSetup,
     ModelSetupRefusedError,
@@ -1367,7 +1368,7 @@ models_group = click.Group(
         "A model your key runs, checked against the provider's list for it; "
         "repeat it to choose several, first is tried first. You choose it for "
         "every provider: without --model a terminal is asked and a script is "
-        "refused (onex models suggest-model names one from your key's list). "
+        "refused (onex models default-model names one from your key's list). "
         "For local, the one model the server runs."
     ),
 )
@@ -1506,15 +1507,23 @@ def list_models(as_json: bool) -> None:
 @models_group.command("default-model")
 @click.argument("provider", type=_model_choice)
 def default_model(provider: str) -> None:
-    """Print the model onboarding registers for PROVIDER, from the deployment overlay.
+    """Print the model onboarding registers for PROVIDER. Nothing is stored.
 
-    Onboarding reads it here instead of naming a model itself. Nothing is stored
-    and no key is read. To use another model afterwards, one command:
+    OpenRouter's comes from the deployment overlay, and no key is read. Every
+    other provider's key runs only models its owner chose (OMN-21059), so its
+    default is read from the provider: the key (stdin when piped, else a hidden
+    prompt) asks the provider which models it can use, and the best match among
+    the catalogue's preferred families is printed. A model counts as chosen
+    only when it is passed on. To use another model afterwards, one command:
 
         onex models add openrouter --model MODEL_ID
     """
+    name = provider.lower()
+    if name not in OVERLAY_DEFAULT_PROVIDERS:
+        click.echo(_listed_default_model(name))
+        return
     request = ModelModelSetupRequest(
-        operation="default_model", provider=cast(ModelProvider, provider.lower())
+        operation="default_model", provider=cast(ModelProvider, name)
     )
     try:
         result = _model_handler().handle(request)
@@ -1523,37 +1532,25 @@ def default_model(provider: str) -> None:
     click.echo(result.models[0])
 
 
-@models_group.command("suggest-model")
-@click.argument("provider", type=_model_choice)
-def suggest_model(provider: str) -> None:
-    """Print the model PROVIDER's own list offers your key, as a suggestion only.
-
-    OMN-21059. Every provider's key runs only models its owner chose, so
-    registration never picks one. This reads the key (stdin when piped, else a
-    hidden prompt), asks the provider which models that key can use, and prints
-    the best match among the catalogue's preferred families. Nothing is stored:
-    the model counts as chosen only when it is passed on, as in
-
-        onex models add gemini --model MODEL_ID
-    """
-    name = provider.lower()
-    backend = resolve_byok_provider_backend(name)
+def _listed_default_model(provider: str) -> str:
+    """The best match on the key's own model list, or a refusal naming the way out."""
+    choose = f"Name one with onex models add {provider} --model <model id>"
+    backend = resolve_byok_provider_backend(provider)
     if backend is None:
         raise click.ClickException(
-            f"{_MODEL_LABELS.get(name, name)} has no model list to suggest from; "
-            f"name a model with onex models add {name} --model <model id>"
+            f"{_MODEL_LABELS.get(provider, provider)} has no model list to read a "
+            f"default from. {choose}"
         )
-    discovery = discover_byok_model_sync(backend, _read_model_key(name))
+    discovery = discover_byok_model_sync(backend, _read_model_key(provider))
     refusal = describe_discovery_refusal(discovery)
     if refusal is not None:
         raise click.ClickException(refusal)
     if discovery.model is None:
         raise click.ClickException(
-            f"could not read {_MODEL_LABELS[name]}'s model list just now, so no "
-            f"model can be suggested. Name one with onex models add {name} "
-            "--model <model id>"
+            f"could not read {_MODEL_LABELS[provider]}'s model list just now, so "
+            f"no default can be named. {choose}"
         )
-    click.echo(discovery.model)
+    return discovery.model
 
 
 def _edit_model_list(

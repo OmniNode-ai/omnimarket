@@ -200,10 +200,12 @@ def test_the_environment_variable_wins_over_the_overlay(
 def test_only_openrouter_has_a_declared_default(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, provider: str
 ) -> None:
+    # OMN-21059: another key's default is read from its own list with the key,
+    # so with no key there is none, and OpenRouter's overlay default is never it.
     _declare(monkeypatch, tmp_path, _DEFAULT)
     shown = _models("default-model", provider)
     assert shown.exit_code != 0
-    assert "openrouter" in shown.output
+    assert _DEFAULT not in shown.output
 
 
 def test_reading_the_default_stores_nothing(

@@ -1,11 +1,12 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-21059: ``onex models suggest-model`` names a model for a key and stores nothing.
+"""OMN-21059: ``onex models default-model`` names a model for every key and stores nothing.
 
 Registration no longer picks a model for any provider, so onboarding needs a
-model to pass with ``--model``. ``suggest-model`` reads the key, asks the
-provider which models it can use, and prints the catalogue's best match. The
-model counts as chosen only when it is passed on to ``onex models add``.
+model to pass with ``--model``. OpenRouter's default stays the overlay's; any
+other provider's is read from the provider: ``default-model`` reads the key,
+asks which models it can use, and prints the catalogue's best match. The model
+counts as chosen only when it is passed on to ``onex models add``.
 
 Fakes only: the provider's model list is a stub and no network is used.
 """
@@ -75,7 +76,7 @@ def _store(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
         ),
     ],
 )
-def test_suggest_model_prints_the_best_match_and_stores_nothing(
+def test_default_model_prints_the_best_match_and_stores_nothing(
     provider: str,
     key: str,
     listed: list[str],
@@ -85,7 +86,7 @@ def test_suggest_model_prints_the_best_match_and_stores_nothing(
     models = _Models(listed)
     monkeypatch.setattr(byok_model_discovery, "get_models_json", models)
 
-    result = CliRunner().invoke(models_group, ["suggest-model", provider], input=key)
+    result = CliRunner().invoke(models_group, ["default-model", provider], input=key)
 
     assert result.exit_code == 0, result.output
     assert result.output.strip().splitlines()[-1] == suggested
@@ -98,7 +99,7 @@ def test_suggest_model_prints_the_best_match_and_stores_nothing(
     assert stored is None
 
 
-def test_suggest_model_refuses_when_the_list_cannot_be_read(
+def test_default_model_refuses_when_the_list_cannot_be_read(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
@@ -106,7 +107,7 @@ def test_suggest_model_refuses_when_the_list_cannot_be_read(
     )
 
     result = CliRunner().invoke(
-        models_group, ["suggest-model", "gemini"], input=_GEMINI_KEY
+        models_group, ["default-model", "gemini"], input=_GEMINI_KEY
     )
 
     assert result.exit_code != 0
@@ -114,7 +115,7 @@ def test_suggest_model_refuses_when_the_list_cannot_be_read(
     assert _GEMINI_KEY not in result.output
 
 
-def test_suggest_model_refuses_a_key_the_provider_rejects(
+def test_default_model_refuses_a_key_the_provider_rejects(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
@@ -122,7 +123,7 @@ def test_suggest_model_refuses_a_key_the_provider_rejects(
     )
 
     result = CliRunner().invoke(
-        models_group, ["suggest-model", "openai"], input=_OPENAI_KEY
+        models_group, ["default-model", "openai"], input=_OPENAI_KEY
     )
 
     assert result.exit_code != 0
@@ -130,10 +131,10 @@ def test_suggest_model_refuses_a_key_the_provider_rejects(
 
 
 @pytest.mark.parametrize("provider", ["ollama", "local"])
-def test_suggest_model_names_no_model_for_a_provider_without_a_key(
+def test_default_model_names_no_model_for_a_provider_without_a_key(
     provider: str,
 ) -> None:
-    result = CliRunner().invoke(models_group, ["suggest-model", provider], input="")
+    result = CliRunner().invoke(models_group, ["default-model", provider], input="")
 
     assert result.exit_code != 0
     assert f"onex models add {provider} --model" in result.output
