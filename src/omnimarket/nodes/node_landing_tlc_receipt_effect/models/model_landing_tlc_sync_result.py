@@ -4,14 +4,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Literal
 
+from pydantic import BaseModel, ConfigDict
 
-@dataclass(frozen=True, slots=True)
-class ModelLandingTlcSyncResult:
+
+class ModelLandingTlcSyncResult(BaseModel):
     """``synced`` installed a receipt, ``current`` found nothing to do, ``refused`` kept a release
     whose receipt failed the gate out of the state directory, ``failed`` could not read them."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     status: Literal["synced", "current", "refused", "failed"]
     installed: tuple[str, ...] = ()

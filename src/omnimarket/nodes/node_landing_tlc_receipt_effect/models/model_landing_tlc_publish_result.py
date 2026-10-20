@@ -4,14 +4,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from pydantic import BaseModel, ConfigDict
 
-@dataclass(frozen=True, slots=True)
-class ModelLandingTlcPublishResult:
+
+class ModelLandingTlcPublishResult(BaseModel):
     """``published`` carries the release tag and the archive; ``refused`` carries the reasons."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     status: Literal["published", "refused"]
     pin: str = ""

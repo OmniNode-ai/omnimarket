@@ -374,6 +374,8 @@ def test_registered_node_declares_the_completion_topic() -> None:
         == "onex.evt.omnimarket.landing-tlc-receipt-completed.v1"
     )
     assert contract["terminal_event"] in contract["externally_consumed_topics"]
-    assert contract["runtime_dispatch"]["external_trigger"] is True
+    assert isinstance(contract["runtime_dispatch"]["external_trigger"], str)
+    assert contract["runtime_dispatch"]["external_trigger"].strip()
+    assert contract["metadata"]["transport_type"] == "local"
     metadata = yaml.safe_load(contract_path.with_name("metadata.yaml").read_text())
     assert metadata["entry_points"]["onex.nodes"][entry.name] == entry.value

@@ -4,13 +4,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
+from pydantic import BaseModel, ConfigDict
 
-@dataclass(frozen=True, slots=True)
-class ModelLandingTlcSyncRequest:
+
+class ModelLandingTlcSyncRequest(BaseModel):
     """The gate to verify with, the landing state directory and the repository of the releases."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     gate_script: Path
     state_dir: Path

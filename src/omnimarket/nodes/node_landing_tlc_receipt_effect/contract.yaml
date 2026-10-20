@@ -5,7 +5,6 @@ name: landing_tlc_receipt_effect
 lifecycle: experimental
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: effect
-runtime_profiles: [effects]
 node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
@@ -20,6 +19,7 @@ handler:
   module: omnimarket.nodes.node_landing_tlc_receipt_effect.handlers.handler_landing_tlc_publish
   class: HandlerLandingTlcPublish
   input_model: omnimarket.nodes.node_landing_tlc_receipt_effect.models.model_landing_tlc_publish_request.ModelLandingTlcPublishRequest
+  output_model: omnimarket.nodes.node_landing_tlc_receipt_effect.models.model_landing_tlc_publish_result.ModelLandingTlcPublishResult
 handler_routing:
   routing_strategy: operation_match
   handlers:
@@ -39,6 +39,7 @@ handler_routing:
 terminal_event: onex.evt.omnimarket.landing-tlc-receipt-completed.v1
 
 descriptor:
+  runtime_profiles: []
   node_archetype: effect
   purity: effectful
   idempotent: true
@@ -46,11 +47,15 @@ descriptor:
     - publish writes g-act-<pin>/ and its archive under the output directory
     - sync downloads a release asset with gh and moves a verified g-act-<pin>/ into the landing state directory
 
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
 runtime_dispatch:
-  external_trigger: true
+  external_trigger: The onex-landing-tlc-receipt CLI invokes the typed publish and sync handlers locally.
 externally_consumed_topics:
   - onex.evt.omnimarket.landing-tlc-receipt-completed.v1
 
 metadata:
   ticket: OMN-17427
-  transport_type: in_process
+  transport_type: local

@@ -4,13 +4,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
+from pydantic import BaseModel, ConfigDict
 
-@dataclass(frozen=True, slots=True)
-class ModelLandingTlcPublishRequest:
+
+class ModelLandingTlcPublishRequest(BaseModel):
     """The controller's gate and pin, and the raw output of the model check."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     gate_script: Path
     pin_file: Path
