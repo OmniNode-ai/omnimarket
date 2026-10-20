@@ -1,0 +1,63 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20834"
+title: "Generation runs on an unpriced model record a null cost, not 0.0"
+summary: "A generation run on a model the pricing surface reports as UNKNOWN records cost_inference_usd as null: _calculate_cost returns None, the benchmark carries it, both projection write paths store NULL (migration 0063 drops the column's NOT NULL and DEFAULT 0), and the context-ROI runner leaves the run out of its report. Priced runs and free local runs keep their costs."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-unpriced-generation-cost-is-null"
+    statement: |-
+      A generation run the pricing surface cannot price is recorded, stored and reported as unpriced, never as free.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: A generation run on a model the pricing surface reports as UNKNOWN records `cost_inference_usd` as null, never 0.0 -- falsifier: uv run pytest on `_calculate_cost` with a planted unknown cloud model returns 0.0
+      - id: "AC2"
+        statement: |-
+          AC2: The `generation_events` projection stores null for that run and a priced run's cost unchanged -- falsifier: uv run pytest on the projection finds 0 for the unpriced run, or a priced run's stored cost changes
+      - id: "AC3"
+        statement: |-
+          AC3: A context-ROI report over a run the pricing surface reports as UNKNOWN excludes that run rather than counting it at 0.0 -- falsifier: uv run pytest over the ROI runner returns a report that includes the unpriced run at zero cost
+evidence_requirements:
+  - kind: "tests"
+    description: "An unknown cloud model prices to null and the benchmark carries it; the projection stores null for it and a priced cost unchanged, in the handler and on real Postgres with migration 0063; the ROI runner's report leaves it out and counts it as excluded."
+    command: "uv run pytest tests/unit/cost/test_unpriced_generation_cost_null_omn20834.py tests/test_omn20834_generation_cost_null_real_postgres.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20834-calculate-cost-null"
+    description: "_calculate_cost returns None for a planted unknown cloud model, a priced model and a free local model keep their costs, and the generation benchmark carries a null cost and reads a payload with no cost as null, never 0.0."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cost/test_unpriced_generation_cost_null_omn20834.py -q -p no:randomly -k 'unknown_cloud_model or keep_their_costs or benchmark_carries'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20834-projection-stores-null"
+    description: "The generation-completed projection handler writes NULL for the unpriced run and the priced run's cost unchanged."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cost/test_unpriced_generation_cost_null_omn20834.py -q -p no:randomly -k projection"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20834-projection-null-on-postgres"
+    description: "On real Postgres with every live migration applied, generation_events.cost_inference_usd is nullable with no default, and the real projection runner stores an unpriced run as NULL while a priced run and a free local run keep their costs."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn20834_generation_cost_null_real_postgres.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20834-roi-report-excludes-unpriced"
+    description: "Over one unpriced and one priced run, the context-ROI runner's report holds only the priced row at its cost, counts one excluded unpriced trial and no failed trial, and warns which run was left out."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cost/test_unpriced_generation_cost_null_omn20834.py -q -p no:randomly -k roi_report"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

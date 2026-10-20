@@ -49,6 +49,15 @@ requirements:
     acceptance:
       - id: "AC11"
         statement: "AC11: a review call records one cost event per provider attempt with its usage, outcome and review provenance, an attempt that was cut off is recorded as cancelled, a call that names no review records nothing, and the gateway copies the review identity from the request metadata -- falsifier: uv run pytest tests/test_omn20910_review_call_cost_events.py tests/test_omn20910_review_gateway_provenance.py -q -p no:randomly --no-cov fails at the merge base"
+  - id: "req-review-budget-admission"
+    statement: "Plan ticket 6: durable atomic reservations govern synchronous and Batch calls with per-key and aggregate limits, block-wise pricing and a server-resolved persona tier."
+    acceptance:
+      - id: "AC33"
+        statement: "Concurrent calls against a balance for one admit exactly one; outstanding Batch reservations reduce synchronous allowance; aggregate exhaustion refuses a key that still has allowance."
+      - id: "AC34"
+        statement: "Price each cache block at its TTL's cold-write maximum, include tool schema and output, and distinguish per-model and Batch prices."
+      - id: "AC35"
+        statement: "Persist reservation transitions before reply; retain uncertain charges after dispatch; settle measured usage and reconcile confirmed provider balances idempotently."
   - id: "req-review-replay-set-node"
     statement: "node_review_replay_set_effect freezes 40 merged diffs stratified by repo and size under a manifest hash."
     acceptance:
@@ -74,6 +83,13 @@ requirements:
     acceptance:
       - id: "AC8"
         statement: "AC8: the packaged catalog resolves within 5,000 rendered tokens and each refusal has a passing positive control -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/nodes/node_review_defect_catalog_compute/test_review_defect_catalog.py -q -n 0 --no-cov fails at the merge base"
+  - id: "req-newest-dev-tag-and-key"
+    statement: "The hostile-review job reads omniintelligence at its newest dev-* tag, resolved at run time, and no step carries the Claude API key from an Actions secret."
+    acceptance:
+      - id: "AC7"
+        statement: "AC7: the clone step resolves the newest dev-<UTC>-<sha12> tag with git ls-remote, logs it, clones at it, and refuses a branch tip or a remote with no dev tag -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_dev_tag_key_omn20910.py -q -n 0 --no-cov -k 'dev_tag or branch_tip or resolver or sha_literal' fails over the merge base's workflow, which clones at a sha literal"
+      - id: "AC8"
+        statement: "AC8: no step of the hostile-review job carries ANTHROPIC_API_KEY and no workflow references a provider key secret, so the Claude key reaches a voter only through the tenant route (OMN-20974) -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_dev_tag_key_omn20910.py tests/unit/test_no_provider_key_in_workflows_omn20974.py -q -n 0 --no-cov -k 'claude_api_key or key_on_the_review_step or provider_key' fails when the review step exports the key from an Actions secret"
 evidence_requirements:
   - kind: "tests"
     description: "The workflow reads the overlay at every roster site."
@@ -151,9 +167,16 @@ dod_evidence:
     description: "Run the checked-out register-tenant-key CLI in a disposable container. With no environment broker, its declared host lane must be opened and receive the credential event; an environment broker and a missing or unopenable lane must retain their expected behavior. The hosted runner needs Docker and the checkout, without access to a lab broker or lane containers."
     source: "manual"
     checks:
+      # python3.13-bookworm (not -slim) keeps git for the omnibase-infra git source. The image pull runs as
+      # its own check, on its own 30s budget. The test run mounts the host's uv over the image's uv 0.9.30,
+      # so the container reads the uv cache the hosted verifier synced uv.lock into with the uv version that
+      # wrote it. On CI at 9cd73fcaf the -slim image's uv 0.9.30 run exited 1 with no pytest output.
+      - check_type: "command"
+        check_value: "docker pull -q ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a"
+        cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
         check_value: |-
-          env docker run --rm -v "${PWD}:/workspace:ro" -w /workspace -e PYTHONDONTWRITEBYTECODE=1 -e COMPOSE_PROJECT_NAME=landing-l10892-lab -e UV_PROJECT_ENVIRONMENT=/tmp/register-key-venv -e UV_CACHE_DIR=/tmp/uv-cache ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 uv run --frozen pytest tests/unit/cli/test_omn20910_register_tenant_key_lane_bus.py -q -p no:randomly -p no:cacheprovider --no-cov --basetemp=/tmp/register-key-tests
+          env docker run --rm --user "$(id -u):$(id -g)" -v "${PWD}:/workspace:ro" -w /workspace -v "$(uv cache dir):/uv-cache" -v "$(command -v uv):/usr/local/bin/uv:ro" -e UV_LINK_MODE=copy -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0="*" -e PYTHONDONTWRITEBYTECODE=1 -e COMPOSE_PROJECT_NAME=landing-l10892-lab -e UV_PROJECT_ENVIRONMENT=/tmp/register-key-venv -e UV_CACHE_DIR=/uv-cache ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a uv run --frozen pytest tests/unit/cli/test_omn20910_register_tenant_key_lane_bus.py -q -p no:randomly -p no:cacheprovider --no-cov --basetemp=/tmp/register-key-tests
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20910-ac9-compact-strict-parser"
     description: "compact_strict fails closed on every listed case; a mandatory R finding is critical; v1 replies pass unchanged."
@@ -179,6 +202,25 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn20910_review_call_cost_events.py tests/test_omn20910_review_gateway_provenance.py -q -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC11"]
+  - id: "dod-omn20910-budget-limits"
+    description: "Admission races, Batch liability, aggregate limits and server-resolved tiers at the durable handler boundary."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_claude_review_budget_reducer/test_golden_chain_review_budget_admission.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC33", "AC34", "AC35"]
+  - id: "dod-omn20910-deploy-review-budget-authority"
+    description: "Resolve the installed admission handler and input model from its runtime contract, load its server-owned policy and persistent database, admit and dispatch once, then refuse further spend after reconstructing the handler. Uses temporary storage and no provider call."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_claude_review_budget_reducer/test_golden_chain_review_budget_admission.py -q -n 0 -p no:randomly --no-cov -k contract_dispatch"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_claude_review_budget_reducer/test_golden_chain_review_budget_admission.py -q -n 0 -p no:randomly --no-cov -k contract_dispatch"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC35"]
   - id: "dod-omn20910-ac12-review-replay-set-node"
     description: "The replay set freezes a stratified set under a stable manifest hash."
     source: "manual"
@@ -224,9 +266,16 @@ dod_evidence:
     description: "Run the checked-out native Messages tests in a disposable container: the call effect posts the block layout with cache breakpoints, the key in x-api-key, the typed stop_reason and cache usage, and a call naming no plan keeps the chat shape. No key, no network and no lab service."
     source: "manual"
     checks:
+      # python3.13-bookworm (not -slim) keeps git for the omnibase-infra git source. The image pull runs as
+      # its own check, on its own 30s budget. The test run mounts the host's uv over the image's uv 0.9.30,
+      # so the container reads the uv cache the hosted verifier synced uv.lock into with the uv version that
+      # wrote it. On CI at 9cd73fcaf the -slim image's uv 0.9.30 run exited 1 with no pytest output.
+      - check_type: "command"
+        check_value: "docker pull -q ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a"
+        cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
         check_value: |-
-          env docker run --rm -v "${PWD}:/workspace:ro" -w /workspace -e PYTHONDONTWRITEBYTECODE=1 -e UV_PROJECT_ENVIRONMENT=/tmp/native-messages-venv -e UV_CACHE_DIR=/tmp/uv-cache ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 uv run --frozen pytest tests/test_omn20910_native_messages_protocol.py -q -p no:randomly -p no:cacheprovider --no-cov --basetemp=/tmp/native-messages-tests
+          env docker run --rm --user "$(id -u):$(id -g)" -v "${PWD}:/workspace:ro" -w /workspace -v "$(uv cache dir):/uv-cache" -v "$(command -v uv):/usr/local/bin/uv:ro" -e UV_LINK_MODE=copy -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0="*" -e PYTHONDONTWRITEBYTECODE=1 -e UV_PROJECT_ENVIRONMENT=/tmp/native-messages-venv -e UV_CACHE_DIR=/uv-cache ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a uv run --frozen pytest tests/test_omn20910_native_messages_protocol.py -q -p no:randomly -p no:cacheprovider --no-cov --basetemp=/tmp/native-messages-tests
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20910-ac8-defect-catalog-node"
     description: "The defect-code catalog node validates and renders the packaged catalog; every refusal has a positive control."
@@ -234,5 +283,21 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_review_defect_catalog_compute/test_review_defect_catalog.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8"]
+  - id: "dod-omn20910-ac6-newest-dev-tag"
+    description: "The omniintelligence clone reads the newest dev-* tag, never a sha literal or a branch tip."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_dev_tag_key_omn20910.py -q -n 0 --no-cov -k 'dev_tag or branch_tip or resolver or sha_literal'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
+  - id: "dod-omn20910-ac7-review-step-key"
+    description: "The newest-dev-tag clone retains the tenant-only key boundary: the resolver and branch-tip controls run together with the no-Actions-key checks and their planted-key control. The merge base's SHA clone fails this combined requirement even though it already carries no Actions key."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_dev_tag_key_omn20910.py tests/unit/test_no_provider_key_in_workflows_omn20974.py -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC8"]
