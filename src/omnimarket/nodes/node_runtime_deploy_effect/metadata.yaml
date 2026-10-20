@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_runtime_deploy_effect
+version: 1.0.0
+description: "Operator host deployment effect: stages an explicit infra checkout, builds and optionally recreates its lane, with preflights, host locks, rollback, migration fences, image provenance and readback."
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+pack: core
+node_role: effect
+display_name: Runtime Deploy Effect
+entry_points:
+  onex.nodes:
+    node_runtime_deploy_effect: omnimarket.nodes.node_runtime_deploy_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: true
+  side_effect_class: effectful
+dependencies:
+- omnibase_core>=0.39.0
+- omnibase_infra
+license: MIT
+tags:
+- effect
+- deploy
+- operator
