@@ -59,7 +59,8 @@
         "gh-schedule",
         "gh-event",
         "session-cron",
-        "routine"
+        "routine",
+        "bus-event"
       ],
       "title": "EnumAutomationTriggerKind",
       "type": "string"

@@ -14,7 +14,9 @@ description: >
   fallback with the failure class and the command's invocation_id; no partial
   package is replied. Until the context-pack orchestrator is wired the default
   port reports pack_builder_unavailable, so every invocation falls back to
-  native compaction. Receipt events carry ids, hashes and failure classes only;
+  native compaction. HandlerCompactionPackBuild is the live port over
+  node_context_pack_orchestrator; a runtime that binds the context sources
+  passes it in. Receipt events carry ids, hashes and failure classes only;
   the package reply carries content and travels on the restricted command family.
 
 handler_routing:

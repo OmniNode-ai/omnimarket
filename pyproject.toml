@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.318"
+version = "0.4.319"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -435,6 +435,8 @@ node_delegation_answer_gate_compute = "omnimarket.nodes.node_delegation_answer_g
 node_lab_first_routing_check_compute = "omnimarket.nodes.node_lab_first_routing_check_compute"
 node_glm_allowance_compute = "omnimarket.nodes.node_glm_allowance_compute"
 node_claude_review_budget_compute = "omnimarket.nodes.node_claude_review_budget_compute"
+node_claude_review_budget_reducer = "omnimarket.nodes.node_claude_review_budget_reducer"
+node_claude_review_budget_admission_effect = "omnimarket.nodes.node_claude_review_budget_admission_effect"
 node_review_defect_catalog_compute = "omnimarket.nodes.node_review_defect_catalog_compute"
 node_review_quota_reducer = "omnimarket.nodes.node_review_quota_reducer"
 node_glm_usage_record_compute = "omnimarket.nodes.node_glm_usage_record_compute"
@@ -539,6 +541,7 @@ node_automation_liveness_deadman_effect = "omnimarket.nodes.node_automation_live
 node_automation_liveness_watchdog_compute = "omnimarket.nodes.node_automation_liveness_watchdog_compute"
 node_automation_liveness_watchdog_effect = "omnimarket.nodes.node_automation_liveness_watchdog_effect"
 node_automation_liveness_overlay_check_compute = "omnimarket.nodes.node_automation_liveness_overlay_check_compute"
+node_landing_stall_expectation_compute = "omnimarket.nodes.node_landing_stall_expectation_compute"
 node_lab_job_check_schedule_compute = "omnimarket.nodes.node_lab_job_check_schedule_compute"
 node_lab_sli_alert_effect = "omnimarket.nodes.node_lab_sli_alert_effect"
 node_lab_sli_board_compute = "omnimarket.nodes.node_lab_sli_board_compute"
@@ -1104,7 +1107,7 @@ omnimarket = "omnimarket.nodes"
 # tag, which descends from #5036. uv.lock resolves the tag to commit
 # 4c36425ce840 and installs that commit, so the install is content-addressed;
 # drop this override once a registry release after 0.38.75 carries both.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261018092007-4c36425ce840" }
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261020015357-49d28fc6208a" }
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
 # their git-source overrides). The version-range overrides below already target
 # the released artifacts: core>=0.46.7,<0.47.0 and

@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_claude_review_budget_admission_effect
+contract_name: node_claude_review_budget_admission_effect
+node_name: node_claude_review_budget_admission_effect
+lifecycle: experimental
+node_type: effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+description: >
+  Single durable admission authority for all review keys. Serializes read, pure reduction and commit before granting synchronous calls or Batch items. Server-owned policy resolves persona tiers; missing policy or persistent storage fails closed.
+input_model:
+  name: ModelReviewBudgetCommand
+  module: omnimarket.models.claude_review_budget.model_review_budget_admission
+output_model:
+  name: ModelReviewBudgetDecision
+  module: omnimarket.models.claude_review_budget.model_review_budget_admission
+dependencies:
+  - name: store
+    dependency_type: protocol
+    required: true
+    description: Atomic read-reduce-commit of the one persistent budget authority state.
+  - name: pricing
+    dependency_type: node
+    required: true
+    description: node_claude_review_budget_compute quotes each model and measures usage.
+  - name: reducer
+    dependency_type: node
+    required: true
+    description: node_claude_review_budget_reducer performs pure reservation transitions.
+handler:
+  module: omnimarket.nodes.node_claude_review_budget_admission_effect.handlers.handler_review_budget_admission
+  class: HandlerClaudeReviewBudgetAdmission
+  input_model: omnimarket.models.claude_review_budget.model_review_budget_admission.ModelReviewBudgetCommand
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_claude_review_budget_admission_effect.handlers.handler_review_budget_admission:HandlerClaudeReviewBudgetAdmission
+  handlers:
+    - operation: claude_review_budget_admit
+      handler:
+        name: HandlerClaudeReviewBudgetAdmission
+        module: omnimarket.nodes.node_claude_review_budget_admission_effect.handlers.handler_review_budget_admission
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.claude-review-budget-admit-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.claude-review-budget-admit-completed.v1
+    failure: onex.evt.omnimarket.claude-review-budget-admit-failed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.claude-review-budget-admit-completed.v1
+  - onex.evt.omnimarket.claude-review-budget-admit-failed.v1
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 35000
+replay:
+  deterministic: false
+# All gateway hosts and Batch workers address this ONE authority over its command topic.
+# A per-host database would multiply the aggregate allowance and is unsupported.
+authority:
+  scope: all_review_keys
+  replicas: 1
+  database_env: CLAUDE_REVIEW_BUDGET_DB
+  policy_overlay_env: CLAUDE_REVIEW_BUDGET_POLICY
+  dispatch_protocol: reserve_then_started_before_upstream
+  release_protocol: before_started_or_provider_zero_charge
+  durability: commit_before_reply

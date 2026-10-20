@@ -103,7 +103,11 @@ def _decide(
 ) -> ModelClaudeReviewBudgetResult:
     return (handler or HandlerClaudeReviewBudget()).handle(
         ModelClaudeReviewBudgetRequest(
-            as_of=as_of, prompt_tokens=PROMPT, max_tokens=MAX_TOKENS, keys=keys
+            as_of=as_of,
+            model_id=MODEL,
+            prompt_tokens=PROMPT,
+            max_tokens=MAX_TOKENS,
+            keys=keys,
         )
     )
 
@@ -272,7 +276,7 @@ def test_a_model_the_manifest_does_not_price_chooses_no_key() -> None:
 
 
 def test_the_allowance_and_reserve_come_from_the_contract() -> None:
-    config = load_budget_config()
+    config = load_budget_config().model_copy(update={"model_id": MODEL})
     assert config.model_id == MODEL
     assert config.allowance_usd == Decimal(200)
     assert config.reserve_usd == Decimal(10)

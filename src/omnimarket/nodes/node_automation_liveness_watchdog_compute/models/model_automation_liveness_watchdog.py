@@ -40,6 +40,7 @@ from omnimarket.models.liveness.model_automation_liveness import (
     ModelAutomationLivenessEntry,
     ModelAutomationLivenessOverlay,
     ModelAutomationLivenessVerdictEvent,
+    ModelTriggerExpectation,
     NonEmptyStr,
     ProcessId,
     Sha256Hex,
@@ -176,18 +177,6 @@ class ModelBusFacts(BaseModel):
     broker_answered: bool
 
 
-class ModelTriggerExpectation(BaseModel):
-    """An observed trigger of an event-triggered process and its answer."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    process_id: ProcessId
-    host: NonEmptyStr
-    match_key: NonEmptyStr
-    triggered_at: AwareDatetime
-    answered_at: AwareDatetime | None = None
-
-
 class ModelUndeclaredProcess(BaseModel):
     """A process of ours an observer saw running with no overlay entry."""
 
@@ -232,6 +221,7 @@ class ModelWatchdogEpisode(BaseModel):
     severity: EnumAlarmSeverity
     opened_at: AwareDatetime
     delivery_due_at: AwareDatetime
+    detail: str = ""
 
 
 class ModelWatchdogProcessState(BaseModel):

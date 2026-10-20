@@ -1,0 +1,23 @@
+name: node_landing_stall_expectation_compute
+version: "1.0.0"
+description: "Landing stall fold: the landing controller's held, refused and never-ran transitions as automation-liveness trigger expectations (OMN-17427) -- no I/O"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_landing_stall_expectation_compute: "omnimarket.nodes.node_landing_stall_expectation_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["liveness", "landing", "compute", "deterministic", "OMN-17427"]
+pack: "liveness"
+display_name: "Landing Stall Expectations"
+node_role: "compute"

@@ -62,3 +62,31 @@ dod_evidence:
         check_value: "uv run pytest tests/formal/test_compaction_lifecycle_model.py -q -n 0 -p no:randomly --no-cov -k verdict_names_model_digest"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn21104-ac1-safety-accepted"
+    description: "AC1: the design config's TLC output reports PASS with 'No error has been found' and exit=0 for TypeOK plus the five invariants, the results are sha-bound to the committed model and cfgs, and each one-knob mutant records 'Invariant <prop> is violated'. Re-run by the accepting lane on the lab dev host at omnimarket dev 9aee3b16a: 7 passed. The test file does not exist at the parent of the implementing merge."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/formal/test_compaction_lifecycle_model.py::test_results_are_for_the_committed_model_configs_and_outputs tests/formal/test_compaction_lifecycle_model.py::test_design_passes_every_property tests/formal/test_compaction_lifecycle_model.py::test_no_install_without_activation_fails_on_mutation tests/formal/test_compaction_lifecycle_model.py::test_one_state_per_identity_fails_on_mutation tests/formal/test_compaction_lifecycle_model.py::test_stale_candidate_never_installed_fails_on_mutation tests/formal/test_compaction_lifecycle_model.py::test_fallback_never_conflicts_fails_on_mutation tests/formal/test_compaction_lifecycle_model.py::test_no_complete_before_installed_fails_on_mutation -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21104-ac2-liveness-accepted"
+    description: "AC2: the design_live config checks exactly the temporal property set and its TLC output is PASS with exit=0, and the no-gap-rule mutant records 'Temporal properties were violated'. Re-run by the accepting lane on the lab dev host at omnimarket dev 9aee3b16a: 3 passed. The test file does not exist at the parent of the implementing merge."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/formal/test_compaction_lifecycle_model.py::test_results_are_for_the_committed_model_configs_and_outputs tests/formal/test_compaction_lifecycle_model.py::test_design_passes_every_property tests/formal/test_compaction_lifecycle_model.py::test_every_activation_resolves_fails_on_mutation -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+context:
+  ac_binding_provenance:
+    "dod-omn21104-ac1-safety-accepted":
+      - label: "AC1"
+        criterion_hash: "423cbeaaaee54954d9bdc7d8872810e4efd2f317bcf3ba19dd7182f4d3b94de9"
+        proposed_by: "lane=dod-closeout-bind-2026-10-20T0645Z-c0"
+        accepted_by: "lane=dod-closeout-accept-2026-10-20T0645Z-c0"
+    "dod-omn21104-ac2-liveness-accepted":
+      - label: "AC2"
+        criterion_hash: "3620de94f1a4964c5abb909b242ffc0fac1177405e21113528a065a5c2792762"
+        proposed_by: "lane=dod-closeout-bind-2026-10-20T0645Z-c0"
+        accepted_by: "lane=dod-closeout-accept-2026-10-20T0645Z-c0"
