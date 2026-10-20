@@ -206,6 +206,14 @@ class ModelContextRoiRunResult(BaseModel):
         ge=0,
         description="Number of trials that ended in a non-none failure_stage",
     )
+    excluded_unpriced_trials: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Trials left out of rows because the run's model is unpriced "
+            "(null cost_inference_usd, OMN-20834): excluded, never counted at 0.0"
+        ),
+    )
     warnings: tuple[str, ...] = Field(
         default_factory=tuple,
         description="Non-fatal warnings from the run (e.g. optional factor absent)",

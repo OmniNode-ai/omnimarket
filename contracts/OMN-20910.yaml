@@ -83,6 +83,13 @@ requirements:
     acceptance:
       - id: "AC8"
         statement: "AC8: the packaged catalog resolves within 5,000 rendered tokens and each refusal has a passing positive control -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/nodes/node_review_defect_catalog_compute/test_review_defect_catalog.py -q -n 0 --no-cov fails at the merge base"
+  - id: "req-newest-dev-tag-and-key"
+    statement: "The hostile-review job reads omniintelligence at its newest dev-* tag, resolved at run time, and no step carries the Claude API key from an Actions secret."
+    acceptance:
+      - id: "AC7"
+        statement: "AC7: the clone step resolves the newest dev-<UTC>-<sha12> tag with git ls-remote, logs it, clones at it, and refuses a branch tip or a remote with no dev tag -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_dev_tag_key_omn20910.py -q -n 0 --no-cov -k 'dev_tag or branch_tip or resolver or sha_literal' fails over the merge base's workflow, which clones at a sha literal"
+      - id: "AC8"
+        statement: "AC8: no step of the hostile-review job carries ANTHROPIC_API_KEY and no workflow references a provider key secret, so the Claude key reaches a voter only through the tenant route (OMN-20974) -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_dev_tag_key_omn20910.py tests/unit/test_no_provider_key_in_workflows_omn20974.py -q -n 0 --no-cov -k 'claude_api_key or key_on_the_review_step or provider_key' fails when the review step exports the key from an Actions secret"
 evidence_requirements:
   - kind: "tests"
     description: "The workflow reads the overlay at every roster site."
@@ -276,5 +283,21 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_review_defect_catalog_compute/test_review_defect_catalog.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8"]
+  - id: "dod-omn20910-ac6-newest-dev-tag"
+    description: "The omniintelligence clone reads the newest dev-* tag, never a sha literal or a branch tip."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_dev_tag_key_omn20910.py -q -n 0 --no-cov -k 'dev_tag or branch_tip or resolver or sha_literal'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
+  - id: "dod-omn20910-ac7-review-step-key"
+    description: "The newest-dev-tag clone retains the tenant-only key boundary: the resolver and branch-tip controls run together with the no-Actions-key checks and their planted-key control. The merge base's SHA clone fails this combined requirement even though it already carries no Actions key."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_hostile_reviewer_dev_tag_key_omn20910.py tests/unit/test_no_provider_key_in_workflows_omn20974.py -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC8"]

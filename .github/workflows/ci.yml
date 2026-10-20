@@ -1815,7 +1815,13 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_infra
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-infra"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_infra.git ../omnibase_infra
+        # OMN-20834: when the lock sources omnibase-infra from a git tag (a dev-*
+        # tag ahead of the last release), clone that tag; its version has no
+        # v<version> tag yet. Otherwise clone the release tag as before.
+        run: |
+          ref=$(grep -A2 '^name = "omnibase-infra"$' uv.lock | sed -n 's/^source = { git = "[^"]*?tag=\([^#"]*\)#.*/\1/p')
+          [ -n "$ref" ] || ref="v$(grep -A1 '^name = "omnibase-infra"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')"
+          git clone --depth=1 --branch "$ref" https://github.com/OmniNode-ai/omnibase_infra.git ../omnibase_infra
       - name: Clone omnibase_core
         run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
