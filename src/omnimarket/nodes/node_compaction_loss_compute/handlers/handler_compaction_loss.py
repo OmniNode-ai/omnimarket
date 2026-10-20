@@ -24,12 +24,18 @@ matches; an item survives only when every span is in the summary. Extraction is 
 pattern matching, so it measures what the patterns see, not every obligation. The
 result carries an eval case with the replay eval presence-case field names, so a
 context pack is judged on the same items by replacing ``package_text``.
+
+``weighted_recall`` is the sum of surviving item weights divided by the sum of
+all item weights. The request supplies positive per-kind, per-item weights and
+the result records them. Unit defaults reproduce overall_recall. Extraction,
+survival, per-kind recall and the eval case are independent of those weights.
 """
 
 from __future__ import annotations
 
 import re
 from collections.abc import Iterator
+from math import fsum
 
 from pydantic import JsonValue
 
@@ -221,6 +227,7 @@ class HandlerCompactionPairs:
                     pre_user_text="\n".join(user),
                     pre_assistant_text="\n".join(assistant),
                     post_summary=_summary_text(records[index + 1 : end]),
+                    weights=request.weights,
                 )
             )
         return ModelCompactionPairs(session_id=request.session_id, pairs=tuple(pairs))
@@ -315,6 +322,20 @@ class HandlerCompactionLoss:
                     )
                 )
         survived = sum(1 for item in ordered if item.survived)
+        weighted_recall = None
+        if ordered:
+            # Normalise before summing, so valid large finite weights cannot
+            # overflow. Only observed kinds contribute to either sum.
+            scale = max(request.weights.for_kind(item.kind) for item in ordered)
+            total_weight = fsum(
+                request.weights.for_kind(item.kind) / scale for item in ordered
+            )
+            surviving_weight = fsum(
+                request.weights.for_kind(item.kind) / scale
+                for item in ordered
+                if item.survived
+            )
+            weighted_recall = surviving_weight / total_weight
         return ModelCompactionLossResult(
             session_id=request.session_id,
             compaction_id=request.compaction_id,
@@ -326,6 +347,8 @@ class HandlerCompactionLoss:
             items_total=len(ordered),
             items_survived=survived,
             overall_recall=survived / len(ordered) if ordered else None,
+            weights=request.weights,
+            weighted_recall=weighted_recall,
             recall_by_kind=tuple(recall),
             dropped=tuple(item for item in ordered if not item.survived),
             eval_case=ModelLossEvalCase(

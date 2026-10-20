@@ -628,6 +628,13 @@ requirements:
     acceptance:
       - id: "AC113"
         statement: "AC113: HandlerCompactionPackBuild over HandlerContextPackOrchestrator with fixture sources installs a package whose prepared receipt carries the pack's candidate_id and assembly_hash, two invocations on the same inputs share candidate_id and assembly_hash with different activation_ids, every source is read at the barrier revision for the access tenant, and a missing required tier, a failed build or an OK build missing an identity or messages replies native with pack_build_failed -- falsifier: uv run pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build.py -q fails at the merge base, where the module does not exist"
+  - id: "req-compaction-loss-weights"
+    statement: "The context-service lane's scorer-weights follow-up adds an auditable weighted recall without rewriting the original survival evidence. This slice does not qualify TA.12 latency, install the TA.15 binding, or close the parent integration-pass acceptance."
+    acceptance:
+      - id: "AC142"
+        statement: "AC142: callers can supply positive finite numeric weights per must-carry kind; unit defaults reproduce overall recall, absent kinds add no mass, empty windows remain unknown, and invalid or unknown weights are refused -- falsifier: uv run pytest tests/test_compaction_loss_weights.py -q --no-cov -k 'unit_weights or weights_are_per_item or empty_window or invalid_weights or misspelled_kind or large_finite'"
+      - id: "AC143"
+        statement: "AC143: weighted recall exposes a dropped instruction among surviving identifiers while items, drops, per-kind recall, overall recall and eval cases retain their original meaning; the applied policy survives result serialization and transcript pairing, and historical results do not claim a weighted measurement -- falsifier: uv run pytest tests/test_compaction_loss_weights.py tests/test_golden_chain_compaction_loss_compute.py -q --no-cov"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -2512,3 +2519,34 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build.py -q -n 0 -p no:randomly --no-cov -k test_compaction_installs_the_pack_built_through_the_adapter"
         cwd: "${OMNI_HOME}/omnimarket"
+
+  - id: "dod-omn17427-compaction-loss-weight-validation"
+    description: "Positive finite per-item weights, unit defaults, absent kinds, unknown empty scores, and overflow-safe rescaling."
+    binds_ac: ["AC142"]
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_compaction_loss_weights.py -q -p no:randomly --no-cov -k 'unit_weights or weights_are_per_item or empty_window or invalid_weights or misspelled_kind or large_finite'"
+  - id: "dod-omn17427-compaction-loss-weight-evidence"
+    description: "Weighted scoring preserves the evidence and original score, records its policy, and carries it through transcript pairing. Legacy results have no claimed weighted score."
+    binds_ac: ["AC143"]
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_compaction_loss_weights.py tests/test_golden_chain_compaction_loss_compute.py -q -p no:randomly --no-cov"
+  - id: "dod-omn17427-compaction-loss-weights-hosted-deploy"
+    description: "Hosted deploy probe. Exercise the checked-out product scorer with one dropped instruction and three retained tickets. The weighted score must be 0.25 while the original recall remains 0.75, and an empty window must remain unknown. The merge base refuses the weights input and cannot pass. No lab, broker, secret or external endpoint is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run --frozen python -c '
+          from omnimarket.nodes.node_compaction_loss_compute.handlers import HandlerCompactionLoss
+          from omnimarket.nodes.node_compaction_loss_compute.models import ModelCompactionLossRequest
+          body = {"session_id": "probe", "compaction_id": "probe", "pre_text": "OMN-1 OMN-2 OMN-3. Never delete the deployment receipts.", "pre_user_text": "Never delete the deployment receipts.", "post_summary": "OMN-1 OMN-2 OMN-3", "weights": {"operator_instruction": 9}}
+          result = HandlerCompactionLoss().handle(ModelCompactionLossRequest.model_validate(body))
+          assert result.weighted_recall == 0.25 and result.overall_recall == 0.75, result
+          assert result.weights.operator_instruction == 9 and len(result.dropped) == 1, result
+          empty = HandlerCompactionLoss().handle(ModelCompactionLossRequest(session_id="probe", compaction_id="empty", post_summary=""))
+          assert empty.weighted_recall is None, empty
+          print("weighted recall 0.25, original recall 0.75; empty recall unknown")'
