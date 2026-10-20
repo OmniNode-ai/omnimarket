@@ -311,6 +311,7 @@ Homepage = "https://github.com/OmniNode-ai/omnimarket"
 Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
+node_landing_tlc_receipt_effect = "omnimarket.nodes.node_landing_tlc_receipt_effect"
 node_hourly_tick_effect = "omnimarket.nodes.node_hourly_tick_effect"
 node_lab_disk_growth_effect = "omnimarket.nodes.node_lab_disk_growth_effect"
 node_lab_fill_receipt_table_compute = "omnimarket.nodes.node_lab_fill_receipt_table_compute"
