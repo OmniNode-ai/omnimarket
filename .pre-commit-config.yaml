@@ -1562,6 +1562,16 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-17427: every ticket contract loads as omnibase_core's ModelTicketContract.
+      # SYNC with ci.yml "Contract Compliance Check" and contract-validation.yml.
+      - id: ticket-contract-schema
+        name: Ticket contracts load as omnibase_core ModelTicketContract (OMN-17427)
+        language: system
+        entry: uv run pytest tests/ci/test_ticket_contracts_schema_omn17427.py -q -n 0 -p no:randomly --no-cov
+        files: ^(contracts/OMN-[0-9]+\.yaml|tests/ci/test_ticket_contracts_schema_omn17427\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-20967: no Anthropic key value in a workflow. SYNC with the ci.yml
       # lint step "No Anthropic key value in a workflow (OMN-20967)".
       - id: anthropic-key-prefix-workflows
