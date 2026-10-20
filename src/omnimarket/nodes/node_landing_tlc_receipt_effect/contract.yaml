@@ -36,12 +36,6 @@ handler_routing:
       input_model: omnimarket.nodes.node_landing_tlc_receipt_effect.models.model_landing_tlc_sync_request.ModelLandingTlcSyncRequest
       output_model: omnimarket.nodes.node_landing_tlc_receipt_effect.models.model_landing_tlc_sync_result.ModelLandingTlcSyncResult
 
-entry_points:
-  onex.nodes:
-    node_landing_tlc_receipt_effect: omnimarket.nodes.node_landing_tlc_receipt_effect
-  console_scripts:
-    onex-landing-tlc-receipt: omnimarket.nodes.node_landing_tlc_receipt_effect.handlers.handler_landing_tlc_receipt_cli:main
-
 terminal_event: onex.evt.omnimarket.landing-tlc-receipt-completed.v1
 
 descriptor:
