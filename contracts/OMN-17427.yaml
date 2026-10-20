@@ -591,6 +591,11 @@ requirements:
     acceptance:
       - id: "AC110"
         statement: "AC110: the real handler git timeout parks after the declared attempt budget, the identical assertion is behaviorally red with the pre-policy handle method, and the dated deployed sanitizer capture preserves the typed reason and redacts the raw control -- falsifier: uv run pytest tests/unit/nodes/node_occ_companion_effect/test_mint_acceptance_evidence_omn15447.py -q --no-cov fails. No real bus-to-DLQ readback or accepted Done receipt is claimed."
+  - id: "req-landing-stall-liveness"
+    statement: "A stall the landing controller holds (a red cause, a red base branch, an open plugin version bump) is a typed transition that the automation-liveness watchdog judges against a bus-event overlay deadline, so a hold past its bound opens one episode, raises one alarm carrying the cause, the repository, the minutes and the last decision text, and clears when it moves."
+    acceptance:
+      - id: "AC113"
+        statement: "AC113: replaying the 2026-10-19 held cause through node_landing_stall_expectation_compute, the watchdog compute and the delivery effect opens one TRIGGER_UNANSWERED episode past 60 minutes, sends one alarm naming the cause key, the repository, the minutes and the last decision text, and clears it after the merge; the fold opens at the first hold, answers on a move, and moves a version bump only on merge or release -- falsifier: uv run pytest tests/nodes/node_landing_stall_expectation_compute -q fails"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -2331,3 +2336,19 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/nodes/node_occ_companion_effect/test_mint_acceptance_evidence_omn15447.py::test_deployed_sanitizer_capture_replays_both_controls -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-landing-stall-replay"
+    description: "Replay of the 2026-10-19 held cause through the landing stall fold, the watchdog compute and the delivery effect with a fake channel, plus the fold's transition rules and the node contract. The node and the tests are absent at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_landing_stall_expectation_compute -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC113"]
+  - id: "dod-omn17427-landing-stall-deploy-probe"
+    description: "Deploy probe. The hosted runner loads the subject commit's shared liveness model and the replay overlay fixture and checks that bus-event is an event-triggered kind whose correlation deadline the overlay accepts. No broker, credential or live runtime; this checks the artifact and does not attest a live deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python -c \"from pathlib import Path; from omnimarket.models.liveness.model_automation_liveness import EVENT_TRIGGER_KINDS, EnumAutomationTriggerKind as K, load_automation_liveness_overlay as L; assert K.BUS_EVENT in EVENT_TRIGGER_KINDS; o = L(Path('tests/fixtures/automation_liveness/replay_2026_10_19/overlay.yaml')); assert {e.correlation.answer_deadline_seconds for e in o.processes} == {3600, 5400}\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC113"]
