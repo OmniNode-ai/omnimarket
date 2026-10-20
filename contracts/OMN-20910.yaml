@@ -160,12 +160,16 @@ dod_evidence:
     description: "Run the checked-out register-tenant-key CLI in a disposable container. With no environment broker, its declared host lane must be opened and receive the credential event; an environment broker and a missing or unopenable lane must retain their expected behavior. The hosted runner needs Docker and the checkout, without access to a lab broker or lane containers."
     source: "manual"
     checks:
+      # python3.13-bookworm (not -slim) keeps git for the omnibase-infra git source. The image pull runs as
+      # its own check, on its own 30s budget. The test run mounts the host's uv over the image's uv 0.9.30,
+      # so the container reads the uv cache the hosted verifier synced uv.lock into with the uv version that
+      # wrote it. On CI at 9cd73fcaf the -slim image's uv 0.9.30 run exited 1 with no pytest output.
       - check_type: "command"
-        # uv 0.9.30-python3.13-bookworm-slim (68 MB): the 405 MB non-slim image's cold pull alone ran this
-        # check past the 30s per-check budget. The mounted uv cache, which the hosted verifier already
-        # synced uv.lock into, already holds the locked omnibase-infra git checkout, so uv needs no git here.
+        check_value: "docker pull -q ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
         check_value: |-
-          env docker run --rm --user "$(id -u):$(id -g)" -v "${PWD}:/workspace:ro" -w /workspace -v "$(uv cache dir):/uv-cache" -e UV_LINK_MODE=copy -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0="*" -e PYTHONDONTWRITEBYTECODE=1 -e COMPOSE_PROJECT_NAME=landing-l10892-lab -e UV_PROJECT_ENVIRONMENT=/tmp/register-key-venv -e UV_CACHE_DIR=/uv-cache ghcr.io/astral-sh/uv@sha256:531f855bda2c73cd6ef67d56b733b357cea384185b3022bd09f05e002cd144ca uv run --frozen pytest tests/unit/cli/test_omn20910_register_tenant_key_lane_bus.py -q -p no:randomly -p no:cacheprovider --no-cov --basetemp=/tmp/register-key-tests
+          env docker run --rm --user "$(id -u):$(id -g)" -v "${PWD}:/workspace:ro" -w /workspace -v "$(uv cache dir):/uv-cache" -v "$(command -v uv):/usr/local/bin/uv:ro" -e UV_LINK_MODE=copy -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0="*" -e PYTHONDONTWRITEBYTECODE=1 -e COMPOSE_PROJECT_NAME=landing-l10892-lab -e UV_PROJECT_ENVIRONMENT=/tmp/register-key-venv -e UV_CACHE_DIR=/uv-cache ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a uv run --frozen pytest tests/unit/cli/test_omn20910_register_tenant_key_lane_bus.py -q -p no:randomly -p no:cacheprovider --no-cov --basetemp=/tmp/register-key-tests
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20910-ac9-compact-strict-parser"
     description: "compact_strict fails closed on every listed case; a mandatory R finding is critical; v1 replies pass unchanged."
@@ -252,12 +256,16 @@ dod_evidence:
     description: "Run the checked-out native Messages tests in a disposable container: the call effect posts the block layout with cache breakpoints, the key in x-api-key, the typed stop_reason and cache usage, and a call naming no plan keeps the chat shape. No key, no network and no lab service."
     source: "manual"
     checks:
+      # python3.13-bookworm (not -slim) keeps git for the omnibase-infra git source. The image pull runs as
+      # its own check, on its own 30s budget. The test run mounts the host's uv over the image's uv 0.9.30,
+      # so the container reads the uv cache the hosted verifier synced uv.lock into with the uv version that
+      # wrote it. On CI at 9cd73fcaf the -slim image's uv 0.9.30 run exited 1 with no pytest output.
       - check_type: "command"
-        # uv 0.9.30-python3.13-bookworm-slim (68 MB): the 405 MB non-slim image's cold pull alone ran this
-        # check past the 30s per-check budget. The mounted uv cache, which the hosted verifier already
-        # synced uv.lock into, already holds the locked omnibase-infra git checkout, so uv needs no git here.
+        check_value: "docker pull -q ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
         check_value: |-
-          env docker run --rm --user "$(id -u):$(id -g)" -v "${PWD}:/workspace:ro" -w /workspace -v "$(uv cache dir):/uv-cache" -e UV_LINK_MODE=copy -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0="*" -e PYTHONDONTWRITEBYTECODE=1 -e UV_PROJECT_ENVIRONMENT=/tmp/native-messages-venv -e UV_CACHE_DIR=/uv-cache ghcr.io/astral-sh/uv@sha256:531f855bda2c73cd6ef67d56b733b357cea384185b3022bd09f05e002cd144ca uv run --frozen pytest tests/test_omn20910_native_messages_protocol.py -q -p no:randomly -p no:cacheprovider --no-cov --basetemp=/tmp/native-messages-tests
+          env docker run --rm --user "$(id -u):$(id -g)" -v "${PWD}:/workspace:ro" -w /workspace -v "$(uv cache dir):/uv-cache" -v "$(command -v uv):/usr/local/bin/uv:ro" -e UV_LINK_MODE=copy -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0="*" -e PYTHONDONTWRITEBYTECODE=1 -e UV_PROJECT_ENVIRONMENT=/tmp/native-messages-venv -e UV_CACHE_DIR=/uv-cache ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a uv run --frozen pytest tests/test_omn20910_native_messages_protocol.py -q -p no:randomly -p no:cacheprovider --no-cov --basetemp=/tmp/native-messages-tests
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20910-ac8-defect-catalog-node"
     description: "The defect-code catalog node validates and renders the packaged catalog; every refusal has a positive control."
