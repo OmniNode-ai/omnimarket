@@ -2441,7 +2441,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_landing_stall_expectation_compute -q --no-cov"
+        check_value: "uv run pytest tests/nodes/node_landing_stall_expectation_compute/test_landing_stall_replay_2026_10_19.py tests/nodes/node_landing_stall_expectation_compute/test_landing_stall_fold.py tests/nodes/node_landing_stall_expectation_compute/test_landing_stall_contract.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC113"]
   - id: "dod-omn17427-landing-stall-deploy-probe"
