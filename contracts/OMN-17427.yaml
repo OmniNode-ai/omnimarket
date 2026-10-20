@@ -2636,7 +2636,7 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_tier_source_binding.py -q -n 0 -p no:randomly --no-cov -k test_zero_argument_orchestrator_binds_the_contract_sources"
-  - id: "dod-omn17427-ac151-in-process-evidence-trace-timing"
+  - id: "dod-omn17427-ac151-in-process-trace-timing"
     description: "The in-process evidence terminal carries the command's trace_id, the measured queue wait and the port's measured execution time onto the delegation_events row, through _project_evidence and through dispatch itself, and the handler passes the keywords only to a port that declares them. At the merge base the test module fails to collect."
     source: "manual"
     checks:
@@ -2644,7 +2644,7 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_in_process_evidence_trace_and_timing_omn19448.py -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC151"]
-  - id: "dod-omn17427-in-process-evidence-trace-timing-deploy-probe"
+  - id: "dod-omn17427-in-process-trace-timing-deploy-probe"
     description: "Deploy probe. In the checked-out package, LocalDelegationDispatchPort.dispatch with a patched backend and transport writes a local delegation_events row carrying the given trace_id and queue_wait_ms and an execution_ms. It fails at the merge base, where the test module fails to collect, and needs only uv and this checkout on the hosted runner; it does not attest a live deployment."
     source: "manual"
     checks:
