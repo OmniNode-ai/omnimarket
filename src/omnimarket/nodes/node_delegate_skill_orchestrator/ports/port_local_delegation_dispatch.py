@@ -55,7 +55,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal, TypedDict, cast
 from uuid import UUID
 
 import yaml
@@ -320,6 +320,8 @@ from omnimarket.routing.delegation_backend_resolution import (
 from omnimarket.routing.local_byok_route import (
     next_chosen_model_byok_route,
     next_registered_byok_route,
+    registered_byok_routes,
+    registered_byok_tier_name,
     resolve_pinned_byok_route,
     substitute_any_registered_byok_route,
     substitute_local_byok_route,
@@ -328,6 +330,11 @@ from omnimarket.routing.roi_overlay import (
     ModelRoutingRoiOverlay,
     resolve_roi_overlay,
 )
+
+
+class _ByokRoutingKwargs(TypedDict, total=False):
+    byok_backends: tuple[ModelResolvedDelegationBackend, ...]
+
 
 logger = logging.getLogger(__name__)
 
@@ -1957,6 +1964,7 @@ class LocalDelegationDispatchPort:
                 next_customer_key: ModelResolvedDelegationBackend | None = None
                 if (
                     customer_route
+                    and current_tier != registered_byok_tier_name()
                     and may_move_on
                     and transport_sibling is None
                     and escalated_backend is None
@@ -2699,6 +2707,7 @@ class LocalDelegationDispatchPort:
                 and pinned_backend_id is None
                 and escalation_count < max_escalations
                 and _is_customer_byok_route(backend)
+                and current_tier != registered_byok_tier_name()
             ):
                 next_backend = next_registered_byok_route(
                     backend, tried_backend_ids=frozenset(excluded_backend_refs)
@@ -2991,15 +3000,20 @@ class LocalDelegationDispatchPort:
         """
         if backend_id is not None:
             return resolve_delegation_backend(task_type, backend_id=backend_id)
+        byok_routes = registered_byok_routes(quota_state=quota_state)
+        byok_kwargs: _ByokRoutingKwargs = (
+            {"byok_backends": byok_routes} if byok_routes else {}
+        )
         first_tier = first_eligible_tier(
             task_type,
             roi_overlay=roi_overlay,
             correlation_id=spread_key,
             quota_state=quota_state,
+            **byok_kwargs,
         )
         if first_tier is not None:
             backend_id = backend_id_for_tier(
-                first_tier, task_type, spread_key=spread_key
+                first_tier, task_type, spread_key=spread_key, **byok_kwargs
             )
             blocked = quota_blocked_backend_refs(quota_state)
             if backend_id is not None and backend_id in blocked:
@@ -3027,6 +3041,10 @@ class LocalDelegationDispatchPort:
                 )
                 if past_block is not None:
                     return past_block
+            if first_tier == registered_byok_tier_name() and backend_id is not None:
+                return next(
+                    route for route in byok_routes if route.backend_id == backend_id
+                )
             if backend_id is not None:
                 try:
                     return resolve_delegation_backend(task_type, backend_id=backend_id)
@@ -3094,6 +3112,16 @@ class LocalDelegationDispatchPort:
         ``model_id`` is in the set, counting it as tried, so the quality-gate
         caller never re-draws the model it just rejected on another host.
         """
+        if current_tier == registered_byok_tier_name():
+            return next(
+                (
+                    route
+                    for route in registered_byok_routes(quota_state=quota_state)
+                    if route.backend_id not in excluded_backend_refs
+                    and route.model_id not in excluded_model_ids
+                ),
+                None,
+            )
         tried: set[str] = set(excluded_backend_refs)
         while True:
             sibling_ref = sibling_backend_available_in_tier(
@@ -3200,6 +3228,14 @@ class LocalDelegationDispatchPort:
         excluded_backend_refs = excluded_backend_refs | quota_blocked_backend_refs(
             quota_state
         )
+        byok_routes = tuple(
+            route
+            for route in registered_byok_routes(quota_state=quota_state)
+            if route.backend_id not in excluded_backend_refs
+        )
+        byok_kwargs: _ByokRoutingKwargs = (
+            {"byok_backends": byok_routes} if byok_routes else {}
+        )
         next_tier = next_eligible_tier(
             current_tier,
             excluded_tiers,
@@ -3207,6 +3243,7 @@ class LocalDelegationDispatchPort:
             roi_overlay=roi_overlay,
             excluded_backend_refs=excluded_backend_refs,
             correlation_id=spread_key,
+            **byok_kwargs,
         )
 
         def stopped(reason: str) -> None:
@@ -3228,7 +3265,9 @@ class LocalDelegationDispatchPort:
             f"{NO_HIGHER_TIER_REASON_TOKEN}: task_class='{task_type}' "
             f"current_tier='{current_tier}'; next tier '{next_tier}'"
         )
-        backend_id = backend_id_for_tier(next_tier, task_type, spread_key=spread_key)
+        backend_id = backend_id_for_tier(
+            next_tier, task_type, spread_key=spread_key, **byok_kwargs
+        )
         if backend_id is None:
             stopped(f"{stop_prefix} selects no backend for the task class")
             return None
@@ -3248,6 +3287,10 @@ class LocalDelegationDispatchPort:
             )
             stopped(f"{stop_prefix} re-selects already-tried backend '{backend_id}'")
             return None
+        if next_tier == registered_byok_tier_name():
+            return next(
+                route for route in byok_routes if route.backend_id == backend_id
+            )
         try:
             escalated = resolve_delegation_backend(task_type, backend_id=backend_id)
         except RuntimeError:

@@ -143,3 +143,10 @@ dod_evidence:
         check_value: |-
           sh -c 'docker run --rm -v "${PWD}:/workspace:ro" -w /workspace postgres:16-alpine sh -c "set -eu; grep -Fq EnumDelegationTerminalFailureCause.REFUSED_BEFORE_DISPATCH src/omnimarket/nodes/node_delegate_skill_orchestrator/handlers/handler_delegate_skill.py"'
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19448-trace-id-lab-readback"
+    description: "Lab readback, 2026-10-20T03:03Z, on the lab dev lane database omnidash_analytics (delegation_events) on the lab dev lane host, after the delegate-skill trace_id writer fix merged as omnimarket efba3ec67 (2026-10-19T11:32:06Z). The first row storing a trace_id was written at 2026-10-19T12:31:43Z; before it no row in the readback window from 2026-10-19T06:00Z carried one. Window 2026-10-19T12:31:43Z to 2026-10-20T03:00Z: 3556 rows, 499 with trace_id, 498 with queue_wait_ms and every one of those 498 with trace_id, 437 with operational_outcome (400 of them with trace_id). The 3057 rows without trace_id also carry no queue_wait_ms: they are terminals that measured no timing, among them 1971 GLM rows (glm-5.3 843, glm-5.3-flash 1128), none with an operational_outcome, and 1038 Qwen3.8-27B rows, 1023 of them with no operational_outcome. The bus was not read (the dev broker requires SASL), so whether those terminals carried a trace on the wire is unverified. Failed rows in the window: 348, each with a terminal_failure_cause; the last failed row with a NULL cause was written at 2026-10-19T07:59:47Z, before the credential-refusal cause fix merged as b483d4369 (2026-10-19T08:25:32Z). The deployed delegation projection writer image was built from omnimarket a453656d0 at 2026-10-20T02:29:17Z. The check re-runs the trace_id and column tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_delegate_skill_trace_id_omn19448.py tests/unit/delegation/test_terminal_columns_omn19448.py tests/unit/delegation/test_credential_refusal_cause_derived_omn19448.py -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"

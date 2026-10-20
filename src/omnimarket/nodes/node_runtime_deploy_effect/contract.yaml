@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: runtime_deploy_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+description: >-
+  Operator host deployment effect: stages an explicit omnibase_infra checkout,
+  builds and optionally recreates its lane, preserving preflights, host locks,
+  rollback, migration fences, image provenance and RT-6 readback. Existing market
+  redeploy nodes retain orchestration and signed deploy-agent topic ownership.
+input_model:
+  name: ModelRuntimeDeployRequest
+  module: omnimarket.nodes.node_runtime_deploy_effect.models.model_runtime_deploy_request
+output_model:
+  name: ModelRuntimeDeployResult
+  module: omnimarket.nodes.node_runtime_deploy_effect.models.model_runtime_deploy_result
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: runtime.deploy
+      topic: onex.cmd.omnimarket.runtime-deploy-requested.v1
+      message_category: command
+      handler:
+        name: HandlerRuntimeDeploy
+        module: omnimarket.nodes.node_runtime_deploy_effect.handlers.handler_runtime_deploy
+      input_model: omnimarket.nodes.node_runtime_deploy_effect.models.model_runtime_deploy_request.ModelRuntimeDeployRequest
+      output_model: omnimarket.nodes.node_runtime_deploy_effect.models.model_runtime_deploy_result.ModelRuntimeDeployResult
+terminal_event: onex.evt.omnimarket.runtime-deploy-completed.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.runtime-deploy-requested.v1]
+  publish_topics: [onex.evt.omnimarket.runtime-deploy-completed.v1]
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.runtime-deploy-requested.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.runtime-deploy-completed.v1
+descriptor:
+  node_archetype: effect
+  purity: side_effect
+  idempotent: false
+  timeout_ms: 3600000
+  runtime_profiles: [effects]
+  side_effects:
+    - stages host deployment trees and updates the lane registry
+    - builds images and optionally recreates Docker Compose services
+    - performs migration and runtime health/provenance readback
+metadata:
+  deployment_driver: "${request.repository_root}/src/omnibase_infra/handlers/handler_runtime_deploy.sh"
+  ticket: OMN-20687
+  transport_type: event_bus
+  host_bound: true
+  in_process_reason: >-
+    Operator callers own a local checkout, operator env, host lock and Docker
+    daemon. Their command and correlated terminal traverse the canonical core
+    in-memory bus on that host. No deploy-agent topic is consumed or bypassed.

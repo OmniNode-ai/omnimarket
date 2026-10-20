@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Frozen seam fixture (OMN-17427): one overlay entry of trigger kind bus-event.
+# Neutral names only; real processes live in a private overlay.
+schema_version: automation-liveness-overlay/v1
+processes:
+- process_id: host-a/example-stall
+  owner_repo: example-owner/example-repo
+  host: host-a
+  trigger:
+    kind: bus-event
+    native_id: example stall transition topic
+  alarm_deadline_seconds: 2400
+  max_runtime_seconds: 1800
+  emitter: self
+  run_record: per-run
+  real_work: subject moved
+  demand: none
+  correlation:
+    trigger_event: subject held
+    answer_event: subject moved
+    match_key: repository and subject key
+    answer_deadline_seconds: 1800
+  positive_control:
+    kind: replay_fixture
+    ref: replay/example-stall
+  state: active

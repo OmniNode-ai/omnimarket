@@ -87,6 +87,10 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # to no topic and has no onex.nodes entry point until the registration
     # hand-over (nodes-to-market plan step B).
     "node_lab_fill_selection_compute",
+    # OMN-20388: the public cost estimator's engine. onex-api calls it in
+    # process on each upload, so it subscribes to no topic and has no
+    # onex.nodes entry point.
+    "node_prompt_cost_estimate_compute",
     # OMN-20712: hosted from the operator tooling repository, whose copy is
     # still registered; called in process by its host scheduler, so it subscribes
     # to no topic and has no onex.nodes entry point until the registration
