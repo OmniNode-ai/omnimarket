@@ -2661,7 +2661,7 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_compaction_receipts_fold.py -q --no-cov -k 'dominates or mismatch or conflict or model_outputs'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC130"]
-  - id: "dod-omn17427-compaction-receipts-fold-order-independence"
+  - id: "dod-omn17427-receipts-fold-order-independence"
     description: "The receipts fold is a function of the set received: shuffles and duplicates do not change it, and a later boundary does not revise an earlier activation."
     source: "manual"
     checks:
