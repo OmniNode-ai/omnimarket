@@ -207,6 +207,9 @@ dod_evidence:
     description: "Resolve the installed admission handler and input model from its runtime contract, load its server-owned policy and persistent database, admit and dispatch once, then refuse further spend after reconstructing the handler. Uses temporary storage and no provider call."
     source: "manual"
     checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_claude_review_budget_reducer/test_golden_chain_review_budget_admission.py -q -n 0 -p no:randomly --no-cov -k contract_dispatch"
+        cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
         check_value: "uv run pytest tests/unit/nodes/node_claude_review_budget_reducer/test_golden_chain_review_budget_admission.py -q -n 0 -p no:randomly --no-cov -k contract_dispatch"
         cwd: "${OMNI_HOME}/omnimarket"
