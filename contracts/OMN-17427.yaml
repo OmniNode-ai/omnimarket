@@ -548,6 +548,11 @@ requirements:
     acceptance:
       - id: "AC107"
         statement: "AC107: with omnibase-core locked at 0.47.48, task_class_contracts.v1.yaml declares extraction_proposer, tail_summary and context_selection as internal classes that no prompt selects, with tier_order local alone and max_escalations 0, the contract equals the core wire task_type Literal, and the shipped profiles whose roles are all declared resolve with TASK_CLASS_CONTRACT_PATH unset -- falsifier: uv run pytest tests/nodes/node_context_profile_resolver_effect/test_model_role_routing.py tests/test_omn17940_refusal_over_every_task_class.py -q fails at the merge base"
+  - id: "req-pinned-pack-case-scope"
+    statement: "A pinned context-pack build names its replay case to the tier sources as case:<manifest_case>, the one pinned mode scope the session source reads, and sends no session: scope beside it, so the pinned session read is reachable from the orchestrator."
+    acceptance:
+      - id: "AC151"
+        statement: "AC151: in pinned mode HandlerContextPackOrchestrator sends every tier source the scope case:<manifest_case> and no session: or manifest_case: scope, live mode still sends session:<session_id> and no case: scope, and HandlerSessionContextSources given either scope set does not refuse it SCOPE_INVALID -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -k 'pinned_build or live_build or session_source_accepts' fails at the merge base, where the pinned build sends session: and manifest_case: and the session source refuses it SCOPE_INVALID"
   - id: "req-anthropic-protocol-variant-registration"
     statement: "An explicitly selected protocol variant does not trigger billing-plan detection during ordinary Anthropic credential registration."
     acceptance:
@@ -823,6 +828,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC105: correct causal answers pass step_by_step_explanation and non-explanations are still vetoed."
     command: "uv run pytest tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py -q"
+  - kind: "tests"
+    description: "AC151: a pinned context-pack build sends the case: scope the session source reads."
+    command: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -k 'pinned_build or live_build or session_source_accepts'"
   - kind: "tests"
     description: "AC140: the adapter mints an invocation_id per invocation and the compaction verdict installs only a matching, hash-verified reply for that invocation."
     command: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_verdict.py -q"
@@ -2259,6 +2267,21 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/task_class_contracts.v1.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys, yaml; classes = yaml.safe_load(sys.stdin.read())["task_classes"]; assert all(classes[name]["gateway_exposure"] == "internal" and classes[name]["escalation_policy"]["tier_order"] == ["local"] for name in ("extraction_proposer", "tail_summary", "context_selection")); print("context-pack model roles deploy probe: PASS")'
+  - id: "dod-omn17427-ac151-pinned-pack-case-scope"
+    description: "A pinned context-pack build sends case:<manifest_case> and no session: or manifest_case: scope, a live build still sends session:, and the session source accepts both scope sets. At the merge base the pinned tests fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -n 0 -p no:randomly --no-cov -k 'pinned_build or live_build or session_source_accepts'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC151"]
+  - id: "dod-omn17427-pinned-pack-case-scope-deploy-probe"
+    description: "Deploy probe. In the checked-out package, a pinned build's scopes pass the session source's mode-scope check. It fails at the merge base, where the session source refuses them SCOPE_INVALID, and needs only uv and this checkout on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -n 0 -p no:randomly --no-cov -k 'test_the_session_source_accepts_the_scopes_the_orchestrator_sends and pinned'"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-anthropic-models-add"
     description: "The existing shard-17 regressions validate Anthropic keys and preserve model discovery when the catalogue also offers the native protocol. Four of these tests fail before this fix."
     source: "manual"
