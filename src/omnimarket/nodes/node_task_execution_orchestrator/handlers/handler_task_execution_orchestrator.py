@@ -137,6 +137,7 @@ _DelegateTaskType = Literal[
     "planning",
     "review",
     "summarization",
+    "context_compaction",
     "agent_delegation",
     "escalation",
     "documentation",

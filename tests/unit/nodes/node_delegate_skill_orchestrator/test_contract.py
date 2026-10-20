@@ -155,6 +155,7 @@ def test_contract_declares_allowed_task_types() -> None:
         "planning",
         "review",
         "summarization",
+        "context_compaction",
         "agent_delegation",
         "escalation",
         "documentation",

@@ -91,6 +91,7 @@ class ModelDelegationRequest(BaseModel):
         "planning",
         "review",
         "summarization",
+        "context_compaction",
         "agent_delegation",
         "escalation",
         "documentation",

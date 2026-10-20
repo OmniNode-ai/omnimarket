@@ -782,6 +782,10 @@ execution_budgets:
   review: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
   code_review: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
   summarization: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
+  # OMN-17427: provisional, the default budget. TA.12 sets the
+  # context_compaction ceiling from its measured p95 plus margin; no
+  # measurement exists yet.
+  context_compaction: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
   agent_delegation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
   escalation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
   brief_drafting: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
@@ -2264,6 +2268,42 @@ task_classes:
         - local
         - cheap_frontier
         - cheap_cloud
+  # OMN-17427: context service plan TA.11. The model-written section of a
+  # compaction package (the tail summary) is routed through this class.
+  # Internal: the compaction orchestrator names it; it is never resolved from
+  # a prompt.
+  context_compaction:
+    # OMN-17427: no measurement recorded yet, so the class keeps the lab-first default.
+    lab_rubric: {verdict: unmeasured}
+    complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
+    gateway_exposure: internal
+    output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
+    selection: {priority: 0, phrases: []}
+    required_capabilities: [natural_language_generation]
+    pricing_ceiling_per_1k_tokens: 0.002
+    latency_sla_p99_ms: 120000
+    cloud_routing_policy: allowed
+    definition_of_done:
+      deterministic:
+        - response_non_empty
+      heuristic:
+        - no_refusal
+        - semantic_adequacy
+        - identifiers_grounded
+        - numbers_grounded
+        - claims_grounded
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+    # The packaged ladder is the local tier alone: a cloud rung here would be a
+    # new deployment fact (deployment-fact-gate), so a deployment that routes
+    # compaction summaries past the lab names its ladder in its overlay.
+    escalation_policy:
+      max_escalations: 0
+      tier_order: [local]
   agent_delegation:
     complexity_contract: {output_kind: structured, verification: exact_match, execution_required: false}
     gateway_exposure: internal
