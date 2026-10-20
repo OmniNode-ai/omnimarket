@@ -1,0 +1,162 @@
+{
+  "source_sha256": "b22ad60179f193800ee7b4baee74295f29ac760d9ded1e7c51508d2a4ddea9bd",
+  "source_repo_head": "2041da5548fcfabf0f3ab225d6c81f194b804104",
+  "cases": [
+    {
+      "name": "bound",
+      "input": {
+        "resources": [
+          "../base"
+        ],
+        "patches": [
+          {
+            "path": "delete-cloud.yaml"
+          },
+          {
+            "target": {
+              "kind": "ConfigMap",
+              "name": "onex-runtime-config"
+            },
+            "patch": "- op: replace\n  path: /data/ONEX_SECRET_RESOLVER_CONFIG_JSON\n  value: '{\"mappings\": [{\"logical_name\": \"env-kept\", \"source\": {\"source_type\": \"env\",\n    \"source_path\": \"ENV\"}}, {\"logical_name\": \"file-yields\", \"source\": {\"source_type\":\n    \"file\", \"source_path\": \"/ci\"}}]}'\n"
+          }
+        ]
+      },
+      "namespaces": [
+        {
+          "namespace": "tenant",
+          "source_type": "infisical",
+          "path_template": "/tenant/{ref}"
+        }
+      ],
+      "mappings": [
+        {
+          "logical_name": "env-kept",
+          "source": {
+            "source_type": "infisical",
+            "source_path": "/dev/onex-runtime/env-kept"
+          }
+        },
+        {
+          "logical_name": "file-yields",
+          "source": {
+            "source_type": "infisical",
+            "source_path": "/dev/onex-runtime/file-yields"
+          }
+        },
+        {
+          "logical_name": "store-added",
+          "source": {
+            "source_type": "infisical",
+            "source_path": "/dev/onex-runtime/store-added"
+          }
+        }
+      ],
+      "output": {
+        "resources": [
+          "../base"
+        ],
+        "patches": [
+          {
+            "path": "delete-cloud.yaml"
+          },
+          {
+            "target": {
+              "kind": "ConfigMap",
+              "name": "onex-runtime-config"
+            },
+            "patch": "- op: replace\n  path: /data/ONEX_SECRET_RESOLVER_CONFIG_JSON\n  value: '{\"mappings\":[{\"logical_name\":\"env-kept\",\"source\":{\"source_type\":\"env\",\"source_path\":\"ENV\"}},{\"logical_name\":\"file-yields\",\"source\":{\"source_type\":\"infisical\",\"source_path\":\"/dev/onex-runtime/file-yields\"}},{\"logical_name\":\"store-added\",\"source\":{\"source_type\":\"infisical\",\"source_path\":\"/dev/onex-runtime/store-added\"}}],\"namespaces\":[{\"namespace\":\"tenant\",\"source_type\":\"infisical\",\"path_template\":\"/tenant/{ref}\"}]}'\n"
+          },
+          {
+            "target": {
+              "version": "v1",
+              "kind": "ConfigMap",
+              "name": "onex-runtime-config"
+            },
+            "patch": "- op: replace\n  path: /data/INFISICAL_ADDR\n  value: \"http://127.0.0.1:8080\"\n- op: replace\n  path: /data/INFISICAL_ENVIRONMENT_SLUG\n  value: \"dev\""
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "name": "missing-resolver",
+      "input": {
+        "patches": []
+      },
+      "namespaces": [
+        {
+          "namespace": "tenant",
+          "source_type": "infisical",
+          "path_template": "/tenant/{ref}"
+        }
+      ],
+      "mappings": [
+        {
+          "logical_name": "env-kept",
+          "source": {
+            "source_type": "infisical",
+            "source_path": "/dev/onex-runtime/env-kept"
+          }
+        },
+        {
+          "logical_name": "file-yields",
+          "source": {
+            "source_type": "infisical",
+            "source_path": "/dev/onex-runtime/file-yields"
+          }
+        },
+        {
+          "logical_name": "store-added",
+          "source": {
+            "source_type": "infisical",
+            "source_path": "/dev/onex-runtime/store-added"
+          }
+        }
+      ],
+      "output": {
+        "patches": []
+      },
+      "error": "the kustomization declares no op replacing /data/ONEX_SECRET_RESOLVER_CONFIG_JSON on onex-runtime-config. This script edits that op rather than adding a second one, so its absence is a change to the overlay that has to be understood, not routed around."
+    },
+    {
+      "name": "invalid-patches",
+      "input": {
+        "patches": {}
+      },
+      "namespaces": [
+        {
+          "namespace": "tenant",
+          "source_type": "infisical",
+          "path_template": "/tenant/{ref}"
+        }
+      ],
+      "mappings": [
+        {
+          "logical_name": "env-kept",
+          "source": {
+            "source_type": "infisical",
+            "source_path": "/dev/onex-runtime/env-kept"
+          }
+        },
+        {
+          "logical_name": "file-yields",
+          "source": {
+            "source_type": "infisical",
+            "source_path": "/dev/onex-runtime/file-yields"
+          }
+        },
+        {
+          "logical_name": "store-added",
+          "source": {
+            "source_type": "infisical",
+            "source_path": "/dev/onex-runtime/store-added"
+          }
+        }
+      ],
+      "output": {
+        "patches": {}
+      },
+      "error": "the kustomization's `patches` is not a list; refusing to edit it rather than replacing the patches this lane depends on"
+    }
+  ]
+}

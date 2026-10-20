@@ -16,8 +16,6 @@ publishes ``fallback`` with the failure class and the command's
 
 from __future__ import annotations
 
-import hashlib
-import json
 from collections.abc import Callable
 from uuid import UUID, uuid4
 
@@ -34,6 +32,7 @@ from omnimarket.models.context_compaction import (
     ModelContextCompactionPrepared,
     ModelContextCompactionRequested,
     ModelContextCompactionResult,
+    installed_messages_hash,
 )
 from omnimarket.models.context_pack_render.model_context_pack_render_message import (
     ModelContextPackRenderMessage,
@@ -55,17 +54,6 @@ class _UnwiredPackBuild:
         return ModelContextCompactionBuildOutcome(
             failure_class=EnumContextCompactionFailureClass.PACK_BUILDER_UNAVAILABLE
         )
-
-
-def installed_messages_hash(messages: tuple[ModelContextPackRenderMessage, ...]) -> str:
-    """sha256 over the canonical JSON of the role/text list, as the renderer hashes a body."""
-    raw = json.dumps(
-        [m.model_dump() for m in messages],
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    )
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def _with_activation_line(
@@ -197,4 +185,4 @@ class HandlerContextCompactionOrchestrator:
         )
 
 
-__all__ = ["HandlerContextCompactionOrchestrator", "installed_messages_hash"]
+__all__ = ["HandlerContextCompactionOrchestrator"]

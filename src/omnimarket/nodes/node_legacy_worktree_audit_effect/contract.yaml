@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Legacy Worktree Audit Effect (OMN-19740, OMN-20563)
+#
+# Classifies every git worktree under a root directory and writes a JSON and a
+# markdown ledger to an output directory. Reached by the onex-legacy-worktree-audit
+# console script on the host that holds the worktrees; it declares no bus topics,
+# so no shared runtime attaches it.
+name: "node_legacy_worktree_audit_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  Classifies every git worktree under a root directory (SAFE_REMOVE_MERGED, SAFE_REMOVE_GONE,
+  PUSH_THEN_REMOVE, PUSH_NEW_BRANCH, COMMIT_AND_REVIEW, DETACHED_REVIEW, ACTIVE_PR_LEAVE,
+  UNCERTAIN) and writes a JSON and a markdown ledger to an output directory.
+input_model:
+  name: "ModelLegacyWorktreeAuditRequest"
+  module: "omnimarket.nodes.node_legacy_worktree_audit_effect.models.model_legacy_worktree_audit_request"
+  description: "The worktrees root and the output directory (root, out_dir)."
+output_model:
+  name: "ModelLegacyWorktreeAuditResult"
+  module: "omnimarket.nodes.node_legacy_worktree_audit_effect.models.model_legacy_worktree_audit_result"
+  description: "The ledger paths, the worktree total and the count per class."
+handler:
+  module: "omnimarket.nodes.node_legacy_worktree_audit_effect.handlers.handler_legacy_worktree_audit"
+  class: "HandlerLegacyWorktreeAudit"
+  input_model: "omnimarket.nodes.node_legacy_worktree_audit_effect.models.model_legacy_worktree_audit_request.ModelLegacyWorktreeAuditRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_legacy_worktree_audit_effect.handlers.handler_legacy_worktree_audit:HandlerLegacyWorktreeAudit"
+  handlers:
+    - operation: "audit"
+      handler:
+        name: "HandlerLegacyWorktreeAudit"
+        module: "omnimarket.nodes.node_legacy_worktree_audit_effect.handlers.handler_legacy_worktree_audit"
+      input_model: "omnimarket.nodes.node_legacy_worktree_audit_effect.models.model_legacy_worktree_audit_request.ModelLegacyWorktreeAuditRequest"
+      output_model: "omnimarket.nodes.node_legacy_worktree_audit_effect.models.model_legacy_worktree_audit_result.ModelLegacyWorktreeAuditResult"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  side_effects:
+    - runs git in every worktree under the root
+    - lists pull requests per repository with the gh CLI
+    - writes legacy-worktree-ledger.json and legacy-worktree-ledger.md under the output directory
+metadata:
+  transport_type: cli
+  ticket: OMN-20563
+  description: "Classify every git worktree under a root and write the audit ledger"
+  author: "OmniNode Team"
+  origin_tickets: [OMN-19740]
+  tags:
+    - "effect"
+    - "worktree"
+    - "audit"

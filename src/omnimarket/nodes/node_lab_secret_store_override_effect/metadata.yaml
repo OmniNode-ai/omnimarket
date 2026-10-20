@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_secret_store_override_effect
+version: "0.1.0"
+description: "Effect: bind an ephemeral lab kustomization to its opt-in secret store, preserving committed patches and restoring the base namespaces and store mappings. Runs in the caller's own process because its input is a local render path; never attached by a shared runtime."
+pack: operator_tooling
+node_role: effect
+display_name: "Lab Secret Store Override Effect"
+omnibase_core_compat: ">=0.47.31,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_lab_secret_store_override_effect: "omnimarket.nodes.node_lab_secret_store_override_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+license: "MIT"
+authors: ["OmniNode Team"]
+tags: ["effect", "lab", "secret-store"]

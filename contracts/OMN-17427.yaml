@@ -492,6 +492,11 @@ requirements:
     acceptance:
       - id: "AC81"
         statement: "AC81: a check-run whose run id comes only from check_suite.workflow_run.id or check_suite.workflow_run_id is exempt when that run's event is a known non-pull-request event and swept otherwise, and an empty, invalid-JSON or non-list workflow-runs file still sweeps an unregistered red to a failing main() verdict -- falsifier: the focused check-suite provenance and unreadable-index tests fail against the dev gate"
+  - id: "req-rehome-lab-secret-store-and-worktree-audit"
+    statement: "The lab secret-store override and the legacy worktree audit run as omnimarket nodes with their behaviour, refusals and console scripts unchanged."
+    acceptance:
+      - id: "AC107"
+        statement: "AC107: the lab secret-store override reproduces its frozen legacy transform, refuses blank arguments and a non-list patches value without writing, and declares no event bus block; the legacy worktree audit classifies worktrees as before through the onex-legacy-worktree-audit console script -- falsifier: uv run pytest tests/nodes/node_lab_secret_store_override_effect/test_lab_secret_store_override_node.py tests/nodes/node_legacy_worktree_audit_effect/test_legacy_worktree_audit.py tests/nodes/node_legacy_worktree_audit_effect/test_legacy_worktree_audit_characterization.py -q"
   - id: "req-rehome-lab-nodes-slice-3"
     statement: "The hourly tick effect, the lab disk growth effect and the lab fill receipt table compute live in the portable node package with their handlers, contracts and bus topics."
     acceptance:
@@ -605,6 +610,11 @@ requirements:
     acceptance:
       - id: "AC110"
         statement: "AC110: the real handler git timeout parks after the declared attempt budget, the identical assertion is behaviorally red with the pre-policy handle method, and the dated deployed sanitizer capture preserves the typed reason and redacts the raw control -- falsifier: uv run pytest tests/unit/nodes/node_occ_companion_effect/test_mint_acceptance_evidence_omn15447.py -q --no-cov fails. No real bus-to-DLQ readback or accepted Done receipt is claimed."
+  - id: "req-compaction-adapter-invocation-and-verdict"
+    statement: "The Claude Code hook adapter mints a fresh invocation_id for every invocation and carries it on the command through the @invocation_id argument source, and the context_compaction_verdict compute installs a compaction reply only when the echoed invocation_id is the adapter's own and its messages hash to the echoed installed_messages_hash; any other reply is native."
+    acceptance:
+      - id: "AC140"
+        statement: "AC140: two adapter invocations carry two different uuid4 invocation_ids on their commands and results, the payload holds no field not drawn from the hook input besides that id, a matching compaction reply installs its messages, and a reply for another invocation, a tampered message, a malformed reply, a native reply or no reply returns native -- falsifier: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_verdict.py -q fails at the merge base, where the module handler_compaction_verdict does not exist"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -780,6 +790,9 @@ evidence_requirements:
     command: >-
       uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -p no:cacheprovider -k "test_check_suite_run_id_establishes_provenance or test_unreadable_index_still_sweeps"
   - kind: "tests"
+    description: "AC107: the lab secret-store override and legacy worktree audit nodes pass their frozen-behaviour and contract tests."
+    command: "uv run pytest tests/nodes/node_lab_secret_store_override_effect/test_lab_secret_store_override_node.py tests/nodes/node_legacy_worktree_audit_effect/test_legacy_worktree_audit.py tests/nodes/node_legacy_worktree_audit_effect/test_legacy_worktree_audit_characterization.py -q -p no:randomly --no-cov"
+  - kind: "tests"
     description: "AC82: the park ladder wiring names its handler and the operator capture nodes pass their tests."
     command: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py tests/unit/nodes/node_operator_capture_effect tests/unit/nodes/node_operator_capture_compute -q -n 0 -p no:randomly"
   - kind: "tests"
@@ -794,6 +807,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC105: correct causal answers pass step_by_step_explanation and non-explanations are still vetoed."
     command: "uv run pytest tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py -q"
+  - kind: "tests"
+    description: "AC140: the adapter mints an invocation_id per invocation and the compaction verdict installs only a matching, hash-verified reply for that invocation."
+    command: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_verdict.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -1987,6 +2003,17 @@ dod_evidence:
           print("external sweep provenance deploy probe: PASS")
           PY
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac93-rehome-nodes"
+    description: "The lab secret-store override reproduces its frozen legacy transform and refusals, declares no event bus block, and the legacy worktree audit classifies worktrees through its console script. The generated relation inventory includes their source-derived readers."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_secret_store_override_effect/test_lab_secret_store_override_node.py tests/nodes/node_legacy_worktree_audit_effect/test_legacy_worktree_audit.py tests/nodes/node_legacy_worktree_audit_effect/test_legacy_worktree_audit_characterization.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/scripts/test_application_relation_inventory.py -k test_checked_in_inventory_is_source_derived_and_current -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC107"]
   - id: "dod-omn17427-ac94-rehome-lab-nodes-slice-3"
     description: "The hourly tick, lab disk growth and lab fill receipt table nodes pass their focused suites in the portable package."
     source: "manual"
@@ -2040,6 +2067,29 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_hostile_reviewer_orchestrator/handlers/handler_hostile_reviewer_orchestrator.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("_fallback_route", "fallback_engine", "fallback_for")); print("hostile-reviewer codex fallback deploy probe: PASS")'
+  - id: "dod-omn17427-rehome-nodes-deploy-probe"
+    description: "Deploy probe. The checked-out package declares both rehomed console scripts and carries their target modules. The hosted runner needs only Python and this checkout; the probe fails when either node is absent."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          python3 - <<'PY'
+          import ast, pathlib, tomllib
+          root = pathlib.Path(".")
+          project = tomllib.loads((root / "pyproject.toml").read_text())["project"]
+          scripts = project["scripts"]
+          expected = {
+              "onex-secret-store-override": "omnimarket.nodes.node_lab_secret_store_override_effect.handlers.handler_lab_secret_store_override_cli:main",
+              "onex-legacy-worktree-audit": "omnimarket.nodes.node_legacy_worktree_audit_effect.handlers.handler_legacy_worktree_audit:main",
+          }
+          for name, target in expected.items():
+              assert scripts[name] == target, (name, scripts.get(name))
+              module, symbol = target.split(":")
+              tree = ast.parse((root / "src" / (module.replace(".", "/") + ".py")).read_text())
+              assert any(isinstance(node, ast.FunctionDef) and node.name == symbol for node in tree.body), target
+          print("rehomed console scripts deploy probe: PASS")
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac61-lab-sli-alerts-board"
     description: "The lab SLI golden and error chains pass: one verdict per table row with its own severity, dark sources unknown, severity-driven actions with per-indicator dedup and delivery, collector readings from the watcher state, host and scheduler, and the board with history and trend."
     source: "manual"
@@ -2390,4 +2440,19 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/nodes/node_occ_companion_effect/test_mint_acceptance_evidence_omn15447.py::test_deployed_sanitizer_capture_replays_both_controls -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac140-compaction-adapter-verdict"
+    description: "The hook adapter mints a uuid4 invocation_id per invocation, carries it on the command through the @invocation_id source, and the context_compaction_verdict compute installs only a reply echoing that id whose messages hash to the echoed installed_messages_hash. At the merge base the test module fails to collect."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_verdict.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC140"]
+  - id: "dod-omn17427-compaction-verdict-deploy-probe"
+    description: "Deploy probe. In the checked-out package, the hook adapter driven with a compaction binding and a client echoing the command's invocation_id returns install with the reply's messages. It fails at the merge base, which has no compaction verdict module, and needs only uv and this checkout on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_verdict.py -q -n 0 -p no:randomly --no-cov -k test_an_echoed_matching_package_installs_its_messages"
         cwd: "${OMNI_HOME}/omnimarket"

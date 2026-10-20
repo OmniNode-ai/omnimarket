@@ -1004,6 +1004,8 @@ market-skills-demo = "omnimarket.cli.cli_market_skills_demo:main"
 omnimarket-validate-config = "omnimarket.cli.validate_config:main"
 omnimarket-projection-api = "omnimarket.projection.api_server:main"
 onex-ledger-reconcile = "omnimarket.nodes.node_ledger_reconcile_orchestrator.__main__:main"
+onex-secret-store-override = "omnimarket.nodes.node_lab_secret_store_override_effect.handlers.handler_lab_secret_store_override_cli:main"
+onex-legacy-worktree-audit = "omnimarket.nodes.node_legacy_worktree_audit_effect.handlers.handler_legacy_worktree_audit:main"
 
 [project.entry-points."onex.cli"]
 market = "omnimarket.cli.market:market"
@@ -1463,6 +1465,8 @@ ignore = [
 # CLI entrypoint for the SWE-discriminator smoke battery (OMN-13988) — prints
 # progress/results to stdout like the sibling recorder scripts.
 "src/omnimarket/delegation/swe_discriminator/run_smoke.py" = ["T201"]
+"src/omnimarket/nodes/node_lab_secret_store_override_effect/handlers/handler_lab_secret_store_override_cli.py" = ["T201"]
+"src/omnimarket/nodes/node_legacy_worktree_audit_effect/handlers/handler_legacy_worktree_audit.py" = ["T201"]
 "src/omnimarket/nodes/node_friction_synthesis_effect/handlers/handler_friction_synthesis_cli.py" = ["T201"]
 "src/omnimarket/nodes/node_host_thermal_observe_effect/handlers/handler_host_thermal_cli.py" = ["T201"]
 # OMN-18300 delegation ladder. The runner and the bundle builder are CLIs and

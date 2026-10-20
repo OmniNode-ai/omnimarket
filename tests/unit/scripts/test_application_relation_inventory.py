@@ -29,6 +29,42 @@ def _load_generator() -> ModuleType:
     return module
 
 
+@pytest.mark.parametrize(
+    "hidden_sql",
+    [
+        "-- CREATE TABLE phantom (id int);",
+        "/* CREATE TABLE phantom (id int);\nSELECT 'quoted'; */",
+        "'CREATE TABLE phantom (id int); -- not a comment'",
+        "'escaped '' CREATE TABLE phantom (id int);'",
+        "$$CREATE TABLE phantom (id int);\n' /* -- $$",
+        "$body$CREATE TABLE phantom (id int);\n$other$ $$ $body$",
+    ],
+)
+def test_literals_and_comments_cannot_create_phantom_relations(hidden_sql: str) -> None:
+    generator = _load_generator()
+    sql = f"CREATE TABLE before_literal (id int);\n{hidden_sql}\nCREATE TABLE after_literal (id int);"
+    masked = generator._mask_sql(sql)
+    assert len(masked) == len(sql)
+    assert [index for index, char in enumerate(masked) if char == "\n"] == [
+        index for index, char in enumerate(sql) if char == "\n"
+    ]
+    assert [match.group("name") for match in generator._CREATE_RE.finditer(masked)] == [
+        "before_literal",
+        "after_literal",
+    ]
+
+
+@pytest.mark.parametrize("opener", ["--", "/*", "'", "$$", "$body$"])
+def test_unterminated_literals_and_comments_mask_to_end_of_source(opener: str) -> None:
+    generator = _load_generator()
+    sql = f"CREATE TABLE real_table (id int); {opener} CREATE TABLE phantom (id int);"
+    masked = generator._mask_sql(sql)
+    assert len(masked) == len(sql)
+    assert [match.group("name") for match in generator._CREATE_RE.finditer(masked)] == [
+        "real_table"
+    ]
+
+
 def test_checked_in_inventory_is_source_derived_and_current() -> None:
     generator = _load_generator()
     assert generator.main(["--check"]) == 0

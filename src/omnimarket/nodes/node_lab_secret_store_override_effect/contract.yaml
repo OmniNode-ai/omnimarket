@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lab Secret Store Override Effect (OMN-20688)
+#
+# Binds an ephemeral lab kustomization to its opt-in secret store, preserving the
+# committed patches and restoring the base namespaces and store mappings.
+#
+# WHO HOSTS THIS NODE. The caller's own process, in-process: the input is a render
+# path that exists only on the caller's filesystem, before any lab runtime exists.
+# Shared runtimes must NOT attach it, so the contract declares runtime_dispatch and
+# NO event_bus block; runtime auto-wiring attaches only contracts that declare both.
+name: "node_lab_secret_store_override_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  Bind an ephemeral lab kustomization to its opt-in secret store, preserving
+  committed patches and restoring base namespaces and store mappings. Runs
+  in-process before a lab runtime exists because the input is a local render path.
+input_model:
+  name: "ModelLabSecretStoreOverrideRequest"
+  module: "omnimarket.nodes.node_lab_secret_store_override_effect.models.model_lab_secret_store_override_request"
+  description: "The ephemeral kustomization path, the base ConfigMap it layers over (relative to the kustomization directory) and the two non-secret addressing values."
+output_model:
+  name: "ModelLabSecretStoreOverrideResult"
+  module: "omnimarket.nodes.node_lab_secret_store_override_effect.models.model_lab_secret_store_override_result"
+  description: "Exit code and message: the edit applied, or an explicit refusal."
+handler:
+  module: "omnimarket.nodes.node_lab_secret_store_override_effect.handlers.handler_lab_secret_store_override"
+  class: "HandlerLabSecretStoreOverride"
+  input_model: "omnimarket.nodes.node_lab_secret_store_override_effect.models.model_lab_secret_store_override_request.ModelLabSecretStoreOverrideRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_lab_secret_store_override_effect.handlers.handler_lab_secret_store_override:HandlerLabSecretStoreOverride"
+  handlers:
+    - operation: "lab.secret_store.override"
+      handler:
+        name: "HandlerLabSecretStoreOverride"
+        module: "omnimarket.nodes.node_lab_secret_store_override_effect.handlers.handler_lab_secret_store_override"
+      input_model: "omnimarket.nodes.node_lab_secret_store_override_effect.models.model_lab_secret_store_override_request.ModelLabSecretStoreOverrideRequest"
+      output_model: "omnimarket.nodes.node_lab_secret_store_override_effect.models.model_lab_secret_store_override_result.ModelLabSecretStoreOverrideResult"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 30000
+  side_effects:
+    - reads the base ConfigMap adjacent to the ephemeral overlay
+    - rewrites the ephemeral kustomization
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.lab-secret-store-override-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.lab-secret-store-override-completed.v1"
+published_events:
+  - event_type: ModelLabSecretStoreOverrideResult
+    topic: onex.evt.omnimarket.lab-secret-store-override-completed.v1
+    description: "The edit's exit code and message, answered whatever happened."
+externally_consumed_topics:
+  - onex.evt.omnimarket.lab-secret-store-override-completed.v1
+metadata:
+  transport_type: in_process
+  ticket: OMN-20688
+  description: "Bind an ephemeral lab render to its opt-in secret store"
+  author: "OmniNode Team"
+  tags:
+    - "effect"
+    - "lab"
+    - "secret-store"
+  related_tickets:
+    - "OMN-20688"
