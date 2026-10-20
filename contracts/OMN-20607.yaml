@@ -34,7 +34,7 @@ requirements:
 evidence_requirements:
 - kind: tests
   description: The scoped routing behavior, negative controls and real HTTP lab fixture.
-  command: uv run --frozen pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_byok_escalation_omn20607.py
+  command: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_byok_escalation_omn20607.py
     -q -p no:randomly --no-cov
 emergency_bypass:
   enabled: false
@@ -47,7 +47,7 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_byok_escalation_omn20607.py
+    check_value: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_byok_escalation_omn20607.py
       -q -p no:randomly --no-cov -k 'reachable or unpinned_planning or registration_order'
   binds_ac: [AC1]
 - id: dod-byok-negative-controls
@@ -57,7 +57,7 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_byok_escalation_omn20607.py
+    check_value: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_byok_escalation_omn20607.py
       -q -p no:randomly --no-cov -k 'reachable or without_keys or policy or deployed_resolver or quota or no_overlay'
   binds_ac: [AC2]
 - id: dod-byok-http-proof
@@ -66,7 +66,7 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_byok_escalation_omn20607.py
+    check_value: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_byok_escalation_omn20607.py
       -q -p no:randomly --no-cov -k real_http
   binds_ac: [AC3]
 - id: dod-byok-deploy-readback
