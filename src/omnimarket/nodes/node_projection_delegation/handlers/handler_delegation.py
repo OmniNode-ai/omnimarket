@@ -18,6 +18,7 @@ from typing import Any, Final
 from uuid import UUID, uuid4
 
 import yaml
+from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
 from omnibase_core.models.projection.model_upsert_plan import build_upsert_plan
 from pydantic import ValidationError
 
@@ -34,6 +35,7 @@ from omnimarket.models.delegation.quality_bar_evidence import (
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillTerminalProjection,
     ModelDelegationEventProjectionRow,
+    ModelTaskDelegatedSavingsSource,
 )
 from omnimarket.models.delegation.wire.model_quality_gate import ModelQualityGateResult
 from omnimarket.models.model_projection_derived_write import ModelProjectionDerivedWrite
@@ -85,7 +87,7 @@ from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction 
 from omnimarket.nodes.node_projection_delegation.models.model_terminal_precedence import (
     fold_terminal_ownership,
 )
-from omnimarket.pricing import resolve_tier_cost
+from omnimarket.pricing import build_premium_counterfactual, resolve_tier_cost
 from omnimarket.projection.discovery import (
     load_projection_exposures_from_contract,
 )
@@ -1734,7 +1736,11 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         )
 
     async def _project_typed_event_async(
-        self, event: ModelProjectionTaskDelegatedEvent, meta: MessageMeta
+        self,
+        event: ModelProjectionTaskDelegatedEvent,
+        meta: MessageMeta,
+        *,
+        canonical_counterfactual: ModelPremiumCounterfactual | None = None,
     ) -> bool:
         """Async port of ``HandlerProjectionDelegation.project()`` (OMN-15905).
 
@@ -1829,6 +1835,12 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         _stamp_terminal_trace_and_routing(row, event)
         _stamp_terminal_stop_reason(row, event.finish_reason, event.truncated)
         await self._preserve_existing_evidence_async(row)
+        # Same fallback as the sync writer: an original pinned counterfactual
+        # wins over the canonical savings writer's reconstructed baseline.
+        if row.get("premium_counterfactual") is None and canonical_counterfactual:
+            row["premium_counterfactual"] = canonical_counterfactual.model_dump(
+                mode="json"
+            )
         await self._write_delegation_row(
             row, meta, insert_only_columns=tenant_insert_only
         )
@@ -1867,7 +1879,15 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             return await self._route_malformed_to_dlq(
                 data, f"delegation terminal event failed model validation: {exc}", meta
             )
-        return await self._project_typed_event_async(event, meta)
+        return await self._project_typed_event_async(
+            event,
+            meta,
+            canonical_counterfactual=(
+                ModelTaskDelegatedSavingsSource.counterfactual_from_canonical_payload(
+                    data, counterfactual_builder=build_premium_counterfactual
+                )
+            ),
+        )
 
     async def _project_task_delegated(
         self, data: dict[str, Any], meta: MessageMeta

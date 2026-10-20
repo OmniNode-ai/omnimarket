@@ -506,6 +506,14 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      - id: hook-projection-freshness
+        name: Hook freshness alarm survives a shared projection outage (OMN-19513)
+        language: system
+        entry: uv run pytest tests/test_omn19513_projection_freshness_alert.py -q -n 0 -p no:randomly --no-cov
+        files: ^(src/omnimarket/nodes/node_projection_freshness_alert_effect/.*|tests/test_omn19513_projection_freshness_alert\.py|\.github/workflows/ci\.yml|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-14605 / OMN-18013: a handler_routing entry whose assigned topics span more
       # than one real message category leaves the off-category topics permanently
       # unroutable — handler_wiring stamps ONE category per entry and
@@ -1536,6 +1544,15 @@ repos:
         language: system
         entry: uv run pytest tests/ci/test_imperative_contract_guard_caller_omn21002.py -q -n 0
         files: ^(\.github/workflows/imperative-contract-guard\.yml|imperative-contract-allowlist\.yaml|tests/ci/test_imperative_contract_guard_caller_omn21002\.py|contracts/OMN-21002\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-20910: paired with the Review budget admission CI step.
+      - id: review-budget-admission
+        name: Review budget admission (OMN-20910)
+        language: system
+        entry: uv run pytest tests/unit/nodes/node_claude_review_budget_reducer/test_golden_chain_review_budget_admission.py -q -n 0 -p no:randomly --no-cov
+        files: ^(src/omnimarket/(nodes/node_claude_review_budget_|models/claude_review_budget/)|tests/unit/nodes/node_claude_review_budget_|pyproject\.toml$|\.pre-commit-config\.yaml$|\.github/workflows/ci\.yml$)
         pass_filenames: false
         stages: [pre-commit]
 

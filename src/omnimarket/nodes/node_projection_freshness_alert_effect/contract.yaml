@@ -8,7 +8,8 @@ node_version: {major: 1, minor: 0, patch: 0}
 input_model: omnimarket.nodes.node_projection_freshness_alert_effect.models.model_freshness_trigger.ModelFreshnessTrigger
 description: >
   OMN-19513. Checks projection freshness on the runtime heartbeat, alerting
-  through the canonical Slack publisher only while independent demand is active.
+  through the canonical Slack publisher. A zero demand minimum keeps the hook
+  alarm active when the runtime hosting both hook and work projections is down.
   Unreadable sources produce UNKNOWN findings on the terminal event and ERROR logs.
 
 handler:
@@ -52,7 +53,9 @@ freshness_checks:
       timestamp_column: emitted_at
       distinct_column: actor_id
       window_seconds: 900
-      min_distinct: 1
+      # Both projections run on runtime-main. Its outage stops both tables, so
+      # work_events activity is context, never a prerequisite for this alarm.
+      min_distinct: 0
 
 db_io:
   db_tables:
@@ -107,6 +110,8 @@ dod_evidence:
     description: "Changing cadence and max age in a contract copy changes behaviour without editing Python"
   - test: tests/test_omn19513_projection_freshness_alert.py::test_no_threshold_literal_lives_in_python
     description: "No Python default substitutes for a contract threshold"
+  - test: tests/test_omn19513_projection_freshness_alert.py::test_hook_alarm_survives_work_events_projection_outage
+    description: "Hook rows older than 15 minutes alert even when work_events also stops"
   - test: tests/test_omn19513_projection_freshness_real_postgres.py::test_old_supply_with_active_demand_reads_back_stale
     description: "Against real Postgres the reader's two aggregates return an aware datetime and an integer, and a 132-minute-old supply with active demand classifies STALE"
   - test: tests/test_golden_chain_projection_freshness_alert.py::test_golden_chain_rides_heartbeat_and_reaches_slack
