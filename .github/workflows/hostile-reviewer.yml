@@ -198,9 +198,38 @@ jobs:
             return 1
           }
 
-          # OMN-17427: the overflow endpoint is bounded by the vote deadline, not its chunk share (omniintelligence dev tag dev-20261019012929-921b322b8e43); the chunk-scaled review deadline, the Claude API voter support and existing overlay voters remain supported.
-          clone_with_retry omniintelligence ../omniintelligence OMNIINTELLIGENCE_SHA 921b322b8e43f695961a06a04759dc88bb3e88ff
-          echo "omniintelligence pinned to: $OMNIINTELLIGENCE_SHA"
+          # OMN-20910: omniintelligence tags every dev merge dev-<UTC>-<sha12>; the
+          # review tooling is read at the newest such tag, resolved here on every
+          # run, so no pull request waits on a hand-bumped pin. Only a dev-* tag is
+          # ever read: a branch tip is refused, and so is a remote with no tag.
+          newest_dev_tag() {
+            local remote_url="$1"
+            local listing tag
+
+            for attempt in 1 2 3 4; do
+              if listing="$(timeout 60s git ls-remote --tags --refs "${remote_url}" 'refs/tags/dev-*')"; then
+                tag="$(printf '%s\n' "${listing}" \
+                  | sed -n 's|^.*refs/tags/||p' \
+                  | grep -E '^dev-[0-9]{14}-[0-9a-f]{12}$' \
+                  | sort | tail -n 1 || true)"
+                if [ -n "${tag}" ]; then
+                  printf '%s\n' "${tag}"
+                  return 0
+                fi
+                echo "::error::${remote_url} carries no dev-<UTC>-<sha12> tag" >&2
+                return 1
+              fi
+              echo "::warning::ls-remote of ${remote_url} failed (attempt ${attempt}/4); retrying" >&2
+              sleep $((attempt * 5))
+            done
+            echo "::error::ls-remote of ${remote_url} failed after 4 attempts" >&2
+            return 1
+          }
+
+          OMNIINTELLIGENCE_TAG="$(newest_dev_tag https://github.com/OmniNode-ai/omniintelligence.git)"
+          echo "omniintelligence newest dev tag: ${OMNIINTELLIGENCE_TAG}"
+          clone_with_retry omniintelligence ../omniintelligence OMNIINTELLIGENCE_SHA "refs/tags/${OMNIINTELLIGENCE_TAG}"
+          echo "omniintelligence read at ${OMNIINTELLIGENCE_TAG}: $OMNIINTELLIGENCE_SHA"
 
       - name: Clone omnibase_core
         run: |

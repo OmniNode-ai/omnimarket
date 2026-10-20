@@ -645,6 +645,13 @@ requirements:
     acceptance:
       - id: "AC151"
         statement: "AC151: HandlerEventEmitEffect.handle() with a real KafkaEventPublisher over a counting fake bus and a spool holding 3 pending records publishes 4 records through exactly one bus, started once and closed once; three publishes in one session use one bus; a publish that raises in a session closes that bus and the next publish opens a new one; two plain publishes open and close two buses -- falsifier: uv run pytest tests/unit/nodes/node_event_emit_effect/test_kafka_publish_session.py -q fails at the merge base, where KafkaEventPublisher has no session()"
+  - id: "req-omn20303-canonical-savings-counterfactual"
+    statement: |-
+      A canonical completion that produces a saving keeps its token-derived premium counterfactual on the delegation row even when the outer handler ended during runtime shutdown; an originally pinned counterfactual takes precedence.
+    acceptance:
+      - id: "AC152"
+        statement: |-
+          AC152: both delegation writers retain the canonical saving's counterfactual after runtime shutdown, preserve an existing pinned baseline, and invent none for a failed or zero-token terminal -- falsifier: uv run pytest tests/unit/nodes/node_projection_delegation/test_canonical_savings_counterfactual_omn20303.py -q -n 0 --no-cov
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -854,6 +861,24 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn17427-ac141-canonical-baseline"
+    description: "OMN-20303 AC3 failed its live readback: a runtime_shutdown terminal followed by a canonical completion produced a saving but no stored counterfactual. The regression covers both write paths, terminal orders, an originally pinned baseline, and failed/zero-token controls. It fails at the merge base; post-deploy AC3 readback remains required."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_delegation/test_canonical_savings_counterfactual_omn20303.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "env -u ONEX_TENANT_ID uv run pytest tests/test_omn20303_real_postgres_savings_one_row_per_run.py -q -n 0 --no-cov --refuse-skips -k canonical_counterfactual"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC152"]
+  - id: "dod-omn17427-canonical-baseline-deploy-probe"
+    description: "Hosted-runner deploy check of the checked-out package: replaying a canonical completion after runtime_shutdown through both delegation writers retains the baseline that priced its saving. The same command fails at the merge base with a null counterfactual. This is a package regression probe, not a claim of live deployment or historical-row repair."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_delegation/test_canonical_savings_counterfactual_omn20303.py -q -n 0 --no-cov -k 'test_sync_canonical_saving_keeps_counterfactual or test_async_canonical_keeps_counterfactual_after_shutdown'"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-dogfood-inventory-lists-token-pool"
     description: "The market node runtime dogfood inventory test passes with node_claude_token_pool_effect on the expected-missing entry point list. The list is in the test file, which this pull request changes, so the merge base with the test side laid over it passes the same test. The check names the one inventory test rather than the whole file, which takes longer than the per-check budget."
     source: "manual"
@@ -2403,6 +2428,39 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/test_ci_shard_plan_omn19684.py -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC103"]
+  - id: "dod-omn17427-pr4212-dev-merge-budget-admission"
+    description: "The dev merge preserves PR 4212's durable review budget admission, including concurrent SQLite reservations, settlement, cancellation and outstanding Batch liability. This process fix does not verify or complete the parent integration-pass rollout criteria."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_claude_review_budget_reducer/test_golden_chain_review_budget_admission.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-pr4212-dev-merge-deploy-probe"
+    description: "Deploy probe. Validate the merged contracts, read the checked-out package registration and import each node from the conflicting hunk. Refuse invalid evidence labels, a missing registration, changed module target or failed import. The hosted runner needs Python 3.12 and the locked project dependencies; no host paths, credentials or running services are needed. This verifies package discoverability, not a live deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run python - <<'PY'
+          import importlib
+          import tomllib
+          import yaml
+          from pathlib import Path
+          from omnibase_core.models.ticket.model_ticket_contract import ModelTicketContract
+          for contract in ("contracts/OMN-17427.yaml", "contracts/OMN-20910.yaml"):
+              ModelTicketContract.model_validate(yaml.safe_load(Path(contract).read_text()))
+          entries = tomllib.loads(Path("pyproject.toml").read_text())["project"]["entry-points"]["onex.nodes"]
+          for name in (
+              "node_claude_review_budget_reducer",
+              "node_claude_review_budget_admission_effect",
+              "node_review_defect_catalog_compute",
+          ):
+              expected = "omnimarket.nodes." + name
+              assert entries.get(name) == expected, (name, entries.get(name))
+              importlib.import_module(expected)
+          print("PR 4212 merge package deploy probe: PASS")
+          PY
+        cwd: "."
   - id: "dod-omn17427-ac104-occ-clone-timeout-retry"
     description: "The occ-autobind producer's OCC clone is retried once after a git timeout with the partial clone removed, the final timeout and any non-timeout failure propagate, and the attempts fit the node's descriptor timeout. Against the merge base 3 of the 4 tests fail; after the change all 4 pass."
     source: "manual"

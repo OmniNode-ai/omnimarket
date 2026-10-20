@@ -1,8 +1,9 @@
 name: projection_freshness_alert_effect
 version: "1.0.0"
 description: >
-  Reads contract-declared supply and demand projections on the existing runtime
-  heartbeat and publishes stale findings through the canonical Slack effect.
+  Reads supply freshness and activity context on the existing runtime heartbeat
+  and publishes stale findings through the canonical Slack effect. The hook
+  alarm remains active when both hook and work event projections stop.
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 capabilities:
   standalone: true
