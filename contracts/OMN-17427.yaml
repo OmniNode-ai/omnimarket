@@ -594,6 +594,11 @@ requirements:
     acceptance:
       - id: "AC105"
         statement: "AC105: the thirteen correct causal answers in tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py, one of them the verbatim Qwen3.8-27B answer from lab delegation run 16de1829-24b4-4563-919f-2a19d28b2d88, pass step_by_step_explanation, and the six non-explanations, including \"enthusiasm\" and \", sometimes\" which hold a connective's letters inside a word, are still vetoed -- falsifier: uv run pytest tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py -q fails at the merge base"
+  - id: "req-step-by-step-causal-lab-answers"
+    statement: "The step_by_step_explanation check accepts a correct short causal answer from a lab delegation walked through with a causative verb (cause, makes, lead to, result in) or a result clause after a comma, and still vetoes an answer that asserts without explaining."
+    acceptance:
+      - id: "AC142"
+        statement: "AC142: the thirteen correct causal answers in tests/unit/delegation/test_step_by_step_causal_lab_answers_omn19401.py, two of them verbatim Qwen3.8-27B answers from lab delegation runs 8f076b00-5b90-41b8-877d-230a5938b4b4 and eda24477-4e76-4ce5-9e46-a93ce16ee204, pass step_by_step_explanation, and the six non-explanations, including \"decision making\" and \"policymaking\", are still vetoed -- falsifier: uv run pytest tests/unit/delegation/test_step_by_step_causal_lab_answers_omn19401.py -q fails at the merge base"
   - id: "req-closer-gateway-loop-and-box-ticks"
     statement: "The gateway read client answers from under a running event loop, and the closer's decide_ticket names the description with exactly the acceptance boxes dod_verify verified ticked, holding open a ticket whose box no verified check covers."
     acceptance:
@@ -655,6 +660,11 @@ requirements:
     acceptance:
       - id: "AC151"
         statement: "AC151: LocalDelegationDispatchPort.dispatch given trace_id and queue_wait_ms writes a delegation_events row with that trace_id, that queue_wait_ms and a measured execution_ms, leaves trace_id and queue_wait_ms NULL when not given, keeps a measured zero queue wait as zero, and the handler passes the two keywords only to a port whose dispatch declares them -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_in_process_evidence_trace_and_timing_omn19448.py -q fails at the merge base, where _terminal_measure_dispatch_kwargs does not exist"
+  - id: "req-customer-ledger-in-memory-bus"
+    statement: "A customer running OmniNode locally has a work ledger on the in-memory event bus: ledger row events written through the work-ledger emit handler reach an in-memory reader that answers the same query verbs as the lab database reader (RULING 2026-10-19T21:47:42Z)."
+    acceptance:
+      - id: "AC153"
+        statement: "AC153: every row of the golden ledger fixture, written through HandlerWorkLedgerEmit with the in-memory emitter onto an EventBusInmemory, is folded by InMemoryWorkLedgerQueryReader, a redelivered row is kept once, and HandlerWorkLedgerQuery over that reader returns the rows, holds, inbox entries and open claims the recorded markdown reads name -- falsifier: uv run pytest tests/test_work_ledger_query_inmemory_bus.py -q fails at the merge base, where the module work_ledger_query_inmemory does not exist"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -851,6 +861,9 @@ evidence_requirements:
     description: "AC105: correct causal answers pass step_by_step_explanation and non-explanations are still vetoed."
     command: "uv run pytest tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py -q"
   - kind: "tests"
+    description: "AC142: correct causal lab answers pass step_by_step_explanation and non-explanations are still vetoed."
+    command: "uv run pytest tests/unit/delegation/test_step_by_step_causal_lab_answers_omn19401.py -q"
+  - kind: "tests"
     description: "AC151: a pinned context-pack build sends the case: scope the session source reads."
     command: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -k 'pinned_build or live_build or session_source_accepts'"
   - kind: "tests"
@@ -859,6 +872,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC150: the context-pack orchestrator binds its tier sources from the contract's context_tier_sources block."
     command: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_tier_source_binding.py -q"
+  - kind: "tests"
+    description: "AC153: the work ledger runs on the in-memory event bus and answers the golden markdown reads."
+    command: "uv run pytest tests/test_work_ledger_query_inmemory_bus.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -2023,12 +2039,12 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC80"]
   - id: "dod-omn17427-hr-overflow-pin-probe"
-    description: "Deploy probe. GitHub serves the hostile-reviewer workflow at the checked-out HEAD cloning omniintelligence at the overflow-deadline revision. The probe fails at the merge base, which pins aeba95945f22, and needs only GitHub access on the hosted runner."
+    description: "Deploy probe. GitHub serves the hostile-reviewer workflow at the checked-out HEAD cloning omniintelligence at its newest dev tag (OMN-20910 replaced the sha pin), and that tag contains the overflow-deadline revision 921b322b8e43. The probe fails on a workflow that clones a sha literal and on a tag behind 921b322b8e43, such as aeba95945f22, and needs only GitHub access on the hosted runner."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: >-
-          gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/hostile-reviewer.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F -- "OMNIINTELLIGENCE_SHA 921b322b8e43f695961a06a04759dc88bb3e88ff"
+          gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/hostile-reviewer.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F -- 'clone_with_retry omniintelligence ../omniintelligence OMNIINTELLIGENCE_SHA "refs/tags/${OMNIINTELLIGENCE_TAG}"' && tag="$(git ls-remote --tags --refs https://github.com/OmniNode-ai/omniintelligence.git 'refs/tags/dev-*' | sed -n 's|^.*refs/tags/||p' | grep -E '^dev-[0-9]{14}-[0-9a-f]{12}$' | sort | tail -n 1)" && test -n "$tag" && status="$(gh api "repos/OmniNode-ai/omniintelligence/compare/921b322b8e43f695961a06a04759dc88bb3e88ff...$tag" --jq .status)" && echo "omniintelligence $tag vs 921b322b8e43: $status" && case "$status" in ahead|identical) true;; *) false;; esac
   - id: "dod-omn17427-ac91-liveness-overlay-check"
     description: "The overlay completeness check node and its console script pass the focused suite."
     source: "manual"
@@ -2494,6 +2510,21 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py tests/unit/delegation/test_step_by_step_causal_prose_omn19401.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-causal-lab-answers"
+    description: "The lab answer fixture proves correct causal answers walked through with a causative verb or a comma-led result clause pass step_by_step_explanation and non-explanations are still vetoed. At the merge base the thirteen correct answers are vetoed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_step_by_step_causal_lab_answers_omn19401.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC142"]
+  - id: "dod-omn17427-causal-lab-answers-deploy-probe"
+    description: "Deploy probe. The quality gate handler's step_by_step_explanation check is run over the lab answer fixture, the causal connective fixture and the OMN-19401 causal prose tests: every correct causal answer passes and every non-explanation is vetoed. The hosted runner needs uv and this checkout, with no external provider or credentials. This checks the artifact and does not attest a live deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/delegation/test_step_by_step_causal_lab_answers_omn19401.py tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py tests/unit/delegation/test_step_by_step_causal_prose_omn19401.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-gateway-read-running-loop"
     description: "The gateway read client returns the bus answer when called under a running event loop. The new case fails at the merge base with asyncio.run cannot be called from a running event loop."
     source: "manual"
@@ -2636,6 +2667,7 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_tier_source_binding.py -q -n 0 -p no:randomly --no-cov -k test_zero_argument_orchestrator_binds_the_contract_sources"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac151-in-process-trace-timing"
     description: "The in-process evidence terminal carries the command's trace_id, the measured queue wait and the port's measured execution time onto the delegation_events row, through _project_evidence and through dispatch itself, and the handler passes the keywords only to a port that declares them. At the merge base the test module fails to collect."
     source: "manual"
@@ -2665,4 +2697,19 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_kafka_publish_session.py -q -n 0 -p no:randomly --no-cov -k handle"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac153-customer-ledger-in-memory-bus"
+    description: "Every golden-fixture ledger row written through HandlerWorkLedgerEmit onto an EventBusInmemory is folded by InMemoryWorkLedgerQueryReader, and HandlerWorkLedgerQuery over it answers the recorded markdown reads. The test module fails at the merge base, where work_ledger_query_inmemory does not exist."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_work_ledger_query_inmemory_bus.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC153"]
+  - id: "dod-omn17427-inmem-ledger-deploy-probe"
+    description: "Deploy probe. In the checked-out package, a ledger row written through the emit handler onto an EventBusInmemory is read back by the in-memory reader. It fails at the merge base and needs only uv and this checkout on the hosted runner; no broker, database or credential."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_work_ledger_query_inmemory_bus.py -q -n 0 -p no:randomly --no-cov -k sync_emit_handler_writes"
         cwd: "${OMNI_HOME}/omnimarket"
