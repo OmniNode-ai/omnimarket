@@ -55,6 +55,7 @@ from omnimarket.models.context_pack.model_context_task_kind_rule import (
     TASK_KIND_UNKNOWN,
 )
 from omnimarket.models.context_pack_orchestrator import (
+    EnumContextPackMode,
     EnumContextPackOrchestratorStatus,
     ModelContextPackBuilt,
     ModelContextPackCommand,
@@ -204,14 +205,15 @@ def _precedence(profile: ModelContextProfile) -> dict[EnumContextFactor, int]:
 
 def _session_scopes(request: ModelContextPackRequest) -> tuple[str, ...]:
     scopes: list[str] = []
-    if request.session_id is not None:
+    # The session source reads exactly one mode scope: case: (pinned) or session: (live).
+    if request.mode is EnumContextPackMode.PINNED:
+        scopes.append(f"case:{request.manifest_case}")
+    elif request.session_id is not None:
         scopes.append(f"session:{request.session_id}")
     if request.newest_turn is not None:
         scopes.append(f"newest_turn:{request.newest_turn}")
     if request.session_barrier is not None:
         scopes.append(f"session_barrier:{request.session_barrier}")
-    if request.manifest_case is not None:
-        scopes.append(f"manifest_case:{request.manifest_case}")
     return tuple(scopes)
 
 
