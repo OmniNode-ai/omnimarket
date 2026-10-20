@@ -1261,6 +1261,7 @@ _MODEL_LABELS: dict[str, str] = {
     "openrouter": "OpenRouter",
     "openai": "OpenAI",
     "anthropic": "Anthropic",
+    "glm": "GLM",
     "ollama": "Ollama",
     "local": "Local URL",
 }
@@ -1269,6 +1270,7 @@ _KEY_PAGES: dict[str, str] = {
     "openrouter": "openrouter.ai/keys",
     "openai": "platform.openai.com/api-keys",
     "anthropic": "platform.claude.com/settings/keys",
+    "glm": "z.ai/manage-apikey/apikey-list",
 }
 _OLLAMA_HOW = (
     "Ollama is installed by onboarding, which downloads a model sized to this "
@@ -1351,7 +1353,7 @@ models_group = click.Group(
     "models",
     help=(
         "Set up the models delegation can use: Gemini, OpenRouter, OpenAI, "
-        "Anthropic, Ollama, or a local model server by URL.\n\nSet up any "
+        "Anthropic, GLM (z.ai), Ollama, or a local model server by URL.\n\nSet up any "
         "combination; delegation chooses among them for each task."
     ),
 )
