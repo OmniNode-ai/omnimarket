@@ -589,6 +589,11 @@ requirements:
     acceptance:
       - id: "AC105"
         statement: "AC105: the thirteen correct causal answers in tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py, one of them the verbatim Qwen3.8-27B answer from lab delegation run 16de1829-24b4-4563-919f-2a19d28b2d88, pass step_by_step_explanation, and the six non-explanations, including \"enthusiasm\" and \", sometimes\" which hold a connective's letters inside a word, are still vetoed -- falsifier: uv run pytest tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py -q fails at the merge base"
+  - id: "req-step-by-step-causal-lab-answers"
+    statement: "The step_by_step_explanation check accepts a correct short causal answer from a lab delegation walked through with a causative verb (cause, makes, lead to, result in) or a result clause after a comma, and still vetoes an answer that asserts without explaining."
+    acceptance:
+      - id: "AC142"
+        statement: "AC142: the thirteen correct causal answers in tests/unit/delegation/test_step_by_step_causal_lab_answers_omn19401.py, two of them verbatim Qwen3.8-27B answers from lab delegation runs 8f076b00-5b90-41b8-877d-230a5938b4b4 and eda24477-4e76-4ce5-9e46-a93ce16ee204, pass step_by_step_explanation, and the six non-explanations, including \"decision making\" and \"policymaking\", are still vetoed -- falsifier: uv run pytest tests/unit/delegation/test_step_by_step_causal_lab_answers_omn19401.py -q fails at the merge base"
   - id: "req-closer-gateway-loop-and-box-ticks"
     statement: "The gateway read client answers from under a running event loop, and the closer's decide_ticket names the description with exactly the acceptance boxes dod_verify verified ticked, holding open a ticket whose box no verified check covers."
     acceptance:
@@ -823,6 +828,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC105: correct causal answers pass step_by_step_explanation and non-explanations are still vetoed."
     command: "uv run pytest tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py -q"
+  - kind: "tests"
+    description: "AC142: correct causal lab answers pass step_by_step_explanation and non-explanations are still vetoed."
+    command: "uv run pytest tests/unit/delegation/test_step_by_step_causal_lab_answers_omn19401.py -q"
   - kind: "tests"
     description: "AC140: the adapter mints an invocation_id per invocation and the compaction verdict installs only a matching, hash-verified reply for that invocation."
     command: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_verdict.py -q"
@@ -2383,6 +2391,21 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py tests/unit/delegation/test_step_by_step_causal_prose_omn19401.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-causal-lab-answers"
+    description: "The lab answer fixture proves correct causal answers walked through with a causative verb or a comma-led result clause pass step_by_step_explanation and non-explanations are still vetoed. At the merge base the thirteen correct answers are vetoed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_step_by_step_causal_lab_answers_omn19401.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC142"]
+  - id: "dod-omn17427-causal-lab-answers-deploy-probe"
+    description: "Deploy probe. The quality gate handler's step_by_step_explanation check is run over the lab answer fixture, the causal connective fixture and the OMN-19401 causal prose tests: every correct causal answer passes and every non-explanation is vetoed. The hosted runner needs uv and this checkout, with no external provider or credentials. This checks the artifact and does not attest a live deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/delegation/test_step_by_step_causal_lab_answers_omn19401.py tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py tests/unit/delegation/test_step_by_step_causal_prose_omn19401.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-gateway-read-running-loop"
     description: "The gateway read client returns the bus answer when called under a running event loop. The new case fails at the merge base with asyncio.run cannot be called from a running event loop."
