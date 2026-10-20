@@ -638,6 +638,11 @@ requirements:
     acceptance:
       - id: "AC150"
         statement: "AC150: HandlerContextPackOrchestrator() binds each factor named in context_tier_sources to one instance per source node, every required factor of the compaction_orchestrator profile is bound, an explicit empty mapping binds nothing, loading opens no database connection, and an unknown factor, an unknown node or a node whose contract does not take ModelContextSourceRequest is refused -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator/test_tier_source_binding.py -q fails at the merge base, where the module tier_source_binding does not exist"
+  - id: "req-compaction-latency-runner"
+    statement: "The TA.12 latency qualification has a runner in the hook adapter node: HandlerCompactionLatencyRun drives the adapter in process over recorded PreCompact hook inputs with a compaction binding it supplies (not installed in Claude Code), cold trips on a fresh receipt-mode client each with its construction timed and warm trips on one shared client after a discarded warm-up, records each trip's wall time and the prepared receipt's split into deterministic_build_ms and model_section_ms, and records a refusal instead of a number for a missing or inconsistent timing or an adapter failure."
+    acceptance:
+      - id: "AC152"
+        statement: "AC152: two sizes with two cold and two warm trips against a fixture client whose prepared receipt carries build_ms 250 and model_section_ms 75 record eight trips of 175 and 75 with wall_ms from the injected clock, the factory is called once per cold trip and once per case for warm, a cold trip's wall time includes client construction, a prepared receipt with no build_ms, a model section longer than the build, no prepared receipt or an adapter error is a refusal and the CLI exits 1, the trips of two hosts and three sizes tabulate complete through the latency qualification compute and without the second host do not, and the new source holds no topic literal and no import of the compute node -- falsifier: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_latency_run.py -q fails at the merge base, where the module handler_compaction_latency_run does not exist"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -842,6 +847,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC150: the context-pack orchestrator binds its tier sources from the contract's context_tier_sources block."
     command: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_tier_source_binding.py -q"
+  - kind: "tests"
+    description: "AC152: the TA.12 runner drives the adapter cold and warm, splits prepared receipts into the two phases, refuses missing timings, and its trips tabulate through the latency compute."
+    command: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_latency_run.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -2557,4 +2565,19 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_tier_source_binding.py -q -n 0 -p no:randomly --no-cov -k test_zero_argument_orchestrator_binds_the_contract_sources"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac152-compaction-latency-runner"
+    description: "The TA.12 runner in the hook adapter node: cold and warm trips through the adapter, wall time, the prepared-receipt phase split, refusals for missing or inconsistent timings and adapter errors, the CLI exit codes, and tabulation of its trips through the latency qualification compute. At the merge base the test module fails to collect."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_latency_run.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC152"]
+  - id: "dod-omn17427-compaction-latency-runner-deploy-probe"
+    description: "Deploy probe. In the checked-out package, HandlerCompactionLatencyRun over a fixture client records eight trips split 175 and 75 from prepared receipts of 250 and 75, with wall_ms from the injected clock. It fails at the merge base, which has no handler_compaction_latency_run module, and needs only uv and this checkout on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_latency_run.py -q -n 0 -p no:randomly --no-cov -k test_records_sizes_temperatures_wall_time_and_verdict"
         cwd: "${OMNI_HOME}/omnimarket"
