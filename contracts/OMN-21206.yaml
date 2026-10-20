@@ -95,8 +95,8 @@ dod_evidence:
       - check_type: "command"
         check_value: |-
           set -eu
-          : "${ONEX_LAB_PROJECTION_API:?set the deployed projection API URL}"
-          : "${ONEX_TENANT_ID:?set the tenant UUID served by that deployment}"
+          test -n "${ONEX_LAB_PROJECTION_API:?set the deployed projection API URL}"
+          test -n "${ONEX_TENANT_ID:?set the tenant UUID served by that deployment}"
           uv run --frozen python - <<'PROBE'
           import json
           import os
