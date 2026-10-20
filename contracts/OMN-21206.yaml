@@ -5,8 +5,8 @@ title: "Overview and Delegation Evidence views count tokens and runs over every 
 summary: >-
   Overview and Delegation Evidence count all runs and their own tokens,
   measured-only money, and excluded provenance classes, using one fixed
-  estimate ordering. This tests-first stage declares the real falsifiers;
-  it does not claim they pass or that postdeploy reconciliation has run.
+  estimate ordering. The real falsifiers must pass on the implementation;
+  postdeploy reconciliation remains a separate sanctioned readback.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
