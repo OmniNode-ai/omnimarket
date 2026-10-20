@@ -616,13 +616,18 @@ requirements:
   - id: "req-landing-stall-liveness"
     statement: "A stall the landing controller holds (a red cause, a red base branch, an open plugin version bump) is a typed transition that the automation-liveness watchdog judges against a bus-event overlay deadline, so a hold past its bound opens one episode, raises one alarm carrying the cause, the repository, the minutes and the last decision text, and clears when it moves."
     acceptance:
-      - id: "AC113"
-        statement: "AC113: replaying the 2026-10-19 held cause through node_landing_stall_expectation_compute, the watchdog compute and the delivery effect opens one TRIGGER_UNANSWERED episode past 60 minutes, sends one alarm naming the cause key, the repository, the minutes and the last decision text, and clears it after the merge; the fold opens at the first hold, answers on a move, and moves a version bump only on merge or release -- falsifier: uv run pytest tests/nodes/node_landing_stall_expectation_compute -q fails"
+      - id: "AC141"
+        statement: "AC141: replaying the 2026-10-19 held cause through node_landing_stall_expectation_compute, the watchdog compute and the delivery effect opens one TRIGGER_UNANSWERED episode past 60 minutes, sends one alarm naming the cause key, the repository, the minutes and the last decision text, and clears it after the merge; the fold opens at the first hold, answers on a move, and moves a version bump only on merge or release -- falsifier: uv run pytest tests/nodes/node_landing_stall_expectation_compute -q fails"
   - id: "req-compaction-adapter-invocation-and-verdict"
     statement: "The Claude Code hook adapter mints a fresh invocation_id for every invocation and carries it on the command through the @invocation_id argument source, and the context_compaction_verdict compute installs a compaction reply only when the echoed invocation_id is the adapter's own and its messages hash to the echoed installed_messages_hash; any other reply is native."
     acceptance:
       - id: "AC140"
         statement: "AC140: two adapter invocations carry two different uuid4 invocation_ids on their commands and results, the payload holds no field not drawn from the hook input besides that id, a matching compaction reply installs its messages, and a reply for another invocation, a tampered message, a malformed reply, a native reply or no reply returns native -- falsifier: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_verdict.py -q fails at the merge base, where the module handler_compaction_verdict does not exist"
+  - id: "req-compaction-pack-build-over-pack-orchestrator"
+    statement: "The compaction orchestrator's package build has a live port over the context-pack orchestrator: it requests the compaction_orchestrator profile at the command's session barrier for the envelope tenant, installs the built package with the pack's identities, and falls back pack_build_failed on any failed or incomplete build."
+    acceptance:
+      - id: "AC113"
+        statement: "AC113: HandlerCompactionPackBuild over HandlerContextPackOrchestrator with fixture sources installs a package whose prepared receipt carries the pack's candidate_id and assembly_hash, two invocations on the same inputs share candidate_id and assembly_hash with different activation_ids, every source is read at the barrier revision for the access tenant, and a missing required tier, a failed build or an OK build missing an identity or messages replies native with pack_build_failed -- falsifier: uv run pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build.py -q fails at the merge base, where the module does not exist"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -2469,7 +2474,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_landing_stall_expectation_compute/test_landing_stall_replay_2026_10_19.py tests/nodes/node_landing_stall_expectation_compute/test_landing_stall_fold.py tests/nodes/node_landing_stall_expectation_compute/test_landing_stall_contract.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC113"]
+    binds_ac: ["AC141"]
   - id: "dod-omn17427-landing-stall-deploy-probe"
     description: "Deploy probe. The hosted runner loads the subject commit's shared liveness model and the replay overlay fixture and checks that bus-event is an event-triggered kind whose correlation deadline the overlay accepts. No broker, credential or live runtime; this checks the artifact and does not attest a live deployment."
     source: "manual"
@@ -2477,7 +2482,6 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run python -c \"from pathlib import Path; from omnimarket.models.liveness.model_automation_liveness import EVENT_TRIGGER_KINDS, EnumAutomationTriggerKind as K, load_automation_liveness_overlay as L; assert K.BUS_EVENT in EVENT_TRIGGER_KINDS; o = L(Path('tests/fixtures/automation_liveness/replay_2026_10_19/overlay.yaml')); assert {e.correlation.answer_deadline_seconds for e in o.processes} == {3600, 5400}\""
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC113"]
   - id: "dod-omn17427-ac140-compaction-adapter-verdict"
     description: "The hook adapter mints a uuid4 invocation_id per invocation, carries it on the command through the @invocation_id source, and the context_compaction_verdict compute installs only a reply echoing that id whose messages hash to the echoed installed_messages_hash. At the merge base the test module fails to collect."
     source: "manual"
@@ -2492,4 +2496,19 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_verdict.py -q -n 0 -p no:randomly --no-cov -k test_an_echoed_matching_package_installs_its_messages"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac109-compaction-pack-build"
+    description: "The compaction orchestrator builds through HandlerCompactionPackBuild over the context-pack orchestrator with fixture sources: install with the pack identities, one candidate for two invocations, reads at the barrier for the access tenant, and pack_build_failed on a failed or incomplete build. At the merge base the test module fails to collect."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC113"]
+  - id: "dod-omn17427-compaction-pack-build-deploy-probe"
+    description: "Deploy probe. In the checked-out package, the compaction orchestrator wired with HandlerCompactionPackBuild over HandlerContextPackOrchestrator and fixture sources replies install for a compaction command. It fails at the merge base, which has no such module, and needs only uv and this checkout on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build.py -q -n 0 -p no:randomly --no-cov -k test_compaction_installs_the_pack_built_through_the_adapter"
         cwd: "${OMNI_HOME}/omnimarket"
