@@ -57,6 +57,7 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
 from omnimarket.routing import byok_model_discovery as discovery
+from omnimarket.routing import byok_provider_backends as catalogue
 from omnimarket.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
 )
@@ -249,6 +250,14 @@ class _ReaimThenHangEffect:
                 "resolve_local_byok_model_chooser",
                 lambda _ref: "catalogue",
             )
+            # OMN-21059 refuses a catalogue pick on every shipped row; the re-aim
+            # is reached from a row that picks its own model, as the
+            # catalogue_picks_models fixture gives the parent process.
+            plans = {
+                key: row.model_copy(update={"customer_chooses_model": False})
+                for key, row in catalogue.load_byok_plan_catalog().items()
+            }
+            patch.setattr(catalogue, "load_byok_plan_catalog", lambda: plans)
             return effect.HandlerLlmDelegationCall()(request)
 
 

@@ -2278,11 +2278,14 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         corpus_errors_json = json.dumps(
             _coerce_gate_labels(data.get("corpus_errors") or data.get("corpusErrors"))
         )
-        cost_inference_usd = (
-            _safe_numeric_str(
-                data.get("cost_inference_usd") or data.get("costInferenceUsd")
-            )
-            or "0"
+        # OMN-20834: a run the pricing surface could not price carries a null
+        # cost, and it is stored as NULL. `or` here would turn a priced 0.0 into
+        # the camelCase lookup, and a "0" fallback would store an unpriced run
+        # as a free one.
+        cost_inference_usd = _safe_numeric_str(
+            data["cost_inference_usd"]
+            if "cost_inference_usd" in data
+            else data.get("costInferenceUsd")
         )
         timestamp = safe_parse_date(data.get("timestamp") or data.get("emitted_at"))
         # OMN-12780 (Wave 1C): persist the full generated output — no truncation.
