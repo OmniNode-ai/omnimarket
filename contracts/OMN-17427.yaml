@@ -538,6 +538,11 @@ requirements:
         statement: "AC105: task_class_contracts.v1.yaml declares brief_drafting as an internal class that no prompt selects, with tier_order local alone and max_escalations 0, resolving the Qwen model on the local tier and none on any other tier, and declares the brief checker as its external acceptance with title, premises and task as the only free-text slots -- falsifier: uv run pytest tests/unit/delegation/test_brief_drafting_class_omn17427.py -q fails at the merge base"
       - id: "AC106"
         statement: "AC106: node_lane_brief_draft_compute assembles a brief with every shell part pasted byte for byte and refuses a draft that wrote a shell part or an identifier its fact table lacks, and its gate accepts only checker exit 0, regenerates a refused shell part once in code, redrafts a free-text refusal while attempts remain and otherwise hands the brief to Claude -- falsifier: uv run pytest tests/nodes/node_lane_brief_draft_compute -q fails at the merge base"
+  - id: "req-context-pack-model-roles-declared"
+    statement: "The context-pack model roles that omnibase-core 0.47.48 admits on the delegation wire are declared task classes, so the shipped lane_brief, lane_brief_section, session_start and per_prompt profiles resolve with the packaged routing contract and no test fixture."
+    acceptance:
+      - id: "AC107"
+        statement: "AC107: with omnibase-core locked at 0.47.48, task_class_contracts.v1.yaml declares extraction_proposer, tail_summary and context_selection as internal classes that no prompt selects, with tier_order local alone and max_escalations 0, the contract equals the core wire task_type Literal, and the shipped profiles whose roles are all declared resolve with TASK_CLASS_CONTRACT_PATH unset -- falsifier: uv run pytest tests/nodes/node_context_profile_resolver_effect/test_model_role_routing.py tests/test_omn17940_refusal_over_every_task_class.py -q fails at the merge base"
   - id: "req-anthropic-protocol-variant-registration"
     statement: "An explicitly selected protocol variant does not trigger billing-plan detection during ordinary Anthropic credential registration."
     acceptance:
@@ -574,6 +579,13 @@ requirements:
     acceptance:
       - id: "AC105"
         statement: "AC105: the thirteen correct causal answers in tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py, one of them the verbatim Qwen3.8-27B answer from lab delegation run 16de1829-24b4-4563-919f-2a19d28b2d88, pass step_by_step_explanation, and the six non-explanations, including \"enthusiasm\" and \", sometimes\" which hold a connective's letters inside a word, are still vetoed -- falsifier: uv run pytest tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py -q fails at the merge base"
+  - id: "req-closer-gateway-loop-and-box-ticks"
+    statement: "The gateway read client answers from under a running event loop, and the closer's decide_ticket names the description with exactly the acceptance boxes dod_verify verified ticked, holding open a ticket whose box no verified check covers."
+    acceptance:
+      - id: "AC111"
+        statement: "AC111: read_over_bus called from inside a running event loop returns the gateway's typed result instead of raising that asyncio.run cannot be called from a running event loop."
+      - id: "AC112"
+        statement: "AC112: decide_ticket given a description ticks only the boxes whose criterion has a verified accepted check, renders the evidence comment, and stays open with nothing ticked when any unchecked box names no criterion or has no verified check."
   - id: "req-private-hosted-minutes-watch"
     statement: "Once a day, one read of the organization's billing usage for the month sums GitHub-hosted Actions minutes per repository and per UTC day, appends one ledger STATUS row for the day, and raises one alert through the alert channel when any repository used any billed hosted minute that day."
     acceptance:
@@ -586,11 +598,16 @@ requirements:
     acceptance:
       - id: "AC109"
         statement: "AC109: the dependency provenance tests accept canonical sibling dev tags without annotations and refuse foreign git sources, branches, bare revisions, malformed tags and conflicting selectors."
+  - id: "req-mint-acceptance-evidence"
+    statement: "The existing retry/park implementation has reproducible handler/git-boundary and behavioral baseline controls plus a dated deployed sanitizer capture."
+    acceptance:
+      - id: "AC110"
+        statement: "AC110: the real handler git timeout parks after the declared attempt budget, the identical assertion is behaviorally red with the pre-policy handle method, and the dated deployed sanitizer capture preserves the typed reason and redacts the raw control -- falsifier: uv run pytest tests/unit/nodes/node_occ_companion_effect/test_mint_acceptance_evidence_omn15447.py -q --no-cov fails. No real bus-to-DLQ readback or accepted Done receipt is claimed."
   - id: "req-compaction-pack-build-over-pack-orchestrator"
     statement: "The compaction orchestrator's package build has a live port over the context-pack orchestrator: it requests the compaction_orchestrator profile at the command's session barrier for the envelope tenant, installs the built package with the pack's identities, and falls back pack_build_failed on any failed or incomplete build."
     acceptance:
-      - id: "AC110"
-        statement: "AC110: HandlerCompactionPackBuild over HandlerContextPackOrchestrator with fixture sources installs a package whose prepared receipt carries the pack's candidate_id and assembly_hash, two invocations on the same inputs share candidate_id and assembly_hash with different activation_ids, every source is read at the barrier revision for the access tenant, and a missing required tier, a failed build or an OK build missing an identity or messages replies native with pack_build_failed -- falsifier: uv run pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build.py -q fails at the merge base, where the module does not exist"
+      - id: "AC113"
+        statement: "AC113: HandlerCompactionPackBuild over HandlerContextPackOrchestrator with fixture sources installs a package whose prepared receipt carries the pack's candidate_id and assembly_hash, two invocations on the same inputs share candidate_id and assembly_hash with different activation_ids, every source is read at the barrier revision for the access tenant, and a missing required tier, a failed build or an OK build missing an identity or messages replies native with pack_build_failed -- falsifier: uv run pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build.py -q fails at the merge base, where the module does not exist"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -2164,6 +2181,21 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/task_class_contracts.v1.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("brief_drafting:", "external_acceptance:", "lane_brief.py check")); print("brief drafting deploy probe: PASS")'
+  - id: "dod-omn17427-ac107-context-pack-model-roles"
+    description: "The context-pack model roles are declared task classes equal to the core 0.47.48 wire Literal, and the shipped context-pack profiles resolve with the packaged routing contract."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_profile_resolver_effect/test_model_role_routing.py tests/test_omn17940_refusal_over_every_task_class.py tests/unit/inference/test_task_class_authority_omn15651.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC107"]
+  - id: "dod-omn17427-context-pack-model-roles-deploy-probe"
+    description: "Deploy probe. GitHub serves the task-class contract at the checked-out HEAD declaring extraction_proposer, tail_summary and context_selection. It fails at the merge base, which declares none of them, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/task_class_contracts.v1.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys, yaml; classes = yaml.safe_load(sys.stdin.read())["task_classes"]; assert all(classes[name]["gateway_exposure"] == "internal" and classes[name]["escalation_policy"]["tier_order"] == ["local"] for name in ("extraction_proposer", "tail_summary", "context_selection")); print("context-pack model roles deploy probe: PASS")'
   - id: "dod-omn17427-anthropic-models-add"
     description: "The existing shard-17 regressions validate Anthropic keys and preserve model discovery when the catalogue also offers the native protocol. Four of these tests fail before this fix."
     source: "manual"
@@ -2271,6 +2303,29 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py tests/unit/delegation/test_step_by_step_causal_prose_omn19401.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-gateway-read-running-loop"
+    description: "The gateway read client returns the bus answer when called under a running event loop. The new case fails at the merge base with asyncio.run cannot be called from a running event loop."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/scm/test_handler_gateway_read_client.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC111"]
+  - id: "dod-omn17427-closer-box-ticks"
+    description: "decide_ticket ticks only verified criteria's boxes and holds a ticket with an unlabelled or unverified box. All five cases fail at the merge base, where decide_ticket takes no description."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute/test_closer_ac_ticks_dod_closeout_sweep_compute.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC112"]
+  - id: "dod-omn17427-closer-unblock-deploy-probe"
+    description: "Deploy probe. Run the gateway client and closer tick cases from this checkout with skips refused. The hosted runner needs the locked dependencies and this checkout, with no bus, credential or Linear access; this checks the packaged handlers, not a running deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/handlers/scm/test_handler_gateway_read_client.py tests/nodes/node_dod_closeout_sweep_compute/test_closer_ac_ticks_dod_closeout_sweep_compute.py -q -n 0 --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-private-hosted-minutes-tally"
     description: "The pure tally over fixture billing JSON counts billed GitHub-hosted Actions minutes per repository and per day and excludes free, self-hosted and non-Actions items. The node and its tests are absent at the merge base."
     source: "manual"
@@ -2316,6 +2371,21 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run pytest tests/scripts/test_check_dep_provenance.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-mint-acceptance-evidence"
+    description: "Reproduce the real handler/git timeout, the exact pre-policy handle negative control and the dated deployed sanitizer capture replay. All checks run offline on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_occ_companion_effect/test_mint_acceptance_evidence_omn15447.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC110"]
+  - id: "dod-omn17427-mint-acceptance-deploy-probe"
+    description: "Deploy probe. Replay the dated dev-effects sanitizer capture against the locked dependency's identical sanitizer source: the raw exception must redact and the typed parked reason must remain readable. Hosted execution needs only dependencies and the committed fixture, no Docker, credentials, broker or live runtime. This is a capture replay, not fresh deployment verification."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_occ_companion_effect/test_mint_acceptance_evidence_omn15447.py::test_deployed_sanitizer_capture_replays_both_controls -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac109-compaction-pack-build"
     description: "The compaction orchestrator builds through HandlerCompactionPackBuild over the context-pack orchestrator with fixture sources: install with the pack identities, one candidate for two invocations, reads at the barrier for the access tenant, and pack_build_failed on a failed or incomplete build. At the merge base the test module fails to collect."
     source: "manual"
@@ -2323,7 +2393,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build.py -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC110"]
+    binds_ac: ["AC113"]
   - id: "dod-omn17427-compaction-pack-build-deploy-probe"
     description: "Deploy probe. In the checked-out package, the compaction orchestrator wired with HandlerCompactionPackBuild over HandlerContextPackOrchestrator and fixture sources replies install for a compaction command. It fails at the merge base, which has no such module, and needs only uv and this checkout on the hosted runner."
     source: "manual"

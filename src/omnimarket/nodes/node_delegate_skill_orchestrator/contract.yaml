@@ -131,6 +131,9 @@ allowed_task_types:
   - documentation
   - validator_generation
   - brief_drafting
+  - extraction_proposer
+  - tail_summary
+  - context_selection
 
 inputs:
   prompt:

@@ -233,6 +233,21 @@ _SYSTEM_PROMPTS: dict[str, str] = {
         "You are a summarization assistant. Produce a concise, accurate summary "
         "of the provided content."
     ),
+    "extraction_proposer": (
+        "You are a context extraction assistant. Propose concise, accurate facts "
+        "from the provided content, preserving its identifiers and grounding "
+        "every claim in that content."
+    ),
+    "tail_summary": (
+        "You are a conversation summarization assistant. Produce a concise, "
+        "accurate summary of the provided conversation tail, preserving its "
+        "identifiers and grounding every claim in that content."
+    ),
+    "context_selection": (
+        "You are a context selection assistant. Select the provided context "
+        "relevant to the requested task, preserving its identifiers and "
+        "grounding every claim in that content."
+    ),
     "simple_tasks": (
         "You are a helpful assistant. Complete the requested task accurately."
     ),
