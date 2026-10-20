@@ -655,6 +655,11 @@ requirements:
       - id: "AC152"
         statement: |-
           AC152: both delegation writers retain the canonical saving's counterfactual after runtime shutdown, preserve an existing pinned baseline, and invent none for a failed or zero-token terminal -- falsifier: uv run pytest tests/unit/nodes/node_projection_delegation/test_canonical_savings_counterfactual_omn20303.py -q -n 0 --no-cov
+  - id: "req-customer-ledger-in-memory-bus"
+    statement: "A customer running OmniNode locally has a work ledger on the in-memory event bus: ledger row events written through the work-ledger emit handler reach an in-memory reader that answers the same query verbs as the lab database reader (RULING 2026-10-19T21:47:42Z)."
+    acceptance:
+      - id: "AC153"
+        statement: "AC153: every row of the golden ledger fixture, written through HandlerWorkLedgerEmit with the in-memory emitter onto an EventBusInmemory, is folded by InMemoryWorkLedgerQueryReader, a redelivered row is kept once, and HandlerWorkLedgerQuery over that reader returns the rows, holds, inbox entries and open claims the recorded markdown reads name -- falsifier: uv run pytest tests/test_work_ledger_query_inmemory_bus.py -q fails at the merge base, where the module work_ledger_query_inmemory does not exist"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -859,6 +864,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC150: the context-pack orchestrator binds its tier sources from the contract's context_tier_sources block."
     command: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_tier_source_binding.py -q"
+  - kind: "tests"
+    description: "AC153: the work ledger runs on the in-memory event bus and answers the golden markdown reads."
+    command: "uv run pytest tests/test_work_ledger_query_inmemory_bus.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -2054,12 +2062,12 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC80"]
   - id: "dod-omn17427-hr-overflow-pin-probe"
-    description: "Deploy probe. GitHub serves the hostile-reviewer workflow at the checked-out HEAD cloning omniintelligence at the overflow-deadline revision. The probe fails at the merge base, which pins aeba95945f22, and needs only GitHub access on the hosted runner."
+    description: "Deploy probe. GitHub serves the hostile-reviewer workflow at the checked-out HEAD cloning omniintelligence at its newest dev tag (OMN-20910 replaced the sha pin), and that tag contains the overflow-deadline revision 921b322b8e43. The probe fails on a workflow that clones a sha literal and on a tag behind 921b322b8e43, such as aeba95945f22, and needs only GitHub access on the hosted runner."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: >-
-          gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/hostile-reviewer.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F -- "OMNIINTELLIGENCE_SHA 921b322b8e43f695961a06a04759dc88bb3e88ff"
+          gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/hostile-reviewer.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F -- 'clone_with_retry omniintelligence ../omniintelligence OMNIINTELLIGENCE_SHA "refs/tags/${OMNIINTELLIGENCE_TAG}"' && tag="$(git ls-remote --tags --refs https://github.com/OmniNode-ai/omniintelligence.git 'refs/tags/dev-*' | sed -n 's|^.*refs/tags/||p' | grep -E '^dev-[0-9]{14}-[0-9a-f]{12}$' | sort | tail -n 1)" && test -n "$tag" && status="$(gh api "repos/OmniNode-ai/omniintelligence/compare/921b322b8e43f695961a06a04759dc88bb3e88ff...$tag" --jq .status)" && echo "omniintelligence $tag vs 921b322b8e43: $status" && case "$status" in ahead|identical) true;; *) false;; esac
   - id: "dod-omn17427-ac91-liveness-overlay-check"
     description: "The overlay completeness check node and its console script pass the focused suite."
     source: "manual"
@@ -2682,4 +2690,19 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_kafka_publish_session.py -q -n 0 -p no:randomly --no-cov -k handle"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac153-customer-ledger-in-memory-bus"
+    description: "Every golden-fixture ledger row written through HandlerWorkLedgerEmit onto an EventBusInmemory is folded by InMemoryWorkLedgerQueryReader, and HandlerWorkLedgerQuery over it answers the recorded markdown reads. The test module fails at the merge base, where work_ledger_query_inmemory does not exist."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_work_ledger_query_inmemory_bus.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC153"]
+  - id: "dod-omn17427-inmem-ledger-deploy-probe"
+    description: "Deploy probe. In the checked-out package, a ledger row written through the emit handler onto an EventBusInmemory is read back by the in-memory reader. It fails at the merge base and needs only uv and this checkout on the hosted runner; no broker, database or credential."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_work_ledger_query_inmemory_bus.py -q -n 0 -p no:randomly --no-cov -k sync_emit_handler_writes"
         cwd: "${OMNI_HOME}/omnimarket"
