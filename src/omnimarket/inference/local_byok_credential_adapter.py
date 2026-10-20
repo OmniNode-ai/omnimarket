@@ -597,19 +597,26 @@ def record_local_byok_model(
         conn.close()
 
 
-def registered_local_byok_providers(*, db_path: Path | None = None) -> tuple[str, ...]:
-    """Return every provider with a locally registered credential, sorted."""
+def registered_local_byok_providers(
+    *, db_path: Path | None = None, registration_order: bool = False
+) -> tuple[str, ...]:
+    """Return registered providers, sorted or in registration order.
+
+    Registration timestamps have second resolution; rowid breaks ties in the
+    order of insertion. This is a fallback, not a customer ordering preference.
+    """
     resolved_path = db_path if db_path is not None else default_evidence_db_path()
     if not resolved_path.is_file():
         return ()
     conn = _connect(resolved_path)
     try:
         rows = conn.execute(
-            f"SELECT DISTINCT provider FROM {LOCAL_CREDENTIAL_TABLE}"
+            f"SELECT provider FROM {LOCAL_CREDENTIAL_TABLE} ORDER BY registered_at, rowid"
         ).fetchall()
     finally:
         conn.close()
-    return tuple(sorted(str(row["provider"]) for row in rows))
+    providers = tuple(dict.fromkeys(str(row["provider"]) for row in rows))
+    return providers if registration_order else tuple(sorted(providers))
 
 
 class LocalByokCredentialStore:

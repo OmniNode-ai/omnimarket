@@ -93,6 +93,9 @@ class EnumAutomationTriggerKind(StrEnum):
     GH_EVENT = "gh-event"
     SESSION_CRON = "session-cron"
     ROUTINE = "routine"
+    #: A typed bus event opens the expectation and a later one answers it; the
+    #: correlation states the deadline (OMN-17427: a landing stall).
+    BUS_EVENT = "bus-event"
 
 
 #: Long-running kinds: progress, not discrete runs, is what they report.
@@ -107,7 +110,7 @@ DAEMON_TRIGGER_KINDS: frozenset[EnumAutomationTriggerKind] = frozenset(
 
 #: Kinds with no cadence of their own; a correlation states their deadline.
 EVENT_TRIGGER_KINDS: frozenset[EnumAutomationTriggerKind] = frozenset(
-    {EnumAutomationTriggerKind.GH_EVENT}
+    {EnumAutomationTriggerKind.GH_EVENT, EnumAutomationTriggerKind.BUS_EVENT}
 )
 
 #: GitHub delays and drops scheduled runs under load (90 minutes observed).
@@ -701,6 +704,25 @@ def load_default_automation_liveness_overlay() -> ModelAutomationLivenessOverlay
 # --------------------------------------------------------------------------- events
 
 
+class ModelTriggerExpectation(BaseModel):
+    """An observed trigger of an event-triggered process and its answer.
+
+    Shared: the watchdog judges it, and a producer's fold (the landing stall
+    fold, OMN-17427) builds it from that producer's own events.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    process_id: ProcessId
+    host: NonEmptyStr
+    match_key: NonEmptyStr
+    triggered_at: AwareDatetime
+    answered_at: AwareDatetime | None = None
+    #: What the producer said last about the trigger (a landing controller's
+    #: decision text), carried into the verdict detail and the alarm text.
+    detail: str = ""
+
+
 class ModelAutomationRunObserved(BaseModel):
     """One run's start or finish, from the process itself or an observer."""
 
@@ -865,6 +887,9 @@ class ModelAutomationAlarmRaised(BaseModel):
     evidence_ref: NonEmptyStr
     #: The next step, machine-readable, e.g. ``diagnose:<process_id>``.
     action: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z-]*:\S+$")]
+    #: The verdict's detail when the episode opened: for an unanswered trigger,
+    #: its match key, how long it waited and the producer's last decision text.
+    detail: str = ""
 
     @model_validator(mode="after")
     def _consistent(self) -> Self:

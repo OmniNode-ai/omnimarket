@@ -40,6 +40,10 @@ description: >
   client, awaits the correlated events (reassembling chunked replies by content-record
   id and checking their sha256 against the echoed hash), and returns a typed
   client_verdict mapped by table lookup to the hook's output shape.
+  The adapter mints an invocation_id per invocation, carried on the command through
+  the @invocation_id argument source, and the context_compaction_verdict compute
+  installs a compaction reply only when its echoed invocation_id is the adapter's
+  own and its messages hash to the echoed installed_messages_hash.
 
 input_model:
   name: ModelHookAdapterRequest
