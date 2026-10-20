@@ -101,17 +101,19 @@ def test_an_unresolved_openrouter_credential_is_refused_before_any_call(
     assert models.calls == []
 
 
-def test_a_catalogue_picked_free_model_still_re_aims_once(
+def test_a_catalogue_picked_free_model_is_refused_before_any_call(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    # OMN-21059: a model the catalogue picked is not the customer's choice.
     store_model_credential(
         tmp_path / "delegation.sqlite", REF, model=GEMMA, model_chosen_by="catalogue"
     )
     provider, _ = _bind(monkeypatch, [429, 200], [GEMMA, NEMOTRON])
     result = effect.HandlerLlmDelegationCall().__call__(_chosen(GEMMA))
 
-    assert result.success, result.error_message
-    assert [call[1] for call in provider.calls] == [GEMMA, NEMOTRON]
+    assert not result.success
+    assert "BYOK_MODEL_NOT_CHOSEN" in (result.error_message or "")
+    assert provider.calls == []
 
 
 def _bus_intent(model: str) -> ModelInferenceIntent:

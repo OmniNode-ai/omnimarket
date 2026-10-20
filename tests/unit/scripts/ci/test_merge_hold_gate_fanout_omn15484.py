@@ -468,6 +468,21 @@ class TestReusableWorkflowContract:
         assert '["self-hosted","omnibase-ci"]' not in runs_on
         assert '["ubuntu-latest"]' in runs_on
 
+    def test_a_private_caller_has_no_hosted_arm_or_default(self) -> None:
+        """OMN-21216: a private caller never reaches a hosted label.
+
+        Since 2026-10-19 a private repository may not run on a hosted label,
+        fork pull requests included, and a hosted default behind a set
+        variable counts. The public fork arm is closed to private callers, and
+        their own arm reads the trusted variable with no default at all.
+        """
+        runs_on = " ".join(str(self._job()["runs-on"]).split())
+        assert "(!github.event.repository.private && github.event_name" in runs_on
+        assert (
+            "|| github.event.repository.private"
+            " && fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON) ||"
+        ) in runs_on
+
     def test_the_job_is_unconditional(self) -> None:
         job = self._job()
         assert "needs" not in job

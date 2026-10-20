@@ -6,6 +6,13 @@ summary: "The lane_brief_section context profile (LANE_RULES, OPERATOR_RULINGS a
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    "dod-omn21118-ac2-accepted-20261020t0645z":
+      - label: "AC2"
+        criterion_hash: "629277f30ddd8143dc37599eae4edc0d38a2c6baac448ba0fec2b61ffa6bdf9f"
+        proposed_by: "lane=dod-closeout-bind-2026-10-20T0645Z-c3"
+        accepted_by: "lane=dod-closeout-accept-2026-10-20T0645Z-c3"
 requirements:
   - id: "req-lane-brief-profile"
     statement: "The omnimarket slice of plan task TA.17: the lane_brief_section profile data and the section 3a render with its refusal."
@@ -36,6 +43,14 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_lane_brief_section_compute/test_section_3a.py tests/pack/test_lane_brief_section_profile.py -q -p no:randomly --no-cov -k 'refuses or does_not_render or must_be_backed or refused_required_factor_missing or ambiguous or missing_slot'"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21118-ac2-accepted-20261020t0645z"
+    description: "AC2: a brief that cites a ruling stamp with no backing OPERATOR_RULINGS row returns status REFUSED, failure_class REQUIRED_FACTOR_MISSING and the unbacked stamp, while the fully backed brief renders. Re-run by the accepting lane at omnimarket dev b9ec96db3: 1 passed. The test file does not exist at the parent of the implementing merge (ae803043b), and with that merge's product changes reverted the test fails on import."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lane_brief_section_compute/test_section_3a.py::test_every_cited_ruling_stamp_must_be_backed -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn21118-deploy-container-build"
     description: "Hosted deploy probe. The hosted runner runs uv run --frozen --no-dev in the checkout, renders a section 3a through the product handler over synthetic factors and asserts status rendered, then asserts a brief whose OPERATOR_RULINGS source is unresolved is refused required_factor_missing with no section. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
