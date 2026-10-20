@@ -27,12 +27,14 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_completion
     zero_flip_alert,
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_ticket_rules import (
+    box_ticks,
     chunk_list,
     comment_signature,
     decide_ticket,
     open_comment,
     read_dod_verify,
     select_candidates,
+    tick_comment,
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep import (
     CLOCK_FORMAT,
@@ -42,6 +44,7 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_
     EnumPrecheckVerdict,
     EnumReleasedState,
     EnumTicketDecision,
+    ModelBoxTick,
     ModelChunkResult,
     ModelCloseoutCounts,
     ModelDodCloseoutDecisionRequest,
@@ -840,6 +843,18 @@ def judge_ticket(
         criteria_note=request.criteria_note,
         criteria_amendment=request.criteria_amendment,
     )
+    # OMN-17427: the done-flip guard refuses Done while a box is unticked, so a Done
+    # names the boxes it ticks; a box no verified check covers holds the ticket open.
+    ticked: str | None = None
+    ticks: list[ModelBoxTick] | None = None
+    if request.description is not None:
+        text, planned, box_unmet = box_ticks(request.description, dod_verify)
+        named = {u.label for u in unmet}
+        unmet.extend(u for u in box_unmet if u.label == "box" or u.label not in named)
+        if box_unmet:
+            decision = EnumTicketDecision.OPEN
+        elif decision is EnumTicketDecision.DONE and planned:
+            ticked, ticks = text, planned
     opened = decision is EnumTicketDecision.OPEN
     needs_amendment = any(u.amendment for u in unmet)
     sha = request.text_sha if needs_amendment else ""
@@ -852,6 +867,15 @@ def judge_ticket(
         comment_text=(
             open_comment(request.ticket_id, request.run_key, unmet, sha)
             if opened
+            else None
+        ),
+        ticked_description=ticked,
+        box_ticks=ticks,
+        tick_comment=(
+            tick_comment(
+                request.ticket_id, request.run_key, ticks, request.verified_head
+            )
+            if ticks
             else None
         ),
     )

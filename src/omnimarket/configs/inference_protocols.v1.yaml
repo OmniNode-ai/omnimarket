@@ -338,6 +338,9 @@ profiles:
       - "*qwen*"
     task_types:
       - "brief_drafting"
+      - "extraction_proposer"
+      - "tail_summary"
+      - "context_selection"
       - "document"
       - "documentation"
       - "summarization"

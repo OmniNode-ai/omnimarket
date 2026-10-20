@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_private_hosted_minutes_watch_effect
+version: 1.0.0
+description: Read monthly billing usage once, alert on billed hosted Actions minutes for a UTC day, and write a ledger STATUS row and heartbeat.
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+pack: core
+node_role: effect
+display_name: Private Hosted Minutes Watch Effect
+entry_points:
+  onex.nodes:
+    node_private_hosted_minutes_watch_effect: omnimarket.nodes.node_private_hosted_minutes_watch_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem_write
+dependencies:
+- omnibase_core>=0.39.0
+license: MIT
+tags:
+- effect
+- billing
+- actions

@@ -132,6 +132,16 @@ class ModelUnmetCriterion(BaseModel):
     amendment: str = ""
 
 
+class ModelBoxTick(BaseModel):
+    """One acceptance box the closer ticks, with the verified checks that bind its criterion."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    label: str
+    line: str
+    evidence_ids: list[str]
+
+
 class ModelRotationRecord(BaseModel):
     """One candidate ticket as the caller read it; its text hashes come from text_state."""
 
@@ -367,6 +377,8 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
     criteria_amendment: str = ""
     run_key: str = ""
     text_sha: str = ""
+    description: str | None = None
+    verified_head: str = ""
     # select_candidates (chunk_size is shared with plan_scope)
     records: list[ModelRotationRecord] | None = None
     text_state: str = ""
@@ -449,6 +461,8 @@ class ModelDodCloseoutDecisionRequest(BaseModel):
                 "criteria_amendment",
                 "run_key",
                 "text_sha",
+                "description",
+                "verified_head",
             ),
             EnumCloseoutDecisionKind.COMPLETION: (
                 "report_ref",
@@ -558,6 +572,9 @@ class ModelDodCloseoutDecisionResult(BaseModel):
     needs_amendment: bool | None = None
     signature: str | None = None
     comment_text: str | None = None
+    ticked_description: str | None = None
+    box_ticks: list[ModelBoxTick] | None = None
+    tick_comment: str | None = None
     # completion and ground_state
     completion_rows: list[str] | None = None
     zero_flip_alert: ModelDodCloseoutZeroFlipAlert | None = None
