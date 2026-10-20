@@ -600,6 +600,9 @@ class HandlerLlmDelegationCall:
         OMN-21078: where the customer chooses the model, these re-aims require
         a credential that records a catalogue pick. A customer's chosen model,
         including a ``:free`` one, or one with no chooser record gets one call.
+        OMN-21059: every catalogue row now has the customer choose, and a
+        credential that records a catalogue pick is refused with
+        BYOK_MODEL_NOT_CHOSEN before any call.
 
         This is not a transport retry and it never changes backend: it is the
         same customer route asking its own provider which model it offers. A
@@ -621,11 +624,18 @@ class HandlerLlmDelegationCall:
             # OMN-21078: a chosen :free model matches a preference pattern;
             # the pattern is not evidence of who chose it. No record means
             # customer choice, including hosted refs and older local rows.
+            # OMN-21059: a model the catalogue picked is not one the customer
+            # chose, so that credential is refused like one with no model.
             if (
                 resolve_local_byok_model_chooser(request.secret_ref)
-                != MODEL_CHOSEN_BY_CATALOGUE
+                == MODEL_CHOSEN_BY_CATALOGUE
             ):
-                return self._execute_call_once(request, endpoint_url, event_publisher)
+                return self._failure_result(
+                    request,
+                    EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND,
+                    model_not_chosen_message(byok.provider),
+                )
+            return self._execute_call_once(request, endpoint_url, event_publisher)
         configured = request.model_id
         if request.model_id == BYOK_MODEL_UNRESOLVED:
             resolved = self._resolve_byok_model(request, byok, exclude=())
