@@ -1,18 +1,21 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""Private harness routing declarations loaded through an explicit overlay."""
+"""Deployment routing declarations loaded through an explicit overlay."""
 
 from __future__ import annotations
 
 from collections import Counter
 from typing import Literal
 
+from omnibase_core.models.delegation.wire import ModelRoutingTier
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from omnimarket.enums.enum_deployment_fact_kind import EnumDeploymentFactKind
 from omnimarket.models.delegation.model_class_escalation_chain import (
     ModelClassEscalationChain,
 )
+from omnimarket.models.delegation.model_deployment_fact_marker import deployment_fact
 from omnimarket.models.delegation.model_harness_tier import ModelHarnessTier
 from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
     EnumDelegationBackendKind,
@@ -42,6 +45,32 @@ class ModelTaskClassEscalationChain(BaseModel):
         return ModelClassEscalationChain(escalate_on=self.escalate_on, rungs=self.rungs)
 
 
+class ModelRegisteredByokTier(ModelRoutingTier):
+    """A deployment's insertion point for locally registered customer responders."""
+
+    name: str = Field(
+        ...,
+        min_length=1,
+        json_schema_extra=deployment_fact(EnumDeploymentFactKind.ROUTING_TIER),
+    )
+    cost_per_1k_tokens: float = Field(..., ge=0.0)
+    after_tier: str = Field(
+        ...,
+        min_length=1,
+        json_schema_extra=deployment_fact(EnumDeploymentFactKind.ROUTING_TIER),
+    )
+
+    @model_validator(mode="after")
+    def _only_registered_models(self) -> ModelRegisteredByokTier:
+        if self.models:
+            raise ValueError(
+                "registered_byok_tier models come only from local registrations"
+            )
+        if self.name == self.after_tier:
+            raise ValueError("registered_byok_tier cannot follow itself")
+        return self
+
+
 class ModelDelegationRoutingOverlay(BaseModel):
     """Harness backends, tiers and chains supplied by the operator."""
 
@@ -51,6 +80,7 @@ class ModelDelegationRoutingOverlay(BaseModel):
     harness_backends: tuple[ModelDelegationBackendConfig, ...] = ()
     harness_tiers: tuple[ModelHarnessTier, ...] = ()
     escalation_chains: tuple[ModelTaskClassEscalationChain, ...] = ()
+    registered_byok_tier: ModelRegisteredByokTier | None = None
 
     @model_validator(mode="after")
     def _validate_references(self) -> ModelDelegationRoutingOverlay:
@@ -114,5 +144,6 @@ EMPTY_DELEGATION_ROUTING_OVERLAY = ModelDelegationRoutingOverlay(
 __all__ = [
     "EMPTY_DELEGATION_ROUTING_OVERLAY",
     "ModelDelegationRoutingOverlay",
+    "ModelRegisteredByokTier",
     "ModelTaskClassEscalationChain",
 ]

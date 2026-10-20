@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.318"
+version = "0.4.319"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -544,6 +544,7 @@ node_automation_liveness_deadman_effect = "omnimarket.nodes.node_automation_live
 node_automation_liveness_watchdog_compute = "omnimarket.nodes.node_automation_liveness_watchdog_compute"
 node_automation_liveness_watchdog_effect = "omnimarket.nodes.node_automation_liveness_watchdog_effect"
 node_automation_liveness_overlay_check_compute = "omnimarket.nodes.node_automation_liveness_overlay_check_compute"
+node_landing_stall_expectation_compute = "omnimarket.nodes.node_landing_stall_expectation_compute"
 node_lab_job_check_schedule_compute = "omnimarket.nodes.node_lab_job_check_schedule_compute"
 node_lab_sli_alert_effect = "omnimarket.nodes.node_lab_sli_alert_effect"
 node_lab_sli_board_compute = "omnimarket.nodes.node_lab_sli_board_compute"
@@ -987,6 +988,7 @@ node_report_anchor_probe_effect = "omnimarket.nodes.node_report_anchor_probe_eff
 node_report_validation_compute = "omnimarket.nodes.node_report_validation_compute"
 node_architecture_discovery_orchestrator = "omnimarket.nodes.node_architecture_discovery_orchestrator"
 node_dev_tag_pin_mover_compute = "omnimarket.nodes.node_dev_tag_pin_mover_compute"
+node_runtime_deploy_effect = "omnimarket.nodes.node_runtime_deploy_effect"
 
 [project.scripts]
 onex-hourly-tick = "omnimarket.nodes.node_hourly_tick_effect.handlers.handler_hourly_tick_cli:main"
@@ -994,6 +996,7 @@ onex-host-thermal = "omnimarket.nodes.node_host_thermal_observe_effect.handlers.
 onex-automation-liveness-check = "omnimarket.handlers.handler_automation_liveness_overlay_check_cli:main"
 onex-patch-apply-dispatch = "omnimarket.nodes.node_patch_apply_dispatch_effect.handlers.handler_patch_apply_dispatch_cli:main"
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
+onex-runtime-deploy = "omnimarket.nodes.node_runtime_deploy_effect.handlers.handler_runtime_deploy_cli:main"
 onex-architecture-discovery = "omnimarket.nodes.node_architecture_discovery_orchestrator.handlers.handler_architecture_discovery_cli:main"
 ab-compare = "omnimarket.cli.cli_ab_compare:main"
 ab-compare-suite = "omnimarket.cli.cli_ab_compare_suite:main"
