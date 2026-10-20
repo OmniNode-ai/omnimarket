@@ -2377,7 +2377,7 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_verdict.py -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC140"]
-  - id: "dod-omn17427-compaction-adapter-verdict-deploy-probe"
+  - id: "dod-omn17427-compaction-verdict-deploy-probe"
     description: "Deploy probe. In the checked-out package, the hook adapter driven with a compaction binding and a client echoing the command's invocation_id returns install with the reply's messages. It fails at the merge base, which has no compaction verdict module, and needs only uv and this checkout on the hosted runner."
     source: "manual"
     checks:
