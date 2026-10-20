@@ -577,10 +577,10 @@ requirements:
   - id: "req-closer-gateway-loop-and-box-ticks"
     statement: "The gateway read client answers from under a running event loop, and the closer's decide_ticket names the description with exactly the acceptance boxes dod_verify verified ticked, holding open a ticket whose box no verified check covers."
     acceptance:
-      - id: "AC109"
-        statement: "AC109: read_over_bus called from inside a running event loop returns the gateway's typed result instead of raising that asyncio.run cannot be called from a running event loop."
-      - id: "AC110"
-        statement: "AC110: decide_ticket given a description ticks only the boxes whose criterion has a verified accepted check, renders the evidence comment, and stays open with nothing ticked when any unchecked box names no criterion or has no verified check."
+      - id: "AC111"
+        statement: "AC111: read_over_bus called from inside a running event loop returns the gateway's typed result instead of raising that asyncio.run cannot be called from a running event loop."
+      - id: "AC112"
+        statement: "AC112: decide_ticket given a description ticks only the boxes whose criterion has a verified accepted check, renders the evidence comment, and stays open with nothing ticked when any unchecked box names no criterion or has no verified check."
   - id: "req-private-hosted-minutes-watch"
     statement: "Once a day, one read of the organization's billing usage for the month sums GitHub-hosted Actions minutes per repository and per UTC day, appends one ledger STATUS row for the day, and raises one alert through the alert channel when any repository used any billed hosted minute that day."
     acceptance:
@@ -588,6 +588,11 @@ requirements:
         statement: "AC107: from fixture billing JSON, node_private_hosted_minutes_watch_effect counts only Actions minutes with a positive gross amount on a GitHub-hosted sku, per repository and per UTC day, and carries workflow names when the usage items name them -- falsifier: uv run pytest tests/unit/nodes/node_private_hosted_minutes_watch_effect/test_hosted_minutes_tally.py -q fails on a free public item, a self-hosted item or a non-Actions item that is counted"
       - id: "AC108"
         statement: "AC108: one watch run makes one billing read, sends the alert before it appends the STATUS row that records the alert outcome, never sends or appends twice for one day, appends a STATUS row on a quiet day, refuses before the billing read when ONEX_LEDGER_PATH is unset, and exits nonzero when the alert channel is dead or unconfigured -- falsifier: uv run pytest tests/unit/nodes/node_private_hosted_minutes_watch_effect/test_handler_private_hosted_minutes_watch.py tests/unit/nodes/node_private_hosted_minutes_watch_effect/test_main.py -q fails on a second send, a second append or a healthy exit with a dead alert"
+  - id: "req-sibling-dev-tag-provenance"
+    statement: "A registered internal sibling can use its own dev merge tag without a suppression, and foreign sources, branches, raw revisions and malformed tags do not qualify."
+    acceptance:
+      - id: "AC109"
+        statement: "AC109: the dependency provenance tests accept canonical sibling dev tags without annotations and refuse foreign git sources, branches, bare revisions, malformed tags and conflicting selectors."
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -2275,7 +2280,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/handlers/scm/test_handler_gateway_read_client.py -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC109"]
+    binds_ac: ["AC111"]
   - id: "dod-omn17427-closer-box-ticks"
     description: "decide_ticket ticks only verified criteria's boxes and holds a ticket with an unlabelled or unverified box. All five cases fail at the merge base, where decide_ticket takes no description."
     source: "manual"
@@ -2283,7 +2288,7 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_dod_closeout_sweep_compute/test_closer_ac_ticks_dod_closeout_sweep_compute.py -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC110"]
+    binds_ac: ["AC112"]
   - id: "dod-omn17427-closer-unblock-deploy-probe"
     description: "Deploy probe. Run the gateway client and closer tick cases from this checkout with skips refused. The hosted runner needs the locked dependencies and this checkout, with no bus, credential or Linear access; this checks the packaged handlers, not a running deployment."
     source: "manual"
@@ -2313,4 +2318,26 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/nodes/node_private_hosted_minutes_watch_effect -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-sibling-dev-tag-provenance"
+    description: "The local provenance gate accepts the sanctioned dev-tag shape and retains negative controls."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/scripts/test_check_dep_provenance.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC109"]
+  - id: "dod-omn17427-core-ref-lock-fixtures"
+    description: "Supporting evidence, bound to no criterion: the sibling-pin workflow tests derive core_ref from the fixture lock for both registry releases and dev merge tags. The change is test-side only and the workflow pin step already resolves both, so these tests pass at the merge base and cannot be a must-fail control."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ci/test_sibling_pins_omn20001.py -q --no-cov -k 'resolves_a_new_lock_release or pins_match_lock'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-provenance-deploy-probe"
+    description: "Deploy probe: exercise the shipped offline provenance entrypoint and its positive and negative source fixtures; no service deployment or credentials are required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/scripts/test_check_dep_provenance.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
