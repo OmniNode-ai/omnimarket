@@ -643,6 +643,11 @@ requirements:
     acceptance:
       - id: "AC151"
         statement: "AC151: HandlerEventEmitEffect.handle() with a real KafkaEventPublisher over a counting fake bus and a spool holding 3 pending records publishes 4 records through exactly one bus, started once and closed once; three publishes in one session use one bus; a publish that raises in a session closes that bus and the next publish opens a new one; two plain publishes open and close two buses -- falsifier: uv run pytest tests/unit/nodes/node_event_emit_effect/test_kafka_publish_session.py -q fails at the merge base, where KafkaEventPublisher has no session()"
+  - id: "req-step-by-step-prevent-ensure-purpose"
+    statement: "The step_by_step_explanation check accepts a correct causal answer walked through with a prevented or ensured result (\", preventing\", \" and preventing\", \", ensuring\", \", meaning\", \" which prevents\") or a purpose clause (\" to ensure that\", \" to prevent\"), and still vetoes an answer that asserts without explaining."
+    acceptance:
+      - id: "AC152"
+        statement: "AC152: the fifteen correct causal answers in tests/unit/delegation/test_step_by_step_causal_prevent_ensure_omn19401.py, nine of them verbatim Qwen3.8-27B answers from a lab model server, pass step_by_step_explanation, and the seven non-explanations, including \"Preventing outages is the goal\", \"the ensuing outage\" and \"meaningful names\", are still vetoed -- falsifier: uv run pytest tests/unit/delegation/test_step_by_step_causal_prevent_ensure_omn19401.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -847,6 +852,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC150: the context-pack orchestrator binds its tier sources from the contract's context_tier_sources block."
     command: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_tier_source_binding.py -q"
+  - kind: "tests"
+    description: "AC152: correct causal answers with a prevented or ensured result or a purpose clause pass step_by_step_explanation and non-explanations are still vetoed."
+    command: "uv run pytest tests/unit/delegation/test_step_by_step_causal_prevent_ensure_omn19401.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -2588,4 +2596,19 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_kafka_publish_session.py -q -n 0 -p no:randomly --no-cov -k handle"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac152-causal-prevent-ensure"
+    description: "The fixture proves correct causal answers walked through with a prevented or ensured result or a purpose clause pass step_by_step_explanation and non-explanations are still vetoed. At the merge base the fifteen correct answers are vetoed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_step_by_step_causal_prevent_ensure_omn19401.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC152"]
+  - id: "dod-omn17427-causal-prevent-ensure-deploy-probe"
+    description: "Deploy probe. The quality gate handler's step_by_step_explanation check is run over this fixture and the earlier causal fixtures: every correct causal answer passes and every non-explanation is vetoed. The hosted runner needs uv and this checkout, with no external provider or credentials. This checks the artifact and does not attest a live deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/delegation/test_step_by_step_causal_prevent_ensure_omn19401.py tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py tests/unit/delegation/test_step_by_step_causal_prose_omn19401.py -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
