@@ -225,12 +225,13 @@ def test_a_store_created_before_the_step_gains_the_view_on_its_next_open(
     path = _store(tmp_path, (_delegation("old"),), (_call("old", "measured"),))
     conn = sqlite3.connect(path)
     conn.execute("DROP VIEW projection_delegation_savings")
-    # A store from before the OMN-20008 step also predates the OMN-20717 step
-    # that re-creates this view, so neither is recorded.
+    # A store from before the first savings view also predates both later
+    # replacements, so none of their one-time step markers is recorded.
     conn.execute(
         "DELETE FROM omnimarket_sqlite_store_steps WHERE step IN "
         "('omn20008_delegation_savings_view', "
-        "'omn20717_delegation_savings_unpriced_view')"
+        "'omn20717_delegation_savings_unpriced_view', "
+        "'omn21206_delegation_savings_measured_view')"
     )
     conn.commit()
     conn.close()

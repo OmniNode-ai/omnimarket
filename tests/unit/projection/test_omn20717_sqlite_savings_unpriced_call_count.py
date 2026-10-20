@@ -29,6 +29,7 @@ from typing import Any
 import pytest
 
 from tests.unit.projection.test_sqlite_delegation_savings_view_omn20008 import (
+    _call,
     _delegation,
     _read,
     _row,
@@ -45,6 +46,7 @@ def test_an_unpriced_call_is_counted_beside_unchanged_totals(tmp_path: Path) -> 
             _delegation("priced", cost_usd=0.25, cost_savings_usd=0.5),
             _delegation("unpriced", cost_usd=None, cost_savings_usd=0.0),
         ),
+        (_call("priced", "measured"),),
     )
     row = _row(path)
     assert row["unpriced_call_count"] == 1
@@ -61,6 +63,7 @@ def test_priced_and_measured_free_calls_count_none(tmp_path: Path) -> None:
             _delegation("priced", cost_usd=0.1),
             _delegation("free", cost_usd=0.0),
         ),
+        (_call("priced", "measured"), _call("free", "measured")),
     )
     row = _row(path)
     assert row["unpriced_call_count"] == 0
@@ -83,7 +86,8 @@ def test_a_store_that_recorded_the_earlier_step_gains_the_column(
     conn.execute("DROP VIEW projection_delegation_savings")
     conn.execute(
         "DELETE FROM omnimarket_sqlite_store_steps "
-        "WHERE step = 'omn20717_delegation_savings_unpriced_view'"
+        "WHERE step IN ('omn20717_delegation_savings_unpriced_view', "
+        "'omn21206_delegation_savings_measured_view')"
     )
     conn.commit()
     conn.close()
