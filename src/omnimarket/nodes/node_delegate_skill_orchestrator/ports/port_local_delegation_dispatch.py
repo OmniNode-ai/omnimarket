@@ -1420,7 +1420,10 @@ class LocalDelegationDispatchPort:
         attribution: Mapping[str, str] | None = None,
         model: str | None = None,
         named_tests: ModelNamedTestSpec | None = None,
+        trace_id: UUID | None = None,
+        queue_wait_ms: int | None = None,
     ) -> dict[str, object]:
+        dispatch_started = time.monotonic()
         # OMN-18931: the no-escalation fault route is admitted only by the
         # trusted runtime consumer for a declared dogfood fault backend. The
         # in-process port has no such guard, so it refuses rather than running
@@ -2120,6 +2123,9 @@ class LocalDelegationDispatchPort:
                     endpoint_ref=backend.endpoint_ref,
                     model_id=backend.model_id,
                     result=transport_result,
+                    trace_id=trace_id,
+                    queue_wait_ms=queue_wait_ms,
+                    started_monotonic=dispatch_started,
                     prompt=prompt,
                     source_session_id=source_session_id,
                     attribution=attribution,
@@ -2444,6 +2450,9 @@ class LocalDelegationDispatchPort:
                     endpoint_ref=backend.endpoint_ref,
                     model_id=attributed_model_id,
                     result=result,
+                    trace_id=trace_id,
+                    queue_wait_ms=queue_wait_ms,
+                    started_monotonic=dispatch_started,
                     prompt=prompt,
                     source_session_id=source_session_id,
                     attribution=attribution,
@@ -2730,6 +2739,9 @@ class LocalDelegationDispatchPort:
                     endpoint_ref=backend.endpoint_ref,
                     model_id=backend.model_id,
                     result=result,
+                    trace_id=trace_id,
+                    queue_wait_ms=queue_wait_ms,
+                    started_monotonic=dispatch_started,
                     prompt=prompt,
                     source_session_id=source_session_id,
                     attribution=attribution,
@@ -4168,6 +4180,9 @@ class LocalDelegationDispatchPort:
         required_bar: float | None,
         attribution: Mapping[str, str] | None = None,
         attempt_usage: Sequence[_AttemptUsage] = (),
+        trace_id: UUID | None = None,
+        queue_wait_ms: int | None = None,
+        started_monotonic: float | None = None,
     ) -> None:
         """Materialize a delegation_events row via the canonical projection.
 
@@ -4278,6 +4293,16 @@ class LocalDelegationDispatchPort:
         for key, value in (attribution or {}).items():
             if key in _EVIDENCE_ATTRIBUTION_KEYS and value:
                 payload[key] = value
+        # OMN-19448: only this terminal reaches the in-process projection and bus.
+        # Preserve measured zero; absent inputs mean unmeasured, never zero.
+        if trace_id is not None:
+            payload["trace_id"] = str(trace_id)
+        if queue_wait_ms is not None:
+            payload["queue_wait_ms"] = max(0, queue_wait_ms)
+        if started_monotonic is not None:
+            payload["execution_duration_ms"] = max(
+                0, int((time.monotonic() - started_monotonic) * 1000.0)
+            )
         # OMN-14058 (OPERATOR-ACCEPTED INTERIM): forward the request-acceptance
         # tenant_id so the evidence row stamps a real tenant.
         #
