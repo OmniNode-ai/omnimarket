@@ -131,6 +131,8 @@ not_routing_resolution_sites:
     reason: checks only that the same overlay is not broken before onboarding falls back to the contract's packaged default model; it reads no value and selects no route
   - site: "src/omnimarket/nodes/node_integration_sweep_orchestrator/handlers/handler_integration_sweep_orchestrator.py:load_node_overlay(_NODE_NAME)"
     reason: hosts and URLs a sweep probes; probe targets, not routes for delegated work
+  - site: "src/omnimarket/handlers/lab_sli_pack_gate.py:load_node_overlay(LAB_SLI_PACK_OVERLAY)"
+    reason: whether a deployment enables the lab SLI pack; an on or off switch for four nodes, not a route for delegated work
 not_routing_configs:
   - path: src/omnimarket/configs/adk_invoke.yaml
     reason: one fixed provider invocation with no choice among routes

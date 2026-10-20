@@ -16,6 +16,7 @@ import contextlib
 import inspect
 import os
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Final, cast
 
@@ -107,8 +108,20 @@ def read_over_bus(
             )
         return terminal.payload
 
+    def run_call() -> dict[str, JsonValue]:
+        return asyncio.run(call())
+
     try:
-        payload = asyncio.run(call())
+        # A caller under a running event loop (dod_verify inside the runtime)
+        # cannot start a second loop on its own thread; the bus call runs on one
+        # worker thread of its own instead.
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            payload = run_call()
+        else:
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                payload = executor.submit(run_call).result()
     except TimeoutError as exc:
         raise GatewayReadError(
             f"gateway {request.operation.value}: no answer on lane {lane!r} "

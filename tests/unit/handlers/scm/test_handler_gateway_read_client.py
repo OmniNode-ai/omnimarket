@@ -128,3 +128,22 @@ def test_a_gateway_that_refuses_the_request_is_a_typed_refusal(
                 pr_number=77,
             )
         )
+
+
+async def test_a_read_from_inside_a_running_event_loop_still_returns_the_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """dod_verify runs under the runtime's event loop; a bare ``asyncio.run``
+    there raised and the closer saw VERIFY_COULD_NOT_RUN."""
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    monkeypatch.delenv("ONEX_GITHUB_GATEWAY_BUS_LANE", raising=False)
+
+    result = read_over_bus(
+        ModelGithubGatewayRequest(
+            operation=EnumGithubGatewayOperation.MERGED_PR, repo=REPO, pr_number=77
+        )
+    )
+
+    assert isinstance(result, ModelMergedPrResult)
+    assert result.head_sha == HEAD

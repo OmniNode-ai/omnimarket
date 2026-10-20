@@ -18,11 +18,12 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from uuid import UUID, uuid4
 
 from omnimarket.enums.enum_lab_sli import EnumLabSliActionKind
+from omnimarket.handlers.lab_sli_pack_gate import require_lab_sli_pack
 from omnimarket.inference.secret_store_resolver import resolve_api_key_loop_safe
 from omnimarket.models.lab_sli import (
     ModelLabSliAlertAction,
@@ -63,7 +64,9 @@ class HandlerLabSliAlert:
         policy: ModelLabSliAlertPolicy | None = None,
         channel_resolver: Callable[[], str] | None = None,
         contract_path: Path = CONTRACT_PATH,
+        environ: Mapping[str, str] | None = None,
     ) -> None:
+        self._environ = environ
         self._decide = DecideLabSliAlert(policy)
         self._publisher = event_publisher
         self._contract_path = contract_path
@@ -71,6 +74,7 @@ class HandlerLabSliAlert:
         self._channel_resolver = channel_resolver or self._resolve_channel
 
     def handle(self, request: ModelLabSliAlertRequest) -> ModelLabSliAlertResult:
+        require_lab_sli_pack("node_lab_sli_alert_effect", self._environ)
         decided = self._decide.handle(request)
         correlation_id = uuid4()
         deliveries = tuple(
