@@ -202,6 +202,32 @@ def test_stale_publishes_canonical_slack_command() -> None:
     )
 
 
+@pytest.mark.parametrize("age", [901, 9632, None])
+def test_hook_alarm_survives_work_events_projection_outage(age: int | None) -> None:
+    """A shared runtime outage must not turn stale hooks into an IDLE verdict."""
+    publisher = _Publisher()
+    result = HandlerProjectionFreshnessAlert(
+        reader=_Reader(age=age, active=0),
+        event_publisher=publisher,
+        clock=_Clock(),
+    ).handle(ModelFreshnessTrigger())
+    assert result.verdicts[0].state is EnumFreshnessState.STALE
+    assert len(publisher.calls) == 1
+    assert result.deliveries[0].published
+
+
+@pytest.mark.parametrize("age", [0, 900])
+def test_hook_alarm_keeps_fresh_rows_quiet_without_demand(age: int) -> None:
+    publisher = _Publisher()
+    result = HandlerProjectionFreshnessAlert(
+        reader=_Reader(age=age, active=0),
+        event_publisher=publisher,
+        clock=_Clock(),
+    ).handle(ModelFreshnessTrigger())
+    assert result.verdicts[0].state is EnumFreshnessState.FRESH
+    assert publisher.calls == []
+
+
 @pytest.mark.parametrize(
     ("age", "active", "state"),
     [
@@ -211,13 +237,17 @@ def test_stale_publishes_canonical_slack_command() -> None:
     ],
 )
 def test_fresh_and_idle_do_not_publish(
-    age: int | None, active: int, state: EnumFreshnessState
+    age: int | None, active: int, state: EnumFreshnessState, tmp_path: Path
 ) -> None:
+    # Activity gating remains available for checks whose demand is independent.
+    raw = yaml.safe_load(CONTRACT_PATH.read_text())
+    raw["freshness_checks"][0]["demand"]["min_distinct"] = 1
     publisher = _Publisher()
     result = HandlerProjectionFreshnessAlert(
         reader=_Reader(age=age, active=active),
         event_publisher=publisher,
         clock=_Clock(),
+        contract_path=_contract_copy(tmp_path, raw),
     ).handle(ModelFreshnessTrigger())
     assert result.verdicts[0].state is state
     assert result.deliveries == ()
@@ -251,11 +281,14 @@ def test_two_ticks_in_one_interval_read_once() -> None:
     assert len(reader.calls) == 2
 
 
-def test_reader_failure_is_unknown(caplog: pytest.LogCaptureFixture) -> None:
+@pytest.mark.parametrize("active", [0, 1])
+def test_reader_failure_is_unknown(
+    caplog: pytest.LogCaptureFixture, active: int
+) -> None:
     publisher = _Publisher()
     with caplog.at_level(logging.ERROR):
         result = HandlerProjectionFreshnessAlert(
-            reader=_Reader(error="database dark"),
+            reader=_Reader(error="database dark", active=active),
             event_publisher=publisher,
             clock=_Clock(),
         ).handle(ModelFreshnessTrigger())

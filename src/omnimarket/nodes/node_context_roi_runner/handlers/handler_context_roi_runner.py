@@ -381,6 +381,7 @@ class HandlerContextRoiRunner:
         rows: list[ModelAttemptReductionRow] = []
         warnings: list[str] = []
         global_order = 0
+        excluded_unpriced = 0
 
         for task in request.tasks:
             # Randomise arm order within each task for order-effect control.
@@ -404,8 +405,11 @@ class HandlerContextRoiRunner:
                         run_order=global_order,
                         request=request,
                     )
-                    rows.append(row)
                     warnings.extend(trial_warnings)
+                    if row is None:
+                        excluded_unpriced += 1
+                        continue
+                    rows.append(row)
 
         failed_count = sum(1 for r in rows if r.failure_stage != EnumFailureStage.NONE)
 
@@ -415,6 +419,7 @@ class HandlerContextRoiRunner:
             proof_class=EnumProofClass.RUNTIME_OBSERVED_ONLY,
             total_trials=len(rows),
             failed_trials=failed_count,
+            excluded_unpriced_trials=excluded_unpriced,
             warnings=tuple(warnings),
         )
         self._emit_result(result)
@@ -588,8 +593,11 @@ class HandlerContextRoiRunner:
         trial_num: int,
         run_order: int,
         request: ModelContextRoiRunRequest,
-    ) -> tuple[ModelAttemptReductionRow, list[str]]:
-        """Execute one (task x arm x trial) and return a row + any warnings."""
+    ) -> tuple[ModelAttemptReductionRow | None, list[str]]:
+        """Execute one (task x arm x trial) and return a row + any warnings.
+
+        The row is None when the run was unpriced and is excluded (OMN-20834).
+        """
         warnings: list[str] = []
         correlation_id = str(uuid.uuid4())
         # Factor-subset hash is arm-intrinsic -- computed once up front so every
@@ -797,11 +805,12 @@ class HandlerContextRoiRunner:
         context_pack_hash: str,
         factor_subset_hash: str,
         run_order: int,
-    ) -> tuple[ModelAttemptReductionRow, list[str]]:
+    ) -> tuple[ModelAttemptReductionRow | None, list[str]]:
         """Extract a ModelAttemptReductionRow from the terminal event dict.
 
         Fails closed: if attempt_count is absent the row records
-        failure_stage=GENERATION rather than silently faking a result.
+        failure_stage=GENERATION rather than silently faking a result. Returns
+        no row for a run whose cost is null (unpriced, OMN-20834).
         """
         warnings: list[str] = []
 
@@ -845,6 +854,20 @@ class HandlerContextRoiRunner:
             return _fail_closed_row(
                 "terminal event missing 'attempt_count' (fail-closed)"
             )
+
+        # OMN-20834: the generation consumer emits a null cost for a run its
+        # pricing surface reports as UNKNOWN. That run is excluded from the
+        # report, never counted at 0.0 and never mistaken for a generation
+        # failure.
+        if (
+            "cost_inference_usd" in telemetry
+            and telemetry["cost_inference_usd"] is None
+        ):
+            warnings.append(
+                f"[{arm_label}] run {correlation_id} on model "
+                f"{telemetry.get('model_id', '')!r} is unpriced -- excluded"
+            )
+            return None, warnings
 
         try:
             attempt_count = int(telemetry["attempt_count"])

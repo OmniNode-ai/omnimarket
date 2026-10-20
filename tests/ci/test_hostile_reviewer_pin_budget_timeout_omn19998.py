@@ -31,29 +31,27 @@ WORKFLOW = (
     / "workflows"
     / "hostile-reviewer.yml"
 )
-# OMN-20910: the chunk-scaled review deadline revision retains the budget-timeout fix.
-BUDGET_TIMEOUT_PIN = "921b322b8e43f695961a06a04759dc88bb3e88ff"
-PRE_BUDGET_TIMEOUT_PIN = "3502f0de2f9be25cf68e3dc5877d9cb5580c90e0"
-_PIN = re.compile(
-    r"clone_with_retry omniintelligence \S+ OMNIINTELLIGENCE_SHA ([0-9a-f]{40})"
-)
+# OMN-20910: the revision is no longer a literal in the workflow. It is the newest
+# dev-* tag of omniintelligence, resolved at run time, and every revision tagged
+# since the fix carries it. A sha literal or a branch tip is refused.
+_REF = re.compile(r"clone_with_retry omniintelligence \S+ OMNIINTELLIGENCE_SHA (\S+)")
+NEWEST_DEV_TAG_REF = '"refs/tags/${OMNIINTELLIGENCE_TAG}"'
+PRE_PIN = "3502f0de2f9be25cf68e3dc5877d9cb5580c90e0"
 
 
-def omniintelligence_pins(workflow_text: str) -> list[str]:
-    """Every full-sha pin the workflow clones omniintelligence at."""
-    return _PIN.findall(workflow_text)
+def omniintelligence_refs(workflow_text: str) -> list[str]:
+    """Every ref the workflow clones omniintelligence at."""
+    return _REF.findall(workflow_text)
 
 
-def test_omniintelligence_is_pinned_to_the_budget_timeout_revision() -> None:
+def test_omniintelligence_is_read_at_its_newest_dev_tag() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
-    pins = omniintelligence_pins(text)
-    assert pins == [BUDGET_TIMEOUT_PIN]
+    assert omniintelligence_refs(text) == [NEWEST_DEV_TAG_REF]
 
 
-def test_the_pin_before_budget_timeout_is_caught() -> None:
-    """Positive control: the workflow as it was before this change."""
+def test_the_pin_before_this_change_is_caught() -> None:
+    """Positive control: the workflow as it was, pinned to a sha."""
     text = WORKFLOW.read_text(encoding="utf-8")
-    before = text.replace(omniintelligence_pins(text)[0], PRE_BUDGET_TIMEOUT_PIN)
-    pins = omniintelligence_pins(before)
-    assert pins == [PRE_BUDGET_TIMEOUT_PIN]
-    assert pins != [BUDGET_TIMEOUT_PIN]
+    before = text.replace(NEWEST_DEV_TAG_REF, PRE_PIN)
+    assert omniintelligence_refs(before) == [PRE_PIN]
+    assert omniintelligence_refs(before) != [NEWEST_DEV_TAG_REF]

@@ -100,6 +100,10 @@ _KEY_PREFIXES: tuple[tuple[str, str], ...] = (
 DEFAULT_MODEL_NODE = "node_model_setup_effect"
 _DEFAULT_MODEL_ENV: dict[str, str] = {"openrouter": "ONEX_OPENROUTER_DEFAULT_MODEL"}
 _DEFAULT_MODEL_FIELDS = frozenset(f"{p}_default_model" for p in _DEFAULT_MODEL_ENV)
+#: The providers whose default this node declares (overlay or contract). Any
+#: other key's default is the best match on its own model list, which the
+#: ``onex models`` shim reads with the key (OMN-21059): no key enters this node.
+OVERLAY_DEFAULT_PROVIDERS: frozenset[str] = frozenset(_DEFAULT_MODEL_ENV)
 
 _TEST_PROMPT = "Reply with exactly one word: hello"
 _TEST_TIMEOUT_S = 300

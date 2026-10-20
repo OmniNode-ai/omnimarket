@@ -29,7 +29,9 @@ from omnimarket.nodes.node_secret_store_effect.handlers.handler_secret_store imp
 from omnimarket.nodes.node_secret_store_effect.models import ModelSecretStoreOverlay
 from omnimarket.projection import credential_publisher
 
-pytestmark = pytest.mark.unit
+# OMN-21059: every shipped row has the customer choose the model; this file
+# registers a key with no model, which a row reaches with that flag off.
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("catalogue_picks_models")]
 _VALUE = "sk-test-central-secret-never-printed-or-published"
 _TENANT = "omninode"
 _TENANT_FOLDER = "/tenant-inference-credentials"

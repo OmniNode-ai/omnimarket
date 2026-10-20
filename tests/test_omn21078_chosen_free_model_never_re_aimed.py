@@ -12,7 +12,9 @@ another model. The effect now asks the credential who chose its model:
 * ``customer`` (or no record: a hosted reference, a row from before the
   record): one provider call, whatever the model is and whatever the answer;
 * ``catalogue``: the model came off the catalogue's preference, so the
-  OMN-19205 one-shot re-aim keeps working for it.
+  OMN-19205 one-shot re-aim kept working for it. OMN-21059 refuses it instead:
+  no model the customer did not choose is called, so the credential is refused
+  with BYOK_MODEL_NOT_CHOSEN before any call.
 
 Fakes only, no network.
 """
@@ -34,6 +36,7 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     handler_llm_delegation_call as effect,
 )
 from omnimarket.routing import byok_model_discovery as discovery
+from omnimarket.routing.byok_model_discovery import BYOK_MODEL_NOT_CHOSEN
 from tests.chains.local.harness import store_model_credential
 from tests.test_omn19205_c29_byok_throttle_re_resolve import (
     GEMMA,
@@ -129,35 +132,24 @@ def test_a_credential_that_records_no_chooser_is_treated_as_a_choice(
     assert models.calls == []
 
 
-def test_a_catalogue_picked_model_keeps_its_one_re_aim_on_a_throttle(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+@pytest.mark.parametrize("status", [429, 404], ids=["throttle", "not-found"])
+def test_a_catalogue_picked_model_is_refused_before_any_call(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, status: int
 ) -> None:
+    # OMN-21059: the catalogue's pick is not the customer's choice.
     store_model_credential(
         _store(tmp_path), REF, model=GEMMA, model_chosen_by="catalogue"
     )
-    provider, _ = _bind(monkeypatch, [429, 200], [GEMMA, NEMOTRON])
+    provider, models = _bind(monkeypatch, [status, 200], [GEMMA, NEMOTRON])
 
     result = effect.HandlerLlmDelegationCall().__call__(_request())
 
-    assert result.success, result.error_message
-    url = _openrouter().endpoint_url
-    assert provider.calls == [(url, GEMMA), (url, NEMOTRON)]
-    assert [a.model_id for a in result.earlier_model_attempts] == [GEMMA]
-
-
-def test_a_catalogue_picked_model_keeps_its_one_re_aim_on_a_not_found(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    store_model_credential(
-        _store(tmp_path), REF, model=GEMMA, model_chosen_by="catalogue"
-    )
-    provider, _ = _bind(monkeypatch, [404, 200], [GEMMA, NEMOTRON])
-
-    result = effect.HandlerLlmDelegationCall().__call__(_request())
-
-    assert result.success, result.error_message
-    assert [call[1] for call in provider.calls] == [GEMMA, NEMOTRON]
-    assert _chosen_model_of(_store(tmp_path)) == NEMOTRON
+    assert not result.success
+    assert result.error_message is not None
+    assert BYOK_MODEL_NOT_CHOSEN in result.error_message
+    assert provider.calls == []
+    assert models.calls == []
+    assert _chosen_model_of(_store(tmp_path)) == GEMMA
 
 
 def _bus_intent(model: str) -> ModelInferenceIntent:
@@ -200,18 +192,21 @@ def test_the_bus_effect_gives_a_chosen_free_model_one_call(
     assert models.calls == []
 
 
-def test_the_bus_effect_keeps_the_re_aim_for_a_catalogue_picked_model(
+def test_the_bus_effect_refuses_a_catalogue_picked_model(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    # OMN-21059: the catalogue's pick is not the customer's choice.
     store_model_credential(
         _store(tmp_path), REF, model=GEMMA, model_chosen_by="catalogue"
     )
-    provider, _ = _bus_bind(monkeypatch, [429, 200])
+    provider, models = _bus_bind(monkeypatch, [429, 200])
 
     result = bus_effect.HandlerInferenceIntent().handle(_bus_intent(GEMMA))
 
-    assert not result.error_message
-    assert [call[1] for call in provider.calls] == [GEMMA, NEMOTRON]
+    assert result.error_message is not None
+    assert BYOK_MODEL_NOT_CHOSEN in result.error_message
+    assert provider.calls == []
+    assert models.calls == []
 
 
 def test_recording_a_re_aimed_model_marks_it_catalogue_picked(tmp_path: Path) -> None:
@@ -287,6 +282,18 @@ def test_onex_secret_set_records_that_the_customer_chose_a_free_model(
     assert credentials.resolve_local_byok_credential_model("openrouter") == GEMMA
 
 
+def test_every_shipped_row_records_its_model_as_the_customers() -> None:
+    # OMN-21059: every shipped row has the customer choose, so a stored model is
+    # theirs whether or not it came with --model.
+    from omnimarket.cli.cli_secret import _model_chosen_by
+
+    assert _model_chosen_by("gemini", None, "gemini-3.5-flash-lite", None) == "customer"
+    assert _model_chosen_by("gemini", None, "gemini-3.5-flash-lite", "x") == "customer"
+    assert _model_chosen_by("openrouter", None, GEMMA, None) == "customer"
+    assert _model_chosen_by("gemini", None, None, None) is None
+
+
+@pytest.mark.usefixtures("catalogue_picks_models")
 def test_a_model_the_catalogue_resolved_is_recorded_as_its_pick() -> None:
     from omnimarket.cli.cli_secret import _model_chosen_by
 
@@ -294,5 +301,4 @@ def test_a_model_the_catalogue_resolved_is_recorded_as_its_pick() -> None:
         _model_chosen_by("gemini", None, "gemini-3.5-flash-lite", None) == "catalogue"
     )
     assert _model_chosen_by("gemini", None, "gemini-3.5-flash-lite", "x") == "customer"
-    assert _model_chosen_by("openrouter", None, GEMMA, None) == "customer"
     assert _model_chosen_by("gemini", None, None, None) is None

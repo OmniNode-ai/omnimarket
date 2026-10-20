@@ -35,7 +35,9 @@ from omnimarket.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
 )
 
-pytestmark = pytest.mark.unit
+# OMN-21059: every shipped row has the customer choose the model; this file
+# exercises the catalogue-pick path, which a row reaches with that flag off.
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("catalogue_picks_models")]
 
 _MODEL = "gemini-3.5-flash-lite"
 _REF = f"cred_acme_gemini_{'a' * 32}"
