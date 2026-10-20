@@ -1,0 +1,82 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_landing_stall_expectation_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  OMN-17427. A stall the landing controller holds (a red cause, a red base
+  branch, an open plugin version bump) was invisible as an event: the
+  controller refused every tick in its decision text and no episode opened.
+  The controller now publishes one typed transition per subject state change
+  (dispatched, held, claim_refused, attempt_never_ran, released, merged). This
+  pure node folds a window of them into the automation-liveness watchdog's
+  trigger expectations, one per repository and subject, routed to the
+  bus-event overlay entry that holds the subject's deadline. A stalling
+  transition opens the expectation and keeps its first instant while the hold
+  repeats; a moving one answers it. The watchdog's TRIGGER_UNANSWERED verdict,
+  episode and single alarm do the rest, and the alarm text carries the match
+  key, the minutes waited and the controller's last decision text.
+
+input_model: omnimarket.nodes.node_landing_stall_expectation_compute.models.model_landing_stall_fold.ModelLandingStallFoldRequest
+output_model: omnimarket.nodes.node_landing_stall_expectation_compute.models.model_landing_stall_fold.ModelLandingStallFoldResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: fold
+      handler:
+        name: HandlerLandingStallExpectation
+        module: omnimarket.nodes.node_landing_stall_expectation_compute.handlers.handler_landing_stall_expectation
+      event_model:
+        name: ModelLandingStallFoldRequest
+        module: omnimarket.nodes.node_landing_stall_expectation_compute.models.model_landing_stall_fold
+
+handler:
+  module: omnimarket.nodes.node_landing_stall_expectation_compute.handlers.handler_landing_stall_expectation
+  class: HandlerLandingStallExpectation
+  input_model: omnimarket.nodes.node_landing_stall_expectation_compute.models.model_landing_stall_fold.ModelLandingStallFoldRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles: [main]
+
+terminal_event: onex.evt.omnimarket.landing-stall-folded.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.landing-stall-fold-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.landing-stall-folded.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.landing-stall-fold-requested.v1
+
+externally_produced_topics:
+  - topic: onex.evt.omnimarket.landing-stall-transition.v1
+    producer: "the landing controller, one ModelLandingStallTransition per subject state change"
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.landing-stall-folded.v1
+
+dod_evidence:
+  - test: tests/nodes/node_landing_stall_expectation_compute/test_landing_stall_replay_2026_10_19.py
+    description: "Replaying the 2026-10-19 held cause of a private plugin repository opens one TRIGGER_UNANSWERED episode, raises one alarm naming the cause, the repository, the minutes and the last decision text, and clears it on merge"
+  - test: tests/nodes/node_landing_stall_expectation_compute/test_landing_stall_fold.py
+    description: "Stalling transitions open an expectation at the first hold, moving ones answer it, a version bump moves only on merge or release, an unrouted subject is reported"
+
+metadata:
+  transport_type: kafka
+  description: "Pure compute node: landing controller stall transitions folded into automation-liveness trigger expectations"
+  author: "OmniNode Platform Team"
+  created: "2026-10-20"
+  tags:
+    - "compute"
+    - "liveness"
+    - "landing"
+    - "deterministic"
