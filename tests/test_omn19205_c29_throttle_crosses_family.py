@@ -46,7 +46,9 @@ from tests.test_omn20157_byok_model_discovery_and_typed_refusals import (
     _isolated_effects,
 )
 
-pytestmark = pytest.mark.unit
+# OMN-21059: every shipped row has the customer choose the model; this file
+# exercises the catalogue-pick path, which a row reaches with that flag off.
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("catalogue_picks_models")]
 
 _SHARED_AUTOUSE_FIXTURE = _isolated_effects
 _CATALOGUE_PICKED_CREDENTIAL = _ref_is_catalogue_picked

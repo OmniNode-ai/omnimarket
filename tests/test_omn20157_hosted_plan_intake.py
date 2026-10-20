@@ -33,7 +33,9 @@ from omnimarket.routing.byok_provider_backends import (
     resolve_byok_backend_by_id,
 )
 
-pytestmark = pytest.mark.unit
+# OMN-21059: every shipped row has the customer choose the model; this file
+# exercises the catalogue-pick path, which a row reaches with that flag off.
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("catalogue_picks_models")]
 
 TOPIC_REGISTERED = "onex.evt.omnimarket.credential-registered.v1"
 _KEY = "zai-hosted-key-do-not-leak-0123456789"  # onex-allow-test-fixture OMN-20157 reason="synthetic key literal asserted absent from every event and message"

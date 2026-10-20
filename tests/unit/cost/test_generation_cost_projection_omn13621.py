@@ -120,11 +120,11 @@ def test_cloud_run_cost_is_contract_priced_not_hardcoded() -> None:
     assert cost == manual
 
 
-def test_unknown_model_costs_zero_without_crashing() -> None:
-    # A model with no contract entry resolves to explicit UNKNOWN -> 0.0, never
-    # a crash and never a silent mispricing.
+def test_unknown_model_costs_null_without_crashing() -> None:
+    # A model with no contract entry resolves to explicit UNKNOWN -> None
+    # (unpriced, OMN-20834), never a crash and never a silent 0.0.
     cost = _calculate_cost("cloud", "model-not-in-contract", 1_000, 1_000)
-    assert cost == 0.0
+    assert cost is None
 
 
 def test_contract_priced_generation_cost_lands_in_projection() -> None:
@@ -133,6 +133,7 @@ def test_contract_priced_generation_cost_lands_in_projection() -> None:
     input_tokens = 12_000
     output_tokens = 3_000
     cost = _calculate_cost("cloud", "gemini-2.5-flash", input_tokens, output_tokens)
+    assert cost is not None
     assert cost > 0.0
 
     row = _project_generation(cost)
