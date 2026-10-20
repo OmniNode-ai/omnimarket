@@ -607,6 +607,15 @@ def test_local_dispatch_threads_backend_timeout_to_transport(
     db_path = tmp_path / "delegation.sqlite"
     _patch_routing(monkeypatch, fake_backends)
     captured = _patch_transport(monkeypatch)
+    # OMN-21214: a class that keeps time in reserve for later rungs cuts an
+    # earlier rung's timeout below its backend's (tests/unit/delegation/
+    # test_rung_deadlines.py). This test is about the backend's timeout reaching
+    # the transport, so the class here keeps no reserve.
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_delegate_skill_orchestrator.ports."
+        "port_local_delegation_dispatch.resolve_task_class_rung_floor_seconds",
+        lambda _task_type: None,
+    )
 
     port = LocalDelegationDispatchPort(
         named_test_runner=_passing_named_test_runner,

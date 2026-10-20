@@ -399,6 +399,28 @@ class ModelTaskClassExecutionBudget(BaseModel):
 
     task_class_timeout_ceiling_seconds: int = Field(ge=1, le=240)
     terminal_delivery_margin_seconds: int = Field(ge=1)
+    rung_floor_seconds: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "OMN-21214: usable time kept in reserve for each rung still after "
+            "the one running, the rung's quality-gate check included. An "
+            "attempt's deadline is the smaller of its backend's timeout and the "
+            "chain time left minus this floor for every later rung, so the last "
+            "rung always has at least one floor. None keeps no reserve."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _floor_fits_the_ceiling(self) -> ModelTaskClassExecutionBudget:
+        if (
+            self.rung_floor_seconds is not None
+            and self.rung_floor_seconds > self.task_class_timeout_ceiling_seconds
+        ):
+            raise ValueError(
+                "rung_floor_seconds must not exceed task_class_timeout_ceiling_seconds"
+            )
+        return self
 
 
 class EnumPromptShape(StrEnum):
@@ -1352,6 +1374,18 @@ def resolve_task_class_execution_budget(
     return load_task_class_authority().execution_budget(task_class)
 
 
+def resolve_task_class_rung_floor_seconds(task_class: str) -> int | None:
+    """The reserve ``task_class`` keeps for each later rung, or ``None``.
+
+    OMN-21214. ``None`` when the class declares no execution budget or no
+    floor: the dispatch then keeps no reserve, as before.
+    """
+    try:
+        return resolve_task_class_execution_budget(task_class).rung_floor_seconds
+    except ValueError:
+        return None
+
+
 def resolve_delegation_output_authority() -> ModelDelegationOutputAuthority:
     """Return output extraction authority or refuse a contract-governed response."""
     authority = load_task_class_authority()
@@ -1464,6 +1498,7 @@ __all__ = [
     "resolve_task_class_execution_required",
     "resolve_task_class_output_contract",
     "resolve_task_class_prompt_shape",
+    "resolve_task_class_rung_floor_seconds",
     "resolve_task_class_verification",
     "withheld_delegation_refusal",
 ]

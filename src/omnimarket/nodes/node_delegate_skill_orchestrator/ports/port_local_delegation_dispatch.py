@@ -136,6 +136,7 @@ from omnimarket.inference.provider_quota_state import (
 )
 from omnimarket.inference.task_class_authority import (
     resolve_task_class_execution_required,
+    resolve_task_class_rung_floor_seconds,
     withheld_delegation_refusal,
 )
 from omnimarket.local_deployment.tenant_identity import (
@@ -854,6 +855,9 @@ def _is_customer_byok_route(backend: ModelResolvedDelegationBackend) -> bool:
 _DISPATCH_TIMEOUT_BUFFER_SECONDS = 10.0
 _EFFECT_PROCESS_POLL_INTERVAL_SECONDS = 0.05
 _EFFECT_PROCESS_TERMINATE_GRACE_SECONDS = 1.0
+# OMN-21214: an attempt with less usable time than this before its rung's
+# cutoff is not sent; it is recorded as a timeout and the ladder moves on.
+_MIN_ATTEMPT_SECONDS = 1.0
 
 # OMN-14883: the effect child's INTERPRETER BOOT is bounded separately from the
 # endpoint's transport budget above.
@@ -1251,8 +1255,12 @@ class LocalDelegationDispatchPort:
         run_step_publisher: ProtocolRunStepPublisher | None = None,
         named_test_runner: _NamedTestRunner | None = None,
         answer_judge: _AnswerJudge | None = None,
+        clock: Callable[[], float] | None = None,
     ) -> None:
         self._terminal_publisher = terminal_publisher or EmitEffectTopicPublisher()
+        # OMN-21214: the monotonic clock the rung deadlines are kept on. Tests
+        # inject one so a slow rung costs no wall time.
+        self._clock: Callable[[], float] = clock or time.monotonic
         # OMN-20489: calls the independent judge the answer gate needs. When
         # one is wired, an answer the contract checks passed is accepted only
         # after node_delegation_answer_gate_compute: a text answer on an
@@ -1595,6 +1603,33 @@ class LocalDelegationDispatchPort:
         if max_escalations is None:
             max_escalations = _DEFAULT_MAX_ESCALATIONS
 
+        # OMN-21214: rung deadlines with a reserve. The chain has the class's
+        # execution budget from now. Each rung's attempts (its retries and
+        # siblings included) must end by the chain deadline less
+        # ``rung_floor_seconds`` for every rung that can still follow, so a slow
+        # rung can never eat the time the last rung needs. The rungs that can
+        # follow are counted on the ladder this class can reach: its tier_order,
+        # cut to ``max_escalations + 1`` and to as many rungs as the budget holds
+        # at one floor each; a pinned run has one rung. The last rung counted
+        # gets no cut of its own: the chain deadline is the handler's. A class
+        # that declares no floor, or a budget too short for two floors, keeps no
+        # reserve, as before.
+        rung_floor_seconds = resolve_task_class_rung_floor_seconds(task_type)
+        chain_deadline = self._clock() + execution_timeout_seconds
+        if pinned_backend_id is not None:
+            reachable_rungs = 1
+        else:
+            try:
+                ladder_length = len(resolve_task_class_tier_order(task_type))
+            except Exception:
+                ladder_length = 1
+            reachable_rungs = max(1, min(max_escalations + 1, ladder_length))
+        if rung_floor_seconds is not None:
+            reachable_rungs = min(
+                reachable_rungs,
+                max(1, execution_timeout_seconds // rung_floor_seconds),
+            )
+
         # Tiers already attempted (excluded from re-selection), mirroring the bus
         # ``excluded_tiers`` set threaded into ``next_eligible_tier``.
         excluded_tiers: set[str] = set()
@@ -1817,8 +1852,13 @@ class LocalDelegationDispatchPort:
             if progress is not None:
                 progress.escalation_count = escalation_count
                 progress.cost_usd = float(cumulative_cost_usd)
+            rung_deadline_at: float | None = None
+            rungs_after = max(0, reachable_rungs - 1 - escalation_count)
+            if rung_floor_seconds is not None and rungs_after > 0:
+                rung_deadline_at = chain_deadline - rung_floor_seconds * rungs_after
             attempt_outcome = await self._run_single_attempt(
                 backend=backend,
+                deadline_at=rung_deadline_at,
                 prompt=prompt,
                 task_type=task_type,
                 correlation_id=correlation_id,
@@ -3341,8 +3381,15 @@ class LocalDelegationDispatchPort:
         response_format: dict[str, object] | None = None,
         run_steps: RunStepRecorder | None = None,
         named_tests: ModelNamedTestSpec | None = None,
+        deadline_at: float | None = None,
     ) -> _AttemptOutcome:
         """Run one resolve->effect->gate attempt for ``backend``.
+
+        OMN-21214: ``deadline_at`` is the point on ``self._clock`` by which this
+        rung's attempts must end. The call's timeout is cut so that, with the
+        dispatch buffer and the kill grace, it ends by then; an attempt with
+        less than ``_MIN_ATTEMPT_SECONDS`` left is not sent and returns a
+        timeout, so the ladder moves on with cause ``timeout``.
 
         Returns the effect result + gate verdict on a completed call, or a
         canonical TIMEOUT/transport failure marker the caller projects. This is
@@ -3365,6 +3412,40 @@ class LocalDelegationDispatchPort:
         #     so the transport honors the backend's configured timeout_ms instead
         #     of a hardcoded cap (OMN-13170).
         timeout_seconds = resolve_timeout_seconds(backend_timeout_ms=backend.timeout_ms)
+        if deadline_at is not None:
+            usable = (
+                deadline_at
+                - self._clock()
+                - _DISPATCH_TIMEOUT_BUFFER_SECONDS
+                - _EFFECT_PROCESS_TERMINATE_GRACE_SECONDS
+            )
+            if usable < _MIN_ATTEMPT_SECONDS:
+                failure_message = (
+                    f"rung deadline reached at stage=inference: {usable:.1f}s "
+                    f"left for {backend.backend_id}, under the "
+                    f"{_MIN_ATTEMPT_SECONDS:.0f}s an attempt needs; the time "
+                    "left is kept for the rungs after this one"
+                )
+                logger.info(
+                    "LocalDelegationDispatch: %s correlation=%s",
+                    failure_message,
+                    correlation_id,
+                )
+                return _AttemptOutcome(
+                    result=None,
+                    gate_result=None,
+                    failure_message=failure_message,
+                    timeout_result=ModelLlmDelegationCallResult(
+                        request_id=str(correlation_id),
+                        success=False,
+                        failure_class=EnumDelegationFailureClass.TIMEOUT,
+                        error_message=failure_message,
+                        endpoint_healthy=False,
+                    ),
+                    preamble_chars=0,
+                    output_refusal=None,
+                )
+            timeout_seconds = min(timeout_seconds, usable)
 
         # Inference-protocol shaping (e.g. /no_think prefix, chat_template_kwargs).
         #
