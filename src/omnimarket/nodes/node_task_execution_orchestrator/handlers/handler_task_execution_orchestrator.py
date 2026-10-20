@@ -142,6 +142,9 @@ _DelegateTaskType = Literal[
     "documentation",
     "validator_generation",
     "brief_drafting",
+    "extraction_proposer",
+    "tail_summary",
+    "context_selection",
 ]
 _DelegateSource = Literal["claude-code", "codex"]
 

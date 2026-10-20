@@ -538,6 +538,11 @@ requirements:
         statement: "AC105: task_class_contracts.v1.yaml declares brief_drafting as an internal class that no prompt selects, with tier_order local alone and max_escalations 0, resolving the Qwen model on the local tier and none on any other tier, and declares the brief checker as its external acceptance with title, premises and task as the only free-text slots -- falsifier: uv run pytest tests/unit/delegation/test_brief_drafting_class_omn17427.py -q fails at the merge base"
       - id: "AC106"
         statement: "AC106: node_lane_brief_draft_compute assembles a brief with every shell part pasted byte for byte and refuses a draft that wrote a shell part or an identifier its fact table lacks, and its gate accepts only checker exit 0, regenerates a refused shell part once in code, redrafts a free-text refusal while attempts remain and otherwise hands the brief to Claude -- falsifier: uv run pytest tests/nodes/node_lane_brief_draft_compute -q fails at the merge base"
+  - id: "req-context-pack-model-roles-declared"
+    statement: "The context-pack model roles that omnibase-core 0.47.48 admits on the delegation wire are declared task classes, so the shipped lane_brief, lane_brief_section, session_start and per_prompt profiles resolve with the packaged routing contract and no test fixture."
+    acceptance:
+      - id: "AC107"
+        statement: "AC107: with omnibase-core locked at 0.47.48, task_class_contracts.v1.yaml declares extraction_proposer, tail_summary and context_selection as internal classes that no prompt selects, with tier_order local alone and max_escalations 0, the contract equals the core wire task_type Literal, and the shipped profiles whose roles are all declared resolve with TASK_CLASS_CONTRACT_PATH unset -- falsifier: uv run pytest tests/nodes/node_context_profile_resolver_effect/test_model_role_routing.py tests/test_omn17940_refusal_over_every_task_class.py -q fails at the merge base"
   - id: "req-anthropic-protocol-variant-registration"
     statement: "An explicitly selected protocol variant does not trigger billing-plan detection during ordinary Anthropic credential registration."
     acceptance:
@@ -2173,6 +2178,21 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/task_class_contracts.v1.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("brief_drafting:", "external_acceptance:", "lane_brief.py check")); print("brief drafting deploy probe: PASS")'
+  - id: "dod-omn17427-ac107-context-pack-model-roles"
+    description: "The context-pack model roles are declared task classes equal to the core 0.47.48 wire Literal, and the shipped context-pack profiles resolve with the packaged routing contract."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_profile_resolver_effect/test_model_role_routing.py tests/test_omn17940_refusal_over_every_task_class.py tests/unit/inference/test_task_class_authority_omn15651.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC107"]
+  - id: "dod-omn17427-context-pack-model-roles-deploy-probe"
+    description: "Deploy probe. GitHub serves the task-class contract at the checked-out HEAD declaring extraction_proposer, tail_summary and context_selection. It fails at the merge base, which declares none of them, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/task_class_contracts.v1.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys, yaml; classes = yaml.safe_load(sys.stdin.read())["task_classes"]; assert all(classes[name]["gateway_exposure"] == "internal" and classes[name]["escalation_policy"]["tier_order"] == ["local"] for name in ("extraction_proposer", "tail_summary", "context_selection")); print("context-pack model roles deploy probe: PASS")'
   - id: "dod-omn17427-anthropic-models-add"
     description: "The existing shard-17 regressions validate Anthropic keys and preserve model discovery when the catalogue also offers the native protocol. Four of these tests fail before this fix."
     source: "manual"
