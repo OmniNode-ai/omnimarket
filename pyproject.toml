@@ -982,6 +982,7 @@ node_report_anchor_probe_effect = "omnimarket.nodes.node_report_anchor_probe_eff
 node_report_validation_compute = "omnimarket.nodes.node_report_validation_compute"
 node_architecture_discovery_orchestrator = "omnimarket.nodes.node_architecture_discovery_orchestrator"
 node_dev_tag_pin_mover_compute = "omnimarket.nodes.node_dev_tag_pin_mover_compute"
+node_runtime_deploy_effect = "omnimarket.nodes.node_runtime_deploy_effect"
 
 [project.scripts]
 onex-hourly-tick = "omnimarket.nodes.node_hourly_tick_effect.handlers.handler_hourly_tick_cli:main"
@@ -989,6 +990,7 @@ onex-host-thermal = "omnimarket.nodes.node_host_thermal_observe_effect.handlers.
 onex-automation-liveness-check = "omnimarket.handlers.handler_automation_liveness_overlay_check_cli:main"
 onex-patch-apply-dispatch = "omnimarket.nodes.node_patch_apply_dispatch_effect.handlers.handler_patch_apply_dispatch_cli:main"
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
+onex-runtime-deploy = "omnimarket.nodes.node_runtime_deploy_effect.handlers.handler_runtime_deploy_cli:main"
 onex-architecture-discovery = "omnimarket.nodes.node_architecture_discovery_orchestrator.handlers.handler_architecture_discovery_cli:main"
 ab-compare = "omnimarket.cli.cli_ab_compare:main"
 ab-compare-suite = "omnimarket.cli.cli_ab_compare_suite:main"
