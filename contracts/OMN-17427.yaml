@@ -557,6 +557,11 @@ requirements:
         statement: "AC99: register-tenant-key anthropic preserves the discovered model and expiry through its catalog event when no plan is named."
       - id: "AC100"
         statement: "AC100: api_native can still be named explicitly, automatic Anthropic plan detection makes no provider request, and GLM detection still refuses a Coding Plan-only key."
+  - id: "req-rehome-runtime-deploy-effect"
+    statement: "The runtime deploy effect node lives in the portable node package with its contract, handlers and focused tests, so the internal copy can be repointed and deleted after a release."
+    acceptance:
+      - id: "AC77"
+        statement: "AC77: node_runtime_deploy_effect is a registered onex.nodes entry point of omnimarket, and its command reaches its terminal over the in-memory bus with the driver's streams and exit code -- falsifier: uv run pytest tests/nodes/node_runtime_deploy_effect/test_runtime_deploy_effect.py tests/nodes/node_runtime_deploy_effect/test_golden_chain_runtime_deploy_effect.py -q finds a failing test, or the entry point is absent from pyproject.toml"
   - id: "req-metering-shared-lane-refresh"
     statement: "On a shared lane every tenant with delegation_events gets metering_summary rows: a delegation terminal and a contract-declared runtime-tick schedule publish a refresh command naming tenants and days, and the metering projection reads each tenant's runs under its own row-level-security context and folds them, because a fold request carrying a large tenant's runs exceeds the bus's 1 MiB message limit."
     acceptance:
@@ -793,6 +798,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC82: the park ladder wiring names its handler and the operator capture nodes pass their tests."
     command: "uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py tests/unit/nodes/node_operator_capture_effect tests/unit/nodes/node_operator_capture_compute -q -n 0 -p no:randomly"
+  - kind: "tests"
+    description: "AC77: the runtime deploy effect node tests pass in omnimarket."
+    command: "uv run pytest tests/nodes/node_runtime_deploy_effect/test_runtime_deploy_effect.py tests/nodes/node_runtime_deploy_effect/test_golden_chain_runtime_deploy_effect.py -q"
   - kind: "tests"
     description: "AC105: the lab SLI golden and error chains pass: one verdict per table row with its own severity, dark sources unknown, severity-driven actions with per-indicator dedup, collector readings, and the board with history and trend."
     command: "uv run pytest tests/nodes/node_lab_sli_compute/test_golden_chain_lab_sli.py tests/nodes/node_lab_sli_compute/test_error_chain_lab_sli.py tests/nodes/node_lab_sli_compute/test_golden_chain_lab_sli_collect.py -q"
@@ -2280,6 +2288,24 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/cli/test_omn20990_models_add_anthropic.py tests/unit/cli/test_omn17099_register_tenant_key.py -q -n 0 --no-cov --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac77-rehome-runtime-deploy-effect"
+    description: "The runtime deploy effect node runs its moved tests in omnimarket and is a registered onex.nodes entry point. The node directory and tests are absent at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_runtime_deploy_effect/test_runtime_deploy_effect.py tests/nodes/node_runtime_deploy_effect/test_golden_chain_runtime_deploy_effect.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "grep -c -E '^node_runtime_deploy_effect = ' pyproject.toml"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC77"]
+  - id: "dod-omn17427-runtime-deploy-deploy-probe"
+    description: "Deploy probe. GitHub serves the runtime deploy effect contract at the checked-out HEAD, routing the runtime.deploy operation. It fails at the merge base, where the node does not exist, and needs only GitHub access from the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_runtime_deploy_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys, yaml; c = yaml.safe_load(sys.stdin.read()); ops = [h["operation"] for h in c["handler_routing"]["handlers"]]; assert ops == ["runtime.deploy"], ops; print("runtime deploy effect deploy probe: PASS")'
   - id: "dod-omn17427-ac92-metering-shared-lane-refresh"
     description: "The metering refresh producer and the projection's store refresh pass: a terminal requests its tenant's day, the schedule requests every tenant whole once per interval, and the projection folds each tenant's runs into day and all-time rows."
     source: "manual"
