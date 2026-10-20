@@ -53,7 +53,9 @@ from tests.test_omn20157_byok_model_discovery_and_typed_refusals import (
     _row,
 )
 
-pytestmark = pytest.mark.unit
+# OMN-21059: every shipped row has the customer choose the model; this file
+# exercises the catalogue-pick path, which a row reaches with that flag off.
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("catalogue_picks_models")]
 
 
 @pytest.fixture(autouse=True)

@@ -76,9 +76,15 @@
 #   BYOK_MODEL_NOT_CHOSEN. `onex delegate --model` overrides it per call. A
 #   credential with no stored model is refused the same way at call time, and a
 #   call on a model `model_preference` does not match (one the customer named)
-#   is never re-aimed at one it does. `model_preference` stays, so a credential
-#   whose model the catalogue picked before this change keeps its one-shot
-#   re-aim; a `:free` model is still a choice the customer may make.
+#   is never re-aimed at one it does. A `:free` model is still a choice the
+#   customer may make.
+#
+#   OMN-21059: every row below sets it, so no key runs a model its owner did
+#   not choose. A credential whose model the catalogue picked before this
+#   change (its chooser is recorded as `catalogue`) is refused at call time
+#   with the same BYOK_MODEL_NOT_CHOSEN message, never called on that model.
+#   `model_preference` stays for plan detection and the hosted overlay rows
+#   written before this change.
 #
 # DRIFT IS GATED, NOT TRUSTED
 #
@@ -313,6 +319,9 @@ providers:
     # Coding Plan list names. Listed live 2026-09-30 on the platform key:
     # glm-4.5 ... glm-5.3, glm-5.3-flash, glm-5.3-flashx.
     models_url: "https://api.z.ai/api/coding/paas/v4/models"
+    # OMN-21059: every key runs only models its owner chose; see "THE
+    # CUSTOMER CHOOSES THE MODEL" above.
+    customer_chooses_model: true
     model_preference:
       - pattern: 'glm-(?P<generation>[0-9]+(?:\.[0-9]+)?)-flash'
         tags: [cheapest, flash]
@@ -382,6 +391,9 @@ providers:
     backend_id: byok-glm-general
     endpoint_url: "https://api.z.ai/api/paas/v4/chat/completions"
     models_url: "https://api.z.ai/api/paas/v4/models"
+    # OMN-21059: every key runs only models its owner chose; see "THE
+    # CUSTOMER CHOOSES THE MODEL" above.
+    customer_chooses_model: true
     model_preference:
       - pattern: 'glm-(?P<generation>[0-9]+(?:\.[0-9]+)?)-flash'
         tags: [cheapest, flash]
@@ -439,6 +451,9 @@ providers:
     backend_id: byok-gemini
     endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
     models_url: "https://generativelanguage.googleapis.com/v1beta/openai/models"
+    # OMN-21059: every key runs only models its owner chose; see "THE
+    # CUSTOMER CHOOSES THE MODEL" above.
+    customer_chooses_model: true
     model_preference:
       - pattern: 'gemini-(?P<generation>[0-9]+(?:\.[0-9]+)?)-flash-lite'
         tags: [cheapest, flash_lite]
@@ -488,6 +503,9 @@ providers:
     backend_id: byok-openai
     endpoint_url: "https://api.openai.com/v1/chat/completions"
     models_url: "https://api.openai.com/v1/models"
+    # OMN-21059: every key runs only models its owner chose; see "THE
+    # CUSTOMER CHOOSES THE MODEL" above.
+    customer_chooses_model: true
     model_preference:
       - pattern: 'gpt-4\.(?P<generation>[0-9]+)-nano'
         tags: [cheapest, nano]
@@ -547,6 +565,9 @@ providers:
     models_auth: x_api_key
     models_headers:
       anthropic-version: "2023-06-01"
+    # OMN-21059: every key runs only models its owner chose; see "THE
+    # CUSTOMER CHOOSES THE MODEL" above.
+    customer_chooses_model: true
     model_preference:
       - pattern: 'claude-haiku-(?P<generation>[0-9]+(?:-[0-9]{1,2})?)(?:-[0-9]{8})?'
         tags: [cheapest, haiku]
@@ -591,6 +612,9 @@ providers:
     models_auth: x_api_key
     models_headers:
       anthropic-version: "2023-06-01"
+    # OMN-21059: every key runs only models its owner chose; see "THE
+    # CUSTOMER CHOOSES THE MODEL" above.
+    customer_chooses_model: true
     model_preference:
       - pattern: 'claude-haiku-(?P<generation>[0-9]+(?:-[0-9]{1,2})?)(?:-[0-9]{8})?'
         tags: [cheapest, haiku]
