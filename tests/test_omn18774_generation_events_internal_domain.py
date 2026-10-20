@@ -65,10 +65,12 @@ CHAIN = (
     "0015_generation_corpus_acceptance.sql",
     "0027_generation_events_tenant_rls.sql",
     "0043_generation_events_drop_tenant_posture.sql",
+    # OMN-20834: cost_inference_usd takes NULL for an unpriced run.
+    "0063_generation_events_cost_inference_usd_nullable.sql",
 )
 
 #: The chain as it stood BEFORE this ticket -- the RED control.
-CHAIN_BEFORE = CHAIN[:-1]
+CHAIN_BEFORE = CHAIN[: CHAIN.index("0043_generation_events_drop_tenant_posture.sql")]
 
 WRITER_ROLE = "omn18774_generation_writer"
 

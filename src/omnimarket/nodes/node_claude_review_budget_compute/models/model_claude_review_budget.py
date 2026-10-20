@@ -12,6 +12,9 @@ from omnimarket.enums.enum_claude_review_budget import EnumClaudeReviewBudgetRea
 from omnimarket.models.claude_review_budget.model_claude_review_usage import (
     ModelClaudeReviewUsage,
 )
+from omnimarket.models.claude_review_budget.model_review_budget_admission import (
+    ModelReviewBudgetQuote,
+)
 
 
 class ModelClaudeReviewBudgetConfig(BaseModel):
@@ -19,11 +22,13 @@ class ModelClaudeReviewBudgetConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    model_id: str = Field(..., min_length=1)
+    model_id: str | None = Field(default=None, min_length=1)
     allowance_usd: Decimal = Field(..., gt=0)
     reserve_usd: Decimal = Field(..., ge=0)
     cycle_months: int = Field(..., ge=1)
     cache_write_input_multiplier: Decimal = Field(..., ge=0)
+    cache_write_1h_input_multiplier: Decimal = Field(default=Decimal("2"), ge=1)
+    batch_multiplier: Decimal = Field(default=Decimal("0.5"), gt=0, le=1)
     cache_read_input_multiplier: Decimal = Field(..., ge=0)
 
     @model_validator(mode="after")
@@ -61,6 +66,11 @@ class ModelClaudeReviewBudgetRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     as_of: AwareDatetime
+    model_id: str | None = Field(default=None, min_length=1)
+    quote: ModelReviewBudgetQuote | None = Field(
+        default=None,
+        description="Native block-wise maximum charge; overrides legacy prompt_tokens/max_tokens pricing.",
+    )
     prompt_tokens: int = Field(
         ..., ge=0, description="The call's counted prompt tokens."
     )
@@ -98,7 +108,7 @@ class ModelClaudeReviewBudgetResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     decided_at: AwareDatetime
-    model_id: str
+    model_id: str | None
     reason: EnumClaudeReviewBudgetReason
     chosen_api_key_ref: str | None
     allowance_usd: Decimal

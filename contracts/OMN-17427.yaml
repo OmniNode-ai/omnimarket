@@ -548,6 +548,11 @@ requirements:
     acceptance:
       - id: "AC107"
         statement: "AC107: with omnibase-core locked at 0.47.48, task_class_contracts.v1.yaml declares extraction_proposer, tail_summary and context_selection as internal classes that no prompt selects, with tier_order local alone and max_escalations 0, the contract equals the core wire task_type Literal, and the shipped profiles whose roles are all declared resolve with TASK_CLASS_CONTRACT_PATH unset -- falsifier: uv run pytest tests/nodes/node_context_profile_resolver_effect/test_model_role_routing.py tests/test_omn17940_refusal_over_every_task_class.py -q fails at the merge base"
+  - id: "req-pinned-pack-case-scope"
+    statement: "A pinned context-pack build names its replay case to the tier sources as case:<manifest_case>, the one pinned mode scope the session source reads, and sends no session: scope beside it, so the pinned session read is reachable from the orchestrator."
+    acceptance:
+      - id: "AC151"
+        statement: "AC151: in pinned mode HandlerContextPackOrchestrator sends every tier source the scope case:<manifest_case> and no session: or manifest_case: scope, live mode still sends session:<session_id> and no case: scope, and HandlerSessionContextSources given either scope set does not refuse it SCOPE_INVALID -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -k 'pinned_build or live_build or session_source_accepts' fails at the merge base, where the pinned build sends session: and manifest_case: and the session source refuses it SCOPE_INVALID"
   - id: "req-anthropic-protocol-variant-registration"
     statement: "An explicitly selected protocol variant does not trigger billing-plan detection during ordinary Anthropic credential registration."
     acceptance:
@@ -628,6 +633,23 @@ requirements:
     acceptance:
       - id: "AC113"
         statement: "AC113: HandlerCompactionPackBuild over HandlerContextPackOrchestrator with fixture sources installs a package whose prepared receipt carries the pack's candidate_id and assembly_hash, two invocations on the same inputs share candidate_id and assembly_hash with different activation_ids, every source is read at the barrier revision for the access tenant, and a missing required tier, a failed build or an OK build missing an identity or messages replies native with pack_build_failed -- falsifier: uv run pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build.py -q fails at the merge base, where the module does not exist"
+  - id: "req-pack-orchestrator-tier-source-binding"
+    statement: "The context-pack orchestrator resolves the source node for each tier from its contract's context_tier_sources block, so its zero-argument runtime construction reads operator_rulings, open_work, orchestration_state, operator_words_unrecorded, repo_state, lane_rules and architecture_patterns from their source nodes instead of answering every tier unavailable."
+    acceptance:
+      - id: "AC150"
+        statement: "AC150: HandlerContextPackOrchestrator() binds each factor named in context_tier_sources to one instance per source node, every required factor of the compaction_orchestrator profile is bound, an explicit empty mapping binds nothing, loading opens no database connection, and an unknown factor, an unknown node or a node whose contract does not take ModelContextSourceRequest is refused -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator/test_tier_source_binding.py -q fails at the merge base, where the module tier_source_binding does not exist"
+  - id: "req-emit-one-kafka-connection"
+    statement: "One node_event_emit_effect invocation publishes its own fan-out records and drains its spool backlog over one Kafka connection, opened at the first publish and closed when the invocation ends; a failed publish drops that connection so the next record opens a fresh one, and a publish outside an invocation still opens and closes its own."
+    acceptance:
+      - id: "AC151"
+        statement: "AC151: HandlerEventEmitEffect.handle() with a real KafkaEventPublisher over a counting fake bus and a spool holding 3 pending records publishes 4 records through exactly one bus, started once and closed once; three publishes in one session use one bus; a publish that raises in a session closes that bus and the next publish opens a new one; two plain publishes open and close two buses -- falsifier: uv run pytest tests/unit/nodes/node_event_emit_effect/test_kafka_publish_session.py -q fails at the merge base, where KafkaEventPublisher has no session()"
+  - id: "req-omn20303-canonical-savings-counterfactual"
+    statement: |-
+      A canonical completion that produces a saving keeps its token-derived premium counterfactual on the delegation row even when the outer handler ended during runtime shutdown; an originally pinned counterfactual takes precedence.
+    acceptance:
+      - id: "AC152"
+        statement: |-
+          AC152: both delegation writers retain the canonical saving's counterfactual after runtime shutdown, preserve an existing pinned baseline, and invent none for a failed or zero-token terminal -- falsifier: uv run pytest tests/unit/nodes/node_projection_delegation/test_canonical_savings_counterfactual_omn20303.py -q -n 0 --no-cov
   - id: "req-compaction-loss-weights"
     statement: "The context-service lane's scorer-weights follow-up adds an auditable weighted recall without rewriting the original survival evidence. This slice does not qualify TA.12 latency, install the TA.15 binding, or close the parent integration-pass acceptance."
     acceptance:
@@ -831,13 +853,37 @@ evidence_requirements:
     description: "AC105: correct causal answers pass step_by_step_explanation and non-explanations are still vetoed."
     command: "uv run pytest tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py -q"
   - kind: "tests"
+    description: "AC151: a pinned context-pack build sends the case: scope the session source reads."
+    command: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -k 'pinned_build or live_build or session_source_accepts'"
+  - kind: "tests"
     description: "AC140: the adapter mints an invocation_id per invocation and the compaction verdict installs only a matching, hash-verified reply for that invocation."
     command: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_verdict.py -q"
+  - kind: "tests"
+    description: "AC150: the context-pack orchestrator binds its tier sources from the contract's context_tier_sources block."
+    command: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_tier_source_binding.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn17427-ac141-canonical-baseline"
+    description: "OMN-20303 AC3 failed its live readback: a runtime_shutdown terminal followed by a canonical completion produced a saving but no stored counterfactual. The regression covers both write paths, terminal orders, an originally pinned baseline, and failed/zero-token controls. It fails at the merge base; post-deploy AC3 readback remains required."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_delegation/test_canonical_savings_counterfactual_omn20303.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "env -u ONEX_TENANT_ID uv run pytest tests/test_omn20303_real_postgres_savings_one_row_per_run.py -q -n 0 --no-cov --refuse-skips -k canonical_counterfactual"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC152"]
+  - id: "dod-omn17427-canonical-baseline-deploy-probe"
+    description: "Hosted-runner deploy check of the checked-out package: replaying a canonical completion after runtime_shutdown through both delegation writers retains the baseline that priced its saving. The same command fails at the merge base with a null counterfactual. This is a package regression probe, not a claim of live deployment or historical-row repair."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_delegation/test_canonical_savings_counterfactual_omn20303.py -q -n 0 --no-cov -k 'test_sync_canonical_saving_keeps_counterfactual or test_async_canonical_keeps_counterfactual_after_shutdown'"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-dogfood-inventory-lists-token-pool"
     description: "The market node runtime dogfood inventory test passes with node_claude_token_pool_effect on the expected-missing entry point list. The list is in the test file, which this pull request changes, so the merge base with the test side laid over it passes the same test. The check names the one inventory test rather than the whole file, which takes longer than the per-check budget."
     source: "manual"
@@ -2174,6 +2220,17 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_delegate_skill_trace_id_omn19448.py -q -p no:cacheprovider"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC93"]
+  - id: "dod-omn17427-ac93-trace-id-lab-readback"
+    description: "AC93 lab readback, 2026-10-20T03:03Z, dev lane database omnidash_analytics on the lab dev lane host: the first delegation_events row storing a trace_id was written at 2026-10-19T12:31:43Z, after efba3ec67 merged at 2026-10-19T11:32:06Z. From then to 2026-10-20T03:00Z, 499 of 3556 rows carry a trace_id, and all 498 rows with a measured queue_wait_ms carry one. The 3057 rows without a trace_id carry no queue_wait_ms either; the bus was not read, so whether their terminals carried a trace is unverified. The merged-fix control reverts efba3ec67ace168195d9900c712597163b1fe3eb at the merge base; the trace tests must fail when both delegate-skill writers drop trace_id. The real-PostgreSQL check reads back the stored trace and its preservation across a sparse terminal through the runtime writer. The full readback is dod-omn19448-trace-id-lab-readback in contracts/OMN-19448.yaml."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_delegate_skill_trace_id_omn19448.py -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19448_delegate_skill_trace_id_real_postgres.py -q -p no:cacheprovider --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC93"]
   - id: "dod-omn17427-delegate-skill-trace-id-deploy-probe"
     description: "Deploy probe. The checked-out source of both delegate-skill row builders names the terminal's trace_id column. It fails at the merge base, where neither builder writes it, and needs only a shell and this checkout on the hosted runner; the behavioural proof stays in the test_passes check bound to AC93."
     source: "manual"
@@ -2266,6 +2323,21 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/task_class_contracts.v1.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys, yaml; classes = yaml.safe_load(sys.stdin.read())["task_classes"]; assert all(classes[name]["gateway_exposure"] == "internal" and classes[name]["escalation_policy"]["tier_order"] == ["local"] for name in ("extraction_proposer", "tail_summary", "context_selection")); print("context-pack model roles deploy probe: PASS")'
+  - id: "dod-omn17427-ac151-pinned-pack-case-scope"
+    description: "A pinned context-pack build sends case:<manifest_case> and no session: or manifest_case: scope, a live build still sends session:, and the session source accepts both scope sets. At the merge base the pinned tests fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -n 0 -p no:randomly --no-cov -k 'pinned_build or live_build or session_source_accepts'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC151"]
+  - id: "dod-omn17427-pinned-pack-case-scope-deploy-probe"
+    description: "Deploy probe. In the checked-out package, a pinned build's scopes pass the session source's mode-scope check. It fails at the merge base, where the session source refuses them SCOPE_INVALID, and needs only uv and this checkout on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -n 0 -p no:randomly --no-cov -k 'test_the_session_source_accepts_the_scopes_the_orchestrator_sends and pinned'"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-anthropic-models-add"
     description: "The existing shard-17 regressions validate Anthropic keys and preserve model discovery when the catalogue also offers the native protocol. Four of these tests fail before this fix."
     source: "manual"
@@ -2361,6 +2433,39 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/test_ci_shard_plan_omn19684.py -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC103"]
+  - id: "dod-omn17427-pr4212-dev-merge-budget-admission"
+    description: "The dev merge preserves PR 4212's durable review budget admission, including concurrent SQLite reservations, settlement, cancellation and outstanding Batch liability. This process fix does not verify or complete the parent integration-pass rollout criteria."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_claude_review_budget_reducer/test_golden_chain_review_budget_admission.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-pr4212-dev-merge-deploy-probe"
+    description: "Deploy probe. Validate the merged contracts, read the checked-out package registration and import each node from the conflicting hunk. Refuse invalid evidence labels, a missing registration, changed module target or failed import. The hosted runner needs Python 3.12 and the locked project dependencies; no host paths, credentials or running services are needed. This verifies package discoverability, not a live deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run python - <<'PY'
+          import importlib
+          import tomllib
+          import yaml
+          from pathlib import Path
+          from omnibase_core.models.ticket.model_ticket_contract import ModelTicketContract
+          for contract in ("contracts/OMN-17427.yaml", "contracts/OMN-20910.yaml"):
+              ModelTicketContract.model_validate(yaml.safe_load(Path(contract).read_text()))
+          entries = tomllib.loads(Path("pyproject.toml").read_text())["project"]["entry-points"]["onex.nodes"]
+          for name in (
+              "node_claude_review_budget_reducer",
+              "node_claude_review_budget_admission_effect",
+              "node_review_defect_catalog_compute",
+          ):
+              expected = "omnimarket.nodes." + name
+              assert entries.get(name) == expected, (name, entries.get(name))
+              importlib.import_module(expected)
+          print("PR 4212 merge package deploy probe: PASS")
+          PY
+        cwd: "."
   - id: "dod-omn17427-ac104-occ-clone-timeout-retry"
     description: "The occ-autobind producer's OCC clone is retried once after a git timeout with the partial clone removed, the final timeout and any non-timeout failure propagate, and the attempts fit the node's descriptor timeout. Against the merge base 3 of the 4 tests fail; after the change all 4 pass."
     source: "manual"
@@ -2518,6 +2623,36 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build.py -q -n 0 -p no:randomly --no-cov -k test_compaction_installs_the_pack_built_through_the_adapter"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac150-pack-tier-source-binding"
+    description: "The context-pack orchestrator's zero-argument construction binds each factor of its contract's context_tier_sources block to its source node's handler, one instance per node, and refuses an unknown factor, an unknown node or a node that does not take ModelContextSourceRequest. At the merge base the test module fails to collect."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_tier_source_binding.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC150"]
+  - id: "dod-omn17427-pack-tier-source-binding-deploy-probe"
+    description: "Deploy probe. In the checked-out package, HandlerContextPackOrchestrator constructed with no arguments binds every required factor of the compaction_orchestrator profile to a source. It fails at the merge base, which has no tier_source_binding module, and needs only uv and this checkout on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_tier_source_binding.py -q -n 0 -p no:randomly --no-cov -k test_zero_argument_orchestrator_binds_the_contract_sources"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac151-emit-one-connection"
+    description: "node_event_emit_effect reuses one Kafka connection for an invocation's publishes and backlog drain. The test module fails at the merge base, where KafkaEventPublisher has no session()."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_kafka_publish_session.py tests/unit/nodes/node_event_emit_effect/test_kafka_event_publisher.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC151"]
+  - id: "dod-omn17427-emit-one-connection-deploy-probe"
+    description: "Deploy probe. In the checked-out package, the emit handler with a real KafkaEventPublisher over a counting fake bus drains a 3-record spool backlog and publishes the current event through one bus. It fails at the merge base and needs only uv and this checkout on the hosted runner; no broker or credential."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_kafka_publish_session.py -q -n 0 -p no:randomly --no-cov -k handle"
         cwd: "${OMNI_HOME}/omnimarket"
 
   - id: "dod-omn17427-compaction-loss-weight-validation"

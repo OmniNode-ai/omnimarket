@@ -590,6 +590,9 @@ jobs:
       # OMN-21002: paired with the imperative-contract-guard-caller hook.
       - name: Imperative guard caller regression (OMN-21002)
         run: uv run pytest tests/ci/test_imperative_contract_guard_caller_omn21002.py -q -n 0
+      # OMN-20910: paired with review-budget-admission in pre-commit.
+      - name: Review budget admission (OMN-20910)
+        run: uv run pytest tests/unit/nodes/node_claude_review_budget_reducer/test_golden_chain_review_budget_admission.py -q -n 0 -p no:randomly --no-cov
       # OMN-20910: paired with the review-voter-model-from-overlay hook.
       - name: Review voter model comes from the overlay (OMN-20910)
         run: uv run pytest tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py -q -n 0 -p no:randomly --no-cov
@@ -630,6 +633,8 @@ jobs:
       # 'dod-verify-local-reads-guard'.
       - name: dod_verify local reads guard (OMN-20838)
         run: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20838_dod_verify_reads_local.py -q -p no:randomly
+      - name: Hook projection freshness alarm (OMN-19513)
+        run: uv run pytest tests/test_omn19513_projection_freshness_alert.py -q -n 0 -p no:randomly --no-cov
       # OMN-20890: paired with the landing-decision-park-ladder hook. OMN-17427: the step name
       # spells the handler that decides the ladder, for the ruling audit.
       - name: Landing decision park ladder, decided by src/omnimarket/nodes/node_pr_landing_decision_compute/handlers/handler_pr_landing_decision.py (OMN-20890)
@@ -1810,7 +1815,13 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - name: Clone omnibase_infra
-        run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-infra"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_infra.git ../omnibase_infra
+        # OMN-20834: when the lock sources omnibase-infra from a git tag (a dev-*
+        # tag ahead of the last release), clone that tag; its version has no
+        # v<version> tag yet. Otherwise clone the release tag as before.
+        run: |
+          ref=$(grep -A2 '^name = "omnibase-infra"$' uv.lock | sed -n 's/^source = { git = "[^"]*?tag=\([^#"]*\)#.*/\1/p')
+          [ -n "$ref" ] || ref="v$(grep -A1 '^name = "omnibase-infra"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')"
+          git clone --depth=1 --branch "$ref" https://github.com/OmniNode-ai/omnibase_infra.git ../omnibase_infra
       - name: Clone omnibase_core
         run: git clone --depth=1 --branch "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
       - name: Clone omnibase_compat
