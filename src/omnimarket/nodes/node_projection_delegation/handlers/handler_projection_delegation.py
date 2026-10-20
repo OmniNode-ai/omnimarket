@@ -58,6 +58,7 @@ from omnimarket.models.delegation.wire.model_delegate_skill_response import (
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillTerminalProjection,
     ModelDelegationEventProjectionRow,
+    ModelTaskDelegatedSavingsSource,
 )
 from omnimarket.models.delegation.wire.model_quality_gate import (
     ModelQualityGateResult,
@@ -95,7 +96,10 @@ from omnimarket.nodes.node_projection_delegation.models.model_terminal_precedenc
     fold_terminal_ownership,
     supersedes_handler_failure,
 )
-from omnimarket.pricing import recompute_actual_cost_and_savings
+from omnimarket.pricing import (
+    build_premium_counterfactual,
+    recompute_actual_cost_and_savings,
+)
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.envelope import (
     DATA_SOURCE_REAL,
@@ -790,17 +794,27 @@ class HandlerProjectionDelegation:
                 terminal, db_raw, data_source=envelope_data_source(input_data)
             )
             return result.model_dump(mode="json")
+        canonical_counterfactual = None
         if "delegation-completed" in event_type or "delegation-failed" in event_type:
+            canonical_counterfactual = (
+                ModelTaskDelegatedSavingsSource.counterfactual_from_canonical_payload(
+                    payload, counterfactual_builder=build_premium_counterfactual
+                )
+            )
             payload = _canonical_result_to_task_delegated_payload(payload)
 
         event = ModelTaskDelegatedEvent.model_validate(payload)
-        result = self.project(event, db_raw)
+        result = self.project(
+            event, db_raw, canonical_counterfactual=canonical_counterfactual
+        )
         return result.model_dump(mode="json")
 
     def project(
         self,
         event: ModelTaskDelegatedEvent,
         db: DatabaseAdapter,
+        *,
+        canonical_counterfactual: ModelPremiumCounterfactual | None = None,
     ) -> ModelProjectionResult:
         """UPSERT a single delegation event."""
         now = datetime.now(tz=UTC).isoformat()
@@ -887,6 +901,13 @@ class HandlerProjectionDelegation:
         )
         row.update(evidence)
         _preserve_existing_evidence(db, row)
+        # OMN-20303: the canonical completion can outlive the outer handler
+        # during shutdown. Keep the same token-derived baseline the savings
+        # writer uses, only after retaining any originally pinned baseline.
+        if row.get("premium_counterfactual") is None and canonical_counterfactual:
+            row["premium_counterfactual"] = canonical_counterfactual.model_dump(
+                mode="json"
+            )
         ok = bool(
             self._write_delegation_row(db, row, insert_only_columns=tenant_insert_only)
         )

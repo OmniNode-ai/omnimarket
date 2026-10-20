@@ -32,6 +32,7 @@ class ModelClaudeReviewTokenPrices(BaseModel):
     model_id: str = Field(..., min_length=1)
     input_usd: Decimal = Field(..., ge=0)
     cache_write_usd: Decimal = Field(..., ge=0)
+    cache_write_1h_usd: Decimal = Field(..., ge=0)
     cache_read_usd: Decimal = Field(..., ge=0)
     output_usd: Decimal = Field(..., ge=0)
     source: str = Field(..., description="Manifest source and effective date.")
@@ -41,6 +42,8 @@ class ModelClaudeReviewTokenPrices(BaseModel):
         return (
             usage.input_tokens * self.input_usd
             + usage.cache_creation_input_tokens * self.cache_write_usd
+            + usage.cache_creation_1h_input_tokens
+            * (self.cache_write_1h_usd - self.cache_write_usd)
             + usage.cache_read_input_tokens * self.cache_read_usd
             + usage.output_tokens * self.output_usd
         )
@@ -56,6 +59,7 @@ def prices_from_manifest(
     *,
     cache_write_input_multiplier: Decimal,
     cache_read_input_multiplier: Decimal,
+    cache_write_1h_input_multiplier: Decimal = Decimal("2"),
 ) -> ModelClaudeReviewTokenPrices | None:
     """The model's per-token prices, or None when the manifest does not carry it."""
     entry = table.get_entry(model_id)
@@ -66,6 +70,7 @@ def prices_from_manifest(
         model_id=model_id,
         input_usd=input_usd,
         cache_write_usd=input_usd * cache_write_input_multiplier,
+        cache_write_1h_usd=input_usd * cache_write_1h_input_multiplier,
         cache_read_usd=input_usd * cache_read_input_multiplier,
         output_usd=Decimal(str(entry.output_cost_per_1k)) / _PER_1K_TOKENS,
         source=f"{entry.source}, effective {entry.effective_date}",
@@ -97,8 +102,16 @@ def cycle_start(anchor: datetime, as_of: datetime, cycle_months: int) -> datetim
     return start
 
 
+def cycle_end(anchor: datetime, as_of: datetime, cycle_months: int) -> datetime:
+    """Next cycle boundary, computed from the original anchor even after day clamping."""
+    started = cycle_start(anchor, as_of, cycle_months)
+    months = (started.year - anchor.year) * 12 + started.month - anchor.month
+    return _add_months(anchor, months + cycle_months)
+
+
 __all__ = [
     "ModelClaudeReviewTokenPrices",
+    "cycle_end",
     "cycle_start",
     "prices_from_manifest",
 ]

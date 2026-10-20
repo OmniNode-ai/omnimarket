@@ -90,6 +90,13 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_omn19513_projection_freshness_alert.py tests/test_golden_chain_projection_freshness_alert.py tests/test_omn19513_projection_freshness_real_postgres.py -q --no-cov"
     binds_ac: ["AC6"]
+  - id: "dod-omn19513-ac6-shared-runtime-outage"
+    description: "The shipped hook check alerts with zero recent work-event actors when supply is older than 900 seconds or absent. Fresh supply remains quiet and read errors remain UNKNOWN. Runtime recovery and post-deploy freshness require live readback."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19513_projection_freshness_alert.py -q -n 0 -p no:randomly --no-cov -k 'hook_alarm or reader_failure_is_unknown'"
+    binds_ac: ["AC6"]
   - id: "dod-omn19513-ac3-payload-too-large"
     description: "The size-refusal test spools an oversized record first, refuses it the way the producer does, and checks its quarantine reason and that the records behind it publish; an ACL refusal keeps topic_authorization_denied."
     source: "manual"

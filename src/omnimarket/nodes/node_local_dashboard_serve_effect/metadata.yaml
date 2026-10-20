@@ -1,6 +1,6 @@
 name: node_local_dashboard_serve_effect
 version: "0.1.0"
-description: "Serves this install's declared projection exposures to the local dashboard on a loopback port, through the projection read node"
+description: "Serves this install's declared projection exposures to the local dashboard on a loopback port, through the projection read node, and writes the install's native environment row to the existing local store at start and on each heartbeat"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -12,7 +12,7 @@ capabilities:
   requires_repo: false
   requires_secrets: false
   requires_docker: false
-  side_effect_class: read_only
+  side_effect_class: read_write
 dependencies:
   - "omnibase_core>=0.39.0"
   - "fastapi>=0.100"
