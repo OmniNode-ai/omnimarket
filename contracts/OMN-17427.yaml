@@ -655,6 +655,11 @@ requirements:
     acceptance:
       - id: "AC153"
         statement: "AC153: every row of the golden ledger fixture, written through HandlerWorkLedgerEmit with the in-memory emitter onto an EventBusInmemory, is folded by InMemoryWorkLedgerQueryReader, a redelivered row is kept once, and HandlerWorkLedgerQuery over that reader returns the rows, holds, inbox entries and open claims the recorded markdown reads name -- falsifier: uv run pytest tests/test_work_ledger_query_inmemory_bus.py -q fails at the merge base, where the module work_ledger_query_inmemory does not exist"
+  - id: "req-context-pack-cite-first-allocator"
+    statement: "When the required tiers of a context pack are over budget, the cited entries of every trimmable tier are charged first and only the uncited remainder is shared equally, so a pack whose cited entries fit the budget is built even when one tier's cited entries exceed an equal share; with no citations the selection is unchanged."
+    acceptance:
+      - id: "AC154"
+        statement: "AC154: a compaction_orchestrator build at budget 800 whose open_work tier cites five rows of about 105 tokens each builds OK with every cited row carried and the uncited orchestration_state row trimmed, and cited entries over the whole budget fail TOKEN_BUDGET_EXCEEDED with 'cited entries need' naming the tiers -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -k equal_share fails at the merge base with 'open_work: cited entries need 525 tokens, over the tier budget 380'"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -862,6 +867,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC153: the work ledger runs on the in-memory event bus and answers the golden markdown reads."
     command: "uv run pytest tests/test_work_ledger_query_inmemory_bus.py -q"
+  - kind: "tests"
+    description: "AC154: the context-pack orchestrator charges cited entries of every required tier before sharing the budget."
+    command: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -k 'equal_share or whole_budget or cited'"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -2669,4 +2677,19 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/test_work_ledger_query_inmemory_bus.py -q -n 0 -p no:randomly --no-cov -k sync_emit_handler_writes"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac154-cite-first-allocator"
+    description: "The required-tier allocator charges cited entries of every trimmable tier first. The equal-share test fails at the merge base, where the shipped equal-share allocator refuses open_work's 525 cited tokens over a 380-token tier share although the 800-token budget holds them."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -n 0 -p no:randomly --no-cov -k 'equal_share or whole_budget or cited'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC154"]
+  - id: "dod-omn17427-cite-first-allocator-deploy-probe"
+    description: "Deploy probe. In the checked-out package, a context-pack build whose cited open_work rows exceed an equal share of the budget but fit the budget is built with every cited row. It fails at the merge base and needs only uv and this checkout on the hosted runner; no broker, database or credential."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -n 0 -p no:randomly --no-cov -k equal_share"
         cwd: "${OMNI_HOME}/omnimarket"
