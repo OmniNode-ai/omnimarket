@@ -618,6 +618,13 @@ requirements:
     acceptance:
       - id: "AC140"
         statement: "AC140: two adapter invocations carry two different uuid4 invocation_ids on their commands and results, the payload holds no field not drawn from the hook input besides that id, a matching compaction reply installs its messages, and a reply for another invocation, a tampered message, a malformed reply, a native reply or no reply returns native -- falsifier: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_verdict.py -q fails at the merge base, where the module handler_compaction_verdict does not exist"
+  - id: "req-compaction-receipts-fold"
+    statement: "The compaction receipts fold derives one state per candidate, per activation and per invocation from the set of prepared, activated, fallback, installed, install-mismatch and install-uncertain receipts received, independent of their order and duplicates."
+    acceptance:
+      - id: "AC130"
+        statement: "AC130: installed and install_mismatch dominate not_installed and uncertain, installed with install_mismatch folds to conflict, prepared copies with differing assembly_hash fold to conflict, and two activations of one candidate with different model output fold to one prepared candidate with no conflict -- falsifier: uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_compaction_receipts_fold.py -q -k 'dominates or mismatch or conflict or model_outputs' fails"
+      - id: "AC131"
+        statement: "AC131: 200 seeded shuffles of a mixed receipt set, with duplicates inserted, fold to a byte-identical result, and appending a later boundary's receipts leaves every earlier activation's fold byte-identical -- falsifier: uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_compaction_receipts_fold.py -q -k 'permutations or later_boundary' fails"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -2471,4 +2478,27 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_verdict.py -q -n 0 -p no:randomly --no-cov -k test_an_echoed_matching_package_installs_its_messages"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-compaction-receipts-fold-precedence"
+    description: "The receipts fold's precedence and conflict rules hold on the fixture table."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_compaction_receipts_fold.py -q --no-cov -k 'dominates or mismatch or conflict or model_outputs'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC130"]
+  - id: "dod-omn17427-compaction-receipts-fold-order-independence"
+    description: "The receipts fold is a function of the set received: shuffles and duplicates do not change it, and a later boundary does not revise an earlier activation."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_compaction_receipts_fold.py -q --no-cov -k 'permutations or later_boundary'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC131"]
+  - id: "dod-omn17427-compaction-receipts-fold-deploy-probe"
+    description: "Deploy probe: the shipped fold node imports from its onex.nodes entry point and its contract names a handler and models that exist; the node is pure, so no service deployment or credentials are required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_compaction_receipts_fold.py -q --no-cov -k contract_metadata_and_entry_point"
         cwd: "${OMNI_HOME}/omnimarket"
