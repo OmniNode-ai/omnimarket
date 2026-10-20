@@ -433,10 +433,14 @@ class TestProjectionViewReconciliation:
         # assertion is about ORDER, not about which column happens to be last.
         # OMN-20717 appended `unpriced_call_count` after both, by the same rule.
         columns = list(exposure["columns"])
-        assert columns[-3:] == [
+        # OMN-21206 appends provenance counts after the existing three.
+        assert columns[-6:] == [
             "cumulative_counterfactual_baseline_usd",
             "tenant_id",
             "unpriced_call_count",
+            "measured_run_count",
+            "estimated_run_count",
+            "unknown_run_count",
         ]
 
 
@@ -1018,10 +1022,13 @@ async def test_real_postgres_replace_view_preserves_column_contract(
             if exposure["table"] == "projection_delegation_savings"
         )
         assert actual == list(declared)
-        assert actual[-3:] == [
+        assert actual[-6:] == [
             "cumulative_counterfactual_baseline_usd",
             "tenant_id",
             "unpriced_call_count",
+            "measured_run_count",
+            "estimated_run_count",
+            "unknown_run_count",
         ]
     finally:
         await conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')

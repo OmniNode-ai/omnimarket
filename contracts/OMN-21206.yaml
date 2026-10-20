@@ -79,3 +79,57 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn21206_view_population_real_postgres.py -q -n 0 -p no:randomly --no-cov -k 'tied_estimates_choose_highest_primary_key_every_transaction or earlier_created_but_later_updated_row_wins_in_both_views'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
+  - id: "dod-omn21206-deploy-served-counts"
+    description: >-
+      Read-only deployment probe: the real projection API serves the two
+      tenant-scoped exposures with their appended integer provenance counts,
+      and each row's total equals the three class counts. Missing columns,
+      HTTP refusal, an empty row, wrong tenant or inconsistent counts fail.
+      Each of the three GETs has a six-second timeout. This is unbound local
+      deployment evidence; the four hosted AC bindings remain independent.
+      It does not replace AC3's sanctioned repeatable-read reconciliation or
+      compare money across separately timed live requests.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          set -eu
+          : "${ONEX_LAB_PROJECTION_API:?set the deployed projection API URL}"
+          : "${ONEX_TENANT_ID:?set the tenant UUID served by that deployment}"
+          uv run --frozen python - <<'PROBE'
+          import json
+          import os
+          import subprocess
+          import urllib.parse
+          api = os.environ["ONEX_LAB_PROJECTION_API"].rstrip("/")
+          tenant = os.environ["ONEX_TENANT_ID"]
+          def get(path):
+              result = subprocess.run(["curl", "--fail", "--silent", "--show-error", "--max-time", "6", api + path], check=True, capture_output=True, text=True)
+              return json.loads(result.stdout)
+          expected = {
+              "onex.snapshot.projection.cost.savings-overview.v1": ("projection_cost_savings_overview", "run_count"),
+              "onex.snapshot.projection.delegation.savings.v1": ("projection_delegation_savings", "session_count"),
+          }
+          catalogue = get("/projections")["topics"]
+          counts = ("measured_run_count", "estimated_run_count", "unknown_run_count")
+          for topic, (table, total) in expected.items():
+              matches = [entry for entry in catalogue if entry["topic"] == topic]
+              assert len(matches) == 1, (topic, "catalogue entry")
+              entry = matches[0]
+              assert entry["table"] == table and entry["bus_backed"] is True, (topic, "source")
+              assert entry["status"] == "ok" and entry["tenant_scoped"] is True, (topic, "readiness")
+              assert {total, *counts} <= set(entry["columns"]), (topic, "deployment lacks appended counts")
+              page = get("/projection/" + topic + "?" + urllib.parse.urlencode({"tenant": tenant, "limit": 1}))
+              assert page["topic"] == topic and page["tenant"] == tenant, (topic, "response identity")
+              assert page["row_count"] == len(page["rows"]) == 1, (topic, "nonempty singleton")
+              row = page["rows"][0]
+              assert row["tenant_id"] == tenant, (topic, "tenant row")
+              if total == "run_count":
+                  assert row["window"] == "all", "Overview all-time row required"
+              for key in (total, *counts):
+                  assert type(row[key]) is int and row[key] >= 0, (topic, key)
+              assert row[total] == sum(row[key] for key in counts), (topic, "class sum")
+          print("OMN21206-DEPLOY-OK exposures=2 tenant=" + tenant)
+          PROBE
+        cwd: "${OMNI_HOME}/omnimarket"

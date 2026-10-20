@@ -410,6 +410,8 @@ class TestBuildProjectionTopicMap:
             # it so the dashboard can say how many runs were excluded.
             "estimated_run_count",
             "unknown_run_count",
+            # OMN-21206: all runs, beside the measured monetary population.
+            "run_count",
         )
         assert cfg.json_columns == ("rows", "recent_runs", "warnings")
         assert cfg.freshness_column == "latest_projection_updated_at"
