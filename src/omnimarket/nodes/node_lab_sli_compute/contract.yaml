@@ -1,0 +1,232 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lab SLI Compute (OMN-17427)
+#
+# Pure definition-B compute: handle(ModelLabSliReadingBatch) -> ModelLabSliEvaluationBatch.
+# The indicator table below is the single source of every target, window,
+# severity and action. Nothing in Python carries a threshold: changing a target
+# or a severity is a contract edit, not a code edit.
+name: node_lab_sli_compute
+contract_name: node_lab_sli_compute
+node_name: node_lab_sli_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Evaluates the lab's service-level indicators. Takes one collection interval of
+  readings and returns one verdict per indicator in sli_table (ok, breach,
+  unknown or not_applicable) with the indicator's own severity and action. An
+  indicator with no reading is unknown, never ok: a dark source is itself a
+  finding. A reading naming an indicator absent from the table, or a repeated
+  one, is rejected and listed. No clock read, no state, no I/O.
+  This node belongs to the lab SLI pack, is off by default and refuses until
+  a deployment enables the pack with `status: enabled` in
+  <root>/lab_sli_pack/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS.
+
+handler:
+  module: omnimarket.nodes.node_lab_sli_compute.handlers.handler_lab_sli_evaluate
+  class: HandlerLabSliEvaluate
+  input_model: omnimarket.models.lab_sli.model_lab_sli.ModelLabSliReadingBatch
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: evaluate_lab_sli
+      handler:
+        name: HandlerLabSliEvaluate
+        module: omnimarket.nodes.node_lab_sli_compute.handlers.handler_lab_sli_evaluate
+      input_model: omnimarket.models.lab_sli.model_lab_sli.ModelLabSliReadingBatch
+      output_model: omnimarket.models.lab_sli.model_lab_sli.ModelLabSliEvaluationBatch
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+input_model:
+  name: ModelLabSliReadingBatch
+  module: omnimarket.models.lab_sli.model_lab_sli
+  description: One collection interval of readings from node_lab_sli_collect_effect.
+output_model:
+  name: ModelLabSliEvaluationBatch
+  module: omnimarket.models.lab_sli.model_lab_sli
+  description: One verdict per indicator in sli_table, plus the readings rejected.
+
+terminal_event: onex.evt.omnimarket.lab-sli-evaluated.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.lab-sli-evaluate-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.lab-sli-evaluated.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.lab-sli-evaluated.v1
+
+# ---------------------------------------------------------------------------
+# THE INDICATOR TABLE. Severities are data.
+#   SEV1  the lab cannot land or place anything: push the operator, fix lane now
+#   SEV2  throughput degraded: fix lane
+#   SEV3  drift: batched fix lane
+#   SEV4  informational: board only
+# comparator max: breach when the worst subject's value > target
+# comparator min: breach when the worst subject's value < target
+# ---------------------------------------------------------------------------
+sli_table:
+  - sli_id: slot_utilization_while_queued
+    title: Lab slot utilization while work is queued
+    unit: ratio
+    comparator: min
+    target: 0.5
+    window_minutes: 30
+    severity: SEV2
+    action: "Fill lane: find why queued work is not placed (lab-fill refusals, parked tickets, brief-check refusals) and fill the slots."
+    source: lab-fill tick results (placed, free_slots, eligible)
+  - sli_id: lane_placement_no_host_rate
+    title: Lane placement failures with no host
+    unit: ratio
+    comparator: max
+    target: 0.5
+    window_minutes: 30
+    severity: SEV1
+    action: "Placement fix lane: read the placement refusals, find the host or parity gate refusing every lane, and restore placement."
+    source: remote-lane placement records
+  - sli_id: merges_per_hour_per_repo
+    title: Merges per hour per repo with green work waiting
+    unit: merges/hour
+    comparator: min
+    target: 0.25
+    window_minutes: 240
+    severity: SEV2
+    action: "Landing fix lane: read the landing-controller ticks for the repo and unstick its queue."
+    source: PR watcher state (merges, green PRs per repo)
+  - sli_id: merge_queue_head_failure_streak
+    title: Consecutive merge-queue head failures per repo
+    unit: failures
+    comparator: max
+    target: 2
+    window_minutes: 60
+    severity: SEV1
+    action: "Queue fix lane: classify the head's red, fix or eject the head, and re-arm the queue."
+    source: PR watcher state (queued PRs with red CI)
+  - sli_id: green_to_merged_minutes
+    title: Median green-to-merged time
+    unit: minutes
+    comparator: max
+    target: 60
+    window_minutes: 1440
+    severity: SEV2
+    action: "Landing fix lane: find the controller gate holding green PRs and release it."
+    source: PR watcher state (merges and CI completion times)
+  - sli_id: oldest_green_unlanded_minutes
+    title: Oldest green, non-draft, unlanded PR
+    unit: minutes
+    comparator: max
+    target: 120
+    window_minutes: 15
+    severity: SEV2
+    action: "Landing fix lane: land or unblock the named PR, then fix the gate that held it."
+    source: PR watcher state (green PRs, last CI completion)
+  - sli_id: merged_to_running_lag_minutes
+    title: Merged-to-running lag per host (installed plugin and daemon revision vs main)
+    unit: minutes
+    comparator: max
+    target: 60
+    window_minutes: 60
+    severity: SEV3
+    action: "Adoption fix lane: install the merged revision on the named host and fix the adoption path that missed it."
+    source: adoption state and clone-sync reflogs
+  - sli_id: scheduled_job_failures
+    title: Scheduled jobs failing or missing their interval
+    unit: jobs
+    comparator: max
+    target: 0
+    window_minutes: 1440
+    severity: SEV2
+    action: "Scheduler fix lane: repair the named launchd or systemd units (invalid plists, nonzero exits, missed runs)."
+    source: launchd and systemd unit status
+  - sli_id: host_free_memory_gb
+    title: Free memory per lab host
+    unit: GB
+    comparator: min
+    target: 8
+    window_minutes: 15
+    severity: SEV2
+    action: "Host fix lane: free memory on the named host (stuck lanes, leaked processes) and check its pressure gate."
+    source: host probe
+  - sli_id: host_memory_pressure_psi
+    title: Memory pressure per lab host (PSI some avg60, percent)
+    unit: percent
+    comparator: max
+    target: 20
+    window_minutes: 15
+    severity: SEV3
+    action: "Host fix lane: find the pressure source on the named host; confirm the pressure gate does not refuse while memory is free."
+    source: host probe
+  - sli_id: host_swap_used_gb
+    title: Swap in use per lab host
+    unit: GB
+    comparator: max
+    target: 8
+    window_minutes: 15
+    severity: SEV3
+    action: "Host fix lane: find what pushed the named host into swap."
+    source: host probe
+  - sli_id: host_cpu_temperature_c
+    title: CPU temperature per lab host
+    unit: celsius
+    comparator: max
+    target: 90
+    window_minutes: 15
+    severity: SEV3
+    action: "Host fix lane: check cooling and load placement on the named host."
+    source: host probe
+  - sli_id: host_disk_free_gb
+    title: Free disk per lab host
+    unit: GB
+    comparator: min
+    target: 50
+    window_minutes: 60
+    severity: SEV2
+    action: "Disk fix lane: run the retention contract on the named host and find what grew."
+    source: host probe
+  - sli_id: host_fseventsd_gb
+    title: fseventsd store size per macOS lab host
+    unit: GB
+    comparator: max
+    target: 5
+    window_minutes: 60
+    severity: SEV3
+    action: "Host fix lane: find the watcher churning the named host's fseventsd store and exclude its tree."
+    source: host probe
+  - sli_id: push_refusal_rate
+    title: Lane pushes refused by hooks
+    unit: ratio
+    comparator: max
+    target: 0.2
+    window_minutes: 240
+    severity: SEV2
+    action: "Hook fix lane: read the refusals, fix the hook preflight or the guard refusing fix lanes."
+    source: ledger FRICTION refusal rows and pre-push receipts
+  - sli_id: alarm_to_action_latency_minutes
+    title: Alarm-to-action latency
+    unit: minutes
+    comparator: max
+    target: 30
+    window_minutes: 1440
+    severity: SEV2
+    action: "Alerting fix lane: find why a fired alarm got no fix lane or push in time."
+    source: lab-sli-alerted events and fix-lane CLAIM rows
+  - sli_id: sli_source_coverage
+    title: Indicators with a live source reader
+    unit: ratio
+    comparator: min
+    target: 1.0
+    window_minutes: 60
+    severity: SEV4
+    action: "None; the board shows which indicators are dark."
+    source: this node's own verdicts
