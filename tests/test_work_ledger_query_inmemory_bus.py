@@ -24,6 +24,9 @@ from omnimarket.models.work_ledger_query import (
     EnumWorkLedgerQueryKind,
     ModelWorkLedgerQueryRequest,
 )
+from omnimarket.nodes.node_event_emit_effect.handlers.inmemory_bus_emitter import (
+    InMemoryBusEmitter,
+)
 from omnimarket.nodes.node_event_emit_effect.models.model_emit_request import (
     ModelEmitRequest,
 )
@@ -37,7 +40,6 @@ from omnimarket.nodes.node_work_ledger_query_effect.handlers.handler_work_ledger
     HandlerWorkLedgerQuery,
 )
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_inmemory import (
-    InMemoryLedgerEmitter,
     InMemoryWorkLedgerQueryReader,
     ledger_row_topics,
 )
@@ -52,20 +54,20 @@ pytestmark = pytest.mark.unit
 
 
 async def _local_ledger() -> tuple[
-    EventBusInmemory, InMemoryWorkLedgerQueryReader, InMemoryLedgerEmitter
+    EventBusInmemory, InMemoryWorkLedgerQueryReader, InMemoryBusEmitter
 ]:
     bus = EventBusInmemory()
     await bus.start()
     reader = InMemoryWorkLedgerQueryReader()
     await reader.attach(bus)
-    return bus, reader, InMemoryLedgerEmitter(bus)
+    return bus, reader, InMemoryBusEmitter(bus)
 
 
-async def _write_fixture(emitter: InMemoryLedgerEmitter) -> int:
+async def _write_fixture(emitter: InMemoryBusEmitter) -> int:
     """Write every fixture row through the real emit handler; return rows accepted.
 
     The handler is synchronous (a CLI's shape), so it runs on a worker thread,
-    where ``InMemoryLedgerEmitter.handle`` finds no running loop.
+    where ``InMemoryBusEmitter.handle`` finds no running loop.
     """
     handler = HandlerWorkLedgerEmit(emitter=emitter)
     accepted = 0
@@ -155,7 +157,7 @@ def test_the_sync_emit_handler_writes_through_the_bus_outside_a_loop() -> None:
         return bus, reader
 
     bus, reader = asyncio.run(setup())
-    handler = HandlerWorkLedgerEmit(emitter=InMemoryLedgerEmitter(bus))
+    handler = HandlerWorkLedgerEmit(emitter=InMemoryBusEmitter(bus))
     row = (
         "2026-10-20T10:00:00Z | CLAIM | lane=local-a | actor=user | model=none | "
         "ticket=OMN-1 | worktree=none | host=laptop | run=r1 | scope=local ledger | "
@@ -173,6 +175,8 @@ def test_the_sync_emit_handler_writes_through_the_bus_outside_a_loop() -> None:
 
 async def test_sync_handle_inside_a_running_loop_says_to_await_ahandle() -> None:
     bus, _, emitter = await _local_ledger()
-    with pytest.raises(RuntimeError, match="ahandle"):
+    with pytest.raises(
+        RuntimeError, match=r"InMemoryBusEmitter\.handle.*await ahandle"
+    ):
         emitter.handle(ModelEmitRequest(event_type="x", payload={}))
     del bus

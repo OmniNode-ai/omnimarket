@@ -6,12 +6,13 @@ RULING 2026-10-19T21:47:42Z: a customer running OmniNode locally has no rolling
 markdown ledger and no lab Postgres, and that is no reason to have no ledger --
 the ledger is a dependency like any other and the in-memory event bus stands in
 for the lab bus. The ledger's row events already travel as typed events; this
-module is the three pieces a local runtime needs to close the loop without a
-broker or a database:
+module holds two pieces, the reader and ``attach``/``ledger_row_topics``, that
+work with the emitter to close the loop without a broker or a database:
 
-- ``InMemoryLedgerEmitter`` is the ``ProtocolEventEmitter`` that
-  ``HandlerWorkLedgerEmit`` takes: it publishes a row's event to the bus topic
-  the event registry names, instead of the Kafka spool.
+- ``InMemoryBusEmitter`` in
+  ``omnimarket.nodes.node_event_emit_effect.handlers.inmemory_bus_emitter`` is
+  the ``ProtocolEventEmitter`` that ``HandlerWorkLedgerEmit`` takes: it publishes
+  a row's event to the bus topic the event registry names, instead of the Kafka spool.
 - ``InMemoryWorkLedgerQueryReader`` is the ``ProtocolWorkLedgerQueryReader`` that
   ``HandlerWorkLedgerQuery`` takes: it folds the row events it hears into the
   records the Postgres reader would return, so every query verb (rows, holds,
@@ -25,7 +26,6 @@ A redelivered row (same ``row_id``) is kept once.
 
 from __future__ import annotations
 
-import asyncio
 import json
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
@@ -34,15 +34,6 @@ from typing import Any, Protocol
 from omnimarket.events.enum_ledger_row_type import EnumLedgerRowType
 from omnimarket.handlers.work_ledger_text import ledger_row_stamp
 from omnimarket.models.work_ledger_query import ModelWorkLedgerRowRecord
-from omnimarket.nodes.node_event_emit_effect.models.model_emit_request import (
-    ModelEmitRequest,
-)
-from omnimarket.nodes.node_event_emit_effect.models.model_emit_result import (
-    ModelEmitResult,
-)
-from omnimarket.nodes.node_event_emit_effect.spool.topic_resolver import (
-    resolve_event_type,
-)
 
 _DEFAULT_GROUP = "work-ledger-inmemory-reader"
 
@@ -175,40 +166,7 @@ class InMemoryWorkLedgerQueryReader:
         )
 
 
-class InMemoryLedgerEmitter:
-    """Publishes a ledger row's event on the in-memory bus, not the Kafka spool."""
-
-    def __init__(self, bus: ProtocolLedgerBus) -> None:
-        self._bus = bus
-
-    async def ahandle(self, request: ModelEmitRequest) -> ModelEmitResult:
-        topics = (
-            [request.topic]
-            if request.topic is not None
-            else [t.topic for t in resolve_event_type(request.event_type)]
-        )
-        value = json.dumps(request.payload).encode("utf-8")
-        key = (request.partition_key or request.correlation_id or "").encode() or None
-        for topic in topics:
-            await self._bus.publish(topic, key, value)
-        return ModelEmitResult(
-            event_id=request.event_id, topics_published=topics, published=True
-        )
-
-    def handle(self, request: ModelEmitRequest) -> ModelEmitResult:
-        """The synchronous ``ProtocolEventEmitter`` call; use ``ahandle`` inside a running loop."""
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return asyncio.run(self.ahandle(request))
-        raise RuntimeError(
-            "InMemoryLedgerEmitter.handle called inside a running event loop; "
-            "await ahandle instead"
-        )
-
-
 __all__: list[str] = [
-    "InMemoryLedgerEmitter",
     "InMemoryWorkLedgerQueryReader",
     "ProtocolLedgerBus",
     "ledger_row_topics",
