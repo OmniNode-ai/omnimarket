@@ -49,7 +49,9 @@ from omnimarket.routing import byok_model_discovery
 from omnimarket.routing.byok_model_discovery import models_request_headers
 from omnimarket.routing.byok_provider_backends import resolve_byok_provider_backend
 
-pytestmark = pytest.mark.unit
+# OMN-21059: every shipped row has the customer choose the model; this file
+# exercises the catalogue-pick path, which a row reaches with that flag off.
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("catalogue_picks_models")]
 
 _KEY = "sk-ant-api03-synthetic-omn20990-key-never-printed"
 _LISTED = [
