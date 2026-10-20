@@ -936,6 +936,9 @@ class HandlerInferenceIntent:
         OMN-21078: where the customer chooses the model, re-aims require a
         credential that records a catalogue pick. A customer's chosen model,
         including a ``:free`` one, or one with no chooser record gets one call.
+        OMN-21059: every catalogue row now has the customer choose, and a
+        credential that records a catalogue pick is refused with
+        BYOK_MODEL_NOT_CHOSEN before any call.
         """
         byok = _customer_byok_row(intent)
         if byok is None or not api_key:
@@ -954,16 +957,22 @@ class HandlerInferenceIntent:
             # OMN-21078: a chosen :free model matches a preference pattern;
             # the pattern is not evidence of who chose it. No record means
             # customer choice, including hosted refs and older local rows.
+            # OMN-21059: a model the catalogue picked is not one the customer
+            # chose, so that credential is refused like one with no model.
             if (
                 resolve_local_byok_model_chooser(intent.api_key_ref)
-                != MODEL_CHOSEN_BY_CATALOGUE
+                == MODEL_CHOSEN_BY_CATALOGUE
             ):
-                return self._call_llm(
-                    intent,
-                    call_id,
-                    api_key=api_key,
-                    credential_source=credential_source,
+                raise ProviderRefusalError(
+                    EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND,
+                    model_not_chosen_message(byok.provider),
                 )
+            return self._call_llm(
+                intent,
+                call_id,
+                api_key=api_key,
+                credential_source=credential_source,
+            )
         if intent.model == BYOK_MODEL_UNRESOLVED:
             intent = _re_aim_intent(intent, byok, api_key, exclude=())
         try:
