@@ -2149,6 +2149,14 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_delegate_skill_trace_id_omn19448.py -q -p no:cacheprovider"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC93"]
+  - id: "dod-omn17427-ac93-trace-id-lab-readback"
+    description: "AC93 lab readback, 2026-10-20T03:03Z, dev lane database omnidash_analytics on the lab dev lane host: the first delegation_events row storing a trace_id was written at 2026-10-19T12:31:43Z, after efba3ec67 merged at 2026-10-19T11:32:06Z. From then to 2026-10-20T03:00Z, 499 of 3556 rows carry a trace_id, and all 498 rows with a measured queue_wait_ms carry one. The 3057 rows without a trace_id carry no queue_wait_ms either; the bus was not read, so whether their terminals carried a trace is unverified. The full readback is dod-omn19448-trace-id-lab-readback in contracts/OMN-19448.yaml."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_delegate_skill_trace_id_omn19448.py -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC93"]
   - id: "dod-omn17427-delegate-skill-trace-id-deploy-probe"
     description: "Deploy probe. The checked-out source of both delegate-skill row builders names the terminal's trace_id column. It fails at the merge base, where neither builder writes it, and needs only a shell and this checkout on the hosted runner; the behavioural proof stays in the test_passes check bound to AC93."
     source: "manual"
