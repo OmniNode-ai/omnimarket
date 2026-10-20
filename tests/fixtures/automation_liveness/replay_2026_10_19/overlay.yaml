@@ -1,0 +1,42 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Replay fixture (OMN-17427): the two landing stall entries, as a private
+# overlay declares them. Neutral host name; the bounds are the deployed ones:
+# a held cause or red base past 60 minutes, an open version bump past 90.
+schema_version: automation-liveness-overlay/v1
+processes:
+- process_id: host-a/landing-cause-stall
+  owner_repo: example-owner/example-repo
+  host: host-a
+  trigger: {kind: bus-event, native_id: "landing stall transition topic: cause and base_branch subjects"}
+  alarm_deadline_seconds: 4020
+  max_runtime_seconds: 3600
+  emitter: self
+  run_record: per-run
+  real_work: held cause or red base moved (dispatched, released or merged)
+  demand: none
+  correlation:
+    trigger_event: landing stall transition held, claim_refused or attempt_never_ran
+    answer_event: landing stall transition dispatched, released or merged
+    match_key: repo, subject and subject key
+    answer_deadline_seconds: 3600
+  positive_control: {kind: replay_fixture, ref: replay/2026-10-19/landing-cause-held}
+  state: active
+- process_id: host-a/landing-version-bump-stall
+  owner_repo: example-owner/example-repo
+  host: host-a
+  trigger: {kind: bus-event, native_id: "landing stall transition topic: version_bump subject"}
+  alarm_deadline_seconds: 5820
+  max_runtime_seconds: 5400
+  emitter: self
+  run_record: per-run
+  real_work: version bump merged or released
+  demand: none
+  correlation:
+    trigger_event: landing stall transition on an open version bump
+    answer_event: landing stall transition merged or released
+    match_key: repo, subject and subject key
+    answer_deadline_seconds: 5400
+  positive_control: {kind: replay_fixture, ref: replay/2026-10-19/landing-version-bump-open}
+  state: active

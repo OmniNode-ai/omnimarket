@@ -15,8 +15,9 @@ spend less the worst case still holds the reserve is chosen. When none does,
 the result names no key, and the gateway answers 503 with no upstream call so
 the voter falls through to its overflow endpoint.
 
-Prices come from the pricing manifest; the allowance, the reserve, the model,
-the cycle and the cache multiples come from the contract. A model the manifest
+Prices come from the pricing manifest; the allowance, reserve, cycle and cache
+multiples come from the contract. The request or injected server config chooses
+the model; the packaged contract carries no deployment model default. A model the manifest
 does not carry chooses no key. No clock (``as_of`` is in the request), no I/O.
 """
 
@@ -33,6 +34,12 @@ from omnimarket.models.claude_review_budget.claude_review_budget_math import (
     ModelClaudeReviewTokenPrices,
     cycle_start,
     prices_from_manifest,
+)
+from omnimarket.models.claude_review_budget.model_claude_review_usage import (
+    ModelClaudeReviewUsage,
+)
+from omnimarket.models.claude_review_budget.model_review_budget_admission import (
+    ModelReviewBudgetQuote,
 )
 from omnimarket.nodes.node_claude_review_budget_compute.models.model_claude_review_budget import (
     ModelClaudeReviewBudgetConfig,
@@ -79,22 +86,79 @@ class HandlerClaudeReviewBudget:
             model_id,
             cache_write_input_multiplier=self._config.cache_write_input_multiplier,
             cache_read_input_multiplier=self._config.cache_read_input_multiplier,
+            cache_write_1h_input_multiplier=self._config.cache_write_1h_input_multiplier,
+        )
+
+    def quote(self, request: ModelReviewBudgetQuote) -> Decimal | None:
+        """Maximum charge: each cacheable block can be a cold write at its own TTL."""
+        prices = self._prices(request.model_id)
+        if prices is None:
+            return None
+        rates = {
+            "uncached": prices.input_usd,
+            "5m": max(prices.input_usd, prices.cache_write_usd),
+            "1h": max(prices.input_usd, prices.cache_write_1h_usd),
+        }
+        cost = sum((b.tokens * rates[b.cache_ttl] for b in request.blocks), Decimal(0))
+        # Tools precede the cached prefix on Messages requests. Reserve their tokens
+        # at the largest block write rate too, including a cold 1-hour cache write.
+        schema_price = max(
+            (rates[b.cache_ttl] for b in request.blocks), default=prices.input_usd
+        )
+        cost += (
+            request.schema_tokens * schema_price
+            + request.max_tokens * prices.output_usd
+        )
+        return cost * (
+            self._config.batch_multiplier if request.mode == "batch" else Decimal(1)
+        )
+
+    def measured_cost(
+        self, usage: ModelClaudeReviewUsage, *, batch: bool
+    ) -> Decimal | None:
+        """Price the provider's observed usage, including the cache creation TTL split."""
+        prices = self._prices(usage.model_id)
+        if prices is None:
+            return None
+        return prices.cost_of(usage) * (
+            self._config.batch_multiplier if batch else Decimal(1)
         )
 
     def handle(
         self, request: ModelClaudeReviewBudgetRequest
     ) -> ModelClaudeReviewBudgetResult:
         cfg = self._config
-        models = {cfg.model_id} | {c.model_id for k in request.keys for c in k.calls}
+        model_id = (
+            request.quote.model_id
+            if request.quote is not None
+            else request.model_id or cfg.model_id
+        )
+        if model_id is None:
+            return ModelClaudeReviewBudgetResult(
+                decided_at=request.as_of,
+                model_id=None,
+                reason=EnumClaudeReviewBudgetReason.MODEL_NOT_PRICED,
+                chosen_api_key_ref=None,
+                allowance_usd=cfg.allowance_usd,
+                reserve_usd=cfg.reserve_usd,
+                worst_case_usd=None,
+                keys=(),
+                detail="no model selected by the request or server overlay",
+            )
+        models = {model_id} | {c.model_id for k in request.keys for c in k.calls}
         prices = {m: self._prices(m) for m in sorted(models)}
         unpriced = [m for m, p in prices.items() if p is None]
-        call_prices = prices[cfg.model_id]
+        call_prices = prices[model_id]
         worst = (
-            call_prices.worst_case(
-                prompt_tokens=request.prompt_tokens, max_tokens=request.max_tokens
+            self.quote(request.quote)
+            if request.quote is not None
+            else (
+                call_prices.worst_case(
+                    prompt_tokens=request.prompt_tokens, max_tokens=request.max_tokens
+                )
+                if call_prices is not None
+                else None
             )
-            if call_prices is not None
-            else None
         )
 
         readback: list[ModelClaudeReviewKeyBudget] = []
@@ -148,7 +212,7 @@ class HandlerClaudeReviewBudget:
             )
         return ModelClaudeReviewBudgetResult(
             decided_at=request.as_of,
-            model_id=cfg.model_id,
+            model_id=model_id,
             reason=reason,
             chosen_api_key_ref=(
                 chosen.api_key_ref
