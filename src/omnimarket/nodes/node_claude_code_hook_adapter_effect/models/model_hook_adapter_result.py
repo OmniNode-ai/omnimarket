@@ -4,7 +4,9 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, JsonValue
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.models.model_client_verdict import (
     ModelClientVerdict,
@@ -16,5 +18,6 @@ class ModelHookAdapterResult(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    invocation_id: UUID = Field(description="The id minted for this invocation.")
     client_verdict: ModelClientVerdict
     hook_output: dict[str, JsonValue] | None = None

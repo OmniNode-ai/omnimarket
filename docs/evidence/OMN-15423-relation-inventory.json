@@ -4154,6 +4154,7 @@
         "node_delegation_dod_verify_request_compute",
         "node_delegation_eval_orchestrator",
         "node_dod_verify",
+        "node_lab_secret_store_override_effect",
         "node_llm_delegation_call_effect",
         "node_metering_summary_compute",
         "node_projection_baselines",
@@ -7124,6 +7125,7 @@
         "node_dod_verify",
         "node_github_webhook_ingress_effect",
         "node_lab_job_check_effect",
+        "node_legacy_worktree_audit_effect",
         "node_linear_triage",
         "node_occ_companion_compute",
         "node_occ_state_effect",
@@ -7383,6 +7385,7 @@
       "partitioning": [],
       "producer": null,
       "readers": [
+        "node_lab_secret_store_override_effect",
         "node_projection_delegation"
       ],
       "target_schema": "public",
