@@ -613,6 +613,11 @@ requirements:
     acceptance:
       - id: "AC113"
         statement: "AC113: replaying the 2026-10-19 held cause through node_landing_stall_expectation_compute, the watchdog compute and the delivery effect opens one TRIGGER_UNANSWERED episode past 60 minutes, sends one alarm naming the cause key, the repository, the minutes and the last decision text, and clears it after the merge; the fold opens at the first hold, answers on a move, and moves a version bump only on merge or release -- falsifier: uv run pytest tests/nodes/node_landing_stall_expectation_compute -q fails"
+  - id: "req-compaction-adapter-invocation-and-verdict"
+    statement: "The Claude Code hook adapter mints a fresh invocation_id for every invocation and carries it on the command through the @invocation_id argument source, and the context_compaction_verdict compute installs a compaction reply only when the echoed invocation_id is the adapter's own and its messages hash to the echoed installed_messages_hash; any other reply is native."
+    acceptance:
+      - id: "AC140"
+        statement: "AC140: two adapter invocations carry two different uuid4 invocation_ids on their commands and results, the payload holds no field not drawn from the hook input besides that id, a matching compaction reply installs its messages, and a reply for another invocation, a tampered message, a malformed reply, a native reply or no reply returns native -- falsifier: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_verdict.py -q fails at the merge base, where the module handler_compaction_verdict does not exist"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -805,6 +810,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC105: correct causal answers pass step_by_step_explanation and non-explanations are still vetoed."
     command: "uv run pytest tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py -q"
+  - kind: "tests"
+    description: "AC140: the adapter mints an invocation_id per invocation and the compaction verdict installs only a matching, hash-verified reply for that invocation."
+    command: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_verdict.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -2444,3 +2452,18 @@ dod_evidence:
         check_value: "uv run python -c \"from pathlib import Path; from omnimarket.models.liveness.model_automation_liveness import EVENT_TRIGGER_KINDS, EnumAutomationTriggerKind as K, load_automation_liveness_overlay as L; assert K.BUS_EVENT in EVENT_TRIGGER_KINDS; o = L(Path('tests/fixtures/automation_liveness/replay_2026_10_19/overlay.yaml')); assert {e.correlation.answer_deadline_seconds for e in o.processes} == {3600, 5400}\""
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC113"]
+  - id: "dod-omn17427-ac140-compaction-adapter-verdict"
+    description: "The hook adapter mints a uuid4 invocation_id per invocation, carries it on the command through the @invocation_id source, and the context_compaction_verdict compute installs only a reply echoing that id whose messages hash to the echoed installed_messages_hash. At the merge base the test module fails to collect."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_verdict.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC140"]
+  - id: "dod-omn17427-compaction-verdict-deploy-probe"
+    description: "Deploy probe. In the checked-out package, the hook adapter driven with a compaction binding and a client echoing the command's invocation_id returns install with the reply's messages. It fails at the merge base, which has no compaction verdict module, and needs only uv and this checkout on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_verdict.py -q -n 0 -p no:randomly --no-cov -k test_an_echoed_matching_package_installs_its_messages"
+        cwd: "${OMNI_HOME}/omnimarket"
