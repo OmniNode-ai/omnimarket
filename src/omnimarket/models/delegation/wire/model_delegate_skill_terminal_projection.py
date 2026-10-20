@@ -688,8 +688,6 @@ class ModelTaskDelegatedSavingsSource(BaseModel):
         correlation_id = payload.get("correlation_id")
         task_type = payload.get("task_type") or "unknown"
         model_used = str(payload.get("model_used") or "")
-        quality_passed = bool(payload.get("quality_passed"))
-
         cumulative_cost = payload.get("cumulative_attempt_cost")
         if (
             not isinstance(cumulative_cost, int | float)
@@ -705,20 +703,8 @@ class ModelTaskDelegatedSavingsSource(BaseModel):
             else 0.0
         )
 
-        prompt_tokens = _coerce_int(
-            payload.get("cumulative_input_tokens"), payload.get("prompt_tokens")
-        )
-        completion_tokens = _coerce_int(
-            payload.get("cumulative_output_tokens"), payload.get("completion_tokens")
-        )
-
-        counterfactual = (
-            counterfactual_builder(
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-            )
-            if quality_passed
-            else None
+        counterfactual = cls.counterfactual_from_canonical_payload(
+            payload, counterfactual_builder=counterfactual_builder
         )
 
         source_payload: dict[str, object] = {
@@ -743,6 +729,34 @@ class ModelTaskDelegatedSavingsSource(BaseModel):
         if tenant_id is not None:
             source_payload["tenant_id"] = tenant_id
         return cls.from_payload(source_payload)
+
+    @classmethod
+    def counterfactual_from_canonical_payload(
+        cls,
+        payload: Mapping[str, object],
+        *,
+        counterfactual_builder: CounterfactualBuilder,
+    ) -> ModelPremiumCounterfactual | None:
+        """The token-derived baseline shared by the savings and delegation rows.
+
+        The delegation projection must retain this basis even if shutdown
+        prevented the outer terminal from pinning one. Reading only pricing
+        inputs keeps its legacy correlation/tenant validation unchanged.
+        """
+        if not bool(payload.get("quality_passed")):
+            return None
+        prompt_tokens = _coerce_int(
+            payload.get("cumulative_input_tokens"), payload.get("prompt_tokens")
+        )
+        completion_tokens = _coerce_int(
+            payload.get("cumulative_output_tokens"), payload.get("completion_tokens")
+        )
+        if prompt_tokens + completion_tokens == 0:
+            return None
+        return counterfactual_builder(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+        )
 
 
 def _payload_with_envelope_timestamp(
