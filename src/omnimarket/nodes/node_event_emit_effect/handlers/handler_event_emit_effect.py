@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import json
 import logging
 import os
@@ -105,6 +106,10 @@ logger = logging.getLogger(__name__)
 # total to this constant plus negligible scheduling overhead.
 _DEFAULT_TOTAL_BUDGET_SECONDS = 9.0
 _DEFAULT_MAX_DRAIN_COUNT = 500
+# OMN-17427: h201 has bootstrap servers but no SASL settings: bus startup
+# fails after 7.0s, beyond the 5.0s publish cap, costing each delegate/GLM
+# invocation ~5.2s while a credentialed process later drains the spool.
+_DEFAULT_UNREACHABLE_BACKOFF_SECONDS = 120.0  # 0 disables the backoff.
 _DEFAULT_PUBLISH_TIMEOUT_SECONDS = 5.0  # per-adapter fallback when no explicit
 # per-call timeout_seconds is supplied (only relevant to callers that build a
 # KafkaEventPublisher directly, outside HandlerEventEmitEffect).
@@ -309,8 +314,10 @@ class KafkaEventPublisher:
         source: str = "node_event_emit_effect",
         publish_timeout_seconds: float = _DEFAULT_PUBLISH_TIMEOUT_SECONDS,
         bus_factory: Callable[[], Any] | None = None,
+        publish_identity: str | None = None,
     ) -> None:
         self._bootstrap_servers = bootstrap_servers
+        self._publish_identity = publish_identity
         self._source = source
         self._publish_timeout_seconds = publish_timeout_seconds
         # Test-injection seam: a fake bus (e.g. EventBusInmemory) can stand
@@ -322,6 +329,11 @@ class KafkaEventPublisher:
         )
         self._session_active = False
         self._session_bus: Any = None
+
+    @property
+    def publish_identity(self) -> str | None:
+        """Publish target and principal, excluding credentials."""
+        return self._publish_identity
 
     @contextlib.contextmanager
     def session(self) -> Iterator[None]:
@@ -497,6 +509,7 @@ class HandlerEventEmitEffect:
         spool_dir: Path | None = None,
         drain_budget_seconds: float = _DEFAULT_TOTAL_BUDGET_SECONDS,
         max_drain_count: int = _DEFAULT_MAX_DRAIN_COUNT,
+        unreachable_backoff_seconds: float = _DEFAULT_UNREACHABLE_BACKOFF_SECONDS,
         clock: Callable[[], datetime] = default_clock,
         correlation_id_factory: Callable[[], str] = default_correlation_id_factory,
     ) -> None:
@@ -522,6 +535,7 @@ class HandlerEventEmitEffect:
         self._spool_dir = spool_dir
         self._drain_budget_seconds = drain_budget_seconds
         self._max_drain_count = max_drain_count
+        self._unreachable_backoff_seconds = unreachable_backoff_seconds
         self._clock = clock
         self._correlation_id_factory = correlation_id_factory
 
@@ -779,6 +793,39 @@ class HandlerEventEmitEffect:
                 correlation_id=result_correlation_id,
             )
 
+        identity = getattr(adapter, "publish_identity", None)
+        marker: Path | None = None
+        identity_sha256 = ""
+        if (
+            isinstance(identity, str)
+            and identity
+            and self._unreachable_backoff_seconds > 0
+        ):
+            identity_sha256 = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+            # Like quarantine, keep metadata outside the nonrecursive pending
+            # glob: pathlib's *.json also matches dotfiles.
+            marker = (
+                spool.spool_dir / "publish-backoff" / f"{identity_sha256[:16]}.json"
+            )
+            age = self._unreachable_marker_age(marker, identity_sha256)
+            if age is not None and 0 <= age < self._unreachable_backoff_seconds:
+                logger.info(
+                    "Skipping publish: unreachable marker %s is %.1fs old; "
+                    "event %s stays spooled for the next drain",
+                    marker,
+                    age,
+                    request.event_id,
+                )
+                return ModelEmitResult(
+                    event_id=request.event_id,
+                    published=False,
+                    spool_only=False,
+                    publish_skipped_unreachable=True,
+                    drained_count=0,
+                    dropped_count=dropped_count,
+                    correlation_id=result_correlation_id,
+                )
+
         # Records rejected at append time (oversized telemetry -- see
         # SpoolOutbox._append_telemetry) were never spooled, so they cannot be
         # published; the event only counts as published when every one of its
@@ -825,13 +872,35 @@ class HandlerEventEmitEffect:
             # opportunistic drain.
             drained_count = 0
             if not publish_failed:
-                drained_count, backlog_quarantined = self._drain_backlog(
-                    adapter,
-                    spool,
-                    exclude={f.path for f in appended},
-                    deadline=deadline,
+                drained_count, backlog_quarantined, publish_failed = (
+                    self._drain_backlog(
+                        adapter,
+                        spool,
+                        exclude={f.path for f in appended},
+                        deadline=deadline,
+                    )
                 )
                 quarantined_count += backlog_quarantined
+
+        if marker is not None:
+            try:
+                if published_topics or drained_count:
+                    marker.unlink(missing_ok=True)
+                elif publish_failed:
+                    marker.parent.mkdir(parents=True, exist_ok=True)
+                    marker.write_text(
+                        json.dumps(
+                            {
+                                "failed_at": datetime.now(UTC).isoformat(),
+                                "identity_sha256": identity_sha256,
+                            }
+                        ),
+                        encoding="utf-8",
+                    )
+            except (OSError, ValueError):
+                logger.debug(
+                    "Cannot update unreachable marker %s", marker, exc_info=True
+                )
 
         return ModelEmitResult(
             event_id=request.event_id,
@@ -843,6 +912,27 @@ class HandlerEventEmitEffect:
             quarantined_count=quarantined_count,
             correlation_id=result_correlation_id,
         )
+
+    @staticmethod
+    def _unreachable_marker_age(marker: Path, identity_sha256: str) -> float | None:
+        """Read wall-clock age; malformed markers must not block publishing."""
+        try:
+            data = json.loads(marker.read_text(encoding="utf-8"))
+            if (
+                not isinstance(data, dict)
+                or data.get("identity_sha256") != identity_sha256
+            ):
+                raise ValueError("Invalid unreachable marker identity")
+            failed_at = data.get("failed_at")
+            if not isinstance(failed_at, str):
+                raise ValueError("Invalid unreachable marker timestamp")
+            failed_datetime = datetime.fromisoformat(failed_at)
+            if failed_datetime.tzinfo is None:
+                raise ValueError("Unreachable marker timestamp must be timezone-aware")
+            return time.time() - failed_datetime.timestamp()
+        except (OSError, ValueError):
+            logger.debug("Cannot read unreachable marker %s", marker, exc_info=True)
+            return None
 
     def _try_publish(
         self,
@@ -936,8 +1026,8 @@ class HandlerEventEmitEffect:
         *,
         exclude: set[Path],
         deadline: float,
-    ) -> tuple[int, int]:
-        """Drain oldest-first. Returns ``(drained, quarantined)``.
+    ) -> tuple[int, int, bool]:
+        """Drain oldest-first. Returns ``(drained, quarantined, publish_failed)``.
 
         Stop-on-first-failure is retained for a RETRYABLE outcome and is not a
         conservatism: publishing the next record while this one is still owed
@@ -972,8 +1062,8 @@ class HandlerEventEmitEffect:
                 self._quarantine(spool, spool_file)
                 quarantined += 1
                 continue
-            break
-        return drained, quarantined
+            return drained, quarantined, True
+        return drained, quarantined, False
 
     def _build_default_spool(self) -> SpoolOutbox:
         spool_dir = (
@@ -1013,7 +1103,13 @@ class HandlerEventEmitEffect:
         from omnibase_infra.event_bus.models.config import ModelKafkaEventBusConfig
 
         config = ModelKafkaEventBusConfig().apply_environment_overrides()
-        return KafkaEventPublisher(config.bootstrap_servers)
+        return KafkaEventPublisher(
+            config.bootstrap_servers,
+            publish_identity=(
+                f"{config.bootstrap_servers}|{config.security_protocol}|"
+                f"{config.sasl_plain_username or ''}"
+            ),
+        )
 
     @staticmethod
     def _spool_only_opt_out() -> bool:

@@ -655,6 +655,11 @@ requirements:
     acceptance:
       - id: "AC153"
         statement: "AC153: every row of the golden ledger fixture, written through HandlerWorkLedgerEmit with the in-memory emitter onto an EventBusInmemory, is folded by InMemoryWorkLedgerQueryReader, a redelivered row is kept once, and HandlerWorkLedgerQuery over that reader returns the rows, holds, inbox entries and open claims the recorded markdown reads name -- falsifier: uv run pytest tests/test_work_ledger_query_inmemory_bus.py -q fails at the merge base, where the module work_ledger_query_inmemory does not exist"
+  - id: "req-emit-unreachable-backoff"
+    statement: "When a node_event_emit_effect publish by one Kafka publish identity (bootstrap servers, security protocol and SASL user, never the password) fails as retryable, later invocations by that identity within the backoff window spool their event and attempt no publish, so an in-process delegate or GLM harness run no longer waits out the 5 s publish cap on a broker it cannot reach; any publish that succeeds clears the backoff, and an adapter with no identity is never backed off."
+    acceptance:
+      - id: "AC154"
+        statement: "AC154: a failed publish writes the identity's marker under the spool's publish-backoff directory; a second handler within the window makes zero publish calls, returns publish_skipped_unreachable=True and leaves both records pending; an expired marker allows the publish and the backlog drain and is cleared; another identity, an adapter without publish_identity and a zero window are never backed off; the marker is never listed as a pending record; the default adapter's identity carries no password -- falsifier: uv run pytest tests/unit/nodes/node_event_emit_effect/test_unreachable_backoff_omn17427.py -q fails at the merge base, where ModelEmitResult has no publish_skipped_unreachable"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -2669,4 +2674,19 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/test_work_ledger_query_inmemory_bus.py -q -n 0 -p no:randomly --no-cov -k sync_emit_handler_writes"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac154-emit-unreachable-backoff"
+    description: "After a retryable publish failure by one publish identity, the emit handler spools and attempts no publish for that identity inside the backoff window, then publishes and drains once it expires. The test module fails at the merge base, where ModelEmitResult has no publish_skipped_unreachable."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_unreachable_backoff_omn17427.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC154"]
+  - id: "dod-omn17427-emit-unreachable-backoff-deploy-probe"
+    description: "Deploy probe. In the checked-out package, a second emit handler after a failed publish by the same identity makes no publish call and leaves the event spooled. It fails at the merge base and needs only uv and this checkout on the hosted runner; no broker or credential."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_unreachable_backoff_omn17427.py -q -n 0 -p no:randomly --no-cov -k backs_off_across_handler_instances"
         cwd: "${OMNI_HOME}/omnimarket"
