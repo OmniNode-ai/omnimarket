@@ -43,12 +43,13 @@ same reason.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
 import threading
 import time
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable, Coroutine, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -289,12 +290,12 @@ class KafkaEventPublisher:
     """Synchronous Kafka publish adapter built from ``KAFKA_BOOTSTRAP_SERVERS``.
 
     Constructed lazily inside ``HandlerEventEmitEffect.handle()`` -- never in
-    ``__init__`` -- so the handler constructor stays I/O-free. Each call
-    opens a fresh event-bus connection and closes it after use:
+    ``__init__`` -- so the handler constructor stays I/O-free. By default each
+    call opens a fresh event-bus connection and closes it after use:
     ``node_event_emit_effect`` is invoked opportunistically (CLI /
     plugin-runtime dispatch), not as a resident daemon, so per-call
-    connect/close is the correct default for R1. The contract's descriptor
-    notes the runtime can also host this node for resident draining later.
+    connect/close is the correct default for R1. An explicit ``session()``
+    reuses one connection across an invocation's publishes and backlog drain.
 
     ``publish()`` itself is synchronous by contract (``ProtocolPublishAdapter``)
     but never blocks the calling thread's own event loop -- see
@@ -319,6 +320,32 @@ class KafkaEventPublisher:
         self._bus_factory: Callable[[], Any] = (
             bus_factory if bus_factory is not None else self._build_default_bus
         )
+        self._session_active = False
+        self._session_bus: Any = None
+
+    @contextlib.contextmanager
+    def session(self) -> Iterator[None]:
+        """Reuse a lazily started bus until the outermost session exits."""
+        if self._session_active:
+            yield
+            return
+        self._session_active = True
+        try:
+            yield
+        finally:
+            self._close_session_bus()
+            self._session_active = False
+
+    def _close_session_bus(self) -> None:
+        bus = self._session_bus
+        self._session_bus = None
+        if bus is not None:
+            try:
+                _KafkaPublishLoop.shared().run(
+                    bus.close(), timeout=self._publish_timeout_seconds
+                )
+            except Exception:
+                logger.warning("Failed to close Kafka publish session", exc_info=True)
 
     def _build_default_bus(self) -> Any:
         from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
@@ -355,17 +382,22 @@ class KafkaEventPublisher:
             if timeout_seconds is not None
             else self._publish_timeout_seconds
         )
-        _KafkaPublishLoop.shared().run(
-            self._publish_async(
-                topic,
-                payload,
-                key=key,
-                correlation_id=correlation_id,
-                content_event_id=content_event_id,
-                timeout_seconds=effective_timeout,
-            ),
-            timeout=effective_timeout + _LOOP_HANDOFF_MARGIN_SECONDS,
-        )
+        try:
+            _KafkaPublishLoop.shared().run(
+                self._publish_async(
+                    topic,
+                    payload,
+                    key=key,
+                    correlation_id=correlation_id,
+                    content_event_id=content_event_id,
+                    timeout_seconds=effective_timeout,
+                ),
+                timeout=effective_timeout + _LOOP_HANDOFF_MARGIN_SECONDS,
+            )
+        except Exception:
+            if self._session_active:
+                self._close_session_bus()
+            raise
 
     async def _publish_async(
         self,
@@ -399,8 +431,12 @@ class KafkaEventPublisher:
     ) -> None:
         from omnibase_infra.event_bus.models import ModelEventHeaders
 
-        bus = self._bus_factory()
-        await bus.start()
+        bus = self._session_bus if self._session_active else None
+        if bus is None:
+            bus = self._bus_factory()
+            await bus.start()
+            if self._session_active:
+                self._session_bus = bus
         try:
             try:
                 resolved_correlation_id = (
@@ -427,7 +463,8 @@ class KafkaEventPublisher:
             # initialize / shutdown / close) -- every real publish would have
             # raised AttributeError out of this finally block. Never caught
             # by CI because KafkaEventPublisher had zero test coverage.
-            await bus.close()
+            if not self._session_active:
+                await bus.close()
 
 
 def _default_spool_dir() -> Path:
@@ -749,45 +786,52 @@ class HandlerEventEmitEffect:
         published_topics: list[str] = []
         publish_failed = False
         quarantined_count = 0
-        for spool_file in appended:
-            publish_outcome = self._try_publish(
-                adapter, spool_file, spool, deadline=deadline
+        # OMN-17427: per-emit connect cycles measured on the delegation
+        # receipt path; share one Kafka bus for current topics and backlog.
+        with (
+            adapter.session()
+            if isinstance(adapter, KafkaEventPublisher)
+            else contextlib.nullcontext()
+        ):
+            for spool_file in appended:
+                publish_outcome = self._try_publish(
+                    adapter, spool_file, spool, deadline=deadline
+                )
+                if publish_outcome is EnumPublishOutcome.PUBLISHED:
+                    published_topics.append(spool_file.record.topic)
+                    continue
+                if publish_outcome is EnumPublishOutcome.UNPUBLISHABLE:
+                    # Quarantine and keep going through the REMAINING fan-out
+                    # topics. One ungranted topic in a fan-out says nothing about
+                    # the others, and leaving it spooled is how it becomes the head
+                    # of the queue on the next invocation -- the exact defect.
+                    # `publish_failed` stays False deliberately: it gates the
+                    # backlog drain on evidence the BROKER is unreachable, and an
+                    # authorization refusal is evidence of the opposite.
+                    self._quarantine(spool, spool_file)
+                    quarantined_count += 1
+                    continue
+                publish_failed = True
+                break
+            all_published = (
+                not publish_failed
+                and len(published_topics) == len(messages)
+                and bool(messages)
             )
-            if publish_outcome is EnumPublishOutcome.PUBLISHED:
-                published_topics.append(spool_file.record.topic)
-                continue
-            if publish_outcome is EnumPublishOutcome.UNPUBLISHABLE:
-                # Quarantine and keep going through the REMAINING fan-out
-                # topics. One ungranted topic in a fan-out says nothing about
-                # the others, and leaving it spooled is how it becomes the head
-                # of the queue on the next invocation -- the exact defect.
-                # `publish_failed` stays False deliberately: it gates the
-                # backlog drain on evidence the BROKER is unreachable, and an
-                # authorization refusal is evidence of the opposite.
-                self._quarantine(spool, spool_file)
-                quarantined_count += 1
-                continue
-            publish_failed = True
-            break
-        all_published = (
-            not publish_failed
-            and len(published_topics) == len(messages)
-            and bool(messages)
-        )
 
-        # The backlog drain is gated on a real publish FAILURE only -- an
-        # append-time drop of the current event says nothing about whether
-        # the broker is reachable, so the pre-existing backlog still gets its
-        # opportunistic drain.
-        drained_count = 0
-        if not publish_failed:
-            drained_count, backlog_quarantined = self._drain_backlog(
-                adapter,
-                spool,
-                exclude={f.path for f in appended},
-                deadline=deadline,
-            )
-            quarantined_count += backlog_quarantined
+            # The backlog drain is gated on a real publish FAILURE only -- an
+            # append-time drop of the current event says nothing about whether
+            # the broker is reachable, so the pre-existing backlog still gets its
+            # opportunistic drain.
+            drained_count = 0
+            if not publish_failed:
+                drained_count, backlog_quarantined = self._drain_backlog(
+                    adapter,
+                    spool,
+                    exclude={f.path for f in appended},
+                    deadline=deadline,
+                )
+                quarantined_count += backlog_quarantined
 
         return ModelEmitResult(
             event_id=request.event_id,

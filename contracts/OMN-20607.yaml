@@ -1,0 +1,85 @@
+schema_version: 1.0.0
+ticket_id: OMN-20607
+title: Registered BYOK escalation from a deployment overlay
+summary: 'Scoped routing repair under the parent epic: a typed deployment overlay may insert a registered-customer-key
+  tier after a declared anchor. No deployment-specific tier name, order or cost is added to packaged routing
+  configuration. This records the routing slice only and does not attest the parent payment epic acceptance
+  criteria. The acceptance labels below describe this routing slice only.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-registered-byok-tier
+  statement: An explicitly configured registered-key tier joins in-process escalation at the deployment-overlay
+    insertion point; keys use their recorded plans, models and credential references in registration order.
+  acceptance:
+  - id: AC1
+    statement: An overlay-configured tier is reachable after transport and quality failures, using recorded
+      customer models and keys in registration order with bounded retries.
+- id: req-fail-closed
+  statement: An unbound overlay retains the original packaged order and escalation budget. With no registered
+    key, escalation refuses with no_higher_tier_available. Routing policy and quota exclusions remain
+    binding.
+  acceptance:
+  - id: AC2
+    statement: The configured tier is present before eligibility filtering, while no-key, policy and quota
+      exclusions refuse it and an unbound overlay retains the packaged routing policy.
+- id: req-lab-proof
+  statement: An unpinned planning request traverses the skill handler, routing authority and HTTP effect
+    on a lab profile using an isolated synthetic test key and a loopback provider fixture.
+  acceptance:
+  - id: AC3
+    statement: An unpinned planning request completes on the registered BYOK backend over real loopback
+      HTTP, using the recorded model and secret boundary without exposing the credential in its result.
+evidence_requirements:
+- kind: tests
+  description: The scoped routing behavior, negative controls and real HTTP lab fixture.
+  command: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_byok_escalation_omn20607.py
+    -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-byok-reachability
+  description: 'Routing-slice evidence only: the declared tier is reachable after transport and quality
+    failures, and keys follow registration order with bounded retries.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_byok_escalation_omn20607.py
+      -q -p no:randomly --no-cov -k 'reachable or unpinned_planning or registration_order'
+  binds_ac: [AC1]
+- id: dod-byok-negative-controls
+  description: 'Routing-slice evidence only: no keys retains the refusal, policy and quota controls hold,
+    and the deployed resolver does not read host-local keys. A positive tier-presence control distinguishes
+    these exclusions from an unavailable feature; an unbound overlay retains packaged policy.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_byok_escalation_omn20607.py
+      -q -p no:randomly --no-cov -k 'reachable or without_keys or policy or deployed_resolver or quota or no_overlay'
+  binds_ac: [AC2]
+- id: dod-byok-http-proof
+  description: 'Routing-slice evidence only: a real unpinned planning request completes on the BYOK backend
+    through the canonical secret boundary and HTTP effect with a loopback provider fixture.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_byok_escalation_omn20607.py
+      -q -p no:randomly --no-cov -k real_http
+  binds_ac: [AC3]
+- id: dod-byok-deploy-readback
+  description: 'Hosted source readback at the checked-out commit: the served routing overlay schema declares
+    the optional registered-key tier and the served routing authority consumes its insertion policy. Both
+    checks fail at the pre-change commit. This does not claim installation of a deployment overlay or
+    runtime rollout.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: 'bash -o pipefail -c ''gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/models/delegation/model_delegation_routing_overlay.py?ref=$(git
+      rev-parse HEAD)" --jq .content | base64 -d | grep -F -c "registered_byok_tier: ModelRegisteredByokTier
+      | None = None"'''
+  - check_type: command
+    check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_routing_reducer/handlers/handler_delegation_routing.py?ref=$(git
+      rev-parse HEAD)" --jq .content | base64 -d | grep -F -c "def _with_registered_byok_tier("'

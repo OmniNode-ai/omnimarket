@@ -855,6 +855,14 @@ repos:
         files: ^(src/omnimarket/configs/(routing_tiers|bifrost_delegation)\.yaml|src/omnimarket/validators/routing_tier_backend_bindability\.py)$
         stages: [pre-commit]
 
+      - id: registered-byok-escalation
+        name: Registered BYOK escalation (OMN-20607)
+        language: system
+        entry: uv run --frozen pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_byok_escalation_omn20607.py -q -n 0 -p no:randomly --no-cov
+        pass_filenames: false
+        files: ^(src/omnimarket/(configs/(routing_tiers|task_class_contracts\.v1)\.yaml|routing/local_byok_route\.py|models/delegation/model_delegation_routing_overlay\.py|inference/local_byok_credential_adapter\.py|nodes/(node_delegation_routing_reducer|node_delegate_skill_orchestrator)/.*)|tests/unit/nodes/node_delegate_skill_orchestrator/test_byok_escalation_omn20607\.py)$
+        stages: [pre-commit]
+
       # OMN-17427 / RULING 2026-10-08T23:48:01Z: lab models first for appropriate
       # tasks. Refuses a routing contract change that sends a class the lab has
       # not measured below the bar to a cloud model first (tier_order, entry_share
