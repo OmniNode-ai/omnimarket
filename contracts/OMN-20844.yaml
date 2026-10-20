@@ -33,107 +33,6 @@ requirements:
       - id: "AC6"
         statement: |-
           AC6: workflow action comparisons accept added uses of characterized action/commit pairs in the same workflow while refusing missing uses, moved pins, unknown actions and unknown workflows; release-staleness checks require unconditional jobs and steps, one strict CI Summary registration and no skippable registration, ordered after Canonical File Shape and before CI Summary, regardless of unrelated jobs added around it, with positive and negative controls.
-  - id: "req-review-gate-input-without-lines"
-    statement: "The review gate does not refuse a correct answer to a review task whose input carries no line numbers, and still refuses an answer that cites nothing on input that does."
-    acceptance:
-      - id: "AC7"
-        statement: |-
-          AC7: the cause is named with two quoted refused answers from the omn20844-bnch stored responses and the cites_specific_lines rule line that refused each: the R3b prompts carry no line numbers -- falsifier: a refused answer whose prompt carries line numbers, or a refusing rule other than cites_specific_lines.
-      - id: "AC8"
-        statement: |-
-          AC8: re-scoring the benchmark's stored review answers with the fixed gate shows no R3b answer refused by cites_specific_lines on any rung, and a cites-nothing answer on numbered input still refused -- falsifier: an R3b answer refused by the rule after the fix, or a numbered-input prompt whose cites-nothing answer passes.
-  - id: "req-tiered-ladder-benchmark"
-    statement: "The delegation ladder's own runner measures each rung over a tiered public task set and prints a per-class table with 95% intervals, so the rungs can be separated or shown not to be."
-    acceptance:
-      - id: "AC9"
-        statement: |-
-          AC9: run_ladder.py runs one pinned rung or the unpinned ladder over the tiered set, writes each finished cell durably and resumes, and summarise_results.py prints per class and rung the accepted share with a Wilson 95% interval, the median latency and the cost where receipts carry it, and names the rungs whose interval is disjoint from every other -- falsifier: uv run pytest benchmarks/delegation_ladder/tests/test_class_table.py -q -p no:randomly, plus the one-cell rerun command in the run_ladder.py docstring.
-      - id: "AC10"
-        statement: |-
-          AC10: the tiered set holds at least 25 tasks per class for document, review and reasoning, at least 8 per tier, each mined from merged public history and scored mechanically with a held answer that is re-derived, and every scorer fails its negative control -- falsifier: uv run pytest benchmarks/delegation_ladder/tests/test_tiered_corpus.py -q -p no:randomly.
-  - id: "req-rescore-28-task-benchmark"
-    statement: "The earlier 28-task benchmark is rescored with the scorers that write no bytecode, and the verdicts that changed are listed."
-    acceptance:
-      - id: "AC11"
-        statement: |-
-          AC11: every saved cell of the 28-task benchmark (28 local and 28 cloud responses) is rescored with the fixed scorers -- falsifier: the count of rescored cells differs from the count of saved cells.
-      - id: "AC12"
-        statement: |-
-          AC12: the committed flip list is the diff of the recorded and the rescored verdicts of those cells -- falsifier: a cell whose recorded and rescored verdicts differ and is not listed, or a listed cell whose verdicts agree.
-  - id: "req-ladder-stop-reason"
-    statement: "A quality-refused local delegation ladder reaches the next eligible free tier past a paid tier it cannot use, and ends with a typed stop reason on its terminal, never an empty one."
-    acceptance:
-      - id: "AC13"
-        statement: |-
-          AC13: on a hard-tier fixture (free local tier, paid tier, free cloud tier) with every answer refused by the gate, the local port attempts the local and free cloud tiers and not the paid tier, and its failed terminal carries terminal_failure_reason and failure_reason starting with the no-higher-tier token and naming the free cloud tier as the current tier -- falsifier: a paid-tier attempt, a missing free cloud attempt, or a terminal with no terminal_failure_reason.
-      - id: "AC14"
-        statement: |-
-          AC14: a spent escalation budget ends with terminal_failure_reason max_escalation_attempts_reached, and a next rung that resolves to an already-tried route ends with a reason naming the next tier and the already-tried backend -- falsifier: either terminal carrying no reason, or the budget case calling the no-higher-tier description.
-  - id: "req-rung-benchmark-driver-and-tiers"
-    statement: "The delegation ladder's own runner carries the rung benchmark, with a tested per-rung, per-class result table, difficulty tiers for the test and code_generation classes, and the unpinned-ladder trace of the hard tier."
-    acceptance:
-      - id: "AC16"
-        statement: |-
-          AC16: the rung benchmark driver is committed as part of benchmarks/delegation_ladder/run_ladder.py and tested, including the per-rung, per-class table, the difficulty tiers and the unpinned-ladder trace -- falsifier: the test, and the rerun command that reproduces one committed cell offline.
-      - id: "AC17"
-        statement: |-
-          AC17: the committed results state per class and per tier, for the test and code_generation classes, each rung's accepted share with a 95 percent interval, where each rung starts failing, and which rung (if any) is separated from the others -- falsifier: the committed tier table, with at least eight tasks per tier per class.
-  - id: "req-structural-hard-corpus"
-    statement: "A hard tier for code_generation and review that is hard by structure (files touched, a cause in another file than the one the test imports, input size near the local rung's context limit), run on every pinned rung and the unpinned ladder, with failure and escalation reported per structural feature."
-    acceptance:
-      - id: "AC18"
-        statement: |-
-          AC18: 20 hard tasks (10 code_generation, 10 review) are built from merged omnimarket commits whose own test passes at the commit and fails with the commit's source files at the parent, each records its files touched, cross-file cause and prompt size, and each is scored mechanically -- falsifier: the commit's own change scored FAIL, or a no-op edit scored PASS.
-      - id: "AC19"
-        statement: |-
-          AC19: the committed hard-tier results give, per structural feature level, the failed share of pinned cells and tasks and the unpinned ladder's escalated share, each with a 95 percent interval, and they are the table the committed records give -- falsifier: the committed feature table differs from the one rendered from the records.
-  - id: "req-unpinned-credential-chain-control"
-    statement: "The L6 credential chains distinguish terminal credential refusals from retryable provider outages on an unpinned run."
-    acceptance:
-      - id: "AC15"
-        statement: |-
-          AC15: all four L6 credential chains start on the declared house tier without a backend pin; rejected and absent credentials retain their typed refusals and leave every successor untouched, while the outage first fails on the customer BYOK backend with MODEL_UNAVAILABLE and reaches a declared successor with escalation_count >= 1.
-  - id: "req-pinned-run-stays-on-its-backend"
-    statement: "A delegation pinned to one backend runs on that backend or fails with a typed reason; it is never answered by another backend under the pin's name."
-    acceptance:
-      - id: "AC20"
-        statement: |-
-          AC20: on the bus path a pinned run whose call fails in transport, or whose answer the gate refuses, takes no same-tier sibling hop and no escalation and terminates with terminal_failure_reason pinned_backend_failed, while the unpinned run on the same failure still moves -- falsifier: a routing intent emitted for the pinned run, or the unpinned control not moving.
-      - id: "AC21"
-        statement: |-
-          AC21: the routing reducer never resolves a backend other than the pin for a pinned request: a same-tier re-route re-selects the pin, and a re-route past the pin's tier or with the pin excluded refuses -- falsifier: a routing decision for a pinned request naming another backend.
-      - id: "AC22"
-        statement: |-
-          AC22: on the in-process path (LocalDelegationDispatchPort) a pinned run whose call fails in transport, or whose answer the gate refuses, calls no backend but the pin and returns status failed with terminal_failure_reason pinned_backend_failed, while the unpinned run on the same failure still reaches the sibling -- falsifier: a call to another backend for the pinned run, or the unpinned control not reaching the sibling.
-  - id: "req-declared-literal-answer-not-content-free"
-    statement: "The quality gate does not refuse a correct short answer that matches the shape its prompt declared, as content-free."
-    acceptance:
-      - id: "AC30"
-        statement: |-
-          AC30: a prompt whose last lines say "Reply with only the Python literal it evaluates to" resolves to a declared shape, and under that shape a non-string Python literal answer ((None, None), None, False, 42, [], a fenced literal) is not refused as an ultra-short content-free response, while an empty answer, a filler word, a quoted filler word, a refusal and the same literal under a prompt that declares no shape are still refused -- falsifier: a listed literal refused under the declared shape, or a listed filler answer accepted, or the literal accepted under an undeclared prompt.
-  - id: "req-test-gate-unbound-pytest"
-    statement: "The test-class gate refuses a whole test module that reads pytest and never imports it, and still accepts every stored answer the scorer passed that carries the unit mark."
-    acceptance:
-      - id: "AC16"
-        statement: |-
-          AC16: the three stored local-qwen3.8-27b test answers R4-08, R4-10 and R4-11 that the gate accepted on the deterministic floor and the scorer failed with NameError for pytest are refused by uses_pytest_mark_unit -- falsifier: one of the three accepted by the rule.
-      - id: "AC17"
-        statement: |-
-          AC17: no stored test answer that the scorer passed and that the rule accepted before the change is refused after it, and a fragment with no import of its own is not judged on the binding -- falsifier: a scorer-passed stored answer refused, or a no-import fragment refused.
-  - id: "req-omn20844-packaged-openrouter-default"
-    statement: |-
-      A developer who cannot read a private overlay still gets a default OpenRouter model on a first run.
-    acceptance:
-      - id: "AC31"
-        statement: |-
-          AC31: with no ONEX_OPENROUTER_DEFAULT_MODEL and no node_model_setup_effect overlay, onex models default-model openrouter returns the model_name of the model registry entry the node's contract names under config.openrouter_default_model.registry_model; the model id is declared only in model_registry_v1.yaml, not in contract.yaml or handler code; the environment variable and an overlay still win, an overlay that is present but broken is still refused, and the read stores nothing -- falsifier: uv run pytest tests/unit/cli/test_omn20844_onboarding_default_model_overlay.py -q -p no:randomly -k "none_declared_the_contract_default or declared_in_the_registry_not_in_code" fails against the merge base.
-  - id: "req-omn20844-next-customer-key"
-    statement: |-
-      A customer with two registered provider keys reaches the second when the first fails and the ladder offers no new responder.
-    acceptance:
-      - id: "AC32"
-        statement: |-
-          AC32: on the local path with a Gemini and an OpenRouter key registered and no house credential, an unpinned document delegation whose OpenRouter route fails retryably (after its own retry budget) or fails the quality gate is answered next on the customer's Gemini route; an auth failure never moves to another key, and a run with both keys healthy is answered by OpenRouter alone -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_next_customer_key_omn20844.py -q -p no:randomly fails, or its fall-through tests pass against the merge base.
 evidence_requirements:
   - kind: "tests"
     description: "Registration, intake, catalogue, effect and delegate-request tests with the provider's model list and the provider faked."
@@ -414,3 +313,162 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_next_customer_key_omn20844.py -q -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC32"]
+  - id: "dod-omn20844-contract-carries-the-ticket-criteria"
+    description: "The contract declares exactly the ticket's AC1 to AC6 and retires every claim on a criterion the ticket never carried (AC7 to AC32, recorded only here by earlier lanes), so dod_verify reads no criteria drift against the live ticket. Every retired item and its check stay as merged; only the claim is withdrawn."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/contracts/test_omn20844_contract_carries_the_ticket_criteria.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+    supersedes_ac_binding:
+      - item: "dod-omn20844-ac7-line-rule-cause"
+        label: "AC7"
+        reason_kind: "no_longer_applicable"
+        reason: "AC7 was never on OMN-20844; a lane recorded it only in this contract. The ticket carries AC1 to AC6."
+        retired_by: "OMN-20844 autopilot (jake-b-omni)"
+        retired_at: "2026-10-20T16:30:00Z"
+      - item: "dod-omn20844-ac8-answers-pass-negative-control"
+        label: "AC8"
+        reason_kind: "no_longer_applicable"
+        reason: "AC8 was never on OMN-20844; a lane recorded it only in this contract. The ticket carries AC1 to AC6."
+        retired_by: "OMN-20844 autopilot (jake-b-omni)"
+        retired_at: "2026-10-20T16:30:00Z"
+      - item: "dod-omn20844-tiered-ladder-benchmark"
+        label: "AC9"
+        reason_kind: "no_longer_applicable"
+        reason: "AC9 was never on OMN-20844; a lane recorded it only in this contract. The ticket carries AC1 to AC6."
+        retired_by: "OMN-20844 autopilot (jake-b-omni)"
+        retired_at: "2026-10-20T16:30:00Z"
+      - item: "dod-omn20844-tiered-ladder-benchmark"
+        label: "AC10"
+        reason_kind: "no_longer_applicable"
+        reason: "AC10 was never on OMN-20844; a lane recorded it only in this contract. The ticket carries AC1 to AC6."
+        retired_by: "OMN-20844 autopilot (jake-b-omni)"
+        retired_at: "2026-10-20T16:30:00Z"
+      - item: "dod-omn20844-ac11-ac12-rescore-28-task"
+        label: "AC11"
+        reason_kind: "no_longer_applicable"
+        reason: "AC11 was never on OMN-20844; a lane recorded it only in this contract. The ticket carries AC1 to AC6."
+        retired_by: "OMN-20844 autopilot (jake-b-omni)"
+        retired_at: "2026-10-20T16:30:00Z"
+      - item: "dod-omn20844-ac11-ac12-rescore-28-task"
+        label: "AC12"
+        reason_kind: "no_longer_applicable"
+        reason: "AC12 was never on OMN-20844; a lane recorded it only in this contract. The ticket carries AC1 to AC6."
+        retired_by: "OMN-20844 autopilot (jake-b-omni)"
+        retired_at: "2026-10-20T16:30:00Z"
+      - item: "dod-omn20844-ladder-stop-reason"
+        label: "AC13"
+        reason_kind: "no_longer_applicable"
+        reason: "AC13 was never on OMN-20844; a lane recorded it only in this contract. The ticket carries AC1 to AC6."
+        retired_by: "OMN-20844 autopilot (jake-b-omni)"
+        retired_at: "2026-10-20T16:30:00Z"
+      - item: "dod-omn20844-ladder-stop-reason"
+        label: "AC14"
+        reason_kind: "no_longer_applicable"
+        reason: "AC14 was never on OMN-20844; a lane recorded it only in this contract. The ticket carries AC1 to AC6."
+        retired_by: "OMN-20844 autopilot (jake-b-omni)"
+        retired_at: "2026-10-20T16:30:00Z"
+      - item: "dod-omn20844-ac15-driver-tested"
+        label: "AC16"
+        reason_kind: "no_longer_applicable"
+        reason: "AC16 was never on OMN-20844; a lane recorded it only in this contract. The ticket carries AC1 to AC6."
+        retired_by: "OMN-20844 autopilot (jake-b-omni)"
+        retired_at: "2026-10-20T16:30:00Z"
+      - item: "dod-omn20844-ac15-rerun-reproduces-a-cell"
+        label: "AC16"
+        reason_kind: "no_longer_applicable"
+        reason: "AC16 was never on OMN-20844; a lane recorded it only in this contract. The ticket carries AC1 to AC6."
+        retired_by: "OMN-20844 autopilot (jake-b-omni)"
+        retired_at: "2026-10-20T16:30:00Z"
+      - item: "dod-omn20844-ac16-tier-table-and-minimum"
+        label: "AC17"
+        reason_kind: "no_longer_applicable"
+        reason: "AC17 was never on OMN-20844; a lane recorded it only in this contract. The ticket carries AC1 to AC6."
+        retired_by: "OMN-20844 autopilot (jake-b-omni)"
+        retired_at: "2026-10-20T16:30:00Z"
+      - item: "dod-omn20844-ac17-hard-corpus-scored-mechanically"
+        label: "AC18"
+        reason_kind: "no_longer_applicable"
+        reason: "AC18 was never on OMN-20844; a lane recorded it only in this contract. The ticket carries AC1 to AC6."
+        retired_by: "OMN-20844 autopilot (jake-b-omni)"
+        retired_at: "2026-10-20T16:30:00Z"
+      - item: "dod-omn20844-ac18-feature-table-from-records"
+        label: "AC19"
+        reason_kind: "no_longer_applicable"
+        reason: "AC19 was never on OMN-20844; a lane recorded it only in this contract. The ticket carries AC1 to AC6."
+        retired_by: "OMN-20844 autopilot (jake-b-omni)"
+        retired_at: "2026-10-20T16:30:00Z"
+      - item: "dod-omn20844-unpinned-credential-chain-control"
+        label: "AC15"
+        reason_kind: "no_longer_applicable"
+        reason: "AC15 was never on OMN-20844; a lane recorded it only in this contract. The ticket carries AC1 to AC6."
+        retired_by: "OMN-20844 autopilot (jake-b-omni)"
+        retired_at: "2026-10-20T16:30:00Z"
+      - item: "dod-omn20844-ac20-pinned-run-fails-typed"
+        label: "AC20"
+        reason_kind: "no_longer_applicable"
+        reason: "AC20 was never on OMN-20844; a lane recorded it only in this contract. The ticket carries AC1 to AC6."
+        retired_by: "OMN-20844 autopilot (jake-b-omni)"
+        retired_at: "2026-10-20T16:30:00Z"
+      - item: "dod-omn20844-ac21-reducer-keeps-the-pin"
+        label: "AC21"
+        reason_kind: "no_longer_applicable"
+        reason: "AC21 was never on OMN-20844; a lane recorded it only in this contract. The ticket carries AC1 to AC6."
+        retired_by: "OMN-20844 autopilot (jake-b-omni)"
+        retired_at: "2026-10-20T16:30:00Z"
+      - item: "dod-omn20844-ac22-in-process-pin"
+        label: "AC22"
+        reason_kind: "no_longer_applicable"
+        reason: "AC22 was never on OMN-20844; a lane recorded it only in this contract. The ticket carries AC1 to AC6."
+        retired_by: "OMN-20844 autopilot (jake-b-omni)"
+        retired_at: "2026-10-20T16:30:00Z"
+      - item: "dod-omn20844-ac30-declared-literal"
+        label: "AC30"
+        reason_kind: "no_longer_applicable"
+        reason: "AC30 was never on OMN-20844; a lane recorded it only in this contract. The ticket carries AC1 to AC6."
+        retired_by: "OMN-20844 autopilot (jake-b-omni)"
+        retired_at: "2026-10-20T16:30:00Z"
+      - item: "dod-omn20844-ac16-unbound-pytest-refused"
+        label: "AC16"
+        reason_kind: "no_longer_applicable"
+        reason: "AC16 was never on OMN-20844; a lane recorded it only in this contract. The ticket carries AC1 to AC6."
+        retired_by: "OMN-20844 autopilot (jake-b-omni)"
+        retired_at: "2026-10-20T16:30:00Z"
+      - item: "dod-omn20844-ac17-passed-answers-kept"
+        label: "AC17"
+        reason_kind: "no_longer_applicable"
+        reason: "AC17 was never on OMN-20844; a lane recorded it only in this contract. The ticket carries AC1 to AC6."
+        retired_by: "OMN-20844 autopilot (jake-b-omni)"
+        retired_at: "2026-10-20T16:30:00Z"
+      - item: "dod-omn20844-unbound-pytest-deploy-probe"
+        label: "AC16"
+        reason_kind: "no_longer_applicable"
+        reason: "AC16 was never on OMN-20844; a lane recorded it only in this contract. The ticket carries AC1 to AC6."
+        retired_by: "OMN-20844 autopilot (jake-b-omni)"
+        retired_at: "2026-10-20T16:30:00Z"
+      - item: "dod-omn20844-unbound-pytest-deploy-probe"
+        label: "AC17"
+        reason_kind: "no_longer_applicable"
+        reason: "AC17 was never on OMN-20844; a lane recorded it only in this contract. The ticket carries AC1 to AC6."
+        retired_by: "OMN-20844 autopilot (jake-b-omni)"
+        retired_at: "2026-10-20T16:30:00Z"
+      - item: "dod-omn20844-ac16-preloaded-rescore-workers"
+        label: "AC16"
+        reason_kind: "no_longer_applicable"
+        reason: "AC16 was never on OMN-20844; a lane recorded it only in this contract. The ticket carries AC1 to AC6."
+        retired_by: "OMN-20844 autopilot (jake-b-omni)"
+        retired_at: "2026-10-20T16:30:00Z"
+      - item: "dod-omn20844-ac31-packaged-openrouter-default"
+        label: "AC31"
+        reason_kind: "no_longer_applicable"
+        reason: "AC31 was never on OMN-20844; a lane recorded it only in this contract. The ticket carries AC1 to AC6."
+        retired_by: "OMN-20844 autopilot (jake-b-omni)"
+        retired_at: "2026-10-20T16:30:00Z"
+      - item: "dod-omn20844-ac32-next-customer-key"
+        label: "AC32"
+        reason_kind: "no_longer_applicable"
+        reason: "AC32 was never on OMN-20844; a lane recorded it only in this contract. The ticket carries AC1 to AC6."
+        retired_by: "OMN-20844 autopilot (jake-b-omni)"
+        retired_at: "2026-10-20T16:30:00Z"
