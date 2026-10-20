@@ -97,11 +97,16 @@ dod_evidence:
           set -eu
           test -n "${ONEX_LAB_PROJECTION_API:?set the deployed projection API URL}"
           test -n "${ONEX_TENANT_ID:?set the tenant UUID served by that deployment}"
-          uv run --frozen python - <<'PROBE'
+          mkdir -p .onex_state;
+          catalogue_file="$(mktemp "$PWD/.onex_state/omn21206-catalogue.XXXXXX")";
+          curl --fail --silent --show-error --max-time 6 "${ONEX_LAB_PROJECTION_API%/}/projections" --output "$catalogue_file";
+          printf 'OMN21206-DEPLOY-CATALOGUE %s\n' "$catalogue_file";
+          ONEX_CATALOGUE_FILE="$catalogue_file" uv run --frozen python - <<'PROBE'
           import json
           import os
           import subprocess
           import urllib.parse
+          from pathlib import Path
           api = os.environ["ONEX_LAB_PROJECTION_API"].rstrip("/")
           tenant = os.environ["ONEX_TENANT_ID"]
           def get(path):
@@ -111,7 +116,7 @@ dod_evidence:
               "onex.snapshot.projection.cost.savings-overview.v1": ("projection_cost_savings_overview", "run_count"),
               "onex.snapshot.projection.delegation.savings.v1": ("projection_delegation_savings", "session_count"),
           }
-          catalogue = get("/projections")["topics"]
+          catalogue = json.loads(Path(os.environ["ONEX_CATALOGUE_FILE"]).read_text())["topics"]
           counts = ("measured_run_count", "estimated_run_count", "unknown_run_count")
           for topic, (table, total) in expected.items():
               matches = [entry for entry in catalogue if entry["topic"] == topic]
