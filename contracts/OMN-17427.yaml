@@ -643,6 +643,11 @@ requirements:
     acceptance:
       - id: "AC151"
         statement: "AC151: HandlerEventEmitEffect.handle() with a real KafkaEventPublisher over a counting fake bus and a spool holding 3 pending records publishes 4 records through exactly one bus, started once and closed once; three publishes in one session use one bus; a publish that raises in a session closes that bus and the next publish opens a new one; two plain publishes open and close two buses -- falsifier: uv run pytest tests/unit/nodes/node_event_emit_effect/test_kafka_publish_session.py -q fails at the merge base, where KafkaEventPublisher has no session()"
+  - id: "req-customer-ledger-in-memory-bus"
+    statement: "A customer running OmniNode locally has a work ledger on the in-memory event bus: ledger row events written through the work-ledger emit handler reach an in-memory reader that answers the same query verbs as the lab database reader (RULING 2026-10-19T21:47:42Z)."
+    acceptance:
+      - id: "AC152"
+        statement: "AC152: every row of the golden ledger fixture, written through HandlerWorkLedgerEmit with the in-memory emitter onto an EventBusInmemory, is folded by InMemoryWorkLedgerQueryReader, a redelivered row is kept once, and HandlerWorkLedgerQuery over that reader returns the rows, holds, inbox entries and open claims the recorded markdown reads name -- falsifier: uv run pytest tests/test_work_ledger_query_inmemory_bus.py -q fails at the merge base, where the module work_ledger_query_inmemory does not exist"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -847,6 +852,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC150: the context-pack orchestrator binds its tier sources from the contract's context_tier_sources block."
     command: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_tier_source_binding.py -q"
+  - kind: "tests"
+    description: "AC152: the work ledger runs on the in-memory event bus and answers the golden markdown reads."
+    command: "uv run pytest tests/test_work_ledger_query_inmemory_bus.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -2588,4 +2596,19 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_kafka_publish_session.py -q -n 0 -p no:randomly --no-cov -k handle"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac152-customer-ledger-in-memory-bus"
+    description: "Every golden-fixture ledger row written through HandlerWorkLedgerEmit onto an EventBusInmemory is folded by InMemoryWorkLedgerQueryReader, and HandlerWorkLedgerQuery over it answers the recorded markdown reads. The test module fails at the merge base, where work_ledger_query_inmemory does not exist."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_work_ledger_query_inmemory_bus.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC152"]
+  - id: "dod-omn17427-customer-ledger-in-memory-bus-deploy-probe"
+    description: "Deploy probe. In the checked-out package, a ledger row written through the emit handler onto an EventBusInmemory is read back by the in-memory reader. It fails at the merge base and needs only uv and this checkout on the hosted runner; no broker, database or credential."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_work_ledger_query_inmemory_bus.py -q -n 0 -p no:randomly --no-cov -k sync_emit_handler_writes"
         cwd: "${OMNI_HOME}/omnimarket"
