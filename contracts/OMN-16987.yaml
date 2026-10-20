@@ -1,0 +1,101 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-16987"
+title: "Provider-rung liveness canary effect node (omnimarket node slice)"
+summary: "An effect node, node_provider_rung_canary_effect, sends one authenticated minimal chat completion per credentialed cloud rung of the merged bifrost delegation contract and returns a typed verdict per declared backend: LIVE, AUTH_DEAD, QUOTA_DEAD, UNREACHABLE, UNRESOLVED, PROTOCOL_ERROR, HTTP_ERROR, PROBE_ERROR or SKIPPED_NO_ENDPOINT, SKIPPED_NO_SECRET_REF, SKIPPED_SUPPRESSED. A key reference that does not resolve sends nothing; a z.ai 1310 that states its reset instant suppresses the backend until then; each probed endpoint also gets a deliberately invalid key that must read AUTH_DEAD. The result carries key names and verdicts only. The onex skill mapping row for provider_rung_canary, the thin scheduled workflow over it, the PR-time test pinning the workflow to the mapping and entry point, and the live dispatch table belong to omnibase_infra and are not in this slice."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-provider-rung-canary-node"
+    statement: "The canary node of OMN-16987: probe, grade, suppress, and never leak a key."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: N backends with endpoint_url and secret_ref give exactly N probed verdicts -- falsifier: a credentialed backend with no verdict or two."
+      - id: "AC2"
+        statement: "AC2: fake transport 200/401/429/connect-error/non-chat body maps to LIVE/AUTH_DEAD/QUOTA_DEAD/UNREACHABLE/PROTOCOL_ERROR -- falsifier: a status mapped to another verdict."
+      - id: "AC3"
+        statement: "AC3: an unresolvable secret_ref gives UNRESOLVED and no HTTP request -- falsifier: a request recorded for an unresolved ref."
+      - id: "AC4"
+        statement: "AC4: no key material in any verdict, log or summary -- falsifier: a sentinel key found in the result, summary table or captured log."
+      - id: "AC5"
+        statement: "AC5: z.ai 1310 vs 1113 are distinguished, and 1310 with a reset instant suppresses the re-probe in the window -- falsifier: a request sent inside the window, or 1113 suppressed."
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC5 in the node tests and the golden chain."
+    command: "uv run pytest tests/nodes/node_provider_rung_canary_effect tests/test_golden_chain_provider_rung_canary_effect.py -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn16987-ac1"
+    description: "AC1: four credentialed backends give four probed verdicts and nine skipped; backends sharing a rung share one request."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_provider_rung_canary_effect/test_handler_provider_rung_canary.py -q -p no:randomly --no-cov -k ac1"
+    binds_ac: ["AC1"]
+  - id: "dod-omn16987-ac2"
+    description: "AC2: nine transport outcomes map to their typed verdicts."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_provider_rung_canary_effect/test_handler_provider_rung_canary.py -q -p no:randomly --no-cov -k ac2"
+    binds_ac: ["AC2"]
+  - id: "dod-omn16987-ac3"
+    description: "AC3: an unresolvable or raising resolver gives UNRESOLVED with no request recorded."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_provider_rung_canary_effect/test_handler_provider_rung_canary.py -q -p no:randomly --no-cov -k ac3"
+    binds_ac: ["AC3"]
+  - id: "dod-omn16987-ac4"
+    description: "AC4: sentinel keys echoed by a provider are absent from the result, summary table and log; the wrong-key control bites."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_provider_rung_canary_effect/test_handler_provider_rung_canary.py -q -p no:randomly --no-cov -k ac4"
+    binds_ac: ["AC4"]
+  - id: "dod-omn16987-ac5"
+    description: "AC5: 1310 reads disable_until_reset with its instant, 1113 reads disable_until_billing with none, a 1310 is not re-probed inside its window, 1113 is."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_provider_rung_canary_effect/test_handler_provider_rung_canary.py -q -p no:randomly --no-cov -k 'ac5 or 1113'"
+    binds_ac: ["AC5"]
+  - id: "dod-omn16987-contract"
+    description: "The contract resolves its handler and models, declares one command and one terminal event, and the node is an onex.nodes entry point."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_provider_rung_canary_effect.py -q -p no:randomly --no-cov"
+  - id: "dod-omn16987-deploy-hosted-unresolved"
+    description: "Hosted deploy probe. The hosted runner runs uv run --frozen --no-dev in the checkout and drives the product handler over the committed contract with one endpoint set, a resolver that returns nothing and a transport that fails the run if called; it asserts the backend reads UNRESOLVED and no request was sent. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run --frozen --no-dev python -c '
+          import asyncio, yaml, tempfile, pathlib
+          from omnimarket.nodes.node_provider_rung_canary_effect.handlers import HandlerProviderRungCanary as H
+          from omnimarket.nodes.node_provider_rung_canary_effect.models import ModelProviderRungCanaryRequest as R
+          src = pathlib.Path("src/omnimarket/configs/bifrost_delegation.yaml")
+          d = yaml.safe_load(src.read_text())
+          for b in d["backends"]:
+              b["endpoint_url"] = "https://openrouter.ai/api/v1/chat/completions" if b["backend_id"] == "openrouter-nemotron-ultra" else None
+          p = pathlib.Path(tempfile.mkdtemp()) / "c.yaml"
+          p.write_text(yaml.safe_dump(d))
+          async def none(ref, env): return None
+          def boom(*a): raise SystemExit("request sent for an unresolved ref")
+          r = asyncio.run(H(none, boom).handle(R(contract_path=str(p))))
+          v = {x.backend_id: x.verdict.value for x in r.rungs}
+          assert v["openrouter-nemotron-ultra"] == "UNRESOLVED" and sum(1 for x in r.rungs if x.probed) == 1, v
+          print(v["openrouter-nemotron-ultra"], len(r.rungs))'
+  - id: "dod-omn16987-deploy-container-smoke"
+    description: "Hosted deploy probe: a disposable container mounts the checked-out source read-only and checks that the canary handler class, its UNRESOLVED verdict branch, the UNRESOLVED enum member and the onex.nodes entry point are present. The probe is absent at the merge base and present at the head. A container that installed the package and ran the handler exceeded the verifier's 30 second per-check budget on a hosted runner, so the behavioural proof that an unresolved secret reads UNRESOLVED with no request sent stays in dod-omn16987-deploy-hosted-unresolved and dod-omn16987-ac3."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          sh -c 'docker run --rm -v "${PWD}:/workspace:ro" -w /workspace postgres:16-alpine sh -c "set -eu; d=src/omnimarket/nodes/node_provider_rung_canary_effect; grep -Fq \"class HandlerProviderRungCanary\" \$d/handlers/handler_provider_rung_canary.py; grep -Fq \"verdict=V.UNRESOLVED\" \$d/handlers/handler_provider_rung_canary.py; grep -Fq \"UNRESOLVED = \" \$d/models/model_provider_rung_canary.py; grep -Fq \"node_provider_rung_canary_effect = \" pyproject.toml"'

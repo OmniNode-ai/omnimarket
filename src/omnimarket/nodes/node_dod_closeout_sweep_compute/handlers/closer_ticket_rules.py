@@ -22,6 +22,7 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_binding_ru
 from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep import (
     EnumTicketDecision,
     ModelAcceptanceState,
+    ModelBoxTick,
     ModelRotationRecord,
     ModelUnmetCriterion,
 )
@@ -38,6 +39,15 @@ RUNTIME_MODEL = (
 _TEXT_SHA = re.compile(r"[0-9a-f]{16}")
 _BINDING_LABEL = re.compile(r"(AC|DOD)[-_ .]?(\d+)([a-zA-Z]?)", re.IGNORECASE)
 _ERROR_CODE = re.compile(r"[A-Z][A-Z0-9_]+")
+# An unchecked task-list box, in the done-flip guard's own shape (OMN-20368): the
+# guard refuses Done while one remains. Group 1 ends just before the space the
+# tick replaces; group 2 is the box text.
+_UNCHECKED_BOX = re.compile(
+    r"^([ \t]*(?:[-*+]|\d+[.)])[ \t]+\[) (\][ \t]+(\S.*))$", re.MULTILINE
+)
+_BOX_LABEL = re.compile(
+    r"^[\W_]*((?:AC|DOD)[-_ .]?\d+[a-zA-Z]?)(?![a-zA-Z0-9])", re.IGNORECASE
+)
 _NOT_VERIFIED = "no verdict for this criterion"
 
 
@@ -195,6 +205,89 @@ def ac_verdicts(dod_verify: dict[str, Any]) -> dict[str, Any]:
             elif verdicts.get(label) != "verified":
                 verdicts[label] = check.get("status") or "unbound"
     return verdicts
+
+
+def verified_evidence(dod_verify: dict[str, Any]) -> dict[str, list[str]]:
+    """Per criterion label, the evidence ids of the accepted checks dod_verify verified."""
+    found: dict[str, list[str]] = {}
+    checks = dod_verify.get("checks")
+    for check in checks if isinstance(checks, list) else []:
+        if not isinstance(check, dict) or check.get("status") != "verified":
+            continue
+        evidence = check.get("evidence_id")
+        binds = check.get("binds_ac")
+        drafts_raw = check.get("draft_binds_ac") or []
+        if (
+            not isinstance(evidence, str)
+            or not evidence.strip()
+            or not isinstance(binds, list)
+            or not isinstance(drafts_raw, list)
+        ):
+            continue
+        drafts = {binding_label(x) for x in drafts_raw}
+        for raw in binds:
+            label = binding_label(raw)
+            if label and label not in drafts and evidence not in found.get(label, []):
+                found.setdefault(label, []).append(evidence)
+    return found
+
+
+def box_ticks(
+    description: str, dod_verify: dict[str, Any]
+) -> tuple[str, list[ModelBoxTick], list[ModelUnmetCriterion]]:
+    """The description with every unchecked box whose criterion dod_verify verified ticked.
+
+    A box that names no criterion label, or whose criterion has no verified accepted check,
+    is never ticked and is returned as unmet: an untested criterion never ticks.
+    """
+    evidence = verified_evidence(dod_verify)
+    ticks: list[ModelBoxTick] = []
+    unmet: list[ModelUnmetCriterion] = []
+    for match in _UNCHECKED_BOX.finditer(description):
+        text = match.group(3).strip()
+        found = _BOX_LABEL.match(text)
+        label = binding_label(found.group(1)) if found else ""
+        if not label:
+            unmet.append(
+                _unmet(
+                    "box",
+                    "an unchecked acceptance box names no criterion label, so no "
+                    f"bound check can tick it: {text[:200]}",
+                )
+            )
+        elif label not in evidence:
+            unmet.append(
+                _unmet(
+                    label,
+                    f"its acceptance box has no verified bound check: {text[:200]}",
+                )
+            )
+        else:
+            ticks.append(
+                ModelBoxTick(label=label, line=text, evidence_ids=evidence[label])
+            )
+    ticked = _UNCHECKED_BOX.sub(
+        lambda m: (
+            f"{m.group(1)}x{m.group(2)}"
+            if any(t.line == m.group(3).strip() for t in ticks)
+            else m.group(0)
+        ),
+        description,
+    )
+    return ticked, ticks, unmet
+
+
+def tick_comment(
+    ticket_id: str, run_key: str, ticks: list[ModelBoxTick], verified_head: str
+) -> str:
+    """The evidence comment posted with the edit that ticks the boxes."""
+    at = f" at {verified_head}" if verified_head else ""
+    lines = [
+        ACTOR_LINE,
+        f"{COMMENT_MARKER} run {run_key}: {ticket_id} acceptance boxes ticked from dod_verify evidence{at}. Each criterion has a check another lane accepted and dod_verify verified:",
+        *(f"- {t.label}: {', '.join(t.evidence_ids)} verified" for t in ticks),
+    ]
+    return "\n".join(lines).replace("?", "")
 
 
 def _amendment(text: str) -> str:

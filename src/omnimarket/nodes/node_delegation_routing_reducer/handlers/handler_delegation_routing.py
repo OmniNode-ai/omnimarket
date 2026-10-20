@@ -178,10 +178,15 @@ def _roi_suppressed_tiers(
 # System prompts by task type — kept here because they are presentation strings,
 # not routing configuration.
 _SYSTEM_PROMPTS: dict[str, str] = {
+    # OMN-19401: the repository's own conventions, not a fixed marker. The
+    # gate requires @pytest.mark.unit only where the prompt says the repository
+    # marks its tests that way, so this prompt must not demand it of every repo.
     "test": (
-        "You are a test generation assistant. Write comprehensive pytest unit tests "
-        "for the provided code. Include edge cases, error paths, and clear assertions. "
-        "Use @pytest.mark.unit decorator on all tests."
+        "You are a test generation assistant. Write pytest tests for the provided "
+        "code, following the conventions of the repository the request names: use "
+        "the markers, fixtures, naming and assertion style of any tests shown, and "
+        "add no pytest marker the repository does not use. Cover the edge cases and "
+        "error paths the request asks for, with clear assertions."
     ),
     "document": (
         "You are a documentation assistant. Write clear, comprehensive docstrings "
@@ -228,6 +233,21 @@ _SYSTEM_PROMPTS: dict[str, str] = {
         "You are a summarization assistant. Produce a concise, accurate summary "
         "of the provided content."
     ),
+    "extraction_proposer": (
+        "You are a context extraction assistant. Propose concise, accurate facts "
+        "from the provided content, preserving its identifiers and grounding "
+        "every claim in that content."
+    ),
+    "tail_summary": (
+        "You are a conversation summarization assistant. Produce a concise, "
+        "accurate summary of the provided conversation tail, preserving its "
+        "identifiers and grounding every claim in that content."
+    ),
+    "context_selection": (
+        "You are a context selection assistant. Select the provided context "
+        "relevant to the requested task, preserving its identifiers and "
+        "grounding every claim in that content."
+    ),
     "simple_tasks": (
         "You are a helpful assistant. Complete the requested task accurately."
     ),
@@ -256,6 +276,14 @@ _SYSTEM_PROMPTS: dict[str, str] = {
         "contract. Every validator must compile without errors, pass the "
         "existing test suite, and enforce the declared rule precisely — "
         "prefer a hard failure over a silent pass on an unmet condition."
+    ),
+    # OMN-17427: the model drafts only the free-text slots; code fills the rest.
+    "brief_drafting": (
+        "You are a lane brief drafting assistant. Draft only the free-text "
+        "slots you are asked for, from the facts given. State only what the "
+        "facts state and never add an identifier they do not hold. Never write "
+        "a ticket-state acknowledgement, a quoted criterion, a constraints "
+        "block or a heading of the standing rules; code fills those."
     ),
 }
 

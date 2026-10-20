@@ -87,15 +87,20 @@ def _lock_version(package: str) -> str:
     return match.group(1)
 
 
-def _lock_pin(package: str) -> tuple[str, str, str]:
+def _lock_pin(package: str, lock: str | None = None) -> tuple[str, str, str]:
     """(version, ref, dev tag) the pins step resolves from this repo's uv.lock.
 
     A registry source is checked out at ``v<version>``; a git source locked to
     one commit is checked out at that commit, and its ``?tag=dev-...`` (if any)
     is the dev tag.
     """
-    version = _lock_version(package)
-    lock = (REPO_ROOT / "uv.lock").read_text()
+    if lock is None:
+        lock = (REPO_ROOT / "uv.lock").read_text()
+    match = re.search(
+        rf'^name = "{re.escape(package)}"\nversion = "([^"]+)"', lock, re.M
+    )
+    assert match, f"{package} has no uv.lock entry"
+    version = match.group(1)
     git = re.search(
         rf'^name = "{re.escape(package)}"\nversion = "[^"]+"\n'
         r'source = \{ git = "[^"#?]+(?:\?tag=(?P<tag>dev-[^"#]+))?#(?P<sha>[0-9a-f]{40})" \}',
@@ -301,8 +306,9 @@ def test_infra_checkout_pins_match_lock(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("version", ["0.38.71", "0.38.72", "0.38.73"])
+@pytest.mark.parametrize("core_dev_tag", [False, True])
 def test_every_infra_checkout_resolves_a_new_lock_release(
-    tmp_path: Path, version: str
+    tmp_path: Path, version: str, core_dev_tag: bool
 ) -> None:
     lock = re.sub(
         r'(^name = "omnibase-infra"\nversion = ")[^"]+("\nsource = )[^\n]+',
@@ -312,6 +318,20 @@ def test_every_infra_checkout_resolves_a_new_lock_release(
         (REPO_ROOT / "uv.lock").read_text(),
         flags=re.M,
     )
+    if core_dev_tag:
+        lock = re.sub(
+            r'(^name = "omnibase-core"\nversion = "[^"]+"\nsource = )[^\n]+',
+            lambda match: (
+                match[1]
+                + '{ git = "https://github.com/OmniNode-ai/omnibase_core.git'
+                + "?tag=dev-20261019090050-c330f5a7d597#"
+                + "c330f5a7d597"
+                + "a" * 28
+                + '" }'
+            ),
+            lock,
+            flags=re.M,
+        )
     (tmp_path / "uv.lock").write_text(lock)
     for index, (wf, job, pin_step) in enumerate(_infra_pin_steps()):
         output = tmp_path / f"pins-{index}"
@@ -327,7 +347,7 @@ def test_every_infra_checkout_resolves_a_new_lock_release(
             wf,
             job,
             (version, f"v{version}"),
-            (_lock_version("omnibase-core"), f"v{_lock_version('omnibase-core')}"),
+            _lock_pin("omnibase-core", lock),
         ), (wf, job)
 
 
