@@ -506,6 +506,14 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      - id: hook-projection-freshness
+        name: Hook freshness alarm survives a shared projection outage (OMN-19513)
+        language: system
+        entry: uv run pytest tests/test_omn19513_projection_freshness_alert.py -q -n 0 -p no:randomly --no-cov
+        files: ^(src/omnimarket/nodes/node_projection_freshness_alert_effect/.*|tests/test_omn19513_projection_freshness_alert\.py|\.github/workflows/ci\.yml|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-14605 / OMN-18013: a handler_routing entry whose assigned topics span more
       # than one real message category leaves the off-category topics permanently
       # unroutable — handler_wiring stamps ONE category per entry and
