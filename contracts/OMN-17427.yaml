@@ -2158,11 +2158,14 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC93"]
   - id: "dod-omn17427-ac93-trace-id-lab-readback"
-    description: "AC93 lab readback, 2026-10-20T03:03Z, dev lane database omnidash_analytics on the lab dev lane host: the first delegation_events row storing a trace_id was written at 2026-10-19T12:31:43Z, after efba3ec67 merged at 2026-10-19T11:32:06Z. From then to 2026-10-20T03:00Z, 499 of 3556 rows carry a trace_id, and all 498 rows with a measured queue_wait_ms carry one. The 3057 rows without a trace_id carry no queue_wait_ms either; the bus was not read, so whether their terminals carried a trace is unverified. The full readback is dod-omn19448-trace-id-lab-readback in contracts/OMN-19448.yaml."
+    description: "AC93 lab readback, 2026-10-20T03:03Z, dev lane database omnidash_analytics on the lab dev lane host: the first delegation_events row storing a trace_id was written at 2026-10-19T12:31:43Z, after efba3ec67 merged at 2026-10-19T11:32:06Z. From then to 2026-10-20T03:00Z, 499 of 3556 rows carry a trace_id, and all 498 rows with a measured queue_wait_ms carry one. The 3057 rows without a trace_id carry no queue_wait_ms either; the bus was not read, so whether their terminals carried a trace is unverified. The merged-fix control reverts efba3ec67ace168195d9900c712597163b1fe3eb at the merge base; the trace tests must fail when both delegate-skill writers drop trace_id. The real-PostgreSQL check reads back the stored trace and its preservation across a sparse terminal through the runtime writer. The full readback is dod-omn19448-trace-id-lab-readback in contracts/OMN-19448.yaml."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/delegation/test_delegate_skill_trace_id_omn19448.py -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19448_delegate_skill_trace_id_real_postgres.py -q -p no:cacheprovider --no-cov --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC93"]
   - id: "dod-omn17427-delegate-skill-trace-id-deploy-probe"
