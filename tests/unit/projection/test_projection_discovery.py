@@ -1007,7 +1007,9 @@ class TestOmn15800ExposureParity:
         # 75 after OMN-19987 and OMN-20802: the run trace plus the three
         # bus-backed automation-liveness exposures.
         topic_map = real_topic_map
-        assert len(topic_map) == 75
+        # 76 after OMN-19988: onex.snapshot.projection.local-environment.v1,
+        # the Environment panel's and the API Keys card's served rows.
+        assert len(topic_map) == 76
         for liveness_topic in (
             "onex.snapshot.projection.automation-liveness.v1",
             "onex.snapshot.projection.automation-liveness-runs.v1",

@@ -328,6 +328,12 @@ class ModelByokProviderBackend(BaseModel):
     max_retries: int = Field(ge=0)
     timeout_ms: int | None = Field(default=None, gt=0)
     max_tokens: int | None = Field(default=None, gt=0)
+    #: OMN-21257. The request-body field ``endpoint_url`` takes the completion
+    #: token limit in. ``max_tokens`` is the OpenAI-compatible default; OpenAI's
+    #: own chat endpoint refuses it on the gpt-5, gpt-6 and o-series models with
+    #: HTTP 400 and takes ``max_completion_tokens``, which every OpenAI chat
+    #: model accepts.
+    token_limit_field: Literal["max_tokens", "max_completion_tokens"] = "max_tokens"
     limit_model: ModelByokLimitModel
     #: OMN-20154. Declared only when the model's price is not its tier's.
     pricing: ModelByokPricing | None = None
@@ -813,6 +819,45 @@ def byok_declared_price_per_1m(
     return None
 
 
+def byok_backend_provider(backend_id: str | None) -> str | None:
+    """The catalogue provider of a customer BYOK backend id, or ``None``.
+
+    ``None`` for every house backend, so a caller can tell a call made on a
+    customer's own key from a house call to the same endpoint.
+    """
+    if not backend_id:
+        return None
+    for backend in load_byok_plan_catalog().values():
+        if backend.backend_id == backend_id:
+            return backend.provider
+    return None
+
+
+def byok_model_price_per_1m(
+    backend_id: str | None, endpoint_url: str | None, model_name: str
+) -> tuple[Decimal, Decimal] | None:
+    """The ``(input, output)`` USD per 1M tokens of a model on a customer's key.
+
+    The catalogue's declared price for the endpoint and model first, then the
+    model registry's price for the same provider and model. ``None`` means the
+    model has no known price: the call is unpriced, never booked at a tier rate.
+    """
+    declared = byok_declared_price_per_1m(endpoint_url, model_name)
+    if declared is not None:
+        return declared
+    provider = byok_backend_provider(backend_id)
+    if provider is None:
+        return None
+    from omnimarket.models.delegation.llm_cost_routing import (
+        ModelLlmModelRegistryLoader,
+    )
+
+    for profile in ModelLlmModelRegistryLoader().load().models.values():
+        if profile.provider == provider and profile.model_name == model_name:
+            return (profile.pricing_per_1m_input, profile.pricing_per_1m_output)
+    return None
+
+
 def byok_limit_counter_key(
     tenant_id: str,
     api_key_ref: str,
@@ -903,6 +948,16 @@ def resolve_byok_backend_by_endpoint(
     return None
 
 
+def token_limit_field_for_endpoint(endpoint_url: str | None) -> str:
+    """The request-body field that carries the token limit for ``endpoint_url``.
+
+    OMN-21257. The catalogue row posted to declares it; an endpoint no routable
+    row names (a house rung, a local server) keeps ``max_tokens``.
+    """
+    backend = resolve_byok_backend_by_endpoint(endpoint_url)
+    return "max_tokens" if backend is None else backend.token_limit_field
+
+
 __all__: list[str] = [
     "BYOK_CATALOG_SCHEMA_VERSION",
     "BYOK_MODEL_UNRESOLVED",
@@ -935,4 +990,5 @@ __all__: list[str] = [
     "resolve_byok_declared_plan",
     "resolve_byok_provider_backend",
     "select_byok_model",
+    "token_limit_field_for_endpoint",
 ]

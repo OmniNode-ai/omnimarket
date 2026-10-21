@@ -1142,7 +1142,9 @@ def _response_from_result(
             result.get("model_cloud_baseline") or result.get("baseline_model") or ""
         ),
     )
-    if baseline.state == "BASELINE_UNRESOLVED":
+    if baseline.state == "BASELINE_UNRESOLVED" or _cost_measured(attempts) is False:
+        # OMN-21260: savings against an unpriced cost would be the full baseline
+        # price, counted as measured. Unknown cost, unknown savings.
         cost_savings_usd: float | None = None
     elif status_value == "completed" and quality_gate_passed:
         estimate = _estimate_claude_cost_savings(
