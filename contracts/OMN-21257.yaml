@@ -58,6 +58,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_inference_intent.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -q 'token_limit_field_for_endpoint(base_url): intent.max_tokens' && gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/byok_provider_backends.v1.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -q '^    token_limit_field: max_completion_tokens$'"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_inference_intent.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'token_limit_field_for_endpoint(base_url): intent.max_tokens' | grep -qx 1 && gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/byok_provider_backends.v1.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^    token_limit_field: max_completion_tokens$' | grep -qx 1"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
