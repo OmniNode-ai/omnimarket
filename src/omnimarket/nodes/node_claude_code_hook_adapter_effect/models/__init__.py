@@ -8,6 +8,13 @@ from omnimarket.nodes.node_claude_code_hook_adapter_effect.models.model_client_s
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.models.model_client_verdict import (
     ModelClientVerdict,
 )
+from omnimarket.nodes.node_claude_code_hook_adapter_effect.models.model_compaction_latency_run import (
+    EnumCompactionLatencyTemperature,
+    ModelCompactionLatencyCase,
+    ModelCompactionLatencyRunRequest,
+    ModelCompactionLatencyRunResult,
+    ModelCompactionLatencyTrip,
+)
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.models.model_hook_adapter_request import (
     ModelHookAdapterRequest,
 )
@@ -19,8 +26,13 @@ from omnimarket.nodes.node_claude_code_hook_adapter_effect.models.model_receipt_
 )
 
 __all__ = [
+    "EnumCompactionLatencyTemperature",
     "ModelClientSection",
     "ModelClientVerdict",
+    "ModelCompactionLatencyCase",
+    "ModelCompactionLatencyRunRequest",
+    "ModelCompactionLatencyRunResult",
+    "ModelCompactionLatencyTrip",
     "ModelHookAdapterRequest",
     "ModelHookAdapterResult",
     "ModelReceiptEvent",

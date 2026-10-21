@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: MIT
 """Report and test the models delegation can use (OMN-20817).
 
-A developer can use any combination of Gemini, OpenRouter, OpenAI, Anthropic
-and Ollama;
-delegation chooses among the ones set up. This effect answers two questions for
-``onex models`` and for onboarding, which calls it once per chosen model:
+A developer can use any combination of Gemini, OpenRouter, OpenAI, Anthropic,
+GLM and Ollama; delegation chooses among the ones set up. This effect answers
+two questions for ``onex models`` and for onboarding, which calls it once per
+chosen model:
 
 * which providers are set up on this machine: a key stored for a keyed provider
   (the same registration ``onex secret set`` makes), or, for Ollama, local
@@ -100,6 +100,10 @@ _KEY_PREFIXES: tuple[tuple[str, str], ...] = (
 DEFAULT_MODEL_NODE = "node_model_setup_effect"
 _DEFAULT_MODEL_ENV: dict[str, str] = {"openrouter": "ONEX_OPENROUTER_DEFAULT_MODEL"}
 _DEFAULT_MODEL_FIELDS = frozenset(f"{p}_default_model" for p in _DEFAULT_MODEL_ENV)
+#: The providers whose default this node declares (overlay or contract). Any
+#: other key's default is the best match on its own model list, which the
+#: ``onex models`` shim reads with the key (OMN-21059): no key enters this node.
+OVERLAY_DEFAULT_PROVIDERS: frozenset[str] = frozenset(_DEFAULT_MODEL_ENV)
 
 _TEST_PROMPT = "Reply with exactly one word: hello"
 _TEST_TIMEOUT_S = 300
@@ -340,8 +344,8 @@ class HandlerModelSetup:
         provider = request.provider
         if provider is None:
             raise ModelSetupRefusedError(
-                "name a provider that holds a key: gemini, openrouter, openai or "
-                "anthropic"
+                "name a provider that holds a key: gemini, openrouter, openai, "
+                "anthropic or glm"
             )
         stored = resolve_local_byok_credential_models(provider)
         if provider not in registered_local_byok_providers():

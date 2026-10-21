@@ -506,6 +506,14 @@ _HEURISTIC_CONTAINS_ANY_CHECKS: dict[str, tuple[str, tuple[str, ...]]] = {
     # test_step_by_step_causal_fixture_omn17427.py). Those markers start with a
     # space, so they match only at a word start: "enthusiasm" does not carry
     # "thus" and ", sometimes" does not carry ", so ".
+    # OMN-19401: replaying 57 lab reasoning answers of Qwen3.8-27B (2026-10-20)
+    # refused three correct short answers; two of them walked through with a
+    # causative verb ("makes", "cause") or a result clause after a comma
+    # (", helping"), which the markers above did not carry. " caus" matches
+    # cause, causes, caused and causing but never "because". The comma-led
+    # participles match only after a comma, so "decision making" still fails
+    # (fixture: tests/unit/delegation/
+    # test_step_by_step_causal_lab_answers_omn19401.py).
     "step_by_step_explanation": (
         "TASK_MISMATCH",
         (
@@ -528,15 +536,26 @@ _HEURISTIC_CONTAINS_ANY_CHECKS: dict[str, tuple[str, tuple[str, ...]]] = {
             " that means",
             " leads to",
             " led to",
+            " lead to",
+            " leading to",
             " due to",
             " results in",
             " resulted in",
+            " result in",
+            " resulting in",
             " in turn",
             " which is why",
             " that is why",
+            " this is why",
+            " that's why",
             " as a consequence",
-            " causes",
-            " caused",
+            " caus",
+            " thereby",
+            " makes ",
+            ", making ",
+            ", allowing ",
+            ", forcing ",
+            ", helping ",
         ),
     ),
     "methodical_analysis": (

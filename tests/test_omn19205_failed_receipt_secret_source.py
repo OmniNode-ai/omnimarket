@@ -50,7 +50,9 @@ from tests.unit.nodes.node_delegate_skill_orchestrator.test_local_dispatch_escal
     _install_ladder,
 )
 
-pytestmark = pytest.mark.unit
+# OMN-21059: every shipped row has the customer choose the model; this file
+# exercises the catalogue-pick path, which a row reaches with that flag off.
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("catalogue_picks_models")]
 _SHARED_AUTOUSE_FIXTURE = _isolated_effects
 _CATALOGUE_PICKED_CREDENTIAL = _ref_is_catalogue_picked
 
