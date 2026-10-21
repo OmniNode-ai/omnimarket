@@ -694,6 +694,11 @@ requirements:
     acceptance:
       - id: "AC154"
         statement: "AC154: a compaction_orchestrator build at budget 800 whose open_work tier cites five rows of about 105 tokens each builds OK with every cited row carried and the uncited orchestration_state row trimmed, and cited entries over the whole budget fail TOKEN_BUDGET_EXCEEDED with 'cited entries need' naming the tiers -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -k equal_share fails at the merge base with 'open_work: cited entries need 525 tokens, over the tier budget 380'"
+  - id: "req-delegate-skill-routing-columns-stored"
+    statement: "delegation_events.routed_model and answering_backend are written from the delegate-skill terminal's accepting attempt by both projection writers, and a later terminal that carries none keeps the stored values."
+    acceptance:
+      - id: "AC114"
+        statement: "AC114: the sync and async delegate-skill row builders store the accepting attempt's model_id as routed_model and its backend_id as answering_backend, store neither for a ladder with no accepting attempt or a blank value, and keep stored values across a later sparse terminal -- falsifier: uv run pytest tests/unit/delegation/test_delegate_skill_routing_columns_omn19448.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -2854,4 +2859,20 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -n 0 -p no:randomly --no-cov -k equal_share"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac113-delegate-skill-routing-columns"
+    description: "Both projection writers store the accepting attempt's routed_model and answering_backend and keep them across a later sparse terminal. At the merge base 7 tests fail and 4 pass; after the change all 11 pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_delegate_skill_routing_columns_omn19448.py -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC114"]
+  - id: "dod-omn17427-skill-routing-columns-deploy-probe"
+    description: "Deploy probe. The checked-out shared helper stamps the accepting attempt's routed_model for both delegate-skill projection writers. It fails at the merge base, where the stamping line is absent, and needs only a shell and this checkout on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          sh -c 'set -eu; grep -Fq "row[\"routed_model\"] = routed_model" src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py; echo "delegate-skill routing columns deploy probe: PASS"'
         cwd: "${OMNI_HOME}/omnimarket"
