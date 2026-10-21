@@ -11,7 +11,7 @@
 # Given each key's cycle anchor and the calls it served, and the call about to be made (its counted prompt
 # tokens and its max_tokens), it prices the spend of each key's current cycle and the call's worst case from
 # the pricing manifest and answers the first key, in the order given, that can make the call and still keep
-# its reserve, or no key and why. The allowance, the reserve, the model and the cycle are the `budget` block
+# its reserve, or no key and why. The allowance, reserve, cycle and cache multipliers are the `budget` block
 # below, not literals in code. No clock (the time is in the request), no I/O, no model call.
 name: "node_claude_review_budget_compute"
 contract_name: "node_claude_review_budget_compute"
@@ -20,21 +20,23 @@ lifecycle: experimental
 node_type: "COMPUTE_GENERIC"
 contract_version:
   major: 0
-  minor: 1
+  minor: 2
   patch: 0
 node_version:
   major: 0
-  minor: 1
+  minor: 2
   patch: 0
 description: >
-  Pure definition-B per-key budget for the Claude review voter: the fill-first
+  Pure definition-B per-key budget and per-model pricing for the Claude review voter.
+  A native quote prices each input block at its TTL cold-write rate, tools at
+  the largest prefix rate, and maximum output, with a Batch multiplier.
+  The legacy request remains the fill-first
   key whose cycle allowance, less its spend and the call's worst-case cost,
   still holds its reserve, or none with a reason, so the gateway answers 503
   and the voter falls through to its overflow endpoint.
 # Operator rulings 2026-10-12T04:56:59Z (Sonnet for the review voter) and
 # 2026-10-12T04:57:20Z (keep 10 USD per key unspent).
 budget:
-  model_id: "claude-sonnet-5-5"
   allowance_usd: "200"
   reserve_usd: "10"
   cycle_months: 1
@@ -42,11 +44,13 @@ budget:
   # and a cache read are priced as these multiples of the input price (the
   # provider's published 5-minute cache write and cache read rates).
   cache_write_input_multiplier: "1.25"
+  cache_write_1h_input_multiplier: "2"
+  batch_multiplier: "0.5"
   cache_read_input_multiplier: "0.1"
 input_model:
   name: "ModelClaudeReviewBudgetRequest"
   module: "omnimarket.nodes.node_claude_review_budget_compute.models.model_claude_review_budget"
-  description: "The time, the call's prompt tokens and max_tokens, and each key's cycle anchor and calls."
+  description: "The time, optional native per-model block quote, legacy prompt/output counts and each key cycle."
 output_model:
   name: "ModelClaudeReviewBudgetResult"
   module: "omnimarket.nodes.node_claude_review_budget_compute.models.model_claude_review_budget"

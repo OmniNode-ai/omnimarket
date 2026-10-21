@@ -29,6 +29,42 @@ def _load_generator() -> ModuleType:
     return module
 
 
+@pytest.mark.parametrize(
+    "hidden_sql",
+    [
+        "-- CREATE TABLE phantom (id int);",
+        "/* CREATE TABLE phantom (id int);\nSELECT 'quoted'; */",
+        "'CREATE TABLE phantom (id int); -- not a comment'",
+        "'escaped '' CREATE TABLE phantom (id int);'",
+        "$$CREATE TABLE phantom (id int);\n' /* -- $$",
+        "$body$CREATE TABLE phantom (id int);\n$other$ $$ $body$",
+    ],
+)
+def test_literals_and_comments_cannot_create_phantom_relations(hidden_sql: str) -> None:
+    generator = _load_generator()
+    sql = f"CREATE TABLE before_literal (id int);\n{hidden_sql}\nCREATE TABLE after_literal (id int);"
+    masked = generator._mask_sql(sql)
+    assert len(masked) == len(sql)
+    assert [index for index, char in enumerate(masked) if char == "\n"] == [
+        index for index, char in enumerate(sql) if char == "\n"
+    ]
+    assert [match.group("name") for match in generator._CREATE_RE.finditer(masked)] == [
+        "before_literal",
+        "after_literal",
+    ]
+
+
+@pytest.mark.parametrize("opener", ["--", "/*", "'", "$$", "$body$"])
+def test_unterminated_literals_and_comments_mask_to_end_of_source(opener: str) -> None:
+    generator = _load_generator()
+    sql = f"CREATE TABLE real_table (id int); {opener} CREATE TABLE phantom (id int);"
+    masked = generator._mask_sql(sql)
+    assert len(masked) == len(sql)
+    assert [match.group("name") for match in generator._CREATE_RE.finditer(masked)] == [
+        "real_table"
+    ]
+
+
 def test_checked_in_inventory_is_source_derived_and_current() -> None:
     generator = _load_generator()
     assert generator.main(["--check"]) == 0
@@ -447,7 +483,8 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +2 for OMN-20604 M2: node-owned lab_job_state and lab_job_transitions,
     # with their CREATE migration and ownership declarations together = 100.
     # +3 for OMN-20802: state, run history and alarm episode tables = 103.
-    assert census["source_created_tables"] == 103
+    # +1 for OMN-19988's local_environment, declared and created in the same PR = 104.
+    assert census["source_created_tables"] == 104
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -616,7 +653,8 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +1 for OMN-19987 (run_trace) = 107.
     # +2 for OMN-20604 M2: both lab-job read models land with their CREATE = 109.
     # +3 for OMN-20802: the same tables declared beside their migration = 112.
-    assert census["source_declared_tables"] == 112
+    # +1 for OMN-19988 (local_environment) = 113.
+    assert census["source_declared_tables"] == 113
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then

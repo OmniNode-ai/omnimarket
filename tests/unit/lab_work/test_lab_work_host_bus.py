@@ -471,3 +471,54 @@ def test_claude_login_is_a_cached_login_check_not_a_binary_check(
     clock[0] += 301
     assert "claude-login" in reader.read(["claude-login"]).tools
     assert len(calls) == 2
+
+
+def _install_guard(home: Path, body: bytes, *, name: str | None = None) -> str:
+    import hashlib
+
+    sha = hashlib.sha256(body).hexdigest()
+    target = home / ".local" / "share" / "onex-lane-guard" / "sha256" / (name or sha)
+    target.mkdir(parents=True)
+    (target / "lane_guard_host.py").write_bytes(body)
+    return sha
+
+
+def _guard_tools(tools: tuple[str, ...]) -> list[str]:
+    return [t for t in tools if t.startswith("lane-guard:")]
+
+
+def test_installed_lane_guard_is_advertised_as_a_verified_pseudo_tool(
+    tmp_path: Path,
+) -> None:
+    from omnimarket.nodes.node_lab_work_unit_effect.protocols import local_host_reader
+
+    sha = _install_guard(tmp_path, b"print('guard')\n")
+    reader = local_host_reader.LocalHostReader(home=tmp_path)
+    assert _guard_tools(reader.read(["git"]).tools) == [f"lane-guard:{sha}"]
+
+
+def test_host_with_no_lane_guard_advertises_none(tmp_path: Path) -> None:
+    from omnimarket.nodes.node_lab_work_unit_effect.protocols import local_host_reader
+
+    reader = local_host_reader.LocalHostReader(home=tmp_path)
+    assert _guard_tools(reader.read(["git"]).tools) == []
+
+
+def test_altered_or_misnamed_lane_guard_is_not_advertised(tmp_path: Path) -> None:
+    from omnimarket.nodes.node_lab_work_unit_effect.protocols import local_host_reader
+
+    _install_guard(tmp_path, b"print('altered')\n", name="a" * 64)
+    _install_guard(tmp_path, b"print('named wrong')\n", name="not-a-sha")
+    reader = local_host_reader.LocalHostReader(home=tmp_path)
+    assert _guard_tools(reader.read(["git"]).tools) == []
+
+
+def test_two_installed_lane_guards_are_both_advertised(tmp_path: Path) -> None:
+    from omnimarket.nodes.node_lab_work_unit_effect.protocols import local_host_reader
+
+    first = _install_guard(tmp_path, b"print('one')\n")
+    second = _install_guard(tmp_path, b"print('two')\n")
+    reader = local_host_reader.LocalHostReader(home=tmp_path)
+    assert _guard_tools(reader.read([]).tools) == sorted(
+        [f"lane-guard:{first}", f"lane-guard:{second}"]
+    )

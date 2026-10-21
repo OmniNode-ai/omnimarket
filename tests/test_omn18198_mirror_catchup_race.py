@@ -51,6 +51,38 @@ WATERMARK_BEHIND = EVENT_AT - timedelta(seconds=3)
 WATERMARK_CAUGHT_UP = EVENT_AT + timedelta(seconds=1)
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("slug", ["omninode", "beta-business-proof"])
+async def test_a_known_legacy_slug_resolves_despite_a_lagging_partial_mirror(
+    slug: str, monkeypatch: pytest.MonkeyPatch, quick_window: None
+) -> None:
+    """Unrelated mirror rows must not disable the closed legacy fallback."""
+    db = _FakeDb(tenant_uuid=uuid4(), watermark=WATERMARK_BEHIND, rows_after=10**6)
+    await _sleepless(monkeypatch, db)
+    expected = resolution.resolve_registry_tenant_uuid(slug, registry_uuid=None)
+
+    assert await async_resolve_write_tenant_uuid(
+        db, slug, event_timestamp=EVENT_AT
+    ) == str(expected)
+    assert db.row_lookups == 1
+    assert not db.sleeps
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("slug", ["omninode", "beta-business-proof"])
+async def test_a_known_legacy_slug_still_refuses_registry_drift(
+    slug: str, monkeypatch: pytest.MonkeyPatch, quick_window: None
+) -> None:
+    """The fallback must never override a conflicting registry row."""
+    db = _FakeDb(tenant_uuid=uuid4(), watermark=WATERMARK_BEHIND, rows_after=0)
+    await _sleepless(monkeypatch, db)
+
+    with pytest.raises(TenantRegistryResolutionError, match="tenant registry drift"):
+        await async_resolve_write_tenant_uuid(db, slug, event_timestamp=EVENT_AT)
+    assert db.row_lookups == 1
+    assert not db.sleeps
+
+
 class _FakeDb:
     """A mirror reader that answers the two queries the resolver makes.
 

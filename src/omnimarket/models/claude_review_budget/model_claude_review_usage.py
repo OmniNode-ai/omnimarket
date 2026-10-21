@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 
 class ModelClaudeReviewUsage(BaseModel):
@@ -28,10 +28,17 @@ class ModelClaudeReviewUsage(BaseModel):
     cache_creation_input_tokens: int = Field(
         ..., ge=0, description="usage.cache_creation_input_tokens (cache write)."
     )
+    cache_creation_1h_input_tokens: int = Field(default=0, ge=0)
     cache_read_input_tokens: int = Field(
         ..., ge=0, description="usage.cache_read_input_tokens (cache read)."
     )
     output_tokens: int = Field(..., ge=0, description="usage.output_tokens.")
+
+    @model_validator(mode="after")
+    def _cache_creation_breakdown(self) -> ModelClaudeReviewUsage:
+        if self.cache_creation_1h_input_tokens > self.cache_creation_input_tokens:
+            raise ValueError("1-hour cache creation exceeds total cache creation")
+        return self
 
 
 __all__ = ["ModelClaudeReviewUsage"]

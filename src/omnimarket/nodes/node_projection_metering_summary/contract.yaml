@@ -46,6 +46,10 @@ dod_evidence:
     description: Unresolved baselines preserve the request and expose null savings
   - test: tests/nodes/node_projection_metering_summary/test_projection.py::test_dispatch_capability_only_on_writer
     description: Only the writer takes the runtime projection dispatch arm
+  - test: tests/nodes/node_projection_metering_summary/test_omn17427_store_refresh.py::test_every_tenant_with_runs_gets_day_and_all_rows
+    description: The store refresh folds every tenant with runs into day and all-time rows under its own RLS context
+  - test: tests/nodes/node_projection_metering_summary/test_omn17427_store_refresh.py::test_named_tenant_and_day_refolds_that_day_once_the_all_row_exists
+    description: A delegation terminal's refresh refolds its day and the all-time row only
 db_io:
   db_tables:
     - name: metering_summary
@@ -54,11 +58,21 @@ db_io:
       migration: "0000_create_metering_summary.sql"
       access: read_write
       role: metering_summary
+    # OMN-17427: the store refresh reads each tenant's runs under that
+    # tenant's row-level-security context. node_projection_delegation owns
+    # the DDL; this node only reads it.
+    - name: delegation_events
+      database_ref: application
+      schema: public
+      migration: "0049_delegation_events_data_source.sql"
+      access: read
+      role: delegation_history
   dedupe_key: [tenant_id, window_kind, window_start, baseline_model]
   ordering_key: as_of
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.refresh-metering-summary.v1
+    - onex.cmd.omnimarket.metering-summary-refresh-requested.v1
   publish_topics:
     - onex.evt.omnimarket.projection-metering-summary-applied.v1
   dlq_topics:
@@ -67,7 +81,16 @@ externally_consumed_topics:
   - onex.evt.omnimarket.projection-metering-summary-applied.v1
 externally_produced_topics:
   - topic: onex.cmd.omnimarket.refresh-metering-summary.v1
-    producer: Snapshot caller supplying ModelMeteringSummaryFoldRequest
+    producer: Snapshot caller supplying ModelMeteringSummaryFoldRequest (the local end-of-delegate refresh, omnimarket.projection.sqlite_metering_summary)
+  - topic: onex.cmd.omnimarket.metering-summary-refresh-requested.v1
+    producer: node_metering_summary_refresh_compute, on each delegation terminal and on its runtime-tick schedule (OMN-17427)
+config:
+  metering_summary:
+    # A complete snapshot: every run of the tenant rides in the command.
+    fold_command_topic: onex.cmd.omnimarket.refresh-metering-summary.v1
+    # OMN-17427: tenants and days only; the writer reads the runs. A shared
+    # lane's tenant does not fit one bus message as a snapshot.
+    store_refresh_command_topic: onex.cmd.omnimarket.metering-summary-refresh-requested.v1
 # metering-summary.v1: the stored rows, served per tenant. The day rows are the
 # daily series and the all row the headline, from one fold, so they add up.
 projection_api:

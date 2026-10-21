@@ -70,7 +70,6 @@ _PR_GREEN = PrRecord(
     checks_status="success",
     review_status="approved",
     is_draft=False,
-    coderabbit_unresolved=0,
     merge_state_status="CLEAN",
 )
 # A red PR whose failed required check was classified GITHUB_API_OUTAGE — this is
@@ -277,7 +276,6 @@ class TestNoOutageIsUnchanged:
             checks_status="success",
             review_status="approved",
             is_draft=False,
-            coderabbit_unresolved=0,
             merge_state_status="CLEAN",
         )
         red = PrRecord(

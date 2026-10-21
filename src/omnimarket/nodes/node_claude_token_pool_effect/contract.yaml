@@ -22,6 +22,7 @@ description: >
   reads the tokens, how many are limited and the next reset, with an ALARM line
   when every token is limited. Every operation rewrites a status mirror holding
   labels and limit times only. No result, refusal or log line carries a value.
+  mark_revoked skips a token whose OAuth login was revoked until it is re-added.
 
 output_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool.ModelClaudeTokenPoolResult
 

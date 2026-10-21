@@ -30,30 +30,28 @@ WORKFLOW = (
     / "workflows"
     / "hostile-reviewer.yml"
 )
-# OMN-17427: the overflow-deadline revision descends from the chunk-scaled
-# review deadline revision.
-OVERFLOW_DEADLINE_PIN = "921b322b8e43f695961a06a04759dc88bb3e88ff"
+# OMN-20910: the revision is no longer a literal in the workflow. It is the newest
+# dev-* tag of omniintelligence, resolved at run time, and every revision tagged
+# since the overflow-deadline fix carries it. A sha literal or a branch tip is refused.
+_REF = re.compile(r"clone_with_retry omniintelligence \S+ OMNIINTELLIGENCE_SHA (\S+)")
+NEWEST_DEV_TAG_REF = '"refs/tags/${OMNIINTELLIGENCE_TAG}"'
 # The pin before this change, which cuts the overflow at its chunk share.
 PRE_OVERFLOW_DEADLINE_PIN = "aeba95945f22b3027d4010b53cb01b3f1217923c"
-_PIN = re.compile(
-    r"clone_with_retry omniintelligence \S+ OMNIINTELLIGENCE_SHA ([0-9a-f]{40})"
-)
 
 
-def omniintelligence_pins(workflow_text: str) -> list[str]:
-    """Every full-sha pin the workflow clones omniintelligence at."""
-    return _PIN.findall(workflow_text)
+def omniintelligence_refs(workflow_text: str) -> list[str]:
+    """Every ref the workflow clones omniintelligence at."""
+    return _REF.findall(workflow_text)
 
 
-def test_omniintelligence_is_pinned_to_the_overflow_deadline_revision() -> None:
+def test_omniintelligence_is_read_at_its_newest_dev_tag() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
-    pins = omniintelligence_pins(text)
-    assert pins == [OVERFLOW_DEADLINE_PIN]
+    assert omniintelligence_refs(text) == [NEWEST_DEV_TAG_REF]
 
 
 def test_the_pin_before_the_overflow_deadline_is_caught() -> None:
-    """Positive control: the workflow as it was before this change."""
+    """Positive control: the workflow as it was, pinned to the pre-fix sha."""
     text = WORKFLOW.read_text(encoding="utf-8")
-    before = text.replace(omniintelligence_pins(text)[0], PRE_OVERFLOW_DEADLINE_PIN)
-    assert omniintelligence_pins(before) == [PRE_OVERFLOW_DEADLINE_PIN]
-    assert omniintelligence_pins(before)[0] != OVERFLOW_DEADLINE_PIN
+    before = text.replace(NEWEST_DEV_TAG_REF, PRE_OVERFLOW_DEADLINE_PIN)
+    assert omniintelligence_refs(before) == [PRE_OVERFLOW_DEADLINE_PIN]
+    assert omniintelligence_refs(before) != [NEWEST_DEV_TAG_REF]

@@ -206,7 +206,7 @@ def test_register_tenant_key_records_the_workspace_id_everywhere(
     intake: tuple[LocalByokCredentialStore, _Bus, _Models],
 ) -> None:
     store, bus, models = intake
-    result = _register("anthropic", "--workspace-id", _WORKSPACE)
+    result = _register("anthropic", "--model", _MODEL, "--workspace-id", _WORKSPACE)
     assert result.exit_code == 0, result.output
     shown = json.loads(result.output)
     assert shown["workspace_id"] == _WORKSPACE
@@ -230,7 +230,7 @@ def test_register_tenant_key_without_a_workspace_id_is_unchanged(
     intake: tuple[LocalByokCredentialStore, _Bus, _Models],
 ) -> None:
     _store, bus, models = intake
-    result = _register("anthropic")
+    result = _register("anthropic", "--model", _MODEL)
     assert result.exit_code == 0, result.output
     shown = json.loads(result.output)
     assert "workspace_id" not in shown

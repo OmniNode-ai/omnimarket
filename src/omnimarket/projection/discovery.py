@@ -34,6 +34,12 @@ from omnimarket.projection.models import (
 
 logger = logging.getLogger(__name__)
 
+# LibYAML avoids Python scanning every node contract during API startup. Both
+# implementations use safe constructors; pure-Python installations still work.
+_CONTRACT_SAFE_LOADER: type[yaml.SafeLoader] | type[yaml.CSafeLoader] = getattr(
+    yaml, "CSafeLoader", yaml.SafeLoader
+)
+
 # Only tables in these schemas may be queried through the projection API.
 ALLOWED_SCHEMAS: frozenset[str] = frozenset({"public", "omnidash_analytics"})
 
@@ -91,7 +97,7 @@ def discover_contracts() -> _AutoWiringManifest:
     for contract_path in sorted(nodes_dir.glob("*/contract.yaml")):
         node_name = contract_path.parent.name
         try:
-            data = yaml.safe_load(contract_path.read_text())
+            data = yaml.load(contract_path.read_text(), Loader=_CONTRACT_SAFE_LOADER)
         except Exception as exc:
             logger.warning("Failed to read contract at %s: %s", contract_path, exc)
             data = None
@@ -220,7 +226,7 @@ def resolve_relation_schema(
 def _writer_table_schemas(contract_path: Path) -> dict[str, str]:
     """``{table: schema}`` for every table the contract's db_io declares."""
     try:
-        data = yaml.safe_load(contract_path.read_text())
+        data = yaml.load(contract_path.read_text(), Loader=_CONTRACT_SAFE_LOADER)
     except Exception:
         return {}
     if not isinstance(data, dict):
@@ -249,7 +255,7 @@ def _load_projection_api_section(contract_path: Path) -> dict[str, object] | Non
         or the section is absent.
     """
     try:
-        data = yaml.safe_load(contract_path.read_text())
+        data = yaml.load(contract_path.read_text(), Loader=_CONTRACT_SAFE_LOADER)
     except Exception as exc:
         logger.warning("Failed to read contract at %s: %s", contract_path, exc)
         return None

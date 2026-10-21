@@ -86,6 +86,7 @@ from omnimarket.nodes.node_local_secret_store_effect.models.model_local_secret_r
 )
 from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup import (
     LOCAL_URL_PROVIDER,
+    OVERLAY_DEFAULT_PROVIDERS,
     PROVIDERS,
     HandlerModelSetup,
     ModelSetupRefusedError,
@@ -130,6 +131,7 @@ from omnimarket.routing.byok_model_discovery import (
 from omnimarket.routing.byok_plan_detection import detect_byok_plan
 from omnimarket.routing.byok_provider_backends import (
     ByokPlanNotPermittedError,
+    byok_automatic_plans,
     byok_provider_plans,
     byok_routable_plans,
     require_byok_plan_permitted,
@@ -218,7 +220,7 @@ def _resolve_plan(
             )
         _refuse_plan_not_permitted(provider, named)
         return named, None
-    if len(declared) <= 1:
+    if len(byok_automatic_plans(provider)) <= 1:
         return None, None
     click.echo(
         f"{provider} has more than one plan ({', '.join(declared)}). Trying your "
@@ -1142,6 +1144,12 @@ def store_secret_value(
     except LocalSecretStoreRefusedError as refusal:
         raise click.ClickException(str(refusal)) from None
     click.echo(f"Stored {secret_ref} in {store.db_path} (owner-only).")
+    if provider in PROVIDERS:
+        # OMN-21259: a new key starts untested; the old key's failed test
+        # must not keep it out of routing.
+        _model_handler().handle(
+            ModelModelSetupRequest(operation="forget", provider=provider)
+        )
     route_ref = result.route_ref
     if provider is not None and route_ref is not None:
         details = [
@@ -1276,6 +1284,7 @@ _MODEL_LABELS: dict[str, str] = {
     "openrouter": "OpenRouter",
     "openai": "OpenAI",
     "anthropic": "Anthropic",
+    "glm": "GLM",
     "ollama": "Ollama",
     "local": "Local URL",
 }
@@ -1284,7 +1293,9 @@ _KEY_PAGES: dict[str, str] = {
     "openrouter": "openrouter.ai/keys",
     "openai": "platform.openai.com/api-keys",
     "anthropic": "platform.claude.com/settings/keys",
+    "glm": "z.ai/manage-apikey/apikey-list",
 }
+_NOT_ROUTED = "Delegation does not use this key until its test passes."
 _OLLAMA_HOW = (
     "Ollama is installed by onboarding, which downloads a model sized to this "
     "Mac: run onboarding again with --provider ollama."
@@ -1323,8 +1334,11 @@ def _show_model_test(result: ModelModelTestResult, as_json: bool) -> None:
     if result.status == "passed":
         click.echo(f"{label} ✓ answered ({result.model or result.backend_id})")
     elif result.status == "failed":
-        click.echo(f"{label} ✗ {result.reason}")
+        failed_on = f"{result.model}: " if result.model else ""
+        click.echo(f"{label} ✗ {failed_on}{result.reason}")
         if result.provider != "ollama" and result.provider != LOCAL_URL_PROVIDER:
+            # OMN-21259: a key that failed its test is kept but not routed.
+            click.echo(f"  {_NOT_ROUTED}")
             click.echo(f"  Fix it, then run: onex models test {result.provider}")
     elif result.provider == "ollama":
         click.echo(f"{label} not set up. {_OLLAMA_HOW}")
@@ -1366,7 +1380,7 @@ models_group = click.Group(
     "models",
     help=(
         "Set up the models delegation can use: Gemini, OpenRouter, OpenAI, "
-        "Anthropic, Ollama, or a local model server by URL.\n\nSet up any "
+        "Anthropic, GLM (z.ai), Ollama, or a local model server by URL.\n\nSet up any "
         "combination; delegation chooses among them for each task."
     ),
 )
@@ -1380,8 +1394,9 @@ models_group = click.Group(
     multiple=True,
     help=(
         "A model your key runs, checked against the provider's list for it; "
-        "repeat it to choose several, first is tried first. For OpenRouter you "
-        "choose it: without --model a terminal is asked and a script is refused. "
+        "repeat it to choose several, first is tried first. You choose it for "
+        "every provider: without --model a terminal is asked and a script is "
+        "refused (onex models default-model names one from your key's list). "
         "For local, the one model the server runs."
     ),
 )
@@ -1511,30 +1526,64 @@ def list_models(as_json: bool) -> None:
                 f"({last.model}){models}"
             )
         else:
+            failed_on = f" on {last.model}" if last.model else ""
             click.echo(
-                f"{label} set up, last test FAILED {last.tested_at}: "
+                f"{label} set up, last test FAILED {last.tested_at}{failed_on}: "
                 f"{last.reason}{models}"
             )
+            if (
+                row.provider in _KEY_PAGES
+            ):  # a keyed provider; Ollama and local have none
+                click.echo(f"  {_NOT_ROUTED} Run: onex models test {row.provider}")
 
 
 @models_group.command("default-model")
 @click.argument("provider", type=_model_choice)
 def default_model(provider: str) -> None:
-    """Print the model onboarding registers for PROVIDER, from the deployment overlay.
+    """Print the model onboarding registers for PROVIDER. Nothing is stored.
 
-    Onboarding reads it here instead of naming a model itself. Nothing is stored
-    and no key is read. To use another model afterwards, one command:
+    OpenRouter's comes from the deployment overlay, and no key is read. Every
+    other provider's key runs only models its owner chose (OMN-21059), so its
+    default is read from the provider: the key (stdin when piped, else a hidden
+    prompt) asks the provider which models it can use, and the best match among
+    the catalogue's preferred families is printed. A model counts as chosen
+    only when it is passed on. To use another model afterwards, one command:
 
         onex models add openrouter --model MODEL_ID
     """
+    name = provider.lower()
+    if name not in OVERLAY_DEFAULT_PROVIDERS:
+        click.echo(_listed_default_model(name))
+        return
     request = ModelModelSetupRequest(
-        operation="default_model", provider=cast(ModelProvider, provider.lower())
+        operation="default_model", provider=cast(ModelProvider, name)
     )
     try:
         result = _model_handler().handle(request)
     except ModelSetupRefusedError as refusal:
         raise click.ClickException(str(refusal)) from None
     click.echo(result.models[0])
+
+
+def _listed_default_model(provider: str) -> str:
+    """The best match on the key's own model list, or a refusal naming the way out."""
+    choose = f"Name one with onex models add {provider} --model <model id>"
+    backend = resolve_byok_provider_backend(provider)
+    if backend is None:
+        raise click.ClickException(
+            f"{_MODEL_LABELS.get(provider, provider)} has no model list to read a "
+            f"default from. {choose}"
+        )
+    discovery = discover_byok_model_sync(backend, _read_model_key(provider))
+    refusal = describe_discovery_refusal(discovery)
+    if refusal is not None:
+        raise click.ClickException(refusal)
+    if discovery.model is None:
+        raise click.ClickException(
+            f"could not read {_MODEL_LABELS[provider]}'s model list just now, so "
+            f"no default can be named. {choose}"
+        )
+    return discovery.model
 
 
 def _edit_model_list(
@@ -1718,6 +1767,7 @@ def review_gateway(
 ) -> None:
     """Serve a Hostile Review voter endpoint on this host's Claude keys (OMN-21014)."""
     from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
+        GATEWAY_PLAN,
         HandlerClaudeReviewGateway,
         run_dry,
     )
@@ -1754,10 +1804,12 @@ def review_gateway(
             "ONEX_LAB_RUN_HOSTS to the lab host table."
         )
     bind_host, _, bind_port = bind.rpartition(":")
-    backend = resolve_byok_provider_backend("anthropic")
+    # OMN-20910: the gateway names the native Messages plan explicitly; a caller
+    # that names no plan keeps the OpenAI-compatible default row.
+    backend = resolve_byok_provider_backend("anthropic", GATEWAY_PLAN)
     if backend is None:
         raise click.ClickException(
-            "the provider catalogue offers no anthropic backend."
+            "the provider catalogue offers no anthropic api_native backend."
         )
     try:
         request = ModelClaudeReviewGatewayRequest(

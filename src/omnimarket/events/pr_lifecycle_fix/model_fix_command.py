@@ -21,7 +21,6 @@ class EnumPrBlockReason(StrEnum):
     receipt_failure                → OCC/receipt-gate failure, delegate to pr_polish
     conflict                       → merge conflict, resolve via ``gh pr update-branch``
     changes_requested              → review comment fix, delegate to pr_polish
-    coderabbit                     → CR thread auto-reply via dispatch_coderabbit_reply
     deploy_gate_contract_not_found → deploy-gate failed because OCC contract YAML is
                                      missing; auto-create it via create_occ_contract
     receipt_evidence_source_autobind → Receipt Gate failed because the PR's
@@ -35,7 +34,6 @@ class EnumPrBlockReason(StrEnum):
     RECEIPT_FAILURE = "receipt_failure"
     CONFLICT = "conflict"
     CHANGES_REQUESTED = "changes_requested"
-    CODERABBIT = "coderabbit"
     DEPLOY_GATE_CONTRACT_NOT_FOUND = "deploy_gate_contract_not_found"
     RECEIPT_EVIDENCE_SOURCE_AUTOBIND = "receipt_evidence_source_autobind"
 
@@ -116,7 +114,7 @@ class ModelPrLifecycleFixCommand(BaseModel):
     review_context_text: str = Field(
         default="",
         description=(
-            "Concatenated PR title/body/CodeRabbit comment text, used by the "
+            "Concatenated PR title/body/review comment text, used by the "
             "delegation content denylist (WS-D/D2, OMN-13940) to refuse "
             "security/auth/crypto-adjacent fixes before routing to a "
             "delegated (non-Claude) fix path. Empty is always denied "

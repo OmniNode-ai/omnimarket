@@ -1,0 +1,80 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21114"
+title: "TA.12 compaction build latency qualification (omnimarket tabulation node slice)"
+summary: "A pure compute node, node_context_compaction_latency_compute, tabulates recorded compaction round trips into p50, p95 and max (nearest rank) per session size, host and temperature for the deterministic build, the model-written section and their per-round-trip total, and proposes the context_compaction class ceiling (worst total p95 plus margin) and the precompute deadline (worst total p95 plus slack, default 5 s). A missing size, a missing host, a cell under 20 round trips, or a candidate deadline below the measured p95 is listed as a falsifier and a missing size, host or cell withholds both proposals. This slice does not measure anything: the round trips through the adapter on the three session sizes from the launching Mac and a lab host are not recorded, because the compaction build the orchestrator calls is not wired on the dev lane. The ticket's AC1 is therefore not claimed by this contract."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-latency-qualification-node"
+    statement: "The tabulation node of plan task TA.12: the per-cell table, the proposed class ceiling and precompute deadline, and the falsifiers that withhold or reject them."
+    acceptance:
+      - id: "DoD1"
+        statement: "DoD1: per size, host and temperature the node reports the round-trip count and nearest-rank p50, p95 and max for the deterministic build, the model-written section and their per-round-trip total -- falsifier: a percentile that differs from the sorted-sample nearest rank, or a total taken from the phase percentiles."
+      - id: "DoD2"
+        statement: "DoD2: the class ceiling and the precompute deadline are proposed only for a complete table (every required size and host, 20 cold and 20 warm round trips per cell), each is the worst total p95 plus its margin or slack, and neither is below that p95 -- falsifier: a proposal for an incomplete table, or a proposal below the worst total p95."
+      - id: "DoD3"
+        statement: "DoD3: a missing size, a missing host, a cell short of 20 round trips, or a caller candidate deadline below the measured p95 is listed as a falsifier, and a duplicate round_trip_id or a negative or non-finite duration is refused -- falsifier: an incomplete or padded table accepted."
+      - id: "DoD4"
+        statement: "DoD4: the contract subscribes the restricted onex.cmd.omniintelligence request topic, publishes one onex.evt.omnimarket result topic, resolves its handler and models, and the node is an onex.nodes entry point -- falsifier: a contract test failure."
+evidence_requirements:
+  - kind: "tests"
+    description: "DoD1 to DoD4 in the node tests and the golden chain."
+    command: "uv run pytest tests/nodes/node_context_compaction_latency_compute tests/test_golden_chain_context_compaction_latency_compute.py -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21114-n1"
+    description: "DoD1: nearest-rank percentiles per size, host and temperature, one cell per combination, and a total summed per round trip."
+    binds_ac: ["DoD1"]
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_latency_compute/test_latency_qualification.py -q -p no:randomly --no-cov -k 'nearest_rank or one_cell_per or total_is_summed or deterministic_for'"
+  - id: "dod-omn21114-n2"
+    description: "DoD2: proposals are the worst total p95 plus margin or slack, never below it, and withheld for an incomplete table."
+    binds_ac: ["DoD2"]
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_latency_compute/test_latency_qualification.py -q -p no:randomly --no-cov -k 'proposals_are_not_below or precompute_slack or missing_size or missing_host'"
+  - id: "dod-omn21114-n3"
+    description: "DoD3: missing size, host and short cell are listed, a candidate below the p95 is listed, a candidate against an incomplete table is unchecked, and padded or invalid input is refused."
+    binds_ac: ["DoD3"]
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_latency_compute/test_latency_qualification.py -q -p no:randomly --no-cov -k 'too_few_warm or duplicate_round_trip or candidate or non_finite or fewer_than_twenty or one_required_host'"
+  - id: "dod-omn21114-n4"
+    description: "DoD4: contract topics, handler and model resolution, entry point and the golden chain."
+    binds_ac: ["DoD4"]
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_context_compaction_latency_compute.py -q -p no:randomly --no-cov"
+  - id: "dod-omn21114-deploy-hosted-qualify"
+    description: "Hosted deploy probe. The hosted runner runs uv run --frozen --no-dev in the checkout and sends one table of 20 cold and 20 warm round trips for three sizes on two hosts through the product handler, asserting the table is complete with 12 cells and the proposed ceiling and deadline are the worst total p95 plus 2000 and 5000, then removes one size and asserts both proposals are withheld with the size listed. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run --frozen --no-dev python -c '
+          from omnimarket.nodes.node_context_compaction_latency_compute.handlers import HandlerLatencyQualification as H
+          from omnimarket.nodes.node_context_compaction_latency_compute.models import ModelLatencyQualificationRequest as R
+          sizes = ("smallest", "median", "largest")
+          trips = [{"round_trip_id": f"{s}-{h}-{t}-{i}", "size": s, "host": h, "temperature": t, "deterministic_build_ms": 100 + i, "model_section_ms": 1000 + i} for s in sizes for h in ("mac", "lab") for t in ("cold", "warm") for i in range(1, 21)]
+          body = {"round_trips": trips, "required_sizes": list(sizes), "required_hosts": ["mac", "lab"], "margin_ms": 2000}
+          r = H().handle(R.model_validate(body))
+          assert r.complete and len(r.cells) == 12 and r.build_p95_ms == 1138 and r.class_ceiling_ms == 3138 and r.precompute_deadline_ms == 6138, r
+          body["round_trips"] = [t for t in trips if t["size"] != "largest"]
+          q = H().handle(R.model_validate(body))
+          assert not q.complete and q.class_ceiling_ms is None and q.precompute_deadline_ms is None and q.falsifiers == ("size largest missing",), q
+          print(r.class_ceiling_ms, r.precompute_deadline_ms, q.falsifiers)'
+  - id: "dod-omn21114-deploy-hosted-source"
+    description: "Hosted deploy source probe: GitHub serves the latency qualification handler at the checked-out commit. The content read must contain the handler class; it fails at the merge base where the handler is absent. This checks source identity, not a running deployment. The preceding behavioral probe exercises the handler."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_context_compaction_latency_compute/handlers/handler_latency_qualification.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"class HandlerLatencyQualification:\")' | grep -qx true"

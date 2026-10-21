@@ -15,7 +15,11 @@ from typing import Any, Protocol, cast
 from uuid import UUID
 
 import yaml
-from omnibase_core.models.delegation.wire import ModelDelegationProvenance
+from omnibase_core.models.delegation.wire import (
+    EnumDelegationOperationalOutcome,
+    ModelDelegationFailed,
+    ModelDelegationProvenance,
+)
 from omnibase_core.models.delegation.wire.model_delegation_terminal_v2 import (
     ModelDelegationTerminalCompletedV2,
     ModelDelegationTerminalFailedRoutedV2,
@@ -132,6 +136,8 @@ class RuntimeDelegationDispatchPort:
         attribution: Mapping[str, str] | None = None,
         model: str | None = None,
         named_tests: ModelNamedTestSpec | None = None,
+        trace_id: UUID | None = None,
+        queue_wait_ms: int | None = None,
     ) -> dict[str, object]:
         # OMN-21077: tests run where the workspace is, and a deployed lane has no
         # access to the caller's workspace. Refused rather than dropped, so a
@@ -157,6 +163,10 @@ class RuntimeDelegationDispatchPort:
         # deployed lane, whose handler stamps the caller onto its own terminal;
         # only the in-process port writes an evidence terminal of its own.
         del attribution
+        # OMN-19448: accepted and unused, for the same reason. The deployed
+        # lane's handler copies the command's trace_id and measures the queue
+        # wait itself; only the in-process port's evidence terminal needs them.
+        del trace_id, queue_wait_ms
         # OMN-18931: the canonical delegation request this port publishes does
         # not carry the no-escalation policy at the Core floor this package
         # locks, so a true value cannot reach the consumer. Refused rather than
@@ -386,29 +396,67 @@ class RuntimeDelegationDispatchPort:
                 return
             await queue.put(terminal)
 
+        async def on_pre_dispatch_failure(message: object) -> None:
+            value = _message_value(message)
+            if value is None or not _is_pre_dispatch_failure(value):
+                return
+            # Ordinary routed V1 failures are co-published with V2. They must
+            # not race the richer V2 terminal into this request's receipt.
+            await on_message(message)
+
         unsubscribers = []
-        for topic in (
-            self._config.topics.completed,
-            self._config.topics.failed,
-            self._config.topics.failed_unrouted,
-        ):
-            if topic is not None:
-                unsubscribers.append(
-                    await self._event_bus.subscribe(
-                        topic,
-                        None,
-                        on_message,
-                        group_id=(
-                            f"{self._config.consumer_group_prefix}-{dispatch_correlation_id.hex}"
-                        ),
+        try:
+            for topic, callback in (
+                (self._config.topics.completed, on_message),
+                (self._config.topics.failed, on_message),
+                (self._config.topics.failed_unrouted, on_message),
+                (self._config.topics.pre_dispatch_failed, on_pre_dispatch_failure),
+            ):
+                if topic is not None:
+                    unsubscribers.append(
+                        await self._event_bus.subscribe(
+                            topic,
+                            None,
+                            callback,
+                            group_id=(
+                                f"{self._config.consumer_group_prefix}-{dispatch_correlation_id.hex}"
+                            ),
+                        )
                     )
-                )
+        except BaseException:
+            # Setup can fail or be cancelled after earlier topics subscribed.
+            # Release those consumers before propagating the original failure.
+            for unsubscribe_topic in unsubscribers:
+                try:
+                    await unsubscribe_topic()
+                except Exception:
+                    logger.warning(
+                        "partial delegation subscription cleanup failed", exc_info=True
+                    )
+            raise
 
         async def unsubscribe() -> None:
             for unsubscribe_topic in unsubscribers:
                 await unsubscribe_topic()
 
         return unsubscribe, queue
+
+
+def _is_pre_dispatch_failure(value: bytes | str) -> bool:
+    """Validate a canonical zero-attempt boundary failure before accepting V1."""
+    try:
+        raw = json.loads(value)
+        if not isinstance(raw, dict):
+            return False
+        terminal = ModelDelegationFailed.model_validate(raw.get("payload", raw))
+    except (TypeError, ValueError, ValidationError):
+        return False
+    return (
+        terminal.attempts_count == 0
+        and terminal.operational_outcome
+        is EnumDelegationOperationalOutcome.BOUNDARY_FAILURE
+        and bool(terminal.failure_reason)
+    )
 
 
 class _BufferedStep:

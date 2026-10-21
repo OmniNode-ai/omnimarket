@@ -17,6 +17,7 @@ without a reachable database and provisions its own throwaway schema.
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -30,6 +31,9 @@ import asyncpg
 import pytest
 
 from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
+    DelegationProjectionRunner,
+)
 from omnimarket.nodes.node_projection_savings.handlers.handler_savings import (
     SavingsProjectionRunner,
 )
@@ -38,6 +42,19 @@ from omnimarket.projection.runner import MessageMeta
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_UUID
 from tests.test_omn15909_real_postgres_projection_write_path_gate import (
     _live_migration_files as _delegation_migration_files,
+)
+from tests.test_omn18147_delegation_completed_using_rls import (
+    local_postgres as local_postgres,
+)
+from tests.test_omn21015_run_savings_real_postgres import (
+    integration_postgres_dsn as integration_postgres_dsn,
+)
+from tests.test_omn21015_run_savings_real_postgres import postgres as postgres
+from tests.unit.nodes.node_projection_delegation.test_canonical_savings_counterfactual_omn20303 import (
+    COMPLETED,
+    FAILED,
+    _canonical,
+    _shutdown,
 )
 
 _MIGRATIONS_DIR = (
@@ -148,10 +165,11 @@ def _canonical_payload(timestamp: str) -> dict[str, object]:
 
 
 @asynccontextmanager
-async def _provisioned_runner() -> AsyncIterator[
-    tuple[SavingsProjectionRunner, asyncpg.Connection]
-]:
-    admin_conn = await _connect_or_skip()
+async def _provisioned_runner(
+    dsn: str | None = None,
+) -> AsyncIterator[tuple[SavingsProjectionRunner, asyncpg.Connection]]:
+    admin_conn = await (asyncpg.connect(dsn) if dsn else _connect_or_skip())
+    runner_dsn = dsn or _base_dsn()
     schema = f"omn20303_{uuid4().hex[:16]}"
     pool: asyncpg.Pool | None = None
     try:
@@ -174,12 +192,12 @@ async def _provisioned_runner() -> AsyncIterator[
             await admin_conn.execute(sql)
 
         pool = await asyncpg.create_pool(
-            _base_dsn(),
+            runner_dsn,
             min_size=1,
             max_size=3,
             server_settings={"search_path": f"{schema},public"},
         )
-        adapter = AsyncpgAdapter(dsn=_base_dsn())
+        adapter = AsyncpgAdapter(dsn=runner_dsn)
         adapter._pool = pool
 
         runner = SavingsProjectionRunner(publish_fn=_noop_publish)
@@ -236,3 +254,141 @@ async def test_real_postgres_two_terminals_of_one_run_keep_one_row(
     assert len(rows) == 1
     assert rows[0]["event_timestamp"] == datetime(2026, 10, 1, 12, 23, 58, tzinfo=UTC)
     assert rows[0]["savings_usd"] == Decimal(str(round(_cf_cost(), 6)))
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "order",
+    ["canonical-only", "shutdown-first", "shutdown-last", "pinned-before-completion"],
+)
+async def test_real_postgres_canonical_counterfactual_survives_shutdown(
+    integration_postgres_dsn: str,
+    order: str,
+) -> None:
+    """The actual asyncpg INSERT/UPDATE retains the saving's baseline and types.
+
+    INTEGRATION_POSTGRES_DSN names the owned PostgreSQL 16 container supplied
+    by the existing fixture, never a shared deployment's application database.
+    Both real projection writers use the same migrated, disposable schema.
+    """
+    async with _provisioned_runner(integration_postgres_dsn) as (savings, conn):
+        await conn.execute(
+            "CREATE TABLE tenant_registry_mirror "
+            "(tenant_slug text PRIMARY KEY, tenant_uuid uuid UNIQUE NOT NULL)"
+        )
+        await conn.execute(
+            "INSERT INTO tenant_registry_mirror VALUES ($1, $2)",
+            "counterfactual-test",
+            HOUSE_TENANT_UUID,
+        )
+        delegation = DelegationProjectionRunner(publish_fn=_noop_publish)
+        delegation._db = savings.db
+        completion = _canonical()
+        shutdown = _shutdown()
+        for payload in (completion, shutdown):
+            payload["tenant_id"] = str(HOUSE_TENANT_UUID)
+        correlation = str(completion["correlation_id"])
+        events = [(COMPLETED, completion)]
+        if order in {"shutdown-first", "pinned-before-completion"}:
+            events.insert(0, (FAILED, shutdown))
+        elif order == "shutdown-last":
+            events.append((FAILED, shutdown))
+        original = None
+        if order == "pinned-before-completion":
+            cf = build_premium_counterfactual(prompt_tokens=12, completion_tokens=34)
+            assert cf is not None
+            original = cf.model_dump(mode="json")
+        for offset, (topic, payload) in enumerate(events):
+            meta = MessageMeta(
+                topic=topic,
+                partition=0,
+                offset=offset,
+                fallback_id=correlation,
+            )
+            assert await delegation.project_event(topic, dict(payload), meta)
+            assert await savings.project_event(topic, dict(payload), meta)
+            if original is not None and offset == 0:
+                await conn.execute(
+                    "UPDATE delegation_events SET premium_counterfactual=$1::jsonb "
+                    "WHERE correlation_id=$2",
+                    json.dumps(original),
+                    correlation,
+                )
+        rows = await conn.fetch(
+            "SELECT d.premium_counterfactual, d.terminal_failure_cause, "
+            "d.timestamp, s.cloud_cost_usd, s.event_timestamp "
+            "FROM delegation_events d JOIN savings_estimates s "
+            "ON s.session_id=d.correlation_id AND s.tenant_id=d.tenant_id::text "
+            "WHERE d.correlation_id=$1",
+            correlation,
+        )
+        assert len(rows) == 1
+        baseline = json.loads(rows[0]["premium_counterfactual"])
+        assert isinstance(rows[0]["timestamp"], datetime)
+        assert isinstance(rows[0]["event_timestamp"], datetime)
+        if original is not None:
+            assert baseline == original
+        else:
+            assert baseline["tokens_in"] == 727
+            assert baseline["tokens_out"] == 607
+            assert (
+                Decimal(baseline["counterfactual_cost_usd"])
+                == rows[0]["cloud_cost_usd"]
+            )
+        if order != "canonical-only":
+            assert rows[0]["terminal_failure_cause"] == "runtime_shutdown"
+
+
+@pytest.mark.integration
+async def test_real_postgres_harness_saving_keeps_counterfactual(
+    integration_postgres_dsn: str,
+) -> None:
+    """Live harness shape retains the same baseline through both real writers."""
+    from tests.unit.nodes.node_projection_delegation.test_harness_savings_counterfactual_omn20303 import (
+        live_harness_terminal,
+    )
+
+    payload = live_harness_terminal()
+    payload["tenant_id"] = str(HOUSE_TENANT_UUID)
+    correlation = str(payload["correlation_id"])
+    async with _provisioned_runner(integration_postgres_dsn) as (savings, conn):
+        await conn.execute(
+            "CREATE TABLE tenant_registry_mirror "
+            "(tenant_slug text PRIMARY KEY, tenant_uuid uuid UNIQUE NOT NULL)"
+        )
+        await conn.execute(
+            "INSERT INTO tenant_registry_mirror VALUES ($1, $2)",
+            "harness-counterfactual-test",
+            HOUSE_TENANT_UUID,
+        )
+        delegation = DelegationProjectionRunner(publish_fn=_noop_publish)
+        delegation._db = savings.db
+        for offset in range(2):
+            meta = MessageMeta(
+                topic=DELEGATE_SKILL_TOPIC,
+                partition=0,
+                offset=offset,
+                fallback_id=correlation,
+            )
+            assert await delegation.project_event(
+                DELEGATE_SKILL_TOPIC, dict(payload), meta
+            )
+            assert await savings.project_event(
+                DELEGATE_SKILL_TOPIC, dict(payload), meta
+            )
+        rows = await conn.fetch(
+            "SELECT d.premium_counterfactual, d.cost_savings_usd, "
+            "s.cloud_cost_usd, s.local_cost_usd, s.savings_usd "
+            "FROM delegation_events d JOIN savings_estimates s "
+            "ON s.session_id=d.correlation_id AND s.tenant_id=d.tenant_id::text "
+            "WHERE d.correlation_id=$1",
+            correlation,
+        )
+    assert len(rows) == 1
+    baseline = json.loads(rows[0]["premium_counterfactual"])
+    assert (baseline["tokens_in"], baseline["tokens_out"]) == (13363, 204)
+    assert Decimal(baseline["counterfactual_cost_usd"]) == rows[0]["cloud_cost_usd"]
+    assert rows[0]["cost_savings_usd"] == rows[0]["savings_usd"]
+    assert (
+        rows[0]["savings_usd"] == rows[0]["cloud_cost_usd"] - rows[0]["local_cost_usd"]
+    )

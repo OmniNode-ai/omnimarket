@@ -318,3 +318,110 @@ def test_terminal_input_uses_a_hidden_prompt(monkeypatch) -> None:
     assert cli._pasted() == fake_token("a")
     assert len(prompts) == 1
     assert "input hidden" in prompts[0]
+
+
+def test_a_revoked_token_is_skipped_and_the_good_one_resolves_after_one_failure(
+    rig,
+) -> None:
+    handler, clock, tmp = rig
+    add(handler, "h101-own", fake_token("a"))
+    add(handler, "acct-1019a", fake_token("b"))
+    assert op(handler, "resolve").chosen == "h101-own"
+    revoked = op(handler, "mark_revoked", label="h101-own")
+    assert not revoked.all_limited, "a good token remains, so the host keeps Claude"
+    assert revoked.revoked == ("h101-own",)
+    assert revoked.alert is not None
+    assert "revoked=h101-own" in revoked.alert
+    assert "add --label h101-own --force" in revoked.alert
+    resolved = op(handler, "resolve")
+    assert resolved.chosen == "acct-1019a"
+    assert resolved.token is not None
+    assert resolved.token.get_secret_value() == fake_token("b")
+    assert resolved.alert is None, "the alert is raised once, by the mark"
+    assert resolved.status_line == (
+        "claude-pool host=h202 tokens=2 limited=0 next_reset=none revoked=h101-own"
+    )
+    assert [(t.label, t.revoked) for t in resolved.tokens] == [
+        ("h101-own", True),
+        ("acct-1019a", False),
+    ]
+    clock.at = T0 + timedelta(days=60)
+    assert op(handler, "resolve").chosen == "acct-1019a", "a revocation never expires"
+    mirror = json.loads((tmp / "cache" / "claude-token-pool.json").read_text())
+    assert [t["revoked"] for t in mirror["tokens"]] == [True, False]
+
+
+def test_marking_a_revoked_token_again_raises_no_second_alert(rig) -> None:
+    handler, _, _ = rig
+    add(handler, "acct-a", fake_token("a"))
+    add(handler, "acct-b", fake_token("b"))
+    assert op(handler, "mark_revoked", label="acct-a").alert is not None
+    again = op(handler, "mark_revoked", label="acct-a")
+    assert again.alert is None
+    assert again.revoked == ("acct-a",)
+    with pytest.raises(ClaudeTokenPoolRefusedError, match="not in this host's pool"):
+        op(handler, "mark_revoked", label="acct-z")
+
+
+def test_every_token_revoked_or_limited_resolves_nothing_and_raises_the_alarm(
+    rig,
+) -> None:
+    handler, _, _ = rig
+    add(handler, "acct-a", fake_token("a"))
+    add(handler, "acct-b", fake_token("b"))
+    op(handler, "mark_limited", label="acct-b", seconds=3600)
+    last = op(handler, "mark_revoked", label="acct-a")
+    assert last.all_limited
+    assert last.status_line == (
+        "ALARM claude-pool host=h202 tokens=2 limited=1 "
+        "next_reset=2026-10-18T03:00:00Z revoked=acct-a every token limited or revoked"
+    )
+    resolved = op(handler, "resolve")
+    assert resolved.chosen is None
+    assert resolved.token is None
+
+
+def test_forced_re_add_clears_a_revocation(rig) -> None:
+    handler, _, _ = rig
+    add(handler, "acct-a", fake_token("a"))
+    add(handler, "acct-b", fake_token("b"))
+    op(handler, "mark_revoked", label="acct-a")
+    readded = op(
+        handler,
+        "add",
+        label="acct-a",
+        setup_token_output=SecretStr(fake_token("c")),
+        force=True,
+    )
+    assert readded.revoked == ()
+    resolved = op(handler, "resolve")
+    assert resolved.chosen == "acct-a"
+    assert resolved.token.get_secret_value() == fake_token("c")
+
+
+def test_cli_mark_revoked_exit_codes_and_one_alert_line(
+    rig, monkeypatch, capsys
+) -> None:
+    handler, _, _ = rig
+    add(handler, "acct-a", fake_token("a"))
+    add(handler, "acct-b", fake_token("b"))
+    assert cli.main(["mark-revoked", "--label", "acct-a"], handler) == 0
+    out = capsys.readouterr()
+    assert out.out.strip() == (
+        "claude-pool host=h202 tokens=2 limited=0 next_reset=none revoked=acct-a"
+    )
+    assert [line for line in out.err.splitlines() if line.startswith("ALERT ")] == [
+        out.err.strip()
+    ]
+    assert "revoked=acct-a" in out.err
+    assert cli.main(["mark-revoked", "--label", "acct-a"], handler) == 0
+    assert "ALERT" not in capsys.readouterr().err
+    assert (
+        cli.main(["mark-revoked", "--label", "acct-b"], handler) == cli.EXIT_ALL_LIMITED
+    )
+    out = capsys.readouterr()
+    assert out.out.startswith("ALARM claude-pool")
+    assert "revoked=acct-b" in out.err
+    monkeypatch.setattr("sys.stdout", _Pipe())
+    assert cli.main(["resolve"], handler) == cli.EXIT_ALL_LIMITED
+    assert fake_token("a") not in capsys.readouterr().err

@@ -43,6 +43,12 @@ from omnimarket.nodes.node_context_pack_orchestrator.protocols import (
 from omnimarket.nodes.node_context_profile_resolver_effect.handlers.handler_context_profile_resolver import (
     HandlerContextProfileResolver,
 )
+from omnimarket.nodes.node_session_context_sources_effect.handlers.handler_session_context_sources import (
+    HandlerSessionContextSources,
+)
+from omnimarket.nodes.node_session_context_sources_effect.models import (
+    EnumSessionSourceFailure,
+)
 
 from .conftest import (
     AS_OF,
@@ -414,6 +420,55 @@ def test_required_tier_trim_without_citations_keeps_newest_first() -> None:
     assert _carried(text) == {"day-4", "day-5"}
 
 
+def test_cited_entries_over_an_equal_share_build_when_the_budget_holds_them() -> None:
+    bound = sources(
+        open_work=ManySource(EnumContextFactor.OPEN_WORK, _open_work_rows()),
+        orchestration_state=ManySource(
+            EnumContextFactor.ORCHESTRATION_STATE,
+            (
+                ("s" * 400, AS_OF, "state/small"),
+                ("s" * 2800, AS_OF, "state/large"),
+            ),
+        ),
+    )
+    budget = 800
+    cited = tuple(f"row/{day}" for day in range(1, 6))
+    built = orchestrator(bound).handle(
+        command(token_budget_override=budget, cited_refs=cited)
+    )
+    assert built.status is EnumContextPackOrchestratorStatus.OK, built.errors
+    text = "\n".join(m.text for m in built.messages)
+    assert _carried(text) == {f"day-{day}" for day in range(1, 6)}
+    assert sum(built.factor_token_estimates.values()) <= budget
+    tier = {t.factor: t for t in built.tier_statuses}[
+        EnumContextFactor.ORCHESTRATION_STATE
+    ]
+    assert tier.trimmed_entry_count == 1
+
+
+def test_cited_entries_over_the_whole_budget_fail_naming_the_tiers() -> None:
+    bound = sources(
+        open_work=ManySource(EnumContextFactor.OPEN_WORK, _open_work_rows()),
+        orchestration_state=FixtureSource(
+            EnumContextFactor.ORCHESTRATION_STATE, text="s" * 1600
+        ),
+    )
+    cited = (
+        *(f"row/{day}" for day in range(1, 6)),
+        "fixture/orchestration_state@0000000",
+    )
+    built = orchestrator(bound).handle(
+        command(token_budget_override=800, cited_refs=cited)
+    )
+    assert built.status is EnumContextPackOrchestratorStatus.FAILED
+    assert built.failure_class is EnumContextPackFailure.TOKEN_BUDGET_EXCEEDED
+    assert any(
+        "cited entries need" in error
+        and error.endswith(": open_work, orchestration_state")
+        for error in built.errors
+    )
+
+
 def test_cited_entries_over_the_tier_budget_fail_never_dropped() -> None:
     bound = sources(
         open_work=ManySource(EnumContextFactor.OPEN_WORK, _open_work_rows())
@@ -460,3 +515,54 @@ def test_tier_revisions_change_the_candidate() -> None:
         command(tier_revisions={EnumContextFactor.OPERATOR_RULINGS: "r-1"})
     )
     assert plain.candidate_id != pinned.candidate_id
+
+
+# OMN-17427 (TA.9 seam): a pinned build names its replay case the way the session
+# source reads it, and carries exactly one mode scope.
+
+
+def _scopes_sent(**fields: object) -> tuple[str, ...]:
+    bound = sources()
+    orchestrator(bound).handle(command(**fields))
+    sent = {request.scopes for source in bound.values() for request in source.requests}
+    assert len(sent) == 1
+    return sent.pop()
+
+
+def test_a_pinned_build_sends_the_case_scope_and_no_session_scope() -> None:
+    scopes = _scopes_sent(mode="pinned", manifest_case="case-a")
+    assert "case:case-a" in scopes
+    assert not [s for s in scopes if s.startswith(("session:", "manifest_case:"))]
+
+
+def test_a_live_build_sends_the_session_scope_and_no_case_scope() -> None:
+    scopes = _scopes_sent()
+    assert "session:session-1" in scopes
+    assert not [s for s in scopes if s.startswith(("case:", "manifest_case:"))]
+
+
+@pytest.mark.parametrize(
+    ("fields", "mode_scope"),
+    [
+        ({"mode": "pinned", "manifest_case": "case-a"}, "case:case-a"),
+        ({}, "session:session-1"),
+    ],
+    ids=["pinned", "live"],
+)
+def test_the_session_source_accepts_the_scopes_the_orchestrator_sends(
+    fields: dict[str, object], mode_scope: str
+) -> None:
+    scopes = _scopes_sent(**fields)
+    assert mode_scope in scopes
+    result = HandlerSessionContextSources(env={}).handle(
+        ModelContextSourceRequest(
+            factor=EnumContextFactor.OPERATOR_WORDS_UNRECORDED,
+            scopes=scopes,
+            access=command().access,
+            revision="r",
+        )
+    )
+    assert result.error_message is not None
+    assert not result.error_message.startswith(
+        EnumSessionSourceFailure.SCOPE_INVALID.value
+    ), result.error_message

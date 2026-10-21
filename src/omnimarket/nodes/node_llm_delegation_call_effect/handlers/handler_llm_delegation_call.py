@@ -90,7 +90,10 @@ from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
     contract_subscribe_topics,
 )
-from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
+    anthropic_messages,
+    transport,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.review_cost_recorder import (
     TOPIC_REVIEW_CALL_COST_RECORDED,
     attempt_counter,
@@ -119,8 +122,11 @@ from omnimarket.routing.byok_model_discovery import (
 from omnimarket.routing.byok_provider_backends import (
     BYOK_MODEL_UNRESOLVED,
     ModelByokProviderBackend,
+    byok_backend_provider,
     byok_declared_price_per_1m,
+    byok_model_price_per_1m,
     resolve_byok_backend_by_endpoint,
+    token_limit_field_for_endpoint,
 )
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
@@ -323,10 +329,17 @@ def _compute_cost(
     tokens_out: int,
     model_tier: str = "unknown",
     endpoint_url: str | None = None,
+    provider: str | None = None,
 ) -> tuple[Decimal, Decimal, Decimal, EnumCostBasis]:
     """Return (actual_cost, opus_equivalent_cost, savings, cost_basis).
 
-    Pricing is resolved in priority order:
+    A call on a customer's own key (``provider`` is a BYOK backend id) is priced
+    by its model only: the catalogue's declared price, else the model
+    registry's price (OMN-21260). A model with neither is unpriced: zero cost,
+    zero savings and cost basis UNKNOWN, never the tier's rate, which once
+    booked a paid OpenRouter model at cheap_frontier's 0.0.
+
+    A house call's pricing is resolved in priority order:
       0. a price the BYOK catalogue declares for this endpoint and model (OMN-20154:
          a free model inside a metered tier is booked at its own zero, never at
          the tier's rate)
@@ -337,7 +350,13 @@ def _compute_cost(
     The registry path gracefully degrades to fallback when the YAML file is
     missing or the tier is not declared.
     """
-    declared_price = byok_declared_price_per_1m(endpoint_url, model_id)
+    if byok_backend_provider(provider) is not None:
+        model_price = byok_model_price_per_1m(provider, endpoint_url, model_id)
+        if model_price is None:
+            return Decimal("0"), Decimal("0"), Decimal("0"), EnumCostBasis.UNKNOWN
+        declared_price: tuple[Decimal, Decimal] | None = model_price
+    else:
+        declared_price = byok_declared_price_per_1m(endpoint_url, model_id)
     registry_price = (
         declared_price
         if declared_price is not None
@@ -371,6 +390,17 @@ def _compute_cost(
         cost_basis = EnumCostBasis.UNKNOWN
 
     return actual, opus_equiv, savings, cost_basis
+
+
+def _cost_usage_source(cost_basis: EnumCostBasis) -> EnumUsageSource:
+    """MEASURED when the call was priced, UNKNOWN when it was not (OMN-21260).
+
+    The tokens are always the provider's own counts; this says whether the cost
+    is, so an unpriced call's zero reads as unknown rather than free.
+    """
+    if cost_basis is EnumCostBasis.UNKNOWN:
+        return EnumUsageSource.UNKNOWN
+    return EnumUsageSource.MEASURED
 
 
 def _uuid_or_none(value: str | None) -> UUID | None:
@@ -597,6 +627,9 @@ class HandlerLlmDelegationCall:
         OMN-21078: where the customer chooses the model, these re-aims require
         a credential that records a catalogue pick. A customer's chosen model,
         including a ``:free`` one, or one with no chooser record gets one call.
+        OMN-21059: every catalogue row now has the customer choose, and a
+        credential that records a catalogue pick is refused with
+        BYOK_MODEL_NOT_CHOSEN before any call.
 
         This is not a transport retry and it never changes backend: it is the
         same customer route asking its own provider which model it offers. A
@@ -618,11 +651,18 @@ class HandlerLlmDelegationCall:
             # OMN-21078: a chosen :free model matches a preference pattern;
             # the pattern is not evidence of who chose it. No record means
             # customer choice, including hosted refs and older local rows.
+            # OMN-21059: a model the catalogue picked is not one the customer
+            # chose, so that credential is refused like one with no model.
             if (
                 resolve_local_byok_model_chooser(request.secret_ref)
-                != MODEL_CHOSEN_BY_CATALOGUE
+                == MODEL_CHOSEN_BY_CATALOGUE
             ):
-                return self._execute_call_once(request, endpoint_url, event_publisher)
+                return self._failure_result(
+                    request,
+                    EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND,
+                    model_not_chosen_message(byok.provider),
+                )
+            return self._execute_call_once(request, endpoint_url, event_publisher)
         configured = request.model_id
         if request.model_id == BYOK_MODEL_UNRESOLVED:
             resolved = self._resolve_byok_model(request, byok, exclude=())
@@ -853,6 +893,9 @@ class HandlerLlmDelegationCall:
             ),
             latency_ms=result.latency_ms,
             cost_usd=result.actual_cost_usd,
+            stop_reason=result.stop_reason,
+            cache_creation_input_tokens=result.cache_creation_input_tokens,
+            cache_read_input_tokens=result.cache_read_input_tokens,
         )
         _report_call(observation)
         record_finished_attempt(request, endpoint_url, observation, event_publisher)
@@ -866,27 +909,36 @@ class HandlerLlmDelegationCall:
         *,
         attempt: int = 1,
     ) -> ModelLlmDelegationCallResult:
-        messages: list[dict[str, str]] = []
-        if request.system_prompt:
-            messages.append({"role": "system", "content": request.system_prompt})
-        messages.append({"role": "user", "content": request.prompt})
-        payload: dict[str, Any] = {
-            "model": request.model_id,
-            "messages": messages,
-            "max_tokens": request.max_tokens,
-            "temperature": request.temperature,
-        }
-        if request.provider_request_options:
-            payload.update(request.provider_request_options)
-        # OMN-15482: the caller's response-format directive is applied AFTER the
-        # inference-protocol options so a consumer requirement can never be
-        # silently overwritten by backend shaping. The two cannot actually
-        # collide today -- ``LocalDelegationDispatchPort`` reserves the
-        # ``response_format`` key against ``provider_request_options`` -- so
-        # this ordering is a belt-and-braces statement of precedence, not a
-        # live conflict resolution.
-        if request.response_format is not None:
-            payload["response_format"] = request.response_format
+        # OMN-20910: the native Messages protocol builds its own body (system and
+        # message blocks with cache breakpoints, a forced tool); every other call
+        # keeps the OpenAI-compatible body below, byte for byte.
+        native = request.inference_protocol == "anthropic_messages"
+        payload: dict[str, Any]
+        if native:
+            payload = anthropic_messages.build_messages_payload(request)
+        else:
+            messages: list[dict[str, str]] = []
+            if request.system_prompt:
+                messages.append({"role": "system", "content": request.system_prompt})
+            messages.append({"role": "user", "content": request.prompt})
+            # OMN-21257: the endpoint's catalogue row names the token-limit field.
+            payload = {
+                "model": request.model_id,
+                "messages": messages,
+                token_limit_field_for_endpoint(endpoint_url): request.max_tokens,
+                "temperature": request.temperature,
+            }
+            if request.provider_request_options:
+                payload.update(request.provider_request_options)
+            # OMN-15482: the caller's response-format directive is applied AFTER
+            # the inference-protocol options so a consumer requirement can never
+            # be silently overwritten by backend shaping. The two cannot actually
+            # collide today -- ``LocalDelegationDispatchPort`` reserves the
+            # ``response_format`` key against ``provider_request_options`` -- so
+            # this ordering is a belt-and-braces statement of precedence, not a
+            # live conflict resolution.
+            if request.response_format is not None:
+                payload["response_format"] = request.response_format
 
         # OMN-16419: fail-closed model-attribution guard. A live GET
         # /v1/models reconciliation runs BEFORE the chat-completion POST —
@@ -899,7 +951,10 @@ class HandlerLlmDelegationCall:
         # ``served_ids`` IS available and does not contain the configured
         # model_id, the call never reaches the network — this repo's own
         # config no longer silently attributes to a model that isn't running.
-        served_ids = _get_served_model_ids(endpoint_url)
+        # The native endpoint has no GET /v1/models next to ``/v1/messages`` to
+        # reconcile against; its reply names the model that served it instead,
+        # read below.
+        served_ids = None if native else _get_served_model_ids(endpoint_url)
         if served_ids is not None and request.model_id not in served_ids:
             # Reconcile a possible model replacement before refusing the call.
             # An unreadable refresh retains the known mismatch evidence.
@@ -1198,6 +1253,16 @@ class HandlerLlmDelegationCall:
                 secret_source=secret_source,
             )
 
+        if native:
+            return self._finish_native_call(
+                request,
+                endpoint_url,
+                response_json,
+                latency_ms=latency_ms,
+                secret_source=secret_source,
+                event_publisher=event_publisher,
+            )
+
         choices = response_json.get("choices") or []
         if not choices:
             return self._failure_result(
@@ -1234,6 +1299,7 @@ class HandlerLlmDelegationCall:
             tokens_out,
             model_tier=request.model_tier,
             endpoint_url=endpoint_url,
+            provider=request.provider,
         )
 
         result = ModelLlmDelegationCallResult(
@@ -1258,7 +1324,7 @@ class HandlerLlmDelegationCall:
             actual_cost_usd=actual_cost,
             opus_equivalent_cost_usd=opus_cost,
             savings_usd=savings,
-            usage_source=EnumUsageSource.MEASURED,
+            usage_source=_cost_usage_source(cost_basis),
             cost_basis=cost_basis,
             quality_gate_passed=True,
             endpoint_healthy=True,
@@ -1277,6 +1343,92 @@ class HandlerLlmDelegationCall:
             event_publisher,
         )
 
+        return result
+
+    def _finish_native_call(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        endpoint_url: str,
+        response_json: dict[str, Any],
+        *,
+        latency_ms: int,
+        secret_source: EnumSecretSource | None,
+        event_publisher: Any,
+    ) -> ModelLlmDelegationCallResult:
+        """Turn one native Messages reply into the typed result (OMN-20910).
+
+        A ``max_tokens`` stop is a success with the cut text and the typed stop
+        reason, exactly as an OpenAI-compatible ``length`` is: the verdict on
+        whether a cut reply is usable belongs to the caller's parser, which
+        receives it typed and not as a string it would have to recognise.
+        """
+        reading = anthropic_messages.parse_messages_response(response_json)
+        if reading is None:
+            return self._failure_result(
+                request,
+                EnumDelegationFailureClass.INVALID_JSON,
+                "API returned empty content array",
+                secret_source=secret_source,
+            )
+        content = reading.content
+        raw_response = ModelDelegationRawResponse.from_provider_content(
+            content, source_field=reading.source_field
+        )
+        content, reasoning_stripped_chars = strip_leading_inline_reasoning(
+            content, request.inline_reasoning_terminator
+        )
+        # Billed at the cache's own multipliers, not at the plain input price.
+        actual_cost, opus_cost, savings, cost_basis = _compute_cost(
+            request.model_id,
+            reading.input_price_equivalent_tokens,
+            reading.output_tokens,
+            model_tier=request.model_tier,
+            endpoint_url=endpoint_url,
+            provider=request.provider,
+        )
+        cache_read, cache_write_5m, cache_write_1h = cache_usage_figures(
+            response_json.get("usage") or {}
+        )
+        result = ModelLlmDelegationCallResult(
+            request_id=request.request_id,
+            success=True,
+            secret_source=secret_source,
+            secret_ref=request.secret_ref,
+            content=content,
+            raw_response=raw_response,
+            reasoning_stripped_chars=reasoning_stripped_chars,
+            output_hash=_sha256(content),
+            tokens_in=reading.prompt_tokens,
+            tokens_out=reading.output_tokens,
+            cache_read_tokens=cache_read,
+            cache_write_5m_tokens=cache_write_5m,
+            cache_write_1h_tokens=cache_write_1h,
+            latency_ms=latency_ms,
+            actual_cost_usd=actual_cost,
+            opus_equivalent_cost_usd=opus_cost,
+            savings_usd=savings,
+            usage_source=_cost_usage_source(cost_basis),
+            cost_basis=cost_basis,
+            quality_gate_passed=True,
+            endpoint_healthy=True,
+            served_model_id=reading.served_model,
+            finish_reason=reading.stop_reason.to_finish_reason(),
+            stop_reason=reading.stop_reason,
+            cache_creation_input_tokens=reading.cache_creation_input_tokens,
+            cache_creation_5m_input_tokens=reading.cache_creation_5m_input_tokens,
+            cache_creation_1h_input_tokens=reading.cache_creation_1h_input_tokens,
+            cache_read_input_tokens=reading.cache_read_input_tokens,
+            http_status=200,
+        )
+        observation, _ = self._observe_quota(
+            request, endpoint_url, succeeded=True, latency_ms=latency_ms
+        )
+        result = result.model_copy(update={"quota_observation": observation})
+        self._publish(
+            TOPIC_DELEGATION_CALL_COMPLETED,
+            self._build_completed_event(request, result),
+            event_publisher,
+        )
         return result
 
     def _build_completed_event(
@@ -1313,7 +1465,7 @@ class HandlerLlmDelegationCall:
             actual_cost_usd=result.actual_cost_usd,
             opus_equivalent_cost_usd=result.opus_equivalent_cost_usd,
             savings_usd=result.savings_usd,
-            usage_source=EnumUsageSource.MEASURED,
+            usage_source=result.usage_source,
             cost_basis=result.cost_basis,
             pricing_manifest_version=request.pricing_manifest_version,
             pricing_manifest_hash=request.pricing_manifest_hash,
@@ -1452,10 +1604,16 @@ class HandlerLlmDelegationCall:
         ``llm.*.api_key`` convention (which maps to ``LLM_*_API_KEY``) and the
         canonical env vars already defined in ``~/.omnibase/.env``.
         """
-        headers = dict(request.extra_headers)
         api_key, source = resolve_api_key_with_source_loop_safe(
             request.secret_ref, env_var_fallback=request.api_key_env
         )
+        if request.inference_protocol == "anthropic_messages":
+            # OMN-20910: the native API takes the key in ``x-api-key`` and needs
+            # ``anthropic-version``; a Bearer header is not accepted there.
+            return anthropic_messages.native_headers(
+                request, None if api_key is None else api_key.get_secret_value()
+            ), source
+        headers = {**request.extra_headers, **request.provider_headers}
         if api_key is not None:
             headers["Authorization"] = f"Bearer {api_key.get_secret_value()}"
         return headers, source

@@ -13,7 +13,7 @@ lifecycle: deprecated
 
 description: >
   Auto-merge effect node. Merges a GitHub PR after all CI gates pass and
-  CodeRabbit Major threads are resolved. Emits a merge-completed event on success.
+  no review change requests are outstanding. Emits a merge-completed event on success.
 
 # OMN-13530: top-level input_model so RuntimeLocal resolves the initial-payload
 # model (contract.input_model is the first resolver source) and the auto_merge

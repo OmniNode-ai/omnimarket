@@ -87,6 +87,10 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # to no topic and has no onex.nodes entry point until the registration
     # hand-over (nodes-to-market plan step B).
     "node_lab_fill_selection_compute",
+    # OMN-20388: the public cost estimator's engine. onex-api calls it in
+    # process on each upload, so it subscribes to no topic and has no
+    # onex.nodes entry point.
+    "node_prompt_cost_estimate_compute",
     # OMN-20712: hosted from the operator tooling repository, whose copy is
     # still registered; called in process by its host scheduler, so it subscribes
     # to no topic and has no onex.nodes entry point until the registration
@@ -113,17 +117,35 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # status and test results to the CLI shim and subscribes to no topic, so it
     # has no onex.nodes entry point.
     "node_model_setup_effect",
+    # OMN-19988: the local alert compute is called in process by the local
+    # environment projection on every report it stores; it subscribes to no
+    # topic and publishes none, so it has no onex.nodes entry point.
+    "node_local_alert_compute",
+    # OMN-19988: the directory carries the migrations omnibase_infra vendors and
+    # the store-neutral write the local store uses; its contract, writer and
+    # entry point land with the node, which removes this line and the
+    # MIGRATION_ONLY_NODE_DIRS entry together.
+    "node_projection_local_environment",
     # OMN-17427: the Claude token pool runs as `python -m` on the lab host whose
     # pool it is (the remote-lane runner at lane start, the operator adding a
     # token); it publishes nothing and subscribes to no topic, so it has no
     # onex.nodes entry point.
     "node_claude_token_pool_effect",
+    # OMN-17427: the lab secret-store override edits an ephemeral render copy on
+    # the caller's own filesystem, so the lab apply script runs it in process
+    # from its console script; it subscribes to no topic and has no onex.nodes
+    # entry point.
+    "node_lab_secret_store_override_effect",
+    # OMN-17427: the legacy worktree audit reads the host's own worktrees, so
+    # its console script runs it from the command line; it subscribes to no
+    # topic and has no onex.nodes entry point.
+    "node_legacy_worktree_audit_effect",
 }
 
 # Node directories that hold migrations and no contract.yaml yet. Each entry
 # expires itself: a directory that gains a contract.yaml, or disappears, fails
 # the inventory until the entry is removed.
-MIGRATION_ONLY_NODE_DIRS: set[str] = set()
+MIGRATION_ONLY_NODE_DIRS: set[str] = {"node_projection_local_environment"}
 
 # Node directories on dev when the pinned totals were retired (OMN-17427).
 # Adding a node never touches this. Lower it only in a PR that deletes a node,

@@ -146,8 +146,14 @@ from omnimarket.routing.customer_key_terminus import (
     lab_backend_hosts,
     refuse_keyless_customer_on_cloud,
 )
+from omnimarket.routing.delegation_backend_resolution import (
+    ModelResolvedDelegationBackend,
+)
 from omnimarket.routing.roi_overlay import ModelRoutingRoiOverlay
-from omnimarket.routing.routing_tiers_path import resolve_routing_tiers_path
+from omnimarket.routing.routing_tiers_path import (
+    load_delegation_routing_overlay,
+    resolve_routing_tiers_path,
+)
 from omnimarket.routing.task_class_contract_path import (
     TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
 )
@@ -178,10 +184,15 @@ def _roi_suppressed_tiers(
 # System prompts by task type — kept here because they are presentation strings,
 # not routing configuration.
 _SYSTEM_PROMPTS: dict[str, str] = {
+    # OMN-19401: the repository's own conventions, not a fixed marker. The
+    # gate requires @pytest.mark.unit only where the prompt says the repository
+    # marks its tests that way, so this prompt must not demand it of every repo.
     "test": (
-        "You are a test generation assistant. Write comprehensive pytest unit tests "
-        "for the provided code. Include edge cases, error paths, and clear assertions. "
-        "Use @pytest.mark.unit decorator on all tests."
+        "You are a test generation assistant. Write pytest tests for the provided "
+        "code, following the conventions of the repository the request names: use "
+        "the markers, fixtures, naming and assertion style of any tests shown, and "
+        "add no pytest marker the repository does not use. Cover the edge cases and "
+        "error paths the request asks for, with clear assertions."
     ),
     "document": (
         "You are a documentation assistant. Write clear, comprehensive docstrings "
@@ -228,6 +239,21 @@ _SYSTEM_PROMPTS: dict[str, str] = {
         "You are a summarization assistant. Produce a concise, accurate summary "
         "of the provided content."
     ),
+    "extraction_proposer": (
+        "You are a context extraction assistant. Propose concise, accurate facts "
+        "from the provided content, preserving its identifiers and grounding "
+        "every claim in that content."
+    ),
+    "tail_summary": (
+        "You are a conversation summarization assistant. Produce a concise, "
+        "accurate summary of the provided conversation tail, preserving its "
+        "identifiers and grounding every claim in that content."
+    ),
+    "context_selection": (
+        "You are a context selection assistant. Select the provided context "
+        "relevant to the requested task, preserving its identifiers and "
+        "grounding every claim in that content."
+    ),
     "simple_tasks": (
         "You are a helpful assistant. Complete the requested task accurately."
     ),
@@ -256,6 +282,14 @@ _SYSTEM_PROMPTS: dict[str, str] = {
         "contract. Every validator must compile without errors, pass the "
         "existing test suite, and enforce the declared rule precisely — "
         "prefer a hard failure over a silent pass on an unmet condition."
+    ),
+    # OMN-17427: the model drafts only the free-text slots; code fills the rest.
+    "brief_drafting": (
+        "You are a lane brief drafting assistant. Draft only the free-text "
+        "slots you are asked for, from the facts given. State only what the "
+        "facts state and never add an identifier they do not hold. Never write "
+        "a ticket-state acknowledgement, a quoted criterion, a constraints "
+        "block or a heading of the standing rules; code fills those."
     ),
 }
 
@@ -1170,9 +1204,28 @@ def _tier_allowed_by_contract(
     return True
 
 
+def _with_registered_byok_tier(
+    tiers: tuple[ModelRoutingTier, ...],
+) -> tuple[ModelRoutingTier, ...]:
+    """Insert the overlay-declared registered-key tier without widening other ladders."""
+    policy = load_delegation_routing_overlay().registered_byok_tier
+    names = tuple(tier.name for tier in tiers)
+    if policy is None or policy.after_tier not in names:
+        return tiers
+    if policy.name in names:
+        raise ProtocolConfigurationError(
+            "registered_byok_tier name collides with an existing routing tier",
+            tier_name=policy.name,
+        )
+    position = names.index(policy.after_tier) + 1
+    return (*tiers[:position], policy, *tiers[position:])
+
+
 def _tier_order_from_contract(
     config: ModelDelegationConfig,
     entry: dict[str, object] | None,
+    *,
+    include_registered: bool = True,
 ) -> tuple[ModelRoutingTier, ...]:
     """Return tiers in contract-declared escalation order, or config default.
 
@@ -1185,18 +1238,35 @@ def _tier_order_from_contract(
     `test` declares [local, cheap_cloud, claude] but escalated into cheap_frontier
     after claude), defeating the per-class ceiling the tier_order encodes.
 
+    A deployment may explicitly insert its registered-customer-key tier via
+    the typed routing overlay. Its insertion anchor must already be in this
+    class's order; other platform tiers are never appended. An unbound overlay
+    leaves the packaged order unchanged.
+
     When the task-class entry declares no tier_order, the config declaration
-    order is returned unchanged (graceful degradation).
+    order is used before that explicit overlay insertion.
     """
     if entry is None:
-        return config.tiers
+        return (
+            _with_registered_byok_tier(config.tiers)
+            if include_registered
+            else config.tiers
+        )
 
     escalation = entry.get("escalation_policy")
     if not isinstance(escalation, dict):
-        return config.tiers
+        return (
+            _with_registered_byok_tier(config.tiers)
+            if include_registered
+            else config.tiers
+        )
     tier_order = escalation.get("tier_order")
     if not isinstance(tier_order, list) or not tier_order:
-        return config.tiers
+        return (
+            _with_registered_byok_tier(config.tiers)
+            if include_registered
+            else config.tiers
+        )
 
     tier_by_name = {t.name: t for t in config.tiers}
     ordered: list[ModelRoutingTier] = []
@@ -1214,7 +1284,11 @@ def _tier_order_from_contract(
             ordered.append(tier_by_name[name])
             seen.add(name)
 
-    return tuple(ordered)
+    return (
+        _with_registered_byok_tier(tuple(ordered))
+        if include_registered
+        else tuple(ordered)
+    )
 
 
 def _is_free_config_tier(config: ModelDelegationConfig, tier_name: str) -> bool:
@@ -1661,6 +1735,7 @@ def _tier_can_route_task(
     bifrost_backends: dict[str, BifrostBackendRef],
     contract: dict[str, object] | None,
     excluded_backend_refs: frozenset[str] = frozenset(),
+    byok_backends: tuple[ModelResolvedDelegationBackend, ...] = (),
 ) -> bool:
     """Return whether ``tier`` can actually route ``task_type``.
 
@@ -1676,6 +1751,11 @@ def _tier_can_route_task(
     entry = _task_class_entry(contract, task_type)
     if not _tier_allowed_by_contract(tier, entry):
         return False
+    registered_policy = load_delegation_routing_overlay().registered_byok_tier
+    if registered_policy is not None and tier.name == registered_policy.name:
+        if entry is None or entry.get("routing_availability") is not None:
+            return False
+        return any(b.backend_id not in excluded_backend_refs for b in byok_backends)
     contract_model_ref = _get_contract_model_ref(task_type, contract=contract)
     # Availability probe (token budget 0): answers "could any model in this tier
     # serve the task with a resolvable backend", not the final selection. delta()
@@ -1702,6 +1782,7 @@ def next_eligible_tier(
     roi_overlay: ModelRoutingRoiOverlay | None = None,
     excluded_backend_refs: frozenset[str] = frozenset(),
     correlation_id: object | None = None,
+    byok_backends: tuple[ModelResolvedDelegationBackend, ...] = (),
 ) -> str | None:
     """Return the next tier name after current_tier_name, skipping excluded_tiers.
 
@@ -1731,6 +1812,11 @@ def next_eligible_tier(
     ``correlation_id`` preserves the drawn entry-first ladder (OMN-20163): an
     entry-tier miss proceeds to the original first rung before metered tiers.
     Quota never changes this escalation order.
+
+    ``byok_backends`` is an explicit snapshot of registered customer routes,
+    supplied only by the in-process composition root. Empty by default: a bus
+    decision never acquires a host-local key. It can populate only the declared
+    ``byok`` tier, and respects the same closed order, exclusions and policy.
 
     This is the single parsing path for tier escalation order. The orchestrator
     imports and calls this directly -- no independent YAML parsing.
@@ -1763,6 +1849,7 @@ def next_eligible_tier(
                 bifrost_backends,
                 contract,
                 excluded_backend_refs,
+                byok_backends=byok_backends,
             ):
                 continue
             return tier.name
@@ -1778,6 +1865,7 @@ def first_eligible_tier(
     roi_overlay: ModelRoutingRoiOverlay | None = None,
     correlation_id: object | None = None,
     quota_state: ModelProviderQuotaSnapshot | None = None,
+    byok_backends: tuple[ModelResolvedDelegationBackend, ...] = (),
 ) -> str | None:
     """Return the initial tier for ``task_type``, honoring its entry share.
 
@@ -1836,7 +1924,9 @@ def first_eligible_tier(
         for tier in ordered:
             if tier.name in skip:
                 continue
-            if _tier_can_route_task(tier, task_type, bifrost_backends, contract):
+            if _tier_can_route_task(
+                tier, task_type, bifrost_backends, contract, byok_backends=byok_backends
+            ):
                 return tier.name
         # Only a non-empty ROI suppression warrants a fail-safe second pass.
         if not suppressed:
@@ -2068,6 +2158,7 @@ def backend_id_for_tier(
     *,
     require_credential: bool = True,
     spread_key: str | None = None,
+    byok_backends: tuple[ModelResolvedDelegationBackend, ...] = (),
 ) -> str | None:
     """Return the bifrost ``backend_id`` ``tier_name`` would select for ``task_type``.
 
@@ -2098,12 +2189,22 @@ def backend_id_for_tier(
     every existing caller are unchanged.
     """
     config = _get_config()
+    registered_policy = load_delegation_routing_overlay().registered_byok_tier
+    available_tiers = _with_registered_byok_tier(config.tiers)
     matching_tier = next(
-        (tier for tier in config.tiers if tier.name == tier_name),
+        (tier for tier in available_tiers if tier.name == tier_name),
         None,
     )
     if matching_tier is None:
         return None
+
+    if registered_policy is not None and tier_name == registered_policy.name:
+        entry = _task_class_entry(_get_task_class_contract(), task_type)
+        if entry is None or entry.get("routing_availability") is not None:
+            return None
+        if not _tier_allowed_by_contract(matching_tier, entry):
+            return None
+        return byok_backends[0].backend_id if byok_backends else None
 
     bifrost_backends = _load_bifrost_endpoints()
     contract = _get_task_class_contract()
@@ -2301,7 +2402,11 @@ def resolve_task_class_max_escalations(task_type: str) -> int | None:
         return None
     if raw < 0:
         return None
-    return raw
+    config = _get_config()
+    added = len(_tier_order_from_contract(config, entry)) - len(
+        _tier_order_from_contract(config, entry, include_registered=False)
+    )
+    return raw + added
 
 
 def is_free_tier(tier_name: str) -> bool:

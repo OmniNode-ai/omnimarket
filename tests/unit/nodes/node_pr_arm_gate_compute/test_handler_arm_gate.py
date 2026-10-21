@@ -39,7 +39,6 @@ _ARM_READY_CANDIDATE = ModelArmCandidate(
     repo=_REPO,
     pr_number=_PR_NUMBER,
     is_draft=False,
-    coderabbit_unresolved=0,
     merge_state_status="CLEAN",
     status_checks="SUCCESS",
     occ_companion_verified=True,
@@ -103,20 +102,6 @@ async def test_is_draft_not_confirmed_false_withholds(is_draft: bool | None) -> 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.parametrize("coderabbit_unresolved", [1, 5, None])
-async def test_coderabbit_unresolved_not_confirmed_zero_withholds(
-    coderabbit_unresolved: int | None,
-) -> None:
-    """None must WITHHOLD exactly like a nonzero count — never default to 0."""
-    candidate = _ARM_READY_CANDIDATE.model_copy(
-        update={"coderabbit_unresolved": coderabbit_unresolved}
-    )
-    decision = await _decide(candidate, _ENFORCE_POLICY)
-    assert decision == EnumArmDecision.WITHHOLD
-
-
-@pytest.mark.unit
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "merge_state_status", ["DIRTY", "BLOCKED", "BEHIND", "UNKNOWN", None]
 )
@@ -163,9 +148,9 @@ async def test_withheld_reasons_enumerate_every_failed_criterion() -> None:
         ModelArmGateRequest(candidate=candidate, policy=ModelArmGatePolicy())
     )
     assert decision.decision == EnumArmDecision.WITHHOLD
-    # action_mode, kill_switch, is_draft, coderabbit_unresolved,
-    # merge_state_status, status_checks, occ_companion_verified.
-    assert len(decision.withheld_reasons) == 7
+    # action_mode, kill_switch, is_draft, merge_state_status, status_checks,
+    # occ_companion_verified.
+    assert len(decision.withheld_reasons) == 6
 
 
 @pytest.mark.unit
