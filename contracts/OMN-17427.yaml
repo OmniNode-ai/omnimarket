@@ -721,6 +721,11 @@ requirements:
     acceptance:
       - id: "AC160"
         statement: "AC160: tests/ci/test_ticket_contracts_schema_omn17427.py loads every contracts/OMN-*.yaml with ModelTicketContract, shows a 51-character dod_evidence id is refused, and .pre-commit-config.yaml runs it as hook ticket-contract-schema on contracts/OMN-<n>.yaml -- falsifier: uv run pytest tests/ci/test_ticket_contracts_schema_omn17427.py fails at the merge base, where the test file and hook are absent."
+  - id: req-omn20303-harness-counterfactual-readback
+    statement: A harness terminal whose token-derived saving is projected keeps the same saving and its premium counterfactual in the delegation projection.
+    acceptance:
+    - id: AC161
+      statement: 'AC161: OMN-20303 AC3 harness readback regression: both delegation writers retain the baseline of an unreported token-derived harness saving, preserve a stored pinned baseline, and invent no baseline for failed, zero-token, unresolved or explicitly reported terminals -- falsifier: uv run pytest tests/unit/nodes/node_projection_delegation/test_harness_savings_counterfactual_omn20303.py -q -n 0 --no-cov'
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -3052,3 +3057,21 @@ dod_evidence:
           print("ticket-contract-schema hook probe: PASS")
           PY
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-omn20303-ac3-harness-counterfactual
+    description: 'The live dev-lane readback found 19 harness savings rows without a delegation counterfactual, including 9bfb4098-38cb-4ac5-bf64-224dd2001541. The two writer regressions fail at the base on a missing baseline; the controls retain existing attribution and truthful absence. Post-deploy readback remains required.'
+    source: manual
+    binds_ac: [AC161]
+    checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/unit/nodes/node_projection_delegation/test_harness_savings_counterfactual_omn20303.py -q -n 0 --no-cov --refuse-skips
+      cwd: ${OMNI_HOME}/omnimarket
+    - check_type: test_passes
+      check_value: env -u ONEX_TENANT_ID uv run pytest tests/test_omn20303_real_postgres_savings_one_row_per_run.py -k harness_saving -q -n 0 --no-cov --refuse-skips
+      cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn20303-ac3-harness-deploy-probe
+    description: 'Hosted deployment check: replay the live harness terminal metering shape through both packaged delegation writers and the savings writer, asserting the joined saving and its pinned baseline. Fails at the base without deployed-service access. This is a runtime-path check, not a live deployment attestation.'
+    source: manual
+    checks:
+    - check_type: command
+      check_value: uv run pytest tests/unit/nodes/node_projection_delegation/test_harness_savings_counterfactual_omn20303.py -k test_harness_saving_keeps_counterfactual -q -n 0 --no-cov --refuse-skips
+      cwd: ${OMNI_HOME}/omnimarket
