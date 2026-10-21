@@ -156,33 +156,11 @@ def test_declared_unavailable_role_is_invalid_profile(
 
 
 @pytest.mark.parametrize(
-    ("name", "missing_fields"),
-    [
-        ("compaction_orchestrator", ("summary_task_class",)),
-        ("session_resume", ("summary_task_class",)),
-    ],
-)
-def test_shipped_profiles_refuse_roles_missing_from_routing_contract(
-    monkeypatch: pytest.MonkeyPatch,
-    name: str,
-    missing_fields: tuple[str, ...],
-) -> None:
-    monkeypatch.delenv("TASK_CLASS_CONTRACT_PATH", raising=False)
-    result = HandlerContextProfileResolver().handle(
-        ModelContextProfileResolveRequest(profile_name=name)
-    )
-    assert result.status is EnumContextProfileResolveStatus.FAILED
-    assert result.failure_class is EnumContextPackFailure.INVALID_PROFILE
-    assert result.profile is None
-    assert result.profile_content_hash is None
-    assert tuple(error.split(":", 1)[0] for error in result.errors) == missing_fields
-    assert all("no routing-contract entry" in error for error in result.errors)
-
-
-@pytest.mark.parametrize(
     "name",
     [
         "agent_spawn",
+        "compaction_orchestrator",
+        "session_resume",
         "delegation_payload_local",
         "lane_brief",
         "lane_brief_section",

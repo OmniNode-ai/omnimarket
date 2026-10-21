@@ -18,6 +18,7 @@ dependencies:
   - "httpx"
   - "pyyaml"
   - "pydantic"
+  - "click>=8.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["effect", "evaluation", "trajectory", "OMN-20087"]

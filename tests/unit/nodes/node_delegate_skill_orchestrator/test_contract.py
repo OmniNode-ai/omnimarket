@@ -164,6 +164,7 @@ def test_contract_declares_allowed_task_types() -> None:
         "extraction_proposer",
         "tail_summary",
         "context_selection",
+        "context_compaction",
     }
 
 

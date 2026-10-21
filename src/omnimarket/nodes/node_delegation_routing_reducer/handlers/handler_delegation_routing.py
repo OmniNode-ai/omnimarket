@@ -254,6 +254,11 @@ _SYSTEM_PROMPTS: dict[str, str] = {
         "relevant to the requested task, preserving its identifiers and "
         "grounding every claim in that content."
     ),
+    "context_compaction": (
+        "You are a context compaction assistant. Produce a concise, accurate "
+        "summary of the provided context, preserving its identifiers and "
+        "grounding every claim in that content."
+    ),
     "simple_tasks": (
         "You are a helpful assistant. Complete the requested task accurately."
     ),
