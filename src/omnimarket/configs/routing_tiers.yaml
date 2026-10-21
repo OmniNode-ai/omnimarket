@@ -181,6 +181,7 @@ tiers:
           - extraction_proposer
           - tail_summary
           - context_selection
+          - evidence_comment
           - context_compaction
         fast_path_threshold_tokens: 8192
     eval_before_accept: true

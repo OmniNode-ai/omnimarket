@@ -160,12 +160,12 @@ def test_declared_unavailable_role_is_invalid_profile(
     [
         "agent_spawn",
         "compaction_orchestrator",
+        "session_resume",
         "delegation_payload_local",
         "lane_brief",
         "lane_brief_section",
         "session_start",
         "per_prompt",
-        "session_resume",
     ],
 )
 def test_shipped_profiles_resolve_with_the_packaged_routing_contract(

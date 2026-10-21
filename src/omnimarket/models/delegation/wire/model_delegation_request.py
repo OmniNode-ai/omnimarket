@@ -91,7 +91,6 @@ class ModelDelegationRequest(BaseModel):
         "planning",
         "review",
         "summarization",
-        "context_compaction",
         "agent_delegation",
         "escalation",
         "documentation",
@@ -100,6 +99,8 @@ class ModelDelegationRequest(BaseModel):
         "extraction_proposer",
         "tail_summary",
         "context_selection",
+        "evidence_comment",
+        "context_compaction",
     ] = Field(
         ...,
         description="Classification of the delegation task.",

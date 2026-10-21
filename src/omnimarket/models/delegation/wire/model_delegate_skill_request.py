@@ -81,7 +81,6 @@ class ModelDelegateSkillRequest(BaseModel):
         "planning",
         "review",
         "summarization",
-        "context_compaction",
         "agent_delegation",
         "escalation",
         "documentation",
@@ -90,6 +89,8 @@ class ModelDelegateSkillRequest(BaseModel):
         "extraction_proposer",
         "tail_summary",
         "context_selection",
+        "evidence_comment",
+        "context_compaction",
     ] = Field(
         ...,
         description=(
