@@ -686,6 +686,8 @@ def add_key(
     recorded and returned whether it passed or failed: the key stays stored
     either way, as ``onex models add`` has always left it.
     """
+    # Credentials-page updates an earlier change could not apply go first, in order.
+    drain_pending_credential_events(LocalByokCredentialStore().db_path)
     if len(set(models)) != len(models):
         raise ModelKeyRefusedError("a model is named twice. Nothing was stored.")
     plan = resolve_local_byok_credential_plan(provider)

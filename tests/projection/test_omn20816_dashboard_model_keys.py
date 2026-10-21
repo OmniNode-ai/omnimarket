@@ -331,3 +331,30 @@ def test_m8_a_malformed_body_is_refused_without_echoing_the_key(
     assert _OR_KEY not in response.text
     assert resolve_local_byok_credential_models("openrouter") == ()
     assert delegations.calls == []
+
+
+def test_m9_a_page_add_applies_credentials_updates_an_earlier_fold_left_pending(
+    delegations: _Delegations, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The pending-file rule: every key change drains it first, the page's too."""
+    import sqlite3
+
+    from omnimarket.handlers import handler_model_keys
+
+    client = _client(tmp_path)
+    delegations.models[_backend("openrouter")] = _OR_MODEL
+    real = handler_model_keys.SqliteDatabaseAdapter
+
+    def unavailable(*_args: object, **_kwargs: object) -> object:
+        raise sqlite3.OperationalError("injected projection failure")
+
+    monkeypatch.setattr(handler_model_keys, "SqliteDatabaseAdapter", unavailable)
+    failed = _add(client, "openrouter", _OR_KEY, [_OR_MODEL])
+    assert failed.status_code == 422, failed.text
+    pending = tmp_path / handler_model_keys.PENDING_CREDENTIAL_EVENTS_NAME
+    assert pending.exists()
+
+    monkeypatch.setattr(handler_model_keys, "SqliteDatabaseAdapter", real)
+    delegations.models[_backend("openai")] = _OAI_MODEL
+    assert _add(client, "openai", _OAI_KEY, [_OAI_MODEL]).status_code == 200
+    assert not pending.exists()

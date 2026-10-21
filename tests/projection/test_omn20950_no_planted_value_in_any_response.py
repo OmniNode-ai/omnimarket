@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import logging
 import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
@@ -58,6 +59,7 @@ _REF = "llm.openrouter.api_key"
 _FIRST = "sk-or-v1-planted-omn20950-http-first-0123456789abcdef"
 _SECOND = "sk-or-v1-planted-omn20950-http-second-fedcba9876543210"
 _CREDENTIALS = "onex.snapshot.projection.tenant-credentials.v1"
+_CONTROL = "omn20816-log-capture-positive-control"
 _OTHER_TENANT = "00000000-0000-4000-8000-000000000000"
 
 # Built once: discovering every contract's exposures takes seconds, and every
@@ -246,7 +248,11 @@ def test_a_key_added_on_the_page_is_in_no_response_and_no_log(
     )
     # F7: no form of either key in anything logged at DEBUG or above. The planted
     # control for this check is a route that logs the key (a mutation run).
+    # Positive control: a value logged by the dashboard's own module is found by
+    # the same capture and scan, so an empty capture cannot pass the check.
+    logging.getLogger(create_dashboard_app.__module__).warning("control %s", _CONTROL)
     logged = "\n".join(record.getMessage() for record in caplog.records)
+    assert _CONTROL in logged
     _assert_no_value_in({"log": (0, logged)}, [_FIRST, _SECOND])
 
 
