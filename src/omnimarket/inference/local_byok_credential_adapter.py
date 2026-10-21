@@ -56,6 +56,7 @@ Related:
 
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 import stat
@@ -619,6 +620,34 @@ def registered_local_byok_providers(
     return providers if registration_order else tuple(sorted(providers))
 
 
+#: The last pinned test of each provider, written by ``onex models add`` and
+#: ``onex models test`` beside the local credential database (OMN-20817).
+LOCAL_MODEL_TESTS_FILE: Final = "model_tests.json"
+
+
+def local_model_tests_path(db_path: Path | None = None) -> Path:
+    """Where the last pinned test of each provider is recorded."""
+    resolved_path = db_path if db_path is not None else default_evidence_db_path()
+    return resolved_path.parent / LOCAL_MODEL_TESTS_FILE
+
+
+def local_byok_key_test_failed(provider: str, *, db_path: Path | None = None) -> bool:
+    """True when ``provider``'s key failed its last pinned test (OMN-21259).
+
+    Delegation does not route such a key until a test passes: its only chosen
+    model the test proves did not answer, so every run would climb to it and
+    fail. A key never tested, or one whose record is unreadable, stays routable.
+    """
+    try:
+        recorded = json.loads(
+            local_model_tests_path(db_path).read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError):
+        return False
+    entry = recorded.get(provider) if isinstance(recorded, dict) else None
+    return isinstance(entry, dict) and entry.get("status") == "failed"
+
+
 class LocalByokCredentialStore:
     """``ProtocolSecretStore`` over the existing local delegation database.
 
@@ -777,12 +806,15 @@ __all__: list[str] = [
     "LOCAL_CREDENTIAL_MODEL_TABLE",
     "LOCAL_CREDENTIAL_TABLE",
     "LOCAL_INSTALL_TENANT_ID",
+    "LOCAL_MODEL_TESTS_FILE",
     "MODEL_CHOSEN_BY_CATALOGUE",
     "MODEL_CHOSEN_BY_CUSTOMER",
     "LocalByokCredentialError",
     "LocalByokCredentialStore",
     "is_local_store_only_ref",
+    "local_byok_key_test_failed",
     "local_credential_registered_at",
+    "local_model_tests_path",
     "local_secret_remediation",
     "mint_local_byok_credential_ref",
     "register_local_byok_credential",

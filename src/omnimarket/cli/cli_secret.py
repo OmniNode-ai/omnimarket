@@ -1128,6 +1128,12 @@ def store_secret_value(
     except LocalSecretStoreRefusedError as refusal:
         raise click.ClickException(str(refusal)) from None
     click.echo(f"Stored {secret_ref} in {store.db_path} (owner-only).")
+    if provider in PROVIDERS:
+        # OMN-21259: a new key starts untested; the old key's failed test
+        # must not keep it out of routing.
+        _model_handler().handle(
+            ModelModelSetupRequest(operation="forget", provider=provider)
+        )
     route_ref = result.route_ref
     if provider is not None and route_ref is not None:
         details = [
@@ -1273,6 +1279,7 @@ _KEY_PAGES: dict[str, str] = {
     "anthropic": "platform.claude.com/settings/keys",
     "glm": "z.ai/manage-apikey/apikey-list",
 }
+_NOT_ROUTED = "Delegation does not use this key until its test passes."
 _OLLAMA_HOW = (
     "Ollama is installed by onboarding, which downloads a model sized to this "
     "Mac: run onboarding again with --provider ollama."
@@ -1311,8 +1318,11 @@ def _show_model_test(result: ModelModelTestResult, as_json: bool) -> None:
     if result.status == "passed":
         click.echo(f"{label} ✓ answered ({result.model or result.backend_id})")
     elif result.status == "failed":
-        click.echo(f"{label} ✗ {result.reason}")
+        failed_on = f"{result.model}: " if result.model else ""
+        click.echo(f"{label} ✗ {failed_on}{result.reason}")
         if result.provider != "ollama" and result.provider != LOCAL_URL_PROVIDER:
+            # OMN-21259: a key that failed its test is kept but not routed.
+            click.echo(f"  {_NOT_ROUTED}")
             click.echo(f"  Fix it, then run: onex models test {result.provider}")
     elif result.provider == "ollama":
         click.echo(f"{label} not set up. {_OLLAMA_HOW}")
@@ -1500,10 +1510,15 @@ def list_models(as_json: bool) -> None:
                 f"({last.model}){models}"
             )
         else:
+            failed_on = f" on {last.model}" if last.model else ""
             click.echo(
-                f"{label} set up, last test FAILED {last.tested_at}: "
+                f"{label} set up, last test FAILED {last.tested_at}{failed_on}: "
                 f"{last.reason}{models}"
             )
+            if (
+                row.provider in _KEY_PAGES
+            ):  # a keyed provider; Ollama and local have none
+                click.echo(f"  {_NOT_ROUTED} Run: onex models test {row.provider}")
 
 
 @models_group.command("default-model")
