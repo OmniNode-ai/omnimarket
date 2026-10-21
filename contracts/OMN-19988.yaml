@@ -29,6 +29,12 @@ evidence_requirements:
   - kind: "tests"
     description: "Mode 1: a dashboard start writes one native row carrying the installed versions and no compose rows, through the store-neutral write on a real SQLite store; the handler and the test do not exist at the merge base."
     command: "uv run pytest tests/test_omn19988_native_environment_report.py -q"
+  - kind: "tests"
+    description: "Mode 2: the compose observer probes the catalog's services on its contract-declared interval and publishes local-environment-status.v1 reports, one per service, with a real HTTP and TCP prober against a closed port; the writer stores them, opens one SERVICE_DOWN alert for a stopped service, turns a silent sibling STALE after the deadline, and writes nothing on a replay or an older report."
+    command: "uv run pytest tests/test_golden_chain_local_environment_observe_effect.py tests/test_omn19988_local_environment_writer.py -q"
+  - kind: "tests"
+    description: "The writer on a real Postgres: types, replay, late and stale siblings under the tenant setting."
+    command: "uv run pytest tests/test_omn19988_local_environment_writer_real_postgres.py -q --refuse-skips"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -65,3 +71,25 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn19988_native_environment_report.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn19988-ac1-mode2-observer-and-writer"
+    description: "The mode 2 half of AC1, with nobody running a status command. The compose observer, driven by its contract-declared runtime interval, probes each catalog service over HTTP or TCP and publishes one local-environment-status.v1 report per service (a closed port reads down); with no canonical tenant it probes nothing. The writer stores each report under its tenant, opens exactly one SERVICE_DOWN alert in the stored row for a stopped service, turns a silent sibling STALE after the deadline and publishes both, and writes nothing for a replayed or older report. Neither the observer nor the writer exists at the merge base, so these tests fail there. A stopped service on a lab host read on the page is AC2's own falsifier, not this check."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_local_environment_observe_effect.py tests/test_omn19988_local_environment_writer.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19988-ac1-writer-real-postgres"
+    description: "The writer on a real Postgres under the tenant setting: stored types, a replay that changes no row, a late older report that writes nothing, and silent siblings turned STALE. Run with --refuse-skips, so it cannot pass where no database is provisioned; absent at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19988_local_environment_writer_real_postgres.py -q --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19988-environment-writer-deploy-probe"
+    description: "Deploy probe. The local environment writer GitHub serves at the checked-out commit exists; the probe reads handler_local_environment_writer.py from GitHub at that commit and exits nonzero on a tree without its writer class (the file is absent at the merge base), so it fails there."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_local_environment/handlers/handler_local_environment_writer.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'class LocalEnvironmentProjectionWriter' | grep -qv '^0$'"
