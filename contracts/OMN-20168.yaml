@@ -9,26 +9,20 @@ interfaces_touched: []
 requirements:
   - id: "req-attempt-lineage"
     statement: |-
-      Every delegation attempt must record what kind it was, which attempt it followed, which host ran it and its size band, and the consumer must decode those keys.
+      Every delegation attempt must record what kind it was, which attempt it followed, which host and backend ran it, its size band, its rubric verdict and the configuration it was sent with, and the consumer must decode those keys.
     acceptance:
       - id: "AC1"
         statement: |-
-          AC1: every durable attempt row carries attempt_id, attempt_kind, host, parent_attempt_id, size_band and split_id, linked to the previous attempt by default, with size_band a present null -- falsifier: uv run pytest tests/unit/delegation/test_attempt_events_omn20168.py -q -k "writes_a_row_with_the_lineage_fields or lineage_defaults_link or size_band_is_a_present_null"
+          AC1: a first attempt, a split child, a recombine check and an escalation each emit one attempt event with backend_id, host, model, size band, rubric version and verdict, attempt kind and parent attempt id -- falsifier: uv run pytest tests/unit/delegation -k attempt_event_fields -v in omnimarket
       - id: "AC2"
         statement: |-
-          AC2: the lineage record validates itself: each kind needs an attempt id, no kind is its own parent, later kinds need a parent, first_try forbids one, and split kinds require a split -- falsifier: uv run pytest tests/unit/delegation/test_attempt_events_omn20168.py -q -k "each_kind or first_try_forbids or whole_request_kinds or split_kinds or later_kinds"
+          AC2: a redelivered attempt command emits no second event for the same attempt key -- falsifier: uv run pytest tests/unit/delegation -k attempt_event_idempotent -v in omnimarket
       - id: "AC3"
         statement: |-
-          AC3: stamping is pure and idempotent, keeps explicit values and nulls, serializes ids and kind, and a pre-lineage record decodes with all six fields None -- falsifier: uv run pytest tests/unit/delegation/test_attempt_events_omn20168.py -q -k "stamping or predating or attempt_ids_use"
+          AC3: on the dev lane an escalated delegation has one attempt event per entry in its attempt history, with the backends distinct -- falsifier: a dev-lane query of attempt events for one escalated correlation id against its attempt_history length, with a positive control on a single-attempt run
       - id: "AC4"
         statement: |-
-          AC4: bus attempt records keep hosts and stamp the escalation history, and an unparseable correlation or invalid lineage falls back without losing the terminal -- falsifier: uv run pytest tests/unit/delegation/test_attempt_events_omn20168.py -q -k "endpoint_host or bus_attempt or unparseable or invalid_lineage or lineage_fields_type"
-      - id: "AC5"
-        statement: |-
-          AC5: the consumer declares and retains the six attempt lineage keys, still refuses any other unknown key, and so decodes against the released consumer -- falsifier: uv run pytest tests/unit/delegation/test_consumer_first_attempt_lineage_omn20168.py -q
-      - id: "AC6"
-        statement: |-
-          AC6: a real escalating local dispatch writes one lineage entry per attempt, and the row and the typed terminal name the same attempts -- falsifier: uv run pytest tests/test_omn20168_local_dispatch_attempt_lineage_seam.py -q
+          AC4: every attempt event carries the configuration identity (parameter values and context strategy id), and a configuration-swap retry emits attempt kind config_swap with its parent attempt id -- falsifier: uv run pytest tests/unit/delegation -k "attempt_event_configuration or config_swap_attempt_kind" -v in omnimarket
 evidence_requirements:
   - kind: "tests"
     description: "The attempt lineage, consumer-first and local dispatch seam tests."
@@ -86,3 +80,33 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn20168_local_dispatch_attempt_lineage_seam.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC6"]
+  - id: "dod-attempt-configuration-consumer-first"
+    description: "An attempt carrying configuration, or a null one, decodes with the key dropped, configuration is a forthcoming attempt key only, and any other unknown key is still refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_consumer_first_attempt_configuration_omn20168.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+    supersedes_ac_binding:
+      - item: "dod-attempt-lineage-ac5"
+        label: "AC5"
+        reason_kind: "no_longer_applicable"
+        reason: "The ticket carries four acceptance criteria; AC5 was a contract-only criterion for the consumer-first lineage decode and is not on the ticket."
+        retired_by: "jake-b-omni"
+        retired_at: "2026-10-20T21:29:48Z"
+      - item: "dod-attempt-lineage-ac6"
+        label: "AC6"
+        reason_kind: "no_longer_applicable"
+        reason: "The ticket carries four acceptance criteria; AC6 was a contract-only criterion for the local dispatch seam and is not on the ticket."
+        retired_by: "jake-b-omni"
+        retired_at: "2026-10-20T21:29:48Z"
+  - id: "dod-attempt-configuration-deploy-smoke"
+    description: "Hosted deploy probe: a disposable container mounts the checked-out source read-only and checks that the attempt record's consumer-first key set declares configuration beside backend_pinned. The probe is absent at the merge base and present at the head. A container that installed the package and ran the consumer tests exceeded the verifier's 30 second per-check budget on a hosted runner, so the behavioural proof that configuration and a null configuration decode with the key dropped, and that any other unknown key is still refused, stays in dod-attempt-configuration-consumer-first. This does not claim a dev-lane rollout."
+    source: "manual"
+    execution_scope: "hosted_and_local"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          sh -c 'docker run --rm -v "${PWD}:/workspace:ro" -w /workspace postgres:16-alpine sh -c "set -eu; grep -Fq \"{\\\"backend_pinned\\\", \\\"configuration\\\"}\" src/omnimarket/models/delegation/wire/model_delegate_skill_response.py"'
+        cwd: "."

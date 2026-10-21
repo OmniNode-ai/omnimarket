@@ -103,7 +103,14 @@ from omnimarket.models.model_delegation_split_recombine import EnumDelegationSiz
 #
 # OMN-20717 declared ``usage_source`` on the attempt and ``cost_measured`` on
 # the metrics below, after the release that carried their consumer-first keys.
-_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({"backend_pinned"})
+#
+# OMN-20168 adds ``configuration``: the call parameters and context strategy an
+# attempt was sent with, so a capability map can tell which configuration swap
+# recovered which failure. The producer and the declared field land in the
+# change after omniclaude's pin carries this consumer.
+_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset(
+    {"backend_pinned", "configuration"}
+)
 # OMN-20274: the savings baseline keys omnimarket#3172 (OMN-19969) declares.
 _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
     {"baseline_source", "baseline_state"}

@@ -99,6 +99,8 @@ class ModelDelegationRequest(BaseModel):
         "extraction_proposer",
         "tail_summary",
         "context_selection",
+        "evidence_comment",
+        "context_compaction",
     ] = Field(
         ...,
         description="Classification of the delegation task.",

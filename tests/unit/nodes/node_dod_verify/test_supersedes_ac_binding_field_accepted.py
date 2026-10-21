@@ -116,6 +116,9 @@ def _retiring_item() -> dict[str, object]:
 
 
 _REAL_SHAPE = ("binds_ac", "ac_bindings", "supersedes_ac_binding")
+# A field the installed core model does not declare, so only the OCC model can
+# admit it and the OCC authority is consulted.
+_OCC_ONLY_FIELD = "a_field_only_the_occ_model_may_own"
 
 
 def _messages(results: list[object]) -> list[str]:
@@ -150,17 +153,23 @@ def test_a_genuinely_unknown_field_is_still_rejected(tmp_path: Path) -> None:
 def test_authority_a_field_the_occ_model_does_not_declare_is_refused(
     tmp_path: Path,
 ) -> None:
-    """The field set follows the model: drop it from the model and it is refused."""
+    """The field set follows the model: drop it from the model and it is refused.
+
+    core 0.47.51 declares ``supersedes_ac_binding`` itself, so the probe is a
+    field only the OCC model could own.
+    """
+    item = _retiring_item()
+    item[_OCC_ONLY_FIELD] = []
     path = occ_contract(
         tmp_path,
-        [_bound_item(), _retiring_item()],
-        model_source=_stand_in(("binds_ac", "ac_bindings")),
+        [_bound_item(), item],
+        model_source=_stand_in(_REAL_SHAPE),
     )
 
     results = EvidenceCollector().collect("OMN-9999", contract_path=path)
 
     assert any(
-        "INVALID_DOD_EVIDENCE_ITEM" in m and "supersedes_ac_binding" in m
+        "INVALID_DOD_EVIDENCE_ITEM" in m and _OCC_ONLY_FIELD in m
         for m in _messages(results)
     )
 
@@ -206,7 +215,9 @@ def test_authority_an_unreadable_model_refuses_the_contract_by_name(
 def test_authority_a_model_without_the_class_refuses_the_contract_by_name(
     tmp_path: Path,
 ) -> None:
-    path = occ_contract(tmp_path, [_retiring_item()], model_source="X = 1\n")
+    item = _retiring_item()
+    item[_OCC_ONLY_FIELD] = []
+    path = occ_contract(tmp_path, [item], model_source="X = 1\n")
 
     results = EvidenceCollector().collect("OMN-9999", contract_path=path)
 
