@@ -3149,3 +3149,6 @@ dod_evidence:
           print('qwen tool-call artifact probe: PASS (complete fixed matrix, frozen inputs, transcripts, isolation evidence, audit and report tables)')
           PY
         cwd: ${OMNI_HOME}/omnimarket
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/experiments/test_qwen_tool_call_report.py -q --no-cov --refuse-skips
+        cwd: ${OMNI_HOME}/omnimarket
