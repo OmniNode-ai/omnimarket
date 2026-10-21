@@ -26,6 +26,7 @@ from omnimarket.events.topics import (
 from omnimarket.models.claude_code_binding import EnumClientVerdictAction
 from omnimarket.models.context_compaction import (
     ModelContextCompactionPackageReply,
+    ModelContextCompactionRequested,
     installed_messages_hash,
 )
 from omnimarket.models.context_pack_render.model_context_pack_render_message import (
@@ -65,6 +66,7 @@ HOOK_INPUT: dict[str, JsonValue] = {
     "session_id": "recorded-session",
     "cwd": "/work",
     "trigger": "manual",
+    "input_messages_hash": "a" * 64,
 }
 
 
@@ -218,6 +220,84 @@ def test_binding_uses_plan_probe_rows() -> None:
     assert binding.deadline_ms == 12345
 
 
+def test_recorded_command_reaches_the_real_compaction_request_boundary() -> None:
+    commands: list[ModelContextCompactionRequested] = []
+
+    class ValidatingClient(FakeClient):
+        def publish_and_await(self, **kwargs: Any) -> tuple[ModelReceiptEvent, ...]:
+            commands.append(
+                ModelContextCompactionRequested.model_validate(kwargs["payload"])
+            )
+            return super().publish_and_await(**kwargs)
+
+    hook_input = {
+        **HOOK_INPUT,
+        "newest_turn": "recorded-turn",
+        "barrier_id": "recorded-barrier",
+        "compact_model": "user-selected-model",
+    }
+    result = HandlerCompactionLatencyRun(ValidatingClient).handle(
+        request(
+            cases=(ModelCompactionLatencyCase(size="small", hook_input=hook_input),)
+        )
+    )
+    assert result.refusal_count == 0
+    assert len(commands) == 3  # cold, discarded warm-up, warm
+    for command in commands:
+        assert command.input_messages_hash == hook_input["input_messages_hash"]
+        assert command.newest_turn == "recorded-turn"
+        assert command.barrier_id == "recorded-barrier"
+        assert command.compact_model == "user-selected-model"
+
+
+def test_missing_recorded_messages_hash_is_refused_before_publish() -> None:
+    clients: list[FakeClient] = []
+
+    def factory() -> FakeClient:
+        client = FakeClient()
+        clients.append(client)
+        return client
+
+    hook_input = {
+        key: value for key, value in HOOK_INPUT.items() if key != "input_messages_hash"
+    }
+    result = HandlerCompactionLatencyRun(factory).handle(
+        request(
+            cases=(ModelCompactionLatencyCase(size="small", hook_input=hook_input),)
+        )
+    )
+    assert result.refusal_count == 2
+    assert all("input_messages_hash" in (trip.refusal or "") for trip in result.trips)
+    assert all(client.payloads == [] for client in clients)
+
+
+def test_native_fallback_with_prepared_timings_is_not_a_successful_measurement() -> (
+    None
+):
+    class NativeClient(FakeClient):
+        def publish_and_await(self, **kwargs: Any) -> tuple[ModelReceiptEvent, ...]:
+            events = super().publish_and_await(**kwargs)
+            reply = ModelContextCompactionPackageReply(
+                invocation_id=UUID(str(kwargs["payload"]["invocation_id"])),
+                action=EnumClientVerdictAction.NATIVE,
+            )
+            return (
+                ModelReceiptEvent(
+                    topic=CONTEXT_COMPACTION_PACKAGE_TOPIC_V1,
+                    payload=reply.model_dump(mode="json"),
+                ),
+                events[-1],
+            )
+
+    result = HandlerCompactionLatencyRun(NativeClient).handle(request())
+    assert result.refusal_count == 2
+    for trip in result.trips:
+        assert trip.verdict_action == "native"
+        assert trip.refusal == "adapter verdict is native"
+        assert trip.deterministic_build_ms is None
+        assert trip.model_section_ms is None
+
+
 @pytest.mark.parametrize(
     ("factory", "reason"),
     [
@@ -337,7 +417,10 @@ def test_recording_client_clears_receipts_on_failure() -> None:
     kwargs = {
         "topic": binding.command_topic,
         "command_type": binding.command_type,
-        "payload": {"invocation_id": "00000000-0000-4000-8000-000000000000"},
+        "payload": {
+            **HOOK_INPUT,
+            "invocation_id": "00000000-0000-4000-8000-000000000000",
+        },
         "awaited_events": binding.awaited_events,
         "deadline_ms": binding.deadline_ms,
     }
