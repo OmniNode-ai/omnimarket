@@ -119,6 +119,7 @@ _DELEGATION_EVENTS_DECLARED_COLUMNS: tuple[str, ...] = (
     "session_id",
     "task_type",
     "tenant_id",
+    "terminal_failure_cause",
     "terminal_ok",
     "timestamp",
     "tokens_input",
