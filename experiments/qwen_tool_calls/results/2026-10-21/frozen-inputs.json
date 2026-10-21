@@ -1,0 +1,24 @@
+{
+  "frozen_at": "2026-10-21T15:35:06.110179+00:00",
+  "sha256": {
+    "protocol.json": "db54fb17f6220fb87fced996356796e907c3e62863995c860ff100410666f1dd",
+    "tasks.json": "cb9c593d6919ed8fb834167dc98af95ad7cff7c841023218eb5b447e40d1c127",
+    "tools.json": "5eaeadae25b3e1c35a7639b9bafc5734d42ab31cdab54d73f9650f988a83e123",
+    "fixtures.json": "8b3b735a8e6e1680cb3c8c1d426205c9e9f90bf302c409dcad5409d8ee4d0636"
+  },
+  "published_sha256": {
+    "protocol.json": "2c50b327a4d295a186b72454c8c04a86ee5866f05ea97b2bb974cd9fd803fd1d",
+    "tasks.json": "cb9c593d6919ed8fb834167dc98af95ad7cff7c841023218eb5b447e40d1c127",
+    "tools.json": "5eaeadae25b3e1c35a7639b9bafc5734d42ab31cdab54d73f9650f988a83e123",
+    "fixtures.json": "8b3b735a8e6e1680cb3c8c1d426205c9e9f90bf302c409dcad5409d8ee4d0636"
+  },
+  "publication_redactions": {
+    "protocol.json": [
+      "endpoint"
+    ],
+    "endpoint.json": [
+      "network address, deployment command, artifact paths and ownership details"
+    ],
+    "original_evidence": "Retained outside the public repository in the private lane context. sha256 contains original pre-inference input hashes; published_sha256 binds the redacted publication copies. Sampling settings, task prompts, tool schemas, fixtures and all raw model request/response bodies are unchanged."
+  }
+}
