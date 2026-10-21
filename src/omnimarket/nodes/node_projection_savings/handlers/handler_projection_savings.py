@@ -16,13 +16,13 @@ from omnimarket.events.topics import (
     DELEGATION_COMPLETED_TOPIC_V1,
     DELEGATION_FAILED_TOPIC_V1,
 )
+from omnimarket.handlers.handler_modelled_terminal_savings import (
+    modelled_terminal_savings,
+)
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillSavingsProjection,
     ModelDelegateSkillTerminalProjection,
     ModelTaskDelegatedSavingsSource,
-)
-from omnimarket.nodes.node_projection_savings.handlers.handler_modelled_terminal_savings import (
-    modelled_terminal_savings,
 )
 from omnimarket.nodes.node_projection_savings.handlers.handler_savings import (
     SAVINGS_METHOD_VALUES,
