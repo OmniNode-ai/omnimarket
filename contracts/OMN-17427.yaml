@@ -7,6 +7,11 @@ is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
+  - id: "req-metering-envelope-context"
+    statement: "The metering writer separates underscore-prefixed dispatch context from command payloads before validating either refresh or fold commands."
+    acceptance:
+      - id: "AC161"
+        statement: "AC161: refresh and fold commands carrying _db, _event_type, _envelope_id, _envelope_timestamp and future underscore-prefixed context persist the expected tenant's day and all-time rows in real PostgreSQL; restoring the fixed context-name list makes both regression cases fail validation."
   - id: "req-one-saving"
     statement: |-
       A local run states one saving, computed once against the resolved baseline, on both the row and the receipt, and metering is keyed on the minted tenant.
@@ -935,6 +940,22 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn17427-metering-envelope-postgres"
+    description: "AC161: drive both synchronous command entry points against real PostgreSQL and read back the tenant, windows, run count, token counts and timestamp. Refuse skips so an unavailable database cannot count as proof."
+    source: manual
+    binds_ac: ["AC161"]
+    checks:
+      - check_type: test_passes
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_omn17427_metering_store_refresh_real_postgres.py -k runtime_envelope_context_persists_summary -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-metering-envelope-deploy-probe"
+    description: "Deploy probe. On the hosted runner, exercise both packaged command entry points with the runtime's envelope keys and assert refreshed tenants and folded row counts. Restoring the fixed context-name list fails validation. Needs only this checkout and locked test dependencies, without a broker, database or credentials. This is a packaged runtime-path probe, not a live deployment attestation."
+    source: manual
+    binds_ac: ["AC161"]
+    checks:
+      - check_type: command
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_projection_metering_summary/test_omn17427_store_refresh.py::test_the_envelope_context_the_runtime_adds_is_not_payload -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac141-canonical-baseline"
     description: "OMN-20303 AC3 failed its live readback: a runtime_shutdown terminal followed by a canonical completion produced a saving but no stored counterfactual. The regression covers both write paths, terminal orders, an originally pinned baseline, and failed/zero-token controls. It fails at the merge base; post-deploy AC3 readback remains required."
     source: "manual"
