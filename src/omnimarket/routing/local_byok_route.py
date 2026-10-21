@@ -53,6 +53,7 @@ import re
 from pathlib import Path
 
 from omnimarket.inference.local_byok_credential_adapter import (
+    local_byok_key_test_failed,
     registered_local_byok_providers,
     resolve_local_byok_credential_model,
     resolve_local_byok_credential_models,
@@ -155,6 +156,7 @@ def _registered_byok_route(
     replaced: ModelResolvedDelegationBackend | None,
     tier: str,
     db_path: Path | None,
+    pinned: bool = False,
 ) -> ModelResolvedDelegationBackend | None:
     """Build the route for ``byok`` on the customer's registered key, if there is one.
 
@@ -162,10 +164,20 @@ def _registered_byok_route(
     is minted, and no house credential answers in its place. ``replaced`` is the
     house rung this route stands in for, or ``None`` when the customer pinned the
     catalogue backend or the provider has no house rung at all.
+
+    OMN-21259: ``None`` too when the key failed its last pinned test, unless the
+    caller ``pinned`` this backend: ``onex models test`` pins it to prove the key
+    again, and only a pass makes it routable.
     """
     slug = byok.provider
     customer_ref = resolve_local_byok_credential_ref(slug, db_path=db_path)
     if customer_ref is None:
+        return None
+    if not pinned and local_byok_key_test_failed(slug, db_path=db_path):
+        logger.info(
+            "LocalByokRoute: skipping provider=%s; its key failed its last test",
+            byok.provider,
+        )
         return None
 
     # OMN-20157: the model is the one the customer's KEY resolved from the
@@ -278,7 +290,9 @@ def resolve_pinned_byok_route(
     plan = resolve_local_byok_credential_plan(row.provider, db_path=db_path)
     registered = resolve_byok_provider_backend(row.provider, plan=plan)
     route = (
-        _registered_byok_route(row, replaced=None, tier=_BYOK_TIER, db_path=db_path)
+        _registered_byok_route(
+            row, replaced=None, tier=_BYOK_TIER, db_path=db_path, pinned=True
+        )
         if registered is not None and registered.backend_id == row.backend_id
         else None
     )

@@ -16,6 +16,7 @@ class ModelRuntimeDelegationDispatchTopics(BaseModel):
     completed: str
     failed: str
     failed_unrouted: str | None = None
+    pre_dispatch_failed: str | None = None
 
     @field_validator("*")
     @classmethod

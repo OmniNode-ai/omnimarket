@@ -13,6 +13,9 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.handlers.handler_modelled_terminal_savings import (
+    modelled_terminal_savings,
+)
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillSavingsProjection,
     ModelDelegateSkillTerminalProjection,
@@ -748,7 +751,9 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         projection = ModelDelegateSkillSavingsProjection.from_terminal_event(
             terminal,
             baseline_model=self._delegate_skill_baseline_model,
-        )
+        ) or modelled_terminal_savings(
+            terminal
+        )  # OMN-21208: harness terminals report none
         if projection is None:
             return True
 

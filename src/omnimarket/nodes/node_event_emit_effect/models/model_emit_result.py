@@ -33,6 +33,12 @@ class ModelEmitResult(BaseModel):
         "'no adapter configured' from 'publish attempted and failed' "
         "(OMN-15987 finding 1).",
     )
+    publish_skipped_unreachable: bool = Field(
+        default=False,
+        description="True when no publish was attempted because this publish "
+        "identity failed to reach the broker within the backoff window; "
+        "the event stays spooled.",
+    )
     drained_count: int = Field(
         default=0,
         ge=0,
