@@ -1515,7 +1515,9 @@ def list_models(as_json: bool) -> None:
                 f"{label} set up, last test FAILED {last.tested_at}{failed_on}: "
                 f"{last.reason}{models}"
             )
-            if row.provider != "ollama" and row.provider != LOCAL_URL_PROVIDER:
+            if (
+                row.provider in _KEY_PAGES
+            ):  # a keyed provider; Ollama and local have none
                 click.echo(f"  {_NOT_ROUTED} Run: onex models test {row.provider}")
 
 
