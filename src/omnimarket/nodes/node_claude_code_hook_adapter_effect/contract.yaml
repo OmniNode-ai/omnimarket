@@ -83,7 +83,10 @@ capabilities:
     description: >
       Drive the adapter over recorded PreCompact hook inputs, cold and warm, and record each
       round trip's wall time and the prepared receipt's phase split for the TA.12 latency
-      qualification (python -m omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_compaction_latency_cli)
+      qualification. Replay carries the recorded input hash, barrier, newest turn and
+      compact model, validates the compaction command before publishing, and refuses
+      a native verdict even if a prepared receipt has timings
+      (python -m omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_compaction_latency_cli)
     version: 1.0.0
 
 entry_point:

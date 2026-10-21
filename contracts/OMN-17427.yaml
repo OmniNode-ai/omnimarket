@@ -716,11 +716,23 @@ requirements:
     acceptance:
       - id: "AC159"
         statement: "AC159: LocalHostReader.read returns one lane-guard:<sha256> tool per installed lane_guard_host.py whose sha256 equals its directory name, sorted among the other tools, and none for an empty home, an altered copy or a directory that is not a sha256 -- falsifier: uv run pytest tests/unit/lab_work/test_lab_work_host_bus.py -q -n 0 -k lane_guard fails at the merge base, where LocalHostReader takes no home and advertises no lane-guard entry"
+  - id: "req-ticket-contract-schema-hook"
+    statement: "A ticket contract that omnibase_core's ModelTicketContract refuses is caught by a pre-commit hook before the push, by the same validation CI's Contract Compliance Check runs."
+    acceptance:
+      - id: "AC160"
+        statement: "AC160: tests/ci/test_ticket_contracts_schema_omn17427.py loads every contracts/OMN-*.yaml with ModelTicketContract, shows a 51-character dod_evidence id is refused, and .pre-commit-config.yaml runs it as hook ticket-contract-schema on contracts/OMN-<n>.yaml -- falsifier: uv run pytest tests/ci/test_ticket_contracts_schema_omn17427.py fails at the merge base, where the test file and hook are absent."
   - id: req-omn20303-harness-counterfactual-readback
     statement: A harness terminal whose token-derived saving is projected keeps the same saving and its premium counterfactual in the delegation projection.
     acceptance:
     - id: AC161
       statement: 'AC161: OMN-20303 AC3 harness readback regression: both delegation writers retain the baseline of an unreported token-derived harness saving, preserve a stored pinned baseline, and invent no baseline for failed, zero-token, unresolved or explicitly reported terminals -- falsifier: uv run pytest tests/unit/nodes/node_projection_delegation/test_harness_savings_counterfactual_omn20303.py -q -n 0 --no-cov'
+  - id: "req-compaction-latency-command-boundary"
+    statement: "The TA.12 runner replays a command accepted by the compaction orchestrator, preserves the recorded input identity and model choice, and counts only adapter install verdicts as phase measurements. This prerequisite does not qualify live latency or enable the TA.15 binding."
+    acceptance:
+      - id: "AC180"
+        statement: "AC180: the latency runner carries input_messages_hash, newest_turn, barrier_id and compact_model from the recorded input; its payload validates as ModelContextCompactionRequested on cold, warm-up and warm trips, and a missing recorded input hash is refused before any publish -- falsifier: the focused command-boundary tests fail on the base, which drops those fields and publishes an invalid command."
+      - id: "AC181"
+        statement: "AC181: a native adapter verdict with an otherwise valid prepared timing receipt is a refusal with absent phase timings, never an input to latency qualification -- falsifier: the native-with-prepared regression fails on the base, which records a successful measurement."
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -3019,6 +3031,39 @@ dod_evidence:
           print("lane guard advertisement deploy probe: PASS")
           PY
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac160-contract-schema-hook"
+    description: "Every ticket contract loads as ModelTicketContract, a 51-character dod_evidence id is refused, and the check is wired as a pre-commit hook. The tests fail at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_ticket_contracts_schema_omn17427.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC160"]
+  - id: "dod-omn17427-ac160-schema-hook-deploy-probe"
+    description: "Deploy probe. The hosted runner reads the subject commit's .pre-commit-config.yaml and schema test with git and PyYAML and checks the ticket-contract-schema hook runs that test on contracts/OMN-<n>.yaml."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          python3 - <<'PY'
+          import re
+          import subprocess
+
+          import yaml
+
+          def read(path):
+              return subprocess.check_output(["git", "show", "HEAD:" + path], text=True)
+
+          config = yaml.safe_load(read(".pre-commit-config.yaml"))
+          hook = next(hook for repo in config["repos"] for hook in repo["hooks"] if hook["id"] == "ticket-contract-schema")
+          assert "tests/ci/test_ticket_contracts_schema_omn17427.py" in hook["entry"]
+          assert hook["pass_filenames"] is False
+          assert re.search(hook["files"], "contracts/OMN-17427.yaml")
+          assert not re.search(hook["files"], "contracts/README.md")
+          assert "ModelTicketContract.from_yaml" in read("tests/ci/test_ticket_contracts_schema_omn17427.py")
+          print("ticket-contract-schema hook probe: PASS")
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: dod-omn20303-ac3-harness-counterfactual
     description: 'The live dev-lane readback found 19 harness savings rows without a delegation counterfactual, including 9bfb4098-38cb-4ac5-bf64-224dd2001541. The two writer regressions fail at the base on a missing baseline; the controls retain existing attribution and truthful absence. Post-deploy readback remains required.'
     source: manual
@@ -3037,3 +3082,27 @@ dod_evidence:
     - check_type: command
       check_value: uv run pytest tests/unit/nodes/node_projection_delegation/test_harness_savings_counterfactual_omn20303.py -k test_harness_saving_keeps_counterfactual -q -n 0 --no-cov --refuse-skips
       cwd: ${OMNI_HOME}/omnimarket
+
+  - id: "dod-omn17427-ac180-latency-command-boundary"
+    description: "A real compaction request model validates every replayed command and the recorded identity, barrier and model survive; missing identity is refused before publication. Both tests fail at the merge base."
+    source: "manual"
+    binds_ac: ["AC180"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_latency_run.py -q -n 0 -p no:randomly --no-cov -k 'real_compaction_request_boundary or missing_recorded_messages_hash' --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac181-latency-install-only"
+    description: "A native fallback accompanied by prepared timings cannot count as a successful latency measurement. The test fails at the merge base."
+    source: "manual"
+    binds_ac: ["AC181"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_latency_run.py -q -n 0 -p no:randomly --no-cov -k native_fallback_with_prepared --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-latency-command-boundary-deploy-probe"
+    description: "Deploy probe: on the hosted runner, exercise the real adapter command boundary with a validating receipt client and a native response, without broker access or installing a binding. This packaged-path probe fails at the merge base and does not attest live latency."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_latency_run.py -q -n 0 -p no:randomly --no-cov -k 'real_compaction_request_boundary or missing_recorded_messages_hash or native_fallback_with_prepared' --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
