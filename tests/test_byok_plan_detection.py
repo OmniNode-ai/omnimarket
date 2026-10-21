@@ -131,6 +131,19 @@ async def _detect(
 
 
 class TestDetection:
+    async def test_anthropic_protocol_variant_does_not_probe_either_endpoint(
+        self,
+    ) -> None:
+        def refuse_network(**_kwargs: Any) -> Any:
+            pytest.fail("protocol selection must not probe the provider")
+
+        result = await detect_byok_plan(
+            "anthropic", KEY, post=refuse_network, get=refuse_network
+        )
+        assert result.outcome == "single_plan"
+        assert result.plan == "api"
+        assert result.probes == ()
+
     async def test_a_general_api_key_is_detected_and_routes_general(self) -> None:
         result, seen = await _detect({GENERAL: _ok(), CODING: _err(401, "1001")})
         assert result.outcome == "detected"

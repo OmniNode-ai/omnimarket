@@ -34,10 +34,12 @@ INCIDENT_INFRA_PIN = FIXTURES / "omnibase_infra_44542e2a0_core_pin.toml"
 
 # omnibase_infra commit -> the omnibase-core version its [tool.uv]
 # override-dependencies pinned there, oldest first. 44542e2a0 is the commit the
-# incident ran against; 291f2f747 is omnibase_infra dev when this was recorded.
+# incident ran against; 291f2f747 is omnibase_infra dev when this was recorded;
+# d20586c7d (omnibase_infra#5110) pins 0.47.48, which admits the 0.47.47 floor.
 INFRA_CORE_PINS: tuple[tuple[str, str], ...] = (
     ("44542e2a0", "0.47.44"),
     ("291f2f747", "0.47.46"),
+    ("d20586c7d", "0.47.48"),
 )
 
 _SPEC = re.compile(r"^\s*omnibase[-_]core\s*(?P<op>==|>=)\s*(?P<version>\d+(?:\.\d+)*)")

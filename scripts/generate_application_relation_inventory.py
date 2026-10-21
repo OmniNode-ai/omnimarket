@@ -31,6 +31,12 @@ from omnibase_core.models.contracts.subcontracts.model_db_table_declaration impo
 )
 from pydantic import ValidationError
 
+# Keep safe constructors while using LibYAML for the repository-wide census.
+# Fall back to the Python implementation when LibYAML is not installed.
+_CONTRACT_SAFE_LOADER: type[yaml.SafeLoader] | type[yaml.CSafeLoader] = getattr(
+    yaml, "CSafeLoader", yaml.SafeLoader
+)
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 NODES_ROOT = REPO_ROOT / "src" / "omnimarket" / "nodes"
 DEFAULT_OUTPUT = REPO_ROOT / "docs" / "evidence" / "OMN-15423-relation-inventory.json"
@@ -134,6 +140,13 @@ _SERIAL_RE = re.compile(
     r'(?P<column>"?[A-Za-z_][\w$]*"?)\s+(?P<type>BIGSERIAL|SMALLSERIAL|SERIAL)\b',
     re.IGNORECASE,
 )
+_SQL_MASK_RE = re.compile(
+    r"--[^\n]*|/\*.*?(?:\*/|\Z)|'(?:''|[^'])*(?:'|\Z)|"
+    r"(?P<tag>\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$).*?(?:(?P=tag)|\Z)",
+    re.DOTALL,
+)
+_NON_NEWLINE_RE = re.compile(r"[^\n]")
+_WORD_RE = re.compile(r"\b\w+\b")
 
 
 def _unquote(value: str) -> str:
@@ -150,80 +163,7 @@ def _schema(value: str) -> str:
 
 def _mask_sql(text: str) -> str:
     """Mask comments and literal bodies while preserving offsets and newlines."""
-    output: list[str] = []
-    index = 0
-    state = "normal"
-    dollar_tag = ""
-    while index < len(text):
-        if state == "normal":
-            if text.startswith("--", index):
-                output.extend("  ")
-                index += 2
-                state = "line_comment"
-                continue
-            if text.startswith("/*", index):
-                output.extend("  ")
-                index += 2
-                state = "block_comment"
-                continue
-            if text[index] == "'":
-                output.append(" ")
-                index += 1
-                state = "single_quote"
-                continue
-            if text[index] == "$":
-                match = re.match(r"\$[A-Za-z_][A-Za-z0-9_]*\$|\$\$", text[index:])
-                if match:
-                    dollar_tag = match.group(0)
-                    output.extend(" " * len(dollar_tag))
-                    index += len(dollar_tag)
-                    state = "dollar_quote"
-                    continue
-            output.append(text[index])
-            index += 1
-            continue
-
-        if state == "line_comment":
-            if text[index] == "\n":
-                output.append("\n")
-                state = "normal"
-            else:
-                output.append(" ")
-            index += 1
-            continue
-
-        if state == "block_comment":
-            if text.startswith("*/", index):
-                output.extend("  ")
-                index += 2
-                state = "normal"
-            else:
-                output.append("\n" if text[index] == "\n" else " ")
-                index += 1
-            continue
-
-        if state == "single_quote":
-            if text.startswith("''", index):
-                output.extend("  ")
-                index += 2
-            elif text[index] == "'":
-                output.append(" ")
-                index += 1
-                state = "normal"
-            else:
-                output.append("\n" if text[index] == "\n" else " ")
-                index += 1
-            continue
-
-        if text.startswith(dollar_tag, index):
-            output.extend(" " * len(dollar_tag))
-            index += len(dollar_tag)
-            state = "normal"
-        else:
-            output.append("\n" if text[index] == "\n" else " ")
-            index += 1
-
-    return "".join(output)
+    return _SQL_MASK_RE.sub(lambda match: _NON_NEWLINE_RE.sub(" ", match.group()), text)
 
 
 def _statement(masked: str, start: int) -> str:
@@ -302,7 +242,10 @@ def _load_contracts() -> tuple[
         return typed.model_dump(mode="python")
 
     for path in sorted(NODES_ROOT.glob("*/contract.yaml")):
-        payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        payload = (
+            yaml.load(path.read_text(encoding="utf-8"), Loader=_CONTRACT_SAFE_LOADER)
+            or {}
+        )
         node = path.parent.name
         contracts[node] = payload
         for raw_declaration in (payload.get("db_io") or {}).get("db_tables") or []:
@@ -314,7 +257,12 @@ def _load_contracts() -> tuple[
             item["contract"] = str(path.relative_to(REPO_ROOT))
             declarations[str(declaration["name"]).lower()].append(item)
 
-    service_payload = yaml.safe_load(SERVICE_MANIFEST.read_text(encoding="utf-8")) or {}
+    service_payload = (
+        yaml.load(
+            SERVICE_MANIFEST.read_text(encoding="utf-8"), Loader=_CONTRACT_SAFE_LOADER
+        )
+        or {}
+    )
     if service_payload.get("owner_declaration") != SERVICE_OWNER:
         raise ValueError(f"{SERVICE_MANIFEST} must declare owner {SERVICE_OWNER!r}")
     for raw_declaration in (service_payload.get("db_io") or {}).get("db_tables") or []:
@@ -425,6 +373,27 @@ def build_inventory() -> dict[str, Any]:
 
     readers_by_table = _source_readers(set(table_schemas))
 
+    # Index identifiers once per migration instead of scanning every migration
+    # again for each table's tenant-column evidence.
+    tenant_sources: dict[str, list[Path]] = defaultdict(list)
+    tenant_dependencies: dict[Path, list[str]] = {}
+    for path, masked in masked_by_path.items():
+        identifiers = set(_WORD_RE.findall(masked.lower()))
+        if "tenant_id" not in identifiers:
+            continue
+        tenant_dependencies[path] = [
+            " ".join(line.split())
+            for line in masked.splitlines()
+            if re.search(r"\btenant_id\b", line, re.IGNORECASE)
+            and re.search(
+                r"\b(PRIMARY\s+KEY|UNIQUE|FOREIGN\s+KEY|REFERENCES|INDEX|PARTITION)\b",
+                line,
+                re.IGNORECASE,
+            )
+        ]
+        for name in identifiers & table_schemas.keys():
+            tenant_sources[name].append(path)
+
     index_names: dict[str, set[str]] = defaultdict(set)
     unique_index_names: dict[str, set[str]] = defaultdict(set)
     grant_names: dict[str, set[str]] = defaultdict(set)
@@ -527,22 +496,9 @@ def build_inventory() -> dict[str, Any]:
         tenant_column_sources: list[str] = []
         tenant_column_dependencies: list[str] = []
         if schema == "omninode_internal":
-            name_re = re.compile(rf"\b{re.escape(name)}\b", re.IGNORECASE)
-            for path, masked in masked_by_path.items():
-                if not name_re.search(masked) or not re.search(
-                    r"\btenant_id\b", masked, re.IGNORECASE
-                ):
-                    continue
+            for path in tenant_sources.get(name, []):
                 tenant_column_sources.append(str(path.relative_to(REPO_ROOT)))
-                for line in masked.splitlines():
-                    if not re.search(r"\btenant_id\b", line, re.IGNORECASE):
-                        continue
-                    if re.search(
-                        r"\b(PRIMARY\s+KEY|UNIQUE|FOREIGN\s+KEY|REFERENCES|INDEX|PARTITION)\b",
-                        line,
-                        re.IGNORECASE,
-                    ):
-                        tenant_column_dependencies.append(" ".join(line.split()))
+                tenant_column_dependencies.extend(tenant_dependencies[path])
         tenant_column_transform: dict[str, Any] | None = None
         if schema == "omninode_internal":
             tenant_column_transform = {
@@ -561,7 +517,7 @@ def build_inventory() -> dict[str, Any]:
                     else "not_applicable"
                 ),
             }
-        row = {
+        row: dict[str, Any] = {
             "name": name,
             "kind": "table",
             "current_schema": sorted(current_schemas.get(key, {"public"})),
@@ -625,16 +581,14 @@ def build_inventory() -> dict[str, Any]:
         relation_owners = sorted(owners[(kind, name)])
         owner = relation_owners[0] if len(relation_owners) == 1 else None
         text = "\n".join(statements[(kind, name)])
-        dependencies = {
-            candidate
-            for candidate in table_rows
-            if re.search(rf"\b{re.escape(candidate)}\b", text, re.IGNORECASE)
-        }
+        relation_dependencies = set(_WORD_RE.findall(text.lower())) & table_rows.keys()
         if kind == "extension":
             schema = "platform_catalog"
             owner = "omnimarket_node_migration_stream"
         else:
-            schema = _target_schema(owner, dependencies, table_schemas, declarations)
+            schema = _target_schema(
+                owner, relation_dependencies, table_schemas, declarations
+            )
         blocked_reasons = []
         if owner is None and kind != "extension":
             blocked_reasons.append(
@@ -669,7 +623,7 @@ def build_inventory() -> dict[str, Any]:
             ),
             "authoritative_sources": sorted(relation_sources),
             "contract_sources": [],
-            "dependencies": sorted(dependencies),
+            "dependencies": sorted(relation_dependencies),
             "dependent_objects": [],
             "keys": [],
             "foreign_keys": [],

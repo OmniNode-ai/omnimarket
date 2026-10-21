@@ -1,0 +1,109 @@
+{
+  "usageItems": [
+    {
+      "date": "2026-10-17T00:00:00Z",
+      "product": "Actions",
+      "sku": "actions_linux",
+      "quantity": 10,
+      "unitType": "Minutes",
+      "pricePerUnit": 0.008,
+      "grossAmount": 0.048,
+      "discountAmount": 0.048,
+      "netAmount": 0,
+      "organizationName": "OmniNode-ai",
+      "repositoryName": "private-repo-a",
+      "workflowPath": ".github/workflows/ci.yml"
+    },
+    {
+      "date": "2026-10-17T00:00:00Z",
+      "product": "Actions",
+      "sku": "actions_linux",
+      "quantity": 2.5,
+      "unitType": "Minutes",
+      "pricePerUnit": 0.008,
+      "grossAmount": 0.048,
+      "discountAmount": 0.048,
+      "netAmount": 0,
+      "organizationName": "OmniNode-ai",
+      "repositoryName": "private-repo-a"
+    },
+    {
+      "date": "2026-10-18T00:00:00Z",
+      "product": "Actions",
+      "sku": "actions_linux",
+      "quantity": 6,
+      "unitType": "Minutes",
+      "pricePerUnit": 0.008,
+      "grossAmount": 0.048,
+      "discountAmount": 0.048,
+      "netAmount": 0,
+      "organizationName": "OmniNode-ai",
+      "repositoryName": "private-repo-a"
+    },
+    {
+      "date": "2026-10-18T00:00:00Z",
+      "product": "Actions",
+      "sku": "actions_macos",
+      "quantity": 20.25,
+      "unitType": "Minutes",
+      "pricePerUnit": 0.08,
+      "grossAmount": 1.62,
+      "discountAmount": 0,
+      "netAmount": 1.62,
+      "organizationName": "OmniNode-ai",
+      "repositoryName": "private-repo-b",
+      "workflowName": "macos-ci"
+    },
+    {
+      "date": "2026-10-18T00:00:00Z",
+      "product": "Actions",
+      "sku": "actions_linux",
+      "quantity": 900,
+      "unitType": "Minutes",
+      "pricePerUnit": 0.008,
+      "grossAmount": 0,
+      "discountAmount": 0,
+      "netAmount": 0,
+      "organizationName": "OmniNode-ai",
+      "repositoryName": "public-repo-c"
+    },
+    {
+      "date": "2026-10-18T00:00:00Z",
+      "product": "Actions",
+      "sku": "actions_self_hosted",
+      "quantity": 700,
+      "unitType": "Minutes",
+      "pricePerUnit": 0.008,
+      "grossAmount": 0.048,
+      "discountAmount": 0.048,
+      "netAmount": 0,
+      "organizationName": "OmniNode-ai",
+      "repositoryName": "private-repo-a"
+    },
+    {
+      "date": "2026-10-18T00:00:00Z",
+      "product": "Copilot",
+      "sku": "actions_linux",
+      "quantity": 500,
+      "unitType": "Minutes",
+      "pricePerUnit": 0.008,
+      "grossAmount": 0.048,
+      "discountAmount": 0.048,
+      "netAmount": 0,
+      "organizationName": "OmniNode-ai",
+      "repositoryName": "private-repo-b"
+    },
+    {
+      "date": "2026-10-18T00:00:00Z",
+      "product": "Actions",
+      "sku": "actions_linux",
+      "quantity": 400,
+      "unitType": "Minutes",
+      "pricePerUnit": 0.008,
+      "grossAmount": 0.048,
+      "discountAmount": 0.048,
+      "netAmount": 0,
+      "organizationName": "OmniNode-ai"
+    }
+  ]
+}

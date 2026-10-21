@@ -80,6 +80,13 @@ class _Connection:
     async def execute(self, *_args: object) -> None:
         return None
 
+    async def fetchval(self, sql: str, *args: Any) -> Any:
+        # OMN-19972: the writer confirms the step's tenant against the tenant
+        # mirror. This stand-in's mirror holds the fixture's tenant.
+        if "tenant_uuid = $1" in sql and str(args[0]) == _STEP["tenant_id"]:
+            return args[0]
+        return None
+
     async def fetch(self, sql: str, *args: Any) -> list[dict[str, Any]]:
         key = (str(args[0]), str(args[1]), int(args[2]))
         if "INSERT INTO public.run_trace" in sql:

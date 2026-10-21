@@ -86,6 +86,10 @@ class ModelDelegateSkillRequest(BaseModel):
         "evidence_comment",
         "documentation",
         "validator_generation",
+        "brief_drafting",
+        "extraction_proposer",
+        "tail_summary",
+        "context_selection",
     ] = Field(
         ...,
         description=(

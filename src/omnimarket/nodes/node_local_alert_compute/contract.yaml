@@ -1,0 +1,76 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+name: node_local_alert_compute
+contract_name: node_local_alert_compute
+node_name: node_local_alert_compute
+
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+node_type: compute
+# Invoked in process by the local environment projection on every report it
+# stores; it has no topic of its own, so it carries no onex.nodes entry point.
+lifecycle: experimental
+description: >-
+  Pure verdicts and alerts for the local environment's services. Each service's
+  latest report and an observation time in; a verdict per service (RUNNING,
+  DOWN, UNHEALTHY or STALE) and the open alerts out. A report older than the
+  freshness deadline reads STALE. The rules and the deadline are this
+  contract's config, not code.
+
+input_model:
+  name: ModelLocalAlertRequest
+  module: omnimarket.nodes.node_local_alert_compute.models
+output_model:
+  name: ModelLocalAlertResult
+  module: omnimarket.nodes.node_local_alert_compute.models
+
+capabilities:
+  - name: local.environment.alert.compute
+    description: Verdicts and open alerts for the local environment's services
+    version: 1.0.0
+
+io_operations:
+  - operation: evaluate
+    description: Judge every service's latest report at one observation time
+    protocol_method: handle
+    input_fields:
+      - request: ModelLocalAlertRequest
+    output_fields:
+      - result: ModelLocalAlertResult
+    idempotent: true
+
+handler:
+  module: omnimarket.nodes.node_local_alert_compute.handlers.handler_local_alert
+  class: HandlerLocalAlert
+  input_model: omnimarket.nodes.node_local_alert_compute.models.ModelLocalAlertRequest
+  output_model: omnimarket.nodes.node_local_alert_compute.models.ModelLocalAlertResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+
+config:
+  local_alert:
+    # A service with no report for longer than this reads STALE (requirements 3.1).
+    freshness_deadline_seconds: 60
+    # The first three rules, per the R3 ruling on the ticket: one per verdict
+    # that is not RUNNING. The other rules of requirements 3.4 come later.
+    rules:
+      - code: SERVICE_DOWN
+        severity: critical
+        verdict: down
+      - code: SERVICE_DEGRADED
+        severity: warning
+        verdict: unhealthy
+      - code: HEALTH_UNKNOWN
+        severity: warning
+        verdict: stale
+
+metadata:
+  transport_type: inmemory
+  author: OmniNode Team
+  license: MIT

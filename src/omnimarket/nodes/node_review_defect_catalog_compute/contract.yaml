@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeReviewDefectCatalogCompute
+#
+# Pure definition-B validation and rendering of the review defect catalog:
+#   handle(ModelReviewDefectCatalogRequest) -> ModelReviewDefectCatalogResult
+name: "node_review_defect_catalog_compute"
+contract_name: "node_review_defect_catalog_compute"
+node_name: "node_review_defect_catalog_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Validate the review defect catalog and render a bounded prompt section,
+  suppressing active codes enforced by a versioned repository validator
+  only when the request supplies matching deployed enforcement evidence.
+catalog:
+  default_token_budget: 5000
+  chars_per_token: 4
+  packaged_catalog: "contracts/review_defect_catalog/review_defect_catalog.v1.yaml"
+input_model:
+  name: "ModelReviewDefectCatalogRequest"
+  module: "omnimarket.models.review_defect_catalog.model_review_defect_catalog"
+  description: "Catalog text, repository, requested version, budget and deployed enforcement evidence."
+output_model:
+  name: "ModelReviewDefectCatalogResult"
+  module: "omnimarket.models.review_defect_catalog.model_review_defect_catalog"
+  description: "Rendered section, catalog hash and allowed codes, or a located refusal."
+handler:
+  module: "omnimarket.nodes.node_review_defect_catalog_compute.handlers.handler_review_defect_catalog"
+  class: "HandlerReviewDefectCatalog"
+  input_model: "omnimarket.models.review_defect_catalog.model_review_defect_catalog.ModelReviewDefectCatalogRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_review_defect_catalog_compute.handlers.handler_review_defect_catalog:HandlerReviewDefectCatalog"
+  handlers:
+    - operation: "review_defect_catalog_resolve"
+      handler:
+        name: "HandlerReviewDefectCatalog"
+        module: "omnimarket.nodes.node_review_defect_catalog_compute.handlers.handler_review_defect_catalog"
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.review-defect-catalog-resolve-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.review-defect-catalog-resolved.v1"
+    failure: "onex.evt.omnimarket.review-defect-catalog-resolve-failed.v1"
+externally_consumed_topics:
+  - "onex.evt.omnimarket.review-defect-catalog-resolved.v1"
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+replay:
+  deterministic: true
+metadata:
+  description: "Validate and render the review defect catalog within a token budget."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-10-18"
+  tags:
+    - compute
+    - review
+    - catalog
+    - pure

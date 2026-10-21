@@ -220,7 +220,7 @@ class ModelPrLifecycleStartCommand(BaseModel):
     )
     enable_trivial_comment_resolution: bool = Field(
         default=True,
-        description="Auto-resolve trivial CodeRabbit/bot review threads before merge.",
+        description="Auto-resolve trivial bot review threads before merge.",
     )
     verify: bool = Field(
         default=False,
@@ -908,9 +908,7 @@ def _block_reason_for_fix(pr: TriageRecord) -> Any:
         except ValueError:
             pass
 
-    reason_lower = block_reason.lower()
     failed_check_names = tuple(name.strip() for name in pr.failed_check_names)
-    failed_check_names_lower = tuple(name.lower() for name in failed_check_names)
 
     if pr.category == EnumPrCategory.CONFLICTED:
         return EnumPrBlockReason.CONFLICT
@@ -947,10 +945,6 @@ def _block_reason_for_fix(pr: TriageRecord) -> Any:
             return EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
         return EnumPrBlockReason.RECEIPT_FAILURE
 
-    if "coderabbit" in reason_lower or any(
-        "coderabbit" in name for name in failed_check_names_lower
-    ):
-        return EnumPrBlockReason.CODERABBIT
     if pr.category == EnumPrCategory.NEEDS_REVIEW:
         return EnumPrBlockReason.CHANGES_REQUESTED
 
@@ -2294,13 +2288,8 @@ class HandlerPrLifecycleOrchestrator:
                         ),
                         # OMN-14151: genuine tri-state facts for the arm-gate.
                         # ``is_draft`` is threaded straight from the inventory
-                        # read; ``coderabbit_unresolved`` is None when the
-                        # inventory handler never collected it (never
-                        # defaulted to 0).
+                        # read.
                         is_draft=getattr(pr_state, "is_draft", None),
-                        coderabbit_unresolved=getattr(
-                            pr_state, "coderabbit_unresolved", None
-                        ),
                     )
                 )
 
@@ -2658,9 +2647,6 @@ class HandlerPrLifecycleOrchestrator:
             repo=pr.repo,
             pr_number=pr.pr_number,
             is_draft=pr_record.is_draft if pr_record is not None else None,
-            coderabbit_unresolved=(
-                pr_record.coderabbit_unresolved if pr_record is not None else None
-            ),
             merge_state_status=(
                 pr_record.merge_state_status if pr_record is not None else None
             ),

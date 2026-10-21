@@ -502,9 +502,38 @@ quality_rules:
     rationale: A docstring missing its contract sections is incomplete, not merely terse.
   covers_edge_cases:
     enforcement: blocking
+    # OMN-19401: the rule judges coverage the PROMPT asked for. Measured on 46
+    # in-memory-bus `--task-type test` runs (2026-10-19): drafts for a plain
+    # "write a test for X" were refused, scored 0.61-0.88, for lacking one of
+    # edge/boundary/empty/none/invalid, whatever the prompt asked for. A prompt
+    # matching none of these patterns is waived: the rule neither lowers the
+    # score nor appears among the failure reasons. A prompt that asks for edge
+    # cases keeps the rule, and a draft that covers none is still scored down.
+    waived_unless_prompt_matches:
+      - '\bedge[- ]?cases?\b'
+      - '\bcorner[- ]?cases?\b'
+      - '\bboundar(?:y|ies)\b'
+      - '\bempty\b'
+      - '\bnone\b'
+      - '\bnull\b'
+      - '\binvalid\b'
+      - '\bextremes?\b'
+      - '\b(?:comprehensive|thorough|exhaustive)(?:ly)?\b'
     rationale: A declared coverage floor for the classes that require it.
   covers_error_paths:
     enforcement: blocking
+    # OMN-19401: as covers_edge_cases. The rule also applies when the prompt hands
+    # over code that raises, because that code has an error path to cover.
+    waived_unless_prompt_matches:
+      - '\berrors?\b'
+      - '\bexceptions?\b'
+      - '\braises?\b'
+      - '\bfail(?:s|ed|ing|ure|ures)?\b'
+      - '\binvalid\b'
+      - '\bnegative (?:tests?|cases?|paths?)\b'
+      - '\bunhappy\b'
+      - '\bpytest\.raises\b'
+      - '\b(?:comprehensive|thorough|exhaustive)(?:ly)?\b'
     rationale: A declared coverage floor for the classes that require it.
   covers_dependencies:
     enforcement: blocking
@@ -752,6 +781,12 @@ output_only_acceptance:
     OMN-18932.
 
 # Contract-owned extraction and handler budget authority (OMN-18278/OMN-15504).
+# OMN-17427: next_rung_reserve_seconds is the time a rung that may be followed
+# by another leaves for it. The ceiling covers the whole run, so a local rung
+# allowed its backend's 300 s timeout_ms ended runs before any cloud rung was
+# tried. With a 240 s ceiling, 60 s leaves the first rung at most 180 s, which
+# node_llm_delegation_call_effect's per-call ceiling (io_operations
+# timeout_seconds) bounds further.
 delegation_output:
   min_deliverable_share: 0.5
   markdown_markers:
@@ -760,23 +795,34 @@ delegation_output:
   plain_text_markers:
     - "=== ANSWER ==="
     - "FINAL:"
+# OMN-21214: rung_floor_seconds is the usable time kept in reserve for each
+# rung still after the one running (its quality-gate check included). An
+# attempt's deadline is the smaller of its backend's timeout_ms and the chain
+# time left minus this floor for every later rung, so three slow rungs cannot
+# leave the last one no time. 45 s fits a four-rung ladder (180 s) inside the
+# 240 s ceiling with room for the first rung. The OMN-17427 reserve above still
+# holds for the next rung; each attempt is held to the tighter of the two.
 execution_budgets:
-  code_generation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
-  refactor: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
-  documentation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
-  document: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
-  research: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
-  test: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
-  validator_generation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
-  reasoning: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
-  complex_reasoning: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
-  planning: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
-  review: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
-  code_review: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
-  summarization: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
-  agent_delegation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
-  escalation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
-  evidence_comment: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
+  code_generation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  refactor: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  documentation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  document: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  research: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  test: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  validator_generation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  reasoning: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  complex_reasoning: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  planning: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  review: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  code_review: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  summarization: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  agent_delegation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  escalation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  brief_drafting: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  extraction_proposer: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  tail_summary: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  context_selection: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  evidence_comment: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
 
 # S is value <= s_max, M is <= m_max, L is above. Every class inherits this
 # default; task_classes.<class>.size_band_thresholds may override the same shape.
@@ -2443,3 +2489,163 @@ task_classes:
       tier_order:
         - local
         - claude
+  # OMN-17427: lane brief drafting (experiment exp-brief-drafting-local, 2026-10-17, h202). The lab Qwen
+  # rung drafts the free-text slots of a lane brief and `lane_brief.py check` is the acceptance gate.
+  # `local` is the whole closed ladder: GLM sits in `cheap_cloud` and the experiment found it not usable
+  # for this class, so no tier after `local` is declared and a refused draft is not escalated to one.
+  # A refusal rejects the draft; the next move (regenerate the shell parts in code, redraft once, or
+  # have Claude write the brief) is node_lane_brief_draft_compute's gate. The shell parts (ticket-state
+  # acknowledgements, quoted criteria, the 3a block) are pasted by code, never written by the model.
+  # Internal: the Gateway does not admit it, and no prompt selects it (empty phrases).
+  brief_drafting:
+    lab_rubric:
+      verdict: unmeasured
+    complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
+    gateway_exposure: internal
+    output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
+    selection:
+      priority: 0
+      phrases: []
+    required_capabilities:
+      - natural_language_generation
+    pricing_ceiling_per_1k_tokens: 0.0
+    latency_sla_p99_ms: 60000
+    cloud_routing_policy: blocked
+    definition_of_done:
+      deterministic:
+        - response_non_empty
+      heuristic:
+        - no_refusal
+        - semantic_adequacy
+        # OMN-18297: an identifier the draft states must occur in the fact table it was given.
+        - identifiers_grounded
+        - numbers_grounded
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+    external_acceptance:
+      checker: "lane_brief.py check"
+      on_refusal: reject_draft
+      free_text_slots:
+        - title
+        - premises
+        - task
+      shell_parts:
+        - header
+        - ticket_state_acknowledgements
+        - quoted_criteria
+        - out_of_scope
+        - standing_rules
+        - constraints_block
+    escalation_policy:
+      max_escalations: 0
+      tier_order:
+        - local
+  # OMN-17427: the context-pack model roles, internal and selected only by explicit name.
+  # context_selection is the selection_task_class of lane_brief, lane_brief_section,
+  # session_start and per_prompt; extraction_proposer is the extraction_task_class
+  # of compaction_orchestrator and session_resume. tail_summary is declared because
+  # the core 0.47.48 wire Literal admits it and
+  # test_the_request_wire_contract_and_the_task_class_contract_agree requires this
+  # contract to equal that Literal. context_compaction stays undeclared until core
+  # admits it. These roles inherit summarization's local Qwen placement; no cloud
+  # rung until a measured lab_rubric verdict says one is needed.
+  extraction_proposer:
+    lab_rubric:
+      verdict: unmeasured
+    complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
+    gateway_exposure: internal
+    output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
+    selection:
+      priority: 0
+      phrases: []
+    required_capabilities:
+      - natural_language_generation
+    pricing_ceiling_per_1k_tokens: 0.002
+    latency_sla_p99_ms: 120000
+    cloud_routing_policy: opt_in
+    definition_of_done:
+      deterministic:
+        - response_non_empty
+      heuristic:
+        - no_refusal
+        - semantic_adequacy
+        - identifiers_grounded
+        - claims_grounded
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+    escalation_policy:
+      max_escalations: 0
+      tier_order:
+        - local
+  tail_summary:
+    lab_rubric:
+      verdict: unmeasured
+    complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
+    gateway_exposure: internal
+    output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
+    selection:
+      priority: 0
+      phrases: []
+    required_capabilities:
+      - natural_language_generation
+    pricing_ceiling_per_1k_tokens: 0.002
+    latency_sla_p99_ms: 120000
+    cloud_routing_policy: opt_in
+    definition_of_done:
+      deterministic:
+        - response_non_empty
+      heuristic:
+        - no_refusal
+        - semantic_adequacy
+        - identifiers_grounded
+        - claims_grounded
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+    escalation_policy:
+      max_escalations: 0
+      tier_order:
+        - local
+  context_selection:
+    lab_rubric:
+      verdict: unmeasured
+    complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
+    gateway_exposure: internal
+    output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
+    selection:
+      priority: 0
+      phrases: []
+    required_capabilities:
+      - natural_language_generation
+    pricing_ceiling_per_1k_tokens: 0.002
+    latency_sla_p99_ms: 120000
+    cloud_routing_policy: opt_in
+    definition_of_done:
+      deterministic:
+        - response_non_empty
+      heuristic:
+        - no_refusal
+        - semantic_adequacy
+        - identifiers_grounded
+        - claims_grounded
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+    escalation_policy:
+      max_escalations: 0
+      tier_order:
+        - local

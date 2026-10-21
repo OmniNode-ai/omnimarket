@@ -30,16 +30,9 @@ already-resolved backend:
   house reference does not resolve on their machine. This module does not
   manufacture a refusal the secret boundary already owns.
 
-Why substitution rather than a new tier
----------------------------------------
-A customer's chain of responders has exactly ONE member by construction
-(OMN-17082, and the ``max_retries`` reasoning in
-``byok_provider_backends.v1.yaml``): no house credential may answer their work,
-so the house ladder is not a lawful successor for them. Inserting a tier would
-imply a successor relationship that must never be taken. Substituting in place
-says the true thing -- *where the platform would have spent its own money, the
-customer spends theirs* -- and leaves the ladder's shape, the tier order, and
-every escalation decision exactly as they were.
+A deployment overlay can place registered keys in an in-process escalation tier. This
+makes a key reachable even when the platform has no unpinned rung for its
+provider. Same-provider substitution remains available for existing routes.
 
 Nothing here reads a secret VALUE. The catalogue supplies the endpoint and
 budgets; the local credential adapter supplies the REFERENCE and the model the
@@ -60,11 +53,16 @@ import re
 from pathlib import Path
 
 from omnimarket.inference.local_byok_credential_adapter import (
+    local_byok_key_test_failed,
     registered_local_byok_providers,
     resolve_local_byok_credential_model,
     resolve_local_byok_credential_models,
     resolve_local_byok_credential_plan,
     resolve_local_byok_credential_ref,
+)
+from omnimarket.inference.provider_quota_state import (
+    ModelProviderQuotaSnapshot,
+    quota_block_for_backend,
 )
 from omnimarket.routing.byok_provider_backends import (
     BYOK_MODEL_UNRESOLVED,
@@ -77,6 +75,7 @@ from omnimarket.routing.byok_provider_backends import (
 from omnimarket.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
 )
+from omnimarket.routing.routing_tiers_path import load_delegation_routing_overlay
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +156,7 @@ def _registered_byok_route(
     replaced: ModelResolvedDelegationBackend | None,
     tier: str,
     db_path: Path | None,
+    pinned: bool = False,
 ) -> ModelResolvedDelegationBackend | None:
     """Build the route for ``byok`` on the customer's registered key, if there is one.
 
@@ -164,10 +164,20 @@ def _registered_byok_route(
     is minted, and no house credential answers in its place. ``replaced`` is the
     house rung this route stands in for, or ``None`` when the customer pinned the
     catalogue backend or the provider has no house rung at all.
+
+    OMN-21259: ``None`` too when the key failed its last pinned test, unless the
+    caller ``pinned`` this backend: ``onex models test`` pins it to prove the key
+    again, and only a pass makes it routable.
     """
     slug = byok.provider
     customer_ref = resolve_local_byok_credential_ref(slug, db_path=db_path)
     if customer_ref is None:
+        return None
+    if not pinned and local_byok_key_test_failed(slug, db_path=db_path):
+        logger.info(
+            "LocalByokRoute: skipping provider=%s; its key failed its last test",
+            byok.provider,
+        )
         return None
 
     # OMN-20157: the model is the one the customer's KEY resolved from the
@@ -280,7 +290,9 @@ def resolve_pinned_byok_route(
     plan = resolve_local_byok_credential_plan(row.provider, db_path=db_path)
     registered = resolve_byok_provider_backend(row.provider, plan=plan)
     route = (
-        _registered_byok_route(row, replaced=None, tier=_BYOK_TIER, db_path=db_path)
+        _registered_byok_route(
+            row, replaced=None, tier=_BYOK_TIER, db_path=db_path, pinned=True
+        )
         if registered is not None and registered.backend_id == row.backend_id
         else None
     )
@@ -323,6 +335,51 @@ def substitute_any_registered_byok_route(
         if route is not None:
             return route
     return backend
+
+
+def registered_byok_tier_name() -> str | None:
+    """The customer-key tier named by this deployment's overlay, if declared."""
+    policy = load_delegation_routing_overlay().registered_byok_tier
+    return policy.name if policy is not None else None
+
+
+def registered_byok_routes(
+    *,
+    db_path: Path | None = None,
+    quota_state: ModelProviderQuotaSnapshot | None = None,
+) -> tuple[ModelResolvedDelegationBackend, ...]:
+    """Resolve the registered responders in insertion order, without key values.
+
+    Only routable catalogue plans with a local registration can join the tier.
+    A snapshot is passed into the routing authority by the local composition;
+    the deployed reducer never reads this machine's credential store.
+    """
+    policy = load_delegation_routing_overlay().registered_byok_tier
+    if policy is None:
+        return ()
+    routes: list[ModelResolvedDelegationBackend] = []
+    for provider in registered_local_byok_providers(
+        db_path=db_path, registration_order=True
+    ):
+        plan = resolve_local_byok_credential_plan(provider, db_path=db_path)
+        byok = resolve_byok_provider_backend(provider, plan=plan)
+        if byok is None or not byok.customer_routable:
+            continue
+        route = _registered_byok_route(
+            byok, replaced=None, tier=policy.name, db_path=db_path
+        )
+        if (
+            route is not None
+            and quota_block_for_backend(
+                quota_state,
+                endpoint_url=route.endpoint_ref,
+                api_key_ref=route.secret_ref,
+                model_name=route.model_id,
+            )
+            is None
+        ):
+            routes.append(route)
+    return tuple(routes)
 
 
 def next_chosen_model_byok_route(

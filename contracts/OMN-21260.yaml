@@ -1,0 +1,62 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21260"
+title: "A delegation on a paid OpenRouter model records cost 0.0 as measured, so its savings are the full baseline price"
+summary: "A call on a customer's own key (backend id byok-...) is now priced by its model: the BYOK catalogue's declared price, else the model registry's price for the same provider and model; it is never booked at the routing tier's rate. Before, the customer's OpenRouter route took the tier's rate (0.0 on cheap_frontier for code_generation and test tasks, a flat 2.00 per 1M on cheap_cloud for document tasks), so the same model showed $0.000694 for one call and $0.00 for others; a model with no price is unpriced, so cost_measured is false, the stored cost is null and no savings are counted, and house calls keep the tier rate."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-customer-key-call-priced-by-its-model"
+    statement: |-
+      A call on a customer's own key is priced by its model, never by the routing tier's rate, and a model with no price is recorded as unpriced, never as free.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: a run on a priced paid OpenRouter model records its real cost -- falsifier: a pricing test for qwen/qwen3.8-27b that expects a non-zero cost for non-zero tokens
+      - id: "AC2"
+        statement: |-
+          AC2: a run on a model with no price records cost null and cost_measured false, and its savings are not counted as measured -- falsifier: a test with an unpriced model id
+      - id: "AC3"
+        statement: |-
+          AC3: root cause of the 10-20 $0.000694 vs $0.00 difference for the same model is named in the PR
+evidence_requirements:
+  - kind: "tests"
+    description: "The whole test file verifies that a paid OpenRouter model on the customer key records its real cost, an unpriced model is not booked at the tier rate, house calls keep the tier rate, and unpriced and priced customer runs are stored and measured correctly."
+    command: "uv run pytest tests/unit/delegation/test_customer_openrouter_cost_omn21260.py -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21260-paid-model-real-cost"
+    description: "A paid OpenRouter model on the customer key records the same real cost on cheap_frontier and cheap_cloud, a house call keeps the tier rate, and a priced customer run is measured and keeps its savings."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_customer_openrouter_cost_omn21260.py -q -p no:randomly --no-cov -k 'real_cost or house_call or priced_customer_run'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21260-unpriced-null-unmeasured"
+    description: "An unpriced model on the customer key is not booked at the tier rate, is not measured and counts no savings, and is stored with a null cost."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_customer_openrouter_cost_omn21260.py -q -p no:randomly --no-cov -k 'unpriced'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21260-tier-rate-root-cause"
+    description: "The same call costs the model's price on both tiers, which is the root cause named in the PR: the tier's rate, not the model's price, set the cost."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_customer_openrouter_cost_omn21260.py -q -p no:randomly --no-cov -k 'real_cost'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21260-deploy-probe"
+    description: "Deploy probe. The call effect that the deploy agent rolls onto the dev lane prices a customer-key call through byok_model_price_per_1m at the checked-out commit; the probe reads handler_llm_delegation_call.py from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_llm_delegation_call.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -Fq byok_model_price_per_1m'"
+        cwd: "${OMNI_HOME}/omnimarket"

@@ -150,11 +150,11 @@ requirements:
     acceptance:
       - id: "AC28"
         statement: "AC28: hostile-reviewer.yml clones omniintelligence at 037af72c2a7f49fda953fed6a99edd5ec588dede, the merge commit of omniintelligence#1095 and a descendant of the previous pin 3502f0de2f9be25cf68e3dc5877d9cb5580c90e0 -- falsifier: uv run pytest tests/ci/test_hostile_reviewer_pin_budget_timeout_omn19998.py -q fails over the merge base's workflow, which pins 3502f0de2f9be25cf68e3dc5877d9cb5580c90e0"
-  - id: "req-tests-run-once-on-the-pull-request"
-    statement: "Operator RULING 2026-10-18T00:50:42Z, short term until the merge queue clears and test deduplication works: a merge_group run or a push to dev skips the heavy ci.yml tier (test splits, coverage census, integration, golden and event chains, e2e) that already ran on the pull request head, a Queue Re-test Waiver (OMN-19998) marker job runs only on those two events, and CI Summary accepts the skip only when that marker succeeded, while pull request runs and main pushes are unchanged."
+  - id: "req-queue-full-suite-once"
+    statement: "The native queue tests the full selection on its synthetic commit; pull requests use changed-zone tests with CI changes escalating to the full suite; dev pushes inherit a verified tree pass and run no heavy tests."
     acceptance:
-      - id: "AC29"
-        statement: "AC29: the marker's if names only merge_group and a push to refs/heads/dev, every heavy job's if carries the waiver clause, CI Summary passes a waived snapshot with the marker succeeded and fails it with the marker absent, skipped, failed or cancelled, and a skipped light gate still fails it -- falsifier: uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -k retest fails at the merge base"
+      - id: "AC31"
+        statement: "AC31: merge_group runs all twenty full-suite shards and the heavy gates, CI Summary refuses skipped heavy jobs or incomplete shards, every required dev context has a queue producer without mirroring full-suite gates, pull_request selection narrows code changes but runs the full suite for CI changes including mixed diffs, and dev push skips heavy jobs only admitting a verified full-suite tree pass -- falsifier: uv run pytest tests/ci/test_queue_run_once_omn19998.py -q -n 0 fails at the merge base"
   - id: "req-internal-release-path-guard"
     statement: "Internal consumer remediation uses tested git tags or immutable commits instead of a release cut or release wait."
     acceptance:
@@ -171,6 +171,11 @@ requirements:
     acceptance:
       - id: "AC31"
         statement: "AC31: node_dev_tag_pin_mover_compute rewrites exactly the named sibling's git tag pin to a newer dev-<UTC14>-<sha12> tag when consumer_tests is passed, returns the candidate without accepting when not_run, and refuses with consumer_tests_failed, not_a_dev_tag, not_forward or no_tag_pin leaving the file unchanged -- falsifier: uv run pytest tests/nodes/node_dev_tag_pin_mover_compute/test_golden_chain_dev_tag_pin_mover_compute.py -q fails when the handler's failed-tests branch is removed"
+  - id: "req-lab-claude-token-rotation-node"
+    statement: "Claude-token rotation for lab hosts is an omnimarket node in canonical shape (contract, node, handler) with an onex CLI verb: the token is read from stdin only, stored under a per-host, per-account secret-store reference, deployed mode 0600, probed with placement's limit re-probe question, and a limited host is rotated onto a spare pool account with headroom; no script, argv, result, event or line carries a token value."
+    acceptance:
+      - id: "AC32"
+        statement: "AC32: node_lab_claude_token_effect, against a fake host and a fake store, stores, deploys and probes a set token and removes the host's .limited marker on an answer, restores the previous token on the host and in the store on a limit notice or failed deploy, rotates a limited host onto the first spare that answers and records the rotation event, says no-spare once per marker, and onex lab claude-token takes no token argument and never echoes the piped token -- falsifier: uv run pytest tests/nodes/node_lab_claude_token_effect/test_lab_claude_token_effect.py tests/nodes/node_lab_claude_token_effect/test_lab_claude_token_cli.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -190,6 +195,20 @@ emergency_bypass:
   follow_up_ticket_id: ""
 
 dod_evidence:
+  - id: "dod-omn19998-queue-full-suite-once"
+    description: "Queue admission, skipped and missing shard refusal, required-context coverage, PR selection and dev tree-pass verification are covered by the focused tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_queue_run_once_omn19998.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC31"]
+  - id: "dod-omn19998-queue-full-suite-deploy-probe"
+    description: "The hosted runner parses the checked-out workflow and exercises the same admission evaluator against healthy and refused queue snapshots; no lab service is needed."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ci/test_queue_run_once_omn19998.py -q -n 0 -p no:randomly --no-cov -k 'queue_refuses or workflow_admission or required_contexts'"
   - id: "dod-omn19998-mirror-durable-outbox"
     description: "Mirror outbox regression tests cover publish failure, process restart, broker acknowledgement ordering, partial batch delivery, disk write failure and crash boundaries."
     source: "manual"
@@ -640,21 +659,6 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_hostile_reviewer_pin_budget_timeout_omn19998.py tests/ci/test_hostile_reviewer_pin_structured_votes_omn19998.py tests/ci/test_hostile_reviewer_pin_retry_budget_omn17427.py tests/ci/test_hostile_reviewer_head_sha_omn20947.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC28"]
-  - id: "dod-omn19998-tests-run-once-on-the-pull-request"
-    description: "The re-test waiver tests pass at the head; at the merge base ci.yml has no queue-retest-waiver job and ci_summary_gate.py has no RETEST_WAIVER_MARKER_JOB, so they fail."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -k retest"
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC29"]
-  - id: "dod-omn19998-tests-run-once-deploy-probe"
-    description: "Hosted-runner probe reads ci.yml at this head: the queue-retest-waiver job runs only on merge_group and a dev push, and detect-changes and coverage-sweep-gate carry the waiver clause; the merge base has no such job and fails the probe."
-    source: "manual"
-    checks:
-      - check_type: "command"
-        check_value: >-
-          uv run python -c 'import yaml; j=yaml.safe_load(open(".github/workflows/ci.yml"))["jobs"]; c="!(github.event_name == \x27merge_group\x27 || (github.event_name == \x27push\x27 && github.ref == \x27refs/heads/dev\x27))"; w=j["queue-retest-waiver"]["if"]; assert "merge_group" in w and "refs/heads/dev" in w and "pull_request" not in w; assert all(c in " ".join(j[k]["if"].split()) for k in ("detect-changes", "coverage-sweep-gate"))'
   - id: "dod-omn19998-internal-release-path-guard"
     description: "Refusal, passing-pin, lane dispatch, controller brief, CLI and bus controls for the shared policy."
     source: "manual"
@@ -712,3 +716,46 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           printf 'omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261016204728-0f7bee98bd8f" }\n' > /tmp/omn19998-pin-probe.toml; uv run python -m omnimarket.nodes.node_dev_tag_pin_mover_compute --pyproject /tmp/omn19998-pin-probe.toml --distribution omnibase-infra --repository-url https://github.com/OmniNode-ai/omnibase_infra.git --tag dev-20261018005623-b5f4c2e36e72 --tests failed; test $? -eq 1 && grep -q dev-20261016204728-0f7bee98bd8f /tmp/omn19998-pin-probe.toml
+  - id: "dod-omn19998-lab-claude-token-node"
+    description: "The handler and CLI tests pass at the head against a fake host and a fake store; at the merge base the node package does not exist and both files fail at collection."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_claude_token_effect/test_lab_claude_token_effect.py tests/nodes/node_lab_claude_token_effect/test_lab_claude_token_cli.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC32"]
+  - id: "dod-omn19998-lab-claude-token-deploy-probe"
+    description: "Hosted-runner probe reads the token handler at this commit and requires its handler class; the base has no such file and the probe finds no match."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_claude_token_effect/handlers/handler_lab_claude_token.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerLabClaudeToken'
+  - id: "dod-omn19998-lab-claude-token-local-discovery"
+    description: "The inventory discovers the token node and validates its typed local invocation at the head. The inventory test is generic and also passes at the merge base, so this item carries no binds_ac; AC32 is bound by the node's own handler and CLI tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_market_node_runtime_dogfood.py -q -k test_market_node_runtime_dogfood_inventory_classifies_all_entry_points"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19998-claude-token-discovery-deploy-probe"
+    description: "Hosted-runner readback loads the installed node entry point and validates the local contract's handler models, trigger, empty bus topics and runtime profiles; the dispatch head has no node entry point and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run python -c 'from importlib.metadata import entry_points; from scripts.audit.market_node_runtime_dogfood import _contract_for, _local_invocation_check; n="node_lab_claude_token_effect"; e=next(e for e in entry_points(group="onex.nodes") if e.name == n); assert e.load().__name__ == "omnimarket.nodes." + n; assert _local_invocation_check(_contract_for(n)) == (True, "")'
+  - id: "dod-omn19998-claude-token-dependency-ownership"
+    description: "The focused runtime ownership guard accepts the CLI effect's required store and shell ports. The generic guard passes without this node at the merge base, so AC32 remains bound by the node's own handler and CLI tests."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validation/test_runtime_profile_contract_ownership.py -q -k node_lab_claude_token_effect"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19998-claude-token-ownership-deploy-probe"
+    description: "Hosted-runner readback loads the installed node and requires its contract to declare the CLI-owned store and shell ports while retaining empty runtime profiles. The previous contract lacks dependency_ownership and fails this probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run python -c 'from importlib.metadata import entry_points; from pathlib import Path; import yaml; e=next(e for e in entry_points(group="onex.nodes") if e.name == "node_lab_claude_token_effect"); c=yaml.safe_load(Path(e.load().__file__).with_name("contract.yaml").read_text()); assert c["dependency_ownership"] == ["store", "shell"]; assert c["descriptor"]["runtime_profiles"] == []'

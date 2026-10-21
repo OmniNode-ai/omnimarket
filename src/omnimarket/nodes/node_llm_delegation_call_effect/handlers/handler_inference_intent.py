@@ -84,6 +84,7 @@ from omnimarket.routing.byok_provider_backends import (
     BYOK_MODEL_UNRESOLVED,
     ModelByokProviderBackend,
     resolve_byok_backend_by_endpoint,
+    token_limit_field_for_endpoint,
 )
 from omnimarket.routing.delegation_backend_resolution import describe_model_name_source
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
@@ -98,7 +99,14 @@ _INFERENCE_RESPONSE_TOPIC_SUFFIX = (
     "inference-response.v1"  # onex-topic-allow: suffix used only for contract lookup
 )
 _RESERVED_PROVIDER_REQUEST_KEYS = frozenset(
-    {"model", "messages", "max_tokens", "temperature", "response_format"}
+    {
+        "model",
+        "messages",
+        "max_tokens",
+        "max_completion_tokens",
+        "temperature",
+        "response_format",
+    }
 )
 _MAX_PROVIDER_ERROR_BODY_CHARS = 1000
 # OMN-13215: every delegation tier (including the ceiling) executes through the
@@ -936,6 +944,9 @@ class HandlerInferenceIntent:
         OMN-21078: where the customer chooses the model, re-aims require a
         credential that records a catalogue pick. A customer's chosen model,
         including a ``:free`` one, or one with no chooser record gets one call.
+        OMN-21059: every catalogue row now has the customer choose, and a
+        credential that records a catalogue pick is refused with
+        BYOK_MODEL_NOT_CHOSEN before any call.
         """
         byok = _customer_byok_row(intent)
         if byok is None or not api_key:
@@ -954,16 +965,22 @@ class HandlerInferenceIntent:
             # OMN-21078: a chosen :free model matches a preference pattern;
             # the pattern is not evidence of who chose it. No record means
             # customer choice, including hosted refs and older local rows.
+            # OMN-21059: a model the catalogue picked is not one the customer
+            # chose, so that credential is refused like one with no model.
             if (
                 resolve_local_byok_model_chooser(intent.api_key_ref)
-                != MODEL_CHOSEN_BY_CATALOGUE
+                == MODEL_CHOSEN_BY_CATALOGUE
             ):
-                return self._call_llm(
-                    intent,
-                    call_id,
-                    api_key=api_key,
-                    credential_source=credential_source,
+                raise ProviderRefusalError(
+                    EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND,
+                    model_not_chosen_message(byok.provider),
                 )
+            return self._call_llm(
+                intent,
+                call_id,
+                api_key=api_key,
+                credential_source=credential_source,
+            )
         if intent.model == BYOK_MODEL_UNRESOLVED:
             intent = _re_aim_intent(intent, byok, api_key, exclude=())
         try:
@@ -1064,10 +1081,11 @@ class HandlerInferenceIntent:
             )
 
         messages, provider_request_options = _build_messages_and_request_options(intent)
+        # OMN-21257: the endpoint's catalogue row names the token-limit field.
         payload: dict[str, Any] = {
             "model": intent.model,
             "messages": messages,
-            "max_tokens": intent.max_tokens,
+            token_limit_field_for_endpoint(base_url): intent.max_tokens,
             "temperature": intent.temperature,
         }
         if intent.response_format is not None:

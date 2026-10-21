@@ -205,6 +205,18 @@ class TestSecretSet:
         assert resolve_local_byok_credential_model("openrouter") == _PAID
         assert "could not be checked" in result.output
 
+    def test_every_provider_now_requires_a_choice(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # OMN-21059: OpenAI's row no longer picks from its preferences.
+        _list(monkeypatch, ["gpt-4.1-nano", "gpt-4.1-mini"])
+        result = _run(["set", "llm.openai.api_key"], stdin="sk-proj-x\n")
+
+        assert result.exit_code != 0
+        assert "BYOK_MODEL_NOT_CHOSEN" in result.output
+        assert resolve_local_byok_credential_model("openai") is None
+
+    @pytest.mark.usefixtures("catalogue_picks_models")
     def test_a_provider_that_does_not_require_a_choice_still_resolves_one(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

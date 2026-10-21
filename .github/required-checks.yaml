@@ -65,6 +65,16 @@ classification: toolchain
 repo: omnimarket
 
 gates:
+  # OMN-19998: T2 queue audit; this context is already live-required on dev.
+  - name: "JS Toolchain Hermetic (OMN-18012)"
+    mode: REQUIRED
+    branch: dev
+    producer_kind: local
+    workflow: ci.yml
+    job_path: ["js-toolchain-hermetic"]
+    skip_semantics: never
+    rationale: "Already required on dev in the watcher settings readback; the real ci.yml producer runs on merge_group as well as pull_request and push."
+
   - name: "CI Summary"
     mode: REQUIRED
     producer_kind: local

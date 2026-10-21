@@ -9,11 +9,13 @@ renders it. A required tier whose source answers anything but ``resolved`` fails
 ``REQUIRED_FACTOR_MISSING``; an optional tier's other statuses are listed per tier and the
 tier is omitted. Optional tiers that do not fit the budget are dropped lowest precedence
 first and listed in ``excluded_by_budget``. When the required tiers alone are still over
-budget, each required tier is selected inside its share of the budget: the entries the
-request cites first, then the newest, whole entries only and never truncated (OMN-21111).
+budget, the cited entries of every required tier are charged first. Each tier is then
+selected inside its share of what is left: the newest, whole entries only and never
+truncated (OMN-21111).
 ``OPERATOR_WORDS_UNRECORDED`` is carried whole (the carry rule). A cited entry that does not
 fit, or a tier left with no entry, fails the build ``TOKEN_BUDGET_EXCEEDED``. Each tier is
 read at its own revision when the request names one in ``tier_revisions``.
+When sources are omitted, handlers are loaded from the contract; explicit mappings are used as supplied.
 
 Identities follow plan section 6: ``candidate_id`` is uuid5 over the build's inputs,
 contracts and ``implementation_identity``; ``assembly_hash`` is the pack hash over the
@@ -54,6 +56,7 @@ from omnimarket.models.context_pack.model_context_task_kind_rule import (
     TASK_KIND_UNKNOWN,
 )
 from omnimarket.models.context_pack_orchestrator import (
+    EnumContextPackMode,
     EnumContextPackOrchestratorStatus,
     ModelContextPackBuilt,
     ModelContextPackCommand,
@@ -80,6 +83,9 @@ from omnimarket.models.context_task_kind_rules import (
 )
 from omnimarket.nodes.node_context_pack_builder_compute.handlers.handler_context_pack_builder import (
     HandlerContextPackBuilder,
+)
+from omnimarket.nodes.node_context_pack_orchestrator.handlers.tier_source_binding import (
+    load_tier_sources,
 )
 from omnimarket.nodes.node_context_pack_orchestrator.protocols import (
     ProtocolContextTierSource,
@@ -200,14 +206,15 @@ def _precedence(profile: ModelContextProfile) -> dict[EnumContextFactor, int]:
 
 def _session_scopes(request: ModelContextPackRequest) -> tuple[str, ...]:
     scopes: list[str] = []
-    if request.session_id is not None:
+    # The session source reads exactly one mode scope: case: (pinned) or session: (live).
+    if request.mode is EnumContextPackMode.PINNED:
+        scopes.append(f"case:{request.manifest_case}")
+    elif request.session_id is not None:
         scopes.append(f"session:{request.session_id}")
     if request.newest_turn is not None:
         scopes.append(f"newest_turn:{request.newest_turn}")
     if request.session_barrier is not None:
         scopes.append(f"session_barrier:{request.session_barrier}")
-    if request.manifest_case is not None:
-        scopes.append(f"manifest_case:{request.manifest_case}")
     return tuple(scopes)
 
 
@@ -261,7 +268,7 @@ class HandlerContextPackOrchestrator:
         implementation_identity: Callable[[], Mapping[str, str]] | None = None,
         render_contract_version: str = RENDER_CONTRACT_VERSION,
     ) -> None:
-        self._sources = dict(sources or {})
+        self._sources = load_tier_sources() if sources is None else dict(sources)
         self._resolver = profile_resolver or HandlerContextProfileResolver()
         self._builder = builder or HandlerContextPackBuilder()
         self._renderer = renderer or HandlerContextPackRender()
@@ -726,11 +733,11 @@ def _select_required_tiers(
     budget: int,
     cited: frozenset[str],
 ) -> dict[EnumContextFactor, tuple[ModelContextSourceEntry, ...]] | str:
-    """Share the budget across the tiers left and select inside those over their share.
+    """Charge cited entries first and share the uncited remainder equally, smallest first.
 
-    Tiers that are never trimmed are charged first. The rest share what remains, smallest
-    first: a tier within an equal share of what is left is kept whole, and every larger
-    tier is selected inside that share.
+    Tiers that are never trimmed and cited entries of every trimmable tier are charged
+    first. The uncited remainder is shared equally, smallest first. A tier within its
+    share is kept whole, and every larger tier is selected inside that share.
     """
     fixed = sum(
         _tokens(entries)
@@ -745,22 +752,35 @@ def _select_required_tiers(
                 f.value for f in sorted(entries_by_factor) if f in _NEVER_TRIMMED
             )
         )
+    cost = {
+        factor: sum(_token_estimate(e.text) for e in entries if _is_cited(e, cited))
+        for factor, entries in entries_by_factor.items()
+        if factor not in _NEVER_TRIMMED
+    }
+    remaining -= sum(cost.values())
+    if remaining < 0:
+        return (
+            f"cited entries need {fixed + sum(cost.values())} tokens, "
+            f"over the budget {budget}: "
+            + ", ".join(f.value for f in sorted(cost) if cost[f] > 0)
+        )
     trimmable = sorted(
-        (f for f in entries_by_factor if f not in _NEVER_TRIMMED),
-        key=lambda f: (_tokens(entries_by_factor[f]), f.value),
+        cost,
+        key=lambda f: (_tokens(entries_by_factor[f]) - cost[f], f.value),
     )
     selected: dict[EnumContextFactor, tuple[ModelContextSourceEntry, ...]] = {}
     for position, factor in enumerate(trimmable):
         entries = entries_by_factor[factor]
         share = remaining // (len(trimmable) - position)
-        if _tokens(entries) <= share:
-            remaining -= _tokens(entries)
+        uncited = _tokens(entries) - cost[factor]
+        if uncited <= share:
+            remaining -= uncited
             continue
-        chosen = _select_within_tier(factor, entries, share, cited)
+        chosen = _select_within_tier(factor, entries, cost[factor] + share, cited)
         if isinstance(chosen, str):
             return chosen
         selected[factor] = chosen
-        remaining -= _tokens(chosen)
+        remaining -= _tokens(chosen) - cost[factor]
     return selected
 
 

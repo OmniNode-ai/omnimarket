@@ -276,6 +276,9 @@ class ModelByokProviderBackend(BaseModel):
     #: from third-party systems; the row's ``refusal_code`` and
     #: ``refusal_message`` say so to the customer.
     customer_routable: bool = True
+    #: A protocol variant using the same account and key is selected explicitly,
+    #: rather than probed as a different billing product during registration.
+    auto_detect_plan: bool = True
     #: Required on a detection-only row, forbidden on a routable one: the typed
     #: code a caller refuses a key or a named plan with.
     refusal_code: str | None = Field(default=None, pattern=r"^BYOK_[A-Z][A-Z0-9_]*$")
@@ -303,6 +306,11 @@ class ModelByokProviderBackend(BaseModel):
     #: (Anthropic's ``anthropic-version``). Never a credential: the key is only
     #: ever sent by ``models_auth``.
     models_headers: dict[str, str] = Field(default_factory=dict)
+    #: OMN-20910. The wire protocol of ``endpoint_url``. ``openai_chat`` is the
+    #: OpenAI-compatible chat shape every row used before; ``anthropic_messages``
+    #: is Anthropic's native Messages API, the only one that supports prompt
+    #: caching, cache-usage accounting and a typed ``stop_reason``.
+    inference_protocol: Literal["openai_chat", "anthropic_messages"] = "openai_chat"
     #: OMN-20844. ``true`` declares that the customer names the model their key
     #: runs: registration takes the model they choose (checked against the
     #: key's own list) and never picks one from ``model_preference`` for them,
@@ -320,12 +328,25 @@ class ModelByokProviderBackend(BaseModel):
     max_retries: int = Field(ge=0)
     timeout_ms: int | None = Field(default=None, gt=0)
     max_tokens: int | None = Field(default=None, gt=0)
+    #: OMN-21257. The request-body field ``endpoint_url`` takes the completion
+    #: token limit in. ``max_tokens`` is the OpenAI-compatible default; OpenAI's
+    #: own chat endpoint refuses it on the gpt-5, gpt-6 and o-series models with
+    #: HTTP 400 and takes ``max_completion_tokens``, which every OpenAI chat
+    #: model accepts.
+    token_limit_field: Literal["max_tokens", "max_completion_tokens"] = "max_tokens"
     limit_model: ModelByokLimitModel
     #: OMN-20154. Declared only when the model's price is not its tier's.
     pricing: ModelByokPricing | None = None
 
     @model_validator(mode="after")
     def _a_detection_only_row_declares_its_refusal(self) -> ModelByokProviderBackend:
+        if not self.auto_detect_plan and (
+            self.default_plan or not self.customer_routable
+        ):
+            raise ValueError(
+                "a default or detection-only plan must participate in automatic "
+                "plan detection"
+            )
         if self.customer_routable:
             if self.refusal_code is not None or self.refusal_message is not None:
                 raise ValueError(
@@ -656,6 +677,22 @@ def byok_routable_plans(provider: str) -> tuple[str, ...]:
     )
 
 
+def byok_automatic_plans(provider: str) -> tuple[str, ...]:
+    """Plans considered when registering a key without an explicit plan.
+
+    Detection-only products still count, so a prohibited product is refused.
+    Explicit protocol variants remain available through ``byok_provider_plans``.
+    """
+    normalized = provider.strip().lower()
+    return tuple(
+        sorted(
+            plan
+            for (name, plan), row in load_byok_plan_catalog().items()
+            if name == normalized and row.auto_detect_plan
+        )
+    )
+
+
 def resolve_byok_declared_plan(
     provider: str, plan: str
 ) -> ModelByokProviderBackend | None:
@@ -782,6 +819,45 @@ def byok_declared_price_per_1m(
     return None
 
 
+def byok_backend_provider(backend_id: str | None) -> str | None:
+    """The catalogue provider of a customer BYOK backend id, or ``None``.
+
+    ``None`` for every house backend, so a caller can tell a call made on a
+    customer's own key from a house call to the same endpoint.
+    """
+    if not backend_id:
+        return None
+    for backend in load_byok_plan_catalog().values():
+        if backend.backend_id == backend_id:
+            return backend.provider
+    return None
+
+
+def byok_model_price_per_1m(
+    backend_id: str | None, endpoint_url: str | None, model_name: str
+) -> tuple[Decimal, Decimal] | None:
+    """The ``(input, output)`` USD per 1M tokens of a model on a customer's key.
+
+    The catalogue's declared price for the endpoint and model first, then the
+    model registry's price for the same provider and model. ``None`` means the
+    model has no known price: the call is unpriced, never booked at a tier rate.
+    """
+    declared = byok_declared_price_per_1m(endpoint_url, model_name)
+    if declared is not None:
+        return declared
+    provider = byok_backend_provider(backend_id)
+    if provider is None:
+        return None
+    from omnimarket.models.delegation.llm_cost_routing import (
+        ModelLlmModelRegistryLoader,
+    )
+
+    for profile in ModelLlmModelRegistryLoader().load().models.values():
+        if profile.provider == provider and profile.model_name == model_name:
+            return (profile.pricing_per_1m_input, profile.pricing_per_1m_output)
+    return None
+
+
 def byok_limit_counter_key(
     tenant_id: str,
     api_key_ref: str,
@@ -872,6 +948,16 @@ def resolve_byok_backend_by_endpoint(
     return None
 
 
+def token_limit_field_for_endpoint(endpoint_url: str | None) -> str:
+    """The request-body field that carries the token limit for ``endpoint_url``.
+
+    OMN-21257. The catalogue row posted to declares it; an endpoint no routable
+    row names (a house rung, a local server) keeps ``max_tokens``.
+    """
+    backend = resolve_byok_backend_by_endpoint(endpoint_url)
+    return "max_tokens" if backend is None else backend.token_limit_field
+
+
 __all__: list[str] = [
     "BYOK_CATALOG_SCHEMA_VERSION",
     "BYOK_MODEL_UNRESOLVED",
@@ -885,6 +971,7 @@ __all__: list[str] = [
     "ModelByokPricing",
     "ModelByokProviderBackend",
     "ModelCatalogueParityGap",
+    "byok_automatic_plans",
     "byok_backend_max_retries",
     "byok_declared_price_per_1m",
     "byok_limit_counter_key",
@@ -903,4 +990,5 @@ __all__: list[str] = [
     "resolve_byok_declared_plan",
     "resolve_byok_provider_backend",
     "select_byok_model",
+    "token_limit_field_for_endpoint",
 ]

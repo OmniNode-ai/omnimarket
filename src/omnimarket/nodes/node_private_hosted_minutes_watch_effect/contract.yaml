@@ -1,0 +1,55 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: private_hosted_minutes_watch_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Read organization billing usage once, tally billed GitHub-hosted Actions minutes by repository and UTC day, alert on any checked-day usage, and record a STATUS row and heartbeat.
+
+input_model: omnimarket.nodes.node_private_hosted_minutes_watch_effect.models.model_hosted_minutes_watch_request.ModelHostedMinutesWatchRequest
+output_model: omnimarket.nodes.node_private_hosted_minutes_watch_effect.models.model_hosted_minutes_watch_result.ModelHostedMinutesWatchResult
+handler:
+  module: omnimarket.nodes.node_private_hosted_minutes_watch_effect.handlers.handler_private_hosted_minutes_watch
+  class: HandlerPrivateHostedMinutesWatch
+  input_model: omnimarket.nodes.node_private_hosted_minutes_watch_effect.models.model_hosted_minutes_watch_request.ModelHostedMinutesWatchRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: watch_private_hosted_minutes
+      handler:
+        name: HandlerPrivateHostedMinutesWatch
+        module: omnimarket.nodes.node_private_hosted_minutes_watch_effect.handlers.handler_private_hosted_minutes_watch
+      input_model: omnimarket.nodes.node_private_hosted_minutes_watch_effect.models.model_hosted_minutes_watch_request.ModelHostedMinutesWatchRequest
+      output_model: omnimarket.nodes.node_private_hosted_minutes_watch_effect.models.model_hosted_minutes_watch_result.ModelHostedMinutesWatchResult
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  side_effects:
+    - one gh api read of the org billing usage
+    - one ledger STATUS row per checked day through the ledger's append command
+    - at most one alert per checked day through the alert channel library
+    - the day record and last-run.json heartbeat in the state directory
+  runtime_profiles: [effects]
+
+terminal_event: onex.evt.omnimarket.private-hosted-minutes-watch-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.private-hosted-minutes-watch-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.private-hosted-minutes-watch-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.private-hosted-minutes-watch-requested.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.private-hosted-minutes-watch-completed.v1
+
+metadata:
+  ticket: OMN-17427
+  transport_type: kafka

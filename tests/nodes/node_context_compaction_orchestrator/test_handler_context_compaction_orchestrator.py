@@ -23,6 +23,7 @@ from omnimarket.models.context_compaction import (
     ModelContextCompactionPrepared,
     ModelContextCompactionRequested,
     ModelContextCompactionResult,
+    installed_messages_hash,
 )
 from omnimarket.models.context_pack_render.model_context_pack_render_message import (
     ModelContextPackRenderMessage,
@@ -32,7 +33,6 @@ from omnimarket.nodes.node_context_compaction_orchestrator.event_topics import (
 )
 from omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_context_compaction_orchestrator import (
     HandlerContextCompactionOrchestrator,
-    installed_messages_hash,
 )
 
 pytestmark = pytest.mark.unit

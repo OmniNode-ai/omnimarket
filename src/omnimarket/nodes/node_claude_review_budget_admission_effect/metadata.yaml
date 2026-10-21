@@ -1,0 +1,22 @@
+name: node_claude_review_budget_admission_effect
+version: "0.1.0"
+description: "Durable synchronous and Batch review admission authority"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_claude_review_budget_admission_effect: "omnimarket.nodes.node_claude_review_budget_admission_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: state_store_write
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: MIT
+tags: ["effect", "review", "budget"]
+pack: routing
+display_name: "Review Budget Admission"
+node_role: effect

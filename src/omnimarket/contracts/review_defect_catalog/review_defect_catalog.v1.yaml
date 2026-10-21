@@ -1,0 +1,288 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# The Hostile Reviewer's defect-code catalog (OMN-20910).
+#
+# One file read by the reviewer (as a cached input block) and by the fix lanes,
+# always through node_review_defect_catalog_compute, which validates it, renders
+# the reviewer's prompt section within a token budget and returns the code enum
+# the compact verdict schema allows.
+#
+# A code is a family letter plus two digits and is never reused after it is
+# retired: retired entries stay in this file with status retired.
+# Family letters: A architecture, S security, P performance, C correctness,
+# K completeness, F feasibility, T testing, Y style.
+# Two reserved namespaces are not entries here: R:<standing_rule_id> for the
+# reviewed repository's standing rules, and X for "no code fits" (a note is
+# then required).
+#
+# This 0.x version is seeded from the defects already named on the rolling
+# ledger and the repository rules; deriving the list from 30 days of verdicts
+# is still to do, and bumps the version to 1.0.0.
+catalog_version: "0.1.0"
+parent_version: null
+codes:
+  - code: T01
+    slug: test-asserts-wrong-value
+    family: testing
+    default_severity: major
+    title: Test asserts a value the code does not produce
+    detect: An assertion expects a value, shape or error the code under test cannot return, so the test passes for the wrong reason or never runs the path it names.
+    fix_hint: Assert the value the code produces, and add a case that fails on the old behaviour.
+    checkability: model-only
+    status: active
+    introduced_in: "0.1.0"
+  - code: T02
+    slug: missing-test-for-change
+    family: testing
+    default_severity: major
+    title: Behaviour change has no test
+    detect: New or changed behaviour, a new branch or a fixed bug, with no test that fails without the change.
+    fix_hint: Add a focused test that is red on the merge base and green on the head.
+    checkability: model-only
+    status: active
+    introduced_in: "0.1.0"
+  - code: T03
+    slug: test-without-positive-control
+    family: testing
+    default_severity: minor
+    title: Check or ratchet has no known-bad positive control
+    detect: A test proves a checker passes on clean input but never shows it fails on a seeded bad input.
+    fix_hint: Add a fixture the checker must refuse and assert the refusal.
+    checkability: model-only
+    status: active
+    introduced_in: "0.1.0"
+  - code: C01
+    slug: none-conflated-with-state
+    family: correctness
+    default_severity: major
+    title: None or absent conflated with a distinct state
+    detect: Code treats a missing value, None, empty or zero as the same as a real state such as false, unknown or refused, so one of them is misreported.
+    fix_hint: Give the absent case its own branch or type and test both.
+    checkability: model-only
+    status: active
+    introduced_in: "0.1.0"
+  - code: C02
+    slug: swallowed-error
+    family: correctness
+    default_severity: major
+    title: Error swallowed or turned into success
+    detect: An except or error branch ignores the error, logs and continues, or returns a success value, so the caller cannot tell the call failed.
+    fix_hint: Raise, return a typed failure, or fail closed; never report success.
+    checkability: ast
+    status: active
+    introduced_in: "0.1.0"
+  - code: C03
+    slug: partial-result-as-complete
+    family: correctness
+    default_severity: critical
+    title: Partial or truncated result reported as complete
+    detect: A cut, paginated, capped or timed-out result is used as if whole, so missing items read as absent.
+    fix_hint: Check the completion signal and fail or continue when it is missing.
+    checkability: model-only
+    status: active
+    introduced_in: "0.1.0"
+  - code: C04
+    slug: non-atomic-check-then-act
+    family: correctness
+    default_severity: major
+    title: Check-then-act race on shared state
+    detect: A read decides a write to shared state with no lock, transaction or conditional write, so two callers can both pass the check.
+    fix_hint: Make the check and the write one atomic operation.
+    checkability: model-only
+    status: active
+    introduced_in: "0.1.0"
+  - code: C05
+    slug: wrong-boundary-condition
+    family: correctness
+    default_severity: major
+    title: Off-by-one or wrong comparison at a boundary
+    detect: A comparison, range or slice includes or excludes its edge wrongly, or a threshold uses the wrong operator.
+    fix_hint: Fix the operator and test the exact boundary value.
+    checkability: model-only
+    status: active
+    introduced_in: "0.1.0"
+  - code: A01
+    slug: command-topic-equals-subscribe-topic
+    family: architecture
+    default_severity: major
+    title: Contract command topic is its only subscribe topic loop
+    detect: A contract publishes to the same topic it subscribes to as its only input, so its own output re-triggers it.
+    fix_hint: Publish a distinct event topic and keep the command topic input-only.
+    checkability: schema
+    status: active
+    introduced_in: "0.1.0"
+  - code: A02
+    slug: contract-drift
+    family: architecture
+    default_severity: major
+    title: Code and its contract disagree
+    detect: A handler, model, topic or field differs from what contract.yaml or metadata.yaml declares.
+    fix_hint: Change one side so the contract and the code match, in the same change.
+    checkability: schema
+    status: active
+    introduced_in: "0.1.0"
+  - code: A03
+    slug: hardcoded-topic-string
+    family: architecture
+    default_severity: major
+    title: Event topic hardcoded in a handler
+    detect: A handler spells a topic string instead of reading it from its contract.
+    fix_hint: Declare the topic in contract.yaml and read it from there.
+    checkability: pattern
+    status: active
+    introduced_in: "0.1.0"
+  - code: A04
+    slug: cross-node-private-import
+    family: architecture
+    default_severity: major
+    title: Node imports another node's private handler or model
+    detect: Code imports from another node package's handlers or models instead of a shared package.
+    fix_hint: Promote the shared type into a shared package and import it from there.
+    checkability: ast
+    status: active
+    introduced_in: "0.1.0"
+  - code: A05
+    slug: logic-outside-node
+    family: architecture
+    default_severity: major
+    title: New capability built outside a node
+    detect: New workflow logic lands as a standalone script, CLI tool or module instead of a contract, node and handler.
+    fix_hint: Move it into a node with a contract and a typed handler.
+    checkability: model-only
+    status: active
+    introduced_in: "0.1.0"
+  - code: A06
+    slug: hardcoded-path-or-host
+    family: architecture
+    default_severity: minor
+    title: Hardcoded absolute path, host or address
+    detect: An absolute local path, LAN address, hostname or port is spelled in code instead of config.
+    fix_hint: Read it from config or the environment the contract names.
+    checkability: pattern
+    status: active
+    introduced_in: "0.1.0"
+  - code: S01
+    slug: gate-bypass
+    family: security
+    default_severity: critical
+    title: Gate, hook or check bypassed or weakened
+    detect: A change skips, allowlists, loosens or short-circuits a required check, hook or validation to make it pass.
+    fix_hint: Fix the cause the gate reports and keep the gate as strict.
+    checkability: model-only
+    status: active
+    introduced_in: "0.1.0"
+  - code: S02
+    slug: secret-exposed
+    family: security
+    default_severity: critical
+    title: Secret value in code, logs or output
+    detect: A key, token or password is written in code, printed, logged or put in an event or error message.
+    fix_hint: Pass a secret reference and never print or log the value.
+    checkability: pattern
+    status: active
+    introduced_in: "0.1.0"
+  - code: S03
+    slug: unvalidated-input-injection
+    family: security
+    default_severity: critical
+    title: Untrusted input reaches a query, shell or path
+    detect: External input is interpolated into SQL, a shell command, a file path or a URL without validation or parameters.
+    fix_hint: Use parameters or an argv list, and validate the value.
+    checkability: model-only
+    status: active
+    introduced_in: "0.1.0"
+  - code: S04
+    slug: unpinned-dependency
+    family: security
+    default_severity: minor
+    title: Dependency or action not pinned
+    detect: A new dependency, image or workflow action is unpinned, floating or pinned to a mutable ref.
+    fix_hint: Pin a version range in the lock, or a commit sha for an action.
+    checkability: pattern
+    status: active
+    introduced_in: "0.1.0"
+  - code: K01
+    slug: stub-or-empty-implementation
+    family: completeness
+    default_severity: major
+    title: Stub, placeholder or empty implementation
+    detect: A function returns a constant, passes, raises not-implemented or carries a TODO where real behaviour is claimed.
+    fix_hint: Implement it, or remove the claim and the caller.
+    checkability: ast
+    status: active
+    introduced_in: "0.1.0"
+  - code: K02
+    slug: declared-but-not-wired
+    family: completeness
+    default_severity: major
+    title: Declared piece not wired to anything
+    detect: A node, topic, handler, entry point or config key is added but nothing registers, publishes, subscribes or reads it.
+    fix_hint: Wire it where it is consumed, or remove it.
+    checkability: model-only
+    status: active
+    introduced_in: "0.1.0"
+  - code: K03
+    slug: metadata-not-updated
+    family: completeness
+    default_severity: minor
+    title: Node gained a dependency without a metadata update
+    detect: A node gains a dependency, capability or entry flag that metadata.yaml or the entry points do not record.
+    fix_hint: Update metadata.yaml and the entry point in the same change.
+    checkability: schema
+    status: active
+    introduced_in: "0.1.0"
+  - code: P01
+    slug: blocking-call-in-async
+    family: performance
+    default_severity: major
+    title: Blocking call inside async code
+    detect: Synchronous I/O, sleep or a subprocess wait runs inside an async function on the event loop.
+    fix_hint: Use the async client or run it in a worker thread.
+    checkability: ast
+    status: active
+    introduced_in: "0.1.0"
+  - code: P02
+    slug: unbounded-work
+    family: performance
+    default_severity: major
+    title: Unbounded loop, query or growth
+    detect: A loop, retry, query or collection has no limit, page size, timeout or eviction, so input size or a fault grows it without bound.
+    fix_hint: Add a bound and say what happens when it is reached.
+    checkability: model-only
+    status: active
+    introduced_in: "0.1.0"
+  - code: Y01
+    slug: untyped-model
+    family: style
+    default_severity: minor
+    title: Untyped dict or Any where a model belongs
+    detect: Structured data crosses a function, event or contract boundary as a dict, Any or loose tuple instead of a typed model.
+    fix_hint: Define a frozen typed model and use it at the boundary.
+    checkability: ast
+    status: active
+    introduced_in: "0.1.0"
+  - code: Y02
+    slug: dead-code
+    family: style
+    default_severity: nit
+    title: Dead or unreachable code
+    detect: Code, a branch, an import or a parameter that nothing reaches or uses.
+    fix_hint: Remove it.
+    checkability: ast
+    status: active
+    introduced_in: "0.1.0"
+  - code: F01
+    slug: depends-on-absent-capability
+    family: feasibility
+    default_severity: major
+    title: Relies on a capability that does not exist
+    detect: The change calls an API, field, flag, topic or service that the dependency or environment does not provide.
+    fix_hint: Use what exists, or land the capability first.
+    checkability: model-only
+    status: active
+    introduced_in: "0.1.0"
+# Reviewer false positives: instructions in the prompt, never codes.
+do_not_report:
+  - A diff chunk ending mid-file is a chunk boundary of this review, not truncation in the code.
+  - Style preferences with no defect, and restatements of what the diff already does.

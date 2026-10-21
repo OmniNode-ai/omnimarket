@@ -498,6 +498,22 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      - id: queue-run-once-policy
+        name: Queue full-suite admission policy (OMN-19998)
+        language: system
+        entry: uv run pytest tests/ci/test_queue_run_once_omn19998.py -q -n 0 -p no:randomly --no-cov
+        files: ^(\.github/.*\.ya?ml|scripts/ci/(ci_summary_gate\.py|detect_test_paths\.py|test_selection_adjacency\.yaml)|tests/ci/test_queue_run_once_omn19998\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: hook-projection-freshness
+        name: Hook freshness alarm survives a shared projection outage (OMN-19513)
+        language: system
+        entry: uv run pytest tests/test_omn19513_projection_freshness_alert.py -q -n 0 -p no:randomly --no-cov
+        files: ^(src/omnimarket/nodes/node_projection_freshness_alert_effect/.*|tests/test_omn19513_projection_freshness_alert\.py|\.github/workflows/ci\.yml|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-14605 / OMN-18013: a handler_routing entry whose assigned topics span more
       # than one real message category leaves the off-category topics permanently
       # unroutable — handler_wiring stamps ONE category per entry and
@@ -642,10 +658,10 @@ repos:
         stages: [pre-commit]
 
       - id: check-dep-provenance
-        name: Forbid first-party git-source overrides (OMN-13873)
+        name: Validate dependency provenance (PyPI or sibling dev merge tag)
         entry: uv run --frozen python scripts/check_dep_provenance.py
         language: system
-        files: ^pyproject\.toml$
+        files: ^(pyproject\.toml|scripts/check_dep_provenance\.py)$
         pass_filenames: false
         stages: [pre-commit]
 
@@ -845,6 +861,14 @@ repos:
         entry: uv run python -m omnimarket.validators.routing_tier_backend_bindability
         pass_filenames: false
         files: ^(src/omnimarket/configs/(routing_tiers|bifrost_delegation)\.yaml|src/omnimarket/validators/routing_tier_backend_bindability\.py)$
+        stages: [pre-commit]
+
+      - id: registered-byok-escalation
+        name: Registered BYOK escalation (OMN-20607)
+        language: system
+        entry: uv run --frozen pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_byok_escalation_omn20607.py -q -n 0 -p no:randomly --no-cov
+        pass_filenames: false
+        files: ^(src/omnimarket/(configs/(routing_tiers|task_class_contracts\.v1)\.yaml|routing/local_byok_route\.py|models/delegation/model_delegation_routing_overlay\.py|inference/local_byok_credential_adapter\.py|nodes/(node_delegation_routing_reducer|node_delegate_skill_orchestrator)/.*)|tests/unit/nodes/node_delegate_skill_orchestrator/test_byok_escalation_omn20607\.py)$
         stages: [pre-commit]
 
       # OMN-17427 / RULING 2026-10-08T23:48:01Z: lab models first for appropriate
@@ -1523,6 +1547,15 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-20910: paired with the Review budget admission CI step.
+      - id: review-budget-admission
+        name: Review budget admission (OMN-20910)
+        language: system
+        entry: uv run pytest tests/unit/nodes/node_claude_review_budget_reducer/test_golden_chain_review_budget_admission.py -q -n 0 -p no:randomly --no-cov
+        files: ^(src/omnimarket/(nodes/node_claude_review_budget_|models/claude_review_budget/)|tests/unit/nodes/node_claude_review_budget_|pyproject\.toml$|\.pre-commit-config\.yaml$|\.github/workflows/ci\.yml$)
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-20910: a review voter's model is declared only in the contract
       # overlay. Refuses any vars.*MODEL* reference and any model id literal in
       # a reviewer workflow. SYNC with the ci.yml lint step "Review voter model
@@ -1543,6 +1576,16 @@ repos:
         language: system
         entry: uv run pytest tests/ci/test_contract_prerequisite_verifier_host_tools_omn20910.py -q -n 0 -p no:randomly --no-cov
         files: ^(contracts/[^/]+\.yaml|src/omnimarket/nodes/node_dod_verify/services/(contract_prerequisite|evidence_collector)\.py|tests/ci/test_contract_prerequisite_verifier_host_tools_omn20910\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-17427: every ticket contract loads as omnibase_core's ModelTicketContract.
+      # SYNC with ci.yml "Contract Compliance Check" and contract-validation.yml.
+      - id: ticket-contract-schema
+        name: Ticket contracts load as omnibase_core ModelTicketContract (OMN-17427)
+        language: system
+        entry: uv run pytest tests/ci/test_ticket_contracts_schema_omn17427.py -q -n 0 -p no:randomly --no-cov
+        files: ^(contracts/OMN-[0-9]+\.yaml|tests/ci/test_ticket_contracts_schema_omn17427\.py)$
         pass_filenames: false
         stages: [pre-commit]
 
@@ -1752,6 +1795,19 @@ repos:
         language: system
         entry: uv run pytest tests/formal/test_agent_call_adapter_model.py -q -n 0 -p no:randomly --no-cov
         files: ^(formal/agent_call_adapter/|tests/formal/(test_agent_call_adapter_model\.py|agent_call_adapter_tlc\.sh)$)
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-21104: the compaction lifecycle model passes its design configs, each
+      # property fails on a one-knob mutation, the TLC results match the committed
+      # model, configs and outputs, and VERDICT.txt approves the model's digest.
+      # Check-only. SYNC with the ci.yml lint step "Compaction lifecycle model and
+      # verdict (OMN-21104)".
+      - id: compaction-lifecycle-model
+        name: Compaction lifecycle model and verdict (OMN-21104)
+        language: system
+        entry: uv run pytest tests/formal/test_compaction_lifecycle_model.py -q -n 0 -p no:randomly --no-cov
+        files: ^(formal/compaction_lifecycle/|tests/formal/(test_compaction_lifecycle_model\.py|compaction_lifecycle_tlc\.sh)$)
         pass_filenames: false
         stages: [pre-commit]
 

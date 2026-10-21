@@ -84,7 +84,7 @@ from omnimarket.routing.byok_model_discovery import (
 )
 from omnimarket.routing.byok_provider_backends import (
     ModelByokProviderBackend,
-    byok_provider_plans,
+    byok_automatic_plans,
     resolve_byok_declared_plan,
     resolve_byok_provider_backend,
 )
@@ -271,7 +271,7 @@ def _probe_rows(
     default = resolve_byok_provider_backend(provider)
     routable: list[ModelByokProviderBackend] = [default] if default is not None else []
     detection_only: list[ModelByokProviderBackend] = []
-    for plan in byok_provider_plans(provider):
+    for plan in byok_automatic_plans(provider):
         row = resolve_byok_declared_plan(provider, plan)
         if row is None:
             continue

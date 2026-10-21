@@ -18,6 +18,7 @@ from typing import Any, Final
 from uuid import UUID, uuid4
 
 import yaml
+from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
 from omnibase_core.models.projection.model_upsert_plan import build_upsert_plan
 from pydantic import ValidationError
 
@@ -25,6 +26,9 @@ from omnimarket.events.delegation_judge_verdict import (
     ModelDelegationJudgeVerdictEvent,
 )
 from omnimarket.events.topics import TASK_DELEGATED_TOPIC_V1
+from omnimarket.handlers.handler_modelled_terminal_savings import (
+    apply_modelled_terminal_savings,
+)
 from omnimarket.handlers.handler_projection_derived_write import (
     HandlerProjectionDerivedWrite,
 )
@@ -34,6 +38,7 @@ from omnimarket.models.delegation.quality_bar_evidence import (
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillTerminalProjection,
     ModelDelegationEventProjectionRow,
+    ModelTaskDelegatedSavingsSource,
 )
 from omnimarket.models.delegation.wire.model_quality_gate import ModelQualityGateResult
 from omnimarket.models.model_projection_derived_write import ModelProjectionDerivedWrite
@@ -85,7 +90,7 @@ from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction 
 from omnimarket.nodes.node_projection_delegation.models.model_terminal_precedence import (
     fold_terminal_ownership,
 )
-from omnimarket.pricing import resolve_tier_cost
+from omnimarket.pricing import build_premium_counterfactual, resolve_tier_cost
 from omnimarket.projection.discovery import (
     load_projection_exposures_from_contract,
 )
@@ -1734,7 +1739,11 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         )
 
     async def _project_typed_event_async(
-        self, event: ModelProjectionTaskDelegatedEvent, meta: MessageMeta
+        self,
+        event: ModelProjectionTaskDelegatedEvent,
+        meta: MessageMeta,
+        *,
+        canonical_counterfactual: ModelPremiumCounterfactual | None = None,
     ) -> bool:
         """Async port of ``HandlerProjectionDelegation.project()`` (OMN-15905).
 
@@ -1829,6 +1838,12 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         _stamp_terminal_trace_and_routing(row, event)
         _stamp_terminal_stop_reason(row, event.finish_reason, event.truncated)
         await self._preserve_existing_evidence_async(row)
+        # Same fallback as the sync writer: an original pinned counterfactual
+        # wins over the canonical savings writer's reconstructed baseline.
+        if row.get("premium_counterfactual") is None and canonical_counterfactual:
+            row["premium_counterfactual"] = canonical_counterfactual.model_dump(
+                mode="json"
+            )
         await self._write_delegation_row(
             row, meta, insert_only_columns=tenant_insert_only
         )
@@ -1867,7 +1882,15 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             return await self._route_malformed_to_dlq(
                 data, f"delegation terminal event failed model validation: {exc}", meta
             )
-        return await self._project_typed_event_async(event, meta)
+        return await self._project_typed_event_async(
+            event,
+            meta,
+            canonical_counterfactual=(
+                ModelTaskDelegatedSavingsSource.counterfactual_from_canonical_payload(
+                    data, counterfactual_builder=build_premium_counterfactual
+                )
+            ),
+        )
 
     async def _project_task_delegated(
         self, data: dict[str, Any], meta: MessageMeta
@@ -2113,6 +2136,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         # late-arriving timeout terminal must not clobber the real answer an
         # earlier delegation-completed.v1 already wrote).
         await self._preserve_existing_evidence_async(row)
+        apply_modelled_terminal_savings(row, event)
         await self._write_delegation_row(
             row, meta, insert_only_columns=tenant_insert_only
         )
@@ -2258,11 +2282,14 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         corpus_errors_json = json.dumps(
             _coerce_gate_labels(data.get("corpus_errors") or data.get("corpusErrors"))
         )
-        cost_inference_usd = (
-            _safe_numeric_str(
-                data.get("cost_inference_usd") or data.get("costInferenceUsd")
-            )
-            or "0"
+        # OMN-20834: a run the pricing surface could not price carries a null
+        # cost, and it is stored as NULL. `or` here would turn a priced 0.0 into
+        # the camelCase lookup, and a "0" fallback would store an unpriced run
+        # as a free one.
+        cost_inference_usd = _safe_numeric_str(
+            data["cost_inference_usd"]
+            if "cost_inference_usd" in data
+            else data.get("costInferenceUsd")
         )
         timestamp = safe_parse_date(data.get("timestamp") or data.get("emitted_at"))
         # OMN-12780 (Wave 1C): persist the full generated output — no truncation.

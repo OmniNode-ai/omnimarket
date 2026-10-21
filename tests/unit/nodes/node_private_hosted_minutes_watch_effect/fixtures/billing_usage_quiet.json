@@ -1,0 +1,30 @@
+{
+  "usageItems": [
+    {
+      "date": "2026-10-18T00:00:00Z",
+      "product": "Actions",
+      "sku": "actions_linux",
+      "quantity": 900,
+      "unitType": "Minutes",
+      "pricePerUnit": 0.008,
+      "grossAmount": 0,
+      "discountAmount": 0,
+      "netAmount": 0,
+      "organizationName": "OmniNode-ai",
+      "repositoryName": "public-repo-c"
+    },
+    {
+      "date": "2026-10-18T00:00:00Z",
+      "product": "Actions",
+      "sku": "actions_self_hosted",
+      "quantity": 700,
+      "unitType": "Minutes",
+      "pricePerUnit": 0.008,
+      "grossAmount": 0.048,
+      "discountAmount": 0.048,
+      "netAmount": 0,
+      "organizationName": "OmniNode-ai",
+      "repositoryName": "private-repo-a"
+    }
+  ]
+}

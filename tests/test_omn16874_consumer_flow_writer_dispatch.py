@@ -370,6 +370,10 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # declare the capability.
     # OMN-20802: the runtime dispatches this writer once; its definition-B
     # fold, HandlerProjectionAutomationLiveness, has no dispatch declaration.
+    # LocalEnvironmentProjectionWriter (OMN-19988) is the only writer of
+    # local_environment, dispatched once per consumed environment report by
+    # runtime auto-wiring; its pure plan, HandlerProjectionLocalEnvironment,
+    # does NOT declare the capability.
     assert declared == {
         "AlertChannelLivenessProjectionWriter",
         "AutomationLivenessProjectionWriter",
@@ -378,6 +382,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "MeteringSummaryProjectionWriter",
         "CiAttemptOutcomeProjectionWriter",
         "ConsumerFlowProjectionWriter",
+        "LocalEnvironmentProjectionWriter",
         "DelegationEvalProjectionWriter",
         "HandlerDelegationDispositionWriter",
         "ProviderQuotaProjectionWriter",

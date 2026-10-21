@@ -78,6 +78,28 @@ dependencies:
   - name: node_context_pack_render_compute
     type: node
     optional: false
+  - name: node_context_source_ledger_effect
+    type: node
+    optional: false
+  - name: node_context_source_work_state_effect
+    type: node
+    optional: false
+  - name: node_session_context_sources_effect
+    type: node
+    optional: false
+  - name: node_context_source_guidance_effect
+    type: node
+    optional: false
+
+# Binds each factor to the node whose handler serves it; read by tier_source_binding.load_tier_sources.
+context_tier_sources:
+  operator_rulings: node_context_source_ledger_effect
+  open_work: node_context_source_work_state_effect
+  orchestration_state: node_context_source_work_state_effect
+  operator_words_unrecorded: node_session_context_sources_effect
+  repo_state: node_session_context_sources_effect
+  lane_rules: node_context_source_guidance_effect
+  architecture_patterns: node_context_source_guidance_effect
 
 capabilities:
   - name: context.pack.build

@@ -10,11 +10,14 @@ Usage, on the lab host whose pool it is:
         writes the chosen token to stdout for ``export X="$(...)"`` and refuses a
         terminal; the status line, with the chosen label, goes to stderr
     python -m omnimarket.nodes.node_claude_token_pool_effect mark-limited --label <account> --seconds <n>
+    python -m omnimarket.nodes.node_claude_token_pool_effect mark-revoked --label <account>
     python -m omnimarket.nodes.node_claude_token_pool_effect status [--json]
 
 Exit 0 on success, 2 on a refusal, 3 when ``resolve`` finds an empty pool and 4
-when every token is limited (``resolve`` chose nothing; ``mark-limited`` and
-``status`` print the ALARM line). No output names a token's value.
+when every token is limited or revoked (``resolve`` chose nothing;
+``mark-limited``, ``mark-revoked`` and ``status`` print the ALARM line).
+``mark-revoked`` writes one ALERT line naming the label to stderr when it newly
+revokes it. No output names a token's value.
 """
 
 from __future__ import annotations
@@ -56,6 +59,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     mark.add_argument("--label", required=True)
     mark.add_argument("--seconds", required=True, type=float)
+    revoke = verbs.add_parser(
+        "mark-revoked",
+        help="the OAuth token behind --label was revoked; skip it until re-added",
+    )
+    revoke.add_argument("--label", required=True)
     status = verbs.add_parser("status", help="print the pool status line")
     status.add_argument(
         "--json", action="store_true", help="the whole result as JSON (no token)"
@@ -109,7 +117,13 @@ def main(
         sys.stdout.write(result.model_dump_json(indent=2) + "\n")
     else:
         sys.stdout.write(result.status_line + "\n")
-    return EXIT_ALL_LIMITED if result.all_limited and args.verb == "mark-limited" else 0
+    if result.alert:
+        sys.stderr.write(result.alert + "\n")
+    return (
+        EXIT_ALL_LIMITED
+        if result.all_limited and args.verb in ("mark-limited", "mark-revoked")
+        else 0
+    )
 
 
 if __name__ == "__main__":

@@ -6,14 +6,22 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Sequence
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from omnimarket.models.model_metering_summary_refresh_requested import (
+    ModelMeteringSummaryRefreshRequested,
+)
 from omnimarket.nodes.node_projection_metering_summary import (
     ModelMeteringSummaryFoldRequest,
     ModelMeteringSummaryRow,
+)
+from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_summary_store_refresh import (
+    ProtocolMeteringStoreReads,
+    refresh_from_store,
 )
 from omnimarket.nodes.node_projection_metering_summary.handlers.handler_projection_metering_summary import (
     HandlerProjectionMeteringSummary,
@@ -21,6 +29,7 @@ from omnimarket.nodes.node_projection_metering_summary.handlers.handler_projecti
 from omnimarket.projection.protocol_database import ProtocolProjectionDatabaseSync
 from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
 
+_CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
 CONFLICT_KEY = "tenant_id,window_kind,window_start,baseline_model"
 _COLUMNS = tuple(ModelMeteringSummaryRow.model_fields)
 _UPSERT = (
@@ -34,6 +43,16 @@ _UPSERT = (
     )
     + " RETURNING tenant_id"
 )
+
+
+@lru_cache(maxsize=1)
+def store_refresh_command_topic() -> str:
+    """The store refresh command topic, as the node's contract names it."""
+    contract = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
+    topic = str(contract["config"]["metering_summary"]["store_refresh_command_topic"])
+    if topic not in contract["event_bus"]["subscribe_topics"]:
+        raise ValueError(f"{_CONTRACT_PATH} names {topic!r} but does not subscribe it")
+    return topic
 
 
 def store_rows(
@@ -51,7 +70,7 @@ class MeteringSummaryProjectionWriter(BaseProjectionRunner):
 
     def __init__(self, contract_path: Path | None = None) -> None:
         super().__init__()
-        path = contract_path or Path(__file__).parent.parent / "contract.yaml"
+        path = contract_path or _CONTRACT_PATH
         self._contract: dict[str, Any] = yaml.safe_load(path.read_text())
 
     @property
@@ -66,12 +85,27 @@ class MeteringSummaryProjectionWriter(BaseProjectionRunner):
     def poison_dlq_topics(self) -> list[str]:
         return list(self._contract["event_bus"]["dlq_topics"])
 
+    @property
+    def store_refresh_topic(self) -> str:
+        """OMN-17427: the command that names tenants and days, not runs."""
+        return store_refresh_command_topic()
+
+    def _is_store_refresh(self, topic: object, data: dict[str, Any]) -> bool:
+        if isinstance(topic, str) and topic:
+            return topic == self.store_refresh_topic
+        # An in-process dispatch without the envelope's topic: the two commands
+        # share no required field, so the shape names the command.
+        return "refresh_id" in data and "records" not in data
+
     def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
         data = {
             k: v
             for k, v in input_data.items()
             if k not in {"_topic", "_partition", "_offset", "_fallback_id"}
         }
+        if self._is_store_refresh(input_data.get("_topic"), data):
+            refresh = ModelMeteringSummaryRefreshRequested.model_validate(data)
+            return asyncio.run(self._refresh_one_message(refresh))
         request = ModelMeteringSummaryFoldRequest.model_validate(data)
         return asyncio.run(self._project_one_message(request))
 
@@ -84,11 +118,35 @@ class MeteringSummaryProjectionWriter(BaseProjectionRunner):
         finally:
             await self.db.close()
 
+    async def _refresh_one_message(
+        self, request: ModelMeteringSummaryRefreshRequested
+    ) -> dict[str, Any]:
+        await self.db.connect()
+        try:
+            return await self._refresh(request)
+        finally:
+            await self.db.close()
+
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
+        if self._is_store_refresh(topic, data):
+            await self._refresh(
+                ModelMeteringSummaryRefreshRequested.model_validate(data)
+            )
+            return True
         await self._project(ModelMeteringSummaryFoldRequest.model_validate(data))
         return True
+
+    def _reads_for(self, table: str) -> ProtocolMeteringStoreReads:
+        return self.db_for(table, operation="read")
+
+    async def _refresh(
+        self, request: ModelMeteringSummaryRefreshRequested
+    ) -> dict[str, Any]:
+        return await refresh_from_store(
+            request, reads_for=self._reads_for, fold_and_store=self._project
+        )
 
     async def _project(
         self, request: ModelMeteringSummaryFoldRequest

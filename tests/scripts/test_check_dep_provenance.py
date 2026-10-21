@@ -1,14 +1,7 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""Tests for the dep-provenance gate (OMN-13873).
-
-Recurrence guard for the omnibase_infra PR #2184 footgun: ``[tool.uv.sources]``
-git-rev overrides pinned ``omnibase-core`` / ``omnibase-spi`` to UNRELEASED
-commits, and every CI check passed green because the breakage is dependency
-*provenance*, not runtime behavior. This gate fails closed on any first-party
-git-source override on dev/main.
-"""
+"""Dependency provenance accepts only a sibling's own dev merge tag from git."""
 
 from __future__ import annotations
 
@@ -16,6 +9,8 @@ import importlib.util
 from pathlib import Path
 
 import pytest
+
+pytestmark = pytest.mark.unit
 
 _SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "check_dep_provenance.py"
 
@@ -206,3 +201,133 @@ def test_escape_is_per_line(mod, tmp_path: Path) -> None:
 def test_missing_pyproject_fails_closed(mod, tmp_path: Path) -> None:
     missing = tmp_path / "nope" / "pyproject.toml"
     assert mod.main(["--pyproject", str(missing)]) == 1
+
+
+DEV_TAG = "dev-20261019090050-c330f5a7d597"
+SIBLING_PACKAGES = {
+    "omnibase-core": "omnibase_core",
+    "omnibase-spi": "omnibase_spi",
+    "omnibase-compat": "omnibase_compat",
+    "omnibase-infra": "omnibase_infra",
+    "omninode-memory": "omnimemory",
+    "omninode-intelligence": "omniintelligence",
+    "omninode-claude": "omniclaude",
+}
+
+
+@pytest.mark.parametrize(("package", "repo"), SIBLING_PACKAGES.items())
+@pytest.mark.parametrize("suffix", ["", ".git"])
+def test_allow_sibling_dev_merge_tag_without_suppression(
+    mod, tmp_path: Path, package: str, repo: str, suffix: str
+) -> None:
+    path = _write_pyproject(
+        tmp_path,
+        "[tool.uv.sources]\n"
+        f'{package} = {{ git = "https://github.com/OmniNode-ai/{repo}{suffix}", '
+        f'tag = "{DEV_TAG}" }}\n',
+    )
+    assert mod.find_violations(path.read_text()) == []
+    assert mod.main(["--pyproject", str(path)]) == 0
+
+
+@pytest.mark.parametrize(("package", "repo"), SIBLING_PACKAGES.items())
+@pytest.mark.parametrize(
+    "selector",
+    [
+        'branch = "dev"',
+        'rev = "c330f5a7d597' + "a" * 28 + '"',
+        f'rev = "{DEV_TAG}"',
+        'tag = "v0.47.49"',
+        'tag = "dev-latest"',
+        'tag = "dev-20261019090050-c330f5a7d59"',
+        'tag = "dev-20261019090050-C330F5A7D597"',
+        f'tag = "{DEV_TAG}", branch = "dev"',
+        f'tag = "{DEV_TAG}", rev = "c330f5a7d597"',
+    ],
+)
+def test_dev_merge_tag_exception_refuses_other_selectors(
+    mod, tmp_path: Path, package: str, repo: str, selector: str
+) -> None:
+    path = _write_pyproject(
+        tmp_path,
+        "[tool.uv.sources]\n"
+        f'{package} = {{ git = "https://github.com/OmniNode-ai/{repo}.git", '
+        f"{selector} }}\n",
+    )
+    assert mod.main(["--pyproject", str(path)]) == 1
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://example.invalid/omnibase_core.git",
+        "https://github.com/another-owner/omnibase_core.git",
+        "https://github.com/OmniNode-ai/omnibase_spi.git",
+        "https://github.com/OmniNode-ai/not-a-sibling.git",
+        "https://github.com/OmniNode-ai/omnibase_core.git/extra",
+        "https://github.com/OmniNode-ai/omnibase_core.git?branch=dev",
+    ],
+)
+def test_dev_merge_tag_does_not_exempt_a_foreign_repository(
+    mod, tmp_path: Path, url: str
+) -> None:
+    path = _write_pyproject(
+        tmp_path,
+        f'[tool.uv.sources]\nomnibase-core = {{ git = "{url}", tag = "{DEV_TAG}" }}\n',
+    )
+    assert mod.main(["--pyproject", str(path)]) == 1
+
+
+def test_dev_merge_tag_does_not_exempt_a_non_sibling_package(mod) -> None:
+    text = (
+        "[tool.uv.sources]\n"
+        'requests = { git = "https://github.com/psf/requests.git", '
+        f'tag = "{DEV_TAG}" }}\n'
+    )
+    assert len(mod.find_violations(text)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        f"{{ git = 'https://github.com/OmniNode-ai/omnibase_core.git', tag = '{DEV_TAG}' }}",
+        f'[{{ git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "{DEV_TAG}", marker = "sys_platform == \'linux\'" }}]',
+    ],
+)
+def test_dev_merge_tag_uses_toml_semantics(mod, source: str) -> None:
+    assert mod.find_violations(f"[tool.uv.sources]\nomnibase_core = {source}\n") == []
+
+
+def test_dev_merge_tag_in_a_dotted_table(mod) -> None:
+    text = (
+        "[tool.uv.sources.omnibase_core]\n"
+        'git = "https://github.com/OmniNode-ai/omnibase_core.git"\n'
+        f'tag = "{DEV_TAG}"\n'
+    )
+    assert mod.find_violations(text) == []
+
+
+def test_branch_in_a_dotted_table_is_refused(mod) -> None:
+    text = (
+        "[tool.uv.sources.omnibase_core]\n"
+        'git = "https://github.com/OmniNode-ai/omnibase_core.git"\n'
+        'branch = "dev"\n'
+    )
+    assert len(mod.find_violations(text)) == 1
+
+
+def test_each_marker_source_must_qualify_independently(mod) -> None:
+    text = (
+        "[tool.uv.sources]\nomnibase-core = [\n"
+        '{ git = "https://github.com/OmniNode-ai/omnibase_core.git", '
+        f'tag = "{DEV_TAG}", marker = "sys_platform == \'linux\'" }},\n'
+        '{ git = "https://github.com/OmniNode-ai/omnibase_core.git", '
+        'branch = "dev", marker = "sys_platform == \'darwin\'" },\n]\n'
+    )
+    violations = mod.find_violations(text)
+    assert len(violations) == 1
+    assert "branch='dev'" in violations[0]
+
+
+def test_invalid_toml_fails_closed(mod) -> None:
+    assert mod.find_violations('[tool.uv.sources]\nomnibase-core = { git = "')

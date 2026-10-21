@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_prompt_cost_estimate_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  A visitor's uploaded usage export (ChatGPT or Claude conversations.json,
+  Claude Code session JSONL, or a CSV with a prompt column) priced prompt by
+  prompt: the task class the delegation router would give it, what it cost on
+  the model that answered it, the model the router's own tier ladder would have
+  sent it to, and what that would have cost. A modelled estimate, typed
+  estimated, never a measured figure.
+
+  ONE PRICE AUTHORITY. Every cost is the savings estimate's
+  counterfactual_cost_usd over a baseline resolved from the canonical pricing
+  manifest. The node holds no price, model id or routing choice of its own.
+
+  UNPRICED IS NOT SUBSTITUTED. A prompt naming a model the manifest does not
+  carry, or naming none, is counted under that model as unpriced and excluded
+  from every total; it is never priced at another model's rate.
+
+  ESTIMATED TOKENS ARE MARKED. An export without token counts is read by text
+  length, and every such row carries tokens_estimated.
+
+  CONSENT FIRST. The request type admits only consent_given true.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: estimate_prompt_costs
+    handler:
+      name: HandlerPromptCostEstimate
+      module: omnimarket.nodes.node_prompt_cost_estimate_compute.handlers.handler_prompt_cost_estimate
+    input_model: omnimarket.nodes.node_prompt_cost_estimate_compute.models.model_prompt_cost_estimate.ModelPromptCostEstimateRequest
+    output_model: omnimarket.nodes.node_prompt_cost_estimate_compute.models.model_prompt_cost_estimate.ModelPromptCostEstimateResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+metadata:
+  ticket: OMN-20388
+  origin_tickets:
+  - OMN-19979
+  transport_type: in_process
+lifecycle: experimental

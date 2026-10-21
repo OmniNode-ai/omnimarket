@@ -104,7 +104,6 @@ class ModelMarketSkillSpec(BaseModel):
         "pr_polish",
         "local_review",
         "delegate_skill",
-        "coderabbit_triage",
         "session_bootstrap",
         "session_orchestrator",
         "ticket_pipeline",
@@ -225,21 +224,6 @@ MARKET_SKILL_SPECS: tuple[ModelMarketSkillSpec, ...] = (
             "tests/unit/nodes/node_delegate_skill_orchestrator",
         ),
         smoke_kind="delegate_skill",
-    ),
-    ModelMarketSkillSpec(
-        skill_name="coderabbit_triage",
-        node_name="node_coderabbit_triage",
-        module="omnimarket.nodes.node_coderabbit_triage",
-        contract_path="src/omnimarket/nodes/node_coderabbit_triage/contract.yaml",
-        task_text=(
-            "Classify CodeRabbit review threads into blocking, suggestion, and "
-            "unknown buckets for automated follow-up."
-        ),
-        pytest_targets=(
-            "tests/test_golden_chain_coderabbit_triage.py",
-            "tests/test_codex_runtime_client.py::test_coderabbit_triage_pattern_b_runs_node_end_to_end",
-        ),
-        smoke_kind="coderabbit_triage",
     ),
     ModelMarketSkillSpec(
         skill_name="session_bootstrap",
@@ -499,17 +483,6 @@ def _summarize_delegate_skill(payload: dict[str, object]) -> dict[str, object]:
         "has_session_id": bool(delegation_payload.get("session_id")),
         "quality_contract_mode": delegation_payload.get("quality_contract_mode"),
         "terminal_events_configured": isinstance(terminal_events, dict),
-    }
-
-
-def _summarize_coderabbit(payload: dict[str, object]) -> dict[str, object]:
-    payload = _unwrap_cli_report_payload(payload)
-    return {
-        "total_threads": payload.get("total_threads"),
-        "blocking_count": payload.get("blocking_count"),
-        "suggestion_count": payload.get("suggestion_count"),
-        "unknown_count": payload.get("unknown_count"),
-        "dry_run": payload.get("dry_run"),
     }
 
 
@@ -817,47 +790,6 @@ def _smoke_delegate_skill() -> ModelCommandResult:
     )
 
 
-def _smoke_coderabbit_triage() -> ModelCommandResult:
-    command = [
-        sys.executable,
-        "-m",
-        "omnimarket.nodes.node_coderabbit_triage",
-        "--repo",
-        "OmniNode-ai/omnimarket",
-        "--pr",
-        "1",
-        "--dry-run",
-    ]
-    gh_body = """#!/usr/bin/env bash
-if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
-  cat <<'JSON'
-{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"id":"thread-1","isResolved":false,"comments":{"nodes":[{"databaseId":101,"author":{"login":"coderabbitai"},"body":"minor suggestion: rename this variable","path":"src/example.py","url":"https://example.com/thread-1"}]}}]}}}}}
-JSON
-  exit 0
-fi
-exit 1
-"""
-    with _fake_gh_script(gh_body) as gh_path:
-        completed = _run_command(
-            command=command,
-            env={"PATH": f"{gh_path.parent}{os.pathsep}{os.environ.get('PATH', '')}"},
-        )
-    payload = _parse_json(completed.stdout)
-    observed = _unwrap_cli_report_payload(payload)
-    passed = (
-        completed.returncode == 0
-        and observed.get("total_threads") == 1
-        and observed.get("suggestion_count") == 1
-    )
-    return ModelCommandResult(
-        passed=passed,
-        command=_sanitize_command(command),
-        returncode=completed.returncode,
-        summary=_summarize_coderabbit(payload),
-        stderr=completed.stderr.strip(),
-    )
-
-
 def _smoke_session_bootstrap() -> ModelCommandResult:
     with tempfile.TemporaryDirectory(prefix="market-skill-session-bootstrap-") as tmp:
         command = [
@@ -1014,7 +946,6 @@ SMOKE_RUNNERS: dict[str, Callable[[], ModelCommandResult]] = {
     "pr_polish": _smoke_pr_polish,
     "local_review": _smoke_local_review,
     "delegate_skill": _smoke_delegate_skill,
-    "coderabbit_triage": _smoke_coderabbit_triage,
     "session_bootstrap": _smoke_session_bootstrap,
     "session_orchestrator": _smoke_session_orchestrator,
     "ticket_pipeline": _smoke_ticket_pipeline,

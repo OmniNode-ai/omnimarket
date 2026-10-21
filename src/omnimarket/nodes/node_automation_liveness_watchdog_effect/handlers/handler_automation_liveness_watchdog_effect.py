@@ -191,6 +191,8 @@ class HandlerAutomationLivenessWatchdogEffect:
             f"{alarm.process_id}@{alarm.host} ({alarm.reason.value}) "
             f"| action={alarm.action} | episode={alarm.episode_id}"
         )
+        if alarm.detail:
+            text += f" | {alarm.detail}"
         return ModelOutboxEntry(
             episode_id=alarm.episode_id,
             severity=alarm.severity,
