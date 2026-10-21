@@ -58,5 +58,5 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "R=repos/OmniNode-ai/omnimarket/contents/src/omnimarket; H=$(git rev-parse HEAD); gh api \"$R/nodes/node_delegation_quality_gate_reducer/handlers/handler_quality_gate.py?ref=$H\" --jq .content | base64 -d | grep -q 'outside.extend(gap for gap in gaps if not _is_caption(gap))' && gh api \"$R/delegation/content_grounding.py?ref=$H\" --jq .content | base64 -d | grep -q '^def _free_names(blocks: list\\[str\\]) -> set\\[str\\]:$'"
+        check_value: "R=repos/OmniNode-ai/omnimarket/contents/src/omnimarket; H=$(git rev-parse HEAD); gh api \"$R/nodes/node_delegation_quality_gate_reducer/handlers/handler_quality_gate.py?ref=$H\" --jq .content | base64 -d | grep -c -F 'outside.extend(gap for gap in gaps if not _is_caption(gap))' | grep -qx 1 && gh api \"$R/delegation/content_grounding.py?ref=$H\" --jq .content | base64 -d | grep -c -x -F 'def _free_names(blocks: list[str]) -> set[str]:' | grep -qx 1"
         cwd: "${OMNI_HOME}/omnimarket"
