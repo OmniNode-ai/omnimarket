@@ -1,0 +1,53 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21208"
+title: "Harness-tier delegations get their modelled saving row, so both savings totals include them"
+summary: "The harness-delegate skill publishes a delegate-skill terminal with its served tokens and recorded cost but no cost_savings_usd, so the savings writer returned no row at its first branch and cost.savings-overview.v1 and delegation.savings.v1 both left harness runs out, while each run's decision row showed its modelled saving. When a completed, gate-passed terminal with served tokens reports no saving and does not declare its baseline unresolved, the writer now prices it through the canonical metering compute against the same baseline the decision row uses. A reported saving still wins; failed, zero-token and baseline-unresolved terminals still write no row. AC4 (the dev lane after deploy) is read after merge and is not bound here."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21208-harness-saving-row"
+    statement: |-
+      A harness-tier delegation that passed its gate and served tokens has a savings_estimates row, and both savings totals count it.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: The cause is recorded on this ticket from a read of the harness run's terminal event and the savings writer's handling of it -- falsifier: a replay of one recorded harness terminal through SavingsProjectionRunner in a pytest that shows which branch returned no row
+      - id: "AC2"
+        statement: |-
+          AC2: A harness-tier delegation that passed its gate and served tokens produces a savings_estimates row whose saving equals its served tokens priced at the baseline's list price minus its recorded cost -- falsifier: a pytest that applies a harness terminal fixture through the runner and asserts the row and the amount, RED on dev before the fix
+      - id: "AC3"
+        statement: |-
+          AC3: Both savings totals include harness runs: cost.savings-overview.v1 total_savings_usd and delegation.savings.v1 cumulative_savings_usd equal the sum of the per-run modelled savings for measured runs -- falsifier: a real-Postgres pytest with one local and one harness run that fails when either total leaves the harness run out
+evidence_requirements:
+  - kind: "tests"
+    description: "A harness terminal with the producer's key set decodes with no reported saving and the reported path returns no row (AC1); through the runner it writes one row whose saving equals its served tokens at the baseline's manifest price minus its recorded cost, and no row when it failed, served no tokens or declared its baseline unresolved (AC2); on real Postgres one local and one harness run make both totals equal their sum (AC3)."
+    command: "uv run pytest tests/test_omn21208_harness_terminal_savings_row.py tests/test_omn21208_real_postgres_harness_savings_totals.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21208-ac1-ac2-harness-row"
+    description: "Unit: the harness terminal reports no saving and from_terminal_event returns None (the cause); the runner writes one row priced from the manifest entry directly (13,419 in, 124 out, cost 0), subtracts a recorded cost, keeps a reported saving, and writes nothing for a failed, zero-token or baseline-unresolved terminal. Two cases fail at the merge base 60a23ae2 (no row written)."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21208_harness_terminal_savings_row.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]
+  - id: "dod-omn21208-ac3-real-postgres-totals"
+    description: "Real Postgres through the real SavingsProjectionRunner: one local run reporting 0.25 and one harness run reporting none; projection_cost_savings_overview total_savings_usd and projection_delegation_savings cumulative_savings_usd each equal both savings summed. Before the fix both equal 0.25. Runs in hosted CI, where the integration database is provisioned."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21208_real_postgres_harness_savings_totals.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21208-modelled-saving-deploy-probe"
+    description: "Deploy probe. The savings writer GitHub serves at the checked-out commit falls back to the modelled saving for a delegate-skill terminal that reports none; the probe reads handler_savings.py from GitHub at that commit and exits nonzero on a tree without the call, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_savings/handlers/handler_savings.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'modelled_terminal_savings(' | grep -qv '^0$'"
