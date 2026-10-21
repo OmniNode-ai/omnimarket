@@ -2217,6 +2217,10 @@ def _stamp_accepting_attempt(
     The accepting attempt is the first rung whose quality gate passed and that
     carries no failure class. A terminal with no accepted rung names neither
     column, so the row stores NULL, never an empty backend.
+
+    The accepting attempt is also the routed model and answering backend the
+    canonical terminal names as model_used and route (OMN-19448), so a
+    delegate-skill-only row stores them too.
     """
     for attempt in attempts:
         if not attempt.quality_gate_passed or (attempt.failure_class or "").strip():
@@ -2225,6 +2229,12 @@ def _stamp_accepting_attempt(
             text = _blank_to_none(value)
             if text is not None:
                 row[key] = text
+        routed_model = _blank_to_none(attempt.model_id)
+        if routed_model is not None:
+            row["routed_model"] = routed_model
+        answering_backend = _blank_to_none(attempt.backend_id)
+        if answering_backend is not None:
+            row["answering_backend"] = answering_backend
         return
 
 
