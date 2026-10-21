@@ -1077,6 +1077,10 @@ lab-story-log = "omnimarket.nodes.node_lab_story_log_effect.cli:lab_story_log_co
 # host's Claude token by reference (node_lab_claude_token_effect). Discovered
 # over installed distributions like the groups above.
 lab = "omnimarket.nodes.node_lab_claude_token_effect.cli:lab_group"
+# `onex trajectory-eval` -- publish the trajectory evaluation effect's submit and poll
+# commands by hand (node_trajectory_evaluation_effect). Discovered over installed
+# distributions like the groups above.
+trajectory-eval = "omnimarket.nodes.node_trajectory_evaluation_effect.cli:trajectory_eval_group"
 
 [project.entry-points."onex.contracts"]
 # OMN-19407: config contracts a consumer reads through the installed registry
