@@ -28,6 +28,7 @@ from omnimarket.nodes.node_metering_summary_compute import (
 from omnimarket.nodes.node_projection_metering_summary import (
     baseline as baseline_pricing,
 )
+from omnimarket.pricing import build_premium_counterfactual
 from omnimarket.projection import sqlite_metering_summary
 
 
@@ -103,3 +104,31 @@ def modelled_terminal_savings(
         prompt_tokens=metrics.input_tokens,
         completion_tokens=metrics.output_tokens,
     )
+
+
+def apply_modelled_terminal_savings(
+    row: dict[str, object], event: ModelDelegateSkillTerminalProjection
+) -> None:
+    """Retain a derived saving and baseline after preserving stored evidence.
+
+    The savings writer already derives this figure for a harness terminal that
+    reports none. Its matching delegation row must carry the same baseline.
+    Explicit or previously pinned evidence takes precedence over derivation.
+    """
+    if row.get("premium_counterfactual") is not None or row.get("cost_savings_usd"):
+        return
+    projection = modelled_terminal_savings(event)
+    if projection is None:
+        return
+    counterfactual = build_premium_counterfactual(
+        prompt_tokens=event.metrics.input_tokens,
+        completion_tokens=event.metrics.output_tokens,
+        premium_model=projection.model_cloud_baseline,
+    )
+    if counterfactual is None:
+        return
+    if counterfactual.counterfactual_cost_usd != projection.cloud_cost_usd:
+        raise ValueError("modelled saving and its pinned baseline disagree")
+    row["premium_counterfactual"] = counterfactual.model_dump(mode="json")
+    row["cost_savings_usd"] = projection.savings_usd
+    row["pricing_manifest_version"] = projection.pricing_manifest_version

@@ -1,0 +1,62 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21258"
+title: "The code-generation gate rejects a correct answer whose separate usage example calls the function defined in another code block"
+summary: "Receipt 3861ec7f: a correct count_emails_by_sender in one code block, a **Usage:** label, and a second block calling it was vetoed twice. names_resolve read each block on its own, so the call in the usage block named a function bound nowhere, and final_artifact_only counted the label as prose. names_resolve now treats the answer's Python blocks as one program: a name bound in any block is bound for all of them, a star import in any block leaves the answer unresolvable, and an unparseable block binds nothing. final_artifact_only allows one short label line between two code blocks (one line, at most four words, ending in a colon, markdown heading marks and emphasis ignored); text before the first block, after the last one, or longer than a label between two blocks is still prose."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21258-cross-block-answer"
+    statement: |-
+      A code answer whose usage example sits in its own block under a short label is read as one artifact: its names resolve across blocks and the label is not prose, while undefined names still veto.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: names are resolved across every code block in the response, so a name defined in one block and used in another passes -- falsifier: a gate test with this receipt's response text that expects no UNGROUNDED veto
+      - id: "AC2"
+        statement: |-
+          AC2: a short label line between code blocks (for example "Usage:") is not counted as non-artifact prose -- falsifier: the same fixture expects no TASK_MISMATCH prose finding
+      - id: "AC3"
+        statement: |-
+          AC3: a genuinely undefined name still vetoes -- falsifier: existing UNGROUNDED tests stay green
+evidence_requirements:
+  - kind: "tests"
+    description: "Receipt 3861ec7f's response, byte for byte, run through the code_generation gate with a grounding source that never names the function: no UNGROUNDED reason and no non-artifact prose reason. Labels such as Usage:, **Usage:** and ### Example usage: between blocks are captions; prose before, after, a sentence between blocks, or a label followed by text is still refused. A two-block answer calling g, which no block binds, still vetoes with UNGROUNDED naming g, and the existing names_resolve tests stay green."
+    command: "uv run pytest tests/unit/delegation/test_quality_gate_cross_block_omn21258.py tests/unit/delegation/test_quality_gate_names_resolve.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21258-ac1-names-across-blocks"
+    description: "The code_generation gate on receipt 3861ec7f's response, with a grounding source that does not name count_emails_by_sender, reports no UNGROUNDED reason, and evaluate_name_resolution reports no unresolved name. Fails at the merge base, which reads each block alone."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_quality_gate_cross_block_omn21258.py -q -n 0 --no-cov -k 'fixture_is_the_receipt or defined_in_one_block'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21258-ac2-label-is-not-prose"
+    description: "The same fixture yields no non-artifact prose reason, and Usage:, **Usage:**, **Usage**: and ### Example usage: between two blocks are captions; prose before the first block, after the last, a full sentence between blocks, or a label followed by a line of text is still refused. Fails at the merge base, which counts any text between blocks as prose."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_quality_gate_cross_block_omn21258.py -q -n 0 --no-cov -k 'label or caption or prose'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21258-ac3-undefined-still-vetoes"
+    description: "A two-block answer that defines f and calls f() and g(), where nothing binds g, fails the gate with UNGROUNDED naming exactly g, and the existing names_resolve tests stay green. Fails at the merge base, where f is reported as well because it is bound only in the other block."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_quality_gate_cross_block_omn21258.py tests/unit/delegation/test_quality_gate_names_resolve.py -q -n 0 --no-cov -k 'no_block_binds or names_resolve'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21258-gate-deploy-probe"
+    description: "Deploy probe. The gate handler and grounding module GitHub serves at the checked-out commit carry the caption rule and the cross-block name resolution; the probe reads both files from GitHub at that commit and exits nonzero on a tree without them, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "R=repos/OmniNode-ai/omnimarket/contents/src/omnimarket; H=$(git rev-parse HEAD); gh api \"$R/nodes/node_delegation_quality_gate_reducer/handlers/handler_quality_gate.py?ref=$H\" --jq .content | base64 -d | grep -c -F 'outside.extend(gap for gap in gaps if not _is_caption(gap))' | grep -qx 1 && gh api \"$R/delegation/content_grounding.py?ref=$H\" --jq .content | base64 -d | grep -c -x -F 'def _free_names(blocks: list[str]) -> set[str]:' | grep -qx 1"
+        cwd: "${OMNI_HOME}/omnimarket"

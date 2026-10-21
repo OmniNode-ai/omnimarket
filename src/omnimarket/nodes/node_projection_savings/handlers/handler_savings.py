@@ -13,6 +13,9 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.handlers.handler_modelled_terminal_savings import (
+    modelled_terminal_savings,
+)
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillSavingsProjection,
     ModelDelegateSkillTerminalProjection,
@@ -21,9 +24,6 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
 from omnimarket.nodes.node_projection_savings.handlers.handler_compaction_savings import (
     HandlerCompactionSavings,
     compaction_source_from_post_compact,
-)
-from omnimarket.nodes.node_projection_savings.handlers.handler_modelled_terminal_savings import (
-    modelled_terminal_savings,
 )
 from omnimarket.nodes.node_projection_savings.handlers.handler_savings_run_identity_fold import (
     HandlerSavingsRunIdentityFold,
