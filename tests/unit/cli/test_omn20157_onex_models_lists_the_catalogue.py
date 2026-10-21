@@ -135,7 +135,10 @@ def _arrange(
 
 
 def _add(*args: str, stdin: str = f"{_KEY}\n") -> Any:
-    return CliRunner().invoke(models_group, ["add", "glm", *args], input=stdin)
+    # The customer chooses the model a key runs (OMN-21059).
+    return CliRunner().invoke(
+        models_group, ["add", "glm", "--model", "glm-5.3-flash", *args], input=stdin
+    )
 
 
 class TestTheProviderListFollowsTheCatalogue:
