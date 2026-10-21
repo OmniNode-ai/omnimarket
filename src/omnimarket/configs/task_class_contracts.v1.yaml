@@ -823,6 +823,7 @@ execution_budgets:
   tail_summary: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
   context_selection: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
   evidence_comment: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  context_compaction: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
 
 # S is value <= s_max, M is <= m_max, L is above. Every class inherits this
 # default; task_classes.<class>.size_band_thresholds may override the same shape.
@@ -2550,8 +2551,9 @@ task_classes:
   # of compaction_orchestrator and session_resume. tail_summary is declared because
   # the core 0.47.48 wire Literal admits it and
   # test_the_request_wire_contract_and_the_task_class_contract_agree requires this
-  # contract to equal that Literal. context_compaction stays undeclared until core
-  # admits it. These roles inherit summarization's local Qwen placement; no cloud
+  # contract to equal that Literal. Core 0.47.51 also admits evidence_comment and
+  # context_compaction, the summary_task_class of compaction_orchestrator and
+  # session_resume. These roles inherit summarization's local Qwen placement; no cloud
   # rung until a measured lab_rubric verdict says one is needed.
   extraction_proposer:
     lab_rubric:
@@ -2618,6 +2620,38 @@ task_classes:
       tier_order:
         - local
   context_selection:
+    lab_rubric:
+      verdict: unmeasured
+    complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
+    gateway_exposure: internal
+    output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
+    selection:
+      priority: 0
+      phrases: []
+    required_capabilities:
+      - natural_language_generation
+    pricing_ceiling_per_1k_tokens: 0.002
+    latency_sla_p99_ms: 120000
+    cloud_routing_policy: opt_in
+    definition_of_done:
+      deterministic:
+        - response_non_empty
+      heuristic:
+        - no_refusal
+        - semantic_adequacy
+        - identifiers_grounded
+        - claims_grounded
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.8
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+    escalation_policy:
+      max_escalations: 0
+      tier_order:
+        - local
+  context_compaction:
     lab_rubric:
       verdict: unmeasured
     complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}

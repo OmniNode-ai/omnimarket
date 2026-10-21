@@ -2347,7 +2347,12 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC92"]
   - id: "dod-omn17427-evidence-comment-class-deploy-probe"
-    description: "Deploy probe. GitHub serves the task-class contract at the checked-out HEAD declaring evidence_comment with the criteria_covered and entry_cites_evidence checks. It fails at the merge base, which declares neither, and needs only GitHub access and Python on the hosted runner."
+    description: "Deploy probe. The hosted runner loads the packaged evidence_comment task-class contract and runs the faithful-draft control through its quality gate. This fails at the merge base and needs only uv and this checkout, without a broker or credentials."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/delegation/test_omn17427_evidence_comment_class.py -q -p no:randomly --no-cov -k test_faithful_draft_is_accepted_and_both_entry_checks_ran"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-release-staleness-dev-tags-published"
     description: "Immutable dev merge tags cover packaged release debt and work without a version release. These tests fail against the merge-base workflow, which only counts version tags."
     source: "manual"
@@ -2416,7 +2421,6 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: >-
-          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/task_class_contracts.v1.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("evidence_comment:", "criteria_covered", "entry_cites_evidence")); print("evidence-comment class deploy probe: PASS")'
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/task_class_contracts.v1.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("brief_drafting:", "external_acceptance:", "lane_brief.py check")); print("brief drafting deploy probe: PASS")'
   - id: "dod-omn17427-ac107-context-pack-model-roles"
     description: "The context-pack model roles are declared task classes equal to the core 0.47.48 wire Literal, and the shipped context-pack profiles resolve with the packaged routing contract."

@@ -90,6 +90,7 @@ class ModelDelegateSkillRequest(BaseModel):
         "extraction_proposer",
         "tail_summary",
         "context_selection",
+        "context_compaction",
     ] = Field(
         ...,
         description=(

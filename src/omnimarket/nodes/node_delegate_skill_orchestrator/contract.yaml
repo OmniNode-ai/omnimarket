@@ -135,6 +135,7 @@ allowed_task_types:
   - extraction_proposer
   - tail_summary
   - context_selection
+  - context_compaction
 
 inputs:
   prompt:
