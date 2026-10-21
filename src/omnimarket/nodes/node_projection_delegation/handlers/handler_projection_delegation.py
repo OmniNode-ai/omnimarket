@@ -49,6 +49,9 @@ from omnimarket.events.topics import (
     DELEGATE_SKILL_COMPLETED_TOPIC_V1,
     DELEGATE_SKILL_FAILED_TOPIC_V1,
 )
+from omnimarket.handlers.handler_modelled_terminal_savings import (
+    apply_modelled_terminal_savings,
+)
 from omnimarket.models.delegation.quality_bar_evidence import (
     extract_quality_bar_evidence,
 )
@@ -1142,6 +1145,7 @@ class HandlerProjectionDelegation:
         # delegation-completed.v1 canonical event. _preserve_existing_evidence
         # retains the existing non-blank value when the incoming row has none.
         _preserve_existing_evidence(db, row)
+        apply_modelled_terminal_savings(row, event)
         ok = bool(
             self._write_delegation_row(db, row, insert_only_columns=tenant_insert_only)
         )
@@ -2217,6 +2221,10 @@ def _stamp_accepting_attempt(
     The accepting attempt is the first rung whose quality gate passed and that
     carries no failure class. A terminal with no accepted rung names neither
     column, so the row stores NULL, never an empty backend.
+
+    The accepting attempt is also the routed model and answering backend the
+    canonical terminal names as model_used and route (OMN-19448), so a
+    delegate-skill-only row stores them too.
     """
     for attempt in attempts:
         if not attempt.quality_gate_passed or (attempt.failure_class or "").strip():
@@ -2225,6 +2233,12 @@ def _stamp_accepting_attempt(
             text = _blank_to_none(value)
             if text is not None:
                 row[key] = text
+        routed_model = _blank_to_none(attempt.model_id)
+        if routed_model is not None:
+            row["routed_model"] = routed_model
+        answering_backend = _blank_to_none(attempt.backend_id)
+        if answering_backend is not None:
+            row["answering_backend"] = answering_backend
         return
 
 

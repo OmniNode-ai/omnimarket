@@ -337,3 +337,58 @@ async def test_real_postgres_canonical_counterfactual_survives_shutdown(
             )
         if order != "canonical-only":
             assert rows[0]["terminal_failure_cause"] == "runtime_shutdown"
+
+
+@pytest.mark.integration
+async def test_real_postgres_harness_saving_keeps_counterfactual(
+    integration_postgres_dsn: str,
+) -> None:
+    """Live harness shape retains the same baseline through both real writers."""
+    from tests.unit.nodes.node_projection_delegation.test_harness_savings_counterfactual_omn20303 import (
+        live_harness_terminal,
+    )
+
+    payload = live_harness_terminal()
+    payload["tenant_id"] = str(HOUSE_TENANT_UUID)
+    correlation = str(payload["correlation_id"])
+    async with _provisioned_runner(integration_postgres_dsn) as (savings, conn):
+        await conn.execute(
+            "CREATE TABLE tenant_registry_mirror "
+            "(tenant_slug text PRIMARY KEY, tenant_uuid uuid UNIQUE NOT NULL)"
+        )
+        await conn.execute(
+            "INSERT INTO tenant_registry_mirror VALUES ($1, $2)",
+            "harness-counterfactual-test",
+            HOUSE_TENANT_UUID,
+        )
+        delegation = DelegationProjectionRunner(publish_fn=_noop_publish)
+        delegation._db = savings.db
+        for offset in range(2):
+            meta = MessageMeta(
+                topic=DELEGATE_SKILL_TOPIC,
+                partition=0,
+                offset=offset,
+                fallback_id=correlation,
+            )
+            assert await delegation.project_event(
+                DELEGATE_SKILL_TOPIC, dict(payload), meta
+            )
+            assert await savings.project_event(
+                DELEGATE_SKILL_TOPIC, dict(payload), meta
+            )
+        rows = await conn.fetch(
+            "SELECT d.premium_counterfactual, d.cost_savings_usd, "
+            "s.cloud_cost_usd, s.local_cost_usd, s.savings_usd "
+            "FROM delegation_events d JOIN savings_estimates s "
+            "ON s.session_id=d.correlation_id AND s.tenant_id=d.tenant_id::text "
+            "WHERE d.correlation_id=$1",
+            correlation,
+        )
+    assert len(rows) == 1
+    baseline = json.loads(rows[0]["premium_counterfactual"])
+    assert (baseline["tokens_in"], baseline["tokens_out"]) == (13363, 204)
+    assert Decimal(baseline["counterfactual_cost_usd"]) == rows[0]["cloud_cost_usd"]
+    assert rows[0]["cost_savings_usd"] == rows[0]["savings_usd"]
+    assert (
+        rows[0]["savings_usd"] == rows[0]["cloud_cost_usd"] - rows[0]["local_cost_usd"]
+    )

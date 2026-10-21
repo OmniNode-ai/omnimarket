@@ -121,11 +121,6 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # environment projection on every report it stores; it subscribes to no
     # topic and publishes none, so it has no onex.nodes entry point.
     "node_local_alert_compute",
-    # OMN-19988: the directory carries the migrations omnibase_infra vendors and
-    # the store-neutral write the local store uses; its contract, writer and
-    # entry point land with the node, which removes this line and the
-    # MIGRATION_ONLY_NODE_DIRS entry together.
-    "node_projection_local_environment",
     # OMN-17427: the Claude token pool runs as `python -m` on the lab host whose
     # pool it is (the remote-lane runner at lane start, the operator adding a
     # token); it publishes nothing and subscribes to no topic, so it has no
@@ -145,7 +140,7 @@ EXPECTED_MISSING_ENTRY_POINTS = {
 # Node directories that hold migrations and no contract.yaml yet. Each entry
 # expires itself: a directory that gains a contract.yaml, or disappears, fails
 # the inventory until the entry is removed.
-MIGRATION_ONLY_NODE_DIRS: set[str] = {"node_projection_local_environment"}
+MIGRATION_ONLY_NODE_DIRS: set[str] = set()
 
 # Node directories on dev when the pinned totals were retired (OMN-17427).
 # Adding a node never touches this. Lower it only in a PR that deletes a node,

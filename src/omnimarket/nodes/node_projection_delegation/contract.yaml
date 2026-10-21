@@ -406,6 +406,9 @@ projection_api:
         # cost, so Runs shows what the receipt recorded instead of Not recorded.
         # cost_usd is null for a run whose cost was never measured.
         - terminal_ok
+        # OMN-19919: the typed cause of a failed run (migration 0029), so Runs
+        # and the failure-cause list show why it failed. Null on a passing run.
+        - terminal_failure_cause
         - cost_usd
         # OMN-21015: one canonical per-run modelled figure, with its own basis.
         # Legacy rows and unmeasured runs keep a nullable figure.

@@ -1,0 +1,73 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21259"
+title: "A provider key whose models all fail their test delegation stays registered, so delegation keeps routing to it"
+summary: >-
+  onex models add stores the key and runs one pinned test; a failed test exited 1 but left the key routable, so the next delegation climbed to it and failed (a field onboarding walk saw a key whose model returned 400 fail three times). The test record (model_tests.json beside the local credential store) now keeps a key whose last test failed out of every unpinned local route: same-provider substitution, the any-provider substitution, the registered-key tier and the next-key walk. A pin still reaches it, so onex models test can prove it again, and a pass makes it routable; storing a new key clears the old key's failed test. onex models list and the add's failure line say the key is not routed and name the model that failed. AC3 is met by its second branch: the test proves the key's first chosen model, and the developer is told which model failed.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-failed-key-not-routed"
+    statement: "A provider key whose every chosen model fails its test is not routable until a test passes."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: a key whose every chosen model fails its test is not routable (not stored, or stored and excluded from routing until a test passes) -- falsifier: a CLI test that adds a key with a failing stub model and asserts the next routing plan excludes it
+  - id: "req-list-shows-failed-key"
+    statement: "`onex models list` shows such a key as failed with the provider's reason."
+    acceptance:
+      - id: "AC2"
+        statement: >-
+          AC2: `onex models list` shows such a key as failed, with the provider's reason
+  - id: "req-failed-model-named"
+    statement: "A failed test names the model that failed, in the add's output and in onex models list."
+    acceptance:
+      - id: "AC3"
+        statement: >-
+          AC3: a key with at least one passing model stays routable with only its passing models tried first, or the developer is told which model failed -- decided in the PR
+evidence_requirements:
+  - kind: "tests"
+    description: "The AC1 test passes: a key with a failing stub model is excluded from the next routing plan."
+    command: "uv run pytest tests/unit/cli/test_omn21259_failed_key_not_routed.py -q -n 0 -k \"fails_stays_stored_but_is_not_routed\""
+  - kind: "tests"
+    description: "The AC2 test passes: onex models list shows the failed key with the provider's reason."
+    command: "uv run pytest tests/unit/cli/test_omn21259_failed_key_not_routed.py -q -n 0 -k \"list_shows_the_failed_key\""
+  - kind: "tests"
+    description: "The AC3 test passes: the developer is told which model failed."
+    command: "uv run pytest tests/unit/cli/test_omn21259_failed_key_not_routed.py -q -n 0 -k \"names_the_model_that_failed\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21259-ac1-failed-key-not-routed"
+    description: "The AC1 test passes: a key with a failing stub model is excluded from the next routing plan."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn21259_failed_key_not_routed.py -q -n 0 -k \"fails_stays_stored_but_is_not_routed\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21259-ac2-list-shows-failed"
+    description: "The AC2 test passes: onex models list shows the failed key with the provider's reason."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn21259_failed_key_not_routed.py -q -n 0 -k \"list_shows_the_failed_key\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21259-ac3-failed-model-named"
+    description: "The AC3 test passes: the developer is told which model failed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn21259_failed_key_not_routed.py -q -n 0 -k \"names_the_model_that_failed\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21259-deploy-probe"
+    description: "Deploy probe: the adapter read from GitHub at the checked-out commit defines the failed-test reader the local routes use to skip a key. A head without it fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/inference/local_byok_credential_adapter.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'def local_byok_key_test_failed'"

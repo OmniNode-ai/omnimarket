@@ -1,0 +1,36 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20732"
+title: "onex dashboard serves the decisions read from a delegation store that predates the run-lineage columns"
+summary: "A delegation store written before the run-lineage columns made the decisions read answer 503 projection_column_missing. The dashboard startup already upgrades an existing store before serving it, so this change adds no source: it pins that behaviour with a test that builds a store without the three lineage columns, serves it through the real onex dashboard startup, and asserts HTTP 200, the seeded rows, and the three lineage keys present as null on each row."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn20732-pre-lineage-store-served"
+    statement: |-
+      onex dashboard serves the decisions read from a delegation store that has none of the run-lineage columns, with its rows and the lineage keys present.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: On a delegation store created without the run-lineage columns, `onex dashboard` answers the decisions read with HTTP 200 and that store's existing rows -- falsifier: a pytest that builds delegation_events without parent_correlation_id, lineage_kind and parent_failure_cause, serves it through create_dashboard_app, and fails on any status other than 200 or on a row count that differs from the seeded rows
+      - id: "AC2"
+        statement: |-
+          AC2: A column the contract declares and the store lacks is either added to the store before the read or read as null, and is never silently dropped from the response shape -- falsifier: the same pytest asserting that each served row carries the three lineage keys
+evidence_requirements:
+  - kind: "tests"
+    description: "A store without the three lineage columns, served through the real dashboard startup, answers the decisions read with HTTP 200 and both seeded rows (AC1), and every served row carries the three lineage keys as null (AC2). The tests fail when the store upgrade skips a lineage column."
+    command: "uv run pytest tests/projection/test_omn20732_pre_lineage_store_decisions_read.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20732-pre-lineage-store-decisions-read"
+    description: "Unit, through the real onex dashboard startup: a store whose delegation_events lacks parent_correlation_id, lineage_kind and parent_failure_cause answers delegation.decisions.v1 with HTTP 200, both seeded rows, and the three keys present as null on every row. Mutation controls on the lab host: when the store upgrade skips lineage_kind, both tests fail with projection_column_missing."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_omn20732_pre_lineage_store_decisions_read.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]
