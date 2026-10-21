@@ -22,9 +22,9 @@ from __future__ import annotations
 import asyncio
 import fcntl
 import json
-import logging
 import os
 import sqlite3
+from collections import deque
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -89,12 +89,9 @@ Echo = Callable[[str], None]
 AskModel = Callable[[str], str]
 
 
-_LOG = logging.getLogger(__name__)
-
-
-def _quiet(line: str) -> None:
-    """The ``echo`` for a caller with no one watching, such as a script: the line goes to the debug log."""
-    _LOG.debug("%s", line)
+#: The ``echo`` for a caller with no one watching, such as a script: a deque that holds no items, so each line
+#: is discarded as it is appended. Lines are never logged (they name secret references).
+_quiet: Echo = deque[str](maxlen=0).append
 
 
 class ModelKeyRefusedError(Exception):

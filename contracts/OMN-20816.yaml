@@ -76,3 +76,9 @@ dod_evidence:
         check_value: "uv run pytest tests/projection/test_omn20816_dashboard_model_keys.py -q -n 0 --no-cov -k m4"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
+  - id: "dod-omn20816-deploy-probe"
+    description: "Deploy probe. GitHub serves handler_model_keys.py at the checked-out commit with remove_key, the shared path both onex models and GET /models use; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base, where the module does not exist. This proves source identity only, not a running deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/handler_model_keys.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^def remove_key('"
