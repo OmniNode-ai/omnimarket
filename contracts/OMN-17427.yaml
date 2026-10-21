@@ -716,6 +716,11 @@ requirements:
     acceptance:
       - id: "AC159"
         statement: "AC159: LocalHostReader.read returns one lane-guard:<sha256> tool per installed lane_guard_host.py whose sha256 equals its directory name, sorted among the other tools, and none for an empty home, an altered copy or a directory that is not a sha256 -- falsifier: uv run pytest tests/unit/lab_work/test_lab_work_host_bus.py -q -n 0 -k lane_guard fails at the merge base, where LocalHostReader takes no home and advertises no lane-guard entry"
+  - id: "req-ticket-contract-schema-hook"
+    statement: "A ticket contract that omnibase_core's ModelTicketContract refuses is caught by a pre-commit hook before the push, by the same validation CI's Contract Compliance Check runs."
+    acceptance:
+      - id: "AC160"
+        statement: "AC160: tests/ci/test_ticket_contracts_schema_omn17427.py loads every contracts/OMN-*.yaml with ModelTicketContract, shows a 51-character dod_evidence id is refused, and .pre-commit-config.yaml runs it as hook ticket-contract-schema on contracts/OMN-<n>.yaml -- falsifier: uv run pytest tests/ci/test_ticket_contracts_schema_omn17427.py fails at the merge base, where the test file and hook are absent."
   - id: req-omn20303-harness-counterfactual-readback
     statement: A harness terminal whose token-derived saving is projected keeps the same saving and its premium counterfactual in the delegation projection.
     acceptance:
@@ -3031,6 +3036,39 @@ dod_evidence:
               tools = LocalHostReader(home=Path(raw)).read([]).tools
               assert not [t for t in tools if t.startswith("lane-guard:")], tools
           print("lane guard advertisement deploy probe: PASS")
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac160-contract-schema-hook"
+    description: "Every ticket contract loads as ModelTicketContract, a 51-character dod_evidence id is refused, and the check is wired as a pre-commit hook. The tests fail at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_ticket_contracts_schema_omn17427.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC160"]
+  - id: "dod-omn17427-ac160-schema-hook-deploy-probe"
+    description: "Deploy probe. The hosted runner reads the subject commit's .pre-commit-config.yaml and schema test with git and PyYAML and checks the ticket-contract-schema hook runs that test on contracts/OMN-<n>.yaml."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          python3 - <<'PY'
+          import re
+          import subprocess
+
+          import yaml
+
+          def read(path):
+              return subprocess.check_output(["git", "show", "HEAD:" + path], text=True)
+
+          config = yaml.safe_load(read(".pre-commit-config.yaml"))
+          hook = next(hook for repo in config["repos"] for hook in repo["hooks"] if hook["id"] == "ticket-contract-schema")
+          assert "tests/ci/test_ticket_contracts_schema_omn17427.py" in hook["entry"]
+          assert hook["pass_filenames"] is False
+          assert re.search(hook["files"], "contracts/OMN-17427.yaml")
+          assert not re.search(hook["files"], "contracts/README.md")
+          assert "ModelTicketContract.from_yaml" in read("tests/ci/test_ticket_contracts_schema_omn17427.py")
+          print("ticket-contract-schema hook probe: PASS")
           PY
         cwd: "${OMNI_HOME}/omnimarket"
   - id: dod-omn20303-ac3-harness-counterfactual
