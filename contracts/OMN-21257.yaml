@@ -1,0 +1,62 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21257"
+title: "The OpenAI chat request sends max_tokens, so every gpt-5, gpt-6 and o-series model a developer chooses answers HTTP 400"
+summary: "The catalogue row model gains token_limit_field (default max_tokens); the openai row declares max_completion_tokens; both chat-completion body builders (HandlerLlmDelegationCall._post_one_call and HandlerInferenceIntent._call_llm_on_resolved_model) take the field name from the row of the endpoint they post to, so an OpenAI request carries max_completion_tokens and every other endpoint keeps max_tokens; the openai row's comment no longer says gpt-5/o-series are excluded."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-openai-takes-max-completion-tokens"
+    statement: |-
+      The OpenAI chat request carries max_completion_tokens, and every other endpoint keeps max_tokens.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: requests to the byok-openai endpoint carry `max_completion_tokens`, never `max_tokens` -- falsifier: a handler test asserting the outbound body for provider openai
+      - id: "AC2"
+        statement: |-
+          AC2: other OpenAI-style providers (openrouter, gemini, local) keep `max_tokens` -- falsifier: the same test per provider
+      - id: "AC3"
+        statement: |-
+          AC3: the openai row's comment about excluding gpt-5/o-series is removed or updated
+evidence_requirements:
+  - kind: "tests"
+    description: "The handler test asserts the outbound body for provider openai carries max_completion_tokens, and the same test per provider keeps max_tokens for openrouter, gemini and local."
+    command: "uv run pytest tests/unit/delegation/test_omn21257_openai_max_completion_tokens.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21257-openai-body-max-completion-tokens"
+    description: "The handler test asserts the outbound body for provider openai carries max_completion_tokens, never max_tokens."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn21257_openai_max_completion_tokens.py -q -p no:randomly -k openai"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21257-other-providers-keep-max-tokens"
+    description: "Both handlers over openai, openrouter, gemini and a local URL: openai carries max_completion_tokens and the other three carry max_tokens, never both."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn21257_openai_max_completion_tokens.py -q -p no:randomly -k token_limit_key"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21257-openai-row-comment-updated"
+    description: "The openai row declares token_limit_field max_completion_tokens while openrouter and gemini keep max_tokens, and the catalogue no longer carries the note that gpt-5 and the o-series are excluded."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn21257_openai_max_completion_tokens.py -q -p no:randomly -k exclusion_note"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21257-openai-token-field-deploy-probe"
+    description: "Deploy probe. The inference-intent handler GitHub serves at the checked-out commit builds the chat body with the token-limit field the endpoint's catalogue row names, and the openai row declares max_completion_tokens; the probe reads both files from GitHub at that commit and exits nonzero on a tree without them, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_inference_intent.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'token_limit_field_for_endpoint(base_url): intent.max_tokens' | grep -qx 1 && gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/byok_provider_backends.v1.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^    token_limit_field: max_completion_tokens$' | grep -qx 1"
+        cwd: "${OMNI_HOME}/omnimarket"
