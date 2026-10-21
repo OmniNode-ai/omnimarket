@@ -41,12 +41,9 @@ import click
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.cli.cli_test_loop import _opener as lab_run_bus_opener
 from omnimarket.delegated_test_loop.lab_run_bus import envelope_bytes_for
-from omnimarket.delegated_test_loop.lane_bus import (
-    BusKind,
-    LabRunBusError,
-    open_lab_run_bus,
-)
+from omnimarket.delegated_test_loop.lane_bus import BusKind, LabRunBusError
 from omnimarket.nodes.node_trajectory_evaluation_effect.models.model_trajectory_evaluation import (
     ModelTrajectoryEvaluationPoll,
     ModelTrajectoryEvaluationSubmit,
@@ -282,9 +279,8 @@ async def _publish(
     kafka_bootstrap: str | None,
     omnibase_path: Path | None,
 ) -> None:
-    async with open_lab_run_bus(
-        bus=bus, lane=lane, kafka_bootstrap=kafka_bootstrap, omni_home=omnibase_path
-    ) as opened:
+    open_bus = lab_run_bus_opener(bus, lane, kafka_bootstrap, omnibase_path)
+    async with open_bus() as opened:
         for topic, key, value in messages:
             await opened.publish(topic, key, value)
 
@@ -353,8 +349,10 @@ def _bus_options(function: Any) -> Any:
 
 
 @click.group("trajectory-eval")
-def trajectory_eval_group() -> None:
+@click.pass_context
+def trajectory_eval_group(ctx: click.Context) -> None:
     """Publish trajectory evaluation commands by hand."""
+    ctx.ensure_object(dict)
 
 
 @trajectory_eval_group.command("submit")

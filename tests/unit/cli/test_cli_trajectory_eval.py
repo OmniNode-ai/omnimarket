@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import shutil
 import subprocess
 from collections.abc import AsyncIterator, Callable
@@ -20,6 +21,7 @@ from typing import Any
 import click
 import pytest
 from click.testing import CliRunner
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
 from omnimarket.nodes.node_trajectory_evaluation_effect import cli as cli_module
 from omnimarket.nodes.node_trajectory_evaluation_effect.cli import (
@@ -59,19 +61,26 @@ class _CapturingBus:
 def bus(monkeypatch: pytest.MonkeyPatch) -> _CapturingBus:
     captured = _CapturingBus()
 
-    def opener(**_: object) -> contextlib.AbstractAsyncContextManager[_CapturingBus]:
+    def opener(
+        *_: object,
+    ) -> Callable[[], contextlib.AbstractAsyncContextManager[_CapturingBus]]:
         @contextlib.asynccontextmanager
         async def _open() -> AsyncIterator[_CapturingBus]:
             yield captured
 
-        return _open()
+        return _open
 
-    monkeypatch.setattr(cli_module, "open_lab_run_bus", opener)
+    monkeypatch.setattr(cli_module, "lab_run_bus_opener", opener)
     return captured
 
 
 def _git(repo: Path, *args: str) -> None:
-    subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(repo), *args],
+        check=True,
+        capture_output=True,
+        env=scrub_git_location_env(os.environ),
+    )
 
 
 def _clone(tmp_path: Path, url: str) -> Path:
