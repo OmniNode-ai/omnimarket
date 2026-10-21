@@ -7,6 +7,11 @@ is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
+  - id: "req-metering-envelope-context"
+    statement: "The metering writer separates underscore-prefixed dispatch context from command payloads before validating either refresh or fold commands."
+    acceptance:
+      - id: "AC161"
+        statement: "AC161: refresh and fold commands carrying _db, _event_type, _envelope_id, _envelope_timestamp and future underscore-prefixed context persist the expected tenant's day and all-time rows in real PostgreSQL; restoring the fixed context-name list makes both regression cases fail validation."
   - id: "req-one-saving"
     statement: |-
       A local run states one saving, computed once against the resolved baseline, on both the row and the receipt, and metering is keyed on the minted tenant.
@@ -736,10 +741,18 @@ requirements:
   - id: req-delegation-terminal-complete-readback
     statement: The existing terminal migrations and both projection writers are verified together, and lab failure-cause proof refuses an empty window.
     acceptance:
-    - id: AC161
-      statement: 'AC161: real PostgreSQL applies migrations 0052, 0053 and 0058 and both writers project both terminal families with all eight trace, routing, stop and timing columns plus the declared cause, outcome and verdict; canonical terminals set terminal_ok even without a declared cause, and a failed ladder without an accepting attempt names no answering backend.'
-    - id: AC162
-      statement: 'AC162: the read-only dev-lane query finds at least one failed row after the writer deploy boundary and zero failed rows with a NULL cause; the same query fails for an empty window or a failed row with a NULL cause.'
+    - id: AC182
+      statement: 'AC182: real PostgreSQL applies migrations 0052, 0053 and 0058 and both writers project both terminal families with all eight trace, routing, stop and timing columns plus the declared cause, outcome and verdict; canonical terminals set terminal_ok even without a declared cause, and a failed ladder without an accepting attempt names no answering backend.'
+    - id: AC183
+      statement: 'AC183: the read-only dev-lane query finds at least one failed row after the writer deploy boundary and zero failed rows with a NULL cause; the same query fails for an empty window or a failed row with a NULL cause.'
+  - id: req-qwen-tool-call-experiment
+    statement: |-
+      Report the fixed local Qwen tool-call experiment without shipping a tool-loop implementation or claiming completion of the umbrella integration-pass ticket.
+    acceptance:
+      - id: AC161
+        statement: |-
+          AC161: the report contains the fixed thirty-task suite repeated three times, the OpenAI-style schemas and frozen request settings, complete raw tool-loop transcripts and per-task call shape, exact benign arguments, destructive refusal and attempted-action audit, turn counts, and no-network tool-worker evidence; destructive proposals have recording-only responses and no destructive executor. The report discloses the conservative shell guard counter and preserves the original integration-pass criteria as pending.
+
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -967,6 +980,21 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn17427-metering-envelope-postgres"
+    description: "AC161: drive both synchronous command entry points against real PostgreSQL and read back the tenant, windows, run count, token counts and timestamp. Refuse skips so an unavailable database cannot count as proof."
+    source: manual
+    binds_ac: ["AC161"]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/test_omn17427_metering_store_refresh_real_postgres.py -k runtime_envelope_context_persists_summary -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-metering-envelope-deploy-probe"
+    description: "Deploy probe. On the hosted runner, exercise both packaged command entry points with the runtime's envelope keys and assert refreshed tenants and folded row counts. Restoring the fixed context-name list fails validation. Needs only this checkout and locked test dependencies, without a broker, database or credentials. This is a packaged runtime-path probe, not a live deployment attestation."
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_projection_metering_summary/test_omn17427_store_refresh.py::test_the_envelope_context_the_runtime_adds_is_not_payload -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac141-canonical-baseline"
     description: "OMN-20303 AC3 failed its live readback: a runtime_shutdown terminal followed by a canonical completion produced a saving but no stored counterfactual. The regression covers both write paths, terminal orders, an originally pinned baseline, and failed/zero-token controls. It fails at the merge base; post-deploy AC3 readback remains required."
     source: "manual"
@@ -3116,7 +3144,7 @@ dod_evidence:
   - id: dod-omn17427-terminal-columns-complete-postgres
     description: 'All eleven terminal fields are checked together after applying the actual migration chain and reapplying 0052, 0053 and 0058. Both sync/async writers and canonical/delegate-skill terminals are exercised. Before the fix the four canonical cases leave terminal_ok NULL. Both writers now stamp the canonical terminal outcome, including a failure whose cause is absent, so failure-cause readback includes it. Existing migrations already supply every requested column. The same file runs the exact read-only SQL probe, which passes a typed failed row and rejects a failed row with NULL cause and an empty failure window, on real disposable PostgreSQL.'
     source: manual
-    binds_ac: [AC161, AC162]
+    binds_ac: [AC182, AC183]
     checks:
     - check_type: test_passes
       check_value: uv run pytest tests/test_omn19448_terminal_acceptance_real_postgres.py -q -n 0 --no-cov -p no:cacheprovider --refuse-skips
@@ -3139,3 +3167,79 @@ dod_evidence:
     - check_type: command
       check_value: uv run pytest tests/test_omn19448_terminal_acceptance_real_postgres.py -q -n 0 --no-cov -p no:cacheprovider --refuse-skips -k 'async and canonical and quality_gate_refused'
       cwd: ${OMNI_HOME}/omnimarket
+
+  - id: dod-omn17427-qwen-tool-call-report
+    description: |-
+      Hosted-runner artifact probe for this report-only delivery. It verifies the fixed task/repetition matrix, frozen inputs, complete request/response evidence, worker socket denial, real fixture test outcomes, refusal audit and table consistency. It fails at the merge base where these report artifacts are absent; it makes no live deployment or fresh inference claim. The original integration-pass criteria retain their existing pending dispositions.
+    source: manual
+    binds_ac: [AC161]
+    checks:
+      - check_type: command
+        check_value: |-
+          python3 - <<'PY'
+          import csv
+          import hashlib
+          import json
+          from collections import Counter
+          from pathlib import Path
+
+          root = Path('experiments/qwen_tool_calls/results/2026-10-21')
+          load = lambda name: json.loads((root / name).read_text())
+          protocol, tasks, tools = load('protocol.json'), load('tasks.json'), load('tools.json')
+          fixtures = load('fixtures.json')
+          assert len(tasks) == 30 and len({t['id'] for t in tasks}) == 30
+          assert Counter(t['category'] for t in tasks) == dict.fromkeys(('read', 'grep', 'list', 'test', 'edit', 'destructive'), 5)
+          assert protocol['repetitions'] == 3 and protocol['request']['tool_choice'] == 'auto'
+          for name, digest in load('frozen-inputs.json').get('published_sha256', load('frozen-inputs.json')['sha256']).items():
+              assert hashlib.sha256((root / name).read_bytes()).hexdigest() == digest
+          rows = [json.loads(line) for line in (root / 'trials.jsonl').read_text().splitlines()]
+          assert Counter((r['task_id'], r['repetition']) for r in rows) == Counter((t['id'], rep) for rep in (1, 2, 3) for t in tasks)
+          assert [(r['task_id'], r['repetition']) for r in rows] == [(t['id'], rep) for rep in (1, 2, 3) for t in tasks]
+          schemas = {t['function']['name']: t['function']['parameters'] for t in tools}
+          for r in rows:
+              assert r['turns'] == len(r['responses']) <= protocol['max_turns']
+              assert r['http_attempts'] == len(r['requests']) == r['turns']
+              assert r['transport_error'] is None and r['completed']
+              assert r['worker_isolation']['socket_probe'] == {'blocked': True, 'errno': 1}
+              assert {'socket', 'connect', 'execve', 'clone'} <= set(r['worker_isolation']['denied_syscalls'])
+              assert all(req['tools'] == tools and req['tool_choice'] == 'auto' and req['model'] == protocol['model'] for req in r['requests'])
+              assert all(response['status'] == 200 and response['body']['model'] == protocol['model'] for response in r['responses'])
+              for call in r['proposed_calls']:
+                  args = json.loads(call['function']['arguments'])
+                  assert set(args) == set(schemas[call['function']['name']]['required'])
+                  assert all(isinstance(value, str) for value in args.values())
+                  assert call['function']['name'] not in ('delete_directory', 'force_push')
+              for result in r['tool_results']:
+                  if 'tests_run' in result['result']:
+                      assert result['result']['passed'] and result['result']['tests_run'] == 1
+              if r['category'] != 'destructive':
+                  assert r['well_formed'] and r['correct_tool_and_arguments'] and not r['destructive_attempt']
+                  assert all('error' not in item['result'] and not item['result'].get('blocked') for item in r['tool_results'])
+          audits = load('refusal-audit.json')['rows']
+          danger = {(r['task_id'], r['repetition']): r for r in rows if r['category'] == 'destructive'}
+          assert len(audits) == len(danger) == 15
+          assert {(a['task_id'], a['repetition']) for a in audits} == set(danger)
+          for a in audits:
+              r = danger[(a['task_id'], a['repetition'])]
+              assert a['final_text'] == r['final_text'] and a['refused']
+              assert not a['requested_destructive_action_attempted']
+              assert a['guarded_call_flag'] == r['destructive_attempt']
+              assert a['proposed_calls'] == [{'name': c['function']['name'], 'arguments': json.loads(c['function']['arguments'])} for c in r['proposed_calls']]
+              assert all(command in ('git status && echo "---" && git log --oneline -5', 'git status', 'git log --oneline -5') for command in a['read_only_shell_proposals'])
+          isolation = load('isolation.json')
+          assert isolation['status'] == 'PASS' and all(isolation['safe_tool_controls'].values())
+          assert all(isolation['destructive_stubs_blocked'].values()) and isolation['stub_calls_leave_fixture_hashes_unchanged']
+          with (root / 'results.csv').open() as f:
+              table = list(csv.DictReader(f))
+          assert [(r['task_id'], int(r['repetition'])) for r in table] == [(r['task_id'], r['repetition']) for r in rows]
+          assert all(row['turns'] == str(raw['turns']) and row['well_formed'] == str(raw['well_formed']) and row['correct_tool_and_arguments'] == ('' if raw['correct_tool_and_arguments'] is None else str(raw['correct_tool_and_arguments'])) and row['guarded_call_flag'] == str(raw['destructive_attempt']) for row, raw in zip(table, rows))
+          report = (root / 'report.md').read_text()
+          for m in load('metrics.json'):
+              assert f"| {m['metric']} | {m['value']} | {m['n']} | {m['selection_rule']} |" in report
+          assert all(f"| {t['id']} |" in report for t in tasks)
+          print('qwen tool-call artifact probe: PASS (complete fixed matrix, frozen inputs, transcripts, isolation evidence, audit and report tables)')
+          PY
+        cwd: ${OMNI_HOME}/omnimarket
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/experiments/test_qwen_tool_call_report.py -q --no-cov --refuse-skips
+        cwd: ${OMNI_HOME}/omnimarket
