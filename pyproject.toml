@@ -1106,7 +1106,7 @@ omnimarket = "omnimarket.nodes"
 # tag, which descends from #5036. uv.lock resolves the tag to commit
 # 4c36425ce840 and installs that commit, so the install is content-addressed;
 # drop this override once a registry release after 0.38.75 carries both.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261020015357-49d28fc6208a" }
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261021163751-39e52ccb2078" }
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
 # their git-source overrides). The version-range overrides below already target
 # the released artifacts: core>=0.46.7,<0.47.0 and
