@@ -101,3 +101,12 @@ dod_evidence:
         reason: "The ticket carries four acceptance criteria; AC6 was a contract-only criterion for the local dispatch seam and is not on the ticket."
         retired_by: "jake-b-omni"
         retired_at: "2026-10-20T21:29:48Z"
+  - id: "dod-attempt-configuration-deploy-smoke"
+    description: "Disposable-container smoke of the checked-out configuration consumer. The attempt model must decode configuration and null configuration without emitting either key, keep configuration forthcoming only, and refuse unrelated unknown keys. The hosted runner needs Docker and the checkout; this checks the packaged runtime behavior and does not claim a dev-lane rollout."
+    source: "manual"
+    execution_scope: "hosted_and_local"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          docker run --rm -v "${PWD}:/workspace:ro" -w /workspace -e PYTHONDONTWRITEBYTECODE=1 -e UV_PROJECT_ENVIRONMENT=/tmp/attempt-configuration-venv -e UV_CACHE_DIR=/tmp/uv-cache ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 sh -ec 'apt-get update -qq && apt-get install -y -qq --no-install-recommends git ca-certificates && uv run --frozen pytest tests/unit/delegation/test_consumer_first_attempt_configuration_omn20168.py -q --no-cov --refuse-skips -p no:cacheprovider --basetemp=/tmp/attempt-configuration-tests'
+        cwd: "."
