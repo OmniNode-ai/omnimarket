@@ -655,11 +655,43 @@ requirements:
       - id: "AC152"
         statement: |-
           AC152: both delegation writers retain the canonical saving's counterfactual after runtime shutdown, preserve an existing pinned baseline, and invent none for a failed or zero-token terminal -- falsifier: uv run pytest tests/unit/nodes/node_projection_delegation/test_canonical_savings_counterfactual_omn20303.py -q -n 0 --no-cov
+  - id: "req-compaction-loss-weights"
+    statement: "The context-service lane's scorer-weights follow-up adds an auditable weighted recall without rewriting the original survival evidence. This slice does not qualify TA.12 latency, install the TA.15 binding, or close the parent integration-pass acceptance."
+    acceptance:
+      - id: "AC155"
+        statement: "AC155: callers can supply positive finite numeric weights per must-carry kind; unit defaults reproduce overall recall, absent kinds add no mass, empty windows remain unknown, and invalid or unknown weights are refused -- falsifier: uv run pytest tests/test_compaction_loss_weights.py -q --no-cov -k 'unit_weights or weights_are_per_item or empty_window or invalid_weights or misspelled_kind or large_finite'"
+      - id: "AC156"
+        statement: "AC156: weighted recall exposes a dropped instruction among surviving identifiers while items, drops, per-kind recall, overall recall and eval cases retain their original meaning; the applied policy survives result serialization and transcript pairing, and historical results do not claim a weighted measurement -- falsifier: uv run pytest tests/test_compaction_loss_weights.py tests/test_golden_chain_compaction_loss_compute.py -q --no-cov"
+  - id: "req-in-process-evidence-trace-and-timing"
+    statement: "An in-process onex delegate run's delegation_events row stores the command's trace_id, the measured queue wait and the measured execution time, because on that path only the local port's evidence terminal reaches the projection and the bus, and it carried none of the three."
+    acceptance:
+      - id: "AC151"
+        statement: "AC151: LocalDelegationDispatchPort.dispatch given trace_id and queue_wait_ms writes a delegation_events row with that trace_id, that queue_wait_ms and a measured execution_ms, leaves trace_id and queue_wait_ms NULL when not given, keeps a measured zero queue wait as zero, and the handler passes the two keywords only to a port whose dispatch declares them -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_in_process_evidence_trace_and_timing_omn19448.py -q fails at the merge base, where _terminal_measure_dispatch_kwargs does not exist"
   - id: "req-customer-ledger-in-memory-bus"
     statement: "A customer running OmniNode locally has a work ledger on the in-memory event bus: ledger row events written through the work-ledger emit handler reach an in-memory reader that answers the same query verbs as the lab database reader (RULING 2026-10-19T21:47:42Z)."
     acceptance:
       - id: "AC153"
         statement: "AC153: every row of the golden ledger fixture, written through HandlerWorkLedgerEmit with the in-memory emitter onto an EventBusInmemory, is folded by InMemoryWorkLedgerQueryReader, a redelivered row is kept once, and HandlerWorkLedgerQuery over that reader returns the rows, holds, inbox entries and open claims the recorded markdown reads name -- falsifier: uv run pytest tests/test_work_ledger_query_inmemory_bus.py -q fails at the merge base, where the module work_ledger_query_inmemory does not exist"
+  - id: "req-emit-unreachable-backoff"
+    statement: "When a node_event_emit_effect publish by one Kafka publish identity (bootstrap servers, security protocol and SASL user, never the password) fails as retryable, later invocations by that identity within the backoff window spool their event and attempt no publish, so an in-process delegate or GLM harness run no longer waits out the 5 s publish cap on a broker it cannot reach; any publish that succeeds clears the backoff, and an adapter with no identity is never backed off."
+    acceptance:
+      - id: "AC154"
+        statement: "AC154: a failed publish writes the identity's marker under the spool's publish-backoff directory; a second handler within the window makes zero publish calls, returns publish_skipped_unreachable=True and leaves both records pending; an expired marker allows the publish and the backlog drain and is cleared; another identity, an adapter without publish_identity and a zero window are never backed off; the marker is never listed as a pending record; the default adapter's identity carries no password -- falsifier: uv run pytest tests/unit/nodes/node_event_emit_effect/test_unreachable_backoff_omn17427.py -q fails at the merge base, where ModelEmitResult has no publish_skipped_unreachable"
+  - id: "req-compaction-latency-runner"
+    statement: "The TA.12 latency qualification has a runner in the hook adapter node: HandlerCompactionLatencyRun drives the adapter in process over recorded PreCompact hook inputs with a compaction binding it supplies (not installed in Claude Code), cold trips on a fresh receipt-mode client each with its construction timed and warm trips on one shared client after a discarded warm-up, records each trip's wall time and the prepared receipt's split into deterministic_build_ms and model_section_ms, and records a refusal instead of a number for a missing or inconsistent timing or an adapter failure."
+    acceptance:
+      - id: "AC154"
+        statement: "AC154: two sizes with two cold and two warm trips against a fixture client whose prepared receipt carries build_ms 250 and model_section_ms 75 record eight trips of 175 and 75 with wall_ms from the injected clock, the factory is called once per cold trip and once per case for warm, a cold trip's wall time includes client construction, a prepared receipt with no build_ms, a model section longer than the build, no prepared receipt or an adapter error is a refusal and the CLI exits 1, the trips of two hosts and three sizes tabulate complete through the latency qualification compute and without the second host do not, and the new source holds no topic literal and no import of the compute node -- falsifier: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_latency_run.py -q fails at the merge base, where the module handler_compaction_latency_run does not exist"
+  - id: "req-delegation-rung-keeps-time-for-next-rung"
+    statement: "The in-process delegation ladder bounds each rung by the run's remaining budget less the task class's declared next-rung reserve, so a slow or rejected local rung hands off to the next rung inside the run budget instead of ending the run."
+    acceptance:
+      - id: "AC157"
+        statement: "AC157: a ladder whose local rung times out reaches the cheap_cloud rung and completes inside the 240 s run budget, and slow rejected local drafts stop re-drafting and hand off -- falsifier: uv run pytest tests/unit/delegation/test_omn17427_rung_budget_keeps_time_for_next_rung.py -q fails at the merge base"
+  - id: "req-context-pack-cite-first-allocator"
+    statement: "When the required tiers of a context pack are over budget, the cited entries of every trimmable tier are charged first and only the uncited remainder is shared equally, so a pack whose cited entries fit the budget is built even when one tier's cited entries exceed an equal share; with no citations the selection is unchanged."
+    acceptance:
+      - id: "AC154"
+        statement: "AC154: a compaction_orchestrator build at budget 800 whose open_work tier cites five rows of about 105 tokens each builds OK with every cited row carried and the uncited orchestration_state row trimmed, and cited entries over the whole budget fail TOKEN_BUDGET_EXCEEDED with 'cited entries need' naming the tiers -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -k equal_share fails at the merge base with 'open_work: cited entries need 525 tokens, over the tier budget 380'"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -870,6 +902,12 @@ evidence_requirements:
   - kind: "tests"
     description: "AC153: the work ledger runs on the in-memory event bus and answers the golden markdown reads."
     command: "uv run pytest tests/test_work_ledger_query_inmemory_bus.py -q"
+  - kind: "tests"
+    description: "AC154: the TA.12 runner drives the adapter cold and warm, splits prepared receipts into the two phases, refuses missing timings, and its trips tabulate through the latency compute."
+    command: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_latency_run.py -q"
+  - kind: "tests"
+    description: "AC154: the context-pack orchestrator charges cited entries of every required tier before sharing the budget."
+    command: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -k 'equal_share or whole_budget or cited'"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -2663,6 +2701,21 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_tier_source_binding.py -q -n 0 -p no:randomly --no-cov -k test_zero_argument_orchestrator_binds_the_contract_sources"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac151-in-process-trace-timing"
+    description: "The in-process evidence terminal carries the command's trace_id, the measured queue wait and the port's measured execution time onto the delegation_events row, through _project_evidence and through dispatch itself, and the handler passes the keywords only to a port that declares them. At the merge base the test module fails to collect."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_in_process_evidence_trace_and_timing_omn19448.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC151"]
+  - id: "dod-omn17427-in-process-trace-timing-deploy-probe"
+    description: "Deploy probe. In the checked-out package, LocalDelegationDispatchPort.dispatch with a patched backend and transport writes a local delegation_events row carrying the given trace_id and queue_wait_ms and an execution_ms. It fails at the merge base, where the test module fails to collect, and needs only uv and this checkout on the hosted runner; it does not attest a live deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_in_process_evidence_trace_and_timing_omn19448.py -q -n 0 -p no:randomly --no-cov -k test_dispatch_threads_trace_and_timing_onto_the_evidence_row"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac151-emit-one-connection"
     description: "node_event_emit_effect reuses one Kafka connection for an invocation's publishes and backlog drain. The test module fails at the merge base, where KafkaEventPublisher has no session()."
     source: "manual"
@@ -2678,6 +2731,37 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_kafka_publish_session.py -q -n 0 -p no:randomly --no-cov -k handle"
         cwd: "${OMNI_HOME}/omnimarket"
+
+  - id: "dod-omn17427-compaction-loss-weight-validation"
+    description: "Positive finite per-item weights, unit defaults, absent kinds, unknown empty scores, and overflow-safe rescaling."
+    binds_ac: ["AC155"]
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_compaction_loss_weights.py -q -p no:randomly --no-cov -k 'unit_weights or weights_are_per_item or empty_window or invalid_weights or misspelled_kind or large_finite'"
+  - id: "dod-omn17427-compaction-loss-weight-evidence"
+    description: "Weighted scoring preserves the evidence and original score, records its policy, and carries it through transcript pairing. Legacy results have no claimed weighted score."
+    binds_ac: ["AC156"]
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_compaction_loss_weights.py tests/test_golden_chain_compaction_loss_compute.py -q -p no:randomly --no-cov"
+  - id: "dod-omn17427-compaction-loss-weights-hosted-deploy"
+    description: "Hosted deploy probe. Exercise the checked-out product scorer with one dropped instruction and three retained tickets. The weighted score must be 0.25 while the original recall remains 0.75, and an empty window must remain unknown. The merge base refuses the weights input and cannot pass. No lab, broker, secret or external endpoint is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run --frozen python -c '
+          from omnimarket.nodes.node_compaction_loss_compute.handlers import HandlerCompactionLoss
+          from omnimarket.nodes.node_compaction_loss_compute.models import ModelCompactionLossRequest
+          body = {"session_id": "probe", "compaction_id": "probe", "pre_text": "OMN-1 OMN-2 OMN-3. Never delete the deployment receipts.", "pre_user_text": "Never delete the deployment receipts.", "post_summary": "OMN-1 OMN-2 OMN-3", "weights": {"operator_instruction": 9}}
+          result = HandlerCompactionLoss().handle(ModelCompactionLossRequest.model_validate(body))
+          assert result.weighted_recall == 0.25 and result.overall_recall == 0.75, result
+          assert result.weights.operator_instruction == 9 and len(result.dropped) == 1, result
+          empty = HandlerCompactionLoss().handle(ModelCompactionLossRequest(session_id="probe", compaction_id="empty", post_summary=""))
+          assert empty.weighted_recall is None, empty
+          print("weighted recall 0.25, original recall 0.75; empty recall unknown")'
   - id: "dod-omn17427-ac153-customer-ledger-in-memory-bus"
     description: "Every golden-fixture ledger row written through HandlerWorkLedgerEmit onto an EventBusInmemory is folded by InMemoryWorkLedgerQueryReader, and HandlerWorkLedgerQuery over it answers the recorded markdown reads. The test module fails at the merge base, where work_ledger_query_inmemory does not exist."
     source: "manual"
@@ -2692,4 +2776,72 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/test_work_ledger_query_inmemory_bus.py -q -n 0 -p no:randomly --no-cov -k sync_emit_handler_writes"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac154-emit-unreachable-backoff"
+    description: "After a retryable publish failure by one publish identity, the emit handler spools and attempts no publish for that identity inside the backoff window, then publishes and drains once it expires. The test module fails at the merge base, where ModelEmitResult has no publish_skipped_unreachable."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_unreachable_backoff_omn17427.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC154"]
+  - id: "dod-omn17427-emit-unreachable-backoff-deploy-probe"
+    description: "Deploy probe. In the checked-out package, a second emit handler after a failed publish by the same identity makes no publish call and leaves the event spooled. It fails at the merge base and needs only uv and this checkout on the hosted runner; no broker or credential."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_unreachable_backoff_omn17427.py -q -n 0 -p no:randomly --no-cov -k backs_off_across_handler_instances"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac154-compaction-latency-runner"
+    description: "The TA.12 runner in the hook adapter node: cold and warm trips through the adapter, wall time, the prepared-receipt phase split, refusals for missing or inconsistent timings and adapter errors, the CLI exit codes, and tabulation of its trips through the latency qualification compute. At the merge base the test module fails to collect."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_latency_run.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC154"]
+  - id: "dod-omn17427-latency-runner-deploy-probe"
+    description: "Deploy probe. In the checked-out package, HandlerCompactionLatencyRun over a fixture client records eight trips split 175 and 75 from prepared receipts of 250 and 75, with wall_ms from the injected clock. It fails at the merge base, which has no handler_compaction_latency_run module, and needs only uv and this checkout on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_latency_run.py -q -n 0 -p no:randomly --no-cov -k test_records_sizes_temperatures_wall_time_and_verdict"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-rung-budget-keeps-time-for-next-rung"
+    description: "A fake-clock ladder where the local rung times out reaches the cheap_cloud rung inside the 240 s run budget; slow rejected local drafts stop re-drafting; fast ones keep their re-drafts. The test file is absent at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn17427_rung_budget_keeps_time_for_next_rung.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC157"]
+  - id: "dod-omn17427-rung-budget-deploy-probe"
+    description: "Deploy probe. The hosted runner loads the subject commit's task class contract and checks every execution budget declares a next-rung reserve above zero and below its ceiling. This checks the artifact and does not attest a live deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run python - <<'PY'
+          from omnimarket.inference.task_class_authority import load_task_class_authority
+          authority = load_task_class_authority()
+          for name in authority.execution_budgets:
+              budget = authority.execution_budget(name)
+              assert 0 < budget.next_rung_reserve_seconds < budget.task_class_timeout_ceiling_seconds, name
+          print("rung budget deploy probe: PASS")
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac154-cite-first-allocator"
+    description: "The required-tier allocator charges cited entries of every trimmable tier first. The equal-share test fails at the merge base, where the shipped equal-share allocator refuses open_work's 525 cited tokens over a 380-token tier share although the 800-token budget holds them."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -n 0 -p no:randomly --no-cov -k 'equal_share or whole_budget or cited'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC154"]
+  - id: "dod-omn17427-cite-first-allocator-deploy-probe"
+    description: "Deploy probe. In the checked-out package, a context-pack build whose cited open_work rows exceed an equal share of the budget but fit the budget is built with every cited row. It fails at the merge base and needs only uv and this checkout on the hosted runner; no broker, database or credential."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -n 0 -p no:randomly --no-cov -k equal_share"
         cwd: "${OMNI_HOME}/omnimarket"

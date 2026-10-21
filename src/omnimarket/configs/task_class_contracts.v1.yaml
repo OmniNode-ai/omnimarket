@@ -760,6 +760,12 @@ output_only_acceptance:
     OMN-18932.
 
 # Contract-owned extraction and handler budget authority (OMN-18278/OMN-15504).
+# OMN-17427: next_rung_reserve_seconds is the time a rung that may be followed
+# by another leaves for it. The ceiling covers the whole run, so a local rung
+# allowed its backend's 300 s timeout_ms ended runs before any cloud rung was
+# tried. With a 240 s ceiling, 60 s leaves the first rung at most 180 s, which
+# node_llm_delegation_call_effect's per-call ceiling (io_operations
+# timeout_seconds) bounds further.
 delegation_output:
   min_deliverable_share: 0.5
   markdown_markers:
@@ -773,27 +779,28 @@ delegation_output:
 # attempt's deadline is the smaller of its backend's timeout_ms and the chain
 # time left minus this floor for every later rung, so three slow rungs cannot
 # leave the last one no time. 45 s fits a four-rung ladder (180 s) inside the
-# 240 s ceiling with room for the first rung.
+# 240 s ceiling with room for the first rung. The OMN-17427 reserve above still
+# holds for the next rung; each attempt is held to the tighter of the two.
 execution_budgets:
-  code_generation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, rung_floor_seconds: 45}
-  refactor: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, rung_floor_seconds: 45}
-  documentation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, rung_floor_seconds: 45}
-  document: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, rung_floor_seconds: 45}
-  research: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, rung_floor_seconds: 45}
-  test: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, rung_floor_seconds: 45}
-  validator_generation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, rung_floor_seconds: 45}
-  reasoning: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, rung_floor_seconds: 45}
-  complex_reasoning: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, rung_floor_seconds: 45}
-  planning: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, rung_floor_seconds: 45}
-  review: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, rung_floor_seconds: 45}
-  code_review: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, rung_floor_seconds: 45}
-  summarization: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, rung_floor_seconds: 45}
-  agent_delegation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, rung_floor_seconds: 45}
-  escalation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, rung_floor_seconds: 45}
-  brief_drafting: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, rung_floor_seconds: 45}
-  extraction_proposer: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, rung_floor_seconds: 45}
-  tail_summary: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, rung_floor_seconds: 45}
-  context_selection: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, rung_floor_seconds: 45}
+  code_generation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  refactor: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  documentation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  document: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  research: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  test: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  validator_generation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  reasoning: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  complex_reasoning: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  planning: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  review: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  code_review: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  summarization: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  agent_delegation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  escalation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  brief_drafting: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  extraction_proposer: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  tail_summary: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  context_selection: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
 
 # S is value <= s_max, M is <= m_max, L is above. Every class inherits this
 # default; task_classes.<class>.size_band_thresholds may override the same shape.

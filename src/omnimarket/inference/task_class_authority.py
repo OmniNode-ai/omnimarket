@@ -399,6 +399,13 @@ class ModelTaskClassExecutionBudget(BaseModel):
 
     task_class_timeout_ceiling_seconds: int = Field(ge=1, le=240)
     terminal_delivery_margin_seconds: int = Field(ge=1)
+    # OMN-17427: the ceiling covers the whole run, not one rung. Without a
+    # reserve, one unanswered local try or a few slow rejected local drafts
+    # spent all of it and the run was cancelled before any later rung was
+    # tried. A rung that may be followed by another is held to the run's
+    # remaining budget less this reserve, and a same-tier re-draft is issued
+    # only when it would leave the reserve. Zero keeps no reserve.
+    next_rung_reserve_seconds: int = Field(default=0, ge=0)
     rung_floor_seconds: int | None = Field(
         default=None,
         ge=1,
@@ -410,6 +417,17 @@ class ModelTaskClassExecutionBudget(BaseModel):
             "rung always has at least one floor. None keeps no reserve."
         ),
     )
+
+    @model_validator(mode="after")
+    def _reserve_leaves_room_for_a_first_rung(self) -> ModelTaskClassExecutionBudget:
+        if self.next_rung_reserve_seconds >= self.task_class_timeout_ceiling_seconds:
+            raise ValueError(
+                f"next_rung_reserve_seconds ({self.next_rung_reserve_seconds}s) "
+                "must be below task_class_timeout_ceiling_seconds "
+                f"({self.task_class_timeout_ceiling_seconds}s); a reserve that "
+                "covers the whole run leaves the first rung no time"
+            )
+        return self
 
     @model_validator(mode="after")
     def _floor_fits_the_ceiling(self) -> ModelTaskClassExecutionBudget:

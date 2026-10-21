@@ -99,6 +99,9 @@ def short_budget(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
             terminal_delivery_margin_seconds=1,
         ),
     )
+    # The stubbed budget is a few seconds, under the 60 s next-rung reserve the
+    # real classes declare; the retry cases here need the reserve out of the way.
+    monkeypatch.setattr(port_mod, "_next_rung_reserve_seconds", lambda _task_type: 0.0)
 
     async def expire_after_provider_started(
         awaitable: Awaitable[Any], *, timeout: float
