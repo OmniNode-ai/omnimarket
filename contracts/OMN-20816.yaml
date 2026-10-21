@@ -1,0 +1,78 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20816"
+title: "Dashboard: add, replace and remove model keys after onboarding"
+summary: "After onboarding a developer could change their model keys only in the terminal. The local dashboard now serves GET /models, PUT /models/{provider} and DELETE /models/{provider} behind its start token, running the same click-free path onex models add|list|remove and onex secret set|delete now run (omnimarket.handlers.handler_model_keys): the key is stored and registered by the local secret store effect, folded into the Credentials rows, and tested with one delegation pinned to its provider. Removing the last usable provider (set up, last pinned test passed) is refused on the page and in the terminal. The key travels only in the request body and reaches no response, refusal or log line; the body is read by hand so a validation error cannot echo it. The page half is omnidash's Credentials page."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "local dashboard HTTP routes GET /models, PUT /models/{provider}, DELETE /models/{provider}"
+requirements:
+  - id: "req-omn20816-model-keys"
+    statement: |-
+      After onboarding, a developer can add, replace or remove model keys from the local dashboard, through the same code path as onex models, with the key never shown again or logged, and never leaving delegation without a usable model.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: The dashboard lists each provider (Gemini, OpenRouter, OpenAI, Ollama) with its state: set up and last test passed, set up and last test failed (with the provider's reason), or not set up.
+      - id: "AC2"
+        statement: |-
+          AC2: A developer can add a key for Gemini, OpenRouter or OpenAI, replace a stored key, or remove one; the key is entered in a hidden field, is never shown again, and is never logged.
+      - id: "AC3"
+        statement: |-
+          AC3: Adding or replacing a key runs one test delegation pinned to that provider and shows the result (pass, or the provider's error).
+      - id: "AC4"
+        statement: |-
+          AC4: The dashboard uses the same code path as `onex models add|list|remove` (the onboarding command), not a separate one.
+      - id: "AC5"
+        statement: |-
+          AC5: Removing the last usable model is refused with a message saying at least one is required.
+evidence_requirements:
+  - kind: "tests"
+    description: "The /models routes over a temporary local store with the provider model list and the pinned test delegation stubbed at the edges: the four providers in each state, add and replace storing the key and chosen models with exactly one pinned test each, a failed test with the provider's reason, the last-usable refusal on the page and in the terminal, the providers the page does not manage sent to the CLI, a key with no chosen model refused, a malformed body refused without echoing the key, the page and the CLI agreeing on one store, and a key change draining the pending Credentials updates first; plus the planted-key scan over every response and the server log."
+    command: "uv run pytest tests/projection/test_omn20816_dashboard_model_keys.py tests/projection/test_omn20950_no_planted_value_in_any_response.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20816-ac1-provider-states"
+    description: "GET /models lists exactly Gemini, OpenRouter, OpenAI and Ollama, each not set up, set up with its last test passed, or set up with its last test failed and the provider's reason (M1). Backend half; the page half is omnidash's Credentials page."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_omn20816_dashboard_model_keys.py -q -n 0 --no-cov -k m1"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20816-ac2-key-never-shown-or-logged"
+    description: "Add and replace store the key and its chosen models (M2); a malformed body is refused without echoing the key (M8); a key planted through PUT /models appears in no /models response, no projection response and no logged line, with a logged control value found first so an empty capture cannot pass (OMN-20950 scan)."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_omn20816_dashboard_model_keys.py tests/projection/test_omn20950_no_planted_value_in_any_response.py -q -n 0 --no-cov -k 'm2 or m8 or added_on_the_page'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20816-ac3-one-pinned-test"
+    description: "Each add or replace runs exactly one test delegation pinned to that provider's backend and returns its result; a failed test carries the provider's reason (M2, M3)."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_omn20816_dashboard_model_keys.py -q -n 0 --no-cov -k 'm2 or m3'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20816-ac4-one-code-path"
+    description: "A key added with onex models add is what GET /models lists, field for field (M7); the providers the page does not manage are refused with the terminal command (M5); a page add drains the pending Credentials updates as the CLI does (M9)."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_omn20816_dashboard_model_keys.py -q -n 0 --no-cov -k 'm5 or m7 or m9'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn20816-ac5-last-usable-refused"
+    description: "Removing one of two usable providers succeeds; removing the last usable one is refused with 'at least one is required' on the page (409) and by onex models remove (M4). With the guard dropped both refusal tests fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_omn20816_dashboard_model_keys.py -q -n 0 --no-cov -k m4"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
