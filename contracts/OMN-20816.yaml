@@ -6,7 +6,7 @@ summary: "After onboarding a developer could change their model keys only in the
 is_seam_ticket: false
 interface_change: true
 interfaces_touched:
-  - "local dashboard HTTP routes GET /models, PUT /models/{provider}, DELETE /models/{provider}"
+  - "public_api"
 requirements:
   - id: "req-omn20816-model-keys"
     statement: |-
