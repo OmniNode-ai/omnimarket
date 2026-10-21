@@ -420,6 +420,55 @@ def test_required_tier_trim_without_citations_keeps_newest_first() -> None:
     assert _carried(text) == {"day-4", "day-5"}
 
 
+def test_cited_entries_over_an_equal_share_build_when_the_budget_holds_them() -> None:
+    bound = sources(
+        open_work=ManySource(EnumContextFactor.OPEN_WORK, _open_work_rows()),
+        orchestration_state=ManySource(
+            EnumContextFactor.ORCHESTRATION_STATE,
+            (
+                ("s" * 400, AS_OF, "state/small"),
+                ("s" * 2800, AS_OF, "state/large"),
+            ),
+        ),
+    )
+    budget = 800
+    cited = tuple(f"row/{day}" for day in range(1, 6))
+    built = orchestrator(bound).handle(
+        command(token_budget_override=budget, cited_refs=cited)
+    )
+    assert built.status is EnumContextPackOrchestratorStatus.OK, built.errors
+    text = "\n".join(m.text for m in built.messages)
+    assert _carried(text) == {f"day-{day}" for day in range(1, 6)}
+    assert sum(built.factor_token_estimates.values()) <= budget
+    tier = {t.factor: t for t in built.tier_statuses}[
+        EnumContextFactor.ORCHESTRATION_STATE
+    ]
+    assert tier.trimmed_entry_count == 1
+
+
+def test_cited_entries_over_the_whole_budget_fail_naming_the_tiers() -> None:
+    bound = sources(
+        open_work=ManySource(EnumContextFactor.OPEN_WORK, _open_work_rows()),
+        orchestration_state=FixtureSource(
+            EnumContextFactor.ORCHESTRATION_STATE, text="s" * 1600
+        ),
+    )
+    cited = (
+        *(f"row/{day}" for day in range(1, 6)),
+        "fixture/orchestration_state@0000000",
+    )
+    built = orchestrator(bound).handle(
+        command(token_budget_override=800, cited_refs=cited)
+    )
+    assert built.status is EnumContextPackOrchestratorStatus.FAILED
+    assert built.failure_class is EnumContextPackFailure.TOKEN_BUDGET_EXCEEDED
+    assert any(
+        "cited entries need" in error
+        and error.endswith(": open_work, orchestration_state")
+        for error in built.errors
+    )
+
+
 def test_cited_entries_over_the_tier_budget_fail_never_dropped() -> None:
     bound = sources(
         open_work=ManySource(EnumContextFactor.OPEN_WORK, _open_work_rows())

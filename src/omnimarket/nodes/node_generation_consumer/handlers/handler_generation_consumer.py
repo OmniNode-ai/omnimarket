@@ -759,7 +759,7 @@ def _check_model_class_existence(contract_yaml: str, handler_source: str) -> lis
 
 def _calculate_cost(
     provider: str, model_id: str, input_tokens: int, output_tokens: int
-) -> float:
+) -> float | None:
     """Compute inference cost (USD) from contract-sourced pricing (OMN-13621).
 
     Pricing is resolved from the canonical cost-pricing contract
@@ -767,24 +767,23 @@ def _calculate_cost(
     hardcoded source constant. The contract's zero_marginal_api_cost entries
     (local / owned-GPU) price to 0.0; cloud_api_cost entries price the measured
     tokens through the per-token rates. A model with no contract entry resolves
-    to an explicit UNKNOWN entry (allow_unknown=True) and costs 0.0 rather than
-    crashing the generation run — UNKNOWN is honest absence, not a silent
-    mispricing (the usage_source provenance carried alongside records that the
-    cost was not measured against a known rate).
+    to an explicit UNKNOWN entry (allow_unknown=True) and returns None rather
+    than crashing the generation run (OMN-20834): None means "not priced", so an
+    unpriced run is never recorded as a free one. An entry whose rates are
+    missing is unpriced in the same way.
     """
     contract = load_cost_pricing()
     entry = lookup_cost_pricing(contract, provider, model_id, allow_unknown=True)
-    if entry.cost_basis in (
-        EnumCostBasis.UNKNOWN,
-        EnumCostBasis.ZERO_MARGINAL_API_COST,
-    ):
+    if entry.cost_basis == EnumCostBasis.UNKNOWN:
+        return None
+    if entry.cost_basis == EnumCostBasis.ZERO_MARGINAL_API_COST:
         return 0.0
     try:
         cost = calculate_inference_cost(
             entry, input_tokens=input_tokens, output_tokens=output_tokens
         )
     except MissingCostPricingError:
-        return 0.0
+        return None
     return float(cost)
 
 

@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_claude_review_budget_reducer
+contract_name: node_claude_review_budget_reducer
+node_name: node_claude_review_budget_reducer
+lifecycle: experimental
+node_type: reducer
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+description: >
+  Pure review budget transitions: reserve, started, settle, release and reconcile. The reduction is not an admission grant until the authority effect persists it.
+input_model:
+  name: ModelReviewBudgetTransition
+  module: omnimarket.models.claude_review_budget.model_review_budget_admission
+output_model:
+  name: ModelReviewBudgetReduction
+  module: omnimarket.models.claude_review_budget.model_review_budget_admission
+handler:
+  module: omnimarket.nodes.node_claude_review_budget_reducer.handlers.handler_review_budget_reducer
+  class: HandlerClaudeReviewBudgetReducer
+  input_model: omnimarket.models.claude_review_budget.model_review_budget_admission.ModelReviewBudgetTransition
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_claude_review_budget_reducer.handlers.handler_review_budget_reducer:HandlerClaudeReviewBudgetReducer
+  handlers:
+    - operation: claude_review_budget_reduce
+      handler:
+        name: HandlerClaudeReviewBudgetReducer
+        module: omnimarket.nodes.node_claude_review_budget_reducer.handlers.handler_review_budget_reducer
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.claude-review-budget-reduce-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.claude-review-budget-reduce-completed.v1
+    failure: onex.evt.omnimarket.claude-review-budget-reduce-failed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.claude-review-budget-reduce-completed.v1
+  - onex.evt.omnimarket.claude-review-budget-reduce-failed.v1
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  timeout_ms: 35000
+replay:
+  deterministic: true
