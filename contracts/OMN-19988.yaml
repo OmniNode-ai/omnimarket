@@ -87,3 +87,9 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn19988_local_environment_writer_real_postgres.py -q --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn19988-environment-writer-deploy-probe"
+    description: "Deploy probe. The local environment writer GitHub serves at the checked-out commit exists; the probe reads handler_local_environment_writer.py from GitHub at that commit and exits nonzero on a tree without its writer class (the file is absent at the merge base), so it fails there."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_local_environment/handlers/handler_local_environment_writer.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -q 'class LocalEnvironmentProjectionWriter'"
