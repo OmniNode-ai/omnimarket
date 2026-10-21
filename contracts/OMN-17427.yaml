@@ -2905,7 +2905,7 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/lab_work/test_lab_work_host_bus.py -q -n 0 -p no:randomly --no-cov -k lane_guard"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC159"]
-  - id: "dod-omn17427-ac159-lane-guard-advertised-deploy-probe"
+  - id: "dod-omn17427-ac159-guard-advert-deploy-probe"
     description: "Deploy probe. In the checked-out package, a home holding one lane guard whose bytes hash to its directory name is read by LocalHostReader and advertises exactly that lane-guard:<sha256> tool, and an empty home advertises none. It fails at the merge base and needs only uv and this checkout on the hosted runner; it does not attest a live host."
     source: "manual"
     checks:
