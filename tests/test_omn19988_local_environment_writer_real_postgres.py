@@ -170,6 +170,11 @@ async def test_real_postgres_writer_types_replay_late_and_stale_siblings(
             seconds=load_local_alert_rules().freshness_deadline_seconds
         )
         assert final[1]["projection_cursor"] > row["projection_cursor"]
+        # A reader paging by cursor sees both rows this report changed, so each
+        # carries a cursor newer than any the table held before it.
+        assert min(r["projection_cursor"] for r in final) > max(
+            r["projection_cursor"] for r in initial
+        )
         assert sorted(p["row"]["service"] for p in published) == [
             "local-runtime",
             "postgres",

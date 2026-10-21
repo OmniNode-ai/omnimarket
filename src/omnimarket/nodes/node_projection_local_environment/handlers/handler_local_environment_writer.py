@@ -85,6 +85,9 @@ _UPSERT_ROW = (
     )
     + ") ON CONFLICT (tenant_id, mode, service) DO UPDATE SET "
     + ", ".join(f"{name} = EXCLUDED.{name}" for name in _COLUMNS if name not in _KEY)
+    # The BIGSERIAL default fires on INSERT only; an updated row takes the next
+    # cursor too, or a reader paging by cursor never sees the change.
+    + ", projection_cursor = nextval('public.local_environment_projection_cursor_seq')"
     + f" RETURNING {', '.join(_COLUMNS)}, projection_cursor"
 )
 
