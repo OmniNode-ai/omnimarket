@@ -655,6 +655,11 @@ requirements:
       - id: "AC152"
         statement: |-
           AC152: both delegation writers retain the canonical saving's counterfactual after runtime shutdown, preserve an existing pinned baseline, and invent none for a failed or zero-token terminal -- falsifier: uv run pytest tests/unit/nodes/node_projection_delegation/test_canonical_savings_counterfactual_omn20303.py -q -n 0 --no-cov
+  - id: "req-onex-models-lists-the-catalogue"
+    statement: "onex models offers every provider the BYOK customer catalogue lets a customer route a key to, so z.ai's general API (glm) is listed, added and tested through the catalogue's own row, and no endpoint is written into the setup code."
+    acceptance:
+      - id: "AC158"
+        statement: "AC158: onex models list on a fresh profile names GLM as not set up, onex models add glm stores a general-API key under its detected plan and model and tests it pinned to the catalogue's byok-glm-general backend, a Coding Plan key is refused with BYOK_CODING_PLAN_NOT_PERMITTED and nothing is stored, and every catalogue provider with a routable plan is in the onex models provider list -- falsifier: uv run pytest tests/unit/cli/test_omn20157_onex_models_lists_the_catalogue.py -q fails at the merge base"
   - id: "req-compaction-loss-weights"
     statement: "The context-service lane's scorer-weights follow-up adds an auditable weighted recall without rewriting the original survival evidence. This slice does not qualify TA.12 latency, install the TA.15 binding, or close the parent integration-pass acceptance."
     acceptance:
@@ -913,6 +918,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC150: the context-pack orchestrator binds its tier sources from the contract's context_tier_sources block."
     command: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_tier_source_binding.py -q"
+  - kind: "tests"
+    description: "AC158: onex models follows the BYOK catalogue and lists, adds and tests GLM through its catalogue row."
+    command: "uv run pytest tests/unit/cli/test_omn20157_onex_models_lists_the_catalogue.py tests/nodes/node_model_setup_effect/test_golden_chain_model_setup_effect.py -q"
   - kind: "tests"
     description: "AC153: the work ledger runs on the in-memory event bus and answers the golden markdown reads."
     command: "uv run pytest tests/test_work_ledger_query_inmemory_bus.py -q"
@@ -2745,6 +2753,21 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_kafka_publish_session.py -q -n 0 -p no:randomly --no-cov -k handle"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac93-onex-models-lists-the-catalogue"
+    description: "onex models offers every catalogue provider with a routable plan, lists GLM on a fresh profile, and adds and tests a GLM key through the catalogue's default plan row, with plan detection and the pinned delegation faked. The test file is absent at the merge base, and with it laid over the merge base six of its ten tests fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn20157_onex_models_lists_the_catalogue.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC158"]
+  - id: "dod-omn17427-onex-models-glm-deploy-probe"
+    description: "Deploy probe. GitHub serves the model setup request model at the checked-out HEAD with glm in the ModelProvider list. It fails at the merge base, whose list has no glm, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_model_setup_effect/models/model_model_setup_request.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); head = source.split("ModelProvider = Literal[", 1)[1].split("]", 1)[0]; assert chr(34) + "glm" + chr(34) in head; print("onex models glm deploy probe: PASS")'
 
   - id: "dod-omn17427-compaction-loss-weight-validation"
     description: "Positive finite per-item weights, unit defaults, absent kinds, unknown empty scores, and overflow-safe rescaling."
