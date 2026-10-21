@@ -26,6 +26,9 @@ from omnimarket.events.delegation_judge_verdict import (
     ModelDelegationJudgeVerdictEvent,
 )
 from omnimarket.events.topics import TASK_DELEGATED_TOPIC_V1
+from omnimarket.handlers.handler_modelled_terminal_savings import (
+    apply_modelled_terminal_savings,
+)
 from omnimarket.handlers.handler_projection_derived_write import (
     HandlerProjectionDerivedWrite,
 )
@@ -2133,6 +2136,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         # late-arriving timeout terminal must not clobber the real answer an
         # earlier delegation-completed.v1 already wrote).
         await self._preserve_existing_evidence_async(row)
+        apply_modelled_terminal_savings(row, event)
         await self._write_delegation_row(
             row, meta, insert_only_columns=tenant_insert_only
         )
