@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_silent_failure_alarm_compute
+version: 1.0.0
+description: Decides the silent-failure alarms from facts a caller read, without I/O, each verdict carrying its FRICTION cells and alert text.
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+pack: core
+node_role: compute
+display_name: Silent Failure Alarm Compute
+entry_points:
+  onex.nodes:
+    node_silent_failure_alarm_compute: omnimarket.nodes.node_silent_failure_alarm_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+- omnibase_core>=0.39.0
+license: MIT
+tags:
+- compute
+- alarm
+- friction

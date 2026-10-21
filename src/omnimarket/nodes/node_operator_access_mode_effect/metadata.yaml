@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_operator_access_mode_effect
+version: 1.0.0
+description: "Decides how the operator reaches a Claude Code session and applies the supervision rules that depend on it: foreground Bash shape and wait guard, operator reply check, attention push gate and remote setup check."
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+pack: core
+node_role: effect
+display_name: Operator Access Mode Effect
+entry_points:
+  onex.nodes:
+    node_operator_access_mode_effect: omnimarket.nodes.node_operator_access_mode_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem_write
+dependencies:
+- omnibase_core>=0.39.0
+license: MIT
+tags:
+- effect
+- hooks
+- operator

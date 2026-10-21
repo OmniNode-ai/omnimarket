@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# Operator access mode and the supervision rules it switches. RULING 2026-10-10T16:55:54Z
+# lane=access-mode-9f8a (mechanism ticket OMN-20892), corrected by CORRECTION
+# 2026-10-10T16:56:54Z (the bare-id part of the reply check is on in every mode).
+name: operator_access_mode_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Decides how the operator is reaching a Claude Code session (local CLI at the Mac, remote client,
+  or a headless run nobody reads) from the session's own environment, with an environment, prompt
+  and global override, and applies the supervision rules that depend on it: the foreground Bash
+  shape and wait guard (always on), the foreground fetch guard (operator-facing sessions),
+  the operator reply check (bare ticket and PR ids always,
+  local paths in remote mode), the attention-only push gate, and the remote setup check at
+  session start. Installed as user-level Claude Code hooks by onex-user-hooks-install.
+
+handler:
+  module: omnimarket.handlers
+  class: HandlerLocalAccessMode
+  input_model: omnimarket.models.model_local_access_mode_request.ModelLocalAccessModeRequest
+  output_model: omnimarket.models.model_local_access_mode_result.ModelLocalAccessModeResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: detect_access_mode
+      handler:
+        name: HandlerLocalAccessMode
+        module: omnimarket.handlers
+      input_model: omnimarket.models.model_local_access_mode_request.ModelLocalAccessModeRequest
+      output_model: omnimarket.models.model_local_access_mode_result.ModelLocalAccessModeResult
+    - operation: check_foreground_bash
+      handler:
+        name: HandlerForegroundBashGuard
+        module: omnimarket.nodes.node_operator_access_mode_effect.handlers.handler_foreground_bash_guard
+      input_model: omnimarket.nodes.node_operator_access_mode_effect.models.model_foreground_bash_request.ModelForegroundBashRequest
+      output_model: omnimarket.nodes.node_operator_access_mode_effect.models.model_hook_verdict.ModelHookVerdict
+    - operation: check_operator_reply
+      handler:
+        name: HandlerOperatorReplyCheck
+        module: omnimarket.nodes.node_operator_access_mode_effect.handlers.handler_operator_reply_check
+      input_model: omnimarket.nodes.node_operator_access_mode_effect.models.model_operator_reply_request.ModelOperatorReplyRequest
+      output_model: omnimarket.nodes.node_operator_access_mode_effect.models.model_hook_verdict.ModelHookVerdict
+    - operation: gate_push_notification
+      handler:
+        name: HandlerAttentionPushGate
+        module: omnimarket.nodes.node_operator_access_mode_effect.handlers.handler_attention_push_gate
+      input_model: omnimarket.nodes.node_operator_access_mode_effect.models.model_push_gate_request.ModelPushGateRequest
+      output_model: omnimarket.nodes.node_operator_access_mode_effect.models.model_hook_verdict.ModelHookVerdict
+    - operation: check_remote_setup
+      handler:
+        name: HandlerRemoteSetupCheck
+        module: omnimarket.nodes.node_operator_access_mode_effect.handlers.handler_remote_setup_check
+      input_model: omnimarket.nodes.node_operator_access_mode_effect.models.model_remote_setup_request.ModelRemoteSetupRequest
+      output_model: omnimarket.nodes.node_operator_access_mode_effect.models.model_remote_setup_request.ModelRemoteSetupResult
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  side_effects:
+    - writes one state file per session and an optional override file under the access-mode state directory
+    - refuses a tool call (exit 2) or a turn end (Stop decision block) that breaks a supervision rule
+  runtime_profiles: []
+
+runtime_dispatch:
+  external_trigger: "Claude Code hooks and the onex-access-mode CLI invoke the detector locally with session facts."
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+# A Claude Code hook entry reached through its command line, not a bus topic.
+lifecycle: experimental
+
+metadata:
+  tickets: [OMN-20892, OMN-20893, OMN-20894, OMN-20895, OMN-20896]
+  transport_type: local
