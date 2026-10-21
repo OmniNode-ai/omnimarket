@@ -8,6 +8,10 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
+from omnimarket.nodes.node_compaction_loss_compute.models.model_compaction_loss_weights import (
+    ModelCompactionLossWeights,
+)
+
 
 class _Frozen(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -29,6 +33,9 @@ class ModelCompactionPairsRequest(_Frozen):
     session_id: str
     transcript_path: str | None = None
     records: tuple[dict[str, JsonValue], ...]
+    weights: ModelCompactionLossWeights = Field(
+        default_factory=ModelCompactionLossWeights
+    )
 
 
 class ModelCompactionLossRequest(_Frozen):
@@ -44,6 +51,9 @@ class ModelCompactionLossRequest(_Frozen):
     pre_user_text: str = ""
     pre_assistant_text: str = ""
     post_summary: str
+    weights: ModelCompactionLossWeights = Field(
+        default_factory=ModelCompactionLossWeights
+    )
 
 
 class ModelCompactionPairs(_Frozen):
@@ -97,12 +107,18 @@ class ModelCompactionLossResult(_Frozen):
     recall_by_kind: tuple[ModelKindRecall, ...]
     dropped: tuple[ModelMustCarryItem, ...]
     eval_case: ModelLossEvalCase
+    weights: ModelCompactionLossWeights = Field(
+        default_factory=ModelCompactionLossWeights
+    )
+    # None also permits reading historical results that predate weighting.
+    weighted_recall: float | None = Field(default=None, ge=0, le=1)
 
 
 __all__ = [
     "EnumMustCarryKind",
     "ModelCompactionLossRequest",
     "ModelCompactionLossResult",
+    "ModelCompactionLossWeights",
     "ModelCompactionPairs",
     "ModelCompactionPairsRequest",
     "ModelKindRecall",
