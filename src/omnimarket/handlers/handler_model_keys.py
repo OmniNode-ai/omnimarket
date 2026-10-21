@@ -1,13 +1,13 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Add, list and remove a model key: the one path ``onex models`` and the local dashboard share (OMN-20816).
+"""Add, list and remove a model key: the one path ``onex models`` and ``onex secret`` run (OMN-20816).
 
-A developer manages the providers delegation can use from the terminal (``onex
-models add|list|remove``, and ``onex secret set|delete`` for any reference) or
-from the local dashboard's Credentials page. Both run this module, so a key the
-page adds is stored, registered, folded into the Credentials rows and tested
-exactly as the terminal does it, and the one rule the page adds -- the last
-usable provider cannot be removed -- holds in the terminal too.
+A developer manages the providers delegation can use in the terminal (``onex
+models add|list|remove``, and ``onex secret set|delete`` for any reference).
+Both run this module, and the local dashboard's Credentials page lists the
+providers through its ``list_providers``, read-only: no key goes to the page
+or comes from it. Removing the last usable provider is refused here, so every
+caller of ``remove_key`` gets the same refusal.
 
 It composes two nodes the way the CLI always has: the key is stored and
 registered by ``node_local_secret_store_effect``, and status and the pinned
@@ -82,15 +82,15 @@ from omnimarket.routing.byok_provider_backends import (
     resolve_byok_provider_backend,
 )
 
-#: A progress line for whoever is watching: the terminal prints it, the page drops it.
+#: A progress line for whoever is watching: the terminal prints it, a script drops it.
 Echo = Callable[[str], None]
 #: A terminal's question for the model a key runs; a caller with no terminal passes none.
 AskModel = Callable[[str], str]
 
 
 def _quiet(line: str) -> None:
-    """The ``echo`` for a caller with no one watching, such as a page request."""
-    del line  # dropped: a page request has no terminal to print to
+    """The ``echo`` for a caller with no one watching, such as a script."""
+    del line  # dropped: a caller with no terminal has nowhere to print it
 
 
 class ModelKeyRefusedError(Exception):
@@ -134,23 +134,6 @@ KEYED_PROVIDERS: tuple[ModelProvider, ...] = (
     "openai",
     "anthropic",
     "glm",
-)
-#: What the page says for each provider it lists or knows but does not change.
-TERMINAL_ONLY: dict[str, str] = {
-    "ollama": f"Ollama takes no key here. {OLLAMA_HOW} To stop using it, run: "
-    "onex models remove ollama",
-    "anthropic": "Anthropic is set up in the terminal: onex models add anthropic, "
-    "or onex models remove anthropic.",
-    "glm": "GLM is set up in the terminal: onex models add glm, or onex models "
-    "remove glm.",
-    "local": "Local URL is set up in the terminal: onex models add local --url "
-    "<base url> --model <name>, or onex models remove local.",
-}
-#: The page's providers that take a key. Ollama's row is read-only there.
-DASHBOARD_KEYED_PROVIDERS: tuple[ModelProvider, ...] = (
-    "gemini",
-    "openrouter",
-    "openai",
 )
 
 
@@ -644,7 +627,7 @@ def delete_key(secret_ref: str, echo: Echo = _quiet) -> ModelLocalSecretResult:
 
 
 # ---------------------------------------------------------------------------
-# A provider's key, as ``onex models`` and the Credentials page manage it.
+# A provider's key, as ``onex models`` manages it and the Credentials page lists it.
 # ---------------------------------------------------------------------------
 
 
@@ -739,8 +722,8 @@ def refuse_last_usable(provider: str) -> None:
     """Refuse removing ``provider`` when no other provider would be left usable.
 
     Delegation needs at least one model it can use, so a removal that would
-    leave none is refused before anything changes, from the page and from the
-    terminal alike (OMN-20816 decision (c)).
+    leave none is refused before anything changes, in the terminal and for any
+    other caller of :func:`remove_key` (OMN-20816 decision (c)).
     """
     statuses = list_providers()
     if not any(s.provider == provider and _usable(s) for s in statuses):
@@ -774,14 +757,12 @@ def remove_key(provider: str, echo: Echo = _quiet) -> None:
 
 
 __all__ = [
-    "DASHBOARD_KEYED_PROVIDERS",
     "DASHBOARD_PROVIDERS",
     "KEYED_PROVIDERS",
     "LOCAL_HOW",
     "MODEL_LABELS",
     "OLLAMA_HOW",
     "PENDING_CREDENTIAL_EVENTS_NAME",
-    "TERMINAL_ONLY",
     "AskModel",
     "Echo",
     "LastUsableModelRefusedError",

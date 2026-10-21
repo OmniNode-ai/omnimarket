@@ -990,7 +990,7 @@ def add_model(
         if len(set(model_options)) != len(model_options):
             raise click.ClickException("a model is named twice. Nothing was stored.")
         key = _read_model_key(name)
-        # OMN-20816: the path the local dashboard's Credentials page runs too.
+        # OMN-20816: the shared path; the dashboard's GET /models lists what it stores.
         try:
             result = model_keys.add_key(
                 name, key, model_options, ask_model=_ask_model, echo=click.echo

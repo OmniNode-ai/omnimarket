@@ -2,7 +2,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-20816"
 title: "Dashboard: add, replace and remove model keys after onboarding"
-summary: "After onboarding a developer could change their model keys only in the terminal. The local dashboard now serves GET /models, PUT /models/{provider} and DELETE /models/{provider} behind its start token, running the same click-free path onex models add|list|remove and onex secret set|delete now run (omnimarket.handlers.handler_model_keys): the key is stored and registered by the local secret store effect, folded into the Credentials rows, and tested with one delegation pinned to its provider. Removing the last usable provider (set up, last pinned test passed) is refused on the page and in the terminal. The key travels only in the request body and reaches no response, refusal or log line; the body is read by hand so a validation error cannot echo it. The page half is omnidash's Credentials page."
+summary: "After onboarding a developer changes their model keys in the terminal: onex models add|list|remove and onex secret set|delete run one shared, click-free path (omnimarket.handlers.handler_model_keys) that stores and registers the key through the local secret store effect, folds it into the Credentials rows and tests it with one delegation pinned to its provider. Removing the last usable provider (set up, last pinned test passed) is refused there, so onex models remove refuses it. The local dashboard serves GET /models behind its start token: the page's four providers with set-up state, models and last test, and no key. It takes no key: per the operator ruling on the ticket (2026-10-21T10:24:32Z: no key entry on the Credentials page, which stays read-only) PUT and DELETE on /models/{provider} are not served, and the page half of AC2 and AC3 is ruled out; those criteria bind the terminal path only."
 is_seam_ticket: false
 interface_change: true
 interfaces_touched:
@@ -29,7 +29,7 @@ requirements:
           AC5: Removing the last usable model is refused with a message saying at least one is required.
 evidence_requirements:
   - kind: "tests"
-    description: "The /models routes over a temporary local store with the provider model list and the pinned test delegation stubbed at the edges: the four providers in each state, add and replace storing the key and chosen models with exactly one pinned test each, a failed test with the provider's reason, the last-usable refusal on the page and in the terminal, the providers the page does not manage sent to the CLI, a key with no chosen model refused, a malformed body refused without echoing the key, the page and the CLI agreeing on one store, and a key change draining the pending Credentials updates first; plus the planted-key scan over every response and the server log."
+    description: "GET /models over a temporary local store with the provider model list and the pinned test delegation stubbed at the edges, every key set up and removed through onex models: the four providers in each state, a provider outside the four not listed, the terminal and the page agreeing on one store, the last-usable refusal in the terminal, a terminal add draining the pending Credentials updates, PUT and DELETE on /models/{provider} not served and storing or removing nothing, and no stored key in GET /models; plus the planted-key scan, the key planted through onex models add, over GET /models, every projection response, the terminal output and the log."
     command: "uv run pytest tests/projection/test_omn20816_dashboard_model_keys.py tests/projection/test_omn20950_no_planted_value_in_any_response.py -q --no-cov"
 emergency_bypass:
   enabled: false
@@ -37,39 +37,39 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-omn20816-ac1-provider-states"
-    description: "GET /models lists exactly Gemini, OpenRouter, OpenAI and Ollama, each not set up, set up with its last test passed, or set up with its last test failed and the provider's reason (M1). Backend half; the page half is omnidash's Credentials page."
+    description: "GET /models lists exactly Gemini, OpenRouter, OpenAI and Ollama, each not set up, set up with its last test passed, or set up with its last test failed and the provider's reason, the keys added through onex models add (M1); a provider set up in the terminal outside the four is not listed (M5); no stored key, whole, encoded or its tail, is in the listing (RO2). The page half is omnidash's read-only Credentials list."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/projection/test_omn20816_dashboard_model_keys.py -q -n 0 --no-cov -k m1"
+        check_value: "uv run pytest tests/projection/test_omn20816_dashboard_model_keys.py -q -n 0 --no-cov -k 'm1 or m5 or ro2'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
-  - id: "dod-omn20816-ac2-key-never-shown-or-logged"
-    description: "Add and replace store the key and its chosen models (M2); a malformed body is refused without echoing the key (M8); a key planted through PUT /models appears in no /models response, no projection response and no logged line, with a logged control value found first so an empty capture cannot pass (OMN-20950 scan)."
+  - id: "dod-omn20816-ac2-terminal-path-only"
+    description: "Ruled out for the page by the operator ruling on the ticket, 2026-10-21T10:24:32Z (no key entry on the Credentials page; keys go in through onex models add). This binds the terminal path only and makes no page claim: a key added and replaced through onex models add is in no GET /models response, no projection response, no terminal output and no logged line, with a logged control value found first so an empty capture cannot pass (OMN-20950 scan); the dashboard server takes no key, PUT and DELETE on /models/{provider} are not served and store or remove nothing (RO1)."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/projection/test_omn20816_dashboard_model_keys.py tests/projection/test_omn20950_no_planted_value_in_any_response.py -q -n 0 --no-cov -k 'm2 or m8 or added_on_the_page'"
+        check_value: "uv run pytest tests/projection/test_omn20816_dashboard_model_keys.py tests/projection/test_omn20950_no_planted_value_in_any_response.py -q -n 0 --no-cov -k 'onex_models_add or ro1'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
-  - id: "dod-omn20816-ac3-one-pinned-test"
-    description: "Each add or replace runs exactly one test delegation pinned to that provider's backend and returns its result; a failed test carries the provider's reason (M2, M3)."
+  - id: "dod-omn20816-ac3-terminal-path-only"
+    description: "Ruled out for the page by the operator ruling on the ticket, 2026-10-21T10:24:32Z. This binds the terminal path only and makes no page claim: onex models add runs exactly one test delegation pinned to the provider's backend and prints its result (the existing GLM add test), and a failed test is listed with the provider's reason (M1)."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/projection/test_omn20816_dashboard_model_keys.py -q -n 0 --no-cov -k 'm2 or m3'"
+        check_value: "uv run pytest tests/unit/cli/test_omn20157_onex_models_lists_the_catalogue.py tests/projection/test_omn20816_dashboard_model_keys.py -q -n 0 --no-cov -k 'stored_and_tested_on_its_backend or m1'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-omn20816-ac4-one-code-path"
-    description: "A key added with onex models add is what GET /models lists, field for field (M7); the providers the page does not manage are refused with the terminal command (M5); a page add drains the pending Credentials updates as the CLI does (M9)."
+    description: "GET /models lists what onex models add stored, field for field the rows onex models list prints (M7); the page's provider filter holds for a provider the terminal set up (M5); a terminal add drains the pending Credentials updates an earlier fold left (M9). The dashboard has no second store or write path: PUT and DELETE are not served (RO1)."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/projection/test_omn20816_dashboard_model_keys.py -q -n 0 --no-cov -k 'm5 or m7 or m9'"
+        check_value: "uv run pytest tests/projection/test_omn20816_dashboard_model_keys.py -q -n 0 --no-cov -k 'm5 or m7 or m9 or ro1'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
   - id: "dod-omn20816-ac5-last-usable-refused"
-    description: "Removing one of two usable providers succeeds; removing the last usable one is refused with 'at least one is required' on the page (409) and by onex models remove (M4). With the guard dropped both refusal tests fail."
+    description: "onex models remove removes one of two usable providers and refuses the last usable one with 'at least one is required', leaving it set up as GET /models shows (M4). With the guard in remove_key dropped the refusal test fails."
     source: "manual"
     checks:
       - check_type: "test_passes"

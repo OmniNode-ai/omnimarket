@@ -38,7 +38,7 @@ import pytest
 from click.testing import CliRunner
 from fastapi.testclient import TestClient
 
-from omnimarket.cli.cli_secret import secret_group
+from omnimarket.cli.cli_secret import models_group, secret_group
 from omnimarket.local_deployment.tenant_identity import (
     reset_local_tenant_identity_cache,
 )
@@ -192,13 +192,15 @@ def test_after_a_re_set_neither_key_is_in_any_response(store: Path) -> None:
     assert _fingerprint(_SECOND) in rows
 
 
-def test_a_key_added_on_the_page_is_in_no_response_and_no_log(
+def test_a_key_added_through_onex_models_add_is_in_no_response_and_no_log(
     store: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """OMN-20816: the key now arrives in a request body, so its routes are scanned too.
+    """OMN-20816: the dashboard now lists providers too, so ``GET /models`` is scanned.
 
-    F6 a ``/models`` response (the add, the list, a refused or an allowed
-    remove) carries the key; F7 anything logged while handling it does.
+    A key goes in only through ``onex models add`` (the dashboard takes none),
+    so the key is planted there and replaced there. F6 the ``/models`` listing
+    or the terminal's own output carries it; F7 anything logged while adding,
+    listing or removing it does.
     """
     monkeypatch.setattr(
         "omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup.default_evidence_db_path",
@@ -222,32 +224,38 @@ def test_a_key_added_on_the_page_is_in_no_response_and_no_log(
             row_source=source,
         )
     )
-    page: dict[str, tuple[int, str]] = {}
+    seen: dict[str, tuple[int, str]] = {}
     for key in (_FIRST, _SECOND):
-        added = client.put(
-            "/models/openrouter", json={"key": key, "models": ["openai/gpt-5-nano"]}
+        added = CliRunner().invoke(
+            models_group,
+            ["add", "openrouter", "--model", "openai/gpt-5-nano", "--json"],
+            input=key,
         )
-        page[f"PUT /models/openrouter ({_fingerprint(key)})"] = (
-            added.status_code,
-            added.text,
+        seen[f"onex models add openrouter ({_fingerprint(key)})"] = (
+            added.exit_code,
+            added.output,
         )
-        assert added.status_code == 200, added.text
+        # The stubbed test delegation fails, so the terminal exits 1 with the key stored.
+        assert added.exit_code == 1, added.output
     listed = client.get("/models")
-    page["GET /models"] = (listed.status_code, listed.text)
-    removed = client.delete("/models/openrouter")
-    page["DELETE /models/openrouter"] = (removed.status_code, removed.text)
+    seen["GET /models"] = (listed.status_code, listed.text)
+    removed = CliRunner().invoke(models_group, ["remove", "openrouter"])
+    seen["onex models remove openrouter"] = (removed.exit_code, removed.output)
+    assert removed.exit_code == 0, removed.output
+    after = client.get("/models")
+    seen["GET /models after remove"] = (after.status_code, after.text)
 
     # F5: the store holds the newest key, and the list read the stored row.
     assert _SECOND.encode() in store.read_bytes()
     assert '"openrouter"' in listed.text
     assert '"set_up":true' in listed.text
     # F6, and F1 to F4 over every exposure for the same store.
-    _assert_no_value_in(page, [_FIRST, _SECOND])
+    _assert_no_value_in(seen, [_FIRST, _SECOND])
     _assert_no_value_in(
         _every_response(store, _install_tenant(store)), [_FIRST, _SECOND]
     )
     # F7: no form of either key in anything logged at DEBUG or above. The planted
-    # control for this check is a route that logs the key (a mutation run).
+    # control for this check is a path that logs the key (a mutation run).
     # Positive control: a value logged by the dashboard's own module is found by
     # the same capture and scan, so an empty capture cannot pass the check.
     logging.getLogger(create_dashboard_app.__module__).warning("control %s", _CONTROL)
