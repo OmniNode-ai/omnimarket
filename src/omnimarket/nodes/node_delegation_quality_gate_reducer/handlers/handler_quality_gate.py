@@ -64,6 +64,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import itertools
 import json
 import re
 import tokenize
@@ -1298,9 +1299,38 @@ def _check_pytest_tests_present(content: str) -> str | None:
     return "TASK_MISMATCH: no collectable pytest tests; fails pytest_tests_present"
 
 
+#: OMN-21258: a caption between two code blocks, such as ``**Usage:**`` or
+#: ``### Example usage:``: one line of a few words ending in a colon, with any
+#: markdown heading marks and emphasis ignored.
+_CAPTION_MARKUP_RE = re.compile(r"^#{1,6}[ \t]+|[*_`]")
+_CAPTION_MAX_WORDS = 4
+
+
+def _is_caption(text: str) -> bool:
+    """Whether the text between two code blocks is one short label line."""
+    line = _CAPTION_MARKUP_RE.sub("", text.strip()).strip()
+    if not line.endswith(":") or "\n" in line:
+        return False
+    return 0 < len(line[:-1].split()) <= _CAPTION_MAX_WORDS
+
+
 def _check_final_artifact_only(content: str) -> str | None:
-    """Deterministic: code/test tasks must return the artifact, not deliberation."""
-    if _extract_fenced_code_blocks(content) and _remove_fenced_code_blocks(content):
+    """Deterministic: code/test tasks must return the artifact, not deliberation.
+
+    Text before the first code block or after the last one is prose. Between
+    two blocks, one short label line (OMN-21258: ``**Usage:**`` above a usage
+    example) is a caption and is allowed; anything longer is prose.
+    """
+    fences = list(_MARKDOWN_FENCE_RE.finditer(content))
+    if not fences:
+        return None
+    outside = [content[: fences[0].start()], content[fences[-1].end() :]]
+    gaps = [
+        content[before.end() : after.start()]
+        for before, after in itertools.pairwise(fences)
+    ]
+    outside.extend(gap for gap in gaps if not _is_caption(gap))
+    if any(text.strip() for text in outside):
         return "TASK_MISMATCH: response includes non-artifact prose outside code block"
     return None
 
