@@ -28,9 +28,7 @@ from omnimarket.routing.byok_provider_backends import (
 )
 
 pytestmark = [pytest.mark.unit]
-KEY = (
-    "sk-" + "syntheticOMN21257" * 3
-)  # onex-allow-test-fixture OMN-21257 reason="synthetic credential shape"
+KEY = "test-key-omn21257"
 LOCAL_URL = "http://127.0.0.1:11434/v1/chat/completions"
 OK_BODY = {
     "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
