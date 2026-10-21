@@ -4530,7 +4530,8 @@ class LocalDelegationDispatchPort:
                     completion_tokens=result.tokens_out,
                     total_tokens=result.tokens_in + result.tokens_out,
                     estimated_cost_usd=float(cost_usd),
-                    usage_source=EnumUsageSource.MEASURED,
+                    # OMN-21260: an unpriced customer model is not a measured $0.
+                    usage_source=result.usage_source,
                     # The per-call dedup key folds session_id and the tokens
                     # only, so a session-less run keys on its own correlation
                     # id: two runs with equal tokens are two rows.

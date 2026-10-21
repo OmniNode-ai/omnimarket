@@ -813,6 +813,45 @@ def byok_declared_price_per_1m(
     return None
 
 
+def byok_backend_provider(backend_id: str | None) -> str | None:
+    """The catalogue provider of a customer BYOK backend id, or ``None``.
+
+    ``None`` for every house backend, so a caller can tell a call made on a
+    customer's own key from a house call to the same endpoint.
+    """
+    if not backend_id:
+        return None
+    for backend in load_byok_plan_catalog().values():
+        if backend.backend_id == backend_id:
+            return backend.provider
+    return None
+
+
+def byok_model_price_per_1m(
+    backend_id: str | None, endpoint_url: str | None, model_name: str
+) -> tuple[Decimal, Decimal] | None:
+    """The ``(input, output)`` USD per 1M tokens of a model on a customer's key.
+
+    The catalogue's declared price for the endpoint and model first, then the
+    model registry's price for the same provider and model. ``None`` means the
+    model has no known price: the call is unpriced, never booked at a tier rate.
+    """
+    declared = byok_declared_price_per_1m(endpoint_url, model_name)
+    if declared is not None:
+        return declared
+    provider = byok_backend_provider(backend_id)
+    if provider is None:
+        return None
+    from omnimarket.models.delegation.llm_cost_routing import (
+        ModelLlmModelRegistryLoader,
+    )
+
+    for profile in ModelLlmModelRegistryLoader().load().models.values():
+        if profile.provider == provider and profile.model_name == model_name:
+            return (profile.pricing_per_1m_input, profile.pricing_per_1m_output)
+    return None
+
+
 def byok_limit_counter_key(
     tenant_id: str,
     api_key_ref: str,
