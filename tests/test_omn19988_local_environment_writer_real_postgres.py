@@ -25,8 +25,17 @@ import pytest
 from omnimarket.handlers.handler_local_environment_judgement import (
     load_local_alert_rules,
 )
+from omnimarket.models.model_local_environment_status import (
+    ModelLocalEnvironmentStatus,
+)
 from omnimarket.nodes.node_projection_local_environment.handlers import (
     handler_local_environment_writer as writer_module,
+)
+from omnimarket.nodes.node_projection_local_environment.handlers.handler_projection_local_environment import (
+    HandlerProjectionLocalEnvironment,
+)
+from omnimarket.nodes.node_projection_local_environment.models import (
+    ModelLocalEnvironmentPlanRequest,
 )
 from omnimarket.projection.runner import MessageMeta
 
@@ -189,6 +198,18 @@ async def test_real_postgres_writer_types_replay_late_and_stale_siblings(
         assert await writer.project_event(topic, report("postgres", -1), meta)
         assert await rows() == final
         assert published == []
+        # The typed plan request accepts rows exactly as Postgres returns them
+        # (jsonb text, timestamptz), and a replay planned against them plans nothing.
+        replay = HandlerProjectionLocalEnvironment().handle(
+            ModelLocalEnvironmentPlanRequest(
+                report=ModelLocalEnvironmentStatus.model_validate(
+                    report("local-runtime", 75)
+                ),
+                stored_rows=tuple(final),
+                rules=load_local_alert_rules(),
+            )
+        )
+        assert replay.rows == ()
     finally:
         if pool is not None:
             await pool.close()

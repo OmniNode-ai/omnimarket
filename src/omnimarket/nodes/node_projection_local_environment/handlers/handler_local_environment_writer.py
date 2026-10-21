@@ -35,6 +35,9 @@ from omnimarket.models.model_local_environment_status import (
 from omnimarket.nodes.node_projection_local_environment.handlers.handler_projection_local_environment import (
     HandlerProjectionLocalEnvironment,
 )
+from omnimarket.nodes.node_projection_local_environment.models.model_local_environment_plan import (
+    ModelLocalEnvironmentPlanRequest,
+)
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.envelope import strip_runner_injected_keys
 from omnimarket.projection.models import ProjectionTableConfig
@@ -217,7 +220,15 @@ class LocalEnvironmentProjectionWriter(BaseProjectionRunner):
             )
             stored = await conn.fetch(_SELECT_MODE_ROWS, tenant, report.mode.value)
             stored_rows = [dict(r) for r in stored]
-            planned = self._plan.handle(report, stored_rows, self._rules)
+            planned = list(
+                self._plan.handle(
+                    ModelLocalEnvironmentPlanRequest(
+                        report=report,
+                        stored_rows=tuple(stored_rows),
+                        rules=self._rules,
+                    )
+                ).rows
+            )
             if not planned and any(
                 str(row["service"]) == report.service
                 and str(row["report_id"]) == str(report.report_id)

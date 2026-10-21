@@ -15,6 +15,9 @@ import yaml
 from omnimarket.handlers.handler_local_environment_judgement import (
     load_local_alert_rules,
 )
+from omnimarket.nodes.node_projection_local_environment.models import (
+    ModelLocalEnvironmentPlanRequest,
+)
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 
 pytestmark = pytest.mark.unit
@@ -67,8 +70,15 @@ def test_declared_handler_materializes_reports_and_rejudges_sqlite_rows(
             }
         )
         with db.write_transaction() as tx:
-            writes: list[dict[str, object]] = handler.handle(
-                report, tx.query(table, {"tenant_id": _TENANT}), rules, _AT
+            writes: list[dict[str, object]] = list(
+                handler.handle(
+                    ModelLocalEnvironmentPlanRequest(
+                        report=report,
+                        stored_rows=tuple(tx.query(table, {"tenant_id": _TENANT})),
+                        rules=rules,
+                        updated_at=_AT,
+                    )
+                ).rows
             )
             for row in writes:
                 tx.upsert(table, key, row)
