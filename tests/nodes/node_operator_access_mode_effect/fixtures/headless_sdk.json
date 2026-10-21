@@ -1,0 +1,14 @@
+{
+  "_comment": "A claude -p run started by a script: SDK entrypoint, no client marker.",
+  "environ": {
+    "CLAUDE_CODE_ENTRYPOINT": "sdk-cli",
+    "CLAUDECODE": "1"
+  },
+  "payload": {
+    "session_id": "44444444-4444-4444-4444-444444444444",
+    "transcript_path": "",
+    "cwd": "/workspace/registry",
+    "hook_event_name": "SessionStart",
+    "source": "startup"
+  }
+}
