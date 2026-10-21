@@ -68,7 +68,8 @@ async def test_real_postgres_both_totals_count_the_harness_run() -> None:
             assert await runner.project_event(TOPIC, dict(data), meta)
 
         rows = await admin_conn.fetch(
-            "SELECT session_id, savings_usd FROM savings_estimates ORDER BY savings_usd"
+            "SELECT session_id, savings_usd, savings_method, usage_source "
+            "FROM savings_estimates ORDER BY savings_usd"
         )
         overview = await admin_conn.fetch(
             "SELECT total_savings_usd FROM projection_cost_savings_overview "
@@ -89,6 +90,11 @@ async def test_real_postgres_both_totals_count_the_harness_run() -> None:
         str(local["correlation_id"]),
         str(harness["correlation_id"]),
     }, "the harness run has its own savings row"
+    # Counted by the measured-only totals for the same reason as the local row:
+    # recorded tokens and recorded cost at the pinned baseline price.
+    assert {(row["savings_method"], row["usage_source"]) for row in rows} == {
+        ("measured", "measured")
+    }
     assert len(overview) == 1
     assert (
         Decimal(str(overview[0]["total_savings_usd"])).quantize(SIX_PLACES)

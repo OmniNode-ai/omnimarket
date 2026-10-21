@@ -38,6 +38,12 @@ def modelled_terminal_savings(
 
     Only a completed run that passed its gate, served tokens, and neither
     reported a saving nor declared its baseline unresolved is priced here.
+
+    The row's ``savings_method`` reads ``measured`` for the same reason a local
+    run's does: the saving is computed from the run's recorded tokens and
+    recorded cost against the pinned baseline price (OMN-13629's measurement),
+    which is the modelled counterfactual every savings row carries. Labelling it
+    ``estimated`` would drop it from the measured-only totals it belongs in.
     """
     metrics = event.metrics
     if (

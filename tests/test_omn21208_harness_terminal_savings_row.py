@@ -114,6 +114,14 @@ def _apply(payload: dict[str, Any]) -> AsyncMock:
     return upsert
 
 
+def _written(upsert: AsyncMock) -> ModelDelegateSkillSavingsProjection:
+    call = upsert.await_args
+    assert call is not None, "the runner wrote no savings row"
+    row = call.args[0]
+    assert isinstance(row, ModelDelegateSkillSavingsProjection)
+    return row
+
+
 def test_harness_terminal_reports_no_saving_so_the_reported_path_writes_nothing() -> (
     None
 ):
@@ -135,7 +143,7 @@ def test_harness_terminal_writes_its_modelled_saving_row() -> None:
     payload = _harness_terminal()
     upsert = _apply(payload)
     assert upsert.await_count == 1
-    row: ModelDelegateSkillSavingsProjection = upsert.await_args.args[0]
+    row = _written(upsert)
     expected = _expected_saving(TOKENS_IN, TOKENS_OUT, Decimal("0"))
     assert expected > 0
     assert row.savings_usd == expected
@@ -153,7 +161,7 @@ def test_harness_terminal_writes_its_modelled_saving_row() -> None:
 def test_recorded_cost_is_subtracted() -> None:
     payload = _harness_terminal()
     payload["metrics"] = {**payload["metrics"], "cost_usd": 0.01}
-    row = _apply(payload).await_args.args[0]
+    row = _written(_apply(payload))
     assert row.savings_usd == _expected_saving(TOKENS_IN, TOKENS_OUT, Decimal("0.01"))
     assert row.local_cost_usd == Decimal("0.01")
 
@@ -191,5 +199,5 @@ def test_a_reported_saving_still_wins() -> None:
     """A terminal that states its own saving keeps it; the modelled path is a fallback."""
     payload = _harness_terminal()
     payload["metrics"] = {**payload["metrics"], "cost_savings_usd": 0.5}
-    row = _apply(payload).await_args.args[0]
+    row = _written(_apply(payload))
     assert row.savings_usd == Decimal("0.5")
