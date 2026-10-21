@@ -14,6 +14,11 @@ deterministic_build_ms = build_ms - model_section_ms. A missing receipt, a missi
 or invalid build_ms or model_section_ms, or a model section longer than the build
 is a refusal, never a guessed number. Its trips are the raw input the latency
 qualification compute tabulates; this module does not tabulate.
+
+Recorded inputs carry the actual input_messages_hash and, when captured, the
+newest_turn, barrier_id and compact_model. The replay never fabricates a hash,
+barrier or model choice. An invalid command is refused before publication, and
+only an install verdict can supply a successful phase measurement.
 """
 
 from __future__ import annotations
@@ -22,6 +27,8 @@ import math
 import time
 from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING
+
+from pydantic import ValidationError
 
 from omnimarket.events.topics import (
     CONTEXT_COMPACTION_FALLBACK_TOPIC_V1,
@@ -34,6 +41,7 @@ from omnimarket.models.claude_code_binding import (
     ModelClientArgument,
     ModelClientBinding,
 )
+from omnimarket.models.context_compaction import ModelContextCompactionRequested
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_claude_code_hook_adapter import (
     INVOCATION_ID_SOURCE,
     HandlerClaudeCodeHookAdapter,
@@ -76,6 +84,12 @@ def compaction_latency_binding(*, deadline_ms: int) -> ModelClientBinding:
             ModelClientArgument(name="session_id", source="$.session_id"),
             ModelClientArgument(name="cwd", source="$.cwd"),
             ModelClientArgument(name="trigger", source="$.trigger"),
+            ModelClientArgument(
+                name="input_messages_hash", source="$.input_messages_hash"
+            ),
+            ModelClientArgument(name="newest_turn", source="$.newest_turn"),
+            ModelClientArgument(name="barrier_id", source="$.barrier_id"),
+            ModelClientArgument(name="compact_model", source="$.compact_model"),
         ),
         awaited_events=(
             CONTEXT_COMPACTION_PACKAGE_TOPIC_V1,
@@ -89,7 +103,7 @@ def compaction_latency_binding(*, deadline_ms: int) -> ModelClientBinding:
 
 
 class ReceiptRecorder:
-    """Forward calls unchanged and retain the last call's awaited receipts."""
+    """Validate the compaction command and retain the last call's awaited receipts."""
 
     def __init__(self, client: ProtocolReceiptModeClient) -> None:
         self._client = client
@@ -105,6 +119,15 @@ class ReceiptRecorder:
         deadline_ms: int,
     ) -> tuple[ModelReceiptEvent, ...]:
         self.last_events = ()
+        try:
+            ModelContextCompactionRequested.model_validate(payload)
+        except ValidationError as exc:
+            fields = sorted(
+                {".".join(str(part) for part in error["loc"]) for error in exc.errors()}
+            )
+            raise ValueError(
+                f"invalid compaction command fields: {', '.join(fields)}"
+            ) from exc
         self.last_events = self._client.publish_and_await(
             topic=topic,
             command_type=command_type,
@@ -192,7 +215,11 @@ class HandlerCompactionLatencyRun:
         finally:
             wall_ms = (self._clock() - started) * 1000
         if verdict_action is not None and isinstance(client, ReceiptRecorder):
-            split = split_prepared(client.last_events)
+            split = (
+                split_prepared(client.last_events)
+                if verdict_action == "install"
+                else f"adapter verdict is {verdict_action}"
+            )
         return ModelCompactionLatencyTrip(
             round_trip_id=f"{request.host}:{case.size}:{temperature.value}:{index}",
             size=case.size,
