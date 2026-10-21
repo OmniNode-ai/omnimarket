@@ -618,8 +618,13 @@ requirements:
     acceptance:
       - id: "AC109"
         statement: "AC109: the dependency provenance tests accept canonical sibling dev tags without annotations and refuse foreign git sources, branches, bare revisions, malformed tags and conflicting selectors."
-      - id: "AC113"
-        statement: "AC113: check_dep_provenance.py reads the dev merge tag pattern, GitHub org and sibling list from omnibase_core's packaged internal_sibling_pins.yaml through load_contract, the same contract the Internal Sibling Pins check reads -- falsifier: uv run pytest tests/scripts/test_check_dep_provenance.py -q fails when a contract with a different dev_tag_pattern does not change the verdict, or when the script source carries its own tag regex"
+      - id: "AC182"
+        statement: "AC182: check_dep_provenance.py reads the dev merge tag pattern, GitHub org and sibling list from omnibase_core's packaged internal_sibling_pins.yaml through load_contract, the same contract the Internal Sibling Pins check reads -- falsifier: uv run pytest tests/scripts/test_check_dep_provenance.py -q fails when a contract with a different dev_tag_pattern does not change the verdict, or when the script source carries its own tag regex"
+  - id: "req-evidence-comment-class"
+    statement: "A done-evidence comment is drafted on the lab rung as the internal evidence_comment task class, and a draft that cites an identifier absent from the lane report, skips or reorders a criterion, or restates a criterion as its evidence is refused before use."
+    acceptance:
+      - id: "AC183"
+        statement: "AC183: a drafted evidence comment citing a sha, pull request number or ticket id absent from the lane report is refused by the gate, as is one that skips or reorders a criterion, restates its criterion, or cites no token of the report -- falsifier: the focused pytest accepts any of those drafts, or refuses the faithful draft"
   - id: "req-mint-acceptance-evidence"
     statement: "The existing retry/park implementation has reproducible handler/git-boundary and behavioral baseline controls plus a dated deployed sanitizer capture."
     acceptance:
@@ -2668,7 +2673,15 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/scripts/test_check_dep_provenance.py -q -k contract"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC113"]
+    binds_ac: ["AC182"]
+  - id: "dod-omn17427-ac183-evidence-comment-class"
+    description: "The evidence_comment class chain passes: the class is internal, local only and never selected from a prompt, a faithful draft is accepted, and a draft with an identifier absent from the report, a missing or reordered criterion, a restated criterion or an entry with no report token is refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn17427_evidence_comment_class.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC183"]
   - id: "dod-omn17427-core-ref-lock-fixtures"
     description: "Supporting evidence, bound to no criterion: the sibling-pin workflow tests derive core_ref from the fixture lock for both registry releases and dev merge tags. The change is test-side only and the workflow pin step already resolves both, so these tests pass at the merge base and cannot be a must-fail control."
     source: "manual"

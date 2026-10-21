@@ -149,6 +149,11 @@ tiers:
           # from selection for any prompt that does not fit, which escalates to
           # the large-window rungs below / the ceiling instead.
           - escalation
+          # OMN-17427: evidence_comment, the internal class that drafts
+          # done-evidence comments from a lane report. Local only (its
+          # cloud_routing_policy is blocked); the same prose family as
+          # `document`, which this backend already serves.
+          - evidence_comment
           # OMN-16442: documentation and summarization rehomed here from the
           # deleted local-reasoner rung. Both are the prose family OMN-15630
           # placed alongside `document`, which this backend already serves with
