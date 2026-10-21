@@ -106,7 +106,12 @@ class MeteringSummaryProjectionWriter(BaseProjectionRunner):
         # stayed empty while delegation_events grew (OMN-17427). Neither model
         # declares a field starting with an underscore -- pydantic cannot -- so
         # the prefix, not a name list, is what separates context from payload.
-        data = {k: v for k, v in input_data.items() if not k.startswith("_")}
+        data = {
+            k: v
+            for k, v in input_data.items()
+            if k not in {"_topic", "_partition", "_offset", "_fallback_id"}
+            and not k.startswith("_")
+        }
         if self._is_store_refresh(input_data.get("_topic"), data):
             refresh = ModelMeteringSummaryRefreshRequested.model_validate(data)
             return asyncio.run(self._refresh_one_message(refresh))

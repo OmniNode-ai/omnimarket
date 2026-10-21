@@ -165,9 +165,6 @@ async def test_store_refresh_reads_typed_runs_and_writes_rows() -> None:
 class _DispatchConnectionAdapter(_ScopedConnectionAdapter):
     """Open the real connection on the synchronous dispatch's event loop."""
 
-    def __init__(self) -> None:
-        self._conn: asyncpg.Connection
-
     async def connect(self) -> None:
         self._conn = await _connect_or_skip()
 
@@ -219,7 +216,7 @@ async def test_runtime_envelope_context_persists_summary(command: str) -> None:
         writer = MeteringSummaryProjectionWriter.__new__(
             MeteringSummaryProjectionWriter
         )
-        writer._db = cast(Any, _DispatchConnectionAdapter())
+        writer._db = cast(Any, _DispatchConnectionAdapter(conn))
         writer._standalone_bindings = None
         result = await asyncio.to_thread(
             writer.handle,
