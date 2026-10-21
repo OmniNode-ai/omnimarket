@@ -237,6 +237,9 @@ def test_a_key_added_through_onex_models_add_is_in_no_response_and_no_log(
         )
         # The stubbed test delegation fails, so the terminal exits 1 with the key stored.
         assert added.exit_code == 1, added.output
+    # F5: the store holds the newest key. Read before the remove: once the row is
+    # deleted its bytes may or may not survive in a freed page.
+    assert _SECOND.encode() in store.read_bytes()
     listed = client.get("/models")
     seen["GET /models"] = (listed.status_code, listed.text)
     removed = CliRunner().invoke(models_group, ["remove", "openrouter"])
@@ -245,8 +248,7 @@ def test_a_key_added_through_onex_models_add_is_in_no_response_and_no_log(
     after = client.get("/models")
     seen["GET /models after remove"] = (after.status_code, after.text)
 
-    # F5: the store holds the newest key, and the list read the stored row.
-    assert _SECOND.encode() in store.read_bytes()
+    # F5: the list read the stored row.
     assert '"openrouter"' in listed.text
     assert '"set_up":true' in listed.text
     # F6, and F1 to F4 over every exposure for the same store.
