@@ -746,6 +746,11 @@ requirements:
         statement: |-
           AC161: the report contains the fixed thirty-task suite repeated three times, the OpenAI-style schemas and frozen request settings, complete raw tool-loop transcripts and per-task call shape, exact benign arguments, destructive refusal and attempted-action audit, turn counts, and no-network tool-worker evidence; destructive proposals have recording-only responses and no destructive executor. The report discloses the conservative shell guard counter and preserves the original integration-pass criteria as pending.
 
+  - id: "req-rehome-landing-tlc-receipt-effect"
+    statement: "The landing controller's model-check (TLC) receipt is built and installed by an omnimarket node: publish builds the receipt from a TLC results directory with the controller's own gate and refuses on any violation, and sync installs a published archive into the landing state directory only after the installed gate re-checks it, whole or not at all."
+    acceptance:
+      - id: "AC182"
+        statement: "AC182: node_landing_tlc_receipt_effect is a registered onex.nodes entry point of omnimarket declared once (metadata.yaml and pyproject.toml, not its contract), publish builds a receipt bound to the decision pin and packs it under tag landing-tlc-<pin8>-<model8>, refuses a model check that found a violation, ran nothing or has an unreadable pin, and sync installs a published receipt, leaves a current one alone, replaces one built from another model, refuses a receipt the gate refuses or an archive naming a path outside its directory, and reports a failed release read, in each refusal changing nothing -- falsifier: uv run pytest tests/nodes/node_landing_tlc_receipt_effect/test_landing_tlc_receipt_effect.py -q -p no:randomly --no-cov fails at the merge base, where the node does not exist"
   - id: "req-declared-label-set-undeclared-backend"
     statement: "A declared label set on a backend that does not declare json_schema support sends no provider directive, still refuses an out-of-vocabulary label and records the refusal in attempts, and a payload that omits the new wire fields is read as undeclared."
     acceptance:
@@ -973,6 +978,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC159: a pool host advertises one lane-guard:<sha256> tool per installed lane guard whose bytes hash to its directory name, and none otherwise."
     command: "uv run pytest tests/unit/lab_work/test_lab_work_host_bus.py -q -n 0 -k lane_guard"
+  - kind: "tests"
+    description: "AC182: the landing TLC receipt effect node builds, packs, installs and refuses receipts against a temporary gate and a fake release transport, and its entry point agrees with the installed package."
+    command: "uv run pytest tests/nodes/node_landing_tlc_receipt_effect/test_landing_tlc_receipt_effect.py -q -p no:randomly --no-cov"
   - kind: "tests"
     description: "AC182: the declared label set tests pass on a declaring and an undeclared backend, and an omitted wire field reads as undeclared."
     command: "uv run pytest tests/unit/delegation/test_declared_label_set_membership_omn18989.py -q"
@@ -3233,3 +3241,21 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest tests/unit/experiments/test_qwen_tool_call_report.py -q --no-cov --refuse-skips
         cwd: ${OMNI_HOME}/omnimarket
+  - id: "dod-omn17427-ac182-landing-tlc-receipt"
+    description: "The landing TLC receipt effect node runs its tests in omnimarket and is a registered onex.nodes entry point. The node directory and tests are absent at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_landing_tlc_receipt_effect/test_landing_tlc_receipt_effect.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "grep -c -E '^node_landing_tlc_receipt_effect = ' pyproject.toml"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC182"]
+  - id: "dod-omn17427-landing-tlc-receipt-probe"
+    description: "Deploy probe. Execute the checked-out package's publish CLI with a positive and a refused TLC result, then install the archive through a fake release transport. The hosted runner needs the locked dependencies and this checkout, with no credentials and no live controller mutation. It fails at the merge base, where the node does not exist; it does not attest an installed controller or host timer."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_landing_tlc_receipt_effect/test_landing_tlc_receipt_effect.py -q -n 0 -p no:randomly --no-cov --refuse-skips -k 'cli_publish or sync_installs'"
+        cwd: "${OMNI_HOME}/omnimarket"
