@@ -175,6 +175,12 @@ tiers:
           # contracts) rather than a tier accident.
           - documentation
           - summarization
+          # OMN-17427: lane brief drafting, the same prose profile as `document`.
+          - brief_drafting
+          # OMN-17427: context-pack model roles share summarization's local Qwen rung.
+          - extraction_proposer
+          - tail_summary
+          - context_selection
         fast_path_threshold_tokens: 8192
     eval_before_accept: true
     eval_model: null

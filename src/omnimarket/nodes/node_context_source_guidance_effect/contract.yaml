@@ -1,0 +1,78 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: context_source_guidance_effect
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+runtime_profiles: [effects]
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles: [effects]
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.context-source-guidance-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.context-source-guidance-completed.v1
+input_model: omnibase_core.models.context.model_context_source_request.ModelContextSourceRequest
+output_model: omnibase_core.models.context.model_context_source_result.ModelContextSourceResult
+description: >
+  The guidance context source (ProtocolContextSource). Answers lane_rules and
+  architecture_patterns with the guidance-file sections this contract names for
+  each factor, parsed by the pack builder's GuidanceSectionParser and returned
+  whole. Paths are relative to the root the contract's root_env names (required,
+  no default); `{repository}` in a path is the caller scope's repository, and a
+  document whose path needs a repository the request does not name is skipped.
+  A missing root is unavailable; a factor with no matching section is
+  unresolved; neither is reported as an empty resolved.
+handler:
+  module: omnimarket.nodes.node_context_source_guidance_effect.handlers.handler_context_source_guidance
+  class: HandlerContextSourceGuidance
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    - operation: context_source_guidance_requested
+      topic: onex.cmd.omnimarket.context-source-guidance-requested.v1
+      message_category: command
+      event_model: omnibase_core.models.context.model_context_source_request.ModelContextSourceRequest
+      handler_module: omnimarket.nodes.node_context_source_guidance_effect.handlers.handler_context_source_guidance
+      handler:
+        name: HandlerContextSourceGuidance
+        module: omnimarket.nodes.node_context_source_guidance_effect.handlers.handler_context_source_guidance
+terminal_event: onex.evt.omnimarket.context-source-guidance-completed.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.context-source-guidance-requested.v1]
+  publish_topics: [onex.evt.omnimarket.context-source-guidance-completed.v1]
+  dlq_topics: [onex.dlq.omnimarket.context-source-guidance-malformed.v1]
+context_source_guidance:
+  # The workspace registry root; guidance paths below are relative to it.
+  root_env: OMNI_HOME
+  documents:
+    # A section answers when the last heading of its path starts with one of
+    # the listed prefixes. Overlays replace this list; it is data.
+    - factor: lane_rules
+      path: CLAUDE.md
+      headings:
+        - "9. Per-ticket work uses worktrees"
+        - "10. Local gates are mechanically enforced"
+        - "17. Never override `core.hooksPath`"
+    - factor: architecture_patterns
+      path: "{repository}/CLAUDE.md"
+      headings:
+        - "Development Rules"
+        - "Repository Invariants"
+golden_path:
+  - "Command arrives with the factor, caller scope and access"
+  - "Read each guidance document the contract names for the factor under the root"
+  - "Parse sections with GuidanceSectionParser and keep the named headings"
+  - "Return each section whole on terminal_event"
+dod_evidence:
+  - test: tests/unit/nodes/node_context_source_guidance_effect/test_context_source_guidance.py::test_lane_rules_are_the_named_sections_whole
+    description: "Each named section comes back with text equal to the parser's section content"
+  - test: tests/unit/nodes/node_context_source_guidance_effect/test_context_source_guidance.py::test_architecture_patterns_read_the_caller_repository
+    description: "The repository path placeholder resolves to the caller scope's repository"
+metadata:
+  transport_type: kafka
+  related_tickets: [OMN-21111]

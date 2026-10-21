@@ -1,0 +1,89 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20388"
+title: "Retrospective cost estimator v1: a prospect uploads their prompt history and sees which model each prompt should have gone to and what it would have saved"
+summary: >-
+  node_prompt_cost_estimate_compute reads a ChatGPT or Claude conversations.json, Claude Code session JSONL, or a CSV with a prompt column, and prices every prompt from the infra pricing manifest as it ran and on the model the delegation router's own tier ladder would have sent it to. It labels each prompt with the router's task class, keeps unpriced models out of every total, marks token counts read from text as estimated, and admits only a consented request. This is the engine half; storage and the public page land in their own pull requests.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-estimate"
+    statement: "An uploaded export is priced prompt by prompt from the pricing manifest, as it ran and as the delegate would route it, with unpriced models excluded and estimated token counts marked."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: A real Claude or ChatGPT export uploads and the page shows actual spend, estimated delegated spend, and savings by task type -- falsifier: two exports with different model mixes produce the same headline figure"
+      - id: "AC2"
+        statement: "AC2: Every price is read from the infra pricing manifest -- falsifier: uv run pytest finds a price, percentage or baseline literal in the explorer's math, or the same input priced through the explorer and through the manifest disagree"
+      - id: "AC3"
+        statement: "AC3: A model the manifest does not carry is reported as unpriced and excluded from the total, never substituted -- falsifier: a fixture export naming an absent model is priced at another model's rate, run with uv run pytest"
+      - id: "AC4"
+        statement: "AC4: Each prompt carries a recommended delegate model and a per-prompt saving in the stored result -- falsifier: a stored row has a null recommendation or a null saving"
+      - id: "AC5"
+        statement: "AC5: The page names itself a modelled estimate, names the pricing source, and labels estimated token counts as estimated -- falsifier: a figure rendered with no estimate label, or estimated tokens presented as measured"
+      - id: "AC6"
+        statement: "AC6: Upload is blocked without consent, download is blocked until name and email are submitted, files are encrypted at rest, and a stored upload can be deleted on request -- falsifier: a download completes with no email, an upload proceeds with no consent, or a delete request leaves the file readable"
+evidence_requirements:
+  - kind: "tests"
+    description: "Golden chain for node_prompt_cost_estimate_compute."
+    command: "uv run pytest tests/test_golden_chain_prompt_cost_estimate_omn20388.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20388-ac1-headline-follows-the-rows"
+    description: "Two ChatGPT exports differing only in the model that answered one prompt give different actual spend and savings; the headline equals the sum of its rows and of its task types."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_prompt_cost_estimate_omn20388.py -q -k 'different_headlines or sum_of_its_rows'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20388-ac2-manifest-prices-only"
+    description: "Every row's actual and delegated cost equals the manifest price recomputed in the test, and the node's source holds no float or Decimal price literal."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_prompt_cost_estimate_omn20388.py -q -k 'agrees_with_the_pricing_manifest or no_price_or_rate_literal'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20388-ac3-unpriced-never-substituted"
+    description: "A prompt answered by a model absent from the manifest is listed as unpriced under that model and leaves every total unchanged; a prompt naming no model is unpriced unless the visitor declares one."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_prompt_cost_estimate_omn20388.py -q -k 'never_substituted or naming_no_model'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20388-ac4-row-recommendation-and-saving"
+    description: "Every priced row carries a recommended model, tier and non-negative saving; delegation is recommended only when cheaper, and an unroutable class stays where it ran with a zero saving."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_prompt_cost_estimate_omn20388.py -q -k 'recommended_model_and_a_saving or only_when_it_is_cheaper'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn20388-ac5-estimate-labels"
+    description: "The result and every row are typed estimated and name the pricing manifest; token counts read from text are marked estimated and recorded counts from a transcript or CSV are not."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_prompt_cost_estimate_omn20388.py -q -k 'labelled_estimated or marked_estimated or csv_with_counts'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn20388-ac6-consent-gate"
+    description: "The engine's request type refuses an estimate without consent, and an upload that is not its declared export shape is refused. Download gating, encryption at rest and delete are proven in the storage service's pull request."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_prompt_cost_estimate_omn20388.py -q -k 'without_consent or not_its_declared_shape'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn20388-deploy-probe"
+    description: "Deploy probe: the handler read from GitHub at the checked-out commit declares its class. A head without it fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_prompt_cost_estimate_compute/handlers/handler_prompt_cost_estimate.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'class HandlerPromptCostEstimate'"
+        cwd: "${OMNI_HOME}/omnimarket"

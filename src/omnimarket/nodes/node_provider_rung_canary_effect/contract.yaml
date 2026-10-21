@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Provider-rung liveness canary (OMN-16987). Sends one authenticated minimal chat
+# completion per credentialed cloud rung of the bifrost delegation contract and
+# emits a typed verdict per declared backend. The result carries key NAMES and
+# verdicts only, never a resolved key value.
+name: node_provider_rung_canary_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Probe every credentialed cloud rung of the delegation contract with one minimal
+  chat completion and report LIVE, AUTH_DEAD, QUOTA_DEAD, UNREACHABLE, UNRESOLVED,
+  PROTOCOL_ERROR or a SKIPPED_* verdict per backend.
+
+handler:
+  module: omnimarket.nodes.node_provider_rung_canary_effect.handlers.handler_provider_rung_canary
+  class: HandlerProviderRungCanary
+  input_model: omnimarket.nodes.node_provider_rung_canary_effect.models.model_provider_rung_canary.ModelProviderRungCanaryRequest
+
+handler_routing:
+  handlers:
+    - operation: "probe_provider_rungs"
+      handler_class: "HandlerProviderRungCanary"
+      handler_module: "omnimarket.nodes.node_provider_rung_canary_effect.handlers.handler_provider_rung_canary"
+      handler:
+        name: "HandlerProviderRungCanary"
+        module: "omnimarket.nodes.node_provider_rung_canary_effect.handlers.handler_provider_rung_canary"
+        handler_type: "HTTP"
+      input_model: omnimarket.nodes.node_provider_rung_canary_effect.models.model_provider_rung_canary.ModelProviderRungCanaryRequest
+      output_model: omnimarket.nodes.node_provider_rung_canary_effect.models.model_provider_rung_canary.ModelProviderRungCanaryResult
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 300000
+  runtime_profiles:
+    - effects
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.provider-rung-canary-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.provider-rung-canary-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.provider-rung-canary-completed.v1
+
+terminal_event: onex.evt.omnimarket.provider-rung-canary-completed.v1
+
+metadata:
+  ticket: OMN-16987
+  transport_type: kafka
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.provider-rung-canary-requested.v1

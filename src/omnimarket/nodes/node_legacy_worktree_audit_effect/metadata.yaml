@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_legacy_worktree_audit_effect
+version: "0.1.0"
+description: "Effect: classify every git worktree under a root directory (safe to remove, push first, commit and review, detached, active PR, uncertain) and write a JSON and a markdown ledger. Reached by the onex-legacy-worktree-audit console script on the host that holds the worktrees."
+pack: operator_tooling
+node_role: effect
+display_name: "Legacy Worktree Audit Effect"
+omnibase_core_compat: ">=0.47.31,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_legacy_worktree_audit_effect: "omnimarket.nodes.node_legacy_worktree_audit_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+license: "MIT"
+authors: ["OmniNode Team"]
+tags: ["effect", "worktree", "audit"]

@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Self
 from uuid import UUID
 
@@ -21,6 +23,21 @@ from omnimarket.models.context_pack_render.model_context_pack_render_message imp
 _COMPACTION_ACTIONS = frozenset(
     {EnumClientVerdictAction.INSTALL, EnumClientVerdictAction.NATIVE}
 )
+
+
+def installed_messages_json(messages: tuple[ModelContextPackRenderMessage, ...]) -> str:
+    """The canonical JSON of the role/text list: the text the adapter installs."""
+    return json.dumps(
+        [m.model_dump() for m in messages],
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+
+
+def installed_messages_hash(messages: tuple[ModelContextPackRenderMessage, ...]) -> str:
+    """sha256 over the canonical JSON of the role/text list, as the renderer hashes a body."""
+    return hashlib.sha256(installed_messages_json(messages).encode("utf-8")).hexdigest()
 
 
 class ModelContextCompactionPackageReply(BaseModel):
@@ -47,4 +64,8 @@ class ModelContextCompactionPackageReply(BaseModel):
         return self
 
 
-__all__ = ["ModelContextCompactionPackageReply"]
+__all__ = [
+    "ModelContextCompactionPackageReply",
+    "installed_messages_hash",
+    "installed_messages_json",
+]

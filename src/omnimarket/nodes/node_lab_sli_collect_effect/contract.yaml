@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lab SLI Collect Effect (OMN-17427)
+#
+# The I/O half of the lab indicators: reads the sources that already exist on
+# the host it runs on and returns one interval of readings for
+# node_lab_sli_compute. It decides nothing; every target lives in that node's
+# sli_table.
+#
+# WHO HOSTS THIS NODE. One serve process per lab host (it reads that host's
+# probes, its launchd or systemd units and the PR watcher state). A shared
+# runtime must NOT attach it, so the contract declares runtime_dispatch and no
+# event_bus block, as node_lab_fill_effect does.
+name: "node_lab_sli_collect_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: "0.1.0"
+description: >
+  Collects one interval of lab indicator readings from existing sources: the PR
+  watcher state (oldest green unlanded PR, merges per hour per repo), the host
+  probe (free memory, swap, disk, memory PSI on Linux, the fseventsd store on
+  macOS) and the scheduler (launchd units under the configured label prefixes
+  whose last exit is nonzero). A source it cannot read is listed in
+  source_errors and its indicators carry no reading, so they evaluate unknown.
+  Indicators with no reader on this host yet carry no reading either.
+  This node belongs to the lab SLI pack, is off by default and refuses until
+  a deployment enables the pack with `status: enabled` in
+  <root>/lab_sli_pack/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS.
+input_model:
+  name: "ModelLabSliCollectRequest"
+  module: "omnimarket.nodes.node_lab_sli_collect_effect.models.model_lab_sli_collect"
+  description: "The interval, the host name and the source paths to read."
+output_model:
+  name: "ModelLabSliReadingBatch"
+  module: "omnimarket.models.lab_sli.model_lab_sli"
+  description: "One interval of readings, plus the sources that could not be read."
+handler:
+  module: "omnimarket.nodes.node_lab_sli_collect_effect.handlers.handler_lab_sli_collect"
+  class: "HandlerLabSliCollect"
+  input_model: "omnimarket.nodes.node_lab_sli_collect_effect.models.model_lab_sli_collect.ModelLabSliCollectRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_lab_sli_collect_effect.handlers.handler_lab_sli_collect:HandlerLabSliCollect"
+  handlers:
+    - operation: "collect_lab_sli"
+      handler:
+        name: "HandlerLabSliCollect"
+        module: "omnimarket.nodes.node_lab_sli_collect_effect.handlers.handler_lab_sli_collect"
+      input_model: "omnimarket.nodes.node_lab_sli_collect_effect.models.model_lab_sli_collect.ModelLabSliCollectRequest"
+      output_model: "omnimarket.models.lab_sli.model_lab_sli.ModelLabSliReadingBatch"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 60000
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.lab-sli-collect-requested.v1"
+  terminal_events:
+    success: "onex.cmd.omnimarket.lab-sli-evaluate-requested.v1"
+    failure: "onex.evt.omnimarket.lab-sli-collect-failed.v1"
+config:
+  lab_sli_collect:
+    merge_window_minutes: 240
+    # Reverse-DNS label domains; a label is ours when it equals a domain or
+    # continues it with a dot.
+    launchd_label_domains: ["ai.omninode", "com.omninode", "com.onex"]
+    # The store sits at the root of the boot volume and, on a sealed system
+    # volume, of the APFS data volume; the data volume's mount point is read
+    # from `mount` at run time.
+    fseventsd_dir_name: ".fseventsd"

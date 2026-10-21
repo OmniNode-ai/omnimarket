@@ -1,0 +1,75 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-15447"
+title: "Companion mint retry and parking acceptance evidence"
+summary: "Product-repository evidence for the already-merged retry/park policy (#2593). The checks cover the real handler/git seam, a behavioral pre-policy method control, and a dated read-only deployed sanitizer capture. Independent binding acceptance and a fresh Done receipt remain for the closeout lane."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-mint-retry-park-criteria"
+    statement: "The five source-ticket acceptance criteria. AC4's public copy omits its private network locator; the ticket remains authoritative."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a test forces the handler's git leg to raise `TimeoutExpired` and asserts the mint request is EITHER retried to success OR parked with a typed reason on the dead-letter path OR emits a failure terminal -- never all three absent -- falsifier: the test passes against the pre-change handler."
+      - id: "AC2"
+        statement: "AC2: the pre-change code is RED against AC1's bar, proven behaviourally rather than by a collection error -- falsifier: a `TimeoutExpired` raised inside the pre-change `handle()` does not escape it unchanged."
+      - id: "AC3"
+        statement: "AC3: the mint's per-op bounds, attempt budget, backoff and per-failure-class disposition are declared in the node's `contract.yaml` with no environment variable in the resolution path, and a contract that omits a failure class fails to load -- falsifier: clearing the environment changes the resolved policy, or a partial `dispositions` map validates."
+      - id: "AC4"
+        statement: "AC4: a parked mint's reason survives the deployed boundary sanitizer verbatim, proven against the sanitizer running on the deployed dev lane with the raw exception as the negative control -- falsifier: the typed reason comes back as a redaction marker."
+      - id: "AC5"
+        statement: "AC5: GitHub rate-limit exhaustion parks on the first attempt rather than retrying, and is not confused with a permissions answer carrying the same HTTP status -- falsifier: the executor makes a second call after a rate-limit answer."
+evidence_requirements:
+  - kind: "tests"
+    description: "Handler/git-boundary, baseline method negative control, deployed capture replay and complete policy controls."
+    command: "uv run pytest tests/unit/nodes/node_occ_companion_effect/test_mint_acceptance_evidence_omn15447.py tests/unit/nodes/node_occ_companion_effect/test_occ_companion_mint_retry_park_omn_15447.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-mint-acceptance-ac1"
+    description: "The real handle -> _mint_once -> _write_sync -> _clone_and_branch -> run_git path parks a persistent TimeoutExpired after the contract attempt budget, with a typed class and chained cause. Only upstream facts, credentials, leases and transport are stubbed. No mint is published."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_occ_companion_effect/test_mint_acceptance_evidence_omn15447.py::test_handler_git_timeout_is_retried_then_parked -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-mint-acceptance-ac2"
+    description: "The identical AC1 assertion is behaviorally RED with the exact pre-policy handle method from f15ea42edb8a29ccfd33f8025e3e31b075560c85 (parent of #2593). After successful collection, the actual git seam is reached once and the same TimeoutExpired escapes unchanged. Only handle is substituted; this is a method-level negative control, not an old-tree dependency installation."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_occ_companion_effect/test_mint_acceptance_evidence_omn15447.py::test_identical_ac1_assertion_is_behaviorally_red_before_policy -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-mint-acceptance-ac3"
+    description: "All four policy declaration/loading controls run together: resolved contract bounds, clearing policy environment variables, missing failure class and absent policy block."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_occ_companion_effect/test_occ_companion_mint_retry_park_omn_15447.py -q --no-cov -k 'the_policy_comes_from_the_contract or no_environment_variable or a_contract_missing_a_failure_class or a_contract_with_no_retry_policy'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-mint-acceptance-ac4"
+    description: "Replay the read-only dev-effects sanitizer capture from 2026-10-19T22:40:17Z. The raw exception redacts; the typed reason survives with the normal exception-class prefix. The capture records the installed source hash and exact probe command. Hosted verification replays against identical sanitizer source; it makes no fresh deployment or bus-to-DLQ claim."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_occ_companion_effect/test_mint_acceptance_evidence_omn15447.py::test_deployed_sanitizer_capture_replays_both_controls -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-mint-acceptance-ac5"
+    description: "Both first-attempt rate-limit parking and the rate-limit-versus-permissions HTTP 403 classification control run. Neither selector alone establishes the entire criterion."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_occ_companion_effect/test_occ_companion_mint_retry_park_omn_15447.py -q --no-cov -k 'rate_limit_exhaustion or a_rate_limit_403_is_not_confused'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+context:
+  criterion_publication: "AC4 omits the private network locator in this public copy. Independent acceptance must bind against the original criterion on the unchanged source ticket."
+  binding_review: "Submitted for independent acceptance. No accepted_by identity or successful Done receipt is asserted by this lane."
+  bus_readback: "A real mint through the broker to a DLQ record remains unclaimed; no retired OCC machinery is restored."

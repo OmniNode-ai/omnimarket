@@ -97,6 +97,8 @@ inputs:
   criteria_amendment: {type: str, required: false}
   run_key: {type: str, required: false, description: "decide_ticket: the run named in the open comment."}
   text_sha: {type: str, required: false, description: "decide_ticket: hash of the description now, recorded in an amendment hold."}
+  description: {type: str, required: false, description: "decide_ticket: the ticket description; given, a Done decision names the boxes it ticks and every unchecked box must name a verified criterion."}
+  verified_head: {type: str, required: false, description: "decide_ticket: the merged head dod_verify ran at, cited in the tick comment."}
   records: {type: list, required: false, description: "select_candidates: every candidate with when its last closeout comment was posted."}
   text_state: {type: str, required: false, description: "select_candidates: the closeout text-state command's stdout, unedited."}
   max_candidates: {type: int, required: false}
@@ -148,6 +150,9 @@ outputs:
   needs_amendment: {type: bool}
   signature: {type: str}
   comment_text: {type: str}
+  ticked_description: {type: str}
+  box_ticks: {type: list}
+  tick_comment: {type: str}
   completion_rows: {type: list}
   zero_flip_streak: {type: int}
   zero_flip_alert: {type: object, description: "completion: the zero-flip alert event, carried on terminal_event (OMN-21146); absent below the threshold or with no deferred ticket."}

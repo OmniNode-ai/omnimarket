@@ -34,6 +34,8 @@ from omnimarket.models.context_compaction.model_context_compaction_installed imp
 )
 from omnimarket.models.context_compaction.model_context_compaction_package_reply import (
     ModelContextCompactionPackageReply,
+    installed_messages_hash,
+    installed_messages_json,
 )
 from omnimarket.models.context_compaction.model_context_compaction_prepared import (
     ModelContextCompactionPrepared,
@@ -70,4 +72,6 @@ __all__ = [
     "ModelContextCompactionPrepared",
     "ModelContextCompactionRequested",
     "ModelContextCompactionResult",
+    "installed_messages_hash",
+    "installed_messages_json",
 ]
