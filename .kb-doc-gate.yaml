@@ -38,3 +38,7 @@ allowed:
   # (_SYSTEM_PROMPT_PATH / _USER_TEMPLATE_PATH). Executable configuration for a
   # handler, not documentation.
   - "experiments/adk_eval/type_debt_scout_poc/prompts/**"
+
+  # Fixed, repo-specific experiment result accompanying machine-readable fixtures
+  # and transcripts. Operational routing details remain in private lane evidence.
+  - "experiments/qwen_tool_calls/results/2026-10-21/report.md"

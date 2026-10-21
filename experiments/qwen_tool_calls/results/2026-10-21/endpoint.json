@@ -1,0 +1,17 @@
+{
+  "observed_at": "2026-10-21T15:33:26.687660+00:00",
+  "served_models": [
+    {
+      "id": "Qwen3.8-27B",
+      "owned_by": "vllm",
+      "max_model_len": 131072
+    }
+  ],
+  "service_tool_configuration": {
+    "enable_auto_tool_choice": true,
+    "tool_call_parser": "qwen3_coder"
+  },
+  "namespace_probe": "bwrap --unshare-net refused by kernel: No permissions to create new namespace; no namespace isolation claimed.",
+  "publication_note": "Network address, deployment command, artifact paths and operational ownership details withheld. Original endpoint readback retained in the private lane evidence; its file digest is included below.",
+  "original_endpoint_sha256": "5302cdbc38f3d9702791adc14c0782011d25004b70900ab4ef04a7630d4bda5d"
+}
