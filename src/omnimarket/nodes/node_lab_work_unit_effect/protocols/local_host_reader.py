@@ -12,6 +12,7 @@ idle host.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import platform
 import re
@@ -29,6 +30,17 @@ _EXTRA_PATH = ("~/.local/bin", "/opt/homebrew/bin", "/usr/local/bin")
 #: out), so a headless Claude unit asks for this, never for ``claude``.
 CLAUDE_LOGIN_TOOL = "claude-login"
 _LOGIN_TTL_SECONDS = 300.0
+#: A pseudo-tool ``lane-guard:<sha256>`` for each lane guard installed on this host whose bytes still hash to
+#: the sha256 in its directory name (``install_lane_guard.py install-guard`` writes
+#: ``~/.local/share/onex-lane-guard/sha256/<sha256>/lane_guard_host.py``). A bus unit runs a stub that execs
+#: that exact copy and exits 78 LANE-GUARD-MISSING when it is absent or altered, so placement reads this to
+#: refuse a host that would fail the unit in seconds (OMN-17427: h203 had none and failed at least seven
+#: units in 0 s while staying the freest host). It rides ``tools`` and not a new field, so a caller on an older
+#: omnimarket still parses the advertisement instead of dropping the host.
+LANE_GUARD_TOOL_PREFIX = "lane-guard:"
+_GUARD_DIR = Path(".local") / "share" / "onex-lane-guard" / "sha256"
+_GUARD_FILE = "lane_guard_host.py"
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 class HostCapacityUnreadableError(RuntimeError):
@@ -96,11 +108,36 @@ def _claude_logged_in(path: str) -> bool:
     return re.search(r'"loggedIn":\s*true', done.stdout) is not None
 
 
+def installed_lane_guards(home: Path | None = None) -> tuple[str, ...]:
+    """The sha256 of every lane guard installed under ``home`` (default: the user's home) whose bytes hash to
+    the sha256 that names its directory. A missing directory, an unreadable file or an altered copy is left
+    out; nothing here raises, because a host with no guard advertises none."""
+    root = (home if home is not None else Path.home()) / _GUARD_DIR
+    try:
+        names = sorted(entry.name for entry in root.iterdir())
+    except OSError:
+        return ()
+    found: list[str] = []
+    for name in names:
+        if _SHA256_RE.match(name) is None:
+            continue
+        try:
+            data = (root / name / _GUARD_FILE).read_bytes()
+        except OSError:
+            continue
+        if hashlib.sha256(data).hexdigest() == name:
+            found.append(name)
+    return tuple(found)
+
+
 class LocalHostReader:
     """Reads the host this process runs on."""
 
-    def __init__(self, now: Callable[[], float] = time.monotonic) -> None:
+    def __init__(
+        self, now: Callable[[], float] = time.monotonic, home: Path | None = None
+    ) -> None:
         self._now = now
+        self._home = home
         self._login: tuple[float, bool] | None = None
 
     def _has_login(self, path: str) -> bool:
@@ -141,15 +178,24 @@ class LocalHostReader:
                 )
             )
         )
+        guards = tuple(
+            f"{LANE_GUARD_TOOL_PREFIX}{sha}"
+            for sha in installed_lane_guards(self._home)
+        )
         return HostReading(
-            cores=cores, load1=load1, mem_available_bytes=mem, tools=found
+            cores=cores,
+            load1=load1,
+            mem_available_bytes=mem,
+            tools=tuple(sorted({*found, *guards})),
         )
 
 
 __all__ = [
     "CLAUDE_LOGIN_TOOL",
+    "LANE_GUARD_TOOL_PREFIX",
     "HostCapacityUnreadableError",
     "HostReading",
     "LocalHostReader",
     "ProtocolHostReader",
+    "installed_lane_guards",
 ]
