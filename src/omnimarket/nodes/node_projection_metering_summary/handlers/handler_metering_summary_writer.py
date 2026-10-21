@@ -98,10 +98,19 @@ class MeteringSummaryProjectionWriter(BaseProjectionRunner):
         return "refresh_id" in data and "records" not in data
 
     def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+        # The in-process dispatch hands the handler the envelope's own context
+        # beside the payload, and the set it adds is not closed: on the dev lane
+        # it also carried `_db`, `_event_type`, `_envelope_id` and
+        # `_envelope_timestamp`, which both command models forbid, so every
+        # scheduled refresh was validated into the DLQ and metering_summary
+        # stayed empty while delegation_events grew (OMN-17427). Neither model
+        # declares a field starting with an underscore -- pydantic cannot -- so
+        # the prefix, not a name list, is what separates context from payload.
         data = {
             k: v
             for k, v in input_data.items()
             if k not in {"_topic", "_partition", "_offset", "_fallback_id"}
+            and not k.startswith("_")
         }
         if self._is_store_refresh(input_data.get("_topic"), data):
             refresh = ModelMeteringSummaryRefreshRequested.model_validate(data)

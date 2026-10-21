@@ -282,6 +282,44 @@ def test_fold_command_still_folds_the_snapshot_it_carries() -> None:
     assert result["rows_upserted"] == 2
 
 
+def test_the_envelope_context_the_runtime_adds_is_not_payload() -> None:
+    """The dev lane's in-process dispatch sent both commands to the DLQ.
+
+    `omninode-runtime` 0.4.319, 2026-10-21T16:30:00Z: every scheduled refresh
+    raised `4 validation errors for ModelMeteringSummaryRefreshRequested` on
+    `_db`, `_event_type`, `_envelope_id` and `_envelope_timestamp`, so
+    metering_summary held 0 rows while delegation_events held 55,852. The
+    handler stripped four names; the runtime adds more than four. Falsifier:
+    with the name list restored, both halves of this test raise ValidationError.
+    """
+    live_context = {
+        "_topic": _store_topic(),
+        "_db": object(),
+        "_event_type": "metering-summary-refresh-requested",
+        "_envelope_id": "7d809fe8-7d59-53fb-b52a-b70762383c15",
+        "_envelope_timestamp": "2026-10-21T16:30:00.017211Z",
+        "_partition": 0,
+        "_offset": 41,
+    }
+    store = FakeStore({_DEV: [_run("a", _T0)]})
+    result = _writer(store).handle({**_command(), **live_context})
+    assert result["tenants_refreshed"] == [_DEV]
+
+    record = _record("a", _T0)
+    fold = FakeStore({})
+    folded = _writer(fold).handle(
+        {
+            **live_context,
+            "_topic": refresh_metering_summary_topic(),
+            "tenant_id": _DEV,
+            "records": [record.model_dump(mode="json")],
+            "baseline_model": "claude-sonnet-4-5",
+            "as_of": (_T0 + timedelta(seconds=1)).isoformat(),
+        }
+    )
+    assert folded["rows_upserted"] == 2
+
+
 def test_contract_declares_both_commands_and_the_reads() -> None:
     contract = yaml.safe_load((_NODE / "contract.yaml").read_text())
     cfg = contract["config"]["metering_summary"]
