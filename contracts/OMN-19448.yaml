@@ -161,7 +161,6 @@ dod_evidence:
   - id: dod-omn19448-current-deploy-cause-readback
     description: 'Ticket AC3: read on dev at 2026-10-21T15:18Z after the current writers started at 13:38:45Z: 84 rows, 5 failed, 0 failed with NULL cause. The query requires a nonzero failed-row count and a zero NULL-cause count, and PostgreSQL rejects a false result. The credential-refusal fix window from 2026-10-19T08:25:32Z separately had 8531 rows, 968 failed and 0 failed with NULL cause. The lab read is local-gate-only; hosted proof tests the same SQL against disposable rows.'
     source: manual
-    binds_ac: [AC3]
     execution_scope: local_done_gate
     checks:
     - check_type: command

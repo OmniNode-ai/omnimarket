@@ -3114,17 +3114,9 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_latency_run.py -q -n 0 -p no:randomly --no-cov -k 'real_compaction_request_boundary or missing_recorded_messages_hash or native_fallback_with_prepared' --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: dod-omn17427-terminal-columns-complete-postgres
-    description: 'All eleven terminal fields are checked together after applying the actual migration chain and reapplying 0052, 0053 and 0058. Both sync/async writers and canonical/delegate-skill terminals are exercised. Before the fix the four canonical cases leave terminal_ok NULL. Both writers now stamp the canonical terminal outcome, including a failure whose cause is absent, so failure-cause readback includes it. Existing migrations already supply every requested column.'
+    description: 'All eleven terminal fields are checked together after applying the actual migration chain and reapplying 0052, 0053 and 0058. Both sync/async writers and canonical/delegate-skill terminals are exercised. Before the fix the four canonical cases leave terminal_ok NULL. Both writers now stamp the canonical terminal outcome, including a failure whose cause is absent, so failure-cause readback includes it. Existing migrations already supply every requested column. The same file runs the exact read-only SQL probe, which passes a typed failed row and rejects a failed row with NULL cause and an empty failure window, on real disposable PostgreSQL.'
     source: manual
-    binds_ac: [AC161]
-    checks:
-    - check_type: test_passes
-      check_value: uv run pytest tests/test_omn19448_terminal_acceptance_real_postgres.py -q -n 0 --no-cov -p no:cacheprovider --refuse-skips
-      cwd: ${OMNI_HOME}/omnimarket
-  - id: dod-omn17427-terminal-cause-probe-controls
-    description: 'The exact read-only SQL probe passes a typed failed row and rejects a failed row with NULL cause and an empty failure window, on real disposable PostgreSQL.'
-    source: manual
-    binds_ac: [AC162]
+    binds_ac: [AC161, AC162]
     checks:
     - check_type: test_passes
       check_value: uv run pytest tests/test_omn19448_terminal_acceptance_real_postgres.py -q -n 0 --no-cov -p no:cacheprovider --refuse-skips
@@ -3132,7 +3124,6 @@ dod_evidence:
   - id: dod-omn17427-terminal-cause-dev-readback
     description: 'Fresh read-only dev proof on 2026-10-21, after both writer containers started at 13:38:45Z. At 15:18Z the executable SQL found 84 rows, 5 failed and 0 failed with NULL cause. A broader read since the credential-refusal cause fix found 8531 rows, 968 failed and 0 failed with NULL cause. All eleven columns exist; a separate current-deploy read found populated values in each of the eight added columns. This live lab command runs only at the local Done gate; hosted CI runs the disposable database proof.'
     source: manual
-    binds_ac: [AC162]
     execution_scope: local_done_gate
     checks:
     - check_type: command
