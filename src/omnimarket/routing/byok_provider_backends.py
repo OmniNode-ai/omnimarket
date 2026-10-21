@@ -328,6 +328,12 @@ class ModelByokProviderBackend(BaseModel):
     max_retries: int = Field(ge=0)
     timeout_ms: int | None = Field(default=None, gt=0)
     max_tokens: int | None = Field(default=None, gt=0)
+    #: OMN-21257. The request-body field ``endpoint_url`` takes the completion
+    #: token limit in. ``max_tokens`` is the OpenAI-compatible default; OpenAI's
+    #: own chat endpoint refuses it on the gpt-5, gpt-6 and o-series models with
+    #: HTTP 400 and takes ``max_completion_tokens``, which every OpenAI chat
+    #: model accepts.
+    token_limit_field: Literal["max_tokens", "max_completion_tokens"] = "max_tokens"
     limit_model: ModelByokLimitModel
     #: OMN-20154. Declared only when the model's price is not its tier's.
     pricing: ModelByokPricing | None = None
@@ -903,6 +909,16 @@ def resolve_byok_backend_by_endpoint(
     return None
 
 
+def token_limit_field_for_endpoint(endpoint_url: str | None) -> str:
+    """The request-body field that carries the token limit for ``endpoint_url``.
+
+    OMN-21257. The catalogue row posted to declares it; an endpoint no routable
+    row names (a house rung, a local server) keeps ``max_tokens``.
+    """
+    backend = resolve_byok_backend_by_endpoint(endpoint_url)
+    return "max_tokens" if backend is None else backend.token_limit_field
+
+
 __all__: list[str] = [
     "BYOK_CATALOG_SCHEMA_VERSION",
     "BYOK_MODEL_UNRESOLVED",
@@ -935,4 +951,5 @@ __all__: list[str] = [
     "resolve_byok_declared_plan",
     "resolve_byok_provider_backend",
     "select_byok_model",
+    "token_limit_field_for_endpoint",
 ]

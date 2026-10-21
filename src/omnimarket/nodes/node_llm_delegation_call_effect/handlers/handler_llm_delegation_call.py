@@ -124,6 +124,7 @@ from omnimarket.routing.byok_provider_backends import (
     ModelByokProviderBackend,
     byok_declared_price_per_1m,
     resolve_byok_backend_by_endpoint,
+    token_limit_field_for_endpoint,
 )
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
@@ -883,10 +884,11 @@ class HandlerLlmDelegationCall:
             if request.system_prompt:
                 messages.append({"role": "system", "content": request.system_prompt})
             messages.append({"role": "user", "content": request.prompt})
+            # OMN-21257: the endpoint's catalogue row names the token-limit field.
             payload = {
                 "model": request.model_id,
                 "messages": messages,
-                "max_tokens": request.max_tokens,
+                token_limit_field_for_endpoint(endpoint_url): request.max_tokens,
                 "temperature": request.temperature,
             }
             if request.provider_request_options:
