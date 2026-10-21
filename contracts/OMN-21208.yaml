@@ -45,3 +45,9 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn21208_real_postgres_harness_savings_totals.py -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn21208-modelled-saving-deploy-probe"
+    description: "Deploy probe. The savings writer GitHub serves at the checked-out commit falls back to the modelled saving for a delegate-skill terminal that reports none; the probe reads handler_savings.py from GitHub at that commit and exits nonzero on a tree without the call, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_savings/handlers/handler_savings.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -q 'modelled_terminal_savings('"
