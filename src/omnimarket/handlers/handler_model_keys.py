@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import fcntl
 import json
+import logging
 import os
 import sqlite3
 from collections.abc import Callable, Iterator
@@ -88,9 +89,12 @@ Echo = Callable[[str], None]
 AskModel = Callable[[str], str]
 
 
+_LOG = logging.getLogger(__name__)
+
+
 def _quiet(line: str) -> None:
-    """The ``echo`` for a caller with no one watching, such as a script."""
-    del line  # dropped: a caller with no terminal has nowhere to print it
+    """The ``echo`` for a caller with no one watching, such as a script: the line goes to the debug log."""
+    _LOG.debug("%s", line)
 
 
 class ModelKeyRefusedError(Exception):
