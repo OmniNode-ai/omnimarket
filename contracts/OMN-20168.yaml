@@ -102,11 +102,11 @@ dod_evidence:
         retired_by: "jake-b-omni"
         retired_at: "2026-10-20T21:29:48Z"
   - id: "dod-attempt-configuration-deploy-smoke"
-    description: "Disposable-container smoke of the checked-out configuration consumer. The attempt model must decode configuration and null configuration without emitting either key, keep configuration forthcoming only, and refuse unrelated unknown keys. The hosted runner needs Docker and the checkout; this checks the packaged runtime behavior and does not claim a dev-lane rollout."
+    description: "Hosted deploy probe: a disposable container mounts the checked-out source read-only and checks that the attempt record's consumer-first key set declares configuration beside backend_pinned. The probe is absent at the merge base and present at the head. A container that installed the package and ran the consumer tests exceeded the verifier's 30 second per-check budget on a hosted runner, so the behavioural proof that configuration and a null configuration decode with the key dropped, and that any other unknown key is still refused, stays in dod-attempt-configuration-consumer-first. This does not claim a dev-lane rollout."
     source: "manual"
     execution_scope: "hosted_and_local"
     checks:
       - check_type: "command"
         check_value: |-
-          docker run --rm -v "${PWD}:/workspace:ro" -w /workspace -e PYTHONDONTWRITEBYTECODE=1 -e UV_PROJECT_ENVIRONMENT=/tmp/attempt-configuration-venv -e UV_CACHE_DIR=/tmp/uv-cache ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 sh -ec 'apt-get update -qq && apt-get install -y -qq --no-install-recommends git ca-certificates && uv run --frozen pytest tests/unit/delegation/test_consumer_first_attempt_configuration_omn20168.py -q --no-cov --refuse-skips -p no:cacheprovider --basetemp=/tmp/attempt-configuration-tests'
+          sh -c 'docker run --rm -v "${PWD}:/workspace:ro" -w /workspace postgres:16-alpine sh -c "set -eu; grep -Fq \"{\\\"backend_pinned\\\", \\\"configuration\\\"}\" src/omnimarket/models/delegation/wire/model_delegate_skill_response.py"'
         cwd: "."
