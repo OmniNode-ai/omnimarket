@@ -49,6 +49,9 @@ from omnimarket.events.topics import (
     DELEGATE_SKILL_COMPLETED_TOPIC_V1,
     DELEGATE_SKILL_FAILED_TOPIC_V1,
 )
+from omnimarket.handlers.handler_modelled_terminal_savings import (
+    apply_modelled_terminal_savings,
+)
 from omnimarket.models.delegation.quality_bar_evidence import (
     extract_quality_bar_evidence,
 )
@@ -1142,6 +1145,7 @@ class HandlerProjectionDelegation:
         # delegation-completed.v1 canonical event. _preserve_existing_evidence
         # retains the existing non-blank value when the incoming row has none.
         _preserve_existing_evidence(db, row)
+        apply_modelled_terminal_savings(row, event)
         ok = bool(
             self._write_delegation_row(db, row, insert_only_columns=tenant_insert_only)
         )
