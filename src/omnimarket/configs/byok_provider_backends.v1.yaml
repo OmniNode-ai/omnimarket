@@ -492,11 +492,13 @@ providers:
   # MODEL: the newest `gpt-4.N-nano` the key's own model list names, then the
   # newest `gpt-4.N-mini`, then `gpt-4o-mini`. Dated snapshots, `-latest`,
   # `-preview`, audio, realtime, image and search variants do not match (every
-  # pattern is a full match). The gpt-5 and o-series families are NOT preferred
-  # on purpose: on /v1/chat/completions they reject the `max_tokens` field the
-  # shared chat handler sends (OpenAI requires `max_completion_tokens` there), so
-  # preferring them would route a customer to a model that answers HTTP 400.
-  # Choosing them is a code change in the handler, not a catalogue edit.
+  # pattern is a full match). These are the models onboarding marks
+  # recommended; the customer may choose any model the key lists.
+  #
+  # TOKEN LIMIT (OMN-21257): the chat request carries its token limit as
+  # `max_completion_tokens`, which every OpenAI chat model takes. The gpt-5,
+  # gpt-6 and o-series models refuse `max_tokens` with HTTP 400, so a model the
+  # customer chooses from those families answers like any other.
   - provider: openai
     plan: api
     mirrors_house_rung: false
@@ -516,6 +518,7 @@ providers:
     max_retries: 2
     timeout_ms: 60000
     max_tokens: 8192
+    token_limit_field: max_completion_tokens
     limit_model:
       billing: pay_as_you_go
       counter_scope: model

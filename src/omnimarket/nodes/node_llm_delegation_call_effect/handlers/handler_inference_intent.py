@@ -84,6 +84,7 @@ from omnimarket.routing.byok_provider_backends import (
     BYOK_MODEL_UNRESOLVED,
     ModelByokProviderBackend,
     resolve_byok_backend_by_endpoint,
+    token_limit_field_for_endpoint,
 )
 from omnimarket.routing.delegation_backend_resolution import describe_model_name_source
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
@@ -98,7 +99,14 @@ _INFERENCE_RESPONSE_TOPIC_SUFFIX = (
     "inference-response.v1"  # onex-topic-allow: suffix used only for contract lookup
 )
 _RESERVED_PROVIDER_REQUEST_KEYS = frozenset(
-    {"model", "messages", "max_tokens", "temperature", "response_format"}
+    {
+        "model",
+        "messages",
+        "max_tokens",
+        "max_completion_tokens",
+        "temperature",
+        "response_format",
+    }
 )
 _MAX_PROVIDER_ERROR_BODY_CHARS = 1000
 # OMN-13215: every delegation tier (including the ceiling) executes through the
@@ -1073,10 +1081,11 @@ class HandlerInferenceIntent:
             )
 
         messages, provider_request_options = _build_messages_and_request_options(intent)
+        # OMN-21257: the endpoint's catalogue row names the token-limit field.
         payload: dict[str, Any] = {
             "model": intent.model,
             "messages": messages,
-            "max_tokens": intent.max_tokens,
+            token_limit_field_for_endpoint(base_url): intent.max_tokens,
             "temperature": intent.temperature,
         }
         if intent.response_format is not None:
