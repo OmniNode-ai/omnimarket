@@ -682,6 +682,11 @@ requirements:
     acceptance:
       - id: "AC154"
         statement: "AC154: two sizes with two cold and two warm trips against a fixture client whose prepared receipt carries build_ms 250 and model_section_ms 75 record eight trips of 175 and 75 with wall_ms from the injected clock, the factory is called once per cold trip and once per case for warm, a cold trip's wall time includes client construction, a prepared receipt with no build_ms, a model section longer than the build, no prepared receipt or an adapter error is a refusal and the CLI exits 1, the trips of two hosts and three sizes tabulate complete through the latency qualification compute and without the second host do not, and the new source holds no topic literal and no import of the compute node -- falsifier: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_latency_run.py -q fails at the merge base, where the module handler_compaction_latency_run does not exist"
+  - id: "req-delegation-rung-keeps-time-for-next-rung"
+    statement: "The in-process delegation ladder bounds each rung by the run's remaining budget less the task class's declared next-rung reserve, so a slow or rejected local rung hands off to the next rung inside the run budget instead of ending the run."
+    acceptance:
+      - id: "AC157"
+        statement: "AC157: a ladder whose local rung times out reaches the cheap_cloud rung and completes inside the 240 s run budget, and slow rejected local drafts stop re-drafting and hand off -- falsifier: uv run pytest tests/unit/delegation/test_omn17427_rung_budget_keeps_time_for_next_rung.py -q fails at the merge base"
   - id: "req-context-pack-cite-first-allocator"
     statement: "When the required tiers of a context pack are over budget, the cited entries of every trimmable tier are charged first and only the uncited remainder is shared equally, so a pack whose cited entries fit the budget is built even when one tier's cited entries exceed an equal share; with no citations the selection is unchanged."
     acceptance:
@@ -2801,6 +2806,29 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_latency_run.py -q -n 0 -p no:randomly --no-cov -k test_records_sizes_temperatures_wall_time_and_verdict"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-rung-budget-keeps-time-for-next-rung"
+    description: "A fake-clock ladder where the local rung times out reaches the cheap_cloud rung inside the 240 s run budget; slow rejected local drafts stop re-drafting; fast ones keep their re-drafts. The test file is absent at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn17427_rung_budget_keeps_time_for_next_rung.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC157"]
+  - id: "dod-omn17427-rung-budget-deploy-probe"
+    description: "Deploy probe. The hosted runner loads the subject commit's task class contract and checks every execution budget declares a next-rung reserve above zero and below its ceiling. This checks the artifact and does not attest a live deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run python - <<'PY'
+          from omnimarket.inference.task_class_authority import load_task_class_authority
+          authority = load_task_class_authority()
+          for name in authority.execution_budgets:
+              budget = authority.execution_budget(name)
+              assert 0 < budget.next_rung_reserve_seconds < budget.task_class_timeout_ceiling_seconds, name
+          print("rung budget deploy probe: PASS")
+          PY
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac154-cite-first-allocator"
     description: "The required-tier allocator charges cited entries of every trimmable tier first. The equal-share test fails at the merge base, where the shipped equal-share allocator refuses open_work's 525 cited tokens over a 380-token tier share although the 800-token budget holds them."
