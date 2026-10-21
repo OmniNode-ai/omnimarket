@@ -2643,7 +2643,7 @@ class HandlerDelegationWorkflow:
     def handle_delegation_request(
         self,
         request: ModelDelegationRequest,
-    ) -> list[ModelRoutingIntent]:
+    ) -> list[BaseModel]:
         """Handle incoming delegation request. Returns intents to emit.
 
         Creates a new workflow for this correlation_id or rejects duplicates.
@@ -2667,17 +2667,27 @@ class HandlerDelegationWorkflow:
                 return [ModelRoutingIntent(payload=routing_request)]
             return []
 
-        effective_response_contract = (
-            request.response_contract
-            if request.response_contract is not None
-            else resolve_task_class_response_contract(request.task_type)
-        )
-        (
-            effective_deliverable_contract,
-            response_contract_sha256,
-            response_contract_output_shape,
-            response_contract_instruction,
-        ) = _response_contract_metadata(request.task_type, effective_response_contract)
+        try:
+            effective_response_contract = (
+                request.response_contract
+                if request.response_contract is not None
+                else resolve_task_class_response_contract(request.task_type)
+            )
+            (
+                effective_deliverable_contract,
+                response_contract_sha256,
+                response_contract_output_shape,
+                response_contract_instruction,
+            ) = _response_contract_metadata(
+                request.task_type, effective_response_contract
+            )
+        except OSError as exc:
+            # An ingress read can fail before a workflow exists. On the live
+            # text route EMFILE escaped here, leaving the outer waiter to expire
+            # even though no provider had been called. Build its failure without
+            # reading the unavailable contract again; programming errors still
+            # propagate. The failed state also makes a redelivery a no-op.
+            return self._contract_read_failed(request, exc)
         workflow = DelegationWorkflowState(
             correlation_id=cid,
             request=request,
@@ -2704,6 +2714,71 @@ class HandlerDelegationWorkflow:
                 update={"tenant_id": workflow.tenant_id}
             )
         return [ModelRoutingIntent(payload=routing_request)]
+
+    def _contract_read_failed(
+        self, request: ModelDelegationRequest, error: OSError
+    ) -> list[BaseModel]:
+        workflow = DelegationWorkflowState(
+            correlation_id=request.correlation_id,
+            request=request,
+            tenant_id=request.tenant_id or (get_settings().onex_tenant_id or None),
+            context_pack_hash=_context_pack_hash_for_event(request),
+        )
+        self._workflows[request.correlation_id] = workflow
+        self._advance(workflow, EnumDelegationState.FAILED)
+        # Only the exception class and errno cross this boundary, never a path
+        # or the arbitrary contents of an OS error message.
+        reason = (
+            "delegation_contract_unavailable: ingress contract read failed "
+            f"({type(error).__name__}, errno={error.errno}); no provider was called"
+        )
+        _logger.error("%s correlation_id=%s", reason, request.correlation_id)
+        return self._emit_terminal(
+            TerminalEmissionInputs(
+                completed=False,
+                correlation_id=request.correlation_id,
+                task_type=request.task_type,
+                model_used="none",
+                endpoint_url="none",
+                content="",
+                quality_passed=False,
+                quality_score=None,
+                operational_outcome=EnumDelegationOperationalOutcome.BOUNDARY_FAILURE,
+                content_verdict=EnumDelegationContentVerdict.NOT_APPLICABLE,
+                latency_ms=max(
+                    0, (time.time_ns() - workflow.started_at_ns) // 1_000_000
+                ),
+                prompt_tokens=0,
+                completion_tokens=0,
+                total_tokens=0,
+                fallback_to_claude=False,
+                failure_reason=reason,
+                tokens_to_compliance=0,
+                compliance_attempts=1,
+                cost_tier_name="",
+                premium_counterfactual=None,
+                escalation_count=0,
+                escalation_history=(),
+                terminal_failure_reason="delegation_contract_unavailable",
+                routing_tiers_hash=None,
+                escalation_config_hash=None,
+                attempts_count=0,
+                model_name="none",
+                session_id=None,
+                tenant_id=workflow.tenant_id,
+                quality_gates_checked=[],
+                quality_gates_failed=[],
+                llm_call_id="",
+                context_pack_hash=workflow.context_pack_hash,
+                provenance=request.provenance,
+                route=workflow.inference_route,
+                provider=workflow.inference_provider,
+                credential_source=workflow.inference_credential_source,
+                backend_ref=None,
+                pricing_manifest_version=None,
+                unrouted_reason=EnumDelegationUnroutedReason.ROUTING_CONFIGURATION_INVALID,
+            )
+        )
 
     def handle_invocation_command(
         self,

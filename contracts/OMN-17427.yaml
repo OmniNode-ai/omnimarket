@@ -704,6 +704,15 @@ requirements:
     acceptance:
       - id: "AC114"
         statement: "AC114: the sync and async delegate-skill row builders store the accepting attempt's model_id as routed_model and its backend_id as answering_backend, store neither for a ladder with no accepting attempt or a blank value, and keep stored values across a later sparse terminal -- falsifier: uv run pytest tests/unit/delegation/test_delegate_skill_routing_columns_omn19448.py -q fails at the merge base"
+  - id: req-ingress-contract-io-terminal
+    statement: An ingress contract I/O failure returns a correlated failure before any provider call, and both runtime dispatch ports can consume it on its declared canonical topic.
+    acceptance:
+    - id: AC158
+      statement: 'AC158: an unreadable task-class contract returns a single unscored canonical failed terminal with zero model attempts and a FAILED workflow; a replay emits no routing intent.'
+    - id: AC159
+      statement: 'AC159: both deployed-runtime and Market dispatch ports consume the real handler''s pre-dispatch failure on the producer''s contract topic; the optional V1 subscription rejects routed, malformed and uncorrelated terminals.'
+    - id: AC160
+      statement: 'AC160: an isolated Linux process with genuinely exhausted file descriptors can still construct the ingress failure terminal.'
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -2899,3 +2908,73 @@ dod_evidence:
         check_value: |-
           sh -c 'set -eu; grep -Fq "row[\"routed_model\"] = routed_model" src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py; echo "delegate-skill routing columns deploy probe: PASS"'
         cwd: "${OMNI_HOME}/omnimarket"
+
+  - id: dod-omn17427-ingress-contract-io
+    description: The contract I/O failure closes its own workflow before inference, preserves tenant identity and is replay safe. The base raises OSError on these cases.
+    source: manual
+    binds_ac:
+    - AC158
+    checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/unit/delegation/test_contract_read_failure_terminal_omn17427.py -q -n 0 --no-cov -p no:randomly -k 'not real_descriptor' --refuse-skips
+      cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn17427-pre-dispatch-terminal-consumed
+    description: The handler and both dispatch ports exchange a real canonical failure over an in-memory bus using the producer's declared topic. Routed, malformed and other-correlation V1 messages cannot win the optional subscription.
+    source: manual
+    binds_ac:
+    - AC159
+    checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_pre_dispatch_failure_terminal_omn17427.py -q -n 0 --no-cov -p no:randomly --refuse-skips
+      cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn17427-real-emfile-terminal
+    description: A child lowers only its own descriptor limit, exhausts it with real opens, and returns the canonical zero-attempt terminal. The parent process and services are unchanged.
+    source: manual
+    binds_ac:
+    - AC160
+    checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/unit/delegation/test_contract_read_failure_terminal_omn17427.py::test_real_descriptor_exhaustion_still_constructs_failure_terminal -q -n 0 --no-cov -p no:randomly --refuse-skips
+      cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn17427-ingress-terminal-deploy-probe
+    description: 'Deploy check: on the hosted Linux runner, execute the real handler, both real dispatch ports and their declared topics on an in-memory bus, plus genuine descriptor exhaustion in a child. It fails at the base; it needs only this checkout and locked dependencies. This is a packaged runtime-path probe, not a live deployment attestation.'
+    source: manual
+    checks:
+    - check_type: command
+      check_value: uv run pytest tests/unit/delegation/test_contract_read_failure_terminal_omn17427.py tests/unit/nodes/node_delegate_skill_orchestrator/test_pre_dispatch_failure_terminal_omn17427.py -q -n 0 --no-cov -p no:randomly --refuse-skips
+      cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn17427-original-criterion-1
+    description: 'Plan committed at the path above. Pending: this experiment supplies no completion evidence for this original integration-pass criterion. A goal-scoped disposition is required at the local Done gate.'
+    source: manual
+    checks:
+    - check_type: disposition
+      check_value: dod-omn17427-original-criterion-1
+    execution_scope: local_done_gate
+  - id: dod-omn17427-original-criterion-2
+    description: 'Nightly automation armed and confirmed firing (first report on disk). Pending: this experiment supplies no completion evidence for this original integration-pass criterion. A goal-scoped disposition is required at the local Done gate.'
+    source: manual
+    checks:
+    - check_type: disposition
+      check_value: dod-omn17427-original-criterion-2
+    execution_scope: local_done_gate
+  - id: dod-omn17427-original-criterion-3
+    description: 'Pass 0 report exists, bounded to 48h, every row carrying a probe. Pending: this experiment supplies no completion evidence for this original integration-pass criterion. A goal-scoped disposition is required at the local Done gate.'
+    source: manual
+    checks:
+    - check_type: disposition
+      check_value: dod-omn17427-original-criterion-3
+    execution_scope: local_done_gate
+  - id: dod-omn17427-original-criterion-4
+    description: 'Ledger claim + terminal rows present for pass 0, appended through the mutex. Pending: this experiment supplies no completion evidence for this original integration-pass criterion. A goal-scoped disposition is required at the local Done gate.'
+    source: manual
+    checks:
+    - check_type: disposition
+      check_value: dod-omn17427-original-criterion-4
+    execution_scope: local_done_gate
+  - id: dod-omn17427-original-criterion-5
+    description: "After one week: the graduation review recorded on this ticket \u2014 falsified-claim rate, defect tickets filed vs. accepted, whether any pass produced zero rows (a silent-failure signal). Pending: this experiment supplies no completion evidence for this original integration-pass criterion. A goal-scoped disposition is required at the local Done gate."
+    source: manual
+    checks:
+    - check_type: disposition
+      check_value: dod-omn17427-original-criterion-5
+    execution_scope: local_done_gate

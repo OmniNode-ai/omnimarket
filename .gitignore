@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
-.venv/
+# Local virtual environments may be directories or symlinks.
+.venv
 *.egg-info/
 dist/
 build/
