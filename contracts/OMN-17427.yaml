@@ -702,6 +702,11 @@ requirements:
     acceptance:
       - id: "AC114"
         statement: "AC114: the sync and async delegate-skill row builders store the accepting attempt's model_id as routed_model and its backend_id as answering_backend, store neither for a ladder with no accepting attempt or a blank value, and keep stored values across a later sparse terminal -- falsifier: uv run pytest tests/unit/delegation/test_delegate_skill_routing_columns_omn19448.py -q fails at the merge base"
+  - id: "req-pool-host-advertises-lane-guards"
+    statement: "A pool host's bus capacity advertisement carries a lane-guard:<sha256> entry in its tools for each installed lane guard whose bytes hash to the sha256 that names its directory, so placement can refuse a host that would exit 78 LANE-GUARD-MISSING in seconds; a host with no guard, an altered copy or a misnamed directory advertises none."
+    acceptance:
+      - id: "AC159"
+        statement: "AC159: LocalHostReader.read returns one lane-guard:<sha256> tool per installed lane_guard_host.py whose sha256 equals its directory name, sorted among the other tools, and none for an empty home, an altered copy or a directory that is not a sha256 -- falsifier: uv run pytest tests/unit/lab_work/test_lab_work_host_bus.py -q -n 0 -k lane_guard fails at the merge base, where LocalHostReader takes no home and advertises no lane-guard entry"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -921,6 +926,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC154: the context-pack orchestrator charges cited entries of every required tier before sharing the budget."
     command: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -k 'equal_share or whole_budget or cited'"
+  - kind: "tests"
+    description: "AC159: a pool host advertises one lane-guard:<sha256> tool per installed lane guard whose bytes hash to its directory name, and none otherwise."
+    command: "uv run pytest tests/unit/lab_work/test_lab_work_host_bus.py -q -n 0 -k lane_guard"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -2888,4 +2896,42 @@ dod_evidence:
       - check_type: "command"
         check_value: |-
           sh -c 'set -eu; grep -Fq "row[\"routed_model\"] = routed_model" src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py; echo "delegate-skill routing columns deploy probe: PASS"'
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac159-lane-guard-advertised"
+    description: "A pool host advertises the lane guards it has installed as lane-guard:<sha256> tools, verified against the bytes of lane_guard_host.py. The four lane-guard tests fail at the merge base, where LocalHostReader takes no home argument and installed_lane_guards does not exist."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/lab_work/test_lab_work_host_bus.py -q -n 0 -p no:randomly --no-cov -k lane_guard"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC159"]
+  - id: "dod-omn17427-ac159-lane-guard-advertised-deploy-probe"
+    description: "Deploy probe. In the checked-out package, a home holding one lane guard whose bytes hash to its directory name is read by LocalHostReader and advertises exactly that lane-guard:<sha256> tool, and an empty home advertises none. It fails at the merge base and needs only uv and this checkout on the hosted runner; it does not attest a live host."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run python - <<'PY'
+          import hashlib
+          import tempfile
+          from pathlib import Path
+
+          from omnimarket.nodes.node_lab_work_unit_effect.protocols.local_host_reader import (
+              LocalHostReader,
+          )
+
+          body = b"print('guard')\n"
+          sha = hashlib.sha256(body).hexdigest()
+          with tempfile.TemporaryDirectory() as raw:
+              home = Path(raw)
+              target = home / ".local" / "share" / "onex-lane-guard" / "sha256" / sha
+              target.mkdir(parents=True)
+              (target / "lane_guard_host.py").write_bytes(body)
+              tools = LocalHostReader(home=home).read([]).tools
+              assert [t for t in tools if t.startswith("lane-guard:")] == [f"lane-guard:{sha}"], tools
+          with tempfile.TemporaryDirectory() as raw:
+              tools = LocalHostReader(home=Path(raw)).read([]).tools
+              assert not [t for t in tools if t.startswith("lane-guard:")], tools
+          print("lane guard advertisement deploy probe: PASS")
+          PY
         cwd: "${OMNI_HOME}/omnimarket"
