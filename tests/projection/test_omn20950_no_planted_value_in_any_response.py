@@ -79,7 +79,8 @@ def store(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[Path]:
     )
     # The provider's model list is a network read; this test stores no model.
     monkeypatch.setattr(
-        "omnimarket.cli.cli_secret._resolve_model", lambda *_args, **_kw: None
+        "omnimarket.handlers.handler_model_keys.resolve_model",
+        lambda *_args, **_kw: None,
     )
     reset_local_tenant_identity_cache()
     yield db_path
@@ -187,6 +188,66 @@ def test_after_a_re_set_neither_key_is_in_any_response(store: Path) -> None:
     rows = _credentials_rows(responses)
     assert _fingerprint(_FIRST) in rows
     assert _fingerprint(_SECOND) in rows
+
+
+def test_a_key_added_on_the_page_is_in_no_response_and_no_log(
+    store: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """OMN-20816: the key now arrives in a request body, so its routes are scanned too.
+
+    F6 a ``/models`` response (the add, the list, a refused or an allowed
+    remove) carries the key; F7 anything logged while handling it does.
+    """
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup.default_evidence_db_path",
+        lambda: store,
+    )
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup.run_pinned_delegation",
+        lambda _backend: (1, "", "onex delegate failed: stubbed test delegation"),
+    )
+    monkeypatch.setattr(
+        "omnimarket.routing.byok_model_discovery.get_models_json",
+        lambda **_: {"data": [{"id": "openai/gpt-5-nano"}]},
+    )
+    caplog.set_level("DEBUG")
+    source = SqliteTableRowSource(store)
+    client = TestClient(
+        create_dashboard_app(
+            handler=HandlerProjectionRead(topic_map=_TOPICS, row_source=source),
+            tenant=None,
+            topic_map=_TOPICS,
+            row_source=source,
+        )
+    )
+    page: dict[str, tuple[int, str]] = {}
+    for key in (_FIRST, _SECOND):
+        added = client.put(
+            "/models/openrouter", json={"key": key, "models": ["openai/gpt-5-nano"]}
+        )
+        page[f"PUT /models/openrouter ({_fingerprint(key)})"] = (
+            added.status_code,
+            added.text,
+        )
+        assert added.status_code == 200, added.text
+    listed = client.get("/models")
+    page["GET /models"] = (listed.status_code, listed.text)
+    removed = client.delete("/models/openrouter")
+    page["DELETE /models/openrouter"] = (removed.status_code, removed.text)
+
+    # F5: the store holds the newest key, and the list read the stored row.
+    assert _SECOND.encode() in store.read_bytes()
+    assert '"openrouter"' in listed.text
+    assert '"set_up":true' in listed.text
+    # F6, and F1 to F4 over every exposure for the same store.
+    _assert_no_value_in(page, [_FIRST, _SECOND])
+    _assert_no_value_in(
+        _every_response(store, _install_tenant(store)), [_FIRST, _SECOND]
+    )
+    # F7: no form of either key in anything logged at DEBUG or above. The planted
+    # control for this check is a route that logs the key (a mutation run).
+    logged = "\n".join(record.getMessage() for record in caplog.records)
+    _assert_no_value_in({"log": (0, logged)}, [_FIRST, _SECOND])
 
 
 def test_after_a_delete_no_key_is_in_any_response(store: Path) -> None:

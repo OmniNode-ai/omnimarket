@@ -74,6 +74,7 @@ from typing import Any, Protocol
 from fastapi import FastAPI, Query, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 
+from omnimarket.handlers import handler_model_keys as model_keys
 from omnimarket.handlers.handler_local_environment_judgement import (
     load_local_alert_rules,
 )
@@ -97,6 +98,9 @@ from omnimarket.nodes.node_local_dashboard_serve_effect.models import (
     ModelLocalDashboardServeRequest,
     ModelLocalDashboardServeResult,
     is_loopback_host,
+)
+from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup import (
+    key_looks_like,
 )
 from omnimarket.nodes.node_projection_read_effect.handlers.handler_projection_read import (
     HandlerProjectionRead,
@@ -280,10 +284,125 @@ def create_dashboard_app(
             body["as_of"] = body.get("latest_event_at")
         return JSONResponse(status_code=result.http_status, content=body)
 
+    _register_model_keys(app)
+
     if pages is not None:
         _register_pages(app, pages)
 
     return app
+
+
+def _key_refusal(
+    status_code: int, error: str, provider: str, detail: str
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content={"error": error, "provider": provider, "detail": detail},
+    )
+
+
+def _managed_elsewhere(provider: str) -> JSONResponse | None:
+    """The refusal for a provider this page does not change, or ``None`` for one it does."""
+    if provider in model_keys.DASHBOARD_KEYED_PROVIDERS:
+        return None
+    advice = model_keys.TERMINAL_ONLY.get(provider)
+    if advice is not None:
+        return _key_refusal(422, "managed_in_terminal", provider, advice)
+    return _key_refusal(404, "unknown_provider", provider, "no such model provider")
+
+
+def _register_model_keys(app: FastAPI) -> None:
+    """Add, replace and remove model keys from the Credentials page (OMN-20816).
+
+    The routes run :mod:`omnimarket.handlers.handler_model_keys`, the path
+    ``onex models add|list|remove`` runs, so a key added here is stored, folded
+    and tested as the terminal does it. The key arrives in a request body and
+    goes no further than that path: no response, refusal or log line carries it.
+    That is why the body is read by hand rather than by a request model, whose
+    validation error would echo the submitted input back.
+
+    Each call runs in a worker thread: the secret store and the pinned test
+    delegation run their own event loops and subprocesses.
+    """
+
+    @app.get("/models")
+    async def model_keys_list() -> JSONResponse:
+        rows = await asyncio.to_thread(model_keys.list_providers)
+        return JSONResponse(
+            {
+                "providers": [
+                    row.model_dump(mode="json")
+                    for row in rows
+                    if row.provider in model_keys.DASHBOARD_PROVIDERS
+                ]
+            }
+        )
+
+    @app.put("/models/{provider}")
+    async def model_keys_add(provider: str, request: Request) -> JSONResponse:
+        refused = _managed_elsewhere(provider)
+        if refused is not None:
+            return refused
+        try:
+            body = await request.json()
+        except ValueError:
+            body = None
+        if not isinstance(body, dict) or set(body) != {"key", "models"}:
+            return _key_refusal(
+                422,
+                "bad_request",
+                provider,
+                'send a JSON object with exactly "key" and "models"',
+            )
+        key, models = body["key"], body["models"]
+        if not isinstance(key, str) or not key.strip():
+            return _key_refusal(422, "key_required", provider, "a key is required")
+        looks = key_looks_like(key.strip())
+        if looks is not None and looks != provider:
+            return _key_refusal(
+                422,
+                "key_for_another_provider",
+                provider,
+                f"that looks like a key for {model_keys.MODEL_LABELS[looks]}, not "
+                f"{model_keys.MODEL_LABELS[provider]}. Nothing was stored.",
+            )
+        if (
+            not isinstance(models, list)
+            or not models
+            or not all(isinstance(m, str) and m.strip() for m in models)
+        ):
+            return _key_refusal(
+                422,
+                "model_not_chosen",
+                provider,
+                "name at least one model your key runs, from the provider's model "
+                "page. Nothing was stored.",
+            )
+        try:
+            result = await asyncio.to_thread(
+                model_keys.add_key,
+                provider,
+                key.strip(),
+                tuple(m.strip() for m in models),
+            )
+        except model_keys.ModelKeyRefusedError as refusal:
+            return _key_refusal(422, "refused", provider, str(refusal))
+        return JSONResponse(
+            {"provider": provider, "test": result.model_dump(mode="json")}
+        )
+
+    @app.delete("/models/{provider}")
+    async def model_keys_remove(provider: str) -> JSONResponse:
+        refused = _managed_elsewhere(provider)
+        if refused is not None:
+            return refused
+        try:
+            await asyncio.to_thread(model_keys.remove_key, provider)
+        except model_keys.LastUsableModelRefusedError as refusal:
+            return _key_refusal(409, "last_usable_model", provider, str(refusal))
+        except model_keys.ModelKeyRefusedError as refusal:
+            return _key_refusal(422, "refused", provider, str(refusal))
+        return JSONResponse({"provider": provider, "removed": True})
 
 
 def _register_pages(app: FastAPI, pages: Path) -> None:
