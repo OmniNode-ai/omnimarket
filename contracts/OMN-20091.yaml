@@ -1,0 +1,123 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20091"
+title: "onex trajectory-eval: the hand publisher for the trajectory evaluation effect"
+summary: >-
+  Adds the onex trajectory-eval click group, the hand publisher for node_trajectory_evaluation_effect's submit and poll commands. submit reads an onex delegate run directory (result.txt, receipt.json, run.json) and publishes one submit command whose correlation_id is the run's and whose work_unit_repository is the owner/name of the clone's GitHub origin; --mode meta carries neither text and --mode full carries the prompt and the response; submit --from-json checks a file against the submit model and publishes it byte for byte. poll publishes one poll command per accepted receipt still pending in a captured outcome log, capped by --max. A run that did not succeed exits 3 and a typed usage error exits 2, and neither publishes. Topics are read from the node's contract.yaml and the group is registered only through the onex.cli entry point.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-repository"
+    statement: "The submit command's work_unit_repository is the owner/name of the clone's GitHub origin."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: work_unit_repository is the owner/name of the clone's GitHub origin (https or ssh); a non-GitHub origin or a directory outside git is a typed usage error
+  - id: "req-submit-one"
+    statement: "submit --run-dir publishes exactly one submit command per delegate run, carrying the run's correlation_id."
+    acceptance:
+      - id: "AC2"
+        statement: >-
+          AC2: submit --run-dir publishes one submit command per run with the run's correlation_id, and --dry-run publishes nothing
+  - id: "req-failed-run"
+    statement: "A run that did not succeed publishes nothing and exits 3."
+    acceptance:
+      - id: "AC3"
+        statement: >-
+          AC3: a run whose status is not success, or whose receipt is missing, publishes nothing and exits 3
+  - id: "req-mode"
+    statement: "--mode meta carries neither text; --mode full carries the prompt and the response."
+    acceptance:
+      - id: "AC4"
+        statement: >-
+          AC4: --mode meta carries neither the prompt nor the response, and --mode full carries both
+  - id: "req-poll"
+    statement: "poll publishes one poll command per accepted receipt still pending in the outcome log, capped by --max."
+    acceptance:
+      - id: "AC5"
+        statement: >-
+          AC5: poll --outcomes publishes one poll command for each accepted receipt still pending, none for a completed one, and at most --max
+  - id: "req-from-json"
+    statement: "submit --from-json validates the file against the submit model and publishes it byte for byte."
+    acceptance:
+      - id: "AC6"
+        statement: >-
+          AC6: submit --from-json publishes the file byte for byte and refuses a file that is not a submit command
+  - id: "req-entry-point"
+    statement: "The group is registered only through the onex.cli entry point and reads its topics from the node's contract."
+    acceptance:
+      - id: "AC7"
+        statement: >-
+          AC7: the onex.cli entry point loads the trajectory-eval group, it is not hand-wired, and its topics come from the node's contract.yaml
+evidence_requirements:
+  - kind: "tests"
+    description: "The trajectory-eval CLI tests pass, one -k selection per criterion."
+    command: "uv run pytest tests/unit/cli/test_cli_trajectory_eval.py -q -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20091-ac1-repository"
+    description: "The AC1 tests pass: the repository is read from the GitHub origin, and a non-GitHub or non-git directory is a usage error."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_cli_trajectory_eval.py -q -n 0 -k \"repository\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20091-ac2-submit-one"
+    description: "The AC2 tests pass: one submit command per run, and a dry run publishes nothing."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_cli_trajectory_eval.py -q -n 0 -k \"submit_one_command_per_run or submit_dry_run\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20091-ac3-failed-run"
+    description: "The AC3 tests pass: a failed run or a missing receipt publishes nothing."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_cli_trajectory_eval.py -q -n 0 -k \"failed_run\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20091-ac4-mode"
+    description: "The AC4 tests pass: --mode controls which texts the submit command carries."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_cli_trajectory_eval.py -q -n 0 -k \"mode_controls_the_texts\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn20091-ac5-poll"
+    description: "The AC5 tests pass: one poll command per pending receipt, capped by --max."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_cli_trajectory_eval.py -q -n 0 -k \"poll\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn20091-ac6-from-json"
+    description: "The AC6 tests pass: --from-json publishes the file byte for byte and refuses a non-submit file."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_cli_trajectory_eval.py -q -n 0 -k \"from_json or exactly_one_source\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn20091-ac7-entry-point"
+    description: "The AC7 tests pass: the onex.cli entry point loads the group and its topics come from the contract."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_cli_trajectory_eval.py -q -n 0 -k \"entry_point or topics_come_from_the_contract\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
+  - id: "dod-omn20091-deploy-probe"
+    description: "Deploy probe: the node CLI read from GitHub at the checked-out commit defines the trajectory-eval click group. A head without it fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_trajectory_evaluation_effect/cli.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'def trajectory_eval_group'"

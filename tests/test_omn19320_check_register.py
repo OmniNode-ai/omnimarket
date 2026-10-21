@@ -24,6 +24,7 @@ import yaml
 
 from omnimarket.delegation.content_grounding import (
     resolve_claim_grounding_policy,
+    resolve_evidence_comment_policy,
     resolve_numeric_grounding_policy,
 )
 from omnimarket.delegation.identifier_grounding import (
@@ -278,7 +279,7 @@ class TestRequiredDelegationAcceptanceEntries:
             for prefix in (FALSE_PASS_ID_PREFIX, FALSE_REFUSAL_ID_PREFIX)
             for name in REQUIRED_FALSE_PASS_CLASSES
         )
-        assert len(required_check_ids()) == 52
+        assert len(required_check_ids()) == 54
 
     def test_the_committed_register_passes_with_all_required_entries(self) -> None:
         document = yaml.safe_load(
@@ -407,10 +408,12 @@ class TestRequiredDelegationAcceptanceInventory:
                 resolve_numeric_grounding_policy().check_name,
                 resolve_claim_grounding_policy().check_name,
                 resolve_identifier_grounding_policy().check_name,
+                resolve_evidence_comment_policy().criteria_check_name,
+                resolve_evidence_comment_policy().evidence_check_name,
             }
         )
         assert gate_checks
-        assert len(gate_checks) == 38
+        assert len(gate_checks) == 40
         assert tuple(sorted(gate_checks)) == REQUIRED_GATE_CHECKS
 
     def test_false_pass_classes_match_the_seven_acceptance_classes(self) -> None:
