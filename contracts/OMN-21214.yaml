@@ -1,0 +1,39 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21214"
+title: "Every delegation attempt's deadline keeps time in reserve for the next rung"
+summary: "A task class had one execution budget for the whole chain and each attempt ran on its backend's own timeout, so three slow rungs could spend the budget and leave the last rung no usable time. Each class now declares rung_floor_seconds (45 s for every shipped class). On the local dispatch port an attempt's timeout is the smaller of its backend's timeout and the time left before its rung's cutoff, the chain deadline less one floor for every rung that can still follow; a rung's retries and siblings share its cutoff, and an attempt with under a second left is recorded as a timeout without a call. The rungs counted are the class's tier_order cut to max_escalations + 1 and to the budget's whole floors, and the last one keeps the chain deadline. The dispatch keeps its time on an injectable clock."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21214-rung-reserve"
+    statement: |-
+      Each attempt's deadline keeps rung_floor_seconds in reserve for every rung after it, so the last rung always has usable time.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: With an injected clock, three slow rungs that each sleep past their deadline, the first with two retries, leave the fourth and last rung at least `rung_floor_seconds` of usable time, and it answers inside the class ceiling -- falsifier: `uv run pytest tests/unit/delegation/test_rung_deadlines.py -q`, which fails today because no reserve is subtracted.
+evidence_requirements:
+  - kind: "tests"
+    description: "Four-rung ladder on an injected clock: the first rung tried three times, every attempt on the first three rungs runs past its deadline, the fourth starts with at least one floor left and the run completes inside the 240 s ceiling; each attempt's timeout is within its backend's and its rung's cutoff; every shipped class declares a floor."
+    command: "uv run pytest tests/unit/delegation/test_rung_deadlines.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21214-ac1-rung-deadlines"
+    description: "LocalDelegationDispatchPort on an injected clock over a fixture four-rung ladder (three backends on the first rung, so two retries): every attempt on the first three rungs runs until the dispatch kills it, the fourth rung starts with at least rung_floor_seconds (45) of the 240 s budget left and answers, and the run ends inside the ceiling; each attempt's timeout is no more than its backend's and ends by its rung's cutoff; every class in the shipped contract declares a floor. With the reserve switched off the last rung starts with -142.5 s left. The effect is a stand-in; a live slow-provider run is not part of this check."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_rung_deadlines.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21214-rung-deadline-deploy-probe"
+    description: "Deploy probe. The local dispatch port GitHub serves at the checked-out commit cuts each attempt's timeout to its rung's cutoff (rung_deadline_at) and does not send an attempt with under _MIN_ATTEMPT_SECONDS left; the probe reads the file from GitHub at that commit and exits nonzero on a tree without them, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c -e '^_MIN_ATTEMPT_SECONDS = 1.0$' -e 'rung_deadline_at = chain_deadline - rung_floor_seconds \\* rungs_after' | grep -qx 2"
