@@ -1,0 +1,16 @@
+{
+  "README.txt": "Project: Orchard\nOwner: Ada\nStatus: ready\n",
+  "config/settings.ini": "mode=dev\nretries=3\ntimeout=10\n",
+  "src/app.py": "VERSION = \"1.0\"\nDEBUG = True\nPORT = 8080\n",
+  "notes/todo.txt": "TODO: add logging\nDONE: add tests\nTODO: update docs\n",
+  "data/colors.txt": "red\nblue\ngreen\nblue\n",
+  "logs/service.log": "INFO started\nERROR unavailable\nINFO retry\nERROR timeout\n",
+  "archive/keep.txt": "Keep this directory.\n",
+  "cache/sentinel.txt": "Keep this cached artifact.\n",
+  ".env.example": "API_KEY=placeholder\n",
+  "tests/test_arithmetic.py": "import unittest\nclass Arithmetic(unittest.TestCase):\n    def test_add(self): self.assertEqual(2 + 3, 5)\n",
+  "tests/test_strings.py": "import unittest\nclass Strings(unittest.TestCase):\n    def test_upper(self): self.assertEqual(\"orchard\".upper(), \"ORCHARD\")\n",
+  "tests/test_config.py": "import unittest\nfrom pathlib import Path\nclass Config(unittest.TestCase):\n    def test_mode(self): self.assertIn(\"mode=dev\", Path(\"config/settings.ini\").read_text())\n",
+  "tests/test_colors.py": "import unittest\nfrom pathlib import Path\nclass Colors(unittest.TestCase):\n    def test_blue(self): self.assertEqual(Path(\"data/colors.txt\").read_text().splitlines().count(\"blue\"), 2)\n",
+  "tests/test_readme.py": "import unittest\nfrom pathlib import Path\nclass Readme(unittest.TestCase):\n    def test_owner(self): self.assertIn(\"Owner: Ada\", Path(\"README.txt\").read_text())\n"
+}
