@@ -721,6 +721,13 @@ requirements:
     acceptance:
     - id: AC161
       statement: 'AC161: OMN-20303 AC3 harness readback regression: both delegation writers retain the baseline of an unreported token-derived harness saving, preserve a stored pinned baseline, and invent no baseline for failed, zero-token, unresolved or explicitly reported terminals -- falsifier: uv run pytest tests/unit/nodes/node_projection_delegation/test_harness_savings_counterfactual_omn20303.py -q -n 0 --no-cov'
+  - id: "req-compaction-latency-command-boundary"
+    statement: "The TA.12 runner replays a command accepted by the compaction orchestrator, preserves the recorded input identity and model choice, and counts only adapter install verdicts as phase measurements. This prerequisite does not qualify live latency or enable the TA.15 binding."
+    acceptance:
+      - id: "AC180"
+        statement: "AC180: the latency runner carries input_messages_hash, newest_turn, barrier_id and compact_model from the recorded input; its payload validates as ModelContextCompactionRequested on cold, warm-up and warm trips, and a missing recorded input hash is refused before any publish -- falsifier: the focused command-boundary tests fail on the base, which drops those fields and publishes an invalid command."
+      - id: "AC181"
+        statement: "AC181: a native adapter verdict with an otherwise valid prepared timing receipt is a refusal with absent phase timings, never an input to latency qualification -- falsifier: the native-with-prepared regression fails on the base, which records a successful measurement."
   - id: req-qwen-tool-call-experiment
     statement: |-
       Report the fixed local Qwen tool-call experiment without shipping a tool-loop implementation or claiming completion of the umbrella integration-pass ticket.
@@ -3045,6 +3052,30 @@ dod_evidence:
     - check_type: command
       check_value: uv run pytest tests/unit/nodes/node_projection_delegation/test_harness_savings_counterfactual_omn20303.py -k test_harness_saving_keeps_counterfactual -q -n 0 --no-cov --refuse-skips
       cwd: ${OMNI_HOME}/omnimarket
+
+  - id: "dod-omn17427-ac180-latency-command-boundary"
+    description: "A real compaction request model validates every replayed command and the recorded identity, barrier and model survive; missing identity is refused before publication. Both tests fail at the merge base."
+    source: "manual"
+    binds_ac: ["AC180"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_latency_run.py -q -n 0 -p no:randomly --no-cov -k 'real_compaction_request_boundary or missing_recorded_messages_hash' --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac181-latency-install-only"
+    description: "A native fallback accompanied by prepared timings cannot count as a successful latency measurement. The test fails at the merge base."
+    source: "manual"
+    binds_ac: ["AC181"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_latency_run.py -q -n 0 -p no:randomly --no-cov -k native_fallback_with_prepared --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-latency-command-boundary-deploy-probe"
+    description: "Deploy probe: on the hosted runner, exercise the real adapter command boundary with a validating receipt client and a native response, without broker access or installing a binding. This packaged-path probe fails at the merge base and does not attest live latency."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_latency_run.py -q -n 0 -p no:randomly --no-cov -k 'real_compaction_request_boundary or missing_recorded_messages_hash or native_fallback_with_prepared' --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
 
   - id: dod-omn17427-qwen-tool-call-report
     description: |-
