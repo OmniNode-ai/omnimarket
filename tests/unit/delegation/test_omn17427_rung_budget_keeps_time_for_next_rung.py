@@ -200,6 +200,11 @@ def test_the_first_rung_leaves_the_reserve_and_the_last_rung_gets_the_rest(
     tmp_path: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _install_ladder(monkeypatch, free_local=False)
+    # OMN-21214's per-rung floor is a second, tighter bound on rung 1; this
+    # test measures the OMN-17427 reserve alone, so the floor is switched off.
+    monkeypatch.setattr(
+        port_mod, "resolve_task_class_rung_floor_seconds", lambda _: None
+    )
     _, _, calls = _run(monkeypatch, tmp_path, local_behaviour="hang")
 
     reserve = resolve_task_class_execution_budget("research").next_rung_reserve_seconds
