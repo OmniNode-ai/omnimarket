@@ -1,8 +1,8 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-19448"
-title: "delegation_events stores finish_reason and truncated"
-summary: "omnimarket adds nullable finish_reason and truncated columns to delegation_events through migration 0053, carries both in the local dispatch terminal payload, and writes them from the deciding rung of the terminal. Unknown stop reasons stay NULL. Migration 0058 adds nullable requested_model, queue_wait_ms and execution_ms, written from the terminal: the first attempt's model, the measured queue wait and the measured execution time. Each acceptance criterion is bound to the pull request's own tests."
+title: "delegation_events stores terminal columns and classifies canonical outcomes"
+summary: "Migrations 0052, 0053 and 0058 already supply the terminal trace, routing, finish reason, truncation, requested model and timing columns. Both writers now also classify canonical terminal_ok, so canonical-only failures participate in the cause readback even when the producer names no cause. Real PostgreSQL checks all eleven terminal fields together. The read-only lab probe refuses empty failure windows and failed rows with NULL causes."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -150,3 +150,38 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/delegation/test_delegate_skill_trace_id_omn19448.py tests/unit/delegation/test_terminal_columns_omn19448.py tests/unit/delegation/test_credential_refusal_cause_derived_omn19448.py -q -p no:cacheprovider"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-omn19448-complete-terminal-postgres-acceptance
+    description: 'Ticket AC1 and AC2: apply the full migration chain and reapply 0052, 0053 and 0058; read all eight added columns plus declared cause, operational outcome and content verdict through both real PostgreSQL writers and both terminal families. The fix additionally stamps terminal_ok for canonical terminals, which previously left it NULL even on a declared failure. No cause is invented for an unnamed failure. The locked infra checkout at 49d28fc6208afd2625aee305069eca8ae992e59e vendors byte-identical copies of all three migrations (read 2026-10-21). No duplicate migration is added.'
+    source: manual
+    binds_ac: [AC1, AC2]
+    checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/test_omn19448_terminal_acceptance_real_postgres.py -q -n 0 --no-cov -p no:cacheprovider --refuse-skips
+      cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn19448-current-deploy-cause-readback
+    description: 'Ticket AC3: read on dev at 2026-10-21T15:18Z after the current writers started at 13:38:45Z: 84 rows, 5 failed, 0 failed with NULL cause. The query requires a nonzero failed-row count and a zero NULL-cause count, and PostgreSQL rejects a false result. The credential-refusal fix window from 2026-10-19T08:25:32Z separately had 8531 rows, 968 failed and 0 failed with NULL cause. The lab read is local-gate-only; hosted proof tests the same SQL against disposable rows.'
+    source: manual
+    binds_ac: [AC3]
+    execution_scope: local_done_gate
+    checks:
+    - check_type: command
+      check_value: >-
+        ssh -o BatchMode=yes -o ConnectTimeout=10 "${DELEGATION_DEV_SSH_TARGET:?set the dev-lane SSH target}"
+        'docker exec -e PGOPTIONS="-c default_transaction_read_only=on" -i omnibase-infra-postgres psql -X -v ON_ERROR_STOP=1 -v deploy_boundary=2026-10-21T13:38:45.647091938Z -U postgres -d omnidash_analytics'
+        < scripts/ci/delegation_terminal_cause_readback.sql
+      cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn19448-cause-readback-negative-controls
+    description: 'AC3 query controls: the same SQL passes a typed failure and raises for a failed row with NULL cause or an empty failure window. All controls execute on real PostgreSQL with skips refused.'
+    source: manual
+    binds_ac: [AC3]
+    checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/test_omn19448_terminal_acceptance_real_postgres.py -q -n 0 --no-cov -p no:cacheprovider --refuse-skips
+      cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn19448-canonical-outcome-hosted-probe
+    description: 'Hosted package probe for the canonical outcome fix: real disposable PostgreSQL must store terminal_ok=false with the declared cause, and the readback must fail when that cause is removed. Docker and locked dependencies suffice. These canonical cases fail before the fix; this does not attest deployment to the lab.'
+    source: manual
+    checks:
+    - check_type: command
+      check_value: uv run pytest tests/test_omn19448_terminal_acceptance_real_postgres.py -q -n 0 --no-cov -p no:cacheprovider --refuse-skips -k 'async and canonical and quality_gate_refused'
+      cwd: ${OMNI_HOME}/omnimarket
