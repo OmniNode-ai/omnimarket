@@ -448,21 +448,17 @@ def _python_blocks(content: str, policy: ModelNameResolutionPolicy) -> list[str]
     return [body for lang, body in fenced if lang.strip().lower() in tags]
 
 
-def _free_names(code: str) -> set[str] | None:
-    """Names the code reads that nothing in the code binds. None if unparseable.
+def _bound_and_read(code: str) -> tuple[set[str], set[str]] | None:
+    """The module-scope names the code binds, and those it reads. None if unparseable.
 
-    A module-scope symbol that is referenced but never assigned, imported or
-    defined is free. Inside a function or class, a symbol the compiler resolved
-    to the global scope is free unless the module binds it. A star import makes
-    every name potentially bound, so the answer is then unresolvable and yields
-    no finding rather than a guess.
+    A module-scope symbol that is assigned, imported or defined is bound.
+    Inside a function or class, a symbol the compiler resolved to the global
+    scope is read from the module, as is any symbol read at module scope.
     """
     try:
         top = symtable.symtable(code, "<delegated-answer>", "exec")
     except SyntaxError:
         return None
-    if _STAR_IMPORT_RE.search(code):
-        return set()
     bound = {
         symbol.get_name()
         for symbol in top.get_symbols()
@@ -483,6 +479,29 @@ def _free_names(code: str) -> set[str] | None:
             _walk(child)
 
     _walk(top)
+    return bound, referenced
+
+
+def _free_names(blocks: list[str]) -> set[str]:
+    """Names the answer's Python reads that none of its blocks binds.
+
+    OMN-21258: the blocks of one answer are one program, the way a reader runs
+    them. A function defined in one block and called in a usage block below it
+    is bound, so the module scope is the union of every block's. A block that
+    does not parse binds and reads nothing here (compiles_without_errors owns
+    that failure). A star import makes every name potentially bound, so the
+    answer is then unresolvable and yields no finding rather than a guess.
+    """
+    bound: set[str] = set()
+    referenced: set[str] = set()
+    for block in blocks:
+        if _STAR_IMPORT_RE.search(block):
+            return set()
+        names = _bound_and_read(block)
+        if names is None:
+            continue
+        bound |= names[0]
+        referenced |= names[1]
     return referenced - bound
 
 
@@ -506,14 +525,7 @@ def evaluate_name_resolution(
     answer = answer_segment(content, terminator=terminator)
     source_words = set(_compiled(policy.source_word_pattern).findall(grounding_source))
     known = _BUILTIN_NAMES | set(policy.implicit_module_names) | source_words
-    unresolved: list[str] = []
-    for block in _python_blocks(answer, policy):
-        free = _free_names(block)
-        if not free:
-            continue
-        for name in sorted(free - known):
-            if name not in unresolved:
-                unresolved.append(name)
+    unresolved = sorted(_free_names(_python_blocks(answer, policy)) - known)
     return ModelNameResolutionVerdict(
         evaluated=True,
         unresolved=tuple(unresolved[: policy.failure_policy.max_reported]),

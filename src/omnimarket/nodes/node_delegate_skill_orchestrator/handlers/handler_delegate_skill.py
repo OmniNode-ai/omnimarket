@@ -196,6 +196,8 @@ class ProtocolDelegationDispatchPort(Protocol):
         attribution: Mapping[str, str] | None = None,
         model: str | None = None,
         named_tests: ModelNamedTestSpec | None = None,
+        trace_id: UUID | None = None,
+        queue_wait_ms: int | None = None,
     ) -> dict[str, object]: ...
 
 
@@ -264,6 +266,38 @@ def _attribution_dispatch_kwargs(
     if attribution:
         return {"attribution": attribution}
     return {}
+
+
+class _TerminalMeasureDispatchKwargs(TypedDict, total=False):
+    """Terminal trace and measured queue wait for accepting ports (OMN-19448).
+
+    These are evidence only: an older runtime port or an uninspectable dispatch
+    must keep working without receiving unknown keywords.
+    """
+
+    trace_id: UUID
+    queue_wait_ms: int
+
+
+def _terminal_measure_dispatch_kwargs(
+    request: ModelDelegateSkillRequest,
+    queue_wait_ms: int | None,
+    dispatch: Callable[..., object],
+) -> _TerminalMeasureDispatchKwargs:
+    try:
+        parameters = inspect.signature(dispatch).parameters
+    except (TypeError, ValueError):
+        return {}
+    accepts_kwargs = any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    )
+    kwargs: _TerminalMeasureDispatchKwargs = {}
+    if request.trace_id is not None and ("trace_id" in parameters or accepts_kwargs):
+        kwargs["trace_id"] = request.trace_id
+    if queue_wait_ms is not None and ("queue_wait_ms" in parameters or accepts_kwargs):
+        kwargs["queue_wait_ms"] = queue_wait_ms
+    return kwargs
 
 
 class _NamedTestsDispatchKwargs(TypedDict, total=False):
@@ -1045,7 +1079,22 @@ def _response_from_result(
     # names timeout, whatever its earlier rungs record. The budget stopped the
     # ladder with a rung in flight, so the gate did not decide it; any earlier
     # gate refusals stay on their own rungs in ``attempts``.
-    if (
+    pre_dispatch_refusal = (
+        status_value == "failed"
+        and result.get("attempts_count") == 0
+        and not attempts
+        and result.get("operational_outcome") == "boundary_failure"
+    )
+    if pre_dispatch_refusal:
+        # The inner canonical terminal reports an ingress boundary failure,
+        # before a provider or quality gate ran. The consumer-facing wire uses
+        # REFUSED_BEFORE_DISPATCH for that same zero-attempt fact; classifying
+        # its error prose as PROVIDER_ERROR makes the outer terminal invalid.
+        terminal_failure_cause = (
+            EnumDelegationTerminalFailureCause.REFUSED_BEFORE_DISPATCH
+        )
+        quality_failures = []
+    elif (
         status_value == "timeout"
         and explicit_terminal_failure_cause
         is EnumDelegationTerminalFailureCause.TIMEOUT
@@ -1093,7 +1142,9 @@ def _response_from_result(
             result.get("model_cloud_baseline") or result.get("baseline_model") or ""
         ),
     )
-    if baseline.state == "BASELINE_UNRESOLVED":
+    if baseline.state == "BASELINE_UNRESOLVED" or _cost_measured(attempts) is False:
+        # OMN-21260: savings against an unpriced cost would be the full baseline
+        # price, counted as measured. Unknown cost, unknown savings.
         cost_savings_usd: float | None = None
     elif status_value == "completed" and quality_gate_passed:
         estimate = _estimate_claude_cost_savings(
@@ -1186,7 +1237,9 @@ def _response_from_result(
         # provider returned with it is kept locally and in the attempt evidence.
         response=final_answer,
         quality_gate_passed=quality_gate_passed,
-        quality_score=_as_float(result.get("quality_score")),
+        quality_score=None
+        if pre_dispatch_refusal
+        else _as_float(result.get("quality_score")),
         required_quality_bar=_as_optional_float(result.get("required_quality_bar")),
         score_vs_required_bar=score_vs_required_bar,
         failed_acceptance_criteria=failed_acceptance_criteria,
@@ -1530,6 +1583,10 @@ class HandlerDelegateSkill:
                     # OMN-21077: only when named -- see _NamedTestsDispatchKwargs.
                     **_named_tests_dispatch_kwargs(
                         request, self._dispatch_port.dispatch
+                    ),
+                    # OMN-19448: evidence only, when the port accepts the keywords.
+                    **_terminal_measure_dispatch_kwargs(
+                        request, queue_wait_ms, self._dispatch_port.dispatch
                     ),
                 ),
                 timeout=float(

@@ -253,7 +253,8 @@ class TestListTestRemove:
         assert lines[1] == "OpenRouter  not set up"
         assert lines[2].startswith("OpenAI      set up, last test passed ")
         assert lines[3] == "Anthropic   not set up"
-        assert lines[4] == "Ollama      not set up"
+        assert lines[4] == "GLM         not set up"
+        assert lines[5] == "Ollama      not set up"
 
     def test_test_with_no_provider_tests_every_set_up_one(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -327,6 +328,7 @@ def test_list_json_is_one_object_per_provider(
         "openrouter",
         "openai",
         "anthropic",
+        "glm",
         "ollama",
         "local",
     ]
