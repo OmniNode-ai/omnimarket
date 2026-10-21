@@ -44,6 +44,7 @@ from omnimarket.handlers.node_overlay_reader import (
     resolve_setting,
 )
 from omnimarket.inference.local_byok_credential_adapter import (
+    local_model_tests_path,
     registered_local_byok_providers,
     resolve_local_byok_credential_model,
     resolve_local_byok_credential_models,
@@ -544,7 +545,8 @@ class HandlerModelSetup:
         return default_evidence_db_path().parent
 
     def _results_path(self) -> Path:
-        return self._state_dir() / "model_tests.json"
+        # OMN-21259: the routes read the same record to skip a key that failed.
+        return local_model_tests_path()
 
     def overrides_path(self) -> Path:
         """The local routes file onboarding writes when it sets up Ollama."""
@@ -643,6 +645,12 @@ class HandlerModelSetup:
             return None
         return resolve_local_byok_credential_model(provider)
 
+    @staticmethod
+    def _stored_model(provider: ModelProvider) -> str | None:
+        if provider in ("ollama", LOCAL_URL_PROVIDER):
+            return None
+        return resolve_local_byok_credential_model(provider)
+
     def _test(self, provider: ModelProvider) -> ModelModelTestResult:
         now = datetime.now(UTC).isoformat(timespec="seconds")
         backend_id = self.backend_for(provider)
@@ -676,6 +684,7 @@ class HandlerModelSetup:
                 status="failed",
                 tested_at=now,
                 backend_id=backend_id,
+                model=chosen,
                 reason=f"answered on {answered_model}, not your chosen model {chosen}",
             )
         elif (
@@ -695,11 +704,14 @@ class HandlerModelSetup:
             reason = _failure_reason(stdout, stderr, exit_code)
             if exit_code == 0 and answered not in (None, backend_id):
                 reason = f"answered by {answered}, not {backend_id}"
+            # OMN-21259: name the model that failed, so the developer knows
+            # which of the key's models to fix or replace.
             result = ModelModelTestResult(
                 provider=provider,
                 status="failed",
                 tested_at=now,
                 backend_id=backend_id,
+                model=chosen or self._stored_model(provider),
                 reason=reason,
             )
         results = self._read_results()
