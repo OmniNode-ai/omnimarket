@@ -17,8 +17,8 @@ dependencies:
   - "omnibase_core>=0.40.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["effect", "hooks", "claude-code", "adapter", "client-bindings"]
+tags: ["effect", "hooks", "claude-code", "adapter", "client-bindings", "latency-qualification"]
 pack: "core"
 display_name: "Claude Code Hook Adapter"
 node_role: "effect"
-tickets: ["OMN-18531"]
+tickets: ["OMN-18531", "OMN-17427"]
