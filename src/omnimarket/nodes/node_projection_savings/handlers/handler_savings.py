@@ -22,6 +22,9 @@ from omnimarket.nodes.node_projection_savings.handlers.handler_compaction_saving
     HandlerCompactionSavings,
     compaction_source_from_post_compact,
 )
+from omnimarket.nodes.node_projection_savings.handlers.handler_modelled_terminal_savings import (
+    modelled_terminal_savings,
+)
 from omnimarket.nodes.node_projection_savings.handlers.handler_savings_run_identity_fold import (
     HandlerSavingsRunIdentityFold,
     ModelSavingsRunIdentity,
@@ -748,7 +751,9 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         projection = ModelDelegateSkillSavingsProjection.from_terminal_event(
             terminal,
             baseline_model=self._delegate_skill_baseline_model,
-        )
+        ) or modelled_terminal_savings(
+            terminal
+        )  # OMN-21208: harness terminals report none
         if projection is None:
             return True
 

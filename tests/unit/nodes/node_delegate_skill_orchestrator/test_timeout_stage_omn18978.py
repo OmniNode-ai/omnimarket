@@ -58,6 +58,11 @@ def short_budget(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+# completed, failed, failed_unrouted and pre_dispatch_failed: every subscription
+# the runtime port opened must be released on cleanup.
+_SUBSCRIBED_TOPICS = 4
+
+
 def _request() -> ModelDelegateSkillRequest:
     return ModelDelegateSkillRequest(
         prompt="Summarize the supplied facts.",
@@ -108,7 +113,7 @@ async def test_handler_budget_names_the_bus_stage_and_keeps_it_after_cleanup(
     assert f"stage={stage}" in terminal.error_message
     assert "stage=terminal_cleanup" not in terminal.error_message
     assert terminal.terminal_failure_cause == "timeout"
-    assert bus.unsubscribed == (0 if stage == "subscribe" else 3)
+    assert bus.unsubscribed == (0 if stage == "subscribe" else _SUBSCRIBED_TOPICS)
     assert current_dispatch_progress.get() is None
 
 
@@ -140,7 +145,7 @@ async def test_runtime_bus_deadline_preserves_the_stage_after_unwinding(
     assert terminal.status == "timeout"
     assert f"stage={stage}" in terminal.error_message
     assert "stage=terminal_cleanup" not in terminal.error_message
-    assert bus.unsubscribed == (0 if stage == "subscribe" else 3)
+    assert bus.unsubscribed == (0 if stage == "subscribe" else _SUBSCRIBED_TOPICS)
     assert current_dispatch_progress.get() is None
 
 
