@@ -43,6 +43,11 @@ requirements:
     acceptance:
       - id: "AC7"
         statement: "AC7: the 2026-10-18 reviewer words joined to their question become one RULING with the words verbatim and the session link, the key-approval words and words with no joined question go to the orchestrator inbox, a plain yes to a proposal naming both scope lists becomes an OPERATOR-CONSENT with the scopes copied, and the effect appends the row after the capture rows with no double on resume -- falsifier: uv run pytest tests/unit/nodes/node_operator_capture_compute/test_words_promotion.py tests/unit/nodes/node_operator_capture_effect/test_words_promotion_effect.py -q --no-cov fails with the promotion handler absent"
+  - id: "req-principal-after-lane"
+    statement: "A row the work-ledger serve attributes keeps lane= (or from=) as the cell right after the type: principal= goes right after that subject cell, never as the last cell, and right after the type when the first cell is not a subject cell."
+    acceptance:
+      - id: "AC8"
+        statement: "AC8: a bus CLAIM stamped by the serve reads '| CLAIM | lane=<lane> | principal=<login> |', a MSG reads '| MSG | from=<lane> | principal=<login> |', and a replay of a request that landed principal-first is a duplicate -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_append_effect/test_handler_work_ledger_append_effect.py -q --no-cov -k 'subject_cell or principal_after_lane or before_omn_19513' fails against the pre-change handler"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 and AC2: registry passthrough and the raw-value wire model, plus the projection and emit-effect suites over the converted fixtures."
@@ -121,3 +126,10 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_operator_capture_compute/test_words_promotion.py tests/unit/nodes/node_operator_capture_effect/test_words_promotion_effect.py -q --no-cov"
     binds_ac: ["AC7"]
+  - id: "dod-omn19513-ac8-principal-after-lane"
+    description: "The serve's principal stamp keeps lane= second so lane-second ledger readers (pr-handoff handoff.sh among them) find a bus-written CLAIM."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_work_ledger_append_effect/test_handler_work_ledger_append_effect.py -q --no-cov -k 'subject_cell or principal_after_lane or before_omn_19513'"
+    binds_ac: ["AC8"]
