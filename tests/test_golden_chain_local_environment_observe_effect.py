@@ -299,7 +299,7 @@ async def test_real_prober_with_real_http_tcp_and_closed_port() -> None:
                 ),
                 1,
             )
-            assert result.observed_state.value == expected
+            assert result.observed_state.value == expected, result.reason
             assert "SECRET" not in result.reason
             assert "token=" not in result.reason
             assert path in result.reason
