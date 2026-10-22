@@ -17,6 +17,11 @@ requirements:
     acceptance:
       - id: "AC2"
         statement: "scripts/ci/pr_stale_red_heal.py re-runs a red Release Staleness job (and CI Summary when those are the run's only reds) when the newest published tag is newer than the failed measurement's base, and re-runs nothing when no release followed the red."
+  - id: "req-local-observer-http-deadline"
+    statement: "The local environment observer starts the HTTP request deadline after synchronous client construction."
+    acceptance:
+      - id: "AC3"
+        statement: "Slow HTTP client construction does not turn a reachable local HTTP service into a down observation; real HTTP, TCP and closed-port observations retain their expected states."
 evidence_requirements:
   - kind: "tests"
     description: "Run the release-identity gate in strict mode against the tree and compare the uv.lock pin with pyproject.toml."
@@ -42,3 +47,20 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_pr_stale_red_heal_omn19852.py -q -k release_staleness"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn18010-pr4306-local-observer-deadline"
+    description: "Run the packaged observer against real loopback HTTP and TCP services, including slow HTTP client construction and a closed port."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_local_environment_observe_effect.py -q -k 'slow_client_construction or real_prober'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn18010-pr4306-local-observer-deploy-probe"
+    description: "Hosted-runner deploy check of the published source artifact at this checkout's exact commit. The client context must contain the HTTP timeout context. The former timeout-first implementation fails. This checks the package artifact and does not attest a running deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          set -o pipefail;
+          curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_local_environment_observe_effect/handlers/handler_local_environment_observe.py" | python3 -c 'import ast, sys; tree = ast.parse(sys.stdin.read()); clients = [n for n in ast.walk(tree) if isinstance(n, ast.AsyncWith) and any(isinstance(i.context_expr, ast.Call) and isinstance(i.context_expr.func, ast.Attribute) and i.context_expr.func.attr == "AsyncClient" for i in n.items)]; assert len(clients) == 1; assert any(isinstance(n, ast.AsyncWith) and any(isinstance(i.context_expr, ast.Call) and isinstance(i.context_expr.func, ast.Attribute) and i.context_expr.func.attr == "timeout" for i in n.items) for n in clients[0].body); print("local environment deploy probe: PASS")'
+        cwd: "${OMNI_HOME}/omnimarket"

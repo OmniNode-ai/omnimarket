@@ -39,6 +39,19 @@ class ModelEmitResult(BaseModel):
         "identity failed to reach the broker within the backoff window; "
         "the event stays spooled.",
     )
+    publish_failure_count: int | None = Field(
+        default=None,
+        ge=0,
+        description="The publish circuit's consecutive failed-invocation count "
+        "after this invocation; None when the adapter has no publish identity "
+        "or the circuit is disabled (OMN-17427).",
+    )
+    publish_circuit_open: bool = Field(
+        default=False,
+        description="True when this invocation skipped the publish because the "
+        "circuit was open, or opened the circuit by reaching the failure "
+        "threshold (OMN-17427).",
+    )
     drained_count: int = Field(
         default=0,
         ge=0,
