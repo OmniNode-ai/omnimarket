@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -12,6 +13,9 @@ import yaml
 
 from omnimarket.nodes.node_llm_delegation_call_effect import (
     HandlerAgentSession,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
+    handler_agent_session as session,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_agent_session import (
     main,
@@ -84,3 +88,140 @@ def test_incomplete_launcher_input_never_starts_a_session(
 
     monkeypatch.setattr(HandlerAgentSession, "run", forbidden)
     assert main(argv) == 64
+
+
+# --- tools-only sessions (RULING 2026-10-21T22:32:15Z, OMN-17427) ------------------------
+
+BUILTIN_TOOLS = frozenset(
+    {
+        "Bash",
+        "Read",
+        "Write",
+        "Edit",
+        "Glob",
+        "Grep",
+        "WebFetch",
+        "WebSearch",
+        "Task",
+        "Skill",
+    }
+)
+
+
+def _config(tmp_path: Path, servers: dict[str, object]) -> Path:
+    path = tmp_path / "mcp.json"
+    path.write_text(json.dumps({"mcpServers": servers}))
+    return path
+
+
+@pytest.mark.unit
+def test_a_tools_only_session_has_no_built_in_tool_and_one_server(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[list[str]] = []
+
+    def run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(argv)
+        assert kwargs["input"] == "the brief"
+        return subprocess.CompletedProcess(argv, 0, '{"structured_output": {}}', "")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    schema = tmp_path / "schema.json"
+    schema.write_text('{"type": "object"}')
+    config = _config(tmp_path, {"morning": {"command": "python3", "args": []}})
+    done = session.HandlerAgentSession().run_tools_only(
+        "sonnet", "the brief", str(config), str(schema)
+    )
+    assert done.returncode == 0
+    ((argv,),) = [calls]
+    assert argv[argv.index("--tools") + 1] == ""
+    assert "--strict-mcp-config" in argv
+    assert argv[argv.index("--allowedTools") + 1] == "mcp__morning"
+    assert argv[argv.index("--permission-mode") + 1] == "dontAsk"
+    assert not BUILTIN_TOOLS & set(argv)
+    assert not any("skip-permissions" in a or "bypass" in a.lower() for a in argv)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "servers",
+    [{}, {"a": {}, "b": {}}, {"bad name": {}}],
+    ids=["none", "two", "not-a-name"],
+)
+def test_a_tools_only_session_needs_exactly_one_named_server(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, servers: dict[str, object]
+) -> None:
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("session started")
+
+    monkeypatch.setattr(subprocess, "run", forbidden)
+    schema = tmp_path / "schema.json"
+    schema.write_text("{}")
+    with pytest.raises(session.AgentSessionRefusedError):
+        session.HandlerAgentSession().run_tools_only(
+            "sonnet", "x", str(_config(tmp_path, servers)), str(schema)
+        )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("flag", "value"),
+    [
+        ("--tools", "Bash"),
+        ("--tools", "default"),
+        ("--allowedTools", "Bash(git *)"),
+        ("--allowedTools", "mcp__morning Bash"),
+        ("--permission-mode", "bypassPermissions"),
+        ("--permission-mode", "acceptEdits"),
+        ("--setting-sources", "user,project"),
+    ],
+)
+def test_the_tools_only_guard_refuses_a_shell_or_a_wider_grant(
+    flag: str, value: str
+) -> None:
+    argv = session.tools_only_argv("sonnet", "mcp.json", "morning", "{}")
+    session.refuse_unless_tools_only(argv, "morning")
+    argv[argv.index(flag) + 1] = value
+    with pytest.raises(
+        session.AgentSessionRefusedError, match="refused a tools-only session"
+    ):
+        session.refuse_unless_tools_only(argv, "morning")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["--dangerously-skip-permissions"],
+        ["--add-dir", "/"],
+        ["--allowedTools", "Bash"],
+        ["--settings", "{}"],
+    ],
+)
+def test_the_tools_only_guard_refuses_added_power(extra: list[str]) -> None:
+    argv = session.tools_only_argv("sonnet", "mcp.json", "morning", "{}") + extra
+    with pytest.raises(session.AgentSessionRefusedError):
+        session.refuse_unless_tools_only(argv, "morning")
+    stripped = session.tools_only_argv("sonnet", "mcp.json", "morning", "{}")
+    stripped.remove("--strict-mcp-config")
+    with pytest.raises(session.AgentSessionRefusedError, match="strict-mcp-config"):
+        session.refuse_unless_tools_only(stripped, "morning")
+
+
+@pytest.mark.unit
+def test_the_standalone_entrypoint_runs_a_tools_only_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import io
+
+    def run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, 0, '{"ok": true}', "")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr("sys.stdin", io.StringIO("brief"))
+    schema = tmp_path / "schema.json"
+    schema.write_text("{}")
+    config = _config(tmp_path, {"morning": {}})
+    assert main(["--tools-only", "sonnet", str(config), str(schema)]) == 0
+    assert capsys.readouterr().out == '{"ok": true}'
+    assert main(["--tools-only", "sonnet"]) == 64
