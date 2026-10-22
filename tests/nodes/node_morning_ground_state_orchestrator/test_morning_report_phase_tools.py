@@ -492,6 +492,35 @@ def test_a_refused_terminal_names_the_ledgers_reason_and_writes_its_friction_onc
 
 
 @pytest.mark.unit
+def test_a_timed_out_program_takes_its_children_with_it(tmp_path: Path) -> None:
+    """The 2026-10-22 08:40Z fire: uv run's child outlived the tool's timeout (OMN-17427)."""
+    from omnimarket.nodes.node_morning_ground_state_orchestrator.tools.base import _proc
+
+    pid_file = tmp_path / "child.pid"
+    parent = _program(
+        tmp_path / "parent.py",
+        "import subprocess, time\n"
+        "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+        f"open({str(pid_file)!r}, 'w').write(str(child.pid))\n"
+        "time.sleep(60)",
+    )
+    done = _proc([sys.executable, str(parent)], cwd=tmp_path, timeout=2)
+    assert done["exit"] is None
+    assert done["stderr"] == "timed out after 2 s"
+    child = int(pid_file.read_text())
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        try:
+            os.kill(child, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.1)
+    else:
+        os.kill(child, 9)
+        raise AssertionError("the timed-out program's child is still running")
+
+
+@pytest.mark.unit
 def test_a_terminal_without_a_claim_refuses(tmp_path: Path) -> None:
     with pytest.raises(MorningToolRefusalError, match="ledger_append_claim first"):
         _run(

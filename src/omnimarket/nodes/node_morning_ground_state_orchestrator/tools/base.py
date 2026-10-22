@@ -8,8 +8,10 @@ a shell, and a program only by the deployment overlay's name for it (``_command`
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
+import signal
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -78,23 +80,36 @@ def _tail(text: str) -> str:
 
 
 def _proc(argv: list[str], *, cwd: Path, timeout: int = PROCESS_TIMEOUT_S) -> Result:
+    """Run one program in its own process group; a timeout ends the whole group.
+
+    A program started through ``uv run`` is a child of uv, and killing uv alone left that child
+    running: the 2026-10-22 08:40Z fire's ledger reconcile ran past its 900 s and kept running,
+    orphaned, at full CPU after the tool had returned (OMN-17427)."""
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
-    try:
-        done = subprocess.run(
-            argv,
-            cwd=cwd,
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-        )
-    except subprocess.TimeoutExpired:
-        return {"exit": None, "stdout": "", "stderr": f"timed out after {timeout} s"}
+    with subprocess.Popen(
+        argv,
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    ) as process:
+        try:
+            stdout, stderr = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGKILL)
+            process.communicate()
+            return {
+                "exit": None,
+                "stdout": "",
+                "stderr": f"timed out after {timeout} s",
+            }
     return {
-        "exit": done.returncode,
-        "stdout": _tail(done.stdout),
-        "stderr": _tail(done.stderr),
+        "exit": process.returncode,
+        "stdout": _tail(stdout),
+        "stderr": _tail(stderr),
     }
 
 
