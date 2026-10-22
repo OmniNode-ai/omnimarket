@@ -4,10 +4,10 @@
 #
 # DEFAULT OFF. The lane setting ONEX_TRAJECTORY_EVALUATION_BACKEND is one of
 # off, in_memory, or <external>_metadata / <external>_full. Unset means off:
-# every command is refused backend_disabled before any outbound call. This
-# slice ships the evaluator protocol and the in-memory evaluator only; external
-# values are recognised by shape and refused backend_unavailable until an
-# adapter registers an evaluator for them.
+# every command is refused backend_disabled before any outbound call. The one
+# registered external evaluator is dharma (OMN-20088), which takes full content
+# only; any other external value is recognised by shape and refused
+# backend_unavailable.
 name: node_trajectory_evaluation_effect
 contract_name: node_trajectory_evaluation_effect
 node_name: node_trajectory_evaluation_effect
@@ -99,8 +99,9 @@ externally_consumed_topics:
   - onex.evt.omnimarket.trajectory-evaluation-failed.v1
   - onex.evt.omnimarket.trajectory-evaluation-status.v1
 
-# The public-repository guard and the evaluator adapter reach their services
-# over HTTP (httpx).
+# The public-repository guard and the registered effect handler's request_dharma
+# operation reach their services over HTTP (httpx). The evaluator delegates HTTP
+# requests to that handler and builds and parses campaign payloads itself.
 metadata:
   transport_type: http
 
@@ -123,6 +124,22 @@ published_events:
   - event_type: TrajectoryEvaluationStatus
     topic: onex.evt.omnimarket.trajectory-evaluation-status.v1
     description: "The result of one poll command."
+
+# The Dharma evaluator's credentials, resolved through the secret store at the
+# effect boundary with no environment fallback. On the dev lane the runtime
+# policy maps both refs (omnibase_infra runtime_policy.contract.yaml).
+secrets:
+  dharma.api_key:
+    description: "Dharma organization bearer token (scopes evals:run, evals:read)."
+    required: true
+  dharma.org_id:
+    description: "Dharma organization id the token is bound to."
+    required: true
+
+# The Dharma origin comes from omnimarket.config.service_endpoints
+# (DHARMA_API_URL); no URL lives in this contract. The evaluator calls only the
+# two paths Dharma's Evaluation Runs OpenAPI 1.1.0 names for managed campaigns:
+# POST and GET /api/orgs/{org_id}/managed-evals/campaigns.
 
 # Only work that belongs to a public repository may reach the evaluator: a
 # missing attribution, a private or absent repository, and any failure to

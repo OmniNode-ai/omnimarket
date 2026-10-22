@@ -8,11 +8,14 @@ import asyncio
 import json
 import socket
 import threading
+import time
 from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
+import httpx
 import pytest
 import yaml
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
@@ -327,6 +330,39 @@ async def test_real_prober_with_real_http_tcp_and_closed_port() -> None:
         assert "SECRET" not in result.reason
     finally:
         tcp.close()
+        await asyncio.to_thread(server.shutdown)
+        server.server_close()
+        thread.join(timeout=2)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_slow_client_construction_does_not_spend_the_probe_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    server = ThreadingHTTPServer(("127.0.0.1", 0), HealthServer)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    build = httpx.AsyncClient.__init__
+
+    def slow_build(self: httpx.AsyncClient, *args: Any, **kwargs: Any) -> None:
+        time.sleep(0.3)
+        build(self, *args, **kwargs)
+
+    monkeypatch.setattr(httpx.AsyncClient, "__init__", slow_build)
+    try:
+        result = await observer.RealNetworkProber().probe(
+            observer.ModelProbeTarget(
+                service="127.0.0.1",
+                port=server.server_port,
+                scheme="http",
+                path="/health",
+                query="token=SECRET",
+            ),
+            0.2,
+        )
+        assert result.observed_state.value == "running", result.reason
+    finally:
         await asyncio.to_thread(server.shutdown)
         server.server_close()
         thread.join(timeout=2)
