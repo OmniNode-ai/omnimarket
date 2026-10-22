@@ -209,12 +209,12 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_projection_metering_summary/test_writer.py tests/nodes/node_projection_metering_summary/test_omn17427_store_refresh.py -q -n 0 -p no:randomly --no-cov"
+        check_value: "uv run pytest tests/nodes/node_projection_metering_summary/test_writer.py tests/nodes/node_projection_metering_summary/test_omn17427_store_refresh.py -q -n 0 -p no:randomly --no-cov"
     binds_ac: ["AC11"]
   - id: "dod-omn19513-metering-tenant-deploy-probe"
     description: "Hosted deploy probe: dispatch the checked-out metering writer against a real SQLite summary table while enforcing the asyncpg adapter's tenant-write boundary, then read back the rows after dispatch and replay. This needs no external database or lane credentials and fails when the upsert omits tenant. It verifies the checkout's write path; a live lane readback remains separate."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_projection_metering_summary/test_writer.py -q -n 0 -p no:randomly --no-cov -k test_writer_upserts_on_two_dispatches_and_closes_after_failure"
+        check_value: "uv run pytest tests/nodes/node_projection_metering_summary/test_writer.py -q -n 0 -p no:randomly --no-cov -k test_writer_upserts_on_two_dispatches_and_closes_after_failure"
     binds_ac: ["AC11"]
