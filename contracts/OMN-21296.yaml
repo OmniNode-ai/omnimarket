@@ -2,7 +2,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-21296"
 title: "The ticket contracts moved into omnimarket carry their own ticket and test evidence"
-summary: "73 ticket contracts move from the change-control repository into this repository's contracts/ directory. A focused test now proves each one is present at contracts/<id>.yaml, loads as a mapping whose ticket_id is its own id, and validates as omnibase_core's ModelTicketContract; at the merge base the files are absent and the test fails."
+summary: "36 ticket contracts move from the change-control repository into this repository's contracts/ directory. A focused test now proves each one is present at contracts/<id>.yaml, loads as a mapping whose ticket_id is its own id, and validates as omnibase_core's ModelTicketContract; at the merge base the files are absent and the test fails."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -13,10 +13,10 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: |-
-          AC1: each of the 73 moved ids has contracts/<id>.yaml, which loads with yaml.safe_load as a mapping whose ticket_id equals the id -- falsifier: the parametrized presence test fails at the merge base, where the files are absent
+          AC1: each of the 36 moved ids has contracts/<id>.yaml, which loads with yaml.safe_load as a mapping whose ticket_id equals the id -- falsifier: the parametrized presence test fails at the merge base, where the files are absent
       - id: "AC2"
         statement: |-
-          AC2: each of the 73 moved contracts validates as omnibase_core's ModelTicketContract with its own ticket_id -- falsifier: the parametrized validation test fails at the merge base, where the files are absent
+          AC2: each of the 36 moved contracts validates as omnibase_core's ModelTicketContract with its own ticket_id -- falsifier: the parametrized validation test fails at the merge base, where the files are absent
 evidence_requirements:
   - kind: "tests"
     description: "The test file checks presence, ticket id and ModelTicketContract validation for every moved contract."
