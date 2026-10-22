@@ -802,6 +802,13 @@ requirements:
     acceptance:
       - id: "AC183"
         statement: "AC183: _repo_verdict counts a roll-up check only for a PR whose reds are all roll-ups, so two PRs red on CI Summary and repo-evidence / dod-verify name repo-evidence / dod-verify, two PRs red on CI Summary alone still name CI Summary, and CI Summary shared only through PRs that each carry another red is no shared red -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q -k roll_up fails at the merge base, where the node names CI Summary"
+  - id: "req-retention-run-budget"
+    statement: "A scheduled retention run never holds the runtime's event loop for a whole backlog: it yields after a time budget and resumes the backlog on a short retry."
+    acceptance:
+      - id: "AC182"
+        statement: "AC182: a scheduled retention run ends after the first committed batch that finishes past schedule.max_run_seconds (always after one batch), reports backlog_remaining, and the next tick resumes after backlog_retry_seconds instead of run_interval_seconds -- falsifier: uv run pytest tests/nodes/test_omn17427_retention_cleanup_batched.py -q -n 0 --no-cov -k 'budget or backlog or retry' fails at the merge base, where a run drains to max_batches in one call and the next tick waits the full interval."
+      - id: "AC184"
+        statement: "AC184: the runtime entry point of NodeRetentionCleanup is handle_async, which runs the run in a worker thread so the event loop keeps running while a batch blocks, and a tick that arrives while a run holds its thread is skipped, not queued -- falsifier: uv run pytest tests/nodes/test_omn17427_retention_cleanup_batched.py -q -n 0 --no-cov -k 'handle_async or event_loop_free or skipped_not_queued' fails at the merge base, where the runtime calls the synchronous handle on its loop."
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -3462,4 +3469,19 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q -n 0 -p no:randomly --no-cov --refuse-skips -k roll_up"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-retention-run-budget"
+    description: "The first retention tick after a dev-lane restart deleted a consumer_flow_windows backlog in one synchronous call and held the effects event loop 8.7 minutes, so the container answered no health probe. The run-budget tests fail at the merge base."
+    source: "manual"
+    binds_ac: ["AC182", "AC184"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/test_omn17427_retention_cleanup_batched.py -q -n 0 -p no:randomly --no-cov -k 'budget or backlog or retry or handle_async or event_loop_free or skipped_not_queued' --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-retention-run-budget-deploy-probe"
+    description: "Deploy probe: on the hosted runner, read the packaged retention contract's schedule and run a budgeted batched delete against a fake connection. This packaged-path probe fails at the merge base and does not attest live loop latency."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/test_omn17427_retention_cleanup_batched.py -q -n 0 -p no:randomly --no-cov -k 'contract_declares_a_short_run_budget or stops_after_the_first_batch_past_it' --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
