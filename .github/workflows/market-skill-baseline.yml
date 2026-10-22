@@ -53,7 +53,13 @@ jobs:
           elapsed=0
           # The repo-owned verifier has a 40-minute job timeout. Allow another
           # 180 seconds for scheduling; a missing verdict still fails closed.
+          # The window belongs to one verifier run, not to this job: an edited
+          # event restarts the pull_request_target verifier (its concurrency
+          # cancels the run in flight), and a restart late in this job's wait
+          # used to time out here while the new run was still verifying. Each
+          # new verifier run id therefore restarts the clock (OMN-17427).
           deadline=2580
+          seen_run=""
 
           while [ "$elapsed" -lt "$deadline" ]; do
             # NOTE(OMN-14343): GH Actions runs run: steps under `bash -e {0}` by
@@ -65,13 +71,7 @@ jobs:
             # the command substitution as the condition of this `if` is the
             # errexit-safe form -- bash does not trigger -e for a command that is
             # part of an if/while/until condition, regardless of ambient -e state.
-            response=""
-            status=0
-            if response="$(
-              gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs?filter=latest&check_name=repo-evidence%20%2F%20dod-verify&per_page=100" \
-                --jq '[.check_runs[] | select(.app.id == 15368)] | sort_by(.id) | last | .conclusion // ""' \
-                2>&1
-            )"; then
+            if response="$(gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs?filter=latest&check_name=repo-evidence%20%2F%20dod-verify&per_page=100" --jq '[.check_runs[] | select(.app.id == 15368)] | sort_by(.id) | last | "\(.id // "") \(.conclusion // "")"' 2>&1)"; then
               status=0
             else
               status=$?
@@ -90,7 +90,11 @@ jobs:
             fi
             backoff=5
 
-            conclusion="$response"
+            read -r run_id conclusion <<< "$response" || true
+            if [ -n "$run_id" ] && [ "$run_id" != "$seen_run" ]; then
+              [ -z "$seen_run" ] || echo "Repo evidence restarted as run ${run_id}; its window starts now."
+              seen_run="$run_id" elapsed=0
+            fi
 
             case "$conclusion" in
               success)

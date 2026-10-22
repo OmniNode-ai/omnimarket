@@ -19,13 +19,17 @@ import urllib.request
 import pytest
 from pydantic import BaseModel, SecretStr, ValidationError
 
+from omnimarket.github_landing import github_landing_transport
 from omnimarket.github_landing.github_landing_requests import (
     GithubLandingRequestError,
     next_page_request,
 )
 from omnimarket.github_landing.github_landing_transport import (
+    JobLogWindow,
     _AuthStrippingRedirectHandler,
     _read_capped,
+    _read_window,
+    step_second,
 )
 from omnimarket.nodes.node_github_repo_gateway_effect import __main__ as gateway_cli
 from omnimarket.nodes.node_github_repo_gateway_effect.dispatcher import dispatch
@@ -303,6 +307,387 @@ def test_job_log_tail_gone_log_raises() -> None:
                 )
             ],
         )
+
+
+def test_job_log_tail_plain_read_keeps_the_old_fields_and_the_new_defaults() -> None:
+    log = b"".join(f"line {i}\n".encode() for i in range(20_000))
+    result, transport = _run(
+        _req(EnumGithubGatewayOperation.JOB_LOG_TAIL, job_id=77, tail_bytes=1024),
+        [
+            BytesExchange(
+                get(f"{_BASE}/actions/jobs/77/logs"),
+                status=200,
+                body=log,
+                limit=1024,
+                keep="tail",
+            )
+        ],
+    )
+    assert isinstance(result, ModelJobLogTailResult)
+    assert result.model_dump() == {
+        "operation": "job_log_tail",
+        "repo": REPO,
+        "job_id": 77,
+        "total_bytes": len(log),
+        "truncated": True,
+        "text": log[-1024:].decode(),
+        "start_offset": len(log) - 1024,
+        "next_offset": None,
+        "read_ceiling_hit": False,
+        "step_name": None,
+        "step_number": None,
+        "step_status": None,
+        "step_conclusion": None,
+        "step_started_at": None,
+        "step_completed_at": None,
+        "region_start": None,
+        "region_end": None,
+        "region_bounds": None,
+    }
+    assert len(transport.sent) == 1
+
+
+# --- job_log_tail: byte windows (OMN-17427) ------------------------------------
+
+_LONG_LOG_BYTES = 420_905
+
+
+def _long_log() -> bytes:
+    lines = b"".join(
+        f"2026-10-21T21:{i // 6000 % 60:02d}:{i // 100 % 60:02d}.1234567Z line {i}\n".encode()
+        for i in range(12_000)
+    )
+    assert len(lines) > _LONG_LOG_BYTES
+    return lines[:_LONG_LOG_BYTES]
+
+
+def _window_exchange(
+    job_id: int, body: bytes, *, start: int, length: int
+) -> BytesExchange:
+    return BytesExchange(
+        get(f"{_BASE}/actions/jobs/{job_id}/logs"),
+        status=200,
+        body=body,
+        limit=length,
+        keep="window",
+        start=start,
+    )
+
+
+def _offset_read(
+    body: bytes, *, offset: int, length: int = 65_536
+) -> ModelJobLogTailResult:
+    result, transport = _run(
+        _req(
+            EnumGithubGatewayOperation.JOB_LOG_TAIL,
+            job_id=118752486732,
+            offset_bytes=offset,
+            length_bytes=length,
+        ),
+        [_window_exchange(118752486732, body, start=offset, length=length)],
+    )
+    assert isinstance(result, ModelJobLogTailResult)
+    assert len(transport.sent) == 1
+    return result
+
+
+def test_job_log_offset_read_keeps_exactly_the_window() -> None:
+    log = _long_log()
+    result = _offset_read(log, offset=100_000)
+    assert result.text.encode() == log[100_000:165_536]
+    assert result.start_offset == 100_000
+    assert result.next_offset == 165_536
+    assert result.truncated is True
+    assert result.total_bytes == _LONG_LOG_BYTES
+    assert result.read_ceiling_hit is False
+    assert (result.step_name, result.region_bounds) == (None, None)
+
+
+def test_job_log_offset_past_the_end_is_empty() -> None:
+    result = _offset_read(_long_log(), offset=_LONG_LOG_BYTES + 10)
+    assert (result.text, result.next_offset) == ("", None)
+    assert result.start_offset == _LONG_LOG_BYTES
+    assert result.total_bytes == _LONG_LOG_BYTES
+
+
+def test_job_log_last_window_is_the_tail() -> None:
+    log = _long_log()
+    result = _offset_read(log, offset=400_000)
+    assert result.text.encode() == log[400_000:]
+    assert result.next_offset is None
+    assert result.truncated is True
+
+
+def test_job_log_offset_read_defaults_the_length() -> None:
+    log = _long_log()
+    result, _ = _run(
+        _req(EnumGithubGatewayOperation.JOB_LOG_TAIL, job_id=5, offset_bytes=0),
+        [_window_exchange(5, log, start=0, length=16 * 1024)],
+    )
+    assert isinstance(result, ModelJobLogTailResult)
+    assert result.text.encode() == log[: 16 * 1024]
+    assert result.next_offset == 16 * 1024
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"offset_bytes": 0, "length_bytes": 64 * 1024 + 1},
+        {"length_bytes": 1024},
+        {"offset_bytes": -1},
+        {"step": ""},
+    ],
+)
+def test_job_log_window_fields_are_validated(fields: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        _req(EnumGithubGatewayOperation.JOB_LOG_TAIL, job_id=1, **fields)
+
+
+@pytest.mark.parametrize(
+    "fields", [{"offset_bytes": 0}, {"length_bytes": 10, "step": "x"}, {"step": "x"}]
+)
+def test_job_log_window_fields_are_refused_on_other_operations(
+    fields: dict[str, object],
+) -> None:
+    with pytest.raises(ValidationError, match="read only by the job_log_tail"):
+        _req(EnumGithubGatewayOperation.RUN_JOBS, run_id=_RUN, **fields)
+
+
+def test_job_log_window_read_stops_at_the_read_ceiling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(github_landing_transport, "MAX_LOG_READ_BYTES", 1000)
+    log = _long_log()
+    result = _offset_read(log, offset=900, length=500)
+    assert result.read_ceiling_hit is True
+    assert result.total_bytes == 1000
+    assert result.text.encode() == log[900:1000]
+    assert result.truncated is True
+
+
+# --- job_log_tail: one step's region (OMN-17427) --------------------------------
+
+_JOB = 118752486732
+_PROVISION = "Pre-apply: provision contract-declared Kafka topics (OMN-18264)"
+
+
+def _step(
+    number: int,
+    name: str,
+    started: str | None,
+    completed: str | None,
+    *,
+    conclusion: str | None = "success",
+    status: str = "completed",
+) -> dict[str, object]:
+    return {
+        "name": name,
+        "status": status,
+        "conclusion": conclusion,
+        "number": number,
+        "started_at": started,
+        "completed_at": completed,
+    }
+
+
+def _deploy_job(*steps: dict[str, object]) -> JsonExchange:
+    body = {
+        "id": _JOB,
+        "run_id": _RUN,
+        "name": "deploy",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-21T21:40:00Z",
+        "completed_at": "2026-10-21T21:40:30Z",
+        "steps": list(steps)
+        or [
+            _step(1, "Set up job", "2026-10-21T21:40:00Z", "2026-10-21T21:40:03Z"),
+            # Checkout starts in the second Set up job completes in.
+            _step(2, "Checkout", "2026-10-21T21:40:03Z", "2026-10-21T21:40:05Z"),
+            _step(3, _PROVISION, "2026-10-21T21:40:06Z", "2026-10-21T21:40:20Z"),
+            _step(4, "Apply", "2026-10-21T21:40:21Z", "2026-10-21T21:40:30Z"),
+        ],
+    }
+    return JsonExchange(get(f"{_BASE}/actions/jobs/{_JOB}"), json_response(body))
+
+
+def _ts(second: int, frac: str = "1234567") -> bytes:
+    return f"2026-10-21T21:40:{second:02d}.{frac}Z ".encode()
+
+
+def _deploy_log() -> tuple[bytes, bytes, bytes, bytes]:
+    """(whole log, set-up and checkout part, provisioning part, apply part)."""
+    head = b"\xef\xbb\xbf" + b"".join(
+        _ts(s) + f"set up {s}\n".encode() for s in range(4)
+    )
+    head += _ts(3, "9000000") + b"##[group]Run actions/checkout@v4\n"
+    head += b"".join(_ts(s) + f"checkout {s}\n".encode() for s in (4, 5))
+    provision = b"".join(
+        _ts(s) + f"provision topic onex.evt.t{s}.v1\n".encode() for s in range(6, 21)
+    )
+    provision += b"  continuation without a timestamp\n\tand another\n"
+    provision += _ts(20, "9999999") + b"provisioned 15 topics\n"
+    apply = b"".join(_ts(s) + f"apply {s}\n".encode() for s in range(21, 31))
+    return head + provision + apply, head, provision, apply
+
+
+def _step_read(
+    log: bytes,
+    *,
+    step: str = _PROVISION,
+    offset: int | None = None,
+    length: int | None = None,
+) -> tuple[ModelJobLogTailResult, RecordedGatewayTransport]:
+    fields: dict[str, object] = {"step": step}
+    if offset is not None:
+        fields["offset_bytes"] = offset
+    if length is not None:
+        fields["length_bytes"] = length
+    result, transport = _run(
+        _req(EnumGithubGatewayOperation.JOB_LOG_TAIL, job_id=_JOB, **fields),
+        [
+            _deploy_job(),
+            _window_exchange(_JOB, log, start=offset or 0, length=length or 16 * 1024),
+        ],
+    )
+    assert isinstance(result, ModelJobLogTailResult)
+    return result, transport
+
+
+def test_job_log_step_read_keeps_exactly_the_steps_lines() -> None:
+    log, head, provision, _apply = _deploy_log()
+    result, transport = _step_read(log)
+    assert result.text.encode() == provision
+    assert (result.region_start, result.region_end) == (
+        len(head),
+        len(head) + len(provision),
+    )
+    assert result.start_offset == len(head)
+    assert (result.next_offset, result.truncated) == (None, False)
+    assert result.total_bytes == len(log)
+    assert result.region_bounds == "timestamp"
+    assert (result.step_name, result.step_number) == (_PROVISION, 3)
+    assert (result.step_status, result.step_conclusion) == ("completed", "success")
+    assert (result.step_started_at, result.step_completed_at) == (
+        "2026-10-21T21:40:06Z",
+        "2026-10-21T21:40:20Z",
+    )
+    assert [r.path for r in transport.sent] == [
+        f"{_BASE}/actions/jobs/{_JOB}",
+        f"{_BASE}/actions/jobs/{_JOB}/logs",
+    ]
+
+
+def test_job_log_steps_sharing_a_boundary_second_both_hold_it() -> None:
+    log, _head, _provision, _apply = _deploy_log()
+    result, _ = _step_read(log, step="Checkout")
+    text = result.text.encode()
+    assert text.startswith(_ts(3) + b"set up 3\n")
+    assert text.endswith(_ts(5) + b"checkout 5\n")
+    set_up, _ = _step_read(log, step="Set up job")
+    assert set_up.text.encode().endswith(b"##[group]Run actions/checkout@v4\n")
+    assert set_up.region_start == 0
+
+
+def test_job_log_step_pages_walk_the_region_without_gap_or_overlap() -> None:
+    log, head, provision, _apply = _deploy_log()
+    pages: list[bytes] = []
+    offset: int | None = 0
+    while offset is not None:
+        result, _ = _step_read(log, offset=offset, length=100)
+        assert result.start_offset == len(head) + offset
+        pages.append(result.text.encode())
+        assert result.truncated is True
+        offset = result.next_offset
+    assert len(pages) == -(-len(provision) // 100)
+    assert b"".join(pages) == provision
+
+
+def test_job_log_unknown_step_is_refused_with_the_step_names() -> None:
+    with pytest.raises(GitHubTransportError) as raised:
+        _run(
+            _req(EnumGithubGatewayOperation.JOB_LOG_TAIL, job_id=_JOB, step="Deploy"),
+            [_deploy_job()],
+        )
+    message = str(raised.value)
+    assert "no step named 'Deploy'" in message
+    for name in ("Set up job", "Checkout", _PROVISION, "Apply"):
+        assert repr(name) in message
+
+
+def test_job_log_unknown_step_lists_at_most_60_names_each_cut() -> None:
+    steps = [_step(i, f"{i:03d}" + "x" * 200, None, None) for i in range(1, 80)]
+    with pytest.raises(GitHubTransportError) as raised:
+        _run(
+            _req(EnumGithubGatewayOperation.JOB_LOG_TAIL, job_id=_JOB, step="Deploy"),
+            [_deploy_job(*steps)],
+        )
+    message = str(raised.value)
+    assert "060" + "x" * 117 + "'" in message
+    assert "061" not in message
+    assert "x" * 118 not in message
+
+
+def test_job_log_skipped_step_is_empty_and_reads_no_log() -> None:
+    skipped = _step(2, "Deploy docs", None, None, conclusion="skipped")
+    result, transport = _run(
+        _req(EnumGithubGatewayOperation.JOB_LOG_TAIL, job_id=_JOB, step="Deploy docs"),
+        [_deploy_job(skipped)],
+    )
+    assert isinstance(result, ModelJobLogTailResult)
+    assert result.text == ""
+    assert (result.step_status, result.step_conclusion) == ("completed", "skipped")
+    assert (result.region_start, result.region_end) == (None, None)
+    assert len(transport.sent) == 1
+
+
+def test_step_second_reads_github_offsets_and_fractions() -> None:
+    assert step_second("2020-01-20T09:42:40.000-08:00") == step_second(
+        "2020-01-20T17:42:40Z"
+    )
+
+
+# --- the window over chunk boundaries -------------------------------------------
+
+
+class _TrickleStream(io.BytesIO):
+    """A stream that answers every read with at most a few bytes."""
+
+    def read(self, size: int | None = -1) -> bytes:
+        return super().read(7 if size is None or size < 0 else min(size, 7))
+
+
+@pytest.mark.parametrize(("start", "length"), [(0, 3), (3, 10), (13, 300), (995, 50)])
+def test_read_window_keeps_exactly_the_window_over_small_chunks(
+    start: int, length: int
+) -> None:
+    body = bytes(range(256)) * 4
+    window = JobLogWindow(start=start, length=length)
+    total, ceiling_hit = _read_window(_TrickleStream(body), window)
+    assert window.kept == body[start : start + length]
+    assert (total, ceiling_hit) == (len(body), False)
+
+
+@pytest.mark.parametrize(
+    ("start", "length"),
+    [(65_536 - 5, 10), (100, 65_536), (65_536 * 2 + 17, 65_536)],
+)
+def test_read_window_keeps_exactly_the_window_over_real_chunks(
+    start: int, length: int
+) -> None:
+    body = bytes(i % 251 for i in range(300_000))
+    window = JobLogWindow(start=start, length=length)
+    total, _ = _read_window(io.BytesIO(body), window)
+    assert window.kept == body[start : start + length]
+    assert total == len(body)
+
+
+def test_read_window_finds_a_step_region_over_small_chunks() -> None:
+    log, _head, provision, _apply = _deploy_log()
+    bounds = (step_second("2026-10-21T21:40:06Z"), step_second("2026-10-21T21:40:20Z"))
+    window = JobLogWindow(start=0, length=64 * 1024, step_bounds=bounds)
+    _read_window(_TrickleStream(log), window)
+    assert window.kept == provision
 
 
 # --- artifacts -------------------------------------------------------------------
@@ -789,6 +1174,28 @@ def test_cli_passes_check_name_to_the_commit_read(
     payload = json.loads(capsys.readouterr().out)
     assert payload["operation"] == "commit_check_runs"
     assert payload["check_name"] == "verify"
+
+
+def test_cli_passes_the_window_and_step_to_the_job_log_read(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    log, _head, provision, _apply = _deploy_log()
+    transport = RecordedGatewayTransport(
+        [_deploy_job(), _window_exchange(_JOB, log, start=0, length=2048)]
+    )
+    monkeypatch.setattr(
+        gateway_cli, "resolve_github_token", lambda: SecretStr("test-token")
+    )
+    monkeypatch.setattr(
+        gateway_cli, "RealGitHubReadTransport", lambda _token: transport
+    )
+    argv = ["--operation", "job_log_tail", "--repo", REPO, "--job-id", str(_JOB)]
+    argv += ["--step", _PROVISION, "--offset-bytes", "0", "--length-bytes", "2048"]
+    assert gateway_cli.main(argv) == 0
+    transport.assert_drained()
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["step_name"] == _PROVISION
+    assert payload["text"].encode() == provision
 
 
 @pytest.mark.parametrize("operation", ["commit_check_runs", "merged_pr"])

@@ -18,6 +18,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import re
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -29,6 +30,7 @@ from omnimarket.github_landing.github_landing_requests import (
     commit_check_runs_request,
     issue_comments_request,
     job_log_request,
+    job_request,
     next_page_request,
     pull_request_request,
     pull_requests_request,
@@ -38,11 +40,14 @@ from omnimarket.github_landing.github_landing_requests import (
     tags_request,
     workflow_runs_request,
 )
+from omnimarket.github_landing.github_landing_transport import JobLogWindow, step_second
 from omnimarket.github_landing.model_github_http_exchange import (
+    ModelGithubBytesResponse,
     ModelGithubHttpRequest,
     ModelGithubHttpResponse,
 )
 from omnimarket.models.model_github_gateway_io import (
+    DEFAULT_LOG_TAIL_BYTES,
     MAX_TEXT_CHARS,
     EnumArtifactFetchRefusal,
     ModelArtifactContent,
@@ -388,24 +393,131 @@ def read_run_jobs(
 def read_job_log_tail(
     transport: GitHubReadTransportProtocol, request: ModelGithubGatewayRequest
 ) -> ModelJobLogTailResult:
-    """The last ``tail_bytes`` of one job's log."""
+    """The last ``tail_bytes`` of one job's log, or a window of it (OMN-17427).
+
+    With ``offset_bytes`` or ``step`` set the read keeps ``length_bytes`` from
+    that offset of the whole log, or of the named step's region.
+    """
     job_id = _require(request.job_id, "job_id")
+    if request.offset_bytes is not None or request.step is not None:
+        return _read_job_log_window(transport, request, job_id)
     log_request = job_log_request(request.repo, job_id)
     response = transport.send_bytes_sync(
         log_request, limit=request.tail_bytes, keep="tail"
     )
-    if not 200 <= response.status < 300:
-        raise GitHubTransportError(
-            f"GitHub GET {log_request.path} answered HTTP {response.status}: "
-            f"{response.content.decode('utf-8', errors='replace')}"
-        )
+    _check_log(log_request, response)
     return ModelJobLogTailResult(
         repo=request.repo,
         job_id=job_id,
         total_bytes=response.total_bytes,
         truncated=response.over_limit,
         text=response.content.decode("utf-8", errors="replace"),
+        start_offset=response.total_bytes - len(response.content),
     )
+
+
+# An unknown step's refusal lists at most this many step names, each cut.
+_MAX_LISTED_STEPS = 60
+_MAX_LISTED_STEP_CHARS = 120
+
+
+def _check_log(
+    log_request: ModelGithubHttpRequest, response: ModelGithubBytesResponse
+) -> None:
+    if not 200 <= response.status < 300:
+        raise GitHubTransportError(
+            f"GitHub GET {log_request.path} answered HTTP {response.status}: "
+            f"{response.content.decode('utf-8', errors='replace')}"
+        )
+
+
+def _job_step(
+    transport: GitHubReadTransportProtocol, repo: str, job_id: int, name: str
+) -> ModelJobStep:
+    """The job's step named exactly ``name``; an unknown name raises."""
+    meta_request = job_request(repo, job_id)
+    body = _checked(meta_request, transport.send_sync(meta_request))
+    raw = body.get("steps")
+    steps = [
+        _pick(ModelJobStep, step)
+        for step in (raw if isinstance(raw, list) else [])
+        if isinstance(step, dict)
+    ]
+    for step in steps:
+        if step.name == name:
+            return step
+    listed = ", ".join(
+        repr(step.name[:_MAX_LISTED_STEP_CHARS]) for step in steps[:_MAX_LISTED_STEPS]
+    )
+    raise GitHubTransportError(
+        f"job {job_id} has no step named {name!r}; its steps: {listed or 'none'}"
+    )
+
+
+def _read_job_log_window(
+    transport: GitHubReadTransportProtocol,
+    request: ModelGithubGatewayRequest,
+    job_id: int,
+) -> ModelJobLogTailResult:
+    start = request.offset_bytes or 0
+    length = request.length_bytes or DEFAULT_LOG_TAIL_BYTES
+    step: ModelJobStep | None = None
+    bounds = None
+    if request.step is not None:
+        step = _job_step(transport, request.repo, job_id, request.step)
+        if step.started_at is None:
+            # Skipped or never run: the step wrote no lines.
+            return ModelJobLogTailResult(
+                repo=request.repo,
+                job_id=job_id,
+                total_bytes=0,
+                truncated=False,
+                text="",
+                **_step_fields(step),
+            )
+        started = step_second(step.started_at)
+        # A running step has no completion yet: its region runs to the log's end.
+        completed = (
+            step_second(step.completed_at)
+            if step.completed_at is not None
+            else datetime.max.replace(tzinfo=UTC)
+        )
+        bounds = (started, completed)
+    window = JobLogWindow(start=start, length=length, step_bounds=bounds)
+    log_request = job_log_request(request.repo, job_id)
+    response = transport.send_bytes_window_sync(log_request, window=window)
+    _check_log(log_request, response)
+    return ModelJobLogTailResult(
+        repo=request.repo,
+        job_id=job_id,
+        total_bytes=response.total_bytes,
+        truncated=window.truncated,
+        text=response.content.decode("utf-8", errors="replace"),
+        start_offset=window.start_offset,
+        next_offset=window.next_offset,
+        read_ceiling_hit=response.over_limit,
+        **(
+            {
+                **_step_fields(step),
+                "region_start": window.region_start,
+                "region_end": window.region_end,
+                "region_bounds": "timestamp",
+            }
+            if step is not None
+            else {}
+        ),
+    )
+
+
+def _step_fields(step: ModelJobStep) -> dict[str, Any]:
+    return {
+        "step_name": step.name,
+        "step_number": step.number,
+        "step_status": step.status,
+        "step_conclusion": step.conclusion,
+        "step_started_at": step.started_at,
+        "step_completed_at": step.completed_at,
+    }
 
 
 def read_artifacts(
