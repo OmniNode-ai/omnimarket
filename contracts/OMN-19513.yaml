@@ -43,6 +43,11 @@ requirements:
     acceptance:
       - id: "AC7"
         statement: "AC7: the 2026-10-18 reviewer words joined to their question become one RULING with the words verbatim and the session link, the key-approval words and words with no joined question go to the orchestrator inbox, a plain yes to a proposal naming both scope lists becomes an OPERATOR-CONSENT with the scopes copied, and the effect appends the row after the capture rows with no double on resume -- falsifier: uv run pytest tests/unit/nodes/node_operator_capture_compute/test_words_promotion.py tests/unit/nodes/node_operator_capture_effect/test_words_promotion_effect.py -q --no-cov fails with the promotion handler absent"
+  - id: "req-receipt-gate-scope-repin"
+    statement: "The repo-evidence caller pins the omnibase_core receipt-gate reusable whose dod-verify job has a 60-minute budget and verifies only the evidence a pull request adds or changes."
+    acceptance:
+      - id: "AC8"
+        statement: "AC8: call-repo-evidence-gate.yml pins receipt-gate.yml at 5782289777210ca814c0e43b4f797826135dba78 (omnibase_core#2079, a descendant of #2077) with its inputs unchanged -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_scope_repin_omn19513.py -q --no-cov fails against the pre-change caller"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 and AC2: registry passthrough and the raw-value wire model, plus the projection and emit-effect suites over the converted fixtures."
@@ -121,3 +126,10 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_operator_capture_compute/test_words_promotion.py tests/unit/nodes/node_operator_capture_effect/test_words_promotion_effect.py -q --no-cov"
     binds_ac: ["AC7"]
+  - id: "dod-omn19513-ac8-receipt-gate-scope-repin"
+    description: "AC8: the caller pins the receipt-gate reusable of omnibase_core#2079 and keeps its inputs."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_scope_repin_omn19513.py -q --no-cov"
+    binds_ac: ["AC8"]

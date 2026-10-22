@@ -57,7 +57,7 @@ permissions:
 
 jobs:
   repo-evidence:
-    uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@4d16322dae9d62f96089b93421a768fb8dd8c8fe # OMN-21146: immutable full-SHA pin, the squash commit of omnibase_core#1986 on that repo's dev branch; it descends from #1932 (the VERIFIER_FLOOR 0.4.303 refusal), #1914, #1912, #1886 and #1884, and its merged-fix control no longer counts contracts/OMN-<n>.yaml as a product path, so a Binds-Merged-Fix revert still applies once the base has amended the fixed ticket's contract.
+    uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@5782289777210ca814c0e43b4f797826135dba78 # OMN-19513: immutable full-SHA pin, the squash commit of omnibase_core#2079 on that repo's dev branch; its dod-verify verifies only the dod_evidence a pull request adds or changes, and it descends from #2077 (the 60-minute dod-verify job budget) and #1986 (the merged-fix control that skips contracts/OMN-<n>.yaml).
     with:
       evidence-source: caller
       verifier-version: 0.4.305
