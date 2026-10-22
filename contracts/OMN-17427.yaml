@@ -807,6 +807,11 @@ requirements:
     acceptance:
       - id: "AC186"
         statement: "AC186: the canary and planted-bad-pin self-test jobs pass UV_PYTHON and UV_PYTHON_INSTALL_DIR into their isolated install environment, and the real uv finds the selected Python offline from that environment -- falsifier: the workflow interpreter selection cases fail on the base with KeyError UV_PYTHON."
+  - id: "req-pack-orchestrator-source-order"
+    statement: "The context-pack orchestrator gives each artifact its position in its tier's source result as source_priority, so a pack carries a tier's entries in the order the source answered them rather than in content-hash order."
+    acceptance:
+      - id: "AC184"
+        statement: "AC184: a tier source answering five open_work rows in forward, reversed or shuffled order yields a built pack whose rendered text carries the rows in that same order -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -k source_order fails at the merge base, where every artifact keeps the default source_priority 100 and the builder orders a tier's chunks by hash"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -1041,6 +1046,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC145: tier read timings, compaction build timings on receipts, and the round-trip split from a prepared receipt."
     command: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py tests/nodes/node_context_compaction_orchestrator/test_handler_context_compaction_orchestrator.py tests/nodes/node_context_compaction_latency_compute/test_latency_qualification.py -q -p no:randomly --no-cov"
+  - kind: "tests"
+    description: "AC184: a built pack carries a tier's entries in source order."
+    command: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -k source_order"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -3467,6 +3475,7 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q -n 0 -p no:randomly --no-cov --refuse-skips -k roll_up"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-canary-provisioned-python"
     description: "Dispatch cause omnimarket:canary (macos-latest). Both install-canary jobs carry setup-uv's explicit Python selection and managed installation directory across the clean-home boundary, and uv discovers that interpreter. These two cases fail at the merge base with KeyError UV_PYTHON. This is focused fix-forward evidence; it does not attest the umbrella ticket's nightly integration-pass reports or graduation review."
     source: "manual"
@@ -3481,4 +3490,19 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run --frozen pytest tests/test_omn19454_install_canary.py -q -n 0 -p no:randomly --no-cov -k workflow_install_uses_setup_uv_python"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac152-pack-source-order"
+    description: "The context-pack orchestrator sets source_priority to each entry's position in its tier's source result, so the rendered pack carries a tier's entries in source order for forward, reversed and shuffled sources. At the merge base all three cases fail, because every artifact keeps source_priority 100 and the builder orders by hash."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -n 0 -p no:randomly --no-cov -k source_order"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC184"]
+  - id: "dod-omn17427-pack-source-order-deploy-probe"
+    description: "Deploy probe. In the checked-out package, the orchestrator over a fixture source answering open_work rows in reversed order renders them in reversed order. It fails at the merge base and needs only uv and this checkout on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -n 0 -p no:randomly --no-cov -k 'source_order and days1'"
         cwd: "${OMNI_HOME}/omnimarket"
