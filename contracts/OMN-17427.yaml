@@ -819,6 +819,11 @@ requirements:
     acceptance:
       - id: "AC184"
         statement: "AC184: after one failed invocation a new handler on the same spool publishes and drains the first record; with threshold 3 invocations 1 to 3 attempt a publish and invocation 4 inside the window attempts none and returns publish_skipped_unreachable=True and publish_circuit_open=True; a success deletes the marker and resets the count; a probe after the window re-opens on failure with a fresh opened_at and on success drains the backlog in the same invocation; a first-call TimeoutError on a clean circuit is retried once to published=True under the 9 s budget, and not retried with a recorded failure or under 1 s left; an old failed_at, malformed or other-identity marker never blocks; a zero window writes no marker and reports publish_failure_count None; a quarantine leaves the count unchanged -- falsifier: uv run pytest tests/unit/nodes/node_event_emit_effect/test_publish_circuit_omn17427.py -q fails at the merge base (13 of 17 fail), where one failure spools every later publish for 120 s"
+  - id: "req-job-log-window-and-step-reads"
+    statement: "The job_log_tail gateway read (onex scm job-log) can read a bounded window of a job log at a byte offset or the region of one named step, besides the last 64 KiB tail, with paging offsets on the result."
+    acceptance:
+      - id: "AC187"
+        statement: "AC187: job_log_tail with offset_bytes keeps exactly [offset, offset+length) of the log and reports total_bytes, start_offset and next_offset; with step it keeps exactly that step's timestamped lines, refuses an unknown step with the job's step names, and returns an empty result for a skipped step after one call; length_bytes without offset_bytes or step is refused; a plain tail read keeps its old fields; the CLI passes --offset-bytes, --length-bytes and --step into the request -- falsifier: uv run pytest tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_scm_reads.py -q -k 'job_log or read_window or step_second' fails at the merge base, where github_landing/github_log_window.py and the window fields are absent"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -3527,4 +3532,19 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_publish_circuit_omn17427.py -q -n 0 -p no:randomly --no-cov -k one_retryable_failure_does_not_skip"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac187-job-log-window-and-step-reads"
+    description: "AC187: the job_log_tail read keeps an exact byte window or a named step's region, refuses an unknown step with the step names and a bare length, and the scm CLI passes the window and step into the request. The tests fail at the merge base, where the log-window module is absent."
+    source: "manual"
+    binds_ac: ["AC187"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_scm_reads.py tests/unit/handlers/scm/test_onex_scm_command.py -q -n 0 -p no:randomly --no-cov -k 'job_log or read_window or step_second or window_and_step or length_without' --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-job-log-window-deploy-probe"
+    description: "Deploy probe: in the checked-out package, a step read over a recorded job log keeps exactly that step's lines. It needs only uv and this checkout on the hosted runner, with no GitHub token, and fails at the merge base. It is a packaged-path check, not a live gateway attestation."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_scm_reads.py -q -n 0 -p no:randomly --no-cov -k 'job_log_step_read_keeps_exactly_the_steps_lines' --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
