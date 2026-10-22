@@ -43,6 +43,11 @@ requirements:
     acceptance:
       - id: "AC7"
         statement: "AC7: the 2026-10-18 reviewer words joined to their question become one RULING with the words verbatim and the session link, the key-approval words and words with no joined question go to the orchestrator inbox, a plain yes to a proposal naming both scope lists becomes an OPERATOR-CONSENT with the scopes copied, and the effect appends the row after the capture rows with no double on resume -- falsifier: uv run pytest tests/unit/nodes/node_operator_capture_compute/test_words_promotion.py tests/unit/nodes/node_operator_capture_effect/test_words_promotion_effect.py -q --no-cov fails with the promotion handler absent"
+  - id: "req-metering-summary-tenant-write"
+    statement: "Metering summary writes bind the row's tenant so a store refresh can persist its folded rows through the tenant-scoped adapter boundary."
+    acceptance:
+      - id: "AC8"
+        statement: "AC8: writer dispatch and store refresh bind each upsert to its row's tenant, persist the all-time and daily summaries, and replace rows on replay -- falsifier: the focused writer and store-refresh tests fail with TenantScopedWriteUnboundError when the writer's tenant binding is removed."
 evidence_requirements:
   - kind: "tests"
     description: "AC1 and AC2: registry passthrough and the raw-value wire model, plus the projection and emit-effect suites over the converted fixtures."
@@ -121,3 +126,17 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_operator_capture_compute/test_words_promotion.py tests/unit/nodes/node_operator_capture_effect/test_words_promotion_effect.py -q --no-cov"
     binds_ac: ["AC7"]
+  - id: "dod-omn19513-ac8-metering-tenant-write"
+    description: "AC8: run the writer dispatch and store refresh through adapters that enforce the real tenant-scoped-write refusal and verify the stored rows and replay behavior."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_projection_metering_summary/test_writer.py tests/nodes/node_projection_metering_summary/test_omn17427_store_refresh.py -q -n 0 -p no:randomly --no-cov"
+    binds_ac: ["AC8"]
+  - id: "dod-omn19513-metering-tenant-deploy-probe"
+    description: "Hosted deploy probe: dispatch the checked-out metering writer against a real SQLite summary table while enforcing the asyncpg adapter's tenant-write boundary, then read back the rows after dispatch and replay. This needs no external database or lane credentials and fails when the upsert omits tenant. It verifies the checkout's write path; a live lane readback remains separate."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_projection_metering_summary/test_writer.py -q -n 0 -p no:randomly --no-cov -k test_writer_upserts_on_two_dispatches_and_closes_after_failure"
+    binds_ac: ["AC8"]
