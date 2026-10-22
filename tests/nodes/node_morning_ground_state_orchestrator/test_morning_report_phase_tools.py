@@ -565,3 +565,52 @@ def test_the_verifier_runs_only_on_a_closable_ticket_and_within_its_budget(
     monkeypatch.setattr(effects, "DOD_VERIFY_BUDGET", 1)
     with pytest.raises(MorningToolRefusalError, match="budget"):
         _run("dod_verify", ctx, ticket="OMN-777")
+
+
+@pytest.mark.unit
+def test_the_morning_pr_is_opened_once_and_handed_off_with_the_receipts_cells(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ctx = _ctx(tmp_path, "session-goal", publish=True)
+    ctx.kb_worktree.mkdir(parents=True)
+    calls = tmp_path / "calls.txt"
+    create = _program(
+        tmp_path / "gh.py",
+        f"open({str(calls)!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n"
+        "print('https://github.com/OmniNode-ai/kb_demo/pull/77')",
+    )
+    handoff = _program(
+        tmp_path / "handoff.py",
+        f"open({str(calls)!r}, 'a').write('HANDOFF ' + ' '.join(sys.argv[1:]) + '\\n')\n"
+        "print('OK handed off')",
+    )
+    ctx = ctx.model_copy(
+        update={
+            "kb_clone": tmp_path / "kb_demo",
+            "commands": {
+                **ctx.commands,
+                "kb_pr_create_command": [sys.executable, str(create)],
+                "pr_handoff_command": [sys.executable, str(handoff)],
+            },
+        }
+    )
+    monkeypatch.setattr(effects, "_worktree_ready", lambda _ctx: None)
+    monkeypatch.setattr(effects, "_git_out", lambda *_args: "f" * 40)
+    _run(
+        "ledger_append_claim",
+        ctx,
+        est_hours=0.5,
+        displaces="nothing queued",
+        what="the goal file and the morning PR",
+    )
+    opened = _run("kb_open_pr", ctx, body="what each phase delivered " * 5)
+    assert opened["number"] == 77
+    assert opened["title"] == "docs(OMN-1): morning ground state 2026-10-22"
+    out = _run("pr_handoff", ctx)
+    assert out["exit"] == 0
+    lines = calls.read_text().splitlines()
+    assert "--base main --head automation/demo-2026-10-22" in lines[0]
+    handed = lines[1]
+    assert handed.startswith("HANDOFF kb_demo#77 session-goal --needs land")
+    assert "--delegation delegated=1 runs=run-1" in handed
+    assert "--keep-worktree" in handed

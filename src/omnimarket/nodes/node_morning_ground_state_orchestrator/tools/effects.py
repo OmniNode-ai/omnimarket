@@ -306,10 +306,18 @@ def delegate_dispose(ctx: ModelMorningToolContext, params: BaseModel) -> Result:
             )
         argv += ["--final-file", str(final)]
     done = _proc(argv, cwd=ctx.root, timeout=120)
-    if done["exit"] == 0:
+    # The receipt is disposed once the step prints DISPOSED; a failed publish of the
+    # disposition event afterwards (DISPOSITION-NOT-PUBLISHED) does not undo that.
+    recorded = done["exit"] == 0 or str(done["stdout"]).startswith("DISPOSED ")
+    if recorded:
         entry["disposed"] = True
         path.write_text(json.dumps(registry, indent=2))
-    return {"draft_id": p.draft_id, "disposition": p.disposition, **done}
+    return {
+        "draft_id": p.draft_id,
+        "disposition": p.disposition,
+        "recorded": recorded,
+        **done,
+    }
 
 
 def _cells(ctx: ModelMorningToolContext) -> Result:
