@@ -1,0 +1,27 @@
+{
+  "backend_id": "local-coder",
+  "bus": "kafka",
+  "correlation_id": "6f1c2a9e-3b4d-4e5f-8a7b-0c1d2e3f4a5b",
+  "dispatch_target": "deployed-lane",
+  "endpoint": "http://synthetic-host:8000",
+  "lane": "dev",
+  "locus": "deployed-lane",
+  "model": "synthetic-coder-27b",
+  "receipt": {
+    "result": {
+      "metrics": {
+        "completion_tokens": 64,
+        "latency_ms": 1830,
+        "prompt_tokens": 412
+      },
+      "quality_gate_passed": true,
+      "quality_score": 0.92
+    },
+    "status": "success"
+  },
+  "receipt_id": "6f1c2a9e-3b4d-4e5f-8a7b-0c1d2e3f4a5b",
+  "routing_tier": "local",
+  "run_id": "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+  "status": "success",
+  "transport_authority": "lane"
+}
