@@ -72,8 +72,12 @@ jobs:
           if [[ "$PLANT_BAD_PIN" == "true" ]]; then
             args+=(--plant-bad-pin)
           fi
+          # The clean HOME strips ambient uv settings. Keep only setup-uv's
+          # selected Python and its installation directory, so uv does not
+          # discover an unrelated system Python without dependency wheels.
           python3 canary-src/scripts/ci/install_canary/run_install_canary.py \
             --marketplace-json omniclaude-src/.claude-plugin/marketplace.json \
+            --pass-env UV_PYTHON --pass-env UV_PYTHON_INSTALL_DIR \
             --summary-json canary-summary.json "${args[@]}"
       - name: Upload summary
         if: always()
@@ -110,6 +114,7 @@ jobs:
           status=0
           python3 canary-src/scripts/ci/install_canary/run_install_canary.py \
             --marketplace-json omniclaude-src/.claude-plugin/marketplace.json \
+            --pass-env UV_PYTHON --pass-env UV_PYTHON_INSTALL_DIR \
             --summary-json canary-summary.json --plant-bad-pin || status=$?
           if [[ "$status" == 0 ]] || ! python3 -c \
             'import json; import sys; sys.exit(json.load(open("canary-summary.json"))["failed_stage"] != "install")'; then
