@@ -43,6 +43,16 @@ requirements:
     acceptance:
       - id: "AC7"
         statement: "AC7: the 2026-10-18 reviewer words joined to their question become one RULING with the words verbatim and the session link, the key-approval words and words with no joined question go to the orchestrator inbox, a plain yes to a proposal naming both scope lists becomes an OPERATOR-CONSENT with the scopes copied, and the effect appends the row after the capture rows with no double on resume -- falsifier: uv run pytest tests/unit/nodes/node_operator_capture_compute/test_words_promotion.py tests/unit/nodes/node_operator_capture_effect/test_words_promotion_effect.py -q --no-cov fails with the promotion handler absent"
+  - id: "req-hook-consume-concurrency"
+    statement: "The hook-event projection permits four records in flight and converges to the same rows when events arrive in reverse order."
+    acceptance:
+      - id: "AC8"
+        statement: "AC8: the writer contract declares max_in_flight_records as 4 and every reversed fixture scenario folds to the same event and span rows as in-order delivery; the declaration test fails against the serial merge-base contract -- falsifier: uv run pytest tests/test_omn19513_claude_hook_events_projection.py -q --no-cov -k four_records_in_flight"
+  - id: "req-hook-message-adapter-isolation"
+    statement: "Runtime-dispatched hook events use distinct single-connection adapters on the runtime-bound DSN so concurrent messages do not close each other's pool."
+    acceptance:
+      - id: "AC9"
+        statement: "AC9: two runtime messages receive distinct adapters with the bound DSN and min_size=max_size=1, without connecting the shared adapter; the adapter test fails against the merge-base writer -- falsifier: uv run pytest tests/test_omn19513_claude_hook_events_projection.py -q --no-cov -k each_runtime_message_gets_its_own_single_connection_adapter"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 and AC2: registry passthrough and the raw-value wire model, plus the projection and emit-effect suites over the converted fixtures."
@@ -121,3 +131,47 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_operator_capture_compute/test_words_promotion.py tests/unit/nodes/node_operator_capture_effect/test_words_promotion_effect.py -q --no-cov"
     binds_ac: ["AC7"]
+  - id: "dod-omn19513-ac8-consume-concurrency"
+    description: "AC8: pin four in-flight records and replay each hook fixture in reverse order, comparing the resulting event and span rows."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_omn19513_claude_hook_events_projection.py -q --no-cov -k 'four_records_in_flight or delivered_in_reverse'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8"]
+  - id: "dod-omn19513-ac9-message-adapter-isolation"
+    description: "AC9: pin distinct single-connection adapters on the runtime-bound DSN and leave the shared adapter disconnected."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_omn19513_claude_hook_events_projection.py -q --no-cov -k each_runtime_message_gets_its_own_single_connection_adapter"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC9"]
+  - id: "dod-omn19513-concurrency-deploy-artifact-probe"
+    description: "Hosted deploy artifact probe: load the packaged hook writer and its adjacent runtime contract, require four in-flight records, and construct two isolated single-connection adapters on the bound DSN without opening a network connection. This checks the deployable artifact; live throughput remains a separate runtime readback. The serial merge-base contract and shared-adapter writer fail this probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          env PYTHONDONTWRITEBYTECODE=1 uv run python - <<'PROBE'
+          import inspect
+          from pathlib import Path
+          import yaml
+          from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+          from omnimarket.nodes.node_projection_claude_hook_events.handlers.handler_claude_hook_events_writer import ClaudeHookEventsProjectionWriter
+          writer = ClaudeHookEventsProjectionWriter()
+          contract_path = Path(inspect.getfile(ClaudeHookEventsProjectionWriter)).parent.parent / "contract.yaml"
+          contract = yaml.safe_load(contract_path.read_text())
+          assert contract["consume_concurrency"]["max_in_flight_records"] == 4
+          bound = AsyncpgAdapter(dsn="postgresql://hook_writer@db.invalid/omnidash")
+          writer._db = bound
+          first, second = writer._message_db(), writer._message_db()
+          assert first is not second and first is not bound and second is not bound
+          assert first.dsn == bound.dsn == second.dsn
+          assert (first._min_size, first._max_size) == (1, 1)
+          assert (second._min_size, second._max_size) == (1, 1)
+          assert not bound.is_connected and not first.is_connected and not second.is_connected
+          print("OMN19513-DEPLOY-ARTIFACT-OK in_flight=4 isolated_adapters=2 pool_size=1")
+          PROBE
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8", "AC9"]
