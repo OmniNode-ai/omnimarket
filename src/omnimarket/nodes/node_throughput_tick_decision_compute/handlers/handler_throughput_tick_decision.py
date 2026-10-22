@@ -153,6 +153,8 @@ EJECT_FIX = (
 )
 EJECT_OWNED_FIX = "the controller owns it ({owner}): read /omni:landing-controller status; the session starts no fix work for it"
 BASE_RED = frozenset({"failure", "timed_out", "startup_failure"})
+# Merge pulse's roll-up set (OMN-17427): a roll-up is red whenever any real job fails.
+ROLLUP_CONTEXTS = frozenset({"CI Summary", "ci", "CI Tests Gate"})
 PID_RE = re.compile(r'"PID"\s*=\s*(\d+)\s*;')
 ETIME_RE = re.compile(r"^(?:(?:(\d+)-)?(\d+):)?(\d+):(\d+)$")
 
@@ -1329,7 +1331,10 @@ def _repo_verdict(
     ticks: list[dict[str, Any]],
     now: datetime,
 ) -> tuple[RepoStatusVerdict, str | None, str, float | None, list[str]]:
-    """(verdict, check, reason, queue wait, prs) for one repository, most urgent first."""
+    """(verdict, check, reason, queue wait, prs) for one repository, most urgent first.
+
+    A roll-up counts only for a PR whose reds are all roll-ups.
+    """
     keys = [key for key, _ in prs]
     repo_covers = [
         c
@@ -1339,7 +1344,9 @@ def _repo_verdict(
     leased = [c for c in repo_covers if c.lease_id]
     reds: dict[str, list[str]] = {}
     for key, pr in prs:
-        for name in (pr.get("ci") or {}).get("red") or []:
+        own = (pr.get("ci") or {}).get("red") or []
+        real = [name for name in own if name not in ROLLUP_CONTEXTS]
+        for name in real or own:
             reds.setdefault(str(name), []).append(key)
     shared = sorted(
         ((name, sorted(on)) for name, on in reds.items() if len(on) > 1),
