@@ -3,9 +3,10 @@
 """Typed shapes for measured model selection (OMN-21207).
 
 The selection rules live in the ``measured_selection`` block of
-``node_measured_model_selection_compute/contract.yaml``. A candidate there
-declares WHERE each measure is read (a pricing manifest key, a backend and
-model in recorded delegation runs), never a value: every model is
+``node_measured_model_selection_compute/contract.yaml``. The candidates are the
+models of the routing contract's (``routing_tiers.yaml``) named tiers. Each
+candidate carries WHERE its measures are read (a pricing manifest key, a backend
+and model in recorded delegation runs), never a value: every model is
 ``extra="forbid"``, so a literal cannot be added beside a source.
 """
 
@@ -14,7 +15,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 EnumSelectionObjective = Literal["cheapest_acceptable", "fastest_acceptable"]
 
@@ -75,8 +76,24 @@ class ModelLatencyWindow(BaseModel):
     min_samples: int = Field(gt=0)
 
 
+class ModelCandidateRule(BaseModel):
+    """Which routing-contract models are candidates, and where their measures are read.
+
+    Each model of a named tier becomes a candidate. Its cost is the pricing
+    manifest entry keyed by its model id; its latency is the recorded runs on
+    its backend_ref under its model id.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source: Literal["routing_tiers"]
+    tiers: tuple[str, ...] = Field(min_length=1)
+    measured_cost_per_1m: Literal["pricing_manifest"]
+    measured_p50_latency: Literal["delegation_runs"]
+
+
 class ModelMeasuredSelectionContract(BaseModel):
-    """The selector's rules: objective, measure windows, candidates."""
+    """The selector's rules: objective, measure windows, candidate rule."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -84,14 +101,7 @@ class ModelMeasuredSelectionContract(BaseModel):
     #: Share of a call's tokens that are input, for the blended cost per 1M.
     input_share: float = Field(ge=0, le=1)
     latency: ModelLatencyWindow
-    candidates: tuple[ModelSelectionCandidate, ...] = Field(min_length=1)
-
-    @model_validator(mode="after")
-    def _candidates_are_distinct(self) -> ModelMeasuredSelectionContract:
-        keys = [(c.model_id, c.backend_ref) for c in self.candidates]
-        if len(set(keys)) != len(keys):
-            raise ValueError("a candidate (model_id, backend_ref) is declared twice")
-        return self
+    candidates: ModelCandidateRule
 
 
 class ModelPricedModel(BaseModel):
@@ -148,6 +158,7 @@ class ModelMeasuredSelection(BaseModel):
 __all__ = [
     "EnumSelectionObjective",
     "ModelCandidateMeasures",
+    "ModelCandidateRule",
     "ModelDelegationRunsSource",
     "ModelLatencyWindow",
     "ModelMeasuredSelection",

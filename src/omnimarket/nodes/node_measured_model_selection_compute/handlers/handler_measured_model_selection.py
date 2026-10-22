@@ -15,9 +15,10 @@ window than ``min_samples``, raises :class:`MeasureMissingError` naming it. It
 never falls back to the declared order, because a silent fallback is exactly
 the declared order this replaces.
 
-Pure: the caller supplies the prices and the runs.
-:func:`priced_models_from_manifest` and :func:`recorded_runs_from_rows` convert
-the pricing manifest and ``delegation_events`` rows into those inputs.
+Pure: the caller supplies the candidates, the prices and the runs.
+:func:`candidates_from_routing_tiers`, :func:`priced_models_from_manifest` and
+:func:`recorded_runs_from_rows` build them from the routing contract
+(``routing_tiers.yaml``), the pricing manifest and ``delegation_events`` rows.
 """
 
 from __future__ import annotations
@@ -35,15 +36,20 @@ from pydantic import ValidationError
 
 from omnimarket.models.delegation.model_measured_selection import (
     ModelCandidateMeasures,
+    ModelCandidateRule,
+    ModelDelegationRunsSource,
     ModelMeasuredSelection,
     ModelMeasuredSelectionContract,
     ModelPricedModel,
+    ModelPricingManifestSource,
     ModelRecordedRun,
+    ModelSelectionCandidate,
 )
 from omnimarket.models.delegation.wire.model_measured_selection_decided_event import (
     ModelMeasuredSelectionDecidedEvent,
     ModelMeasuredSelectionRequest,
 )
+from omnimarket.routing.routing_tiers_path import resolve_routing_tiers_path
 
 CONTRACT_PATH: Path = Path(__file__).resolve().parent.parent / "contract.yaml"
 
@@ -85,6 +91,55 @@ def read_selection_contract(path: Path) -> ModelMeasuredSelectionContract:
 def load_measured_selection_contract() -> ModelMeasuredSelectionContract:
     """The shipped selection rules."""
     return read_selection_contract(CONTRACT_PATH)
+
+
+def candidates_from_routing_tiers(
+    rule: ModelCandidateRule, routing_tiers: Mapping[str, Any]
+) -> tuple[ModelSelectionCandidate, ...]:
+    """Every model of the rule's tiers in a parsed ``routing_tiers.yaml``.
+
+    One candidate per distinct (model id, backend_ref). Raises
+    :class:`MeasuredSelectionContractError` when a named tier is absent.
+    """
+    tiers = {
+        str(tier.get("name")): tier
+        for tier in routing_tiers.get("tiers") or ()
+        if isinstance(tier, Mapping)
+    }
+    candidates: dict[tuple[str, str], ModelSelectionCandidate] = {}
+    for name in rule.tiers:
+        if name not in tiers:
+            raise MeasuredSelectionContractError(
+                f"routing contract has no tier {name!r} named by measured_selection"
+            )
+        for model in tiers[name].get("models") or ():
+            model_id, backend_ref = str(model["id"]), str(model["backend_id"])
+            candidates.setdefault(
+                (model_id, backend_ref),
+                ModelSelectionCandidate(
+                    model_id=model_id,
+                    backend_ref=backend_ref,
+                    measured_cost_per_1m=ModelPricingManifestSource(
+                        source=rule.measured_cost_per_1m, pricing_key=model_id
+                    ),
+                    measured_p50_latency=ModelDelegationRunsSource(
+                        source=rule.measured_p50_latency,
+                        backend_id=backend_ref,
+                        model_name=model_id,
+                    ),
+                ),
+            )
+    return tuple(candidates.values())
+
+
+def routing_contract_candidates() -> tuple[ModelSelectionCandidate, ...]:
+    """The shipped rule applied to the routing contract in force."""
+    routing_tiers: Any = yaml.safe_load(
+        resolve_routing_tiers_path().read_text(encoding="utf-8")
+    )
+    return candidates_from_routing_tiers(
+        load_measured_selection_contract().candidates, routing_tiers
+    )
 
 
 def priced_models_from_manifest(
@@ -145,6 +200,7 @@ def recorded_runs_from_rows(
 
 def measure_candidates(
     contract: ModelMeasuredSelectionContract,
+    candidates: Iterable[ModelSelectionCandidate],
     pricing: Iterable[ModelPricedModel],
     runs: Iterable[ModelRecordedRun],
     *,
@@ -159,7 +215,7 @@ def measure_candidates(
             by_route.setdefault((run.backend_id, run.model_name), []).append(run)
 
     measured: list[ModelCandidateMeasures] = []
-    for candidate in contract.candidates:
+    for candidate in candidates:
         cost_ref = candidate.measured_cost_per_1m
         price = prices.get(cost_ref.pricing_key)
         if price is None:
@@ -200,6 +256,7 @@ def measure_candidates(
 
 def select_by_measure(
     contract: ModelMeasuredSelectionContract,
+    candidates: Iterable[ModelSelectionCandidate],
     pricing: Iterable[ModelPricedModel],
     runs: Iterable[ModelRecordedRun],
     *,
@@ -210,7 +267,7 @@ def select_by_measure(
     Raises:
         MeasureMissingError: a candidate has no measured cost or latency.
     """
-    measured = measure_candidates(contract, pricing, runs, now=now)
+    measured = measure_candidates(contract, candidates, pricing, runs, now=now)
     if contract.objective.kind == "cheapest_acceptable":
         ranked = sorted(measured, key=lambda m: (m.cost_per_1m_usd, m.p50_latency_ms))
     else:
@@ -233,6 +290,7 @@ class HandlerMeasuredModelSelection:
     ) -> ModelMeasuredSelectionDecidedEvent:
         selection = select_by_measure(
             load_measured_selection_contract(),
+            request.candidates,
             request.pricing,
             request.runs,
             now=request.decided_at,
@@ -249,10 +307,12 @@ __all__ = [
     "HandlerMeasuredModelSelection",
     "MeasureMissingError",
     "MeasuredSelectionContractError",
+    "candidates_from_routing_tiers",
     "load_measured_selection_contract",
     "measure_candidates",
     "priced_models_from_manifest",
     "read_selection_contract",
     "recorded_runs_from_rows",
+    "routing_contract_candidates",
     "select_by_measure",
 ]

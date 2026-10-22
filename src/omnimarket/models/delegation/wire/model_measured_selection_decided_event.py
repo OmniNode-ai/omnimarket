@@ -13,16 +13,19 @@ from omnimarket.models.delegation.model_measured_selection import (
     ModelMeasuredSelection,
     ModelPricedModel,
     ModelRecordedRun,
+    ModelSelectionCandidate,
 )
 
 
 class ModelMeasuredSelectionRequest(BaseModel):
-    """Rank the contract's candidates on these prices and these recorded runs."""
+    """Rank these candidates on these prices and these recorded runs."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     correlation_id: UUID
     task_type: str = Field(min_length=1)
+    #: The routing contract's candidates, each with its measure sources.
+    candidates: tuple[ModelSelectionCandidate, ...] = Field(min_length=1)
     pricing: tuple[ModelPricedModel, ...]
     runs: tuple[ModelRecordedRun, ...]
     decided_at: datetime
