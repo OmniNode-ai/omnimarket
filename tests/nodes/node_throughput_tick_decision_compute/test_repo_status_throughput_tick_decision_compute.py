@@ -77,6 +77,7 @@ def _merged(repo: str, n: int, at: str) -> tuple[str, dict[str, Any]]:
 def _watcher(
     *prs: tuple[str, dict[str, Any]],
     base_rows: dict[str, list[list[str]]] | None = None,
+    base_runs: dict[str, list[list[str]]] | None = None,
 ) -> dict[str, Any]:
     repos = {key.split("#")[0] for key, _ in prs}
     return {
@@ -84,7 +85,14 @@ def _watcher(
         "operator": "op",
         "repos": {repo: {"default_branch": "main"} for repo in repos},
         "branches": {
-            f"{repo}@main": {"checks": {"rows": rows}}
+            f"{repo}@main": {
+                "checks": {"rows": rows},
+                **(
+                    {"runs": {"rows": base_runs[repo]}}
+                    if base_runs is not None and repo in base_runs
+                    else {}
+                ),
+            }
             for repo, rows in (base_rows or {}).items()
         },
         "prs": dict(prs),
@@ -297,6 +305,204 @@ def test_a_red_base_branch_is_a_note_naming_the_newest_failing_check() -> None:
     assert verdict.verdict == "base_branch_red"
     assert verdict.check == "validate"
     assert _line(result, "alpha").startswith("NOTE repo-status:alpha |")
+
+
+def test_a_red_from_another_branchs_run_on_the_base_sha_is_not_a_base_red() -> None:
+    rows = [
+        [
+            "CI Summary",
+            "completed",
+            "success",
+            "2026-10-15T00:20:00Z",
+            "2026-10-15T00:21:00Z",
+            "1",
+            "10",
+            "100",
+        ],
+        [
+            "CI Summary",
+            "completed",
+            "failure",
+            "2026-10-15T00:50:00Z",
+            "2026-10-15T00:51:00Z",
+            "2",
+            "20",
+            "200",
+        ],
+        [
+            "Tests (Split 1/20)",
+            "completed",
+            "failure",
+            "2026-10-15T00:45:00Z",
+            "2026-10-15T00:46:00Z",
+            "3",
+            "20",
+            "200",
+        ],
+    ]
+    runs = [
+        [
+            "100",
+            "10",
+            ".github/workflows/ci.yml",
+            "CI",
+            "1",
+            "push",
+            "completed",
+            "success",
+            "main",
+            "2026-10-15T00:10:00Z",
+        ],
+        [
+            "200",
+            "20",
+            ".github/workflows/ci.yml",
+            "CI",
+            "1",
+            "push",
+            "completed",
+            "failure",
+            "release",
+            "2026-10-15T00:40:00Z",
+        ],
+    ]
+    watcher = _watcher(
+        _pr("alpha", 1), base_rows={"alpha": rows}, base_runs={"alpha": runs}
+    )
+
+    result = HANDLER.handle(_request(watcher))
+
+    assert _by_repo(result)["alpha"].verdict != "base_branch_red"
+
+
+def test_a_red_from_an_unlisted_run_still_counts() -> None:
+    rows = [
+        [
+            "CI Summary",
+            "completed",
+            "failure",
+            "2026-10-15T00:50:00Z",
+            "2026-10-15T00:51:00Z",
+            "2",
+            "30",
+            "300",
+        ],
+        [
+            "Tests (Split 1/20)",
+            "completed",
+            "failure",
+            "2026-10-15T00:45:00Z",
+            "2026-10-15T00:46:00Z",
+            "3",
+            "30",
+            "300",
+        ],
+    ]
+    runs = [
+        [
+            "100",
+            "10",
+            ".github/workflows/ci.yml",
+            "CI",
+            "1",
+            "push",
+            "completed",
+            "success",
+            "main",
+            "2026-10-15T00:10:00Z",
+        ],
+    ]
+    watcher = _watcher(
+        _pr("alpha", 1), base_rows={"alpha": rows}, base_runs={"alpha": runs}
+    )
+
+    result = HANDLER.handle(_request(watcher))
+
+    assert _by_repo(result)["alpha"].verdict == "base_branch_red"
+
+
+def test_a_base_red_roll_up_beside_a_real_red_names_the_real_check() -> None:
+    rows = [
+        [
+            "CI Summary",
+            "completed",
+            "failure",
+            "2026-10-15T00:50:00Z",
+            "2026-10-15T00:51:00Z",
+            "1",
+            "10",
+            "100",
+        ],
+        [
+            "Tests (Split 1/20)",
+            "completed",
+            "failure",
+            "2026-10-15T00:45:00Z",
+            "2026-10-15T00:46:00Z",
+            "2",
+            "10",
+            "100",
+        ],
+    ]
+    runs = [
+        [
+            "100",
+            "10",
+            ".github/workflows/ci.yml",
+            "CI",
+            "1",
+            "push",
+            "completed",
+            "failure",
+            "main",
+            "2026-10-15T00:40:00Z",
+        ],
+    ]
+    watcher = _watcher(
+        _pr("alpha", 1), base_rows={"alpha": rows}, base_runs={"alpha": runs}
+    )
+
+    result = HANDLER.handle(_request(watcher))
+
+    verdict = _by_repo(result)["alpha"]
+    assert verdict.verdict == "base_branch_red"
+    assert verdict.check == "Tests (Split 1/20)"
+
+
+def test_a_base_red_roll_up_alone_is_still_named() -> None:
+    rows = [
+        [
+            "CI Summary",
+            "completed",
+            "failure",
+            "2026-10-15T00:50:00Z",
+            "2026-10-15T00:51:00Z",
+            "1",
+            "10",
+            "100",
+        ],
+    ]
+    runs = [
+        [
+            "100",
+            "10",
+            ".github/workflows/ci.yml",
+            "CI",
+            "1",
+            "push",
+            "completed",
+            "failure",
+            "main",
+            "2026-10-15T00:40:00Z",
+        ],
+    ]
+    watcher = _watcher(
+        _pr("alpha", 1), base_rows={"alpha": rows}, base_runs={"alpha": runs}
+    )
+
+    result = HANDLER.handle(_request(watcher))
+
+    assert _by_repo(result)["alpha"].check == "CI Summary"
 
 
 def test_pending_ci_is_waiting_on_ci_with_the_oldest_wait() -> None:

@@ -209,8 +209,8 @@ def test_contract_binds_accepts_an_unbound_command_only_deploy_probe() -> None:
 # OMN-20543: omnibase_core#1886, a descendant of #1884, gives that job a
 # Postgres service, the PG16 server tools and INTEGRATION_POSTGRES_*, so a bound
 # test that needs a database runs at the head and in the merge-base control.
-# The pin moved to a descendant (omnibase_core#1912, OMN-17427; then omnibase_core#1914, OMN-20074; then omnibase_core#1932, OMN-20032; then omnibase_core#1986, OMN-21146).
-_EXEMPT_REUSABLE_SHA = "4d16322dae9d62f96089b93421a768fb8dd8c8fe"
+# The pin moved to a descendant (omnibase_core#1912, OMN-17427; then omnibase_core#1914, OMN-20074; then omnibase_core#1932, OMN-20032; then omnibase_core#1986, OMN-21146; then omnibase_core#2079, OMN-19513).
+_EXEMPT_REUSABLE_SHA = "5782289777210ca814c0e43b4f797826135dba78"
 
 
 def test_caller_pins_a_reusable_with_the_bot_bump_exemption() -> None:
@@ -271,8 +271,8 @@ def test_caller_pins_a_verifier_that_refuses_unbound_criteria() -> None:
 # database test its database. A pin before omnibase_core#1886 runs that test
 # with none, so a contract can only scope it local_done_gate, which the hosted
 # control refuses as a control that did not run (omnimarket#3369).
-# The pin moved to a descendant (omnibase_core#1912, OMN-17427; then omnibase_core#1914, OMN-20074; then omnibase_core#1932, OMN-20032; then omnibase_core#1986, OMN-21146).
-_DATABASE_REUSABLE_SHA = "4d16322dae9d62f96089b93421a768fb8dd8c8fe"
+# The pin moved to a descendant (omnibase_core#1912, OMN-17427; then omnibase_core#1914, OMN-20074; then omnibase_core#1932, OMN-20032; then omnibase_core#1986, OMN-21146; then omnibase_core#2079, OMN-19513).
+_DATABASE_REUSABLE_SHA = "5782289777210ca814c0e43b4f797826135dba78"
 
 
 def test_caller_pins_a_reusable_that_gives_bound_tests_a_database() -> None:

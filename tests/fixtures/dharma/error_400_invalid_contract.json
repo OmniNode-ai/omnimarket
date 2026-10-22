@@ -1,0 +1,5 @@
+{
+ "ok": false,
+ "error": "invalid_evaluation_contract",
+ "message": "tasks.0.scenario.user_message: user_message is required and must not exceed 20000 characters."
+}
