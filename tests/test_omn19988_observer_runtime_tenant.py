@@ -57,7 +57,7 @@ from omnimarket.nodes.node_local_environment_observe_effect.handlers import (
 pytestmark = pytest.mark.unit
 
 SLUG = "local-7eac03d77ba9"
-CONFIGURED_UUID = "820272f9-4aaf-5add-b3a0-1a2b3c4d5e6f"
+CONFIGURED_UUID = "00000000-0000-4000-8000-0000000000a2"
 INSTALLED_UUID = UUID("19988000-0000-4000-8000-0000000000aa")
 INSTALLED_SLUG = "installed-slug"
 NOW = datetime(2026, 10, 22, 1, tzinfo=UTC)

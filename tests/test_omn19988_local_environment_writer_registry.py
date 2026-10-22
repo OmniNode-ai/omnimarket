@@ -41,7 +41,7 @@ from tests.test_omn19988_local_environment_writer import (
 pytestmark = pytest.mark.unit
 
 SLUG = "local-7eac03d77ba9"
-SLUG_UUID = "820272f9-4aaf-5add-b3a0-1a2b3c4d5e6f"
+SLUG_UUID = "00000000-0000-4000-8000-0000000000a1"
 STRANGER_UUID = "11111111-1111-4111-8111-111111111111"
 
 
