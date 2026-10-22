@@ -125,7 +125,7 @@ def _scoped_writer(conn: asyncpg.Connection) -> ClaudeHookEventsProjectionWriter
 async def _project_all(writer: ClaudeHookEventsProjectionWriter) -> None:
     for name in _SCENARIOS:
         for event in _jsonl(_FIXTURES / "scenarios" / f"{name}.events.jsonl"):
-            await writer._project(SOURCE_TOPIC, event)
+            await writer._project(writer.db, SOURCE_TOPIC, event)
 
 
 def _iso(value: Any) -> Any:
@@ -251,8 +251,8 @@ async def test_span_model_and_description_read_back_and_survive_a_later_event() 
         start["lineage"]["agent_model"] = "claude-sonnet-5-5"
         start["lineage"]["agent_description"] = "fix the hook"
         topic = SOURCE_TOPIC
-        await writer._project(topic, start)
-        await writer._project(topic, events[3])
+        await writer._project(writer.db, topic, start)
+        await writer._project(writer.db, topic, events[3])
         row = await conn.fetchrow(
             f"SELECT model, description FROM {_SCHEMA}.claude_agent_spans "
             "WHERE agent_id = $1",
@@ -281,8 +281,8 @@ async def test_goal_ids_read_back_as_uuid_columns_and_the_index_is_partial() -> 
         plain = json.loads(
             (_FIXTURES / "events" / "PreToolUse.json").read_text("utf-8")
         )
-        await writer._project(topic, binding)
-        await writer._project(topic, plain)
+        await writer._project(writer.db, topic, binding)
+        await writer._project(writer.db, topic, plain)
         rows = {
             str(r["event_id"]): r
             for r in await conn.fetch(
@@ -333,8 +333,8 @@ async def test_lane_model_host_and_exit_code_read_back_from_their_columns() -> N
         plain = json.loads(
             (_FIXTURES / "events" / "PreToolUse.json").read_text("utf-8")
         )
-        await writer._project(topic, event)
-        await writer._project(topic, plain)
+        await writer._project(writer.db, topic, event)
+        await writer._project(writer.db, topic, plain)
         rows = {
             str(r["event_id"]): r
             for r in await conn.fetch(
@@ -398,7 +398,7 @@ async def test_a_refused_call_joins_its_guard_and_a_session_total_is_readable() 
         later["payload"]["output_tokens"] = 1000
         later["payload"]["message_count"] = 4
         for event in (pre, allowed, refusal, usage, later):
-            await writer._project(topic, event)
+            await writer._project(writer.db, topic, event)
 
         refused = await conn.fetch(
             f"SELECT p.tool_use_id, r.guard, r.refusal_reason "
@@ -436,7 +436,7 @@ async def test_a_refused_call_joins_its_guard_and_a_session_total_is_readable() 
 
         # A replay changes nothing, and the migration replays without error.
         for event in (refusal, usage, later):
-            await writer._project(topic, event)
+            await writer._project(writer.db, topic, event)
         again = await conn.fetchval(
             f"SELECT sum(output_tokens) FROM {_SCHEMA}.claude_hook_events"
         )

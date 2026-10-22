@@ -127,6 +127,33 @@ event_bus:
   dlq_topics:
     - onex.dlq.omnimarket.projection-claude-hook-events-malformed.v1
 
+# OMN-19513: four hook events in flight at once instead of one. The runtime
+# dispatches each event to a worker thread, and that thread opens its own event
+# loop and pool. Each event costs almost no CPU, but on the shared main runtime
+# the thread waits to reacquire the GIL many times per event. Measured on the
+# dev lane on 2026-10-22, serial consumption peaked at about 130 events a
+# minute. Producers were emitting about 265 a minute, so the group fell 48k
+# events behind while it was still taking rows. Running four at once overlaps
+# those waits.
+#
+# THE WRITER MUST NOT SHARE ITS ADAPTER. Concurrent messages that share one
+# adapter close each other's pool. On the dev lane that showed as "call
+# connect() first" and "pool is closed", and every such record was rewound.
+# ClaudeHookEventsProjectionWriter._message_db therefore opens one
+# single-connection adapter per message, on the DSN the runtime bound.
+#
+# ORDERING: the topic no longer completes in partition order. This writer
+# already accepts events out of order. The event insert is idempotent on
+# event_id. The span upsert recounts rather than increments, and it takes
+# LEAST/GREATEST of the start and stop times. A child span written before its
+# spawning call is repaired when the call arrives. A child span still marked
+# unknown is upgraded by its next event (the ON CONFLICT CASE). One case is not
+# repaired: a child's first event and its parent call both in flight at the
+# same moment. That event's own parent_agent_id can stay null. The span
+# resolves on the child's next event.
+consume_concurrency:
+  max_in_flight_records: 4
+
 externally_consumed_topics:
   - onex.evt.omnimarket.projection-claude-hook-events-applied.v1
 
