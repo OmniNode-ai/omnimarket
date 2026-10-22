@@ -28,7 +28,7 @@ from .base import (
     MorningToolRefusalError,
     Result,
     _command,
-    _git,
+    _git_hooked,
     _git_out,
     _proc,
     _tail,
@@ -825,7 +825,7 @@ def kb_push_branch(ctx: ModelMorningToolContext, _: BaseModel) -> Result:
         raise MorningToolRefusalError(
             f"the worktree has uncommitted tracked changes: {dirty[:400]}"
         )
-    done = _git(ctx.kb_worktree, "push", "-u", "origin", ctx.kb_branch)
+    done = _git_hooked(ctx.kb_worktree, "push", "-u", "origin", ctx.kb_branch)
     head = _git_out(ctx.kb_worktree, "rev-parse", "HEAD") or ""
     return {"branch": ctx.kb_branch, "head": head, **done}
 

@@ -521,6 +521,71 @@ def test_a_timed_out_program_takes_its_children_with_it(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_a_commit_past_its_hook_time_leaves_no_index_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """2026-10-22: a decisions-register commit outran 120 s in its hooks, and the index lock the
+    killed git left refused every later commit in the run (OMN-17427)."""
+    import subprocess
+
+    from omnibase_core.validators.no_unguarded_git_subprocess import (
+        scrub_git_location_env,
+    )
+
+    from omnimarket.nodes.node_morning_ground_state_orchestrator.tools import base
+
+    for name in ("GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE", "GIT_COMMON_DIR"):
+        monkeypatch.delenv(name, raising=False)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git(*args: str) -> None:
+        subprocess.run(
+            ["git", "-C", str(repo), *args],
+            check=True,
+            capture_output=True,
+            env=scrub_git_location_env(os.environ),
+        )
+
+    git("init", "-q")
+    git("config", "user.email", "test@example.invalid")
+    git("config", "user.name", "test")
+    git("config", "core.hooksPath", str(repo / ".hooks"))
+    (repo / "a.txt").write_text("a\n")
+    git("add", "a.txt")
+    git("commit", "-qm", "a")
+    hooks = repo / ".hooks"
+    hooks.mkdir()
+    (hooks / "pre-commit").write_text("#!/bin/sh\nsleep 30\n")
+    (hooks / "pre-commit").chmod(0o755)
+    (repo / "a.txt").write_text("b\n")
+    git("add", "a.txt")
+    monkeypatch.setattr(base, "GIT_HOOK_TIMEOUT_S", 2)
+    done = base._git_hooked(repo, "commit", "-m", "b")
+    assert done["exit"] is None
+    lock = repo / ".git" / "index.lock"
+    assert done["stale_lock_removed"] == str(lock.resolve())
+    assert not lock.exists()
+    (hooks / "pre-commit").write_text("#!/bin/sh\nexit 0\n")
+    assert base._git_hooked(repo, "commit", "-qm", "b")["exit"] == 0
+
+
+@pytest.mark.unit
+def test_a_phase_session_waits_long_enough_for_its_tool_server(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The morning MCP server's 30 s startup default timed out under load (2026-10-22)."""
+    from omnimarket.nodes.node_morning_ground_state_orchestrator.handlers import (
+        handler_morning_phase_tools as gateway,
+    )
+
+    monkeypatch.delenv("MCP_TIMEOUT", raising=False)
+    assert gateway.session_env()["MCP_TIMEOUT"] == "180000"
+    monkeypatch.setenv("MCP_TIMEOUT", "240000")
+    assert gateway.session_env()["MCP_TIMEOUT"] == "240000"
+
+
+@pytest.mark.unit
 def test_a_terminal_without_a_claim_refuses(tmp_path: Path) -> None:
     with pytest.raises(MorningToolRefusalError, match="ledger_append_claim first"):
         _run(

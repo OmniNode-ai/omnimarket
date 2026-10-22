@@ -34,6 +34,7 @@ from .base import (
     _command,
     _git,
     _git_blob,
+    _git_hooked,
     _git_out,
     _proc,
     _worktree_ready,
@@ -399,12 +400,14 @@ def kb_commit(ctx: ModelMorningToolContext, params: BaseModel) -> Result:
             "commit_sha": head,
         }
     message = f"{ctx.commit_prefix} {p.what} {ctx.date}"
-    done = _git(ctx.kb_worktree, "commit", "--only", "-m", message, "--", *paths)
+    done = _git_hooked(ctx.kb_worktree, "commit", "--only", "-m", message, "--", *paths)
     for _ in range(3):  # a concurrent phase's commit holds the index lock for a moment
         if done["exit"] == 0 or "index.lock" not in str(done["stderr"]):
             break
         time.sleep(3)
-        done = _git(ctx.kb_worktree, "commit", "--only", "-m", message, "--", *paths)
+        done = _git_hooked(
+            ctx.kb_worktree, "commit", "--only", "-m", message, "--", *paths
+        )
     if done["exit"] != 0:
         return {
             "committed": False,

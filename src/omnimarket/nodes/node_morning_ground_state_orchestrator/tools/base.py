@@ -117,6 +117,27 @@ def _git(repo: Path, *args: str) -> Result:
     return _proc(["git", "-C", str(repo), *args], cwd=repo, timeout=120)
 
 
+#: A commit or push runs the repository's hooks, which took 135 s to well past 120 s on the
+#: loaded operator host on 2026-10-22 (the decisions-register commit timed out at 120 s).
+GIT_HOOK_TIMEOUT_S = 900
+
+
+def _git_hooked(repo: Path, *args: str) -> Result:
+    """A git command that runs hooks (commit, push), with the hooks' time.
+
+    On a timeout the runner has killed git and its hooks, and git leaves the index lock it
+    held: nothing else writes this worktree's index, so the lock is removed and said so,
+    instead of refusing every later commit in the run (2026-10-22, OMN-17427)."""
+    done = _proc(["git", "-C", str(repo), *args], cwd=repo, timeout=GIT_HOOK_TIMEOUT_S)
+    if done["exit"] is None:
+        git_dir = _git_out(repo, "rev-parse", "--path-format=absolute", "--git-dir")
+        lock = Path(git_dir) / "index.lock" if git_dir else None
+        if lock is not None and lock.is_file():
+            lock.unlink()
+            done["stale_lock_removed"] = str(lock)
+    return done
+
+
 def _git_out(repo: Path, *args: str) -> str | None:
     done = _git(repo, *args)
     return str(done["stdout"]).strip() if done["exit"] == 0 else None

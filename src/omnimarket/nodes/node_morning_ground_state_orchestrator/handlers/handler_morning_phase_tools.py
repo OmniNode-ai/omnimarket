@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -57,6 +58,11 @@ TRANSPORT = Path(handler_agent_session.__file__)
 #: The state directory phase sessions record into, under the overlay's tools root.
 STATE_PARTS = (".onex_state", "morning-workflows", "phase-tools")
 PHASE_TIMEOUT_S = handler_agent_session.TOOLS_ONLY_TIMEOUT_S + 100
+#: How long claude waits for the morning MCP server to start (its MCP_TIMEOUT, in ms). Its
+#: 30 s default was too short on the loaded operator host: on 2026-10-22 the ground-state and
+#: triage servers, started side by side, both hit CONNECT_TIMEOUT and the phases ran with no
+#: tools. A value already in the environment wins.
+MCP_STARTUP_TIMEOUT_MS = 180000
 EXIT_REFUSED = 65
 TOOLS_NOTE = (
     "\n\nTOOLS (RULING 2026-10-21T22:32:15Z): you have no shell, no file tools and no "
@@ -111,6 +117,14 @@ def refuse_unless_morning_server(mcp_config: dict[str, JsonValue]) -> None:
         raise MorningPhaseToolsError(
             "refused a phase session: the tool server must be the morning phase tools server"
         )
+
+
+def session_env() -> dict[str, str]:
+    """The phase session's environment: the caller's, with the MCP server's startup time."""
+    return {
+        **os.environ,
+        "MCP_TIMEOUT": os.environ.get("MCP_TIMEOUT") or str(MCP_STARTUP_TIMEOUT_MS),
+    }
 
 
 def transport_argv(model: str, config: Path, schema: Path) -> list[str]:
@@ -216,6 +230,7 @@ class HandlerMorningPhaseTools:
                     capture_output=True,
                     text=True,
                     cwd=cwd,
+                    env=session_env(),
                     timeout=PHASE_TIMEOUT_S,
                     check=False,
                 )
