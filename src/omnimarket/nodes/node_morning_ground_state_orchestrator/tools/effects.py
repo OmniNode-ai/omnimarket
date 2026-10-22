@@ -602,8 +602,8 @@ def triage_fences(ctx: ModelMorningToolContext, _: BaseModel) -> Result:
     fenced = parsed.get("fenced_tickets") if isinstance(parsed, dict) else None
     return {
         "exit": done.returncode,
-        "fenced_tickets": cast(JsonValue, fenced),
-        "result": cast(JsonValue, parsed) if len(done.stdout) < 30000 else None,
+        "fenced_tickets": fenced,
+        "result": parsed if len(done.stdout) < 30000 else None,
         "stdout_tail": None if parsed is not None else _tail(done.stdout),
         "stderr": _tail(done.stderr),
     }
@@ -804,7 +804,11 @@ def kb_open_pr(ctx: ModelMorningToolContext, params: BaseModel) -> Result:
     url = re.search(r"https://github\.com/\S+/pull/(\d+)", text)
     if not url:
         return {"opened": False, **done}
-    record = {"url": url.group(0), "number": int(url.group(1)), "title": title}
+    record: dict[str, JsonValue] = {
+        "url": url.group(0),
+        "number": int(url.group(1)),
+        "title": title,
+    }
     _pr_file(ctx).write_text(json.dumps(record))
     return {
         "opened": done["exit"] == 0,

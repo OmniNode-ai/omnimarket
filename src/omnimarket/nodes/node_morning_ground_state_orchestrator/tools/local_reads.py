@@ -289,11 +289,17 @@ def watcher_branch_head(ctx: ModelMorningToolContext, params: BaseModel) -> Resu
                 "context": name,
                 "verdict": verdict,
                 "qualifying_runs": len(qualifying),
-                "other_runs": [
-                    {k: x[k] for k in ("status", "conclusion", "event", "head_branch")}
-                    for x in named
-                    if x not in qualifying
-                ][:5],
+                "other_runs": cast(
+                    JsonValue,
+                    [
+                        {
+                            k: x[k]
+                            for k in ("status", "conclusion", "event", "head_branch")
+                        }
+                        for x in named
+                        if x not in qualifying
+                    ][:5],
+                ),
             }
         )
     failing_push = sorted(

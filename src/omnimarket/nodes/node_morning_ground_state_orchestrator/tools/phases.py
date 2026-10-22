@@ -9,7 +9,8 @@ from functools import cache
 from importlib.resources import files
 from typing import cast
 
-from .catalog import TOOLS, MorningTool
+from .base import MorningTool
+from .catalog import TOOLS
 
 PACKAGE = "omnimarket.nodes.node_morning_ground_state_orchestrator.tools"
 
@@ -43,7 +44,7 @@ def _phase(label: str) -> dict[str, list[str]]:
 
 def phase_tools(label: str) -> list[MorningTool]:
     """The tools this phase's agent is given, in contract order; unknown names refuse."""
-    names = cast(list[str], _phase(label)["tools"])
+    names = _phase(label)["tools"]
     unknown = [name for name in names if name not in TOOLS]
     if unknown:
         raise MorningPhaseToolsMissingError(

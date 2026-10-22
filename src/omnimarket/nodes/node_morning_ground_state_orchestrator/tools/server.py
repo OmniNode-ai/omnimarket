@@ -22,7 +22,7 @@ from typing import TextIO, cast
 
 from pydantic import JsonValue, ValidationError
 
-from .catalog import MorningTool, MorningToolRefusalError
+from .base import MorningTool, MorningToolRefusalError
 from .context import ModelMorningToolContext
 from .phases import phase_tools
 
