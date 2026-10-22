@@ -31,7 +31,7 @@ dod_evidence:
   - id: "dod-deploy-assessment"
     description: >
       Deploy assessment for the omnimarket runtime handler paths (evidence_pipeline_native.py, handler_readiness_gate_orchestrator.py)
-      plus the new idempotent projection migration. Live materialization on the stability-test lane requires
+      plus the new idempotent projection migration. Live materialization on the staging lane requires
       the projection migration runner to apply 0000_create_overnight_sessions_tables.sql then a projection-api
       restart (docker exec / standard image rebuild + deploy on the post-merge stability redeploy cycle).
       No new Kafka topic, no contract API change, no prod mutation. Deploy is gated on that redeploy cycle,

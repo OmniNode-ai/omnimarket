@@ -4,7 +4,7 @@ ticket_id: "OMN-16146"
 title: "OCC evidence for OMN-16146"
 summary: >
   Manual OCC companion for OmniNode-ai/omnimarket PR #2092 (create the missing projection_watermarks table
-  via a proper node-owned migration, so the .201 dev projection-registration writer stops logging "Failed
+  via a proper node-owned migration, so the development projection-registration writer stops logging "Failed
   to update watermark: relation projection_watermarks does not exist" on every batch). Records an Evidence-Source
   autobind existence check plus a product-diff-scope check confirming the PR's exact five-file change
   (the migration SQL file, the db_io contract declaration, the regenerated relation-inventory evidence
@@ -47,7 +47,7 @@ dod_evidence:
     description: "PR #2092 on OmniNode-ai/omnimarket — falsifiable deploy probe (OMN-8912/OMN-14505):
       the deploy-gate flagged the PR's two changed runtime paths (node_projection_registration/contract.yaml,
       node_projection_registration/handlers/handler_registration.py) as requiring a deploy DoD probe.
-      No live deploy has occurred yet (this ticket's live .201 dev apply/verify/restart happens post-merge,
+      No live deploy has occurred yet (this ticket's live development apply/verify/restart happens post-merge,
       in this same lane). Per the gate's own accepted compute-only/hermetic pattern (OMN-14051), this
       is a source-presence probe pinned to the PR's exact head SHA: reads the changed handler file's raw
       content at that immutable git blob and counts occurrences of the introduced symbol (projection_watermarks)."

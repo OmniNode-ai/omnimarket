@@ -95,7 +95,7 @@ dod_evidence:
           grep -q '^pr_number: 3101$' drift/dod_receipts/OMN-13335/dod-occ-pr/command.yaml"
   - id: "dod-deploy"
     description: "Deploy assessment for the runtime handler change: omnimarket PR #1406 requires the normal
-      post-merge stability-test deployment and a fresh escalation live-close proof."
+      post-merge staging deployment and a fresh escalation live-close proof."
     source: "manual"
     checks:
       - check_type: "command"

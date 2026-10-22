@@ -59,7 +59,7 @@ dod_evidence:
       DelegationProjectionRunner.project_event() through the real AsyncpgAdapter.
 
       NO DRIFT IS APPLIED, unlike the OMN-17228 module this one follows. Applying migrations 0007
-      through 0034 in order lands the deployed onex-dev shape exactly: tenant_id uuid NOT NULL
+      through 0034 in order lands the deployed staging shape exactly: tenant_id uuid NOT NULL
       DEFAULT '820272f9-4aaf-5add-a2df-0af942852ab2'::uuid, relrowsecurity=t relforcerowsecurity=t,
       and tenant_isolation USING and WITH CHECK both
       (tenant_id = (current_setting('app.tenant_id'::text, true))::uuid).
@@ -89,7 +89,7 @@ dod_evidence:
       makes the module actually execute on the job that does provision Postgres.
 
       Bound to AC1 ONLY. AC5 (the live staging readback) is NOT claimed by this item and is NOT met
-      at the time of writing -- it requires the writer to restart on this release on onex-dev.
+      at the time of writing -- it requires the writer to restart on this release in staging.
     source: "manual"
     status: "verified"
     binds_ac:
@@ -214,7 +214,7 @@ dod_evidence:
     description: |-
       OMN-18139 AC6 -- "the rule 24(d) statement is in the PR body."
 
-      Met. OmniNode-ai/omnimarket#2445's body states that the .201 compose dev lane cannot exercise
+      Met. OmniNode-ai/omnimarket#2445's body states that the compose development lane cannot exercise
       the tenant-scoped path -- delegation_events there reads relrowsecurity=f relforcerowsecurity=f
       and the connection is a superuser, so no policy predicate evaluates on that lane's own tables
       and this defect is structurally unreachable on them. The body says what the lab run DOES prove
