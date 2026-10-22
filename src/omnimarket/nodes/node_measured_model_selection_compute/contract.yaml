@@ -61,8 +61,9 @@ metadata:
 #     cost per 1M tokens is blended over input and output at input_share.
 #     Captured at the entry's effective date.
 #   measured_p50_latency: recorded delegation runs on the candidate's
-#     backend_ref under its model id. The p50 is the median latency of
-#     terminal-ok runs inside latency.window_days. Captured at the newest run.
+#     backend_ref under its model id. The p50 is the median latency of the
+#     runs whose terminal_ok is set inside latency.window_days. Captured at
+#     the newest run.
 # A candidate with no pricing entry, or fewer than latency.min_samples runs in
 # the window, makes the selector raise; it never falls back to the tier order.
 #
