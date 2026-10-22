@@ -1,0 +1,44 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21296"
+title: "The ticket contracts moved into omnimarket carry their own ticket and test evidence"
+summary: "36 ticket contracts move from the change-control repository into this repository's contracts/ directory. A focused test now proves each one is present at contracts/<id>.yaml, loads as a mapping whose ticket_id is its own id, and validates as omnibase_core's ModelTicketContract; at the merge base the files are absent and the test fails."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-moved-contracts-present-and-valid"
+    statement: |-
+      Every moved ticket contract is present in this repository under its own id and validates with the same model the contract-compliance jobs use.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: each of the 36 moved ids has contracts/<id>.yaml, which loads with yaml.safe_load as a mapping whose ticket_id equals the id -- falsifier: the parametrized presence test fails at the merge base, where the files are absent
+      - id: "AC2"
+        statement: |-
+          AC2: each of the 36 moved contracts validates as omnibase_core's ModelTicketContract with its own ticket_id -- falsifier: the parametrized validation test fails at the merge base, where the files are absent
+evidence_requirements:
+  - kind: "tests"
+    description: "The test file checks presence, ticket id and ModelTicketContract validation for every moved contract."
+    command: "uv run pytest tests/ci/test_moved_ticket_contracts_present_omn21296.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21296-moved-contracts-present"
+    description: "Every moved id has contracts/<id>.yaml loading as a mapping with its own ticket_id."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_moved_ticket_contracts_present_omn21296.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21296-moved-contracts-validate"
+    description: "Every moved contract validates as ModelTicketContract with its own ticket_id."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_moved_ticket_contracts_present_omn21296.py -q -k validates_as_ticket_contract"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
