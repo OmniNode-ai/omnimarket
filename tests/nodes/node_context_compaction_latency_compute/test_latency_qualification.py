@@ -5,10 +5,12 @@
 from __future__ import annotations
 
 import math
+from uuid import UUID
 
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.models.context_compaction import ModelContextCompactionPrepared
 from omnimarket.nodes.node_context_compaction_latency_compute.handlers import (
     HandlerLatencyQualification,
 )
@@ -16,6 +18,10 @@ from omnimarket.nodes.node_context_compaction_latency_compute.models import (
     ModelLatencyCell,
     ModelLatencyQualificationRequest,
     ModelLatencyQualificationResult,
+)
+from omnimarket.nodes.node_context_compaction_latency_compute.models.model_latency_qualification import (
+    EnumRoundTripTemperature,
+    ModelCompactionRoundTrip,
 )
 
 pytestmark = pytest.mark.unit
@@ -240,3 +246,59 @@ def test_the_result_is_deterministic_for_the_same_input() -> None:
     first = HandlerLatencyQualification().handle(_request())
     second = HandlerLatencyQualification().handle(_request())
     assert first == second
+
+
+def _prepared(
+    build_ms: float | None, model_section_ms: float | None
+) -> ModelContextCompactionPrepared:
+    return ModelContextCompactionPrepared(
+        candidate_id=UUID("22222222-2222-5222-8222-222222222222"),
+        session_id="session-1",
+        input_messages_hash="a" * 64,
+        assembly_hash="b" * 64,
+        version_vector_hash="c" * 64,
+        profile_name="compaction_orchestrator",
+        profile_content_hash="d" * 64,
+        build_ms=build_ms,
+        model_section_ms=model_section_ms,
+    )
+
+
+@pytest.mark.parametrize("model_section_ms", [0.0, 75.0, 250.0])
+def test_round_trip_from_prepared_splits_build_phases(model_section_ms: float) -> None:
+    trip = ModelCompactionRoundTrip.from_prepared(
+        _prepared(250.0, model_section_ms),
+        round_trip_id="trip-1",
+        size="median",
+        host="lab-host",
+        temperature=EnumRoundTripTemperature.WARM,
+    )
+    assert trip == ModelCompactionRoundTrip(
+        round_trip_id="trip-1",
+        size="median",
+        host="lab-host",
+        temperature=EnumRoundTripTemperature.WARM,
+        deterministic_build_ms=250.0 - model_section_ms,
+        model_section_ms=model_section_ms,
+    )
+
+
+@pytest.mark.parametrize(
+    ("build_ms", "model_section_ms", "message"),
+    [
+        (None, 75.0, "build_ms"),
+        (250.0, None, "model_section_ms"),
+        (250.0, 251.0, "model_section_ms"),
+    ],
+)
+def test_round_trip_from_prepared_refuses_missing_or_inconsistent_timings(
+    build_ms: float | None, model_section_ms: float | None, message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        ModelCompactionRoundTrip.from_prepared(
+            _prepared(build_ms, model_section_ms),
+            round_trip_id="trip-1",
+            size="median",
+            host="lab-host",
+            temperature=EnumRoundTripTemperature.COLD,
+        )

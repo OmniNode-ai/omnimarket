@@ -339,6 +339,9 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
     terminal_failure_cause: EnumDelegationTerminalFailureCause | None = Field(
         default=None
     )
+    # Canonical terminals state an outcome even when the producer names no
+    # cause. None leaves non-terminal task-delegated events unclassified.
+    terminal_ok: bool | None = Field(default=None, strict=True)
     # OMN-19448: canonical terminal trace_id, model_used and route respectively.
     trace_id: str | None = Field(default=None)
     routed_model: str | None = Field(default=None)
@@ -882,6 +885,8 @@ class HandlerProjectionDelegation:
             "override_within_bounds": event.override_within_bounds,
         }
         _stamp_declared_failure_cause(row, event.terminal_failure_cause)
+        if event.terminal_ok is not None:
+            row["terminal_ok"] = event.terminal_ok
         _stamp_terminal_trace_and_routing(row, event)
         _stamp_terminal_stop_reason(row, event.finish_reason, event.truncated)
         # Resolve only the event's declared tenant against the registry.
@@ -1765,6 +1770,9 @@ def _canonical_result_to_task_delegated_payload(
         "content_verdict": payload.get("content_verdict"),
         # OMN-19448: the terminal's own cause; the converter used to drop it.
         "terminal_failure_cause": payload.get("terminal_failure_cause"),
+        # A canonical-only failure must participate in failed-row readbacks,
+        # including one whose producer omitted the typed cause.
+        "terminal_ok": quality_passed and payload.get("terminal_failure_cause") is None,
         # OMN-19448: copy the producer's trace and routing fields; UUID traces
         # are stored as TEXT so the asyncpg writer binds a string safely.
         "trace_id": (
