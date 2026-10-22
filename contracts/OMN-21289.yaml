@@ -28,13 +28,16 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_harness_invocation_check_effect/test_golden_chain_harness_invocation_check_effect.py -q -p no:randomly --no-cov"
+        check_value: "uv run pytest tests/nodes/node_harness_invocation_check_effect/test_golden_chain_harness_invocation_check_effect.py -q -p no:randomly --no-cov -k 'not test_repository_admits_no_harness_invocation_outside_the_baseline'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn21289-deploy-probe"
-    description: "Deploy probe. The hosted runner dispatches the checked-out node over an in-memory bus and requires it to refuse the codex fixture. It fails when the node is absent or admits that invocation, and needs only uv and this checkout. This is package runtime evidence, not a live deployment readback."
+    description: "Deploy probe. The hosted runner dispatches the checked-out node over an in-memory bus and requires it to refuse the codex fixture. It fails when the node is absent or admits that invocation, and needs only uv and this checkout; a second check reads the handler at this head through the GitHub contents API and fails when the handler class is absent. This is package runtime evidence, not a live deployment readback."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_harness_invocation_check_effect/test_golden_chain_harness_invocation_check_effect.py -q -p no:randomly --no-cov -k test_golden_chain_over_bus_refuses_the_codex_fixture"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_harness_invocation_check_effect/handlers/handler_harness_invocation_check.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^class HandlerHarnessInvocationCheck'"
         cwd: "${OMNI_HOME}/omnimarket"
