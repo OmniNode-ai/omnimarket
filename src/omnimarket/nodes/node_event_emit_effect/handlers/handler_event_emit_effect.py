@@ -327,6 +327,26 @@ class KafkaEventPublisher:
         self._publish_identity = publish_identity
         self._source = source
         self._publish_timeout_seconds = publish_timeout_seconds
+        # OMN-17427: resolve the transport imports here, not inside the
+        # publish coroutine. Every relayed event is a fresh process, and on a
+        # loaded dev host ``import omnibase_infra.event_bus.event_bus_kafka``
+        # measured 3.4 to 3.7 s while the Kafka work itself took under 0.1 s;
+        # inside the 5 s per-publish cap that import alone timed publishes out
+        # (FRICTION 2026-10-22T00:41:14Z). ``handle()`` builds this adapter
+        # before it starts its shared deadline, so the cost stays outside
+        # every publish timeout. Kept off module level: tests and callers
+        # import this module without ever publishing.
+        from omnibase_infra.event_bus.models import ModelEventHeaders
+
+        self._headers_cls: Any = ModelEventHeaders
+        if bus_factory is None:
+            from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
+            from omnibase_infra.event_bus.models.config import (
+                ModelKafkaEventBusConfig,
+            )
+
+            self._bus_cls: Any = EventBusKafka
+            self._bus_config_cls: Any = ModelKafkaEventBusConfig
         # Test-injection seam: a fake bus (e.g. EventBusInmemory) can stand
         # in for the real Kafka connection so KafkaEventPublisher's actual
         # publish/timeout/loop-handoff logic gets real test coverage without
@@ -381,9 +401,6 @@ class KafkaEventPublisher:
                 logger.warning("Failed to close Kafka publish session", exc_info=True)
 
     def _build_default_bus(self) -> Any:
-        from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
-        from omnibase_infra.event_bus.models.config import ModelKafkaEventBusConfig
-
         # OMN-16049: do NOT seed ``environment`` from a bespoke, omniclaude-
         # namespaced variable. ``os.environ.get(..., "")`` returned "" on every
         # deployment that does not set it (onex-dev does not), and the config
@@ -395,10 +412,10 @@ class KafkaEventPublisher:
         # Leave the field unset: the model's default stands, and
         # ``apply_environment_overrides()`` applies the runtime's STANDARD
         # source (``KAFKA_ENVIRONMENT``) when it is set.
-        config = ModelKafkaEventBusConfig(
+        config = self._bus_config_cls(
             bootstrap_servers=self._bootstrap_servers,
         ).apply_environment_overrides()
-        return EventBusKafka(config)
+        return self._bus_cls(config)
 
     def publish(
         self,
@@ -467,8 +484,6 @@ class KafkaEventPublisher:
         correlation_id: str | None,
         content_event_id: str | None,
     ) -> None:
-        from omnibase_infra.event_bus.models import ModelEventHeaders
-
         bus = self._session_bus if self._session_active else None
         if bus is None:
             bus = self._bus_factory()
@@ -482,7 +497,7 @@ class KafkaEventPublisher:
                 )
             except ValueError:
                 resolved_correlation_id = uuid4()
-            headers = ModelEventHeaders(
+            headers = self._headers_cls(
                 source=self._source,
                 event_type=topic,
                 timestamp=datetime.now(UTC),
