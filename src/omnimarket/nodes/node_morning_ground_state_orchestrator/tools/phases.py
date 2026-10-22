@@ -43,7 +43,7 @@ def _phase(label: str) -> dict[str, list[str]]:
 
 def phase_tools(label: str) -> list[MorningTool]:
     """The tools this phase's agent is given, in contract order; unknown names refuse."""
-    names = _phase(label)["tools"]
+    names = cast(list[str], _phase(label)["tools"])
     unknown = [name for name in names if name not in TOOLS]
     if unknown:
         raise MorningPhaseToolsMissingError(
@@ -77,6 +77,38 @@ def refuse_stranding_commit(label: str) -> None:
 
 def phase_writes(label: str) -> frozenset[str]:
     return frozenset(_phase(label)["writes"])
+
+
+def phase_lane(label: str) -> tuple[str | None, str | None]:
+    """The phase's own ledger lane and ticket, for its CLAIM and TERMINAL rows."""
+    phases = cast(dict[str, dict[str, object]], phase_tools_contract()["phases"])
+    entry = phases.get(label, {})
+    lane, ticket = entry.get("lane"), entry.get("ticket")
+    return (
+        lane if isinstance(lane, str) else None,
+        ticket if isinstance(ticket, str) else None,
+    )
+
+
+def phase_note(label: str) -> str:
+    """The phase's tool guide: which tool does each step of its brief, and what has no tool."""
+    phases = cast(dict[str, dict[str, object]], phase_tools_contract()["phases"])
+    entry = phases.get(label, {})
+    note = entry.get("note")
+    gaps = cast(dict[str, list[str]], phase_tools_contract().get("gaps", {})).get(
+        label, []
+    )
+    text = ""
+    if isinstance(note, list):
+        text += "\n\nTOOL GUIDE FOR THIS PHASE:\n" + "\n".join(
+            f"- {line}" for line in note
+        )
+    if gaps:
+        text += (
+            "\nNO TOOL YET (report each affected value UNKNOWN naming the missing tool, "
+            "never 0 and never GREEN): " + "; ".join(gaps)
+        )
+    return text
 
 
 def node_step_tool(step: str) -> MorningTool:

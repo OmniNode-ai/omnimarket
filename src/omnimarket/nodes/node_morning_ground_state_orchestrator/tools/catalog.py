@@ -13,50 +13,36 @@ input schema here to that rule.
 from __future__ import annotations
 
 import json
-import os
 import re
-import subprocess
-from collections.abc import Callable
-from dataclasses import dataclass
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Annotated, Literal, cast, get_args
+from typing import cast
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
-from .context import ARTIFACT_VALUES, ModelMorningToolContext
-
-ArtifactKey = Literal[
-    "ground_state",
-    "delegation_accounting",
-    "date_snapshot",
-    "rebaseline",
-    "integration_plan",
-    "dropped_work",
-    "goal",
-    "decisions_md",
-    "decisions_json",
-]
-assert set(get_args(ArtifactKey)) == set(ARTIFACT_VALUES)
-
-LANE_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
-LaneName = Annotated[str, StringConstraints(pattern=LANE_PATTERN)]
-OUTPUT_CHARS = 4000
-PROCESS_TIMEOUT_S = 900
-LEDGER_ROW_RE = re.compile(
-    r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z) \| ([A-Z-]+) \|(.*)$"
+from .base import (
+    BAR_ROW_RE,
+    LANE_PATTERN,
+    LEDGER_ROW_RE,
+    ArtifactKey,
+    LaneName,
+    ModelNoInput,
+    MorningTool,
+    MorningToolRefusalError,
+    Result,
+    _command,
+    _git,
+    _git_blob,
+    _git_out,
+    _proc,
+    _worktree_ready,
+    _writable,
 )
-BAR_ROW_RE = re.compile(
-    r"^\| (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z) \| ([^|]+) \|(.*)$"
-)
-
-
-class MorningToolRefusalError(RuntimeError):
-    """The tool refused the call; nothing was changed."""
-
-
-class ModelNoInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+from .context import ModelMorningToolContext
+from .effects import EFFECT_TOOLS
+from .linear_tools import LINEAR_TOOLS
+from .local_reads import READ_TOOLS
 
 
 class ModelLedgerLaneRowsInput(BaseModel):
@@ -104,97 +90,6 @@ class ModelLedgerReconcileInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     apply: bool
     live_lanes: list[LaneName] | None = Field(default=None, max_length=200)
-
-
-Result = dict[str, JsonValue]
-
-
-@dataclass(frozen=True)
-class MorningTool:
-    name: str
-    description: str
-    input_model: type[BaseModel]
-    effect: Literal["read", "write"]
-    run: Callable[[ModelMorningToolContext, BaseModel], Result]
-
-    def input_schema(self) -> dict[str, JsonValue]:
-        return cast(dict[str, JsonValue], self.input_model.model_json_schema())
-
-
-# --- process helpers: one fixed program per call, never a shell -----------------------
-
-
-def _tail(text: str) -> str:
-    return text if len(text) <= OUTPUT_CHARS else "..." + text[-OUTPUT_CHARS:]
-
-
-def _proc(argv: list[str], *, cwd: Path, timeout: int = PROCESS_TIMEOUT_S) -> Result:
-    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
-    try:
-        done = subprocess.run(
-            argv,
-            cwd=cwd,
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-        )
-    except subprocess.TimeoutExpired:
-        return {"exit": None, "stdout": "", "stderr": f"timed out after {timeout} s"}
-    return {
-        "exit": done.returncode,
-        "stdout": _tail(done.stdout),
-        "stderr": _tail(done.stderr),
-    }
-
-
-def _git(repo: Path, *args: str) -> Result:
-    return _proc(["git", "-C", str(repo), *args], cwd=repo, timeout=120)
-
-
-def _git_out(repo: Path, *args: str) -> str | None:
-    done = _git(repo, *args)
-    return str(done["stdout"]).strip() if done["exit"] == 0 else None
-
-
-def _git_blob(repo: Path, spec: str) -> str | None:
-    """One committed file's full text (never truncated), or None when it is absent."""
-    done = subprocess.run(
-        ["git", "-C", str(repo), "show", spec],
-        capture_output=True,
-        text=True,
-        errors="replace",
-        timeout=60,
-        check=False,
-    )
-    return done.stdout if done.returncode == 0 else None
-
-
-def _command(ctx: ModelMorningToolContext, name: str, *args: str) -> Result:
-    """Run the program the deployment overlay names as ``name``, with tool-built args."""
-    return _proc([*ctx.command(name), *args], cwd=ctx.root)
-
-
-def _writable(ctx: ModelMorningToolContext, keys: list[str]) -> list[str]:
-    from .phases import phase_writes
-
-    owned = phase_writes(ctx.phase_label)
-    foreign = [k for k in keys if k not in owned]
-    if foreign:
-        raise MorningToolRefusalError(
-            f"phase {ctx.phase_label} does not own {foreign}; it may write only {sorted(owned)}"
-        )
-    return [ctx.artifact_path(k) for k in keys]
-
-
-def _worktree_ready(ctx: ModelMorningToolContext) -> None:
-    branch = _git_out(ctx.kb_worktree, "branch", "--show-current")
-    if branch != ctx.kb_branch:
-        raise MorningToolRefusalError(
-            f"the knowledge-base worktree is not prepared on {ctx.kb_branch} "
-            f"(branch {branch!r}); call kb_worktree_prepare first"
-        )
 
 
 # --- read tools ------------------------------------------------------------------------
@@ -505,6 +400,11 @@ def kb_commit(ctx: ModelMorningToolContext, params: BaseModel) -> Result:
         }
     message = f"{ctx.commit_prefix} {p.what} {ctx.date}"
     done = _git(ctx.kb_worktree, "commit", "--only", "-m", message, "--", *paths)
+    for _ in range(3):  # a concurrent phase's commit holds the index lock for a moment
+        if done["exit"] == 0 or "index.lock" not in str(done["stderr"]):
+            break
+        time.sleep(3)
+        done = _git(ctx.kb_worktree, "commit", "--only", "-m", message, "--", *paths)
     if done["exit"] != 0:
         return {
             "committed": False,
@@ -694,5 +594,8 @@ TOOLS: dict[str, MorningTool] = {
             "write",
             ledger_reconcile,
         ),
+        *READ_TOOLS,
+        *LINEAR_TOOLS,
+        *EFFECT_TOOLS,
     )
 }

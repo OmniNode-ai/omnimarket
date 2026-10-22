@@ -39,7 +39,13 @@ from ..models.model_morning_ground_state import (
 from ..models.model_morning_overlay import ModelMorningOverlay
 from ..tools.catalog import ModelLedgerReconcileInput
 from ..tools.context import ModelMorningToolContext, build_context
-from ..tools.phases import node_step_tool, phase_tools, refuse_stranding_commit
+from ..tools.phases import (
+    node_step_tool,
+    phase_lane,
+    phase_note,
+    phase_tools,
+    refuse_stranding_commit,
+)
 from .handler_morning_phase_bus import RESULT_TYPES
 
 PACKAGE = "omnimarket.nodes.node_morning_ground_state_orchestrator"
@@ -137,15 +143,39 @@ class HandlerMorningPhaseTools:
         return self._overlay
 
     def context(
-        self, run: ModelMorningGroundStateRequest, label: str
+        self, run: ModelMorningGroundStateRequest, label: str, model: str = ""
     ) -> ModelMorningToolContext:
         overlay = self._overlay_or_load()
-        return build_context(
+        ctx = build_context(
             phase_label=label,
             day=run.date,
             publish=run.publish,
             values=overlay.values,
             texts=overlay.texts,
+        )
+        defaults = overlay.request_defaults
+        plans = defaults.plan_docs if run.plan_docs is None else run.plan_docs
+        docs = {f"plan_doc_{i}": doc for i, doc in enumerate(plans, 1)}
+        docs["must_do_doc"] = run.must_do_doc or defaults.must_do_doc
+        docs["off_rails_doc"] = run.off_rails_doc or defaults.off_rails_doc
+        lane, ticket = phase_lane(label)
+        return ctx.model_copy(
+            update={
+                "lane": lane,
+                "ticket": ticket,
+                "model": model,
+                "state_dir": self._run_dir(ctx, run),
+                "window_start": run.window_start,
+                "closure_probe_ticket": run.closure_probe_ticket
+                or defaults.closure_probe_ticket,
+                "closure_probe_ceiling_s": run.closure_probe_ceiling_seconds,
+                "source_docs": docs,
+                "integration_repos": list(
+                    run.integration_repos
+                    if run.integration_repos is not None
+                    else defaults.integration_repos
+                ),
+            }
         )
 
     def _run_dir(
@@ -163,7 +193,7 @@ class HandlerMorningPhaseTools:
             phase.label
         )  # refuses a phase with no tool set before anything starts
         refuse_stranding_commit(phase.label)
-        ctx = self.context(run, phase.label)
+        ctx = self.context(run, phase.label, phase.model)
         run_dir = self._run_dir(ctx, run)
         context_file = run_dir / f"{phase.label}.context.json"
         context_file.write_text(ctx.model_dump_json(indent=2), encoding="utf-8")
@@ -178,7 +208,7 @@ class HandlerMorningPhaseTools:
             try:
                 done = subprocess.run(
                     argv,
-                    input=phase.prompt + TOOLS_NOTE,
+                    input=phase.prompt + TOOLS_NOTE + phase_note(phase.label),
                     capture_output=True,
                     text=True,
                     cwd=cwd,

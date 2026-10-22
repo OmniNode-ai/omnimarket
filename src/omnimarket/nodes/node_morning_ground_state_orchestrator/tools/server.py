@@ -28,6 +28,8 @@ from .phases import phase_tools
 
 SERVER_NAME = "morning"
 PROTOCOL_VERSION = "2025-06-18"
+#: Above this a result would be cut by the session (MCP output limit); the agent pages instead.
+MAX_RESULT_CHARS = 60_000
 
 
 class HandlerMorningToolServer:
@@ -59,6 +61,12 @@ class HandlerMorningToolServer:
                 params = tool.input_model.model_validate(arguments)
                 text = json.dumps(tool.run(self.ctx, params), sort_keys=True)
                 ok = True
+                if len(text) > MAX_RESULT_CHARS:
+                    ok = False
+                    text = (
+                        f"{name} result is {len(text)} characters, over the "
+                        f"{MAX_RESULT_CHARS} a call may return: narrow the input or page it"
+                    )
             except ValidationError as exc:
                 text = f"invalid input for {name}: {exc}"
             except MorningToolRefusalError as exc:
@@ -76,6 +84,7 @@ class HandlerMorningToolServer:
                 "ok": ok,
                 "seconds": round(time.monotonic() - started, 3),
                 "result_chars": len(text),
+                **({} if ok else {"error": text[:600]}),
             }
             with self.calls.open("a", encoding="utf-8") as stream:
                 stream.write(json.dumps(record, sort_keys=True) + "\n")
