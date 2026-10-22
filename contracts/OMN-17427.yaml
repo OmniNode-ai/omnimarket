@@ -805,8 +805,13 @@ requirements:
   - id: "req-morning-phase-tools-only-session"
     statement: "A morning phase agent runs as a tools-only session: claude -p with every built-in tool off, exactly one strict MCP server granted as mcp__<server>, dontAsk permission mode and no setting sources, and the morning orchestrator's tools gateway gives each phase only its declared deterministic typed tools, refusing a phase with no tool set before any session starts."
     acceptance:
-      - id: "AC183"
-        statement: "AC183: handler_agent_session.py --tools-only builds a session with --tools \"\" and one --strict-mcp-config server, refuse_unless_tools_only exits 65 on a shell, a wider grant, a second or foreign server, bypass or acceptEdits modes, or added directories, settings, agents or plugins, no catalog tool takes a command or a free path, the MCP server lists and runs only the phase's tools, and HandlerMorningPhaseTools refuses a phase with no tool set and a committing phase while session-goal has none -- falsifier: uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py tests/nodes/node_morning_ground_state_orchestrator/test_agent_session_boundary.py -q -n 0 --no-cov -p no:randomly fails at the merge base, where the tools package, the gateway and the tools-only transport do not exist"
+      - id: "AC186"
+        statement: "AC186: handler_agent_session.py --tools-only builds a session with --tools \"\" and one --strict-mcp-config server, refuse_unless_tools_only exits 65 on a shell, a wider grant, a second or foreign server, bypass or acceptEdits modes, or added directories, settings, agents or plugins, no catalog tool takes a command or a free path, the MCP server lists and runs only the phase's tools, and HandlerMorningPhaseTools refuses a phase with no tool set and a committing phase while session-goal has none -- falsifier: uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py tests/nodes/node_morning_ground_state_orchestrator/test_agent_session_boundary.py -q -n 0 --no-cov -p no:randomly fails at the merge base, where the tools package, the gateway and the tools-only transport do not exist"
+  - id: "req-pack-orchestrator-source-order"
+    statement: "The context-pack orchestrator gives each artifact its position in its tier's source result as source_priority, so a pack carries a tier's entries in the order the source answered them rather than in content-hash order."
+    acceptance:
+      - id: "AC184"
+        statement: "AC184: a tier source answering five open_work rows in forward, reversed or shuffled order yields a built pack whose rendered text carries the rows in that same order -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -k source_order fails at the merge base, where every artifact keeps the default source_priority 100 and the builder orders a tier's chunks by hash"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -1041,6 +1046,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC145: tier read timings, compaction build timings on receipts, and the round-trip split from a prepared receipt."
     command: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py tests/nodes/node_context_compaction_orchestrator/test_handler_context_compaction_orchestrator.py tests/nodes/node_context_compaction_latency_compute/test_latency_qualification.py -q -p no:randomly --no-cov"
+  - kind: "tests"
+    description: "AC184: a built pack carries a tier's entries in source order."
+    command: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -k source_order"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -3471,7 +3479,7 @@ dod_evidence:
   - id: "dod-omn17427-morning-phase-tools-only"
     description: "The tools-only session guard, the phase tool catalog and server, and the HandlerMorningPhaseTools gateway are exercised by the PR's focused tests; they fail at the merge base, which has no tools package, no gateway and no --tools-only transport."
     source: "manual"
-    binds_ac: ["AC183"]
+    binds_ac: ["AC186"]
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py tests/nodes/node_morning_ground_state_orchestrator/test_agent_session_boundary.py -q -n 0 --no-cov -p no:randomly"
@@ -3482,4 +3490,18 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py tests/nodes/node_morning_ground_state_orchestrator/test_agent_session_boundary.py -q -n 0 --no-cov -p no:randomly -k 'test_the_gateway_runs_the_tools_only_transport_and_reads_its_typed_result or test_the_standalone_entrypoint_runs_a_tools_only_session or test_the_mcp_server_speaks_stdio'"
+  - id: "dod-omn17427-ac152-pack-source-order"
+    description: "The context-pack orchestrator sets source_priority to each entry's position in its tier's source result, so the rendered pack carries a tier's entries in source order for forward, reversed and shuffled sources. At the merge base all three cases fail, because every artifact keeps source_priority 100 and the builder orders by hash."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -n 0 -p no:randomly --no-cov -k source_order"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC184"]
+  - id: "dod-omn17427-pack-source-order-deploy-probe"
+    description: "Deploy probe. In the checked-out package, the orchestrator over a fixture source answering open_work rows in reversed order renders them in reversed order. It fails at the merge base and needs only uv and this checkout on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -n 0 -p no:randomly --no-cov -k 'source_order and days1'"
         cwd: "${OMNI_HOME}/omnimarket"
