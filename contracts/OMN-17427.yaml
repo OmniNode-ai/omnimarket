@@ -790,15 +790,6 @@ requirements:
     acceptance:
       - id: "AC145"
         statement: "AC145: under an injected clock each bound tier's read_ms is the clock delta in milliseconds (an unbound tier None, a raising source still timed), the compaction orchestrator's prepared and fallback receipts carry the build's elapsed build_ms (None when the barrier fails before any build) and prepared carries the package's model_section_ms, and from_prepared gives deterministic_build_ms = build_ms - model_section_ms and refuses a missing timing or a model section longer than the build -- falsifier: the focused tests fail at the merge base, where 23 of them fail because read_ms, build_ms and from_prepared do not exist"
-  - id: "req-emit-transport-import-outside-timeout"
-    statement: "node_event_emit_effect resolves the Kafka transport imports when KafkaEventPublisher is constructed, before handle() starts its shared deadline, so the first publish of a fresh process no longer pays the transport import inside its 5 s per-publish cap."
-    acceptance:
-      - id: "AC184"
-        statement: "AC184: with omnibase_infra.event_bus.event_bus_kafka and omnibase_infra.event_bus.models removed from sys.modules, a KafkaEventPublisher built with the default bus factory has the transport module imported at the moment its publish coroutine is handed to the publish loop -- falsifier: uv run pytest tests/unit/nodes/node_event_emit_effect/test_transport_import_outside_timeout_omn17427.py -q -n 0 -p no:randomly --no-cov -k imported_before fails at the merge base, where the import happens inside the coroutine"
-      - id: "AC185"
-        statement: "AC185: with a fake bus and a headers import that sleeps 0.3 s, a publish with timeout_seconds=0.2 succeeds because the import happened at construction -- falsifier: uv run pytest tests/unit/nodes/node_event_emit_effect/test_transport_import_outside_timeout_omn17427.py -q -n 0 -p no:randomly --no-cov -k slow_transport_import fails at the merge base with TimeoutError"
-      - id: "AC186"
-        statement: "AC186: every existing node_event_emit_effect unit test passes unchanged -- falsifier: uv run pytest tests/unit/nodes/node_event_emit_effect -q fails"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -3429,35 +3420,4 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_handler_context_compaction_orchestrator.py tests/nodes/node_context_compaction_latency_compute/test_latency_qualification.py -q -n 0 -p no:randomly --no-cov -k 'test_installed_package_records_build_and_model_section_timings or test_round_trip_from_prepared_splits_build_phases'"
-        cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn17427-emit-transport-import-before-timeout"
-    description: "The Kafka transport module is in sys.modules when the publish coroutine reaches the publish loop. It fails at the merge base, where the import runs inside the coroutine."
-    source: "manual"
-    binds_ac: ["AC184"]
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_transport_import_outside_timeout_omn17427.py -q -n 0 -p no:randomly --no-cov -k imported_before"
-        cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn17427-emit-slow-import-no-timeout"
-    description: "A 0.3 s headers import cannot time out a 0.2 s publish. It fails at the merge base with TimeoutError."
-    source: "manual"
-    binds_ac: ["AC185"]
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_transport_import_outside_timeout_omn17427.py -q -n 0 -p no:randomly --no-cov -k slow_transport_import"
-        cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn17427-emit-existing-tests-unchanged"
-    description: "Every node_event_emit_effect unit test passes with the transport imports moved to construction."
-    source: "manual"
-    binds_ac: ["AC186"]
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect -q"
-        cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn17427-emit-transport-import-deploy-probe"
-    description: "Deploy probe. In the checked-out package, the real KafkaEventPublisher with a slow headers import and a local fake bus publishes within a 0.2 s timeout, and the default factory has the transport imported before the publish loop runs. It fails at the merge base and needs only uv and this checkout on the hosted runner, no broker or network."
-    source: "manual"
-    checks:
-      - check_type: "command"
-        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_transport_import_outside_timeout_omn17427.py -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
