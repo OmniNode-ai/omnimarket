@@ -1,6 +1,13 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Unreachable Kafka identities back off without losing spooled events (OMN-17427)."""
+"""Unreachable Kafka identities back off without losing spooled events (OMN-17427).
+
+These tests pin the circuit with ``unreachable_failure_threshold=1`` where they
+need it open after one failed invocation; the default threshold and the
+in-invocation retry are pinned in ``test_publish_circuit_omn17427.py``. On a
+clean circuit the first failing invocation retries the current event once, so
+an always-failing adapter is called twice by it.
+"""
 
 from __future__ import annotations
 
@@ -78,8 +85,9 @@ def marker_path(spool: SpoolOutbox, adapter: IdentityPublishAdapter) -> Path:
 
 
 def age_marker(marker: Path, seconds: float) -> None:
+    """Make the circuit open, ``seconds`` ago."""
     data = json.loads(marker.read_text(encoding="utf-8"))
-    data["failed_at"] = (datetime.now(UTC) - timedelta(seconds=seconds)).isoformat()
+    data["opened_at"] = (datetime.now(UTC) - timedelta(seconds=seconds)).isoformat()
     marker.write_text(json.dumps(data), encoding="utf-8")
 
 
@@ -89,9 +97,9 @@ def test_failure_backs_off_across_handler_instances(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     adapter = IdentityPublishAdapter()
-    first = HandlerEventEmitEffect(spool=spool, publish_adapter=adapter).handle(
-        request_model
-    )
+    first = HandlerEventEmitEffect(
+        spool=spool, publish_adapter=adapter, unreachable_failure_threshold=1
+    ).handle(request_model)
 
     marker = marker_path(spool, adapter)
     data = json.loads(marker.read_text(encoding="utf-8"))
@@ -99,15 +107,17 @@ def test_failure_backs_off_across_handler_instances(
         data["identity_sha256"]
         == hashlib.sha256(adapter.publish_identity.encode("utf-8")).hexdigest()
     )
-    assert datetime.fromisoformat(data["failed_at"]).utcoffset() == timedelta(0)
-    assert adapter.calls == 1
+    assert data["consecutive_failures"] == 1
+    assert datetime.fromisoformat(data["opened_at"]).utcoffset() == timedelta(0)
+    assert adapter.calls == 2
     assert first.published is False
     assert first.publish_skipped_unreachable is False
+    assert first.publish_circuit_open is True
 
     next_adapter = IdentityPublishAdapter()
     with caplog.at_level(logging.INFO):
         second = HandlerEventEmitEffect(
-            spool=spool, publish_adapter=next_adapter
+            spool=spool, publish_adapter=next_adapter, unreachable_failure_threshold=1
         ).handle(request_model.model_copy(update={"event_id": "second"}))
 
     assert next_adapter.calls == 0
@@ -125,7 +135,10 @@ def test_expired_marker_allows_publish_and_backlog_drain(
 ) -> None:
     adapter = IdentityPublishAdapter()
     handler = HandlerEventEmitEffect(
-        spool=spool, publish_adapter=adapter, unreachable_backoff_seconds=0.5
+        spool=spool,
+        publish_adapter=adapter,
+        unreachable_backoff_seconds=0.5,
+        unreachable_failure_threshold=1,
     )
     handler.handle(request_model)
     marker = marker_path(spool, adapter)
@@ -137,7 +150,7 @@ def test_expired_marker_allows_publish_and_backlog_drain(
     assert result.published is True
     assert result.publish_skipped_unreachable is False
     assert result.drained_count == 1
-    assert adapter.calls == 3
+    assert adapter.calls == 4
     assert spool.list_pending() == []
     assert not marker.exists()
 
@@ -146,7 +159,9 @@ def test_other_identity_is_not_backed_off(
     spool: SpoolOutbox, request_model: ModelEmitRequest
 ) -> None:
     failing = IdentityPublishAdapter()
-    HandlerEventEmitEffect(spool=spool, publish_adapter=failing).handle(request_model)
+    HandlerEventEmitEffect(
+        spool=spool, publish_adapter=failing, unreachable_failure_threshold=1
+    ).handle(request_model)
     other = IdentityPublishAdapter("broker:9092|SASL_PLAINTEXT|u", fail=False)
 
     result = HandlerEventEmitEffect(spool=spool, publish_adapter=other).handle(
@@ -189,9 +204,13 @@ def test_zero_disables_backoff_even_with_existing_marker(
     )
 
     for _ in range(2):
-        assert handler.handle(request_model).publish_skipped_unreachable is False
+        result = handler.handle(request_model)
+        assert result.publish_skipped_unreachable is False
+        assert result.publish_failure_count is None
 
-    assert adapter.calls == 3
+    # Two calls by the first (clean-circuit retry), one each with the circuit
+    # disabled: no retry without a circuit.
+    assert adapter.calls == 4
     assert len(spool.list_pending()) == 3
 
 
@@ -230,7 +249,9 @@ def test_future_or_expired_marker_is_refreshed_on_failure(
     spool: SpoolOutbox, request_model: ModelEmitRequest, age: float
 ) -> None:
     adapter = IdentityPublishAdapter()
-    handler = HandlerEventEmitEffect(spool=spool, publish_adapter=adapter)
+    handler = HandlerEventEmitEffect(
+        spool=spool, publish_adapter=adapter, unreachable_failure_threshold=1
+    )
     handler.handle(request_model)
     marker = marker_path(spool, adapter)
     age_marker(marker, age)
@@ -238,9 +259,11 @@ def test_future_or_expired_marker_is_refreshed_on_failure(
     result = handler.handle(request_model)
 
     assert result.publish_skipped_unreachable is False
-    assert adapter.calls == 2
-    failed_at = datetime.fromisoformat(json.loads(marker.read_text())["failed_at"])
-    assert 0 <= (datetime.now(UTC) - failed_at).total_seconds() < 5
+    assert result.publish_circuit_open is True
+    # A recorded failure means no in-invocation retry: one call, not two.
+    assert adapter.calls == 3
+    opened_at = datetime.fromisoformat(json.loads(marker.read_text())["opened_at"])
+    assert 0 <= (datetime.now(UTC) - opened_at).total_seconds() < 5
 
 
 @pytest.mark.parametrize(
@@ -251,12 +274,14 @@ def test_malformed_marker_does_not_block_publish(
     spool: SpoolOutbox, request_model: ModelEmitRequest, contents: str
 ) -> None:
     adapter = IdentityPublishAdapter()
-    handler = HandlerEventEmitEffect(spool=spool, publish_adapter=adapter)
+    handler = HandlerEventEmitEffect(
+        spool=spool, publish_adapter=adapter, unreachable_failure_threshold=1
+    )
     handler.handle(request_model)
     marker = marker_path(spool, adapter)
     if contents in {"non-string", "invalid-date", "naive-date"}:
         data = json.loads(marker.read_text(encoding="utf-8"))
-        data["failed_at"] = {
+        data["opened_at"] = {
             "non-string": 1,
             "invalid-date": "invalid",
             "naive-date": "2026-10-20T10:00:00",
@@ -265,7 +290,8 @@ def test_malformed_marker_does_not_block_publish(
     marker.write_text(contents, encoding="utf-8")
 
     assert handler.handle(request_model).publish_skipped_unreachable is False
-    assert adapter.calls == 2
+    # A malformed marker reads as "no failures", so the clean-circuit retry runs.
+    assert adapter.calls == 4
 
 
 def test_backlog_failure_writes_marker(
@@ -296,7 +322,7 @@ def test_any_success_clears_marker_even_if_later_publish_fails(
     marker = marker_path(spool, adapter)
     age_marker(marker, 300)
     adapter.fail = False
-    adapter.fail_on_call = 3
+    adapter.fail_on_call = 4
 
     result = handler.handle(
         ModelEmitRequest(event_type="skill.friction_recorded", payload={})
@@ -306,7 +332,7 @@ def test_any_success_clears_marker_even_if_later_publish_fails(
 
     assert result.published is not backlog_only
     assert result.drained_count == (1 if backlog_only else 0)
-    assert adapter.calls == 3
+    assert adapter.calls == 4
     assert not marker.exists()
     assert len(spool.list_pending()) == (1 if backlog_only else 2)
 
@@ -349,7 +375,8 @@ def test_marker_errors_do_not_prevent_publish(
     original = getattr(Path, operation)
 
     def fail_marker(path: Path, *args: object, **kwargs: object) -> object:
-        if path == marker:
+        # The parent covers the temp file of the atomic write too.
+        if path.parent == marker.parent:
             raise error_type("marker unavailable")
         return original(path, *args, **kwargs)
 
@@ -358,7 +385,9 @@ def test_marker_errors_do_not_prevent_publish(
     with caplog.at_level(logging.DEBUG):
         result = handler.handle(request_model)
 
-    assert adapter.calls == (2 if adapter.fail else 3)
+    # read_text failing reads as "no failures" (retry available); a successful
+    # invocation publishes the current event and drains the first one.
+    assert adapter.calls == (3 if adapter.fail else 4)
     assert result.publish_skipped_unreachable is False
     assert result.published is not adapter.fail
     assert "unreachable marker" in caplog.text

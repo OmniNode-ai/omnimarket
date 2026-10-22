@@ -1305,22 +1305,30 @@ def _pr_short(text: object) -> str:
 
 
 def _base_red(data: dict[str, Any], repo: str) -> list[str]:
-    """Checks whose newest run on the repository's default branch failed, sorted."""
+    """Newest default-branch failures, sorted, preferring non-roll-up checks."""
     repos = data.get("repos") or {}
     base = (repos.get(repo) or {}).get("default_branch") or "main"
     branch = (data.get("branches") or {}).get(f"{repo}@{base}") or {}
     rows = (branch.get("checks") or {}).get("rows") or []
+    foreign_runs = {
+        str(row[0])
+        for row in (branch.get("runs") or {}).get("rows") or []
+        if isinstance(row, list) and len(row) >= 9 and row[8] and row[8] != base
+    }
     newest: dict[str, list[Any]] = {}
     for row in rows:
         if isinstance(row, list) and len(row) >= 4:
+            if len(row) >= 8 and str(row[7]) in foreign_runs:
+                continue
             name = str(row[0])
             if name not in newest or str(row[3]) > str(newest[name][3]):
                 newest[name] = row
-    return sorted(
+    reds = sorted(
         name
         for name, row in newest.items()
         if row[1] == "completed" and row[2] in BASE_RED
     )
+    return [name for name in reds if name not in ROLLUP_CONTEXTS] or reds
 
 
 def _repo_verdict(
@@ -1333,7 +1341,7 @@ def _repo_verdict(
 ) -> tuple[RepoStatusVerdict, str | None, str, float | None, list[str]]:
     """(verdict, check, reason, queue wait, prs) for one repository, most urgent first.
 
-    A roll-up counts only for a PR whose reds are all roll-ups.
+    A roll-up counts only for a PR or base branch whose reds are all roll-ups.
     """
     keys = [key for key, _ in prs]
     repo_covers = [
