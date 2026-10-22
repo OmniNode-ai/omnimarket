@@ -1001,3 +1001,50 @@ def test_an_exit_code_that_is_not_an_integer_is_refused() -> None:
 def test_an_empty_host_is_refused() -> None:
     with pytest.raises(ValidationError, match="host"):
         ModelClaudeHookEventWire.model_validate(_bash_post_tool_use(host=""))
+
+
+# --------------------------------------------------------------------------
+# Consume concurrency: events complete out of partition order (OMN-19513)
+# --------------------------------------------------------------------------
+
+_HOOK_CONTRACT = (
+    Path(__file__).resolve().parents[1]
+    / "src"
+    / "omnimarket"
+    / "nodes"
+    / "node_projection_claude_hook_events"
+    / "contract.yaml"
+)
+
+
+def test_the_writer_declares_four_records_in_flight() -> None:
+    """Serial consumption fell 48k events behind producers on the dev lane."""
+    import yaml
+
+    contract = yaml.safe_load(_HOOK_CONTRACT.read_text("utf-8"))
+    assert contract["consume_concurrency"] == {"max_in_flight_records": 4}
+
+
+@pytest.mark.parametrize("name", SCENARIOS)
+def test_a_scenario_delivered_in_reverse_folds_to_the_same_rows(name: str) -> None:
+    """The writer may see events in any order once four are in flight."""
+    events = _scenario_events(name)
+
+    in_order = _InMemoryHookTables()
+    writer = _writer(in_order)
+    for event in events:
+        _deliver(writer, event)
+
+    reversed_order = _InMemoryHookTables()
+    writer = _writer(reversed_order)
+    for event in reversed(events):
+        _deliver(writer, event)
+
+    assert (
+        reversed_order.event_rows_as_contract_json()
+        == in_order.event_rows_as_contract_json()
+    )
+    assert (
+        reversed_order.span_rows_as_contract_json()
+        == in_order.span_rows_as_contract_json()
+    )
