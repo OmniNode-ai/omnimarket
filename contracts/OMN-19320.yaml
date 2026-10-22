@@ -1,0 +1,83 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19320"
+title: "gate-or-range class on every check, and a range evaluator"
+summary: "Evidence-only contract for the merged change omnimarket#2831 (88c8cc962322ba7aaa4f1e832411b9051e276abf). Every registered check declares a class (gate or range), and the range evaluator refuses a corpus below its floor, an undersized corpus (naming the required n) and a seed-pinned run."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "tests"
+    description: "A check registered with no class fails the register's check, naming it."
+    command: "uv run pytest 'tests/test_omn19320_check_register.py::TestEveryCheckCarriesItsClassAC1::test_a_check_with_no_class_fails_naming_it' -q -p no:cacheprovider"
+  - kind: "tests"
+    description: "The range evaluator pair, the undersized-corpus refusal and the seed-pinned refusal."
+    command: "uv run pytest tests/test_omn19320_range_evaluator.py -q -p no:cacheprovider"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+# Acceptance provenance is ticket context; executable bindings use binds_ac.
+context:
+  ac_binding_acceptance:
+    dod-omn19320-ac1-unclassified-check-fails:
+      - label: "AC1"
+        criterion_hash: "bfc7ae0993d5fab7c3fb1f052e6e682e399a492a382ace7c7b9ed86954908cf9"
+        proposed_by: "lane=dod-closeout-bind-2026-10-19T0445Z-c0"
+        accepted_by: "lane=dod-closeout-accept-2026-10-19T0445Z-c0"
+    dod-omn19320-ac2-range-floor-pair:
+      - label: "AC2"
+        criterion_hash: "5a1aa7c424d52fb397bd03baf02689440905aace3c9f09f57357e29a056b0e1d"
+        proposed_by: "lane=dod-closeout-bind-2026-10-19T0445Z-c0"
+        accepted_by: "lane=dod-closeout-accept-2026-10-19T0445Z-c0"
+    dod-omn19320-ac3-undersized-corpus-refused:
+      - label: "AC3"
+        criterion_hash: "4ddbb88054ab5fc39b16a75e5ca82a71bdec4a622065c941ef8a63a3d00fb029"
+        proposed_by: "lane=dod-closeout-bind-2026-10-19T0445Z-c0"
+        accepted_by: "lane=dod-closeout-accept-2026-10-19T0445Z-c0"
+    dod-omn19320-ac4-seed-pinned-run-refused:
+      - label: "AC4"
+        criterion_hash: "9d1939cc2cd4c862b7875e703edca7e033efc3fe2e654bda6ade43fd4896a6d2"
+        proposed_by: "lane=dod-closeout-bind-2026-10-19T0445Z-c0"
+        accepted_by: "lane=dod-closeout-accept-2026-10-19T0445Z-c0"
+dod_evidence:
+  - id: "dod-omn19320-ac1-unclassified-check-fails"
+    description: "AC1: a register entry with no check_class fails the register's check and the CLI names the unclassified check id."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest 'tests/test_omn19320_check_register.py::TestEveryCheckCarriesItsClassAC1::test_a_check_with_no_class_fails_naming_it' -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19320-ac2-range-floor-pair"
+    description: "AC2: a corpus below its stated floor (0.75 against 0.8) is MISSED with a non-zero CLI exit, and one above it (0.955) is MET with exit 0."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest 'tests/test_omn19320_range_evaluator.py::TestThePairAC2::test_a_corpus_below_the_floor_is_missed_and_blocks' 'tests/test_omn19320_range_evaluator.py::TestThePairAC2::test_a_corpus_above_the_floor_is_met' -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19320-ac3-undersized-corpus-refused"
+    description: "AC3: an n=40 corpus below the power-analysed required size is REFUSED, the reasons and CLI stdout name 'required n=<N>', and the CLI exits non-zero."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest 'tests/test_omn19320_range_evaluator.py::TestUndersizedCorporaAreRefusedAC3::test_fewer_samples_than_the_power_analysis_requires_is_refused' -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn19320-ac4-seed-pinned-run-refused"
+    description: "AC4: a run carrying sampling_seed is REFUSED as a range result with a reason naming the run and the seed, and the CLI exits non-zero."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest 'tests/test_omn19320_range_evaluator.py::TestPinnedRunsAreRefusedAC4::test_a_seed_pinned_run_is_refused' -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn19320-deploy-probe"
+    description: "Deploy probe: the installed range package refuses an unclassified check by name and returns the power-analysed sample size of 88 for floor 0.8, margin 0.1, confidence 0.95 and power 0.8. Runs on the hosted runner without external services."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run python -c 'from omnimarket.ranges import required_sample_size, validate_check_register; errors = validate_check_register({"schema_version": "check_register.v1", "checks": [{"check_id": "unclassified.check"}]}); assert any("unclassified.check" in error for error in errors), errors; n = required_sample_size(floor=0.8, margin=0.1, confidence=0.95, power=0.8); assert n == 88, n; print("unclassified.check refused; required n=88")'
+        cwd: "${OMNI_HOME}/omnimarket"
