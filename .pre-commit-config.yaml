@@ -661,7 +661,7 @@ repos:
         name: Validate dependency provenance (PyPI or sibling dev merge tag)
         entry: uv run --frozen python scripts/check_dep_provenance.py
         language: system
-        files: ^(pyproject\.toml|scripts/check_dep_provenance\.py)$
+        files: ^(pyproject\.toml|uv\.lock|scripts/check_dep_provenance\.py)$
         pass_filenames: false
         stages: [pre-commit]
 

@@ -55,7 +55,8 @@ def store(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
         lambda: db_path,
     )
     monkeypatch.setattr(
-        "omnimarket.cli.cli_secret._resolve_model", lambda *_args, **_kw: None
+        "omnimarket.handlers.handler_model_keys.resolve_model",
+        lambda *_args, **_kw: None,
     )
     return db_path
 

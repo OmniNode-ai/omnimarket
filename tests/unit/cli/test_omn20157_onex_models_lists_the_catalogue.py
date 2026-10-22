@@ -35,6 +35,7 @@ from click.testing import CliRunner
 
 from omnimarket.cli import cli_secret
 from omnimarket.cli.cli_secret import models_group
+from omnimarket.handlers import handler_model_keys
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     registered_local_byok_providers,
@@ -129,7 +130,7 @@ def _arrange(
 ) -> tuple[_Detect, _Delegate]:
     detect = _Detect(detection)
     delegate = _Delegate(tmp_path)
-    monkeypatch.setattr(cli_secret, "detect_byok_plan", detect)
+    monkeypatch.setattr(handler_model_keys, "detect_byok_plan", detect)
     monkeypatch.setattr(handler_model_setup, "run_pinned_delegation", delegate)
     return detect, delegate
 
@@ -176,7 +177,7 @@ class TestTheGlmRouteComesFromTheCatalogue:
     def test_no_glm_endpoint_is_written_in_the_setup_code(self) -> None:
         row = resolve_byok_provider_backend("glm")
         assert row is not None
-        for module in (cli_secret, handler_model_setup):
+        for module in (cli_secret, handler_model_keys, handler_model_setup):
             source = Path(str(module.__file__)).read_text(encoding="utf-8")
             assert row.endpoint_url not in source
             assert "api.z.ai" not in source

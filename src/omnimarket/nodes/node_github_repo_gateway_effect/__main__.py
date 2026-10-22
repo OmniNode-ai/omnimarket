@@ -79,6 +79,15 @@ def main(argv: list[str] | None = None) -> int:
         "--tail-bytes", type=int, default=None, help="job_log_tail: bytes kept."
     )
     parser.add_argument(
+        "--offset-bytes", type=int, default=None, help="job_log_tail: window start."
+    )
+    parser.add_argument(
+        "--length-bytes", type=int, default=None, help="job_log_tail: window size."
+    )
+    parser.add_argument(
+        "--step", default=None, help="job_log_tail: one step's lines, by name."
+    )
+    parser.add_argument(
         "--max-bytes", type=int, default=None, help="artifacts: archive size cap."
     )
     parser.add_argument(
@@ -100,6 +109,9 @@ def main(argv: list[str] | None = None) -> int:
         "status": args.status,
         "limit": args.limit,
         "tail_bytes": args.tail_bytes,
+        "offset_bytes": args.offset_bytes,
+        "length_bytes": args.length_bytes,
+        "step": args.step,
         "max_bytes": args.max_bytes,
     }
     request = ModelGithubGatewayRequest.model_validate(

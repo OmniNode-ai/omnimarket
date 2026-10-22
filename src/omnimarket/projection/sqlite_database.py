@@ -752,31 +752,38 @@ class SqliteDatabaseAdapter:
         # sanctioned per-line boundary annotation, NOT a path-allowlist broadening.
         db_path = str(self._db_path)
         conn = sqlite3.connect(db_path)  # no-contract-check: projection boundary
-        conn.row_factory = sqlite3.Row
-        conn.execute(_DELEGATION_EVENTS_DDL)
-        self._reconcile_delegation_events(conn)
-        self._reconcile_legacy_llm_call_metrics(conn)
-        conn.execute(_LLM_CALL_METRICS_DDL)
-        conn.execute(_DELEGATE_SKILL_CLAIMS_DDL)
-        conn.execute(_USAGE_BY_MODEL_DAY_CALLS_DDL)
-        conn.execute(_USAGE_BY_MODEL_DAY_DDL)
-        conn.execute(_RUN_TRACE_DDL)
-        conn.execute(_METERING_SUMMARY_DDL)
-        conn.execute(_METERING_SUMMARY_INDEX_DDL)
-        conn.execute(_LLM_CALL_METRICS_DDL)
-        conn.execute(_LLM_CALL_METRICS_INPUT_HASH_INDEX)
-        conn.execute(_TENANT_INFERENCE_CREDENTIALS_DDL)
-        conn.execute(_DELEGATION_ROUTING_TENANT_OVERLAY_DDL)
-        conn.execute(_AUTOMATION_LIVENESS_STATE_DDL)
-        conn.execute(_AUTOMATION_RUN_HISTORY_DDL)
-        conn.execute(_AUTOMATION_ALARM_EPISODES_DDL)
-        conn.commit()
-        self._ensure_columns(
-            conn,
-            "tenant_inference_credentials",
-            _TENANT_INFERENCE_CREDENTIALS_ADDED_COLUMNS,
-        )
-        self._apply_store_steps(conn, self._db_path)
+        # A step raising after its write began would leave the connection and
+        # its lock alive in the exception's traceback; on 2026-10-22 this
+        # wedged a long-lived review gateway (OMN-17427).
+        try:
+            conn.row_factory = sqlite3.Row
+            conn.execute(_DELEGATION_EVENTS_DDL)
+            self._reconcile_delegation_events(conn)
+            self._reconcile_legacy_llm_call_metrics(conn)
+            conn.execute(_LLM_CALL_METRICS_DDL)
+            conn.execute(_DELEGATE_SKILL_CLAIMS_DDL)
+            conn.execute(_USAGE_BY_MODEL_DAY_CALLS_DDL)
+            conn.execute(_USAGE_BY_MODEL_DAY_DDL)
+            conn.execute(_RUN_TRACE_DDL)
+            conn.execute(_METERING_SUMMARY_DDL)
+            conn.execute(_METERING_SUMMARY_INDEX_DDL)
+            conn.execute(_LLM_CALL_METRICS_DDL)
+            conn.execute(_LLM_CALL_METRICS_INPUT_HASH_INDEX)
+            conn.execute(_TENANT_INFERENCE_CREDENTIALS_DDL)
+            conn.execute(_DELEGATION_ROUTING_TENANT_OVERLAY_DDL)
+            conn.execute(_AUTOMATION_LIVENESS_STATE_DDL)
+            conn.execute(_AUTOMATION_RUN_HISTORY_DDL)
+            conn.execute(_AUTOMATION_ALARM_EPISODES_DDL)
+            conn.commit()
+            self._ensure_columns(
+                conn,
+                "tenant_inference_credentials",
+                _TENANT_INFERENCE_CREDENTIALS_ADDED_COLUMNS,
+            )
+            self._apply_store_steps(conn, self._db_path)
+        except BaseException:
+            conn.close()
+            raise
         return conn
 
     @staticmethod

@@ -130,6 +130,93 @@ gh() {
     assert result.returncode == expected, result.stdout + result.stderr
 
 
+def _run_poller_sequence(filename: str, polls: list[list[tuple]], tmp_path: Path):
+    """Run the poller against one fixture per poll, the last one repeating."""
+    script = _poller(filename)["steps"][0]["run"]
+    assert "deadline=2580" in script
+    script = script.replace("deadline=2580", "deadline=30")
+    for index, checks in enumerate(polls):
+        (tmp_path / f"poll-{index}.json").write_text(
+            json.dumps(
+                {
+                    "check_runs": [
+                        {
+                            "id": identifier,
+                            "app": {"id": app},
+                            "status": status,
+                            "conclusion": conclusion,
+                        }
+                        for identifier, app, status, conclusion in checks
+                    ]
+                }
+            )
+        )
+    prefix = """
+sleep() { return 0; }
+gh() {
+    if [[ "$2" != *"check_name=repo-evidence%20%2F%20dod-verify"* ]]; then
+        echo "unexpected API path" >&2
+        return 1
+    fi
+    local n
+    n="$(cat "$GH_FIXTURES/count")"
+    echo $((n + 1)) > "$GH_FIXTURES/count"
+    if [ "$n" -gt "$GH_LAST" ]; then n="$GH_LAST"; fi
+    jq -r "$4" "$GH_FIXTURES/poll-$n.json"
+}
+"""
+    (tmp_path / "count").write_text("0")
+    return subprocess.run(
+        [
+            "bash",
+            "-e",
+            "-c",
+            prefix + script.replace("${{ github.event_name }}", "pull_request"),
+        ],
+        env={
+            **os.environ,
+            "GH_FIXTURES": str(tmp_path),
+            "GH_LAST": str(len(polls) - 1),
+            "REPO": "OmniNode-ai/omnimarket",
+            "HEAD_SHA": "a" * 40,
+            "GITHUB_EVENT_NAME": "pull_request",
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+
+@pytest.mark.parametrize("filename", POLLERS)
+def test_repo_evidence_poller_restarts_window_for_a_restarted_verifier(
+    filename: str, tmp_path: Path
+) -> None:
+    """OMN-17427: an edited event that restarts the verifier late in the wait
+    gives the new run its own window instead of timing the poller out."""
+    running = [(1, 15368, "in_progress", None)]
+    restarted = [(1, 15368, "completed", "cancelled"), (2, 15368, "in_progress", None)]
+    passed = [(1, 15368, "completed", "cancelled"), (2, 15368, "completed", "success")]
+    # Three polls exhaust the shrunken 30 second window on run 1 alone.
+    result = _run_poller_sequence(
+        filename, [running, running, restarted, restarted, passed], tmp_path
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "restarted as run 2" in result.stdout
+
+
+@pytest.mark.parametrize("filename", POLLERS)
+def test_repo_evidence_poller_still_times_out_one_stuck_verifier(
+    filename: str, tmp_path: Path
+) -> None:
+    running = [(1, 15368, "in_progress", None)]
+    passed = [(1, 15368, "completed", "success")]
+    result = _run_poller_sequence(
+        filename, [running, running, running, passed], tmp_path
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "Timed out waiting for repo-evidence" in result.stdout
+
+
 @pytest.mark.parametrize(
     ("status", "conclusion", "expected"),
     [
