@@ -26,6 +26,9 @@ from omnimarket.nodes.node_trajectory_evaluation_effect.protocols import (
 )
 from tests.unit.nodes.node_trajectory_evaluation_effect.fakes import (
     SETTING,
+    FakeClock,
+    Github,
+    RecordingEvaluator,
     full_cmd,
     make_handler,
     poll_cmd,
@@ -136,9 +139,9 @@ async def test_content_mode_not_permitted_full_under_metadata_backend() -> None:
 @pytest.mark.parametrize(
     ("setting", "cmd"),
     [
-        ("dharma_metadata", submit_cmd),
-        ("dharma_full", submit_cmd),
-        ("dharma_full", full_cmd),
+        ("acme_metadata", submit_cmd),
+        ("acme_full", submit_cmd),
+        ("acme_full", full_cmd),
     ],
 )
 async def test_content_mode_permitted_but_external_backend_unavailable(
@@ -148,6 +151,53 @@ async def test_content_mode_permitted_but_external_backend_unavailable(
     _refused(await handler.handle(cmd()), "backend_unavailable")
     assert github.requests == []
     assert ev.submissions == []
+
+
+@pytest.mark.parametrize("setting", ["dharma_metadata", "dharma_full"])
+async def test_dharma_refuses_metadata_content_before_any_call(setting: str) -> None:
+    handler, github, ev, _ = make_handler(setting)
+    _refused(await handler.handle(submit_cmd()), "content_mode_not_permitted")
+    _refused(await handler.handle(poll_cmd()), "content_mode_not_permitted")
+    assert github.requests == []
+    assert ev.submissions == []
+    assert ev.reads == 0
+
+
+async def test_dharma_full_submits_to_the_registered_evaluator() -> None:
+    github = Github()
+    dharma = RecordingEvaluator()
+    handler = HandlerTrajectoryEvaluation(
+        transport=github.transport(),
+        external_evaluators={"dharma": dharma},
+        clock=FakeClock(),
+        environ={SETTING: "dharma_full"},
+    )
+    out = await handler.handle(full_cmd())
+    assert isinstance(out, ModelTrajectoryEvaluationAccepted), out
+    assert out.verdict_state == "completed"
+    assert len(github.requests) == 1
+    (sent,) = dharma.submissions
+    assert sent.content_mode == "full"
+    assert sent.prompt_text == "p"
+    assert sent.response_text == "r"
+    status = await handler.handle(
+        poll_cmd(content_mode="full", backend_receipt_id=out.backend_receipt_id)
+    )
+    assert isinstance(status, ModelTrajectoryEvaluationStatus)
+    assert dharma.reads == 2
+
+
+async def test_dharma_without_resolvable_secrets_is_misconfigured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in ("DHARMA_API_KEY", "DHARMA_ORG_ID", "ONEX_SECRET_RESOLVER_CONFIG_PATH"):
+        monkeypatch.delenv(name, raising=False)
+    handler, github, _, _ = make_handler("dharma_full")
+    out = await handler.handle(full_cmd())
+    _refused(out, "backend_misconfigured")
+    assert isinstance(out, ModelTrajectoryEvaluationRefused)
+    assert "DHARMA" not in out.detail
+    assert github.requests == []
 
 
 async def test_bounded_poll_completes_on_third_read() -> None:

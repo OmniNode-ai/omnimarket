@@ -1,0 +1,39 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21215"
+title: "The catalogue recommends one local model per memory class and names the first key to add"
+summary: "Every BYOK catalogue row carries an ordered default_models list onboarding can offer as Default, the openrouter free_tier row is marked first_key (the key a new developer adds first), and a local block recommends one Ollama model per Mac memory class (16 GB, 32 GB, 64 GB and up). The loader reads them and refuses a second first_key row or a default model no preference matches."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-catalogue-recommends-models"
+    statement: "The provider backend configuration exposes default models, a first-key marker, and local model recommendations."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: Every catalogue row's `default_models` is non-empty, the local row has an entry for each of the three memory classes with a server name, and exactly one row is marked `first_key: true` -- falsifier: `uv run pytest tests/unit/config/test_byok_default_models.py -q`, which fails today because the keys are absent."
+evidence_requirements:
+  - kind: "tests"
+    description: "The unit test proves the catalogue keys exist and the pytest command fails at the merge base because the keys are absent."
+    command: "uv run pytest tests/unit/config/test_byok_default_models.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21215-ac1-default-models-test"
+    description: "The unit test proves the catalogue keys exist and the pytest command fails at the merge base because the keys are absent."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/config/test_byok_default_models.py -q --no-cov"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21215-ac1-local-and-first-key-probe"
+    description: "The command proves the local recommendation and first-key backend load correctly and fails at the merge base because the keys are absent."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/config/test_byok_default_models.py -q --no-cov -k 'local_row or first_key'"
+      - check_type: "command"
+        check_value: "uv run python -c \"from omnimarket.routing.byok_provider_backends import first_key_backend, recommended_local_model; r = recommended_local_model(32); assert r is not None and r.server == 'ollama'; print(first_key_backend().provider, r.model)\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

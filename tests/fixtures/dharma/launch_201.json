@@ -1,0 +1,14 @@
+{
+ "ok": true,
+ "productScope": "evaluation_runs",
+ "integrationMode": "observe_existing_runtime",
+ "campaignId": "e0abc39a-bae5-4690-bc71-70aeabf01c1f",
+ "status": "running",
+ "runtimeMode": "gcp_agent_platform",
+ "tasks": 1,
+ "results": 1,
+ "arms": [
+  "direct_baseline"
+ ],
+ "continuousExperimentId": null
+}

@@ -253,7 +253,7 @@ def test_live_claim_inside_its_ttl_still_owns_the_pr() -> None:
 def test_attributed_terminal_lands_and_emits_no_terminal_refused() -> None:
     receipt, refused, ledger = terminal_append("ci-red-lane", writer="lane")
     assert receipt.status is EnumWorkLedgerAppendStatus.ACCEPTED
-    assert "| TERMINAL | principal=lane | lane=ci-red-lane |" in ledger.text
+    assert "| TERMINAL | lane=ci-red-lane | principal=lane |" in ledger.text
     assert refused == []
 
 
