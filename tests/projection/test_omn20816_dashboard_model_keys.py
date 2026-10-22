@@ -12,6 +12,8 @@ stays read-only). Each check names the failure it exists to catch:
       test passed, set up and last test failed with the provider's reason;
 * M4  ``onex models remove`` removes the last usable provider (decision (c):
       the guard is in the shared remove), or refuses removing one of two;
+* M4b two removals that overlap both pass the guard and leave no usable provider,
+      because the guard and the deletion are not one step;
 * M5  the page lists a provider it does not show (Anthropic, a local URL);
 * M7  the page and the CLI disagree about one store: a key added in the
       terminal is not what ``GET /models`` lists;
@@ -354,3 +356,62 @@ def test_ro2_get_models_carries_no_stored_key(
         if form in response.text
     ]
     assert leaks == [], f"GET /models carries a stored key: {leaks}"
+
+
+def test_m4b_two_overlapping_removals_never_leave_no_usable_provider(
+    delegations: _Delegations, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two terminal removals that read the provider states before either deletes must not both pass the last-usable guard."""
+    import contextlib
+    import threading
+
+    delegations.models[_backend("openrouter")] = _OR_MODEL
+    delegations.models[_backend("openai")] = _OAI_MODEL
+    assert _cli_add("openrouter", _OR_KEY, _OR_MODEL).exit_code == 0
+    assert _cli_add("openai", _OAI_KEY, _OAI_MODEL).exit_code == 0
+
+    original = handler_model_keys.list_providers
+    barrier = threading.Barrier(2, timeout=2.0)
+
+    def overlapping() -> Any:
+        statuses = original()
+        with contextlib.suppress(threading.BrokenBarrierError):
+            barrier.wait()
+        return statuses
+
+    monkeypatch.setattr(handler_model_keys, "list_providers", overlapping)
+
+    outcomes: dict[str, BaseException | None] = {}
+
+    def worker(provider: str) -> None:
+        try:
+            handler_model_keys.remove_key(provider)
+            outcomes[provider] = None
+        except BaseException as exc:
+            outcomes[provider] = exc
+
+    threads = [
+        threading.Thread(target=worker, args=("openrouter",)),
+        threading.Thread(target=worker, args=("openai",)),
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+        assert not t.is_alive()
+
+    refused = [
+        p
+        for p, e in outcomes.items()
+        if isinstance(e, handler_model_keys.LastUsableModelRefusedError)
+    ]
+    assert len(refused) == 1, f"expected exactly one refusal, got outcomes={outcomes}"
+    assert not any(
+        isinstance(e, BaseException)
+        and not isinstance(e, handler_model_keys.LastUsableModelRefusedError)
+        for e in outcomes.values()
+    ), f"unexpected exception types in outcomes={outcomes}"
+
+    rows = _rows(_client(tmp_path))
+    assert rows["openrouter"]["set_up"] or rows["openai"]["set_up"]
+    assert rows[refused[0]]["set_up"] is True

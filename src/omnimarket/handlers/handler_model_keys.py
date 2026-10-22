@@ -388,6 +388,24 @@ def _pending_lock(db_path: Path) -> Iterator[None]:
         os.close(fd)
 
 
+@contextmanager
+def _removal_lock(db_path: Path) -> Iterator[None]:
+    """Hold the provider-removal lock across processes for one removal.
+
+    The last-usable check and the deletion are one step under it: two
+    overlapping ``onex models remove`` commands could otherwise each see the
+    other provider usable and both delete, leaving none (OMN-20816).
+    """
+    path = db_path.parent / "model-removal.lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)
+
+
 def _apply_events(lines: list[dict[str, Any]], db_path: Path) -> None:
     """Apply ``{"kind", "payload"}`` records in order. Both folds are idempotent."""
     db = SqliteDatabaseAdapter(db_path)
@@ -759,9 +777,10 @@ def remove_key(provider: str, echo: Echo = _quiet) -> None:
         )
     if not handler.is_set_up(provider):
         raise ModelKeyRefusedError(f"no {MODEL_LABELS[provider]} key is stored.")
-    refuse_last_usable(provider)
-    delete_key(f"llm.{provider}.api_key", echo)
-    handler.handle(ModelModelSetupRequest(operation="forget", provider=provider))
+    with _removal_lock(LocalByokCredentialStore().db_path):
+        refuse_last_usable(provider)
+        delete_key(f"llm.{provider}.api_key", echo)
+        handler.handle(ModelModelSetupRequest(operation="forget", provider=provider))
 
 
 __all__ = [
