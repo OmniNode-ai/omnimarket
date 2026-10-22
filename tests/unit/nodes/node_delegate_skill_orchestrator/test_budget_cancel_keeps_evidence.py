@@ -365,6 +365,13 @@ async def test_a_retry_on_the_customer_route_keeps_the_earlier_rung(
         ),
         evidence_db_path=db_path,
         effect_process_boundary=True,
+        # The port re-issues the route only while the run budget still holds
+        # another attempt as long as the first, and the first includes a spawned
+        # interpreter's boot. On the wall clock the retry raced that boot against
+        # the 12 s stub budget, as the budget expiry did before it was synced to
+        # the blocked call. A fixed run-budget clock keeps the re-issue decided
+        # by the 429; the budget still ends the run, through the handler's wait.
+        clock=lambda: 0.0,
     )
 
     terminal = await _cancelled_terminal(port)
