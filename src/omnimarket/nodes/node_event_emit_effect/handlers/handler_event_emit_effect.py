@@ -108,8 +108,19 @@ _DEFAULT_TOTAL_BUDGET_SECONDS = 9.0
 _DEFAULT_MAX_DRAIN_COUNT = 500
 # OMN-17427: h201 has bootstrap servers but no SASL settings: bus startup
 # fails after 7.0s, beyond the 5.0s publish cap, costing each delegate/GLM
-# invocation ~5.2s while a credentialed process later drains the spool.
-_DEFAULT_UNREACHABLE_BACKOFF_SECONDS = 120.0  # 0 disables the backoff.
+# invocation ~5.2s while a credentialed process later drains the spool. So a
+# publish identity that keeps failing opens an on-disk circuit and later
+# invocations spool without paying the cap.
+#
+# FRICTION 2026-10-22T00:41:14Z: the first version opened on ONE failure for
+# 120s, so one 5s timeout on a cold SASL producer spooled every healthy
+# publish for two minutes. The circuit now opens only after
+# _DEFAULT_UNREACHABLE_FAILURE_THRESHOLD consecutive failed invocations, for a
+# shorter window, and a clean circuit retries the slow publish once in the
+# same invocation before counting it as failed.
+_DEFAULT_UNREACHABLE_BACKOFF_SECONDS = 30.0  # 0 disables the circuit.
+_DEFAULT_UNREACHABLE_FAILURE_THRESHOLD = 3
+_RETRY_MIN_REMAINING_SECONDS = 1.0  # a retry needs at least this much budget.
 _DEFAULT_PUBLISH_TIMEOUT_SECONDS = 5.0  # per-adapter fallback when no explicit
 # per-call timeout_seconds is supplied (only relevant to callers that build a
 # KafkaEventPublisher directly, outside HandlerEventEmitEffect).
@@ -551,6 +562,7 @@ class HandlerEventEmitEffect:
         drain_budget_seconds: float = _DEFAULT_TOTAL_BUDGET_SECONDS,
         max_drain_count: int = _DEFAULT_MAX_DRAIN_COUNT,
         unreachable_backoff_seconds: float = _DEFAULT_UNREACHABLE_BACKOFF_SECONDS,
+        unreachable_failure_threshold: int = _DEFAULT_UNREACHABLE_FAILURE_THRESHOLD,
         clock: Callable[[], datetime] = default_clock,
         correlation_id_factory: Callable[[], str] = default_correlation_id_factory,
     ) -> None:
@@ -577,6 +589,7 @@ class HandlerEventEmitEffect:
         self._drain_budget_seconds = drain_budget_seconds
         self._max_drain_count = max_drain_count
         self._unreachable_backoff_seconds = unreachable_backoff_seconds
+        self._unreachable_failure_threshold = max(1, unreachable_failure_threshold)
         self._clock = clock
         self._correlation_id_factory = correlation_id_factory
 
@@ -848,12 +861,17 @@ class HandlerEventEmitEffect:
             marker = (
                 spool.spool_dir / "publish-backoff" / f"{identity_sha256[:16]}.json"
             )
-            age = self._unreachable_marker_age(marker, identity_sha256)
+            prior_failures, opened_at = self._read_circuit(marker, identity_sha256)
+            age = None if opened_at is None else time.time() - opened_at.timestamp()
+            # A future opened_at (clock skew) is read as expired: the next
+            # invocation probes rather than trusting a timestamp from ahead.
             if age is not None and 0 <= age < self._unreachable_backoff_seconds:
                 logger.info(
-                    "Skipping publish: unreachable marker %s is %.1fs old; "
-                    "event %s stays spooled for the next drain",
+                    "Skipping publish: publish circuit %s is open (%d consecutive "
+                    "failures, opened %.1fs ago); event %s stays spooled for the "
+                    "next drain",
                     marker,
+                    prior_failures,
                     age,
                     request.event_id,
                 )
@@ -862,10 +880,17 @@ class HandlerEventEmitEffect:
                     published=False,
                     spool_only=False,
                     publish_skipped_unreachable=True,
+                    publish_failure_count=prior_failures,
+                    publish_circuit_open=True,
                     drained_count=0,
                     dropped_count=dropped_count,
                     correlation_id=result_correlation_id,
                 )
+        else:
+            prior_failures = 0
+        # Retry the slow one: only on a clean, enabled circuit, so a
+        # deterministic outage (failures already recorded) keeps its cost.
+        retry_available = marker is not None and prior_failures == 0
 
         # Records rejected at append time (oversized telemetry -- see
         # SpoolOutbox._append_telemetry) were never spooled, so they cannot be
@@ -885,6 +910,21 @@ class HandlerEventEmitEffect:
                 publish_outcome = self._try_publish(
                     adapter, spool_file, spool, deadline=deadline
                 )
+                if (
+                    publish_outcome is EnumPublishOutcome.RETRYABLE
+                    and retry_available
+                    and deadline - time.monotonic() >= _RETRY_MIN_REMAINING_SECONDS
+                ):
+                    retry_available = False
+                    logger.info(
+                        "Retrying publish of event %s on topic %s once: the "
+                        "publish circuit has no recorded failures",
+                        spool_file.record.event_id,
+                        spool_file.record.topic,
+                    )
+                    publish_outcome = self._try_publish(
+                        adapter, spool_file, spool, deadline=deadline
+                    )
                 if publish_outcome is EnumPublishOutcome.PUBLISHED:
                     published_topics.append(spool_file.record.topic)
                     continue
@@ -923,31 +963,24 @@ class HandlerEventEmitEffect:
                 )
                 quarantined_count += backlog_quarantined
 
+        failure_count: int | None = None
+        circuit_open = False
         if marker is not None:
-            try:
-                if published_topics or drained_count:
-                    marker.unlink(missing_ok=True)
-                elif publish_failed:
-                    marker.parent.mkdir(parents=True, exist_ok=True)
-                    marker.write_text(
-                        json.dumps(
-                            {
-                                "failed_at": datetime.now(UTC).isoformat(),
-                                "identity_sha256": identity_sha256,
-                            }
-                        ),
-                        encoding="utf-8",
-                    )
-            except (OSError, ValueError):
-                logger.debug(
-                    "Cannot update unreachable marker %s", marker, exc_info=True
-                )
+            failure_count, circuit_open = self._update_circuit(
+                marker,
+                identity_sha256,
+                prior_failures=prior_failures,
+                succeeded=bool(published_topics or drained_count),
+                failed=publish_failed,
+            )
 
         return ModelEmitResult(
             event_id=request.event_id,
             topics_published=published_topics if all_published else [],
             published=all_published,
             spool_only=False,
+            publish_failure_count=failure_count,
+            publish_circuit_open=circuit_open,
             drained_count=drained_count,
             dropped_count=dropped_count,
             quarantined_count=quarantined_count,
@@ -955,8 +988,16 @@ class HandlerEventEmitEffect:
         )
 
     @staticmethod
-    def _unreachable_marker_age(marker: Path, identity_sha256: str) -> float | None:
-        """Read wall-clock age; malformed markers must not block publishing."""
+    def _read_circuit(
+        marker: Path, identity_sha256: str
+    ) -> tuple[int, datetime | None]:
+        """Read ``(consecutive_failures, opened_at)`` from the circuit marker.
+
+        Anything that is not this identity's marker in the current shape --
+        absent, malformed, another identity's, or the replaced single-failure
+        ``failed_at`` shape -- reads as "no failures" and never blocks a
+        publish.
+        """
         try:
             data = json.loads(marker.read_text(encoding="utf-8"))
             if (
@@ -964,16 +1005,90 @@ class HandlerEventEmitEffect:
                 or data.get("identity_sha256") != identity_sha256
             ):
                 raise ValueError("Invalid unreachable marker identity")
-            failed_at = data.get("failed_at")
-            if not isinstance(failed_at, str):
+            failures = data.get("consecutive_failures")
+            if (
+                not isinstance(failures, int)
+                or isinstance(failures, bool)
+                or failures < 1
+            ):
+                raise ValueError("Invalid unreachable marker failure count")
+            opened_raw = data.get("opened_at")
+            if opened_raw is None:
+                return failures, None
+            if not isinstance(opened_raw, str):
                 raise ValueError("Invalid unreachable marker timestamp")
-            failed_datetime = datetime.fromisoformat(failed_at)
-            if failed_datetime.tzinfo is None:
+            opened_at = datetime.fromisoformat(opened_raw)
+            if opened_at.tzinfo is None:
                 raise ValueError("Unreachable marker timestamp must be timezone-aware")
-            return time.time() - failed_datetime.timestamp()
+            return failures, opened_at
+        except FileNotFoundError:
+            return 0, None
         except (OSError, ValueError):
             logger.debug("Cannot read unreachable marker %s", marker, exc_info=True)
-            return None
+            return 0, None
+
+    def _update_circuit(
+        self,
+        marker: Path,
+        identity_sha256: str,
+        *,
+        prior_failures: int,
+        succeeded: bool,
+        failed: bool,
+    ) -> tuple[int, bool]:
+        """Apply this invocation's outcome; return ``(count, opened_now)``.
+
+        Any success closes the circuit. A retryable failure counts once per
+        invocation and opens (or, on a failed probe, re-opens) the circuit at
+        the threshold. Neither (e.g. only quarantines) leaves it unchanged.
+        """
+        if succeeded:
+            try:
+                marker.unlink(missing_ok=True)
+            except (OSError, ValueError):
+                logger.debug(
+                    "Cannot update unreachable marker %s", marker, exc_info=True
+                )
+                return prior_failures, False
+            if prior_failures:
+                logger.info(
+                    "Publish circuit %s closed: 0 consecutive failures (was %d)",
+                    marker,
+                    prior_failures,
+                )
+            return 0, False
+        if not failed:
+            return prior_failures, False
+
+        failures = prior_failures + 1
+        opened = failures >= self._unreachable_failure_threshold
+        tmp = marker.with_name(f".{marker.name}.{os.getpid()}.tmp")
+        try:
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            tmp.write_text(
+                json.dumps(
+                    {
+                        "identity_sha256": identity_sha256,
+                        "consecutive_failures": failures,
+                        "opened_at": datetime.now(UTC).isoformat() if opened else None,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            os.replace(tmp, marker)
+        except (OSError, ValueError):
+            logger.debug("Cannot update unreachable marker %s", marker, exc_info=True)
+            with contextlib.suppress(OSError, ValueError):
+                tmp.unlink(missing_ok=True)
+            return prior_failures, False
+        logger.info(
+            "Publish circuit %s %s: %d consecutive failures (threshold %d)",
+            marker,
+            "open" if opened else "closed",
+            failures,
+            self._unreachable_failure_threshold,
+        )
+        return failures, opened
 
     def _try_publish(
         self,
