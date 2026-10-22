@@ -1,0 +1,51 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21300"
+title: "Import the Kafka transport before the emit publish timeout starts"
+summary: "node_event_emit_effect's KafkaEventPublisher resolves EventBusKafka, ModelKafkaEventBusConfig and ModelEventHeaders at construction instead of inside the publish coroutine, and handle() builds the adapter before its shared deadline starts, so the first publish of a fresh process no longer pays the transport import inside its 5 s per-publish cap."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-emit-transport-import-outside-timeout"
+    statement: |-
+      node_event_emit_effect resolves the Kafka transport imports when KafkaEventPublisher is constructed, before handle() starts its shared deadline, so the first publish of a fresh process no longer pays the transport import inside its per-publish cap.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: with omnibase_infra.event_bus.event_bus_kafka and omnibase_infra.event_bus.models removed from sys.modules, a KafkaEventPublisher built with the default bus factory has the transport module imported at the moment its publish coroutine is handed to the publish loop -- falsifier: the imported_before test fails at the merge base, where the import happens inside the coroutine
+      - id: "AC2"
+        statement: |-
+          AC2: with a fake bus and a headers import that sleeps 0.3 s, a publish with timeout_seconds=0.2 succeeds because the import happened at construction -- falsifier: the slow_transport_import test fails at the merge base with TimeoutError
+evidence_requirements:
+  - kind: "tests"
+    description: "The transport-import test file and every existing node_event_emit_effect unit test pass."
+    command: "uv run pytest tests/unit/nodes/node_event_emit_effect -q -n 0 -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21300-transport-import-before-timeout"
+    description: "The Kafka transport module is in sys.modules when the publish coroutine reaches the publish loop. It fails at the merge base, where the import runs inside the coroutine."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_transport_import_outside_timeout_omn17427.py -q -n 0 -p no:randomly --no-cov -k imported_before"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21300-slow-import-no-timeout"
+    description: "A 0.3 s headers import cannot time out a 0.2 s publish. It fails at the merge base with TimeoutError."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_transport_import_outside_timeout_omn17427.py -q -n 0 -p no:randomly --no-cov -k slow_transport_import"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21300-deploy-probe"
+    description: "Deploy probe. In the checked-out package, the real KafkaEventPublisher with a slow headers import and a local fake bus publishes within a 0.2 s timeout, and the default factory has the transport imported before the publish loop runs. It fails at the merge base and needs only uv and this checkout on the hosted runner, no broker or network."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_transport_import_outside_timeout_omn17427.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"

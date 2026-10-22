@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Fixture: a script that calls the codex CLI directly, outside the delegation effect."""
+
+import subprocess
+
+
+def review(diff: str) -> str:
+    done = subprocess.run(
+        ["codex", "exec", "--skip-git-repo-check", "Review this diff"],
+        input=diff,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return done.stdout
