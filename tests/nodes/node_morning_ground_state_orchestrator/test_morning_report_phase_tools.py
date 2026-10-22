@@ -528,3 +528,40 @@ def test_local_reads_name_no_free_path() -> None:
     ):
         fields = set(tool.input_model.model_fields)
         assert not fields & {"path", "file", "command", "argv", "url", "cwd"}
+
+
+@pytest.mark.unit
+def test_the_verifier_runs_only_on_a_closable_ticket_and_within_its_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ctx = _ctx(tmp_path, "morning-triage")
+    receipt = {
+        "status": "success",
+        "result": {
+            "terminal_payload": {"status": "verified", "total_checks": 2, "checks": []}
+        },
+    }
+    verifier = _program(
+        tmp_path / "dod.py", f"print({json.dumps(json.dumps(receipt))})"
+    )
+    ctx = ctx.model_copy(
+        update={
+            "commands": {
+                **ctx.commands,
+                "dod_verify_command": [sys.executable, str(verifier)],
+            }
+        }
+    )
+    with pytest.raises(MorningToolRefusalError, match="open PR omnidemo#9"):
+        _run("dod_verify", ctx, ticket="OMN-1234")
+    with pytest.raises(MorningToolRefusalError, match="no merged PR"):
+        _run("dod_verify", ctx, ticket="OMN-4242")
+    state = cast(dict[str, Any], json.loads(ctx.place("pr_watcher_state").read_text()))
+    state["merges"]["omnidemo#11"] = {"title": "fix(OMN-777): done", "merged_at": "x"}
+    ctx.place("pr_watcher_state").write_text(json.dumps(state))
+    out = _run("dod_verify", ctx, ticket="OMN-777")
+    assert out["status"] == "verified"
+    assert out["total_checks"] == 2
+    monkeypatch.setattr(effects, "DOD_VERIFY_BUDGET", 1)
+    with pytest.raises(MorningToolRefusalError, match="budget"):
+        _run("dod_verify", ctx, ticket="OMN-777")

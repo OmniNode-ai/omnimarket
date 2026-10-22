@@ -100,11 +100,12 @@
         "Rules: morning_readme 'Triage rules' and its subsections.",
         "Scope: linear_sprint_project, then linear_issues scope=sprint and linear_issues scope=workspace updated_within_hours=48 (state_types narrow it). Skip any issue whose children count is not 0.",
         "0 FENCES: triage_fences; every id in fenced_tickets may get a comment, never a flip.",
-        "1 CLOSABLE: ticket_prs and pull_merge_state prove every PR merged (watcher and canonical history); dod_verify runs the verifier; linear_issue_detail reads the DoD boxes; linear_issue_set_state to_state_type=completed posts the adjudication comment (receipts, PR, merge sha, the line proving each AC) and flips.",
+        "1 CLOSABLE: ticket_prs and pull_merge_state prove every PR merged (watcher and canonical history); dod_verify runs the verifier only on such a ticket (it refuses an open PR or no merged PR, and has a budget of 20 runs, so verify the likeliest closures first); linear_issue_detail reads the DoD boxes; linear_issue_set_state to_state_type=completed posts the adjudication comment (receipts, PR, merge sha, the line proving each AC) and flips.",
         "2 STALE CLAIMS and 2b: triage_started (worktree, commits, ledger CLAIM) plus ticket_prs for PR events; act on UNSTARTED only, with linear_comment or linear_issue_set_state to_state_type=backlog.",
         "3 MISFILED: In Review with no PR (ticket_prs empty) goes back with linear_issue_set_state to_state_type=started.",
         "In a DRY run every Linear write tool refuses: record what WOULD have been done.",
-        "4 The TERMINAL's summary must carry the four counts flipped / held / corrected / commented with their ticket ids; the tool adds the run date."
+        "4 The TERMINAL's summary must carry the four counts flipped / held / corrected / commented with their ticket ids; the tool adds the run date.",
+        "linear_issues returns 50 rows per call: page a large scope with offset and next_offset, never by slicing ids or dates."
       ]
     },
     "plan-reconcile": {

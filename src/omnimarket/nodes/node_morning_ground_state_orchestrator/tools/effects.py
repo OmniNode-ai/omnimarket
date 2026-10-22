@@ -49,6 +49,8 @@ LINE_CAPS = {
 CELL_TEXT = r"^[^|\n\r\x00]+$"
 CellText = Annotated[str, StringConstraints(pattern=CELL_TEXT)]
 SLUG = r"^[a-z][a-z0-9-]{1,40}$"
+#: Verifier runs per phase session: each takes up to minutes, and the phase has an hour.
+DOD_VERIFY_BUDGET = 20
 
 
 def _now() -> str:
@@ -690,6 +692,32 @@ def triage_started(ctx: ModelMorningToolContext, params: BaseModel) -> Result:
 def dod_verify(ctx: ModelMorningToolContext, params: BaseModel) -> Result:
     """The DoD verifier against one ticket's contract (hosted audience), its verdict compacted."""
     p = cast(ModelTicketInput, params)
+    from .local_reads import ticket_prs
+
+    prs = ticket_prs(ctx, p)
+    opened = cast(list[dict[str, JsonValue]], prs["open"])
+    merged = [
+        *cast(list[JsonValue], prs["merged"]),
+        *cast(list[JsonValue], prs["merged_in_history"]),
+    ]
+    if opened:
+        raise MorningToolRefusalError(
+            f"{p.ticket} is not CLOSABLE: open PR {', '.join(str(o['pr']) for o in opened)}; "
+            "hold it, never flip it (the verifier runs only when every PR is merged)"
+        )
+    if not merged:
+        raise MorningToolRefusalError(
+            f"{p.ticket} has no merged PR in the watcher record or the integration branches' "
+            "history, so it is not CLOSABLE; hold it"
+        )
+    budget = ctx.state() / f"dod-verify-{ctx.phase_label}.count"
+    used = int(budget.read_text()) if budget.is_file() else 0
+    if used >= DOD_VERIFY_BUDGET:
+        raise MorningToolRefusalError(
+            f"the verifier budget ({DOD_VERIFY_BUDGET} runs per phase) is spent; hold the "
+            "remaining CLOSABLE tickets with the reason 'verifier budget spent'"
+        )
+    budget.write_text(str(used + 1))
     done = _whole(
         ctx,
         "dod_verify_command",
@@ -949,7 +977,8 @@ EFFECT_TOOLS: tuple[MorningTool, ...] = (
     ),
     MorningTool(
         "dod_verify",
-        "Run the DoD verifier against one ticket's contract (hosted audience).",
+        "Run the DoD verifier against one CLOSABLE ticket's contract (hosted audience): it "
+        "refuses a ticket with an open PR or no merged PR, and after 20 runs per phase.",
         ModelTicketInput,
         "read",
         dod_verify,
