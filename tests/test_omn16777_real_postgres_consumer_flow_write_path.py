@@ -441,6 +441,10 @@ async def test_real_writer_refusal_is_info_but_empty_write_is_error(
         await writer._project_one_message(
             _TOPIC, _refusal_heartbeat(node_id, {_GROUP: 10}), meta
         )
+        # The writer keeps its pool open between messages (OMN-17427), and the
+        # runtime binds a writer before its first message, never after: release
+        # the pool this setup message opened so the wiring below can bind.
+        await writer.aclose()
         target = handler_wiring._resolve_projection_database_target(
             tuple(
                 ModelDbTableDeclaration(**table)
@@ -489,6 +493,7 @@ async def test_real_writer_refusal_is_info_but_empty_write_is_error(
             for r in records
         )
         assert not any("ordering guard" in r.getMessage() for r in records)
+        writer.close_dispatch()
 
 
 @pytest.mark.integration
