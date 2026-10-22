@@ -70,6 +70,13 @@ retention_policy:
     run_interval_seconds: 3600
     database_url_env: OMNIDASH_ANALYTICS_DB_URL
     dry_run: false
+    # A run that deletes a backlog in one go held the runtime's event loop, and
+    # the container's health endpoint with it (OMN-17427). The runtime entry
+    # point (handle_async) runs a run in a worker thread, and a run stops after
+    # the first batch past this budget, so one run holds that thread for at most
+    # one slow batch past it; the next tick resumes after backlog_retry_seconds.
+    max_run_seconds: 5
+    backlog_retry_seconds: 30
   targets:
     - table: agent_actions
       column: created_at
