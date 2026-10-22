@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import ClassVar
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.context_compaction.enum_context_compaction_failure_class import (
     EnumContextCompactionFailureClass,
@@ -26,6 +26,8 @@ class ModelContextCompactionFallback(BaseModel):
     session_id: SessionId
     candidate_id: UUID | None = None
     failure_class: EnumContextCompactionFailureClass
+    #: Wall time of the pack build in milliseconds; None when the barrier failed first (TA.12).
+    build_ms: float | None = Field(default=None, ge=0, allow_inf_nan=False)
 
 
 __all__ = ["ModelContextCompactionFallback"]
