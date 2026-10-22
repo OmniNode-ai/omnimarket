@@ -1,0 +1,65 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20088"
+title: "The Dharma evaluator adapter"
+summary: "node_trajectory_evaluation_effect gains its one registered external evaluator, dharma, behind the existing evaluator protocol and the default-off lane setting. A full-content submission becomes one single-task Dharma managed-evaluation campaign; the receipt is the campaign id and a status read returns the judgment and Dharma's grade. Tests run on responses recorded from the trial organization."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-dharma-evaluator-off-by-default"
+    statement: |-
+      The node calls Dharma only when the lane setting is dharma_full and both contract secrets resolve; every other setting behaves as before.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: with the setting unset, off, in_memory or an unregistered external name, no Dharma call is made and the existing refusals are unchanged; dharma_metadata and meta content under dharma_full are refused content_mode_not_permitted before any call -- falsifier: the handler tests for disabled, unavailable and dharma metadata settings assert no evaluator submission and no guard request
+      - id: "AC2"
+        statement: |-
+          AC2: under dharma_full with unresolvable secrets the command is refused backend_misconfigured with no secret name or value in the detail -- falsifier: test_dharma_without_resolvable_secrets_is_misconfigured
+  - id: "req-dharma-evaluator-wire"
+    statement: |-
+      The evaluator speaks Dharma's managed-evaluation campaign API as recorded, never creates a second campaign for one idempotency key, and classifies every response.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: a submission launches one campaign with a bearer token, an Idempotency-Key and a camelCase body, after a lookup that returns an existing campaign of the same derived name as a duplicate without launching -- falsifier: test_submit_looks_up_then_launches_one_campaign and test_submit_returns_the_existing_campaign_and_launches_nothing on the recorded fixtures
+      - id: "AC4"
+        statement: |-
+          AC4: a status read of a recorded completed campaign returns judgment, Dharma status, score and failed gates; a running one is not terminal -- falsifier: the status tests on campaign_completed_block.json, campaign_completed_acceptable.json and campaign_running.json
+      - id: "AC5"
+        statement: |-
+          AC5: 401, 403 and 400 are rejected with Dharma's error code, 402 trips the credit stop, 429 is rate limited, 503, a redirect, a non-JSON body and a connection failure are transport errors, and the token never appears in an error -- falsifier: the parametrized error tests in test_evaluator_dharma.py
+evidence_requirements:
+  - kind: "tests"
+    description: "Evaluator tests on recorded Dharma responses and the node's handler tests."
+    command: "uv run pytest tests/unit/nodes/node_trajectory_evaluation_effect tests/test_golden_chain_trajectory_evaluation_effect.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20088-off-by-default"
+    description: "Only dharma_full with resolvable secrets reaches Dharma; other settings are unchanged."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_trajectory_evaluation_effect/test_handler_trajectory_evaluation.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]
+  - id: "dod-omn20088-wire"
+    description: "The evaluator matches Dharma's recorded responses and classifies every error."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_trajectory_evaluation_effect/test_evaluator_dharma.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3", "AC4", "AC5"]
+  - id: "dod-omn20088-deploy-probe"
+    description: "Hosted source readback of the Dharma evaluator and its registration at the checked-out revision. The evaluator lookup fails at the merge base, which has no evaluator file, and the content assertions fail if the evaluator class or the full-content-only registration is absent. This checks published source; the adapter lands off by default, so no lane runs it until a lane sets dharma_full."
+    source: "manual"
+    execution_scope: "hosted_and_local"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_trajectory_evaluation_effect/evaluators/evaluator_dharma.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"class EvaluatorDharma\")' | grep -qx true && gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_trajectory_evaluation_effect/handlers/handler_trajectory_evaluation.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"{\\\"dharma\\\": frozenset({\\\"full\\\"})}\")' | grep -qx true"
+        cwd: "${OMNI_HOME}/omnimarket"
