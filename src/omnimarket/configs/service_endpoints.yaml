@@ -26,3 +26,8 @@ slack:
   # interval, or the channel gets muted and the alerting is worth nothing.
   auth_test_url: "https://slack.com/api/auth.test"
   conversations_info_url: "https://slack.com/api/conversations.info"
+
+dharma:
+  # Dharma Evaluation Runs API origin (OMN-20088). The trajectory evaluation
+  # effect builds only the paths Dharma's published OpenAPI document names.
+  api_url: "https://www.dharma-ai.io"
