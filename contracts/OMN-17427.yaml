@@ -755,6 +755,13 @@ requirements:
         statement: "AC180: the latency runner carries input_messages_hash, newest_turn, barrier_id and compact_model from the recorded input; its payload validates as ModelContextCompactionRequested on cold, warm-up and warm trips, and a missing recorded input hash is refused before any publish -- falsifier: the focused command-boundary tests fail on the base, which drops those fields and publishes an invalid command."
       - id: "AC181"
         statement: "AC181: a native adapter verdict with an otherwise valid prepared timing receipt is a refusal with absent phase timings, never an input to latency qualification -- falsifier: the native-with-prepared regression fails on the base, which records a successful measurement."
+  - id: req-delegation-terminal-complete-readback
+    statement: The existing terminal migrations and both projection writers are verified together, and lab failure-cause proof refuses an empty window.
+    acceptance:
+    - id: AC182
+      statement: 'AC182: real PostgreSQL applies migrations 0052, 0053 and 0058 and both writers project both terminal families with all eight trace, routing, stop and timing columns plus the declared cause, outcome and verdict; canonical terminals set terminal_ok even without a declared cause, and a failed ladder without an accepting attempt names no answering backend.'
+    - id: AC183
+      statement: 'AC183: the read-only dev-lane query finds at least one failed row after the writer deploy boundary and zero failed rows with a NULL cause; the same query fails for an empty window or a failed row with a NULL cause.'
   - id: req-qwen-tool-call-experiment
     statement: |-
       Report the fixed local Qwen tool-call experiment without shipping a tool-loop implementation or claiming completion of the umbrella integration-pass ticket.
@@ -768,6 +775,11 @@ requirements:
     acceptance:
       - id: "AC182"
         statement: "AC182: node_landing_tlc_receipt_effect is a registered onex.nodes entry point of omnimarket declared once (metadata.yaml and pyproject.toml, not its contract), publish builds a receipt bound to the decision pin and packs it under tag landing-tlc-<pin8>-<model8>, refuses a model check that found a violation, ran nothing or has an unreadable pin, and sync installs a published receipt, leaves a current one alone, replaces one built from another model, refuses a receipt the gate refuses or an archive naming a path outside its directory, and reports a failed release read, in each refusal changing nothing -- falsifier: uv run pytest tests/nodes/node_landing_tlc_receipt_effect/test_landing_tlc_receipt_effect.py -q -p no:randomly --no-cov fails at the merge base, where the node does not exist"
+  - id: "req-declared-label-set-undeclared-backend"
+    statement: "A declared label set on a backend that does not declare json_schema support sends no provider directive, still refuses an out-of-vocabulary label and records the refusal in attempts, and a payload that omits the new wire fields is read as undeclared."
+    acceptance:
+      - id: "AC182"
+        statement: "AC182: on an undeclared backend the delegate-skill run sends no response_format, fails the garbled label with SCHEMA_VIOLATION naming it, and counts each refused attempt; a backend or call-request payload without the new fields reads as undeclared -- falsifier: uv run pytest tests/unit/delegation/test_declared_label_set_membership_omn18989.py -q fails when an omitted supports_response_format_json_schema defaults to True"
   - id: "req-claims-pending-index"
     statement: "The SQLite claim store carries a partial index over the pending delegate-skill command claims, added once by a store step, so the delegation reaper's pending-claims query reads the index instead of the whole table. The index changes no claim, terminal-slot or reap answer and deletes no row."
     acceptance:
@@ -1003,6 +1015,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC182: the landing TLC receipt effect node builds, packs, installs and refuses receipts against a temporary gate and a fake release transport, and its entry point agrees with the installed package."
     command: "uv run pytest tests/nodes/node_landing_tlc_receipt_effect/test_landing_tlc_receipt_effect.py -q -p no:randomly --no-cov"
+  - kind: "tests"
+    description: "AC182: the declared label set tests pass on a declaring and an undeclared backend, and an omitted wire field reads as undeclared."
+    command: "uv run pytest tests/unit/delegation/test_declared_label_set_membership_omn18989.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -2983,6 +2998,21 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_unreachable_backoff_omn17427.py -q -n 0 -p no:randomly --no-cov -k backs_off_across_handler_instances"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac182-undeclared-label-set"
+    description: "AC182. The delegate-skill run on an undeclared backend sends no response_format and refuses the garbled label with each refusal counted in attempts; payloads that omit the new fields read as undeclared. Flipping the omitted-field default to True fails the three undeclared cases."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_declared_label_set_membership_omn18989.py -q -p no:cacheprovider -k 'undeclared or omit_the_new_wire_fields'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC182"]
+  - id: "dod-omn17427-undeclared-label-set-deploy"
+    description: "Deploy probe. The undeclared-backend cases and the omitted-wire-field test pass on the checked-out source. They need uv and this checkout on the hosted runner, with no provider or credentials; the cases do not exist at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/delegation/test_declared_label_set_membership_omn18989.py -q --no-cov -p no:cacheprovider -k 'undeclared or omit_the_new_wire_fields'"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac154-compaction-latency-runner"
     description: "The TA.12 runner in the hook adapter node: cold and warm trips through the adapter, wall time, the prepared-receipt phase split, refusals for missing or inconsistent timings and adapter errors, the CLI exit codes, and tabulation of its trips through the latency qualification compute. At the merge base the test module fails to collect."
     source: "manual"
@@ -3235,6 +3265,32 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_latency_run.py -q -n 0 -p no:randomly --no-cov -k 'real_compaction_request_boundary or missing_recorded_messages_hash or native_fallback_with_prepared' --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-omn17427-terminal-columns-complete-postgres
+    description: 'All eleven terminal fields are checked together after applying the actual migration chain and reapplying 0052, 0053 and 0058. Both sync/async writers and canonical/delegate-skill terminals are exercised. Before the fix the four canonical cases leave terminal_ok NULL. Both writers now stamp the canonical terminal outcome, including a failure whose cause is absent, so failure-cause readback includes it. Existing migrations already supply every requested column. The same file runs the exact read-only SQL probe, which passes a typed failed row and rejects a failed row with NULL cause and an empty failure window, on real disposable PostgreSQL.'
+    source: manual
+    binds_ac: [AC182, AC183]
+    checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/test_omn19448_terminal_acceptance_real_postgres.py -q -n 0 --no-cov -p no:cacheprovider --refuse-skips
+      cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn17427-terminal-cause-dev-readback
+    description: 'Fresh read-only dev proof on 2026-10-21, after both writer containers started at 13:38:45Z. At 15:18Z the executable SQL found 84 rows, 5 failed and 0 failed with NULL cause. A broader read since the credential-refusal cause fix found 8531 rows, 968 failed and 0 failed with NULL cause. All eleven columns exist; a separate current-deploy read found populated values in each of the eight added columns. This live lab command runs only at the local Done gate; hosted CI runs the disposable database proof.'
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+    - check_type: command
+      check_value: >-
+        ssh -o BatchMode=yes -o ConnectTimeout=10 "${DELEGATION_DEV_SSH_TARGET:?set the dev-lane SSH target}"
+        'docker exec -e PGOPTIONS="-c default_transaction_read_only=on" -i omnibase-infra-postgres psql -X -v ON_ERROR_STOP=1 -v deploy_boundary=2026-10-21T13:38:45.647091938Z -U postgres -d omnidash_analytics'
+        < scripts/ci/delegation_terminal_cause_readback.sql
+      cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn17427-terminal-columns-hosted-probe
+    description: 'Hosted package probe: PostgreSQL 16 in an owned disposable container applies the shipped migrations; the async canonical writer must store terminal_ok=false and the declared terminal columns, and the SQL readback must reject a NULL cause and an empty failure window. Docker and locked dependencies suffice; no lab access or credential. The canonical case fails before this fix. This is not a live deployment attestation.'
+    source: manual
+    checks:
+    - check_type: command
+      check_value: uv run pytest tests/test_omn19448_terminal_acceptance_real_postgres.py -q -n 0 --no-cov -p no:cacheprovider --refuse-skips -k 'async and canonical and quality_gate_refused'
+      cwd: ${OMNI_HOME}/omnimarket
 
   - id: dod-omn17427-qwen-tool-call-report
     description: |-
