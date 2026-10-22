@@ -205,20 +205,27 @@ class EvaluatorDharma:
         params: dict[str, str] | None = None,
         headers: dict[str, str] | None = None,
     ) -> httpx.Response:
+        # The registered effect handler owns HTTP transport. Import on use
+        # because that handler imports this evaluator to register its backend.
+        from omnimarket.nodes.node_trajectory_evaluation_effect.handlers.handler_trajectory_evaluation import (
+            request_dharma,
+        )
+
         all_headers = {
             "Authorization": f"Bearer {self._token.get_secret_value()}",
             "Accept": "application/json",
             **(headers or {}),
         }
         try:
-            async with httpx.AsyncClient(
+            return await request_dharma(
+                method,
+                url,
+                json=json,
+                params=params,
+                headers=all_headers,
                 transport=self._transport,
-                timeout=self._timeout,
-                follow_redirects=False,
-            ) as client:
-                return await client.request(
-                    method, url, json=json, params=params, headers=all_headers
-                )
+                timeout_seconds=self._timeout,
+            )
         except httpx.HTTPError as exc:
             raise EvaluatorTransportError(type(exc).__name__) from None
 

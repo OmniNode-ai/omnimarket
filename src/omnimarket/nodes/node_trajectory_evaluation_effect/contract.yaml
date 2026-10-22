@@ -99,8 +99,9 @@ externally_consumed_topics:
   - onex.evt.omnimarket.trajectory-evaluation-failed.v1
   - onex.evt.omnimarket.trajectory-evaluation-status.v1
 
-# The public-repository guard and the evaluator adapter reach their services
-# over HTTP (httpx).
+# The public-repository guard and the registered effect handler's request_dharma
+# operation reach their services over HTTP (httpx). The evaluator delegates HTTP
+# requests to that handler and builds and parses campaign payloads itself.
 metadata:
   transport_type: http
 

@@ -131,6 +131,31 @@ def _parse_setting(raw: str | None) -> _Backend | Literal["off"] | None:
     return None
 
 
+async def request_dharma(
+    method: str,
+    url: str,
+    *,
+    json: object | None = None,
+    params: dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,
+    transport: httpx.AsyncBaseTransport | None = None,
+    timeout_seconds: float = 30.0,
+) -> httpx.Response:
+    """Send a Dharma request at the node's registered HTTP effect boundary.
+
+    The evaluator builds campaign requests and parses responses; client
+    creation, timeout and redirect policy belong to this contract's handler.
+    """
+    async with httpx.AsyncClient(
+        transport=transport,
+        timeout=timeout_seconds,
+        follow_redirects=False,
+    ) as client:
+        return await client.request(
+            method, url, json=json, params=params, headers=headers
+        )
+
+
 class HandlerTrajectoryEvaluation:
     """Validate, guard, pace and submit one trajectory evaluation."""
 
