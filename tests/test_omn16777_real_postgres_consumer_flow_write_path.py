@@ -42,6 +42,7 @@ SKIPS (never ERRORs) without a reachable Postgres, mirroring
 from __future__ import annotations
 
 import asyncio
+import copy
 import logging
 import os
 from collections.abc import AsyncIterator
@@ -322,6 +323,88 @@ async def test_writer_counts_every_refused_row_in_a_mixed_batch() -> None:
             "ORDER BY consumer_group"
         )
         assert [row["ingest_sequence"] for row in stored] == [10, 10, 11]
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_wide_heartbeat_lands_every_pair_through_the_batched_statements() -> (
+    None
+):
+    """OMN-17427 (C28): one heartbeat's deltas are bound as arrays, and land.
+
+    A live heartbeat carried 477 consumer deltas. The writer binds every delta
+    of one statement as a parallel array expanded by ``unnest``, so this proves
+    against real Postgres that the array element types match the columns
+    (``uuid[]``, ``timestamptz[]``, nullable ``bigint[]``), that the upstream
+    lookup answers each probed topic, and that a second delivery of the same
+    window is refused row by row by the ordering predicate.
+    """
+    async with _migrated_database() as conn:
+        writer = await _refusal_writer(conn)
+        node_id = str(uuid4())
+        end = _T0 + timedelta(seconds=60)
+        produced_topic = f"{_TOPIC}.produced"
+        pairs = 120
+        payload = {
+            "flow_window": {
+                "node_id": node_id,
+                "window_start": _T0.isoformat(),
+                "window_end": end.isoformat(),
+                "window_sequence": 7,
+                "consumer_deltas": [
+                    {
+                        "consumer_group": f"{_GROUP}.{index}",
+                        "topic": produced_topic if index % 2 else _TOPIC,
+                        "node_id": node_id,
+                        "window_start": _T0.isoformat(),
+                        "window_end": end.isoformat(),
+                        "window_sequence": 7,
+                        "messages_in": index,
+                        "messages_out": index,
+                        "messages_dlq": 0,
+                        "handler_errors": 0,
+                    }
+                    for index in range(pairs)
+                ],
+                "produce_deltas": [
+                    {
+                        "topic": produced_topic,
+                        "node_id": node_id,
+                        "window_start": _T0.isoformat(),
+                        "window_end": end.isoformat(),
+                        "window_sequence": 7,
+                        "messages_produced": 4242,
+                    }
+                ],
+            }
+        }
+        meta = MessageMeta(topic=_TOPIC, partition=0, offset=1, fallback_id="wide")
+
+        first = await writer._project_one_message(_TOPIC, payload, meta)
+        assert first["rows_upserted"] == pairs
+        assert first["rows_refused_by_ordering_guard"] == 0
+        assert [row["consumer_group"] for row in first["flow_rows"]] == [
+            f"{_GROUP}.{index}" for index in range(pairs)
+        ], "the applied payload must keep the heartbeat's delta order"
+        stored = await conn.fetch(
+            "SELECT consumer_group, topic, upstream_produced, upstream_evidence "
+            "FROM omninode_internal.consumer_flow_windows"
+        )
+        assert len(stored) == pairs
+        for row in stored:
+            if row["topic"] == produced_topic:
+                assert row["upstream_produced"] == 4242
+                assert row["upstream_evidence"] == EnumUpstreamEvidence.PRODUCED.value
+            else:
+                assert row["upstream_produced"] is None
+
+        older = copy.deepcopy(payload)
+        for delta in older["flow_window"]["consumer_deltas"]:
+            delta["window_sequence"] = 6
+        replay = await writer._project_one_message(_TOPIC, older, meta)
+        assert replay["rows_upserted"] == 0
+        assert replay["rows_refused_by_ordering_guard"] == pairs
+        await writer.aclose()
 
 
 @pytest.mark.integration

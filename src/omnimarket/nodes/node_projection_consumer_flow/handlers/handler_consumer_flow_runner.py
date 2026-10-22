@@ -518,10 +518,10 @@ class ConsumerFlowProjectionWriter(BaseProjectionRunner):
 
         observed: list[dict[str, Any]] = []
         refused = 0
-        for chunk in _unique_key_chunks(result.flow_rows, _row_key):
-            written = await self._upsert_flow_rows(chunk)
+        for flow_chunk in _unique_key_chunks(result.flow_rows, _row_key):
+            written = await self._upsert_flow_rows(flow_chunk)
             observed.extend(written)
-            refused += len(chunk) - len(written)
+            refused += len(flow_chunk) - len(written)
 
         # AC6. The snapshot is keyed on (consumer_group, topic) alone, and both
         # rows of a pair carry THIS message's coordinates, so publishing a gap
