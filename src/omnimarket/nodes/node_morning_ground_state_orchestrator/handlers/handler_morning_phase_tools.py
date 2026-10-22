@@ -19,6 +19,7 @@ if a phase agent is given a shell or a generic tool.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import subprocess
 import sys
@@ -206,7 +207,10 @@ class HandlerMorningPhaseTools:
         argv = transport_argv(phase.model, config_file, schema_file)
         with tempfile.TemporaryDirectory(prefix="morning-phase-") as cwd:
             try:
-                done = subprocess.run(
+                # In a thread, so two phases the node gathers (ground-state and triage) run
+                # side by side as the workflow intends, instead of one blocking the loop.
+                done = await asyncio.to_thread(
+                    subprocess.run,
                     argv,
                     input=phase.prompt + TOOLS_NOTE + phase_note(phase.label),
                     capture_output=True,
