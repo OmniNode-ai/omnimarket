@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_harness_invocation_check_effect
 node_type: effect
-runtime_profiles: [main]
+runtime_profiles: [effects]
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: "1.0.0"
 description: >-
@@ -37,6 +37,7 @@ descriptor:
   purity: impure
   idempotent: true
   timeout_ms: 120000
+  runtime_profiles: [effects]
 inputs:
   repo_root: {type: str, required: true, description: Repository checkout to scan.}
   paths: {type: list, required: false, description: Files to scan instead of the whole repository.}
