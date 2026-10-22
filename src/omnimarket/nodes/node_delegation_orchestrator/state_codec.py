@@ -47,6 +47,15 @@ import time
 from collections.abc import Iterator, MutableMapping
 from uuid import UUID
 
+from omnibase_core.enums.enum_delegation_content_verdict import (
+    EnumDelegationContentVerdict,
+)
+from omnibase_core.enums.enum_delegation_operational_outcome import (
+    EnumDelegationOperationalOutcome,
+)
+from omnibase_core.enums.enum_delegation_terminal_failure_cause import (
+    EnumDelegationTerminalFailureCause,
+)
 from pydantic import TypeAdapter, ValidationError
 
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
@@ -370,8 +379,13 @@ class StateIoCodec:
         closed out on a guess, and the sweep retries it after the next deploy).
 
         The values are deliberately the honest ones rather than the flattering
-        ones. There is no content, so ``content`` is empty; there is no verdict,
-        so ``quality_passed`` is false and ``quality_score`` is 0.0; there is no
+        ones. There is no content, so ``content`` is empty; no response reached
+        the quality gate, so ``quality_passed`` is false, ``quality_score`` is
+        absent rather than 0.0 and the content verdict is ``not_applicable``
+        (OMN-18925): an operational failure is never scored as model quality.
+        The operational outcome is ``timeout`` and the cause ``no_terminal``,
+        because the completion bound closed a run for which no component ever
+        published a terminal. There is no
         answer from any provider, so no tokens are claimed. ``latency_ms`` is the
         real elapsed wall time from the request's own start epoch, because "how
         long the customer waited" is a true and useful fact even when nothing
@@ -413,7 +427,11 @@ class StateIoCodec:
             "endpoint_url": routing.endpoint_url if routing is not None else "",
             "content": "",
             "quality_passed": False,
-            "quality_score": 0.0,
+            "operational_outcome": EnumDelegationOperationalOutcome.TIMEOUT.value,
+            "content_verdict": EnumDelegationContentVerdict.NOT_APPLICABLE.value,
+            "terminal_failure_cause": (
+                EnumDelegationTerminalFailureCause.NO_TERMINAL.value
+            ),
             "latency_ms": latency_ms,
             "fallback_to_claude": False,
             "failure_reason": reason,

@@ -31,6 +31,15 @@ import httpx
 import pytest
 import yaml
 from omnibase_core.enums.enum_core_error_code import EnumCoreErrorCode
+from omnibase_core.enums.enum_delegation_content_verdict import (
+    EnumDelegationContentVerdict,
+)
+from omnibase_core.enums.enum_delegation_operational_outcome import (
+    EnumDelegationOperationalOutcome,
+)
+from omnibase_core.enums.enum_delegation_terminal_failure_cause import (
+    EnumDelegationTerminalFailureCause,
+)
 from omnibase_core.errors.model_onex_error import ModelOnexError
 from omnibase_core.models.delegation.wire.model_delegation_failed import (
     ModelDelegationFailed,
@@ -157,6 +166,38 @@ def test_the_codec_builds_a_typed_restart_terminal_from_an_abandoned_row() -> No
     assert terminal.content == ""
     assert terminal.total_tokens == 0
     assert "900s" in terminal.failure_reason
+
+
+@pytest.mark.unit
+def test_the_abandoned_terminal_is_unscored_not_applicable_and_a_timeout() -> None:
+    """OMN-18925 AC-1: a terminal with no response carries no quality score.
+
+    The abandoned row never reached the quality gate, so a numeric score on its
+    empty content would present an operational failure as model quality.
+    """
+    built = StateIoCodec().build_abandoned_terminal(
+        correlation_id=_CORRELATION,
+        tenant_id=_TENANT,
+        state="ROUTED",
+        payload_json=_abandoned_payload(),
+        failure_class=EnumDelegationFailureClass.RUNTIME_RESTART_DURING_DELEGATION.value,
+        failure_code="ONEX_MARKET_DELEGATION_RUNTIME_RESTART",
+        max_wall_seconds=900,
+    )
+    assert built is not None
+    _, _, payload = built
+    assert "quality_score" not in payload
+
+    terminal = ModelDelegationFailed.model_validate(payload)
+    assert terminal.content == ""
+    assert terminal.quality_score is None
+    assert terminal.quality_passed is False
+    assert terminal.operational_outcome is EnumDelegationOperationalOutcome.TIMEOUT
+    assert terminal.content_verdict is EnumDelegationContentVerdict.NOT_APPLICABLE
+    assert (
+        terminal.terminal_failure_cause
+        is EnumDelegationTerminalFailureCause.NO_TERMINAL
+    )
 
 
 @pytest.mark.unit
