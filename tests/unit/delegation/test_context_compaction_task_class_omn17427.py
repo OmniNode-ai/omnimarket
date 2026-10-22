@@ -16,6 +16,7 @@ from typing import Any, get_args
 import pytest
 import yaml
 
+from omnimarket.inference.protocol_config import load_inference_protocol_config
 from omnimarket.inference.task_class_authority import (
     EnumGatewayExposure,
     load_task_class_authority,
@@ -28,6 +29,13 @@ from omnimarket.models.delegation.wire.model_delegation_request import (
 )
 
 _TASK_CLASS = "context_compaction"
+# The summarization-shaped profiles: a compaction call routed to one of these
+# models gets the same request shaping as a summarization call.
+_SHAPED_PROFILES = (
+    "cloud-glm-no-think",
+    "cloud-glm-5-3-thinking",
+    "openrouter-reasoning-minimal-excluded",
+)
 _CONTRACTS = (
     Path(__file__).parents[3] / "src/omnimarket/configs/task_class_contracts.v1.yaml"
 )
@@ -85,3 +93,15 @@ def test_delegation_request_models_accept_context_compaction(
     accepted = get_args(request_model.model_fields["task_type"].annotation)
 
     assert _TASK_CLASS in accepted
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("profile_id", _SHAPED_PROFILES)
+def test_summarization_shaped_protocol_profiles_list_context_compaction(
+    profile_id: str,
+) -> None:
+    config = load_inference_protocol_config()
+    profile = next(p for p in config.profiles if p.profile_id == profile_id)
+
+    assert "summarization" in profile.task_types
+    assert profile.task_types.count(_TASK_CLASS) == 1
