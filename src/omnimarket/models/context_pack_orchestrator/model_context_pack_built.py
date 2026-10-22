@@ -24,6 +24,7 @@ from omnimarket.models.context_pack_render import (
     EnumContextPackRenderFailure,
     ModelContextPackRenderMessage,
 )
+from omnimarket.pack.model_context_profile import MODEL_WRITTEN_FACTORS
 
 
 class ModelContextPackBuilt(BaseModel):
@@ -54,6 +55,15 @@ class ModelContextPackBuilt(BaseModel):
     failure_class: EnumContextPackFailure | None = None
     render_failure_class: EnumContextPackRenderFailure | None = None
     errors: tuple[str, ...] = ()
+
+    def model_section_ms(self) -> float | None:
+        """Sum the timed reads of model-written tiers, or None when none was read."""
+        durations = [
+            tier.read_ms
+            for tier in self.tier_statuses
+            if tier.factor in MODEL_WRITTEN_FACTORS and tier.read_ms is not None
+        ]
+        return sum(durations) if durations else None
 
 
 __all__ = ["ModelContextPackBuilt"]
