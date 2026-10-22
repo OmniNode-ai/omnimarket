@@ -24,7 +24,11 @@ import io
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from omnimarket.github_landing.github_landing_transport import _read_capped
+from omnimarket.github_landing.github_landing_transport import (
+    JobLogWindow,
+    _read_capped,
+    _read_window,
+)
 from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubBytesResponse,
     ModelGithubHttpRequest,
@@ -79,7 +83,9 @@ class BytesExchange:
     status: int
     body: bytes
     limit: int
-    keep: Literal["head", "tail"]
+    keep: Literal["head", "tail", "window"]
+    # OMN-17427: a window exchange also records where the window starts.
+    start: int = 0
 
 
 @dataclass
@@ -144,6 +150,37 @@ class RecordedGatewayTransport:
             total_bytes=total,
             over_limit=over,
             keep=keep,
+        )
+
+    def send_bytes_window_sync(
+        self, request: ModelGithubHttpRequest, *, window: JobLogWindow
+    ) -> ModelGithubBytesResponse:
+        exchange = self._next(request)
+        if not isinstance(exchange, BytesExchange):
+            raise RecordedTransportMismatchError(f"{request.path} is a JSON exchange")
+        asked = (window.length, "window", window.start)
+        if asked != (exchange.limit, exchange.keep, exchange.start):
+            raise RecordedTransportMismatchError(
+                f"{request.path}: asked (limit, keep, start)={asked}, recorded "
+                f"{(exchange.limit, exchange.keep, exchange.start)}"
+            )
+        if exchange.status >= 300:
+            return ModelGithubBytesResponse(
+                status=exchange.status,
+                headers=quota_headers(),
+                content=exchange.body,
+                total_bytes=len(exchange.body),
+                over_limit=False,
+                keep="window",
+            )
+        total, ceiling_hit = _read_window(io.BytesIO(exchange.body), window)
+        return ModelGithubBytesResponse(
+            status=exchange.status,
+            headers=quota_headers(),
+            content=window.kept,
+            total_bytes=total,
+            over_limit=ceiling_hit,
+            keep="window",
         )
 
     def assert_drained(self) -> None:

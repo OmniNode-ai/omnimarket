@@ -5,7 +5,10 @@
 """Dependency provenance: PyPI releases or an internal sibling's dev merge tag.
 
 A sibling git source is accepted without a suppression only when it names the
-package's own OmniNode repository and uses ``tag = "dev-<14 digits>-<12 hex>"``.
+package's own repository and uses a dev merge tag matching the contract.
+The rule and sibling list come from omnibase_core's packaged
+contracts/internal_sibling_pins.yaml (OMN-19998), shared with the Internal
+Sibling Pins check. Run this script in the project environment (uv run --frozen).
 Branches, raw revisions and foreign repositories do not qualify. The existing
 per-line temporary override annotation remains supported.
 
@@ -22,18 +25,12 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-# Package names and repository slugs differ for the omninode-* distributions.
-_SIBLING_REPOSITORIES = {
-    "omnibase-core": "omnibase_core",
-    "omnibase-spi": "omnibase_spi",
-    "omnibase-compat": "omnibase_compat",
-    "omnibase-infra": "omnibase_infra",
-    "omninode-memory": "omnimemory",
-    "omninode-intelligence": "omniintelligence",
-    "omninode-claude": "omniclaude",
-}
+from omnibase_core.handlers.handler_internal_sibling_pins_cli import load_contract
+from omnibase_core.models.version_drift.model_internal_sibling_pins_contract import (
+    ModelInternalSiblingPinsContract,
+)
+
 _GIT_SOURCE_KEYS = frozenset({"git", "rev", "branch", "tag"})
-_DEV_MERGE_TAG = re.compile(r"dev-[0-9]{14}-[0-9a-f]{12}")
 
 # Inline escape token: `# raw-override-ok: <ticket>` with a non-empty token.
 _ESCAPE_TOKEN_RE = re.compile(r"#\s*raw-override-ok:\s*(\S+)")
@@ -56,20 +53,26 @@ def _uv_sources_block(text: str) -> str | None:
     return block_m.group(1) if block_m else None
 
 
-def _is_sibling_dev_tag(pkg: str, attrs: dict[str, Any]) -> bool:
-    repo = _SIBLING_REPOSITORIES.get(pkg)
+def _is_sibling_dev_tag(
+    pkg: str,
+    attrs: dict[str, Any],
+    sibling_repositories: dict[str, str],
+    dev_tag_pattern: re.Pattern[str],
+    github_org: str,
+) -> bool:
+    repo = sibling_repositories.get(pkg)
     if repo is None or _GIT_SOURCE_KEYS & attrs.keys() != {"git", "tag"}:
         return False
     tag = attrs.get("tag")
     git = attrs.get("git")
     return (
         isinstance(tag, str)
-        and _DEV_MERGE_TAG.fullmatch(tag) is not None
+        and dev_tag_pattern.fullmatch(tag) is not None
         and isinstance(git, str)
         and git
         in {
-            f"https://github.com/OmniNode-ai/{repo}",
-            f"https://github.com/OmniNode-ai/{repo}.git",
+            f"https://github.com/{github_org}/{repo}",
+            f"https://github.com/{github_org}/{repo}.git",
         }
     )
 
@@ -92,7 +95,9 @@ def _line_for_package(block: str, pkg: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-def find_violations(text: str) -> list[str]:
+def find_violations(
+    text: str, contract: ModelInternalSiblingPinsContract | None = None
+) -> list[str]:
     """Return diagnostic messages for each forbidden git-source override.
 
     An empty list means the file is clean (exit 0). A non-empty list means the
@@ -103,6 +108,12 @@ def find_violations(text: str) -> list[str]:
         sources = tomllib.loads(text).get("tool", {}).get("uv", {}).get("sources", {})
     except tomllib.TOMLDecodeError as exc:
         return [f"invalid TOML: {exc}"]
+    if contract is None:
+        contract = load_contract()
+    sibling_repositories = {
+        _normalize(sibling.distribution): sibling.repo for sibling in contract.siblings
+    }
+    dev_tag_pattern = re.compile(contract.dev_tag_pattern)
     block = _uv_sources_block(text) or ""
     violations: list[str] = []
 
@@ -116,7 +127,9 @@ def find_violations(text: str) -> list[str]:
             if not isinstance(attrs, dict):
                 continue
             git_keys = sorted(_GIT_SOURCE_KEYS & attrs.keys())
-            if not git_keys or _is_sibling_dev_tag(pkg, attrs):
+            if not git_keys or _is_sibling_dev_tag(
+                pkg, attrs, sibling_repositories, dev_tag_pattern, contract.github_org
+            ):
                 continue
             raw_line = _line_for_package(block, pkg)
             if raw_line is not None and _ESCAPE_TOKEN_RE.search(raw_line):
@@ -155,7 +168,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
-    violations = find_violations(pyproject_path.read_text())
+    contract = load_contract()
+    violations = find_violations(pyproject_path.read_text(), contract)
 
     if violations:
         print(
@@ -166,8 +180,8 @@ def main(argv: list[str] | None = None) -> int:
         for msg in violations:
             print(f"  - {msg}", file=sys.stderr)
         print(
-            "\nUse PyPI or a sibling's own https://github.com/OmniNode-ai/ "
-            "repository with tag=dev-<14 digits>-<12 lowercase hex>. "
+            f"\nUse PyPI or a sibling's own https://github.com/{contract.github_org}/ "
+            f"repository with a tag matching {contract.dev_tag_pattern}. "
             "Branches, bare revisions and foreign git sources are refused. "
             "A temporary override requires a non-empty per-line annotation.",
             file=sys.stderr,
