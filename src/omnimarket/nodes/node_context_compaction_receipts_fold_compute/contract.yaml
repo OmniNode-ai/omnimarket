@@ -1,0 +1,85 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract
+# Node: NodeContextCompactionReceiptsFoldCompute (OMN-17427, plan task TA.13)
+# The effect-class writer that persists this fold is a later piece of the receipts projection.
+
+name: node_context_compaction_receipts_fold_compute
+version: "1.0.0"
+contract_name: node_context_compaction_receipts_fold_compute
+node_name: node_context_compaction_receipts_fold_compute
+
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_type: COMPUTE_GENERIC
+runtime_profiles: [main]
+
+description: >
+  Pure, order-independent fold over compaction receipts. Deduplicate identical copies,
+  group by candidate, activation and fallback invocation identities, detect conflicting
+  copies, and apply installation fact precedence. Deterministic; no I/O or clock.
+
+input_model:
+  name: ModelCompactionFoldRequest
+  module: omnimarket.models.context_compaction_fold
+
+output_model:
+  name: ModelCompactionFoldResult
+  module: omnimarket.models.context_compaction_fold
+
+handler:
+  module: omnimarket.nodes.node_context_compaction_receipts_fold_compute.handlers.handler_context_compaction_receipts_fold
+  class: HandlerContextCompactionReceiptsFold
+  input_model: omnimarket.models.context_compaction_fold.ModelCompactionFoldRequest
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerContextCompactionReceiptsFold
+        module: omnimarket.nodes.node_context_compaction_receipts_fold_compute.handlers.handler_context_compaction_receipts_fold
+      event_model:
+        name: ModelCompactionFoldRequest
+        module: omnimarket.models.context_compaction_fold
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+capabilities:
+  - name: context.compaction.receipts_fold
+    description: Fold compaction receipts into deterministic candidate, activation and fallback rows
+    version: 1.0.0
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.context-compaction-receipts-fold-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-compaction-receipts-fold-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.context-compaction-receipts-fold-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.context-compaction-receipts-fold-completed.v1
+
+terminal_event: onex.evt.omnimarket.context-compaction-receipts-fold-completed.v1
+
+metadata:
+  author: OmniNode Team
+  license: MIT
+  ticket: OMN-17427
+  maturity: alpha
+  tags:
+    - context-compaction
+    - receipts-fold
