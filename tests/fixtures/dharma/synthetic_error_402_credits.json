@@ -1,0 +1,5 @@
+{
+ "ok": false,
+ "error": "insufficient_credits",
+ "message": "Credit authorization exceeds available credits"
+}

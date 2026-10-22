@@ -809,6 +809,11 @@ requirements:
         statement: "AC182: a scheduled retention run ends after the first committed batch that finishes past schedule.max_run_seconds (always after one batch), reports backlog_remaining, and the next tick resumes after backlog_retry_seconds instead of run_interval_seconds -- falsifier: uv run pytest tests/nodes/test_omn17427_retention_cleanup_batched.py -q -n 0 --no-cov -k 'budget or backlog or retry' fails at the merge base, where a run drains to max_batches in one call and the next tick waits the full interval."
       - id: "AC186"
         statement: "AC186: the runtime entry point of NodeRetentionCleanup is handle_async, which runs the run in a worker thread so the event loop keeps running while a batch blocks, and a tick that arrives while a run holds its thread is skipped, not queued -- falsifier: uv run pytest tests/nodes/test_omn17427_retention_cleanup_batched.py -q -n 0 --no-cov -k 'handle_async or event_loop_free or skipped_not_queued' fails at the merge base, where the runtime calls the synchronous handle on its loop."
+  - id: "req-install-canary-provisioned-python"
+    statement: "Both install-canary jobs keep the Python that setup-uv provisioned when they cross the clean-home boundary, so uv resolves the selected interpreter instead of a system or downloaded one."
+    acceptance:
+      - id: "AC187"
+        statement: "AC187: the canary and planted-bad-pin self-test jobs pass UV_PYTHON and UV_PYTHON_INSTALL_DIR into their isolated install environment, and the real uv finds the selected Python offline from that environment -- falsifier: the workflow interpreter selection cases fail on the base with KeyError UV_PYTHON."
   - id: "req-pack-orchestrator-source-order"
     statement: "The context-pack orchestrator gives each artifact its position in its tier's source result as source_priority, so a pack carries a tier's entries in the order the source answered them rather than in content-hash order."
     acceptance:
@@ -819,6 +824,16 @@ requirements:
     acceptance:
       - id: "AC184"
         statement: "AC184: after one failed invocation a new handler on the same spool publishes and drains the first record; with threshold 3 invocations 1 to 3 attempt a publish and invocation 4 inside the window attempts none and returns publish_skipped_unreachable=True and publish_circuit_open=True; a success deletes the marker and resets the count; a probe after the window re-opens on failure with a fresh opened_at and on success drains the backlog in the same invocation; a first-call TimeoutError on a clean circuit is retried once to published=True under the 9 s budget, and not retried with a recorded failure or under 1 s left; an old failed_at, malformed or other-identity marker never blocks; a zero window writes no marker and reports publish_failure_count None; a quarantine leaves the count unchanged -- falsifier: uv run pytest tests/unit/nodes/node_event_emit_effect/test_publish_circuit_omn17427.py -q fails at the merge base (13 of 17 fail), where one failure spools every later publish for 120 s"
+  - id: "req-tick-base-red-own-branch"
+    statement: "The throughput tick's base-branch red counts only check runs whose workflow run belongs to the base branch, and names the real failing check rather than a roll-up, so a release push of the base sha to another branch does not make the base branch read red."
+    acceptance:
+      - id: "AC186"
+        statement: "AC186: _base_red ignores a check row whose workflow run the branch record's runs rows place on another head branch, keeps a row whose run is unlisted, and returns the non-roll-up reds when any exist -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q -k 'another_branchs_run or base_red_roll_up_beside' fails at the merge base, where a main-push run's CI Summary failure on the dev sha reads as base_branch_red and the verdict names CI Summary"
+  - id: "req-step-by-step-prevent-ensure-purpose"
+    statement: "The step_by_step_explanation check accepts a correct causal answer walked through with a prevented or ensured result (\", preventing\", \" and preventing\", \", ensuring\", \", meaning\", \" which prevents\") or a purpose clause (\" to ensure that\", \" to prevent\"), and still vetoes an answer that asserts without explaining."
+    acceptance:
+      - id: "AC188"
+        statement: "AC188: the fifteen correct causal answers in tests/unit/delegation/test_step_by_step_causal_prevent_ensure_omn19401.py, nine of them verbatim Qwen3.8-27B answers from a lab model server, pass step_by_step_explanation, and the seven non-explanations, including \"Preventing outages is the goal\", \"the ensuing outage\" and \"meaningful names\", are still vetoed -- falsifier: uv run pytest tests/unit/delegation/test_step_by_step_causal_prevent_ensure_omn19401.py -q fails at the merge base"
   - id: "req-terminal-emit-test-cleanup-clock"
     statement: "The terminal emitter regression test measures cleanup from the shared session deadline, so topic resolution, enrichment and durable spool writes do not consume its cleanup allowance."
     acceptance:
@@ -1061,6 +1076,12 @@ evidence_requirements:
   - kind: "tests"
     description: "AC184: a built pack carries a tier's entries in source order."
     command: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -k source_order"
+  - kind: "tests"
+    description: "AC186: the base-branch red counts only the base branch's own runs and names the real check."
+    command: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q -k 'another_branchs_run or unlisted_run or base_red_roll_up'"
+  - kind: "tests"
+    description: "AC188: correct causal answers with a prevented or ensured result or a purpose clause pass step_by_step_explanation and non-explanations are still vetoed."
+    command: "uv run pytest tests/unit/delegation/test_step_by_step_causal_prevent_ensure_omn19401.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -3503,6 +3524,21 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/test_omn17427_retention_cleanup_batched.py -q -n 0 -p no:randomly --no-cov -k 'contract_declares_a_short_run_budget or stops_after_the_first_batch_past_it' --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-canary-provisioned-python"
+    description: "Dispatch cause omnimarket:canary (macos-latest). Both install-canary jobs carry setup-uv's explicit Python selection and managed installation directory across the clean-home boundary, and uv discovers that interpreter. These two cases fail at the merge base with KeyError UV_PYTHON. This is focused fix-forward evidence; it does not attest the umbrella ticket's nightly integration-pass reports or graduation review."
+    source: "manual"
+    binds_ac: ["AC187"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19454_install_canary.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-canary-python-deploy-probe"
+    description: "Hosted deploy probe. Read each checked-out canary job's actual pass-env arguments, build its isolated install environment, and ask the real uv executable to find the selected Python offline. This fails at the merge base, needs only the checkout and its uv test environment, and attests the workflow artifact rather than a live macOS deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run --frozen pytest tests/test_omn19454_install_canary.py -q -n 0 -p no:randomly --no-cov -k workflow_install_uses_setup_uv_python"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac152-pack-source-order"
     description: "The context-pack orchestrator sets source_priority to each entry's position in its tier's source result, so the rendered pack carries a tier's entries in source order for forward, reversed and shuffled sources. At the merge base all three cases fail, because every artifact keeps source_priority 100 and the builder orders by hash."
     source: "manual"
@@ -3532,6 +3568,36 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_publish_circuit_omn17427.py -q -n 0 -p no:randomly --no-cov -k one_retryable_failure_does_not_skip"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac186-tick-base-red-own-branch"
+    description: "The repository status check of the throughput tick decision node ignores another branch's workflow run on the base sha and names the real check beside a roll-up base red. Two of the four new tests fail at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC186"]
+  - id: "dod-omn17427-tick-base-red-own-branch-probe"
+    description: "Deploy probe. The hosted runner runs the checked-out node's base-red branch and roll-up tests with the locked dependencies; no credentials and no live tick. It does not attest the node deployed on the lab runtime."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q -n 0 -p no:randomly --no-cov --refuse-skips -k 'another_branchs_run or unlisted_run or base_red_roll_up'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac188-causal-prevent-ensure"
+    description: "The fixture proves correct causal answers walked through with a prevented or ensured result or a purpose clause pass step_by_step_explanation and non-explanations are still vetoed. At the merge base the fifteen correct answers are vetoed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_step_by_step_causal_prevent_ensure_omn19401.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC188"]
+  - id: "dod-omn17427-causal-prevent-ensure-deploy-probe"
+    description: "Deploy probe. The quality gate handler's step_by_step_explanation check is run over this fixture and the earlier causal fixtures: every correct causal answer passes and every non-explanation is vetoed. The hosted runner needs uv and this checkout, with no external provider or credentials. This checks the artifact and does not attest a live deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/delegation/test_step_by_step_causal_prevent_ensure_omn19401.py tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py tests/unit/delegation/test_step_by_step_causal_prose_omn19401.py -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac187-terminal-cleanup-test-clock"
     description: "This PR scopes the terminal cleanup regression's timing to the deadline handed to the publisher session while retaining its 0.3 second allowance. The source check refuses the merge-base test, which measures the whole handle call. The focused runtime tests exercise both publish outcomes and background coroutine cancellation."
