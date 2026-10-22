@@ -39,6 +39,26 @@ Schedule (OMN-17427): the platform runtime tick runs the cleanup once per
 contract's ``schedule.database_url_env``, and the run's result is published on
 the completed topic, one event per run with rows removed per table.
 
+Run budget (OMN-17427): the handler is synchronous and the runtime calls it on
+its event loop, so a run that deletes a large backlog in one go stops the
+loop, and with it the health endpoint, the Kafka consumers and every other
+handler, until the run ends. Observed on the lab dev lane 2026-10-21: the
+first tick after a restart deleted a backlog for 8.7 minutes, the container
+answered no health probe, and Docker marked it unhealthy. A scheduled run
+therefore carries ``schedule.max_run_seconds``: a batched target stops after
+the first committed batch that ends past the budget (always at least one
+batch, so every run makes progress), and the next tick resumes after
+``schedule.backlog_retry_seconds`` instead of waiting out
+``run_interval_seconds``. A manual run has no budget unless it names one.
+
+The budget alone does not free the loop: on the same lane one 10,000-row batch
+of the consumer_flow_windows delete was measured at over 34 seconds (IO wait on
+a 32 GB table), and every run takes at least one batch. So the runtime entry
+point, ``handle_async``, runs the run in a worker thread and the event loop
+keeps serving the health endpoint and the consumers while it deletes. A tick
+that arrives while a run is still in its thread is skipped, never queued.
+``handle`` stays the synchronous entry point for the CLI and the tests.
+
 File retention (OMN-17427): a run with ``include_files`` also retires the
 contract's ``retention_policy.file_retention`` paths through
 ``NodeFileRetention`` and adds files and bytes removed and archived to the same
@@ -49,9 +69,12 @@ timer runs ``python -m omnimarket.nodes.node_retention_cleanup --files``.
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import logging
 import os
+import threading
+import time
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, overload
@@ -132,6 +155,15 @@ class RetentionSchedule(BaseModel):
     run_interval_seconds: int = Field(ge=60)
     database_url_env: str
     dry_run: bool = False
+    # Wall-clock a scheduled run may spend deleting before it yields the event
+    # loop. 0 disables the budget.
+    max_run_seconds: float = Field(default=0, ge=0)
+    # How soon the tick may start the next run while the last one left a
+    # backlog (ended on a full batch). The loop gets this long between runs.
+    backlog_retry_seconds: int = Field(default=30, ge=5)
+
+
+_monotonic = time.monotonic
 
 
 def contract_schedule(contract_path: Path = _CONTRACT_PATH) -> RetentionSchedule:
@@ -226,6 +258,14 @@ class RetentionCleanupRequest(BaseModel):
         default="",
         description="PostgreSQL connection URL; empty = skip DB operations",
     )
+    max_run_seconds: float = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Wall-clock budget for the batched deletes of one run; 0 = none. "
+            "A batched target stops after the first batch that ends past it."
+        ),
+    )
     include_files: bool = Field(
         default=False,
         description="Also retire the contract's file_retention paths on this host",
@@ -251,6 +291,10 @@ class RetentionTableResult(BaseModel):
     batches: int = Field(default=0)
     estimated: bool = Field(default=False, description="True when dry_run=True")
     error: str = Field(default="")
+    backlog_remaining: bool = Field(
+        default=False,
+        description="The run ended on a full batch (budget or max_batches), so aged rows may remain",
+    )
 
 
 class RetentionCleanupResult(BaseModel):
@@ -261,6 +305,9 @@ class RetentionCleanupResult(BaseModel):
     total_deleted: int = Field(default=0)
     dry_run: bool = Field(default=False)
     message: str = Field(default="")
+    backlog_remaining: bool = Field(
+        default=False, description="Any table ended its run on a full batch"
+    )
     files: FileRetentionResult | None = None
     files_removed: int = Field(default=0)
     bytes_removed: int = Field(default=0)
@@ -290,6 +337,42 @@ class NodeRetentionCleanup:
         # node_consumer_flow_prune_effect uses: the stamp moves only when a
         # run proceeds, so a skipped tick never resets the interval.
         self._last_scheduled_run: dt.datetime | None = None
+        # The last scheduled run ended on a full batch: the next tick resumes
+        # after ``backlog_retry_seconds`` and not after the full interval.
+        self._backlog_pending = False
+        # Held for the whole of a run. ``handle_async`` runs ``handle`` in a
+        # worker thread, so two dispatches could otherwise both pass the gate.
+        self._run_lock = threading.Lock()
+
+    @overload
+    async def handle_async(
+        self, request: RetentionCleanupRequest
+    ) -> RetentionCleanupResult | None: ...
+
+    @overload
+    async def handle_async(
+        self, request: ModelRuntimeTick
+    ) -> RetentionCleanupResult | None: ...
+
+    async def handle_async(
+        self, request: RetentionCleanupRequest | ModelRuntimeTick
+    ) -> RetentionCleanupResult | None:
+        """Runtime entry point: the blocking deletes run off the event loop.
+
+        Returns ``None`` without running when a run is still in progress.
+        """
+        return await asyncio.to_thread(self._handle_unless_running, request)
+
+    def _handle_unless_running(
+        self, request: RetentionCleanupRequest | ModelRuntimeTick
+    ) -> RetentionCleanupResult | None:
+        if not self._run_lock.acquire(blocking=False):
+            _log.info("retention_cleanup: a run is still in progress; skipped")
+            return None
+        try:
+            return self._handle_locked(request)
+        finally:
+            self._run_lock.release()
 
     @overload
     def handle(self, request: RetentionCleanupRequest) -> RetentionCleanupResult: ...
@@ -300,12 +383,21 @@ class NodeRetentionCleanup:
     def handle(
         self, request: RetentionCleanupRequest | ModelRuntimeTick
     ) -> RetentionCleanupResult | None:
+        with self._run_lock:
+            return self._handle_locked(request)
+
+    def _handle_locked(
+        self, request: RetentionCleanupRequest | ModelRuntimeTick
+    ) -> RetentionCleanupResult | None:
+        scheduled = isinstance(request, ModelRuntimeTick)
         if isinstance(request, ModelRuntimeTick):
             gated = self._gate_scheduled_run(request)
             if gated is None:
                 return None
             request = gated
         result = self._run(request)
+        if scheduled:
+            self._backlog_pending = result.backlog_remaining
         if not request.include_files:
             return result
         return self._with_files(result, request)
@@ -361,14 +453,18 @@ class NodeRetentionCleanup:
         schedule = contract_schedule()
         now = tick.now.astimezone(dt.UTC)
         last = self._last_scheduled_run
-        if last is not None and (now - last) < dt.timedelta(
-            seconds=schedule.run_interval_seconds
-        ):
+        wait = (
+            schedule.backlog_retry_seconds
+            if self._backlog_pending
+            else schedule.run_interval_seconds
+        )
+        if last is not None and (now - last) < dt.timedelta(seconds=wait):
             return None
         self._last_scheduled_run = now
         return RetentionCleanupRequest(
             dry_run=schedule.dry_run,
             db_url=os.environ.get(schedule.database_url_env, ""),
+            max_run_seconds=schedule.max_run_seconds,
         )
 
     def _run(self, request: RetentionCleanupRequest) -> RetentionCleanupResult:
@@ -391,6 +487,9 @@ class NodeRetentionCleanup:
 
         table_results: list[RetentionTableResult] = []
         total_deleted = 0
+        deadline = (
+            _monotonic() + request.max_run_seconds if request.max_run_seconds else None
+        )
 
         # Resolved before connecting so a refused run issues no SQL at all.
         tenant = resolve_rls_read_tenant(None, table="retention_cleanup")
@@ -401,7 +500,9 @@ class NodeRetentionCleanup:
             try:
                 for target in _RETENTION_TARGETS:
                     if target.batch_size and not request.dry_run:
-                        result = self._run_batched(conn, pgsql, target, tenant)
+                        result = self._run_batched(
+                            conn, pgsql, target, tenant, deadline
+                        )
                     else:
                         result = self._run_single(
                             conn, pgsql, target, tenant, dry_run=request.dry_run
@@ -426,6 +527,7 @@ class NodeRetentionCleanup:
             tables=table_results,
             total_deleted=total_deleted,
             dry_run=request.dry_run,
+            backlog_remaining=any(t.backlog_remaining for t in table_results),
             message=(
                 f"Dry run: would delete {total_deleted} rows"
                 if request.dry_run
@@ -458,9 +560,19 @@ class NodeRetentionCleanup:
         return result
 
     def _run_batched(
-        self, conn: Any, pgsql: Any, target: RetentionTarget, tenant: str
+        self,
+        conn: Any,
+        pgsql: Any,
+        target: RetentionTarget,
+        tenant: str,
+        deadline: float | None = None,
     ) -> RetentionTableResult:
-        """Delete aged rows ``batch_size`` at a time, one committed transaction each."""
+        """Delete aged rows ``batch_size`` at a time, one committed transaction each.
+
+        ``deadline`` is a ``_monotonic`` reading. The loop ends after the first
+        committed batch that finishes past it, so a run that starts late still
+        makes progress and a run never holds the caller far beyond the budget.
+        """
         order = (
             pgsql.SQL(" ORDER BY {}").format(
                 pgsql.Identifier(target.batch_order_column)
@@ -478,6 +590,7 @@ class NodeRetentionCleanup:
         )
         interval = f"{target.retention_days} days"
         total = batches = 0
+        backlog = False
         try:
             while batches < target.max_batches:
                 with conn.cursor() as cur:
@@ -487,7 +600,10 @@ class NodeRetentionCleanup:
                 conn.commit()
                 batches += 1
                 total += n
-                if n < target.batch_size:
+                backlog = n >= target.batch_size
+                if not backlog:
+                    break
+                if deadline is not None and _monotonic() >= deadline:
                     break
         except Exception as exc:
             conn.rollback()
@@ -498,7 +614,10 @@ class NodeRetentionCleanup:
                 error=str(exc),
             )
         return RetentionTableResult(
-            table=target.qualified_name, rows_deleted=total, batches=batches
+            table=target.qualified_name,
+            rows_deleted=total,
+            batches=batches,
+            backlog_remaining=backlog,
         )
 
     def _run_target(
