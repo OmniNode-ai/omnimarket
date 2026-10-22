@@ -187,20 +187,20 @@ async def _insert_window(
 ) -> list[asyncpg.Record]:
     return await conn.fetch(
         _UPSERT_FLOW,
-        _GROUP,
-        _TOPIC,
-        start,
-        end,
-        node_id,
-        sequence,
-        messages_in,
-        messages_out,
-        0,
-        0,
-        upstream,
-        EnumUpstreamEvidence.NONE.value,
-        state.value,
-        end,
+        [_GROUP],
+        [_TOPIC],
+        [start],
+        [end],
+        [node_id],
+        [sequence],
+        [messages_in],
+        [messages_out],
+        [0],
+        [0],
+        [upstream],
+        [EnumUpstreamEvidence.NONE.value],
+        [state.value],
+        [end],
     )
 
 
@@ -421,8 +421,10 @@ async def test_the_writers_own_sql_lands_a_correctly_typed_row() -> None:
         node_id = str(uuid4())
         end = _T0 + timedelta(seconds=60)
 
-        await conn.execute(_UPSERT_PRODUCE, _TOPIC, _T0, end, node_id, 1, 15750, end)
-        upstream_rows = await conn.fetch(_SELECT_UPSTREAM, _TOPIC, _T0, end)
+        await conn.execute(
+            _UPSERT_PRODUCE, [_TOPIC], [_T0], [end], [node_id], [1], [15750], [end]
+        )
+        upstream_rows = await conn.fetch(_SELECT_UPSTREAM, [_TOPIC], [_T0], [end])
         assert upstream_rows[0]["window_count"] == 1
         assert upstream_rows[0]["produced"] == 15750
 
@@ -537,15 +539,15 @@ async def test_unknown_row_stores_null_counters_because_the_columns_allow_it() -
 
         gap = await conn.fetch(
             _INSERT_UNKNOWN,
-            _GROUP,
-            _TOPIC,
-            w1_end,
-            w3_start,
-            node_id,
-            2,
-            EnumUpstreamEvidence.NONE.value,
-            EnumConsumerFlowState.UNKNOWN.value,
-            w3_start,
+            [_GROUP],
+            [_TOPIC],
+            [w1_end],
+            [w3_start],
+            [node_id],
+            [2],
+            [EnumUpstreamEvidence.NONE.value],
+            [EnumConsumerFlowState.UNKNOWN.value],
+            [w3_start],
         )
         assert len(gap) == 1, "the gap statement wrote no row for the lost window"
         assert gap[0]["flow_state"] == EnumConsumerFlowState.UNKNOWN.value
@@ -666,15 +668,15 @@ async def test_a_gap_row_is_overwritten_by_the_observed_window_it_shares_a_key_w
 
         gap = await conn.fetch(
             _INSERT_UNKNOWN,
-            _GROUP,
-            _TOPIC,
-            w3_start,
-            w3_start,
-            node_id,
-            2,
-            EnumUpstreamEvidence.NONE.value,
-            EnumConsumerFlowState.UNKNOWN.value,
-            w3_start,
+            [_GROUP],
+            [_TOPIC],
+            [w3_start],
+            [w3_start],
+            [node_id],
+            [2],
+            [EnumUpstreamEvidence.NONE.value],
+            [EnumConsumerFlowState.UNKNOWN.value],
+            [w3_start],
         )
         assert len(gap) == 1
         assert gap[0]["flow_state"] == EnumConsumerFlowState.UNKNOWN.value
@@ -713,15 +715,15 @@ async def test_a_gap_row_is_overwritten_by_the_observed_window_it_shares_a_key_w
         other_group = f"{_GROUP}.quiet"
         other_gap = await conn.fetch(
             _INSERT_UNKNOWN,
-            other_group,
-            _TOPIC,
-            w3_start,
-            w3_start,
-            node_id,
-            2,
-            EnumUpstreamEvidence.NONE.value,
-            EnumConsumerFlowState.UNKNOWN.value,
-            w3_start,
+            [other_group],
+            [_TOPIC],
+            [w3_start],
+            [w3_start],
+            [node_id],
+            [2],
+            [EnumUpstreamEvidence.NONE.value],
+            [EnumConsumerFlowState.UNKNOWN.value],
+            [w3_start],
         )
         assert len(other_gap) == 1
         assert other_gap[0]["flow_state"] == EnumConsumerFlowState.UNKNOWN.value
@@ -741,9 +743,11 @@ async def test_upstream_lookup_returns_no_windows_rather_than_zero() -> None:
     async with _migrated_database() as conn:
         rows = await conn.fetch(
             _SELECT_UPSTREAM,
-            "onex.evt.external.never-published-here.v1",  # onex-topic-allow: synthetic externally-fed topic
-            _T0,
-            _T0 + timedelta(seconds=60),
+            [
+                "onex.evt.external.never-published-here.v1"
+            ],  # onex-topic-allow: synthetic externally-fed topic
+            [_T0],
+            [_T0 + timedelta(seconds=60)],
         )
         assert rows[0]["window_count"] == 0
         assert rows[0]["produced"] == 0
@@ -800,14 +804,13 @@ def test_two_consecutive_messages_both_land_rows_through_the_real_handler(
 ) -> None:
     """Both messages write. This is OMN-16874 AC1/AC5 against a real database.
 
-    Deliberately a SYNC test: ``handle()`` calls ``asyncio.run`` itself, which
-    refuses to run inside an already-running loop. Driving it from a sync test is
-    therefore the only way to exercise the production dispatch shape — and the
-    per-message loop it opens is the thing under test, so it must not be
-    replaced with a test-owned loop.
+    Deliberately a SYNC test: ``handle()`` blocks on the writer's own dispatch
+    loop, which is the production dispatch shape, so it must not be replaced
+    with a test-owned loop.
 
-    Before the fix, the first message would have been the only one with a live
-    pool and the second would have raised ``RuntimeError: Event loop is closed``.
+    Before OMN-16874, the first message would have been the only one with a
+    live pool and the second would have raised ``RuntimeError: Event loop is
+    closed``. Since OMN-17427 (C28) both messages also share one real pool.
     """
     from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
     from omnimarket.nodes.node_projection_consumer_flow.handlers.handler_consumer_flow_runner import (
@@ -853,15 +856,27 @@ def test_two_consecutive_messages_both_land_rows_through_the_real_handler(
     try:
         monkeypatch.setenv("OMNIDASH_ANALYTICS_DB_URL", _dsn(database))
         writer = ConsumerFlowProjectionWriter()
-        # The real adapter, the real pool — sized like the documented one-shot
-        # pool resource, because it is opened and closed once per message.
+        # The real adapter and the real pool, counted where asyncpg dials it.
         writer._db = AsyncpgAdapter(dsn=_dsn(database), min_size=1, max_size=2)
+        pools_created = 0
+        real_create_pool = asyncpg.create_pool
+
+        def _counting_create_pool(*args: object, **kwargs: object) -> object:
+            nonlocal pools_created
+            pools_created += 1
+            return real_create_pool(*args, **kwargs)
+
+        monkeypatch.setattr(asyncpg, "create_pool", _counting_create_pool)
         # The snapshot delta is a separate transport seam; this gate is the DB
         # write path, and a broker is not part of what it proves.
         writer._snapshot_exposure = None
 
         first = writer.handle(_heartbeat_payload(node_id=node_id, sequence=1))
         second = writer.handle(_heartbeat_payload(node_id=node_id, sequence=2))
+        assert pools_created == 1, (
+            f"{pools_created} asyncpg pools for 2 messages; the writer keeps one"
+        )
+        writer.close_dispatch()
 
         assert first["rows_upserted"] >= 1
         assert second["rows_upserted"] >= 1, (
@@ -950,6 +965,7 @@ def test_real_rows_publish_a_snapshot_once_per_unchanged_verdict(
             writer.handle(_heartbeat_payload(node_id=node_id, sequence=sequence))
             for sequence in (1, 2, 3)
         ]
+        writer.close_dispatch()
 
         assert all(result["rows_upserted"] >= 1 for result in results)
         assert asyncio.run(_count_rows()) == 3

@@ -84,7 +84,10 @@ class _FlowWindowsTable:
         if query == _SELECT_UPSTREAM:
             # Nothing in this runtime produces to the consumed topic, so the
             # derivation sees no upstream evidence at all.
-            return [{"window_count": 0, "produced": 0}]
+            return [
+                {"ordinal": ordinal, "window_count": 0, "produced": 0}
+                for ordinal in range(1, len(params[0]) + 1)
+            ]
         if query == _SELECT_PRIOR_STATE:
             return [{"last_sequence": _LAST_SEQUENCE}]
         if query == _SELECT_KEYS_AT_SEQUENCE:
@@ -92,10 +95,19 @@ class _FlowWindowsTable:
                 {"consumer_group": group, "topic": topic}
                 for group, topic in (_OBSERVED_PAIR, _GAP_ONLY_PAIR)
             ]
+        # The writer binds each statement's rows as parallel arrays (unnest).
         if query == _INSERT_UNKNOWN:
-            return self._insert_unknown(*params)
+            return [
+                written
+                for row in zip(*params, strict=True)
+                for written in self._insert_unknown(*row)
+            ]
         if query == _UPSERT_FLOW:
-            return self._upsert_flow(*params)
+            return [
+                written
+                for row in zip(*params, strict=True)
+                for written in self._upsert_flow(*row)
+            ]
         raise AssertionError(f"unexpected statement: {query}")
 
     def _insert_unknown(self, *params: Any) -> list[dict[str, Any]]:
