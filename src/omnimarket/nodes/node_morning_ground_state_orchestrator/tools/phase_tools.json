@@ -119,6 +119,7 @@
         "kb_source_doc_keys",
         "kb_read_source_doc",
         "kb_read_plan",
+        "ledger_lane_rows",
         "pull_merge_state",
         "ticket_prs",
         "merged_prs_in_window",
@@ -141,7 +142,8 @@
         "Order: ledger_append_claim, kb_worktree_prepare, kb_read_artifact ground_state (today's input), kb_source_doc_keys then kb_read_source_doc per key (each result names the copy read and every copy checked: record it), the per-row reads, delegate_prose for prose (delegate_dispose each), kb_write_artifact rebaseline, kb_scrub, kb_commit, delegation_cells, ledger_append_terminal.",
         "Rules: morning_readme 'Reconcile' and 'The verdict ladder'.",
         "LANDED proof: pull_merge_state (merged with merge sha) or ticket_prs; DEPLOYED needs a running-artifact readback, and PROBED needs the row's own probe executed in this run: no tool executes a row's free-form probe, so a row can reach PROBED only when one of your read tools IS its probe, and otherwise its highest honest stage stands with the probe named in residuals.",
-        "LINEAR MISMATCHES: linear_issues scope=workspace ids=[...] for every ticket a row carries; report only."
+        "LINEAR MISMATCHES: linear_issues scope=workspace ids=[...] for every ticket a row carries; report only.",
+        "Today's triage TERMINAL row: ledger_lane_rows lanes=[morning-triage-adjudication, morning-triage] since_hours=24."
       ]
     },
     "integration-plan": {
@@ -229,6 +231,7 @@
         "kb_read_artifact",
         "kb_artifact_status",
         "kb_source_doc_keys",
+        "ledger_lane_rows",
         "pull_merge_state",
         "linear_issues",
         "linear_issue_detail",

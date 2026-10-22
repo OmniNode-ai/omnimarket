@@ -554,12 +554,48 @@ def ticket_prs(ctx: ModelMorningToolContext, params: BaseModel) -> Result:
                     "merge_sha": record.get("merge_sha"),
                 }
             )
+    history: list[JsonValue] = []
+    for repo in ctx.integration_repos:
+        clone = ctx.place("clones_root") / repo
+        if not (clone / ".git").exists():
+            continue
+        try:
+            branch = _integration_branch(state, repo)
+        except MorningToolRefusalError:
+            continue
+        found = _git_out(
+            clone,
+            "log",
+            f"refs/remotes/origin/{branch}",
+            "--first-parent",
+            "-i",
+            f"--grep={p.ticket}",
+            "-E",
+            "--format=%H%x1f%cI%x1f%s",
+            "-30",
+        )
+        for line in (found or "").splitlines():
+            sha, when, subject = ([*line.split("\x1f", 2), "", ""])[:3]
+            if not pattern.search(subject.lower()):
+                continue
+            number = re.search(r"\(#(\d+)\)\s*$", subject)
+            history.append(
+                {
+                    "repo": repo,
+                    "pr": f"{repo}#{number.group(1)}" if number else None,
+                    "merge_sha": sha,
+                    "committed_at": when,
+                    "title": subject[:160],
+                }
+            )
     return {
         **_watcher_meta(state),
         "ticket": p.ticket,
         "open": opened[:40],
         "merged": merged[:60],
-        "note": "merges older than the watcher's merge record are not listed here",
+        "merged_in_history": history[:60],
+        "note": "merged: the watcher's merge record; merged_in_history: squash commits on "
+        "each integration repo's branch whose subject names the ticket",
     }
 
 

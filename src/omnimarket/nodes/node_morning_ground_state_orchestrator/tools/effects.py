@@ -688,19 +688,62 @@ def triage_started(ctx: ModelMorningToolContext, params: BaseModel) -> Result:
 
 
 def dod_verify(ctx: ModelMorningToolContext, params: BaseModel) -> Result:
-    """The DoD verifier against one ticket's contract (hosted audience)."""
+    """The DoD verifier against one ticket's contract (hosted audience), its verdict compacted."""
     p = cast(ModelTicketInput, params)
-    done = _proc(
-        [
-            *ctx.command("dod_verify_command"),
-            p.ticket,
-            "--execution-audience",
-            "hosted",
-        ],
-        cwd=ctx.root,
+    done = _whole(
+        ctx,
+        "dod_verify_command",
+        [p.ticket, "--execution-audience", "hosted"],
         timeout=900,
     )
-    return {"ticket": p.ticket, **done}
+    receipt = next(
+        (line for line in reversed(done.stdout.splitlines()) if line.startswith("{")),
+        "",
+    )
+    try:
+        loaded = json.loads(receipt)
+    except ValueError:
+        return {
+            "ticket": p.ticket,
+            "exit": done.returncode,
+            "verdict": "UNKNOWN: no receipt",
+            "stdout_tail": _tail(done.stdout),
+            "stderr": _tail(done.stderr),
+        }
+    result = cast(dict[str, object], loaded.get("result") or {})
+    payload = cast(dict[str, object], result.get("terminal_payload") or {})
+    checks = cast(list[dict[str, object]], payload.get("checks") or [])
+    counts = (
+        "total_checks",
+        "verified_count",
+        "failed_count",
+        "skipped_count",
+        "behavior_proving_count",
+        "readback_proving_count",
+    )
+    return {
+        "ticket": p.ticket,
+        "exit": done.returncode,
+        "skill_status": loaded.get("status"),
+        "status": payload.get("status"),
+        **{k: cast(JsonValue, payload.get(k)) for k in counts},
+        "error_message": cast(JsonValue, payload.get("error_message")),
+        "checks": cast(
+            JsonValue,
+            [
+                {
+                    "id": c.get("evidence_id"),
+                    "status": c.get("status"),
+                    "proof_class": c.get("proof_class"),
+                    "binds_ac": c.get("binds_ac"),
+                    "description": str(c.get("description") or "")[:200],
+                    "message": str(c.get("message") or "")[:300],
+                }
+                for c in checks[:30]
+            ],
+        ),
+        "correlation_id": loaded.get("correlation_id"),
+    }
 
 
 # --- the publishing phase: push, one PR, the handoff --------------------------------------
