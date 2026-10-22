@@ -14,6 +14,7 @@ from omnimarket.enums.enum_requested_response_shape import (
     EnumRequestedResponseShape,
 )
 from omnimarket.models.delegation.model_size_band import ModelSizeBand
+from omnimarket.routing.measured_model_selection import ModelMeasuredSelection
 
 
 class ModelRoutingDecision(BaseModel):
@@ -133,6 +134,17 @@ class ModelRoutingDecision(BaseModel):
             "(OMN-20167). Computed at routing from the text and the class "
             "contract, never taken from the caller. None when the contract "
             "declares no thresholds for the class."
+        ),
+    )
+
+    measured_selection: ModelMeasuredSelection | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "The measured-selection record (OMN-21207): the objective, every "
+            "candidate's measured cost per 1M tokens and p50 latency, and when "
+            "each was captured, so the choice can be re-derived. None when the "
+            "decision was not made on measures."
         ),
     )
 
