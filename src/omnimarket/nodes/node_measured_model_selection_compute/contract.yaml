@@ -1,0 +1,122 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_measured_model_selection_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure definition-B COMPUTE. Rank delegation candidates on measured cost per 1M
+  tokens (the pricing manifest) and measured p50 latency (recorded delegation
+  runs) under the one objective declared below. A missing measure raises; the
+  selector never falls back to a declared order. The decided event carries
+  every measure value with its captured_at. Stateless and deterministic.
+
+input_model:
+  name: ModelMeasuredSelectionRequest
+  module: omnimarket.models.delegation.wire.model_measured_selection_decided_event
+output_model:
+  name: ModelMeasuredSelectionDecidedEvent
+  module: omnimarket.models.delegation.wire.model_measured_selection_decided_event
+
+handler:
+  module: omnimarket.nodes.node_measured_model_selection_compute.handlers.handler_measured_model_selection
+  class: HandlerMeasuredModelSelection
+  input_model: omnimarket.models.delegation.wire.model_measured_selection_decided_event.ModelMeasuredSelectionRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: measured_model_selection
+      handler:
+        name: HandlerMeasuredModelSelection
+        module: omnimarket.nodes.node_measured_model_selection_compute.handlers.handler_measured_model_selection
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+  runtime_profiles: [main]
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.measured-model-selection-requested.v1
+terminal_event: onex.evt.omnimarket.measured-model-selection-decided.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.measured-model-selection-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.measured-model-selection-decided.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.measured-model-selection-decided.v1
+
+metadata:
+  transport_type: kafka
+
+# The selection rules (OMN-21207). A candidate declares WHERE each measure is
+# read, never its value; the loader refuses a candidate that lacks either source
+# or carries any other key.
+#   measured_cost_per_1m: a pricing manifest key. The cost per 1M tokens is
+#     blended over input and output at input_share. Captured at the entry's
+#     effective date.
+#   measured_p50_latency: the backend_id and model_name of recorded delegation
+#     runs. The p50 is the median latency of terminal-ok runs inside
+#     latency.window_days. Captured at the newest run used.
+# A candidate with no pricing entry, or fewer than latency.min_samples runs in
+# the window, makes the selector raise.
+#
+# objective.kind cheapest_acceptable ranks on cost, then p50 latency; the ladder
+# moves to the next ranked candidate when the quality gate refuses an answer.
+# objective.basis names the ticket whose record quotes the operator approving it.
+#
+# The candidates are the routing_tiers.yaml models that the pricing manifest
+# prices. Their order here carries no meaning.
+measured_selection:
+  objective:
+    kind: cheapest_acceptable
+    basis: OMN-21207
+  # Delegation prompts carry far more input than output.
+  input_share: 0.75
+  latency:
+    window_days: 14
+    min_samples: 3
+  candidates:
+    - model_id: Qwen3.8-27B
+      backend_ref: local-coder
+      measured_cost_per_1m:
+        source: pricing_manifest
+        pricing_key: Qwen3.8-27B
+      measured_p50_latency:
+        source: delegation_runs
+        backend_id: local-coder
+        model_name: Qwen3.8-27B
+    - model_id: Qwen3.8-27B
+      backend_ref: local-heavy-reasoning
+      measured_cost_per_1m:
+        source: pricing_manifest
+        pricing_key: Qwen3.8-27B
+      measured_p50_latency:
+        source: delegation_runs
+        backend_id: local-heavy-reasoning
+        model_name: Qwen3.8-27B
+    - model_id: gemini-2.5-flash
+      backend_ref: cloud-gemini-2-5-flash
+      measured_cost_per_1m:
+        source: pricing_manifest
+        pricing_key: gemini-2.5-flash
+      measured_p50_latency:
+        source: delegation_runs
+        backend_id: cloud-gemini-2-5-flash
+        model_name: gemini-2.5-flash
+
+inputs:
+  correlation_id: {type: UUID, required: true}
+  task_type: {type: str, required: true}
+  pricing: {type: tuple, required: true}
+  runs: {type: tuple, required: true}
+  decided_at: {type: datetime, required: true}
+outputs:
+  correlation_id: {type: UUID}
+  task_type: {type: str}
+  selection: {type: ModelMeasuredSelection}
