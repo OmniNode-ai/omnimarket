@@ -1048,3 +1048,22 @@ def test_a_scenario_delivered_in_reverse_folds_to_the_same_rows(name: str) -> No
         reversed_order.span_rows_as_contract_json()
         == in_order.span_rows_as_contract_json()
     )
+
+
+def test_each_runtime_message_gets_its_own_single_connection_adapter() -> None:
+    """Four messages in flight must never share the writer's pool."""
+    from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+
+    writer = ClaudeHookEventsProjectionWriter()
+    bound = AsyncpgAdapter(dsn="postgresql://hook_writer@db.invalid/omnidash")
+    writer._db = bound
+
+    first = writer._message_db()
+    second = writer._message_db()
+
+    assert isinstance(first, AsyncpgAdapter)
+    assert first is not bound
+    assert first is not second
+    assert first.dsn == bound.dsn == second.dsn
+    assert (first._min_size, first._max_size) == (1, 1)
+    assert not bound.is_connected
