@@ -1,0 +1,92 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_harness_invocation_check_effect
+node_type: effect
+runtime_profiles: [effects]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Refuses a harness invocation outside a handler of the delegation effect node
+  (node_llm_delegation_call_effect). A harness is a coding-agent CLI (codex,
+  claude) or a hosted model endpoint (OpenRouter, GLM). The handler reads the
+  repository's Python and shell sources, finds every place one starts a harness
+  CLI or calls a harness HTTP endpoint, and refuses each site outside the
+  sanctioned handler directory that the shrink-only baseline below does not
+  hold, and each baseline entry whose sites are gone.
+input_model:
+  name: ModelHarnessInvocationCheckRequest
+  module: omnimarket.nodes.node_harness_invocation_check_effect.models.model_harness_invocation_check
+output_model:
+  name: ModelHarnessInvocationCheckResult
+  module: omnimarket.nodes.node_harness_invocation_check_effect.models.model_harness_invocation_check
+handler:
+  module: omnimarket.nodes.node_harness_invocation_check_effect.handlers.handler_harness_invocation_check
+  class: HandlerHarnessInvocationCheck
+  input_model: omnimarket.nodes.node_harness_invocation_check_effect.models.model_harness_invocation_check.ModelHarnessInvocationCheckRequest
+  output_model: omnimarket.nodes.node_harness_invocation_check_effect.models.model_harness_invocation_check.ModelHarnessInvocationCheckResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_harness_invocation_check_effect.handlers.handler_harness_invocation_check:HandlerHarnessInvocationCheck
+  handlers:
+    - operation: check_harness_invocations
+      handler:
+        name: HandlerHarnessInvocationCheck
+        module: omnimarket.nodes.node_harness_invocation_check_effect.handlers.handler_harness_invocation_check
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 120000
+  runtime_profiles: [effects]
+inputs:
+  repo_root: {type: str, required: true, description: Repository checkout to scan.}
+  paths: {type: list, required: false, description: Files to scan instead of the whole repository.}
+outputs:
+  admitted: {type: bool}
+  exit_code: {type: int}
+  sites: {type: list}
+  refused: {type: list}
+  stale_baseline: {type: list}
+  output_lines: {type: list}
+terminal_event: onex.evt.omnimarket.harness-invocation-check-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.harness-invocation-check-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.harness-invocation-check-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.harness-invocation-check-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.harness-invocation-check-completed.v1
+harness_invocation_policy:
+  sanctioned_handler_dir: src/omnimarket/nodes/node_llm_delegation_call_effect/handlers
+  cli_targets: [codex, claude]
+  http_hosts: [openrouter.ai, api.z.ai, bigmodel.cn]
+  scan_suffixes: [.py, .sh, .bash]
+  excluded_dir_names:
+    - .git
+    - .venv
+    - venv
+    - node_modules
+    - __pycache__
+    - .mypy_cache
+    - .ruff_cache
+    - .pytest_cache
+    - tests
+    - fixtures
+    - docs
+  # Shrink-only. Every entry is a site measured on dev at the commit this
+  # node landed on. A new entry, a higher count or a site outside these is
+  # refused; an entry whose sites are gone is refused until it is removed.
+  baseline:
+    - {path: benchmarks/delegation_false_pass_growth/grade.sh, kind: cli_exec, target: claude, count: 1}
+    - {path: src/omnimarket/nodes/node_demo_fanout_orchestrator/handlers/handler_fanout.py, kind: cli_exec, target: claude, count: 1}
+    - {path: src/omnimarket/nodes/node_lab_claude_token_effect/handlers/handler_lab_claude_token.py, kind: cli_exec, target: claude, count: 1}
+    - {path: src/omnimarket/nodes/node_overnight/handlers/handler_overnight.py, kind: cli_exec, target: claude, count: 1}
+    - {path: src/omnimarket/nodes/node_platform_readiness/handlers/handler_platform_readiness.py, kind: cli_exec, target: claude, count: 1}
+    - {path: src/omnimarket/nodes/node_session_orchestrator/handlers/handler_session_orchestrator.py, kind: cli_exec, target: claude, count: 1}
+metadata:
+  transport_type: inmemory
+  author: OmniNode Team
+  created: "2026-10-22"
+  related_tickets: [OMN-21289]

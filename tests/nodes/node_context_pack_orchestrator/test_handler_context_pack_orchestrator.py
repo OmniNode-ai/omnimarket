@@ -627,3 +627,19 @@ def test_the_session_source_accepts_the_scopes_the_orchestrator_sends(
     assert not result.error_message.startswith(
         EnumSessionSourceFailure.SCOPE_INVALID.value
     ), result.error_message
+
+
+@pytest.mark.parametrize("days", [(1, 2, 3, 4, 5), (5, 4, 3, 2, 1), (3, 1, 5, 2, 4)])
+def test_a_tier_renders_its_entries_in_source_order(days: tuple[int, ...]) -> None:
+    """The order a source answers in is the order the pack carries, not hash order."""
+    rows = dict(enumerate(_open_work_rows(), start=1))
+    bound = sources(
+        open_work=ManySource(
+            EnumContextFactor.OPEN_WORK, tuple(rows[day] for day in days)
+        )
+    )
+    built = orchestrator(bound).handle(command())
+    assert built.status is EnumContextPackOrchestratorStatus.OK, built.errors
+    text = "\n".join(m.text for m in built.messages)
+    positions = [text.index(f"day-{day} ") for day in days]
+    assert positions == sorted(positions)

@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Fixture: a script that posts to OpenRouter directly, outside the delegation effect."""
+
+import httpx
+
+_OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+
+def complete(prompt: str) -> object:
+    body = {"model": "x", "messages": [{"role": "user", "content": prompt}]}
+    return httpx.post(_OPENROUTER_URL, json=body, timeout=30).json()

@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Fixture: names harnesses without invoking one, e.g. ``claude -p`` in prose."""
+
+import subprocess
+
+ENGINES = ("codex", "claude")
+TOOLS = {"omniclaude": ["claude"]}
+NOTE = "claude limited until tomorrow; codex free slots 2"
+DOCS_URL = "https://openrouter.ai/docs"
+
+
+def git_head() -> str:
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=False
+    ).stdout
