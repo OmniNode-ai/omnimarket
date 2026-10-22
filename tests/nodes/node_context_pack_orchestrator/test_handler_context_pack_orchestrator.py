@@ -35,6 +35,7 @@ from omnimarket.models.context_profile_resolve.model_context_profile_resolve_req
 )
 from omnimarket.nodes.node_context_pack_orchestrator.handlers.handler_context_pack_orchestrator import (
     TASK_KIND_UNKNOWN,
+    HandlerContextPackOrchestrator,
     default_implementation_identity,
 )
 from omnimarket.nodes.node_context_pack_orchestrator.protocols import (
@@ -88,6 +89,66 @@ def test_compaction_fixture_builds_with_four_required_factors() -> None:
     assert built.stable_prefix_hash
     assert built.body_hash
     assert built.final_pack_hash
+
+
+@pytest.mark.parametrize("budget", [None, 300])
+def test_tier_read_timings_survive_budget_selection(budget: int | None) -> None:
+    bound = sources(
+        open_work=ManySource(EnumContextFactor.OPEN_WORK, _open_work_rows()),
+        conversation_tail=FixtureSource(
+            EnumContextFactor.CONVERSATION_TAIL, text="t" * 2000
+        ),
+        tail_summary=FixtureSource(EnumContextFactor.TAIL_SUMMARY, text="summary"),
+    )
+    selected = (
+        *COMPACTION_REQUIRED,
+        EnumContextFactor.REPO_STATE,
+        EnumContextFactor.CONVERSATION_TAIL,
+        EnumContextFactor.TAIL_SUMMARY,
+    )
+    ticks = iter(
+        value
+        for index in range(len(selected))
+        for value in (float(index), index + (index + 1) / 16)
+    )
+    built = HandlerContextPackOrchestrator(bound, clock=lambda: next(ticks)).handle(
+        command(token_budget_override=budget)
+    )
+    assert built.status is EnumContextPackOrchestratorStatus.OK, built.errors
+    tiers = {tier.factor: tier for tier in built.tier_statuses}
+    for index, factor in enumerate(selected):
+        assert tiers[factor].read_ms == (index + 1) * 62.5
+    assert tiers[EnumContextFactor.TRANSCRIPT_EXTRACTS].read_ms is None
+    assert built.model_section_ms() == tiers[EnumContextFactor.TAIL_SUMMARY].read_ms
+    if budget is not None:
+        assert not tiers[EnumContextFactor.TAIL_SUMMARY].included
+        assert tiers[EnumContextFactor.OPEN_WORK].trimmed_entry_count > 0
+
+
+def test_no_model_written_read_has_no_model_section_timing() -> None:
+    built = orchestrator().handle(command())
+    assert built.status is EnumContextPackOrchestratorStatus.OK, built.errors
+    assert built.model_section_ms() is None
+
+
+def test_raising_source_still_records_read_timing() -> None:
+    class Broken(FixtureSource):
+        def handle(
+            self, request: ModelContextSourceRequest
+        ) -> ModelContextSourceResult:
+            raise RuntimeError("boom")
+
+    bound = sources(open_work=Broken(EnumContextFactor.OPEN_WORK))
+    ticks = iter(float(index) / 4 for index in range(12))
+    built = HandlerContextPackOrchestrator(bound, clock=lambda: next(ticks)).handle(
+        command()
+    )
+    assert built.failure_class is EnumContextPackFailure.REQUIRED_FACTOR_MISSING
+    tier = next(
+        t for t in built.tier_statuses if t.factor is EnumContextFactor.OPEN_WORK
+    )
+    assert tier.status is EnumContextSourceStatus.UNAVAILABLE
+    assert tier.read_ms == 250.0
 
 
 def test_generated_at_is_the_newest_source_timestamp() -> None:
