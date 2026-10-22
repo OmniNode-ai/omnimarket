@@ -773,6 +773,11 @@ requirements:
     acceptance:
       - id: "AC182"
         statement: "AC182: on an undeclared backend the delegate-skill run sends no response_format, fails the garbled label with SCHEMA_VIOLATION naming it, and counts each refused attempt; a backend or call-request payload without the new fields reads as undeclared -- falsifier: uv run pytest tests/unit/delegation/test_declared_label_set_membership_omn18989.py -q fails when an omitted supports_response_format_json_schema defaults to True"
+  - id: "req-tick-roll-up-shared-red"
+    statement: "The throughput tick's repository status names the real failing check as the unowned shared red, not a roll-up check (CI Summary, ci, CI Tests Gate) that is red only because that check failed."
+    acceptance:
+      - id: "AC183"
+        statement: "AC183: _repo_verdict counts a roll-up check only for a PR whose reds are all roll-ups, so two PRs red on CI Summary and repo-evidence / dod-verify name repo-evidence / dod-verify, two PRs red on CI Summary alone still name CI Summary, and CI Summary shared only through PRs that each carry another red is no shared red -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q -k roll_up fails at the merge base, where the node names CI Summary"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -3344,4 +3349,19 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_landing_tlc_receipt_effect/test_landing_tlc_receipt_effect.py -q -n 0 -p no:randomly --no-cov --refuse-skips -k 'cli_publish or sync_installs'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac183-tick-roll-up-shared-red"
+    description: "The repository status check of the throughput tick decision node names the real check beside a roll-up red. Two of the three roll-up tests fail at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC183"]
+  - id: "dod-omn17427-tick-roll-up-probe"
+    description: "Deploy probe. The hosted runner runs the checked-out node's roll-up tests with the locked dependencies; no credentials and no live tick. It does not attest the node deployed on the lab runtime."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q -n 0 -p no:randomly --no-cov --refuse-skips -k roll_up"
         cwd: "${OMNI_HOME}/omnimarket"
