@@ -14,6 +14,7 @@ from urllib.parse import quote_plus
 import asyncpg
 import pytest
 
+from omnimarket.adapters.asyncpg_adapter import _refuse_unbound_tenant_scoped_write
 from omnimarket.nodes.node_metering_summary_compute.models.model_metering_summary import (
     ModelCounterfactualBaseline,
     ModelMeteringRecord,
@@ -72,7 +73,11 @@ class _ScopedConnectionAdapter:
     def __init__(self, conn: asyncpg.Connection) -> None:
         self._conn = conn
 
-    async def execute(self, query: str, *params: Any) -> list[dict[str, Any]]:
+    async def execute(
+        self, query: str, *params: Any, tenant: str | None = None
+    ) -> list[dict[str, Any]]:
+        # The real adapter's refusal of an unbound tenant-scoped write (OMN-19513).
+        _refuse_unbound_tenant_scoped_write(query, tenant)
         rows = await self._conn.fetch(_scoped(query), *params)
         return [dict(row) for row in rows]
 
