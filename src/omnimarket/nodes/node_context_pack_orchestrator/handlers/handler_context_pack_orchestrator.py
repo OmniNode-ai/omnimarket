@@ -559,8 +559,12 @@ class HandlerContextPackOrchestrator:
                 source_artifact_hash=entry.text_sha256,
                 source_contract_hash=builder_contract_hash,
                 source_run_id=entry.source_ref,
+                # The builder orders a factor's chunks by source_priority before its
+                # hashes, so the position in the source result keeps source order.
+                source_priority=position,
             )
-            for entry in all_entries
+            for entries in entries_by_factor.values()
+            for position, entry in enumerate(entries)
         )
         built = self._builder.handle(
             ModelContextPackBuilderRequest(
