@@ -1,0 +1,43 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21289"
+title: "Delegation targets are adapters behind one delegation effect node, and no harness is invoked outside its handlers"
+summary: "Adds node_harness_invocation_check_effect: an effect node whose handler reads the repository's Python and shell sources, finds every place one starts the codex or claude CLI or calls an OpenRouter or GLM HTTP endpoint, and refuses each site outside the handlers of node_llm_delegation_call_effect that its contract's shrink-only baseline does not hold, and each baseline entry whose sites are gone. The baseline is exactly the six sites measured on dev when the check landed. A repository-wide test runs the check in hosted CI on every PR. AC2 (adapter classes selected from the contract) is not built in this change."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-no-harness-invocation-outside-delegation-effect"
+    statement: |-
+      No harness (codex CLI, claude CLI, a GLM or OpenRouter HTTP call) is invoked outside a handler of the delegation effect node, except the shrink-only measured baseline.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: a check refuses a harness invocation outside a handler of the delegation effect node -- falsifier: pytest of the check over a fixture script calling the codex CLI directly
+evidence_requirements:
+  - kind: "tests"
+    description: "The node's test file proves the check refuses a fixture script calling the codex CLI directly, refuses the shell, OpenRouter and GLM fixtures, admits the same invocation inside the delegation effect node's handlers, refuses baseline growth and stale entries, and admits the repository only through the measured baseline."
+    command: "uv run pytest tests/nodes/node_harness_invocation_check_effect/test_golden_chain_harness_invocation_check_effect.py -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21289-codex-fixture-refused"
+    description: "The check refuses a fixture script calling the codex CLI directly, refuses the other direct-invocation fixtures, admits the same call inside the delegation effect node's handlers, and the repository passes only through the shrink-only baseline measured when the check landed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_harness_invocation_check_effect/test_golden_chain_harness_invocation_check_effect.py -q -p no:randomly --no-cov -k 'not test_repository_admits_no_harness_invocation_outside_the_baseline'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21289-deploy-probe"
+    description: "Deploy probe. The hosted runner dispatches the checked-out node over an in-memory bus and requires it to refuse the codex fixture. It fails when the node is absent or admits that invocation, and needs only uv and this checkout; a second check reads the handler at this head through the GitHub contents API and fails when the handler class is absent. This is package runtime evidence, not a live deployment readback."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_harness_invocation_check_effect/test_golden_chain_harness_invocation_check_effect.py -q -p no:randomly --no-cov -k test_golden_chain_over_bus_refuses_the_codex_fixture"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_harness_invocation_check_effect/handlers/handler_harness_invocation_check.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^class HandlerHarnessInvocationCheck'"
+        cwd: "${OMNI_HOME}/omnimarket"

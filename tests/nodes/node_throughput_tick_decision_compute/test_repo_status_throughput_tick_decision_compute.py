@@ -165,6 +165,50 @@ def test_a_check_red_on_two_open_prs_with_no_cause_owner_is_a_missing_fix_line()
     assert result.exit_code == 1
 
 
+def test_a_roll_up_red_beside_a_real_red_names_the_real_check() -> None:
+    watcher = _watcher(
+        _pr("alpha", 1, cls="red", red=["CI Summary", "repo-evidence / dod-verify"]),
+        _pr("alpha", 2, cls="red", red=["CI Summary", "repo-evidence / dod-verify"]),
+    )
+
+    result = HANDLER.handle(_request(watcher))
+
+    verdict = _by_repo(result)["alpha"]
+    assert verdict.verdict == "shared_red_unowned"
+    assert verdict.check == "repo-evidence / dod-verify"
+    assert verdict.prs == ["alpha#1", "alpha#2"]
+    line = _line(result, "alpha")
+    assert (
+        "dispatch ONE cause lane for check repo-evidence / dod-verify in alpha" in line
+    )
+    assert "check CI Summary" not in line
+
+
+def test_a_roll_up_red_alone_is_still_the_shared_red() -> None:
+    watcher = _watcher(
+        _pr("alpha", 1, cls="red", red=["CI Summary"]),
+        _pr("alpha", 2, cls="red", red=["CI Summary"]),
+    )
+
+    result = HANDLER.handle(_request(watcher))
+
+    verdict = _by_repo(result)["alpha"]
+    assert verdict.verdict == "shared_red_unowned"
+    assert verdict.check == "CI Summary"
+
+
+def test_a_roll_up_shared_only_through_prs_with_other_reds_is_not_shared() -> None:
+    watcher = _watcher(
+        _pr("alpha", 1, cls="red", red=["CI Summary", "lint"]),
+        _pr("alpha", 2, cls="red", red=["CI Summary", "pytest"]),
+    )
+
+    result = HANDLER.handle(_request(watcher))
+
+    verdict = _by_repo(result)["alpha"]
+    assert verdict.verdict != "shared_red_unowned"
+
+
 def test_a_shared_red_a_live_cause_lease_owns_is_not_unowned() -> None:
     watcher = _watcher(
         _pr("alpha", 1, cls="red", red=["pytest"]),
