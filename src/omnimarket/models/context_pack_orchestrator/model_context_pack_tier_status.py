@@ -27,6 +27,8 @@ class ModelContextPackTierStatus(BaseModel):
     included: bool = False
     #: Entries the source answered that selection inside the tier left out (OMN-21111).
     trimmed_entry_count: int = Field(default=0, ge=0)
+    #: Wall time of the tier's source read in milliseconds; None when no source is bound (TA.12).
+    read_ms: float | None = Field(default=None, ge=0, allow_inf_nan=False)
 
 
 __all__ = ["ModelContextPackTierStatus"]

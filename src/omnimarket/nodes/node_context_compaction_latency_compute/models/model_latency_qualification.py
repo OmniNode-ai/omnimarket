@@ -9,6 +9,8 @@ from typing import Annotated, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.context_compaction import ModelContextCompactionPrepared
+
 MIN_SAMPLES_PER_CELL = 20
 DEFAULT_PRECOMPUTE_SLACK_MS = 5000
 
@@ -34,6 +36,32 @@ class ModelCompactionRoundTrip(_Frozen):
     temperature: EnumRoundTripTemperature
     deterministic_build_ms: _Duration
     model_section_ms: _Duration
+
+    @classmethod
+    def from_prepared(
+        cls,
+        prepared: ModelContextCompactionPrepared,
+        *,
+        round_trip_id: str,
+        size: str,
+        host: str,
+        temperature: EnumRoundTripTemperature,
+    ) -> Self:
+        """Split a prepared receipt's build into deterministic and model-written time."""
+        if prepared.build_ms is None:
+            raise ValueError("prepared.build_ms is required")
+        if prepared.model_section_ms is None:
+            raise ValueError("prepared.model_section_ms is required")
+        if prepared.model_section_ms > prepared.build_ms:
+            raise ValueError("prepared.model_section_ms exceeds prepared.build_ms")
+        return cls(
+            round_trip_id=round_trip_id,
+            size=size,
+            host=host,
+            temperature=temperature,
+            deterministic_build_ms=prepared.build_ms - prepared.model_section_ms,
+            model_section_ms=prepared.model_section_ms,
+        )
 
 
 class ModelLatencyQualificationRequest(_Frozen):

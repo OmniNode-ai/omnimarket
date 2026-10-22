@@ -288,7 +288,14 @@ class _KafkaPublishLoop:
         failure handling like any other publish failure.
         """
         future = asyncio.run_coroutine_threadsafe(coro, self._loop)
-        future.result(timeout=timeout)
+        try:
+            future.result(timeout=timeout)
+        except TimeoutError:
+            # result(timeout=...) only stops the caller's wait. Cancel this
+            # invocation too, or a stuck close/publish survives on the shared
+            # loop after the terminal receipt has already reported timeout.
+            future.cancel()
+            raise
 
 
 class KafkaEventPublisher:
@@ -320,6 +327,26 @@ class KafkaEventPublisher:
         self._publish_identity = publish_identity
         self._source = source
         self._publish_timeout_seconds = publish_timeout_seconds
+        # OMN-17427: resolve the transport imports here, not inside the
+        # publish coroutine. Every relayed event is a fresh process, and on a
+        # loaded dev host ``import omnibase_infra.event_bus.event_bus_kafka``
+        # measured 3.4 to 3.7 s while the Kafka work itself took under 0.1 s;
+        # inside the 5 s per-publish cap that import alone timed publishes out
+        # (FRICTION 2026-10-22T00:41:14Z). ``handle()`` builds this adapter
+        # before it starts its shared deadline, so the cost stays outside
+        # every publish timeout. Kept off module level: tests and callers
+        # import this module without ever publishing.
+        from omnibase_infra.event_bus.models import ModelEventHeaders
+
+        self._headers_cls: Any = ModelEventHeaders
+        if bus_factory is None:
+            from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
+            from omnibase_infra.event_bus.models.config import (
+                ModelKafkaEventBusConfig,
+            )
+
+            self._bus_cls: Any = EventBusKafka
+            self._bus_config_cls: Any = ModelKafkaEventBusConfig
         # Test-injection seam: a fake bus (e.g. EventBusInmemory) can stand
         # in for the real Kafka connection so KafkaEventPublisher's actual
         # publish/timeout/loop-handoff logic gets real test coverage without
@@ -329,6 +356,7 @@ class KafkaEventPublisher:
         )
         self._session_active = False
         self._session_bus: Any = None
+        self._session_deadline: float | None = None
 
     @property
     def publish_identity(self) -> str | None:
@@ -336,33 +364,43 @@ class KafkaEventPublisher:
         return self._publish_identity
 
     @contextlib.contextmanager
-    def session(self) -> Iterator[None]:
-        """Reuse a lazily started bus until the outermost session exits."""
+    def session(self, *, deadline: float | None = None) -> Iterator[None]:
+        """Reuse a bus; cleanup shares the invocation's monotonic deadline."""
         if self._session_active:
-            yield
+            previous = self._session_deadline
+            if deadline is not None:
+                self._session_deadline = (
+                    deadline if previous is None else min(previous, deadline)
+                )
+            try:
+                yield
+            finally:
+                self._session_deadline = previous
             return
         self._session_active = True
+        self._session_deadline = deadline
         try:
             yield
         finally:
             self._close_session_bus()
             self._session_active = False
+            self._session_deadline = None
 
     def _close_session_bus(self) -> None:
         bus = self._session_bus
         self._session_bus = None
         if bus is not None:
-            try:
-                _KafkaPublishLoop.shared().run(
-                    bus.close(), timeout=self._publish_timeout_seconds
+            remaining = self._publish_timeout_seconds
+            if self._session_deadline is not None:
+                remaining = min(
+                    remaining, max(0.0, self._session_deadline - time.monotonic())
                 )
+            try:
+                _KafkaPublishLoop.shared().run(bus.close(), timeout=remaining)
             except Exception:
                 logger.warning("Failed to close Kafka publish session", exc_info=True)
 
     def _build_default_bus(self) -> Any:
-        from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
-        from omnibase_infra.event_bus.models.config import ModelKafkaEventBusConfig
-
         # OMN-16049: do NOT seed ``environment`` from a bespoke, omniclaude-
         # namespaced variable. ``os.environ.get(..., "")`` returned "" on every
         # deployment that does not set it (onex-dev does not), and the config
@@ -374,10 +412,10 @@ class KafkaEventPublisher:
         # Leave the field unset: the model's default stands, and
         # ``apply_environment_overrides()`` applies the runtime's STANDARD
         # source (``KAFKA_ENVIRONMENT``) when it is set.
-        config = ModelKafkaEventBusConfig(
+        config = self._bus_config_cls(
             bootstrap_servers=self._bootstrap_servers,
         ).apply_environment_overrides()
-        return EventBusKafka(config)
+        return self._bus_cls(config)
 
     def publish(
         self,
@@ -394,6 +432,11 @@ class KafkaEventPublisher:
             if timeout_seconds is not None
             else self._publish_timeout_seconds
         )
+        wait_timeout = effective_timeout + _LOOP_HANDOFF_MARGIN_SECONDS
+        if self._session_deadline is not None:
+            wait_timeout = min(
+                wait_timeout, max(0.0, self._session_deadline - time.monotonic())
+            )
         try:
             _KafkaPublishLoop.shared().run(
                 self._publish_async(
@@ -404,7 +447,7 @@ class KafkaEventPublisher:
                     content_event_id=content_event_id,
                     timeout_seconds=effective_timeout,
                 ),
-                timeout=effective_timeout + _LOOP_HANDOFF_MARGIN_SECONDS,
+                timeout=wait_timeout,
             )
         except Exception:
             if self._session_active:
@@ -441,8 +484,6 @@ class KafkaEventPublisher:
         correlation_id: str | None,
         content_event_id: str | None,
     ) -> None:
-        from omnibase_infra.event_bus.models import ModelEventHeaders
-
         bus = self._session_bus if self._session_active else None
         if bus is None:
             bus = self._bus_factory()
@@ -456,7 +497,7 @@ class KafkaEventPublisher:
                 )
             except ValueError:
                 resolved_correlation_id = uuid4()
-            headers = ModelEventHeaders(
+            headers = self._headers_cls(
                 source=self._source,
                 event_type=topic,
                 timestamp=datetime.now(UTC),
@@ -836,7 +877,7 @@ class HandlerEventEmitEffect:
         # OMN-17427: per-emit connect cycles measured on the delegation
         # receipt path; share one Kafka bus for current topics and backlog.
         with (
-            adapter.session()
+            adapter.session(deadline=deadline)
             if isinstance(adapter, KafkaEventPublisher)
             else contextlib.nullcontext()
         ):
