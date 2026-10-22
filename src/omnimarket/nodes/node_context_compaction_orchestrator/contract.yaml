@@ -16,7 +16,8 @@ description: >
   port reports pack_builder_unavailable, so every invocation falls back to
   native compaction. HandlerCompactionPackBuild is the live port over
   node_context_pack_orchestrator; a runtime that binds the context sources
-  passes it in. Receipt events carry ids, hashes and failure classes only;
+  passes it in. Receipt events carry ids, hashes, failure classes and build
+  timings only;
   the package reply carries content and travels on the restricted command family.
 
 handler_routing:

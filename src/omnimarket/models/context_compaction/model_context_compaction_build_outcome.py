@@ -37,6 +37,8 @@ class ModelContextCompactionBuiltPackage(BaseModel):
     profile_name: str = Field(min_length=1)
     profile_content_hash: str = Field(pattern=_SHA256)
     messages: tuple[ModelContextPackRenderMessage, ...] = Field(min_length=1)
+    #: The model-written section's share of the build, from ModelContextPackBuilt.model_section_ms().
+    model_section_ms: float | None = Field(default=None, ge=0, allow_inf_nan=False)
 
 
 class ModelContextCompactionBuildOutcome(BaseModel):

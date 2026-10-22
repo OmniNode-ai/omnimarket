@@ -288,7 +288,14 @@ class _KafkaPublishLoop:
         failure handling like any other publish failure.
         """
         future = asyncio.run_coroutine_threadsafe(coro, self._loop)
-        future.result(timeout=timeout)
+        try:
+            future.result(timeout=timeout)
+        except TimeoutError:
+            # result(timeout=...) only stops the caller's wait. Cancel this
+            # invocation too, or a stuck close/publish survives on the shared
+            # loop after the terminal receipt has already reported timeout.
+            future.cancel()
+            raise
 
 
 class KafkaEventPublisher:
@@ -329,6 +336,7 @@ class KafkaEventPublisher:
         )
         self._session_active = False
         self._session_bus: Any = None
+        self._session_deadline: float | None = None
 
     @property
     def publish_identity(self) -> str | None:
@@ -336,26 +344,39 @@ class KafkaEventPublisher:
         return self._publish_identity
 
     @contextlib.contextmanager
-    def session(self) -> Iterator[None]:
-        """Reuse a lazily started bus until the outermost session exits."""
+    def session(self, *, deadline: float | None = None) -> Iterator[None]:
+        """Reuse a bus; cleanup shares the invocation's monotonic deadline."""
         if self._session_active:
-            yield
+            previous = self._session_deadline
+            if deadline is not None:
+                self._session_deadline = (
+                    deadline if previous is None else min(previous, deadline)
+                )
+            try:
+                yield
+            finally:
+                self._session_deadline = previous
             return
         self._session_active = True
+        self._session_deadline = deadline
         try:
             yield
         finally:
             self._close_session_bus()
             self._session_active = False
+            self._session_deadline = None
 
     def _close_session_bus(self) -> None:
         bus = self._session_bus
         self._session_bus = None
         if bus is not None:
-            try:
-                _KafkaPublishLoop.shared().run(
-                    bus.close(), timeout=self._publish_timeout_seconds
+            remaining = self._publish_timeout_seconds
+            if self._session_deadline is not None:
+                remaining = min(
+                    remaining, max(0.0, self._session_deadline - time.monotonic())
                 )
+            try:
+                _KafkaPublishLoop.shared().run(bus.close(), timeout=remaining)
             except Exception:
                 logger.warning("Failed to close Kafka publish session", exc_info=True)
 
@@ -394,6 +415,11 @@ class KafkaEventPublisher:
             if timeout_seconds is not None
             else self._publish_timeout_seconds
         )
+        wait_timeout = effective_timeout + _LOOP_HANDOFF_MARGIN_SECONDS
+        if self._session_deadline is not None:
+            wait_timeout = min(
+                wait_timeout, max(0.0, self._session_deadline - time.monotonic())
+            )
         try:
             _KafkaPublishLoop.shared().run(
                 self._publish_async(
@@ -404,7 +430,7 @@ class KafkaEventPublisher:
                     content_event_id=content_event_id,
                     timeout_seconds=effective_timeout,
                 ),
-                timeout=effective_timeout + _LOOP_HANDOFF_MARGIN_SECONDS,
+                timeout=wait_timeout,
             )
         except Exception:
             if self._session_active:
@@ -836,7 +862,7 @@ class HandlerEventEmitEffect:
         # OMN-17427: per-emit connect cycles measured on the delegation
         # receipt path; share one Kafka bus for current topics and backlog.
         with (
-            adapter.session()
+            adapter.session(deadline=deadline)
             if isinstance(adapter, KafkaEventPublisher)
             else contextlib.nullcontext()
         ):

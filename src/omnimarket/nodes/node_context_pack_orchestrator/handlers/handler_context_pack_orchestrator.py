@@ -29,6 +29,7 @@ import hashlib
 import importlib.metadata
 import json
 import re
+import time
 import uuid
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -267,6 +268,7 @@ class HandlerContextPackOrchestrator:
         task_kind_rules: HandlerContextTaskKindRules | None = None,
         implementation_identity: Callable[[], Mapping[str, str]] | None = None,
         render_contract_version: str = RENDER_CONTRACT_VERSION,
+        clock: Callable[[], float] | None = None,
     ) -> None:
         self._sources = load_tier_sources() if sources is None else dict(sources)
         self._resolver = profile_resolver or HandlerContextProfileResolver()
@@ -277,6 +279,7 @@ class HandlerContextPackOrchestrator:
             implementation_identity or default_implementation_identity
         )
         self._render_contract_version = render_contract_version
+        self._clock = clock if clock is not None else time.perf_counter
 
     def handle(self, command: ModelContextPackCommand) -> ModelContextPackBuilt:
         request = command.request
@@ -330,7 +333,9 @@ class HandlerContextPackOrchestrator:
         session_scopes = _session_scopes(request)
         default_revision = request.session_barrier or request.newest_turn or "head"
 
-        reads: list[tuple[EnumContextFactor, ModelContextSourceResult]] = []
+        reads: list[
+            tuple[EnumContextFactor, ModelContextSourceResult, float | None]
+        ] = []
         for factor in _selected_factors(profile, admitted):
             source = self._sources.get(factor)
             if source is None:
@@ -340,6 +345,7 @@ class HandlerContextPackOrchestrator:
                         ModelContextSourceResult(
                             status=EnumContextSourceStatus.UNAVAILABLE
                         ),
+                        None,
                     )
                 )
                 continue
@@ -351,21 +357,25 @@ class HandlerContextPackOrchestrator:
                 access=command.access,
                 revision=request.tier_revisions.get(factor, default_revision),
             )
+            started = self._clock()
             try:
-                answer = source.handle(source_request)
+                try:
+                    answer = source.handle(source_request)
+                finally:
+                    elapsed_ms = (self._clock() - started) * 1000.0
             except Exception as exc:  # a source failure is a tier status, never a crash
                 answer = ModelContextSourceResult.error(
                     EnumContextSourceErrorCode.INVALID_RESPONSE,
                     f"{type(exc).__name__}: {exc}",
                 )
-            reads.append((factor, answer))
+            reads.append((factor, answer, elapsed_ms))
 
         tiers: list[ModelContextPackTierStatus] = []
         entries_by_factor: dict[
             EnumContextFactor, tuple[ModelContextSourceEntry, ...]
         ] = {}
         missing: list[EnumContextFactor] = []
-        for factor, answer in reads:
+        for factor, answer, read_ms in reads:
             entries = tuple(e for e in answer.entries if e.factor is factor and e.text)
             usable = answer.status is EnumContextSourceStatus.RESOLVED and bool(entries)
             if usable:
@@ -384,6 +394,7 @@ class HandlerContextPackOrchestrator:
                         sum(_token_estimate(e.text) for e in entries) if usable else 0
                     ),
                     included=usable,
+                    read_ms=read_ms,
                 )
             )
         if missing:
