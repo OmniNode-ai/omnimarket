@@ -297,15 +297,25 @@ async def test_each_fault_decides_its_own_cause_and_none_reads_provider_error(
 ) -> None:
     run = await _run_fault(fault, monkeypatch, record_property)
 
+    # OMN-21264: the consumer terminal hands the run back to its caller and
+    # keeps the deciding cause as its reason, except a run whose clock ran out,
+    # which keeps its own cause; the canonical terminal the projection copies
+    # its cause from still names the deciding cause.
+    consumer_cause: object = run.consumer.terminal_failure_cause
+    if fault != "timeout":
+        assert (
+            consumer_cause is EnumDelegationTerminalFailureCause.RETURNED_TO_CALLER
+        ), (fault, consumer_cause)
+        consumer_cause = run.consumer.terminal_failure_reason
     for reader, cause in (
-        ("consumer terminal", run.consumer.terminal_failure_cause),
+        ("consumer terminal", consumer_cause),
         ("canonical terminal", run.canonical.terminal_failure_cause),
     ):
-        assert cause is not EnumDelegationTerminalFailureCause.PROVIDER_ERROR, (
+        assert cause != EnumDelegationTerminalFailureCause.PROVIDER_ERROR, (
             fault,
             reader,
         )
-        assert cause is _EXPECTED_CAUSES[fault], (fault, reader, cause)
+        assert cause == _EXPECTED_CAUSES[fault], (fault, reader, cause)
 
 
 async def test_the_veto_names_its_rule_on_the_deciding_attempt(
