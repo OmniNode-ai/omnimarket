@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Fixture: a shell script that posts to the GLM endpoint directly.
+set -euo pipefail
+curl -sS https://api.z.ai/api/coding/paas/v4/chat/completions -d @"$1"

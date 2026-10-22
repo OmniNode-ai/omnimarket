@@ -790,6 +790,23 @@ requirements:
     acceptance:
       - id: "AC145"
         statement: "AC145: under an injected clock each bound tier's read_ms is the clock delta in milliseconds (an unbound tier None, a raising source still timed), the compaction orchestrator's prepared and fallback receipts carry the build's elapsed build_ms (None when the barrier fails before any build) and prepared carries the package's model_section_ms, and from_prepared gives deterministic_build_ms = build_ms - model_section_ms and refuses a missing timing or a model section longer than the build -- falsifier: the focused tests fail at the merge base, where 23 of them fail because read_ms, build_ms and from_prepared do not exist"
+  - id: "req-claims-pending-index"
+    statement: "The SQLite claim store carries a partial index over the pending delegate-skill command claims, added once by a store step, so the delegation reaper's pending-claims query reads the index instead of the whole table. The index changes no claim, terminal-slot or reap answer and deletes no row."
+    acceptance:
+      - id: "AC183"
+        statement: "AC183: a fresh store and a store that predates the step both carry delegate_skill_command_claims_pending_idx after one SqliteDatabaseAdapter._connect(), the step is recorded once, and EXPLAIN QUERY PLAN of the adapter's pending-claims statement names the index; a read-only store that predates the step is read with one warning; through DelegationClaimPort over SqliteDatabaseAdapter a redelivered claim loses and is served the recorded terminal, one of two record_terminal calls wins, and stalled_claims returns exactly the overdue pending main claims, the same set as the store with the index dropped; the step leaves the claims row count unchanged (tests/unit/projection/test_omn17427_claims_pending_index.py) -- falsifier: the tests fail at the merge base, where the plan reads SCAN delegate_skill_command_claims with no index."
+      - id: "AC185"
+        statement: "AC185: a fresh store and a store that predates the step both carry delegate_skill_command_claims_correlation_idx after one SqliteDatabaseAdapter._connect(), the step is recorded once, and EXPLAIN QUERY PLAN of SELECT * FROM delegate_skill_command_claims WHERE correlation_id = :correlation_id names the index; DelegationClaimPort.pending_claims(correlation_id=...) returns the same claims with and without the index, for a correlation with exactly one pending delivery and for one reused by two deliveries, which answers an empty list (tests/unit/projection/test_omn17427_claims_pending_index.py) -- falsifier: the index tests fail at 2609fffacaa621dfe9222c33da3dd8faa447928f, where the plan reads SCAN delegate_skill_command_claims; the pending_claims test fails when the results with and without the index differ."
+  - id: "req-tick-roll-up-shared-red"
+    statement: "The throughput tick's repository status names the real failing check as the unowned shared red, not a roll-up check (CI Summary, ci, CI Tests Gate) that is red only because that check failed."
+    acceptance:
+      - id: "AC183"
+        statement: "AC183: _repo_verdict counts a roll-up check only for a PR whose reds are all roll-ups, so two PRs red on CI Summary and repo-evidence / dod-verify name repo-evidence / dod-verify, two PRs red on CI Summary alone still name CI Summary, and CI Summary shared only through PRs that each carry another red is no shared red -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q -k roll_up fails at the merge base, where the node names CI Summary"
+  - id: "req-pack-orchestrator-source-order"
+    statement: "The context-pack orchestrator gives each artifact its position in its tier's source result as source_priority, so a pack carries a tier's entries in the order the source answered them rather than in content-hash order."
+    acceptance:
+      - id: "AC184"
+        statement: "AC184: a tier source answering five open_work rows in forward, reversed or shuffled order yields a built pack whose rendered text carries the rows in that same order -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -k source_order fails at the merge base, where every artifact keeps the default source_priority 100 and the builder orders a tier's chunks by hash"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -1024,6 +1041,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC145: tier read timings, compaction build timings on receipts, and the round-trip split from a prepared receipt."
     command: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py tests/nodes/node_context_compaction_orchestrator/test_handler_context_compaction_orchestrator.py tests/nodes/node_context_compaction_latency_compute/test_latency_qualification.py -q -p no:randomly --no-cov"
+  - kind: "tests"
+    description: "AC184: a built pack carries a tier's entries in source order."
+    command: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -k source_order"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -3420,4 +3440,49 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_handler_context_compaction_orchestrator.py tests/nodes/node_context_compaction_latency_compute/test_latency_qualification.py -q -n 0 -p no:randomly --no-cov -k 'test_installed_package_records_build_and_model_section_timings or test_round_trip_from_prepared_splits_build_phases'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac183-claims-pending-index"
+    description: "Every SQLite claim store gains the pending-claims partial index once, a read-only store is still read, and the claim, terminal-slot and reap answers are the same with and without the index. The tests fail at the merge base."
+    source: "manual"
+    binds_ac: ["AC183", "AC185"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/projection/test_omn17427_claims_pending_index.py -q -n 0 -p no:randomly --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-claims-pending-index-deploy-probe"
+    description: "Deploy probe: on the hosted runner, open fresh and pre-step claim stores through the real SqliteDatabaseAdapter and DelegationClaimPort and read the query plan of the reaper's pending-claims statement. This packaged-path probe fails at the merge base and does not attest the deployed claims store."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/projection/test_omn17427_claims_pending_index.py -q -n 0 -p no:randomly --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac183-tick-roll-up-shared-red"
+    description: "The repository status check of the throughput tick decision node names the real check beside a roll-up red. Two of the three roll-up tests fail at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC183"]
+  - id: "dod-omn17427-tick-roll-up-probe"
+    description: "Deploy probe. The hosted runner runs the checked-out node's roll-up tests with the locked dependencies; no credentials and no live tick. It does not attest the node deployed on the lab runtime."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q -n 0 -p no:randomly --no-cov --refuse-skips -k roll_up"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac152-pack-source-order"
+    description: "The context-pack orchestrator sets source_priority to each entry's position in its tier's source result, so the rendered pack carries a tier's entries in source order for forward, reversed and shuffled sources. At the merge base all three cases fail, because every artifact keeps source_priority 100 and the builder orders by hash."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -n 0 -p no:randomly --no-cov -k source_order"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC184"]
+  - id: "dod-omn17427-pack-source-order-deploy-probe"
+    description: "Deploy probe. In the checked-out package, the orchestrator over a fixture source answering open_work rows in reversed order renders them in reversed order. It fails at the merge base and needs only uv and this checkout on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -n 0 -p no:randomly --no-cov -k 'source_order and days1'"
         cwd: "${OMNI_HOME}/omnimarket"

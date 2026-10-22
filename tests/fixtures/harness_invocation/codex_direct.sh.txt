@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Fixture: a shell script that calls the codex CLI directly.
+set -euo pipefail
+codex exec --skip-git-repo-check "Summarize $1" > "$2"
