@@ -42,7 +42,7 @@ emergency_bypass:
 dod_evidence:
   - id: dod-omnimarket-pr-1246
     description: >-
-      omnimarket PR #1246 carries the OMN-13213 D1 EmitClient re-home on a ticketed branch (operator/omn-13213-d-reclassify-node_emit_daemon-effect-node):
+      omnimarket PR #1246 carries the OMN-13213 D1 EmitClient re-home on a ticketed branch (<operator>/omn-13213-d-reclassify-node_emit_daemon-effect-node):
       the shared owner omnimarket.events.emit_client exists and is re-exported from omnimarket.events,
       node_cross_cli_originator no longer imports omnimarket.nodes.node_emit_daemon.client, the node-private
       client.py is deleted, and the new guard test tests/unit/events/test_emit_client_rehome.py proves
