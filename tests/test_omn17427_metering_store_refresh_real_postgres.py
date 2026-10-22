@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import os
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import quote_plus
@@ -210,7 +211,7 @@ async def test_a_run_returned_to_its_caller_is_stored_as_zero_savings() -> None:
         assert row["runs_measured"] == 1
         assert row["runs_unknown_tokens"] == 0
         if row["baseline_state"] == "resolved":
-            assert row["savings_usd"] == 0
+            assert Decimal(row["savings_usd"]) == 0
     finally:
         try:
             await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
