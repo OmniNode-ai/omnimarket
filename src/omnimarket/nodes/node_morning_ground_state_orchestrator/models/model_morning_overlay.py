@@ -56,6 +56,19 @@ REQUIRED_TEXTS = (
     "goal_dry_suffix",
     "ledger_reconcile_command",
 )
+#: Optional: the places and programs the tools-only phase tools use (OMN-17427,
+#: RULING 2026-10-21T22:32:15Z). A tool whose name is absent refuses when it is called.
+OPTIONAL_VALUES = ("DELEGATION_ACCOUNTING_PATH",)
+OPTIONAL_TEXTS = (
+    "tools_root",
+    "ledger_file",
+    "kb_clone",
+    "kb_worktree",
+    "kb_origin_pattern",
+    "kb_clone_refresh_command",
+    "decisions_register_command",
+    "shared_doc_scrub_command",
+)
 TEMPLATE_BLOCK = re.compile(r"<!-- prompt:(.*?) -->\n(.*?)\n<!-- end:\1 -->", re.S)
 
 
@@ -98,8 +111,12 @@ class ModelMorningOverlay(BaseModel):
             raise ValueError(
                 "overlay unknown keys: " + ", ".join(sorted(map(str, unknown)))
             )
-        values = _exact_strings(overlay.get("values"), REQUIRED_VALUES, "value")
-        texts = _exact_strings(overlay.get("texts"), REQUIRED_TEXTS, "text")
+        values = _exact_strings(
+            overlay.get("values"), REQUIRED_VALUES, "value", OPTIONAL_VALUES
+        )
+        texts = _exact_strings(
+            overlay.get("texts"), REQUIRED_TEXTS, "text", OPTIONAL_TEXTS
+        )
         templates = dict(TEMPLATE_BLOCK.findall(briefs))
         absent = [name for name in REQUIRED_TEMPLATES if name not in templates]
         if absent:
@@ -129,13 +146,18 @@ class ModelMorningOverlay(BaseModel):
         )
 
 
-def _exact_strings(raw: object, required: tuple[str, ...], noun: str) -> dict[str, str]:
+def _exact_strings(
+    raw: object,
+    required: tuple[str, ...],
+    noun: str,
+    optional: tuple[str, ...] = (),
+) -> dict[str, str]:
     if not isinstance(raw, dict):
         raise ValueError(f"overlay {noun}s must be a mapping")
     missing = [key for key in required if key not in raw]
     if missing:
         raise ValueError(f"overlay missing {noun}s: " + ", ".join(missing))
-    extra = set(raw) - set(required)
+    extra = set(raw) - set(required) - set(optional)
     if extra:
         raise ValueError(
             f"overlay unknown {noun}s: " + ", ".join(sorted(map(str, extra)))
