@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+from unittest.mock import Mock
 from uuid import UUID
 
 import pytest
@@ -27,6 +28,9 @@ from omnimarket.models.context_compaction import (
 )
 from omnimarket.models.context_pack_render.model_context_pack_render_message import (
     ModelContextPackRenderMessage,
+)
+from omnimarket.models.model_session_stream_barrier import (
+    ModelSessionStreamBarrierVerdict,
 )
 from omnimarket.nodes.node_context_compaction_orchestrator.event_topics import (
     publish_topic_for,
@@ -104,10 +108,13 @@ def _assert_native_fallback(
     assert result.reply.messages == ()
     assert result.reply.installed_messages_hash is None
     assert result.activated is None
+    assert result.fallback is not None
+    assert result.fallback.build_ms is not None
     assert result.fallback == ModelContextCompactionFallback(
         invocation_id=INVOCATION,
         session_id="session-1",
         failure_class=failure_class,
+        build_ms=result.fallback.build_ms,
     )
 
 
@@ -135,6 +142,64 @@ def test_a_raising_build_replies_native_with_build_error() -> None:
     _assert_native_fallback(result, EnumContextCompactionFailureClass.BUILD_ERROR)
 
 
+def test_installed_package_records_build_and_model_section_timings() -> None:
+    package = ModelContextCompactionBuiltPackage.model_validate(
+        {**_package().model_dump(), "model_section_ms": 75.0}
+    )
+    clock = Mock(side_effect=[1.0, 1.25])
+    result = HandlerContextCompactionOrchestrator(
+        _Build(ModelContextCompactionBuildOutcome(package=package)), clock=clock
+    ).handle(_request())
+    assert result.prepared is not None
+    assert result.prepared.build_ms == 250.0
+    assert result.prepared.model_section_ms == package.model_section_ms
+    assert clock.call_count == 2
+
+
+@pytest.mark.parametrize("raises", [False, True])
+def test_failed_build_records_elapsed_time(raises: bool) -> None:
+    build = (
+        _RaisingBuild()
+        if raises
+        else _Build(
+            ModelContextCompactionBuildOutcome(
+                failure_class=EnumContextCompactionFailureClass.PACK_BUILD_FAILED
+            )
+        )
+    )
+    clock = Mock(side_effect=[1.0, 1.25])
+    result = HandlerContextCompactionOrchestrator(build, clock=clock).handle(_request())
+    assert result.fallback is not None
+    assert result.fallback.build_ms == 250.0
+    assert result.fallback.failure_class is (
+        EnumContextCompactionFailureClass.BUILD_ERROR
+        if raises
+        else EnumContextCompactionFailureClass.PACK_BUILD_FAILED
+    )
+    assert clock.call_count == 2
+
+
+def test_unmet_barrier_does_not_time_or_run_a_build() -> None:
+    build = _Build(ModelContextCompactionBuildOutcome(package=_package()))
+    barrier_wait = Mock()
+    barrier_wait.wait.return_value = ModelSessionStreamBarrierVerdict(
+        session_id="session-1", barrier_id="barrier-1", outcome="not_met", streams=()
+    )
+    clock = Mock(side_effect=AssertionError("no build ran"))
+    result = HandlerContextCompactionOrchestrator(
+        build, barrier_wait=barrier_wait, clock=clock
+    ).handle(_request().model_copy(update={"barrier_id": "barrier-1"}))
+    assert result.fallback is not None
+    assert (
+        result.fallback.failure_class
+        is EnumContextCompactionFailureClass.SOURCE_NOT_CAUGHT_UP
+    )
+    assert result.fallback.build_ms is None
+    assert not build.seen
+    clock.assert_not_called()
+    barrier_wait.wait.assert_called_once()
+
+
 def test_the_unwired_default_build_falls_back_to_native() -> None:
     result = HandlerContextCompactionOrchestrator().handle(_request())
     _assert_native_fallback(
@@ -145,7 +210,7 @@ def test_the_unwired_default_build_falls_back_to_native() -> None:
 def test_a_built_package_installs_with_prepared_and_activated_receipts() -> None:
     build = _Build(ModelContextCompactionBuildOutcome(package=_package()))
     result = HandlerContextCompactionOrchestrator(
-        build, activation_ids=lambda: ACTIVATION
+        build, activation_ids=lambda: ACTIVATION, clock=Mock(side_effect=[1.0, 1.25])
     ).handle(_request())
 
     assert result.fallback is None
@@ -164,6 +229,7 @@ def test_a_built_package_installs_with_prepared_and_activated_receipts() -> None
         version_vector_hash=_sha("vector"),
         profile_name="compaction_orchestrator",
         profile_content_hash=_sha("profile"),
+        build_ms=250.0,
     )
     activated = result.activated
     assert activated is not None
@@ -180,6 +246,7 @@ def test_two_invocations_of_one_candidate_get_distinct_activations() -> None:
     handler = HandlerContextCompactionOrchestrator(
         _Build(ModelContextCompactionBuildOutcome(package=_package())),
         activation_ids=lambda: next(ids),
+        clock=lambda: 0.0,
     )
     first, second = handler.handle(_request()), handler.handle(_request())
     assert first.prepared == second.prepared

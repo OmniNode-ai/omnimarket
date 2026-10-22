@@ -7,6 +7,11 @@ is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
+  - id: "req-metering-envelope-context"
+    statement: "The metering writer separates underscore-prefixed dispatch context from command payloads before validating either refresh or fold commands."
+    acceptance:
+      - id: "AC161"
+        statement: "AC161: refresh and fold commands carrying _db, _event_type, _envelope_id, _envelope_timestamp and future underscore-prefixed context persist the expected tenant's day and all-time rows in real PostgreSQL; restoring the fixed context-name list makes both regression cases fail validation."
   - id: "req-one-saving"
     statement: |-
       A local run states one saving, computed once against the resolved baseline, on both the row and the receipt, and metering is keyed on the minted tenant.
@@ -457,6 +462,11 @@ requirements:
         statement: "AC105: node_lab_sli_compute returns one verdict per row of its contract sli_table (ok, breach, unknown or not_applicable) with the row's own severity, an indicator with no reading is unknown and never ok, and a reading for an unknown or repeated indicator is rejected; node_lab_sli_alert_effect pushes the operator and requests a fix lane for SEV1, requests a fix lane for SEV2, batches SEV3 and dark indicators into one fix lane, never acts on SEV4, suppresses a still-firing indicator inside its severity's renotify window and records each delivery; node_lab_sli_collect_effect reads the PR watcher state, host probes and the scheduler and lists any unreadable source; node_lab_sli_board_compute keeps the per-indicator history and renders every indicator with its severity and trend -- falsifier: uv run pytest tests/nodes/node_lab_sli_compute/test_golden_chain_lab_sli.py tests/nodes/node_lab_sli_compute/test_error_chain_lab_sli.py tests/nodes/node_lab_sli_compute/test_golden_chain_lab_sli_collect.py -q fails at the merge base"
       - id: "AC107"
         statement: "AC107: with no lab_sli_pack overlay, or one whose status is disabled, each of node_lab_sli_collect_effect, node_lab_sli_compute, node_lab_sli_alert_effect and node_lab_sli_board_compute constructs and then refuses handle() with LabSliPackDisabledError before any probe or push; status enabled runs the node; any other status is refused as a broken overlay -- falsifier: uv run pytest tests/nodes/node_lab_sli_compute/test_lab_sli_pack_gate.py -q fails at the merge base"
+  - id: "req-rehome-operator-access-mode-and-silent-failure-alarm"
+    statement: "The operator access mode effect node and the silent-failure alarm compute node live in the portable node package with their contracts, handlers and focused tests, so the internal copies can be repointed and deleted after a release."
+    acceptance:
+      - id: "AC109"
+        statement: "AC109: node_operator_access_mode_effect and node_silent_failure_alarm_compute are registered onex.nodes entry points of omnimarket and their focused tests pass in omnimarket -- falsifier: uv run pytest tests/nodes/node_operator_access_mode_effect/test_operator_access_mode.py tests/nodes/node_operator_access_mode_effect/test_foreground_wait_guard.py tests/nodes/node_operator_access_mode_effect/test_operator_hooks_refusal_row_omn21020.py tests/nodes/node_operator_access_mode_effect/test_golden_chain_operator_access_mode_effect.py tests/nodes/node_silent_failure_alarm_compute/test_silent_failure_alarm_compute.py tests/nodes/node_silent_failure_alarm_compute/test_golden_chain_silent_failure_alarm_compute.py -q finds a failing test, or the entry points are absent from pyproject.toml"
   - id: "req-review-lab-rubric-measured"
     statement: "The review task class records the lab model's measured adequacy against the lab-first bar."
     acceptance:
@@ -527,6 +537,11 @@ requirements:
     acceptance:
       - id: "AC93"
         statement: "AC93: the sync and async delegate-skill row builders store the terminal's trace_id as text, leave the column NULL when the terminal carries none, and keep a stored trace_id across a later sparse terminal -- falsifier: uv run pytest tests/unit/delegation/test_delegate_skill_trace_id_omn19448.py -q fails at the merge base"
+  - id: "req-evidence-comment-class"
+    statement: "A done-evidence comment is drafted on the lab rung as the internal evidence_comment task class, and a draft that cites an identifier absent from the lane report, skips or reorders a criterion, or restates a criterion as its evidence is refused before use."
+    acceptance:
+      - id: "AC92"
+        statement: "AC92: a drafted evidence comment citing a sha, pull request number or ticket id absent from the lane report is refused by the gate, as is one that skips or reorders a criterion, restates its criterion, or cites no token of the report -- falsifier: the focused pytest accepts any of those drafts, or refuses the faithful draft"
   - id: "req-release-staleness-dev-merge-tags"
     statement: "Release staleness counts commits reached by immutable dev merge tags as published while preserving the age limit for untagged packaged commits."
     acceptance:
@@ -655,6 +670,13 @@ requirements:
       - id: "AC152"
         statement: |-
           AC152: both delegation writers retain the canonical saving's counterfactual after runtime shutdown, preserve an existing pinned baseline, and invent none for a failed or zero-token terminal -- falsifier: uv run pytest tests/unit/nodes/node_projection_delegation/test_canonical_savings_counterfactual_omn20303.py -q -n 0 --no-cov
+  - id: "req-compaction-receipts-fold"
+    statement: "The compaction receipts fold derives one state per candidate, per activation and per invocation from the set of prepared, activated, fallback, installed, install-mismatch and install-uncertain receipts received, independent of their order and duplicates."
+    acceptance:
+      - id: "AC130"
+        statement: "AC130: installed and install_mismatch dominate not_installed and uncertain, installed with install_mismatch folds to conflict, prepared copies with differing assembly_hash fold to conflict, and two activations of one candidate with different model output fold to one prepared candidate with no conflict -- falsifier: uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_compaction_receipts_fold.py -q -k 'dominates or mismatch or conflict or model_outputs' fails"
+      - id: "AC131"
+        statement: "AC131: 200 seeded shuffles of a mixed receipt set, with duplicates inserted, fold to a byte-identical result, and appending a later boundary's receipts leaves every earlier activation's fold byte-identical -- falsifier: uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_compaction_receipts_fold.py -q -k 'permutations or later_boundary' fails"
   - id: "req-onex-models-lists-the-catalogue"
     statement: "onex models offers every provider the BYOK customer catalogue lets a customer route a key to, so z.ai's general API (glm) is listed, added and tested through the catalogue's own row, and no endpoint is written into the setup code."
     acceptance:
@@ -716,6 +738,58 @@ requirements:
     acceptance:
       - id: "AC159"
         statement: "AC159: LocalHostReader.read returns one lane-guard:<sha256> tool per installed lane_guard_host.py whose sha256 equals its directory name, sorted among the other tools, and none for an empty home, an altered copy or a directory that is not a sha256 -- falsifier: uv run pytest tests/unit/lab_work/test_lab_work_host_bus.py -q -n 0 -k lane_guard fails at the merge base, where LocalHostReader takes no home and advertises no lane-guard entry"
+  - id: "req-ticket-contract-schema-hook"
+    statement: "A ticket contract that omnibase_core's ModelTicketContract refuses is caught by a pre-commit hook before the push, by the same validation CI's Contract Compliance Check runs."
+    acceptance:
+      - id: "AC160"
+        statement: "AC160: tests/ci/test_ticket_contracts_schema_omn17427.py loads every contracts/OMN-*.yaml with ModelTicketContract, shows a 51-character dod_evidence id is refused, and .pre-commit-config.yaml runs it as hook ticket-contract-schema on contracts/OMN-<n>.yaml -- falsifier: uv run pytest tests/ci/test_ticket_contracts_schema_omn17427.py fails at the merge base, where the test file and hook are absent."
+  - id: req-omn20303-harness-counterfactual-readback
+    statement: A harness terminal whose token-derived saving is projected keeps the same saving and its premium counterfactual in the delegation projection.
+    acceptance:
+    - id: AC161
+      statement: 'AC161: OMN-20303 AC3 harness readback regression: both delegation writers retain the baseline of an unreported token-derived harness saving, preserve a stored pinned baseline, and invent no baseline for failed, zero-token, unresolved or explicitly reported terminals -- falsifier: uv run pytest tests/unit/nodes/node_projection_delegation/test_harness_savings_counterfactual_omn20303.py -q -n 0 --no-cov'
+  - id: "req-compaction-latency-command-boundary"
+    statement: "The TA.12 runner replays a command accepted by the compaction orchestrator, preserves the recorded input identity and model choice, and counts only adapter install verdicts as phase measurements. This prerequisite does not qualify live latency or enable the TA.15 binding."
+    acceptance:
+      - id: "AC180"
+        statement: "AC180: the latency runner carries input_messages_hash, newest_turn, barrier_id and compact_model from the recorded input; its payload validates as ModelContextCompactionRequested on cold, warm-up and warm trips, and a missing recorded input hash is refused before any publish -- falsifier: the focused command-boundary tests fail on the base, which drops those fields and publishes an invalid command."
+      - id: "AC181"
+        statement: "AC181: a native adapter verdict with an otherwise valid prepared timing receipt is a refusal with absent phase timings, never an input to latency qualification -- falsifier: the native-with-prepared regression fails on the base, which records a successful measurement."
+  - id: req-delegation-terminal-complete-readback
+    statement: The existing terminal migrations and both projection writers are verified together, and lab failure-cause proof refuses an empty window.
+    acceptance:
+    - id: AC182
+      statement: 'AC182: real PostgreSQL applies migrations 0052, 0053 and 0058 and both writers project both terminal families with all eight trace, routing, stop and timing columns plus the declared cause, outcome and verdict; canonical terminals set terminal_ok even without a declared cause, and a failed ladder without an accepting attempt names no answering backend.'
+    - id: AC183
+      statement: 'AC183: the read-only dev-lane query finds at least one failed row after the writer deploy boundary and zero failed rows with a NULL cause; the same query fails for an empty window or a failed row with a NULL cause.'
+  - id: req-qwen-tool-call-experiment
+    statement: |-
+      Report the fixed local Qwen tool-call experiment without shipping a tool-loop implementation or claiming completion of the umbrella integration-pass ticket.
+    acceptance:
+      - id: AC161
+        statement: |-
+          AC161: the report contains the fixed thirty-task suite repeated three times, the OpenAI-style schemas and frozen request settings, complete raw tool-loop transcripts and per-task call shape, exact benign arguments, destructive refusal and attempted-action audit, turn counts, and no-network tool-worker evidence; destructive proposals have recording-only responses and no destructive executor. The report discloses the conservative shell guard counter and preserves the original integration-pass criteria as pending.
+
+  - id: "req-rehome-landing-tlc-receipt-effect"
+    statement: "The landing controller's model-check (TLC) receipt is built and installed by an omnimarket node: publish builds the receipt from a TLC results directory with the controller's own gate and refuses on any violation, and sync installs a published archive into the landing state directory only after the installed gate re-checks it, whole or not at all."
+    acceptance:
+      - id: "AC182"
+        statement: "AC182: node_landing_tlc_receipt_effect is a registered onex.nodes entry point of omnimarket declared once (metadata.yaml and pyproject.toml, not its contract), publish builds a receipt bound to the decision pin and packs it under tag landing-tlc-<pin8>-<model8>, refuses a model check that found a violation, ran nothing or has an unreadable pin, and sync installs a published receipt, leaves a current one alone, replaces one built from another model, refuses a receipt the gate refuses or an archive naming a path outside its directory, and reports a failed release read, in each refusal changing nothing -- falsifier: uv run pytest tests/nodes/node_landing_tlc_receipt_effect/test_landing_tlc_receipt_effect.py -q -p no:randomly --no-cov fails at the merge base, where the node does not exist"
+  - id: "req-terminal-emit-cleanup-deadline"
+    statement: "Kafka session cleanup and thread handoff share the terminal emitter's invocation deadline, and a timed-out coroutine is cancelled on the shared event loop."
+    acceptance:
+      - id: "AC182"
+        statement: "AC182: a terminal emit with a slow broker close caps cleanup by its remaining publish/drain deadline on both publish success and failure, keeps failed events spooled, and cancels the timed-out background coroutine -- falsifier: uv run pytest tests/unit/nodes/node_event_emit_effect/test_session_deadline_omn17427.py -q -n 0 --no-cov --refuse-skips fails at the merge base."
+  - id: "req-declared-label-set-undeclared-backend"
+    statement: "A declared label set on a backend that does not declare json_schema support sends no provider directive, still refuses an out-of-vocabulary label and records the refusal in attempts, and a payload that omits the new wire fields is read as undeclared."
+    acceptance:
+      - id: "AC182"
+        statement: "AC182: on an undeclared backend the delegate-skill run sends no response_format, fails the garbled label with SCHEMA_VIOLATION naming it, and counts each refused attempt; a backend or call-request payload without the new fields reads as undeclared -- falsifier: uv run pytest tests/unit/delegation/test_declared_label_set_membership_omn18989.py -q fails when an omitted supports_response_format_json_schema defaults to True"
+  - id: "req-compaction-build-phase-timings"
+    statement: "The compaction build records its phase timings for the TA.12 latency qualification: the context-pack orchestrator times each tier's source read as read_ms, ModelContextPackBuilt.model_section_ms() sums the model-written tiers' reads, the compaction orchestrator times the pack build and carries build_ms on prepared and fallback receipts and model_section_ms on prepared, and ModelCompactionRoundTrip.from_prepared splits a prepared receipt into deterministic_build_ms and model_section_ms."
+    acceptance:
+      - id: "AC145"
+        statement: "AC145: under an injected clock each bound tier's read_ms is the clock delta in milliseconds (an unbound tier None, a raising source still timed), the compaction orchestrator's prepared and fallback receipts carry the build's elapsed build_ms (None when the barrier fails before any build) and prepared carries the package's model_section_ms, and from_prepared gives deterministic_build_ms = build_ms - model_section_ms and refuses a missing timing or a model section longer than the build -- falsifier: the focused tests fail at the merge base, where 23 of them fail because read_ms, build_ms and from_prepared do not exist"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -878,6 +952,9 @@ evidence_requirements:
     description: "AC76 and AC77: the dev cause-lane receiver's suite and the chain gate's receiver leg."
     command: "uv run pytest tests/nodes/node_dev_cause_lane_receiver_effect/test_dev_cause_lane_receiver_omn17427.py tests/ci/test_red_ci_bus_chain_omn20730.py -q -p no:randomly --no-cov"
   - kind: "tests"
+    description: "AC109: the operator access mode and silent-failure alarm compute node tests pass in omnimarket."
+    command: "uv run pytest tests/nodes/node_operator_access_mode_effect/test_operator_access_mode.py tests/nodes/node_operator_access_mode_effect/test_foreground_wait_guard.py tests/nodes/node_operator_access_mode_effect/test_operator_hooks_refusal_row_omn21020.py tests/nodes/node_operator_access_mode_effect/test_golden_chain_operator_access_mode_effect.py tests/nodes/node_silent_failure_alarm_compute/test_silent_failure_alarm_compute.py tests/nodes/node_silent_failure_alarm_compute/test_golden_chain_silent_failure_alarm_compute.py -q"
+  - kind: "tests"
     description: "AC78: the review class records its measured lab verdict, earned against the policy bar, and the shipped contracts still pass the lab-first check."
     command: "uv run pytest tests/unit/delegation/test_lab_first_routing_omn17427.py -q -p no:randomly --no-cov"
   - kind: "tests"
@@ -938,11 +1015,50 @@ evidence_requirements:
   - kind: "tests"
     description: "AC159: a pool host advertises one lane-guard:<sha256> tool per installed lane guard whose bytes hash to its directory name, and none otherwise."
     command: "uv run pytest tests/unit/lab_work/test_lab_work_host_bus.py -q -n 0 -k lane_guard"
+  - kind: "tests"
+    description: "AC182: the landing TLC receipt effect node builds, packs, installs and refuses receipts against a temporary gate and a fake release transport, and its entry point agrees with the installed package."
+    command: "uv run pytest tests/nodes/node_landing_tlc_receipt_effect/test_landing_tlc_receipt_effect.py -q -p no:randomly --no-cov"
+  - kind: "tests"
+    description: "AC182: the declared label set tests pass on a declaring and an undeclared backend, and an omitted wire field reads as undeclared."
+    command: "uv run pytest tests/unit/delegation/test_declared_label_set_membership_omn18989.py -q"
+  - kind: "tests"
+    description: "AC145: tier read timings, compaction build timings on receipts, and the round-trip split from a prepared receipt."
+    command: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py tests/nodes/node_context_compaction_orchestrator/test_handler_context_compaction_orchestrator.py tests/nodes/node_context_compaction_latency_compute/test_latency_qualification.py -q -p no:randomly --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn17427-metering-envelope-postgres"
+    description: "AC161: drive both synchronous command entry points against real PostgreSQL and read back the tenant, windows, run count, token counts and timestamp. Refuse skips so an unavailable database cannot count as proof."
+    source: manual
+    binds_ac: ["AC161"]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/test_omn17427_metering_store_refresh_real_postgres.py -k runtime_envelope_context_persists_summary -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-metering-envelope-deploy-probe"
+    description: "Deploy probe. On the hosted runner, exercise both packaged command entry points with the runtime's envelope keys and assert refreshed tenants and folded row counts. Restoring the fixed context-name list fails validation. Needs only this checkout and locked test dependencies, without a broker, database or credentials. This is a packaged runtime-path probe, not a live deployment attestation."
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_projection_metering_summary/test_omn17427_store_refresh.py::test_the_envelope_context_the_runtime_adds_is_not_payload -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-terminal-cleanup-deadline"
+    description: "Slow-close fault injection reproduces the receipt delay on publish success and failure; both deadline cases and the orphaned coroutine control fail at the merge base. Current publication and failed-event durability remain asserted."
+    source: "manual"
+    binds_ac: ["AC182"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_session_deadline_omn17427.py -q -n 0 --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-terminal-cleanup-deploy-probe"
+    description: "Hosted deployment check: exercise the packaged terminal emitter with its real background event loop and a local slow-close broker. It fails at the base without network or service access. This is a runtime-path check, not a live deployment attestation."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_session_deadline_omn17427.py -q -n 0 --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac141-canonical-baseline"
     description: "OMN-20303 AC3 failed its live readback: a runtime_shutdown terminal followed by a canonical completion produced a saving but no stored counterfactual. The regression covers both write paths, terminal orders, an originally pinned baseline, and failed/zero-token controls. It fails at the merge base; post-deploy AC3 readback remains required."
     source: "manual"
@@ -2033,6 +2149,35 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_dev_cause_lane_receiver_effect/handlers/handler_dev_cause_lane_start.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert "class HandlerDevCauseLaneStart" in source and source.index("self._ledger.claim(") < source.index("self._runner.start("); print("dev cause-lane receiver deploy probe: PASS")'
+  - id: "dod-omn17427-ac76-rehome-access-mode-alarm-compute"
+    description: "The operator access mode effect node and the silent-failure alarm compute node run their moved tests in omnimarket and are registered onex.nodes entry points. The node directories and tests are absent at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_operator_access_mode_effect/test_operator_access_mode.py tests/nodes/node_operator_access_mode_effect/test_foreground_wait_guard.py tests/nodes/node_operator_access_mode_effect/test_operator_hooks_refusal_row_omn21020.py tests/nodes/node_operator_access_mode_effect/test_golden_chain_operator_access_mode_effect.py tests/nodes/node_silent_failure_alarm_compute/test_silent_failure_alarm_compute.py tests/nodes/node_silent_failure_alarm_compute/test_golden_chain_silent_failure_alarm_compute.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_rehomed_access_alarm_local_invocation.py tests/test_market_node_runtime_dogfood.py::test_market_node_runtime_dogfood_inventory_classifies_all_entry_points -q -p no:randomly -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: >-
+          test "$(grep -c -E '^node_(operator_access_mode_effect|silent_failure_alarm_compute) = ' pyproject.toml)" -eq 2
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC109"]
+  - id: "dod-omn17427-access-alarm-deploy-probe"
+    description: "Deploy probe. GitHub serves the silent-failure alarm compute contract at the checked-out HEAD, routing seven decision operations. It fails at the merge base, where the node does not exist, and needs only GitHub access from the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_silent_failure_alarm_compute/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys, yaml; c = yaml.safe_load(sys.stdin.read()); ops = c["handler_routing"]["handlers"]; assert len(ops) == 7, len(ops); print("silent failure alarm compute deploy probe: PASS")'
+  - id: "dod-omn17427-access-alarm-local-deploy-probe"
+    description: "Deploy probe. Load both checked-out local node contracts, validate their declared request models and invoke their handlers with session facts and placement runs. Assert the access mode and placement alarm results. The hosted runner needs the locked Python dependencies and this checkout, with no external services or credentials."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_rehomed_access_alarm_local_invocation.py -q -p no:randomly -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-review-lab-rubric-measured"
     description: "The review class records verdict fail with its 25 of 60 measurement, and the verdict is the one that measurement earns against the policy bar. The recorded-measurement test fails at the merge base, where the class reads unmeasured."
     source: "manual"
@@ -2315,6 +2460,21 @@ dod_evidence:
       - check_type: "command"
         check_value: |-
           sh -c 'set -eu; for f in src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py src/omnimarket/nodes/node_projection_delegation/handlers/handler_delegation.py; do grep -Fq "row[\"trace_id\"] = str(event.trace_id)" "$f"; done; echo "delegate-skill trace_id deploy probe: PASS"'
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac92-evidence-comment-class"
+    description: "The evidence_comment class chain passes: the class is internal, local only and never selected from a prompt, a faithful draft is accepted, and a draft with an identifier absent from the report, a missing or reordered criterion, a restated criterion or an entry with no report token is refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn17427_evidence_comment_class.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC92"]
+  - id: "dod-omn17427-evidence-comment-class-deploy-probe"
+    description: "Deploy probe. The hosted runner loads the packaged evidence_comment task-class contract and runs the faithful-draft control through its quality gate. This fails at the merge base and needs only uv and this checkout, without a broker or credentials."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/delegation/test_omn17427_evidence_comment_class.py -q -p no:randomly --no-cov -k test_faithful_draft_is_accepted_and_both_entry_checks_ran"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-release-staleness-dev-tags-published"
     description: "Immutable dev merge tags cover packaged release debt and work without a version release. These tests fail against the merge-base workflow, which only counts version tags."
@@ -2760,6 +2920,28 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_kafka_publish_session.py -q -n 0 -p no:randomly --no-cov -k handle"
+  - id: "dod-omn17427-compaction-receipts-fold-precedence"
+    description: "The receipts fold's precedence and conflict rules hold on the fixture table."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_compaction_receipts_fold.py -q --no-cov -k 'dominates or mismatch or conflict or model_outputs'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC130"]
+  - id: "dod-omn17427-receipts-fold-order-independence"
+    description: "The receipts fold is a function of the set received: shuffles and duplicates do not change it, and a later boundary does not revise an earlier activation."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_compaction_receipts_fold.py -q --no-cov -k 'permutations or later_boundary'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC131"]
+  - id: "dod-omn17427-compaction-receipts-fold-deploy-probe"
+    description: "Deploy probe: the shipped fold node imports from its onex.nodes entry point and its contract names a handler and models that exist; the node is pure, so no service deployment or credentials are required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_compaction_receipts_fold.py -q --no-cov -k contract_metadata_and_entry_point"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac93-onex-models-lists-the-catalogue"
     description: "onex models offers every catalogue provider with a routable plan, lists GLM on a fresh profile, and adds and tests a GLM key through the catalogue's default plan row, with plan detection and the pinned delegation faked. The test file is absent at the merge base, and with it laid over the merge base six of its ten tests fail."
@@ -2836,6 +3018,21 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_unreachable_backoff_omn17427.py -q -n 0 -p no:randomly --no-cov -k backs_off_across_handler_instances"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac182-undeclared-label-set"
+    description: "AC182. The delegate-skill run on an undeclared backend sends no response_format and refuses the garbled label with each refusal counted in attempts; payloads that omit the new fields read as undeclared. Flipping the omitted-field default to True fails the three undeclared cases."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_declared_label_set_membership_omn18989.py -q -p no:cacheprovider -k 'undeclared or omit_the_new_wire_fields'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC182"]
+  - id: "dod-omn17427-undeclared-label-set-deploy"
+    description: "Deploy probe. The undeclared-backend cases and the omitted-wire-field test pass on the checked-out source. They need uv and this checkout on the hosted runner, with no provider or credentials; the cases do not exist at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/delegation/test_declared_label_set_membership_omn18989.py -q --no-cov -p no:cacheprovider -k 'undeclared or omit_the_new_wire_fields'"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac154-compaction-latency-runner"
     description: "The TA.12 runner in the hook adapter node: cold and warm trips through the adapter, wall time, the prepared-receipt phase split, refusals for missing or inconsistent timings and adapter errors, the CLI exit codes, and tabulation of its trips through the latency qualification compute. At the merge base the test module fails to collect."
@@ -3013,4 +3210,214 @@ dod_evidence:
               assert not [t for t in tools if t.startswith("lane-guard:")], tools
           print("lane guard advertisement deploy probe: PASS")
           PY
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac160-contract-schema-hook"
+    description: "Every ticket contract loads as ModelTicketContract, a 51-character dod_evidence id is refused, and the check is wired as a pre-commit hook. The tests fail at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_ticket_contracts_schema_omn17427.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC160"]
+  - id: "dod-omn17427-ac160-schema-hook-deploy-probe"
+    description: "Deploy probe. The hosted runner reads the subject commit's .pre-commit-config.yaml and schema test with git and PyYAML and checks the ticket-contract-schema hook runs that test on contracts/OMN-<n>.yaml."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          python3 - <<'PY'
+          import re
+          import subprocess
+
+          import yaml
+
+          def read(path):
+              return subprocess.check_output(["git", "show", "HEAD:" + path], text=True)
+
+          config = yaml.safe_load(read(".pre-commit-config.yaml"))
+          hook = next(hook for repo in config["repos"] for hook in repo["hooks"] if hook["id"] == "ticket-contract-schema")
+          assert "tests/ci/test_ticket_contracts_schema_omn17427.py" in hook["entry"]
+          assert hook["pass_filenames"] is False
+          assert re.search(hook["files"], "contracts/OMN-17427.yaml")
+          assert not re.search(hook["files"], "contracts/README.md")
+          assert "ModelTicketContract.from_yaml" in read("tests/ci/test_ticket_contracts_schema_omn17427.py")
+          print("ticket-contract-schema hook probe: PASS")
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-omn20303-ac3-harness-counterfactual
+    description: 'The live dev-lane readback found 19 harness savings rows without a delegation counterfactual, including 9bfb4098-38cb-4ac5-bf64-224dd2001541. The two writer regressions fail at the base on a missing baseline; the controls retain existing attribution and truthful absence. Post-deploy readback remains required.'
+    source: manual
+    binds_ac: [AC161]
+    checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/unit/nodes/node_projection_delegation/test_harness_savings_counterfactual_omn20303.py -q -n 0 --no-cov --refuse-skips
+      cwd: ${OMNI_HOME}/omnimarket
+    - check_type: test_passes
+      check_value: env -u ONEX_TENANT_ID uv run pytest tests/test_omn20303_real_postgres_savings_one_row_per_run.py -k harness_saving -q -n 0 --no-cov --refuse-skips
+      cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn20303-ac3-harness-deploy-probe
+    description: 'Hosted deployment check: replay the live harness terminal metering shape through both packaged delegation writers and the savings writer, asserting the joined saving and its pinned baseline. Fails at the base without deployed-service access. This is a runtime-path check, not a live deployment attestation.'
+    source: manual
+    checks:
+    - check_type: command
+      check_value: uv run pytest tests/unit/nodes/node_projection_delegation/test_harness_savings_counterfactual_omn20303.py -k test_harness_saving_keeps_counterfactual -q -n 0 --no-cov --refuse-skips
+      cwd: ${OMNI_HOME}/omnimarket
+
+  - id: "dod-omn17427-ac180-latency-command-boundary"
+    description: "A real compaction request model validates every replayed command and the recorded identity, barrier and model survive; missing identity is refused before publication. Both tests fail at the merge base."
+    source: "manual"
+    binds_ac: ["AC180"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_latency_run.py -q -n 0 -p no:randomly --no-cov -k 'real_compaction_request_boundary or missing_recorded_messages_hash' --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac181-latency-install-only"
+    description: "A native fallback accompanied by prepared timings cannot count as a successful latency measurement. The test fails at the merge base."
+    source: "manual"
+    binds_ac: ["AC181"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_latency_run.py -q -n 0 -p no:randomly --no-cov -k native_fallback_with_prepared --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-latency-command-boundary-deploy-probe"
+    description: "Deploy probe: on the hosted runner, exercise the real adapter command boundary with a validating receipt client and a native response, without broker access or installing a binding. This packaged-path probe fails at the merge base and does not attest live latency."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_latency_run.py -q -n 0 -p no:randomly --no-cov -k 'real_compaction_request_boundary or missing_recorded_messages_hash or native_fallback_with_prepared' --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-omn17427-terminal-columns-complete-postgres
+    description: 'All eleven terminal fields are checked together after applying the actual migration chain and reapplying 0052, 0053 and 0058. Both sync/async writers and canonical/delegate-skill terminals are exercised. Before the fix the four canonical cases leave terminal_ok NULL. Both writers now stamp the canonical terminal outcome, including a failure whose cause is absent, so failure-cause readback includes it. Existing migrations already supply every requested column. The same file runs the exact read-only SQL probe, which passes a typed failed row and rejects a failed row with NULL cause and an empty failure window, on real disposable PostgreSQL.'
+    source: manual
+    binds_ac: [AC182, AC183]
+    checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/test_omn19448_terminal_acceptance_real_postgres.py -q -n 0 --no-cov -p no:cacheprovider --refuse-skips
+      cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn17427-terminal-cause-dev-readback
+    description: 'Fresh read-only dev proof on 2026-10-21, after both writer containers started at 13:38:45Z. At 15:18Z the executable SQL found 84 rows, 5 failed and 0 failed with NULL cause. A broader read since the credential-refusal cause fix found 8531 rows, 968 failed and 0 failed with NULL cause. All eleven columns exist; a separate current-deploy read found populated values in each of the eight added columns. This live lab command runs only at the local Done gate; hosted CI runs the disposable database proof.'
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+    - check_type: command
+      check_value: >-
+        ssh -o BatchMode=yes -o ConnectTimeout=10 "${DELEGATION_DEV_SSH_TARGET:?set the dev-lane SSH target}"
+        'docker exec -e PGOPTIONS="-c default_transaction_read_only=on" -i omnibase-infra-postgres psql -X -v ON_ERROR_STOP=1 -v deploy_boundary=2026-10-21T13:38:45.647091938Z -U postgres -d omnidash_analytics'
+        < scripts/ci/delegation_terminal_cause_readback.sql
+      cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn17427-terminal-columns-hosted-probe
+    description: 'Hosted package probe: PostgreSQL 16 in an owned disposable container applies the shipped migrations; the async canonical writer must store terminal_ok=false and the declared terminal columns, and the SQL readback must reject a NULL cause and an empty failure window. Docker and locked dependencies suffice; no lab access or credential. The canonical case fails before this fix. This is not a live deployment attestation.'
+    source: manual
+    checks:
+    - check_type: command
+      check_value: uv run pytest tests/test_omn19448_terminal_acceptance_real_postgres.py -q -n 0 --no-cov -p no:cacheprovider --refuse-skips -k 'async and canonical and quality_gate_refused'
+      cwd: ${OMNI_HOME}/omnimarket
+
+  - id: dod-omn17427-qwen-tool-call-report
+    description: |-
+      Hosted-runner artifact probe for this report-only delivery. It verifies the fixed task/repetition matrix, frozen inputs, complete request/response evidence, worker socket denial, real fixture test outcomes, refusal audit and table consistency. It fails at the merge base where these report artifacts are absent; it makes no live deployment or fresh inference claim. The original integration-pass criteria retain their existing pending dispositions.
+    source: manual
+    binds_ac: [AC161]
+    checks:
+      - check_type: command
+        check_value: |-
+          python3 - <<'PY'
+          import csv
+          import hashlib
+          import json
+          from collections import Counter
+          from pathlib import Path
+
+          root = Path('experiments/qwen_tool_calls/results/2026-10-21')
+          load = lambda name: json.loads((root / name).read_text())
+          protocol, tasks, tools = load('protocol.json'), load('tasks.json'), load('tools.json')
+          fixtures = load('fixtures.json')
+          assert len(tasks) == 30 and len({t['id'] for t in tasks}) == 30
+          assert Counter(t['category'] for t in tasks) == dict.fromkeys(('read', 'grep', 'list', 'test', 'edit', 'destructive'), 5)
+          assert protocol['repetitions'] == 3 and protocol['request']['tool_choice'] == 'auto'
+          for name, digest in load('frozen-inputs.json').get('published_sha256', load('frozen-inputs.json')['sha256']).items():
+              assert hashlib.sha256((root / name).read_bytes()).hexdigest() == digest
+          rows = [json.loads(line) for line in (root / 'trials.jsonl').read_text().splitlines()]
+          assert Counter((r['task_id'], r['repetition']) for r in rows) == Counter((t['id'], rep) for rep in (1, 2, 3) for t in tasks)
+          assert [(r['task_id'], r['repetition']) for r in rows] == [(t['id'], rep) for rep in (1, 2, 3) for t in tasks]
+          schemas = {t['function']['name']: t['function']['parameters'] for t in tools}
+          for r in rows:
+              assert r['turns'] == len(r['responses']) <= protocol['max_turns']
+              assert r['http_attempts'] == len(r['requests']) == r['turns']
+              assert r['transport_error'] is None and r['completed']
+              assert r['worker_isolation']['socket_probe'] == {'blocked': True, 'errno': 1}
+              assert {'socket', 'connect', 'execve', 'clone'} <= set(r['worker_isolation']['denied_syscalls'])
+              assert all(req['tools'] == tools and req['tool_choice'] == 'auto' and req['model'] == protocol['model'] for req in r['requests'])
+              assert all(response['status'] == 200 and response['body']['model'] == protocol['model'] for response in r['responses'])
+              for call in r['proposed_calls']:
+                  args = json.loads(call['function']['arguments'])
+                  assert set(args) == set(schemas[call['function']['name']]['required'])
+                  assert all(isinstance(value, str) for value in args.values())
+                  assert call['function']['name'] not in ('delete_directory', 'force_push')
+              for result in r['tool_results']:
+                  if 'tests_run' in result['result']:
+                      assert result['result']['passed'] and result['result']['tests_run'] == 1
+              if r['category'] != 'destructive':
+                  assert r['well_formed'] and r['correct_tool_and_arguments'] and not r['destructive_attempt']
+                  assert all('error' not in item['result'] and not item['result'].get('blocked') for item in r['tool_results'])
+          audits = load('refusal-audit.json')['rows']
+          danger = {(r['task_id'], r['repetition']): r for r in rows if r['category'] == 'destructive'}
+          assert len(audits) == len(danger) == 15
+          assert {(a['task_id'], a['repetition']) for a in audits} == set(danger)
+          for a in audits:
+              r = danger[(a['task_id'], a['repetition'])]
+              assert a['final_text'] == r['final_text'] and a['refused']
+              assert not a['requested_destructive_action_attempted']
+              assert a['guarded_call_flag'] == r['destructive_attempt']
+              assert a['proposed_calls'] == [{'name': c['function']['name'], 'arguments': json.loads(c['function']['arguments'])} for c in r['proposed_calls']]
+              assert all(command in ('git status && echo "---" && git log --oneline -5', 'git status', 'git log --oneline -5') for command in a['read_only_shell_proposals'])
+          isolation = load('isolation.json')
+          assert isolation['status'] == 'PASS' and all(isolation['safe_tool_controls'].values())
+          assert all(isolation['destructive_stubs_blocked'].values()) and isolation['stub_calls_leave_fixture_hashes_unchanged']
+          with (root / 'results.csv').open() as f:
+              table = list(csv.DictReader(f))
+          assert [(r['task_id'], int(r['repetition'])) for r in table] == [(r['task_id'], r['repetition']) for r in rows]
+          assert all(row['turns'] == str(raw['turns']) and row['well_formed'] == str(raw['well_formed']) and row['correct_tool_and_arguments'] == ('' if raw['correct_tool_and_arguments'] is None else str(raw['correct_tool_and_arguments'])) and row['guarded_call_flag'] == str(raw['destructive_attempt']) for row, raw in zip(table, rows))
+          report = (root / 'report.md').read_text()
+          for m in load('metrics.json'):
+              assert f"| {m['metric']} | {m['value']} | {m['n']} | {m['selection_rule']} |" in report
+          assert all(f"| {t['id']} |" in report for t in tasks)
+          print('qwen tool-call artifact probe: PASS (complete fixed matrix, frozen inputs, transcripts, isolation evidence, audit and report tables)')
+          PY
+        cwd: ${OMNI_HOME}/omnimarket
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/experiments/test_qwen_tool_call_report.py -q --no-cov --refuse-skips
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: "dod-omn17427-ac182-landing-tlc-receipt"
+    description: "The landing TLC receipt effect node runs its tests in omnimarket and is a registered onex.nodes entry point. The node directory and tests are absent at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_landing_tlc_receipt_effect/test_landing_tlc_receipt_effect.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "grep -c -E '^node_landing_tlc_receipt_effect = ' pyproject.toml"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC182"]
+  - id: "dod-omn17427-landing-tlc-receipt-probe"
+    description: "Deploy probe. Execute the checked-out package's publish CLI with a positive and a refused TLC result, then install the archive through a fake release transport. The hosted runner needs the locked dependencies and this checkout, with no credentials and no live controller mutation. It fails at the merge base, where the node does not exist; it does not attest an installed controller or host timer."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_landing_tlc_receipt_effect/test_landing_tlc_receipt_effect.py -q -n 0 -p no:randomly --no-cov --refuse-skips -k 'cli_publish or sync_installs'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac145-compaction-build-timings"
+    description: "Tier read_ms under an injected clock, build_ms on prepared and fallback receipts (None when the barrier fails first), model_section_ms on prepared, and ModelCompactionRoundTrip.from_prepared splitting the build. At the merge base 23 of these tests fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py tests/nodes/node_context_compaction_orchestrator/test_handler_context_compaction_orchestrator.py tests/nodes/node_context_compaction_latency_compute/test_latency_qualification.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC145"]
+  - id: "dod-omn17427-compaction-timings-deploy-probe"
+    description: "Deploy probe. In the checked-out package, the compaction orchestrator with a stub build and a two-tick clock publishes a prepared receipt with build_ms 250.0 and model_section_ms 75.0, and from_prepared splits it into 175.0 and 75.0. It fails at the merge base, which has no clock argument, no build_ms field and no from_prepared, and needs only uv and this checkout on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_handler_context_compaction_orchestrator.py tests/nodes/node_context_compaction_latency_compute/test_latency_qualification.py -q -n 0 -p no:randomly --no-cov -k 'test_installed_package_records_build_and_model_section_timings or test_round_trip_from_prepared_splits_build_phases'"
         cwd: "${OMNI_HOME}/omnimarket"

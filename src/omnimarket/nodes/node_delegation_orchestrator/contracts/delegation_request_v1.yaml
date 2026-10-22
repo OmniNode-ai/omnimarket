@@ -29,7 +29,7 @@ required_fields:
     description: "The user prompt to delegate to the local LLM."
   - name: "task_type"
     type: "string"
-    description: "Classification of the delegation task. Must be one of: test, document, research, code_generation, code_review, refactor, reasoning, complex_reasoning, planning, review, summarization, agent_delegation, escalation, documentation, validator_generation, brief_drafting, extraction_proposer, tail_summary, context_selection."
+    description: "Classification of the delegation task. Must be one of: test, document, research, code_generation, code_review, refactor, reasoning, complex_reasoning, planning, review, summarization, agent_delegation, escalation, documentation, validator_generation, brief_drafting, extraction_proposer, tail_summary, context_selection, evidence_comment, context_compaction."
     constraints:
       enum:
         - "test"
@@ -45,12 +45,14 @@ required_fields:
         - "summarization"
         - "agent_delegation"
         - "escalation"
+        - "evidence_comment"
         - "documentation"
         - "validator_generation"
         - "brief_drafting"
         - "extraction_proposer"
         - "tail_summary"
         - "context_selection"
+        - "context_compaction"
   - name: "correlation_id"
     type: "uuid"
     description: "Unique identifier for tracking through the pipeline."

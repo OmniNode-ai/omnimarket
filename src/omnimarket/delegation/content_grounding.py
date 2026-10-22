@@ -44,6 +44,9 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_claim_gr
     ModelClaimGroundingVerdict,
     ModelUngroundedClaim,
 )
+from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_evidence_comment import (
+    ModelEvidenceCommentPolicy,
+)
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_numeric_grounding import (
     ModelNameResolutionPolicy,
     ModelNameResolutionVerdict,
@@ -66,6 +69,7 @@ _NUMERIC_SECTION = "numeric_grounding"
 _CLAIM_GROUP = "token"
 _NAME_SECTION = "name_resolution"
 _CLAIM_SECTION = "claim_grounding"
+_EVIDENCE_SECTION = "evidence_comment"
 
 _FENCE_WITH_LANG_RE = re.compile(r"```([^\r\n]*)\r?\n(.*?)```", re.DOTALL)
 _FENCE_RE = re.compile(r"```")
@@ -115,6 +119,14 @@ def resolve_claim_grounding_policy() -> ModelClaimGroundingPolicy:
 def resolve_name_resolution_policy() -> ModelNameResolutionPolicy:
     """Load the contract's ``name_resolution`` block. Fail-closed."""
     return ModelNameResolutionPolicy.model_validate(_contract_section(_NAME_SECTION))
+
+
+@lru_cache(maxsize=1)
+def resolve_evidence_comment_policy() -> ModelEvidenceCommentPolicy:
+    """Load the contract's ``evidence_comment`` block. Fail-closed."""
+    return ModelEvidenceCommentPolicy.model_validate(
+        _contract_section(_EVIDENCE_SECTION)
+    )
 
 
 @lru_cache(maxsize=64)
@@ -448,21 +460,17 @@ def _python_blocks(content: str, policy: ModelNameResolutionPolicy) -> list[str]
     return [body for lang, body in fenced if lang.strip().lower() in tags]
 
 
-def _free_names(code: str) -> set[str] | None:
-    """Names the code reads that nothing in the code binds. None if unparseable.
+def _bound_and_read(code: str) -> tuple[set[str], set[str]] | None:
+    """The module-scope names the code binds, and those it reads. None if unparseable.
 
-    A module-scope symbol that is referenced but never assigned, imported or
-    defined is free. Inside a function or class, a symbol the compiler resolved
-    to the global scope is free unless the module binds it. A star import makes
-    every name potentially bound, so the answer is then unresolvable and yields
-    no finding rather than a guess.
+    A module-scope symbol that is assigned, imported or defined is bound.
+    Inside a function or class, a symbol the compiler resolved to the global
+    scope is read from the module, as is any symbol read at module scope.
     """
     try:
         top = symtable.symtable(code, "<delegated-answer>", "exec")
     except SyntaxError:
         return None
-    if _STAR_IMPORT_RE.search(code):
-        return set()
     bound = {
         symbol.get_name()
         for symbol in top.get_symbols()
@@ -483,6 +491,29 @@ def _free_names(code: str) -> set[str] | None:
             _walk(child)
 
     _walk(top)
+    return bound, referenced
+
+
+def _free_names(blocks: list[str]) -> set[str]:
+    """Names the answer's Python reads that none of its blocks binds.
+
+    OMN-21258: the blocks of one answer are one program, the way a reader runs
+    them. A function defined in one block and called in a usage block below it
+    is bound, so the module scope is the union of every block's. A block that
+    does not parse binds and reads nothing here (compiles_without_errors owns
+    that failure). A star import makes every name potentially bound, so the
+    answer is then unresolvable and yields no finding rather than a guess.
+    """
+    bound: set[str] = set()
+    referenced: set[str] = set()
+    for block in blocks:
+        if _STAR_IMPORT_RE.search(block):
+            return set()
+        names = _bound_and_read(block)
+        if names is None:
+            continue
+        bound |= names[0]
+        referenced |= names[1]
     return referenced - bound
 
 
@@ -506,23 +537,166 @@ def evaluate_name_resolution(
     answer = answer_segment(content, terminator=terminator)
     source_words = set(_compiled(policy.source_word_pattern).findall(grounding_source))
     known = _BUILTIN_NAMES | set(policy.implicit_module_names) | source_words
-    unresolved: list[str] = []
-    for block in _python_blocks(answer, policy):
-        free = _free_names(block)
-        if not free:
-            continue
-        for name in sorted(free - known):
-            if name not in unresolved:
-                unresolved.append(name)
+    unresolved = sorted(_free_names(_python_blocks(answer, policy)) - known)
     return ModelNameResolutionVerdict(
         evaluated=True,
         unresolved=tuple(unresolved[: policy.failure_policy.max_reported]),
     )
 
 
+# ---------------------------------------------------------------------------
+# criteria_covered / entry_cites_evidence
+# ---------------------------------------------------------------------------
+
+
+def _evidence_layout(
+    grounding_source: str, policy: ModelEvidenceCommentPolicy
+) -> tuple[dict[str, str], str] | None:
+    """The ``(criteria by label, lane report)`` of a draft's input, or None.
+
+    None -- no criteria block, no report block, no criterion, or the report
+    before the criteria -- means the input is not an evidence-comment prompt, so
+    the caller records the check as skipped.
+    """
+    criteria_header = _compiled(policy.criteria_header_pattern, re.MULTILINE).search(
+        grounding_source
+    )
+    report_header = _compiled(policy.report_header_pattern, re.MULTILINE).search(
+        grounding_source
+    )
+    if (
+        criteria_header is None
+        or report_header is None
+        or report_header.start() < criteria_header.end()
+    ):
+        return None
+    block = grounding_source[criteria_header.end() : report_header.start()]
+    criteria: dict[str, str] = {}
+    for match in _compiled(policy.criterion_pattern, re.MULTILINE).finditer(block):
+        criteria.setdefault(match.group("label"), match.group("text"))
+    if not criteria:
+        return None
+    return criteria, grounding_source[report_header.end() :]
+
+
+def _evidence_entries(
+    content: str, policy: ModelEvidenceCommentPolicy
+) -> list[tuple[str, str]]:
+    """The draft's ``(label, entry text)`` pairs; an entry runs to the next label."""
+    terminator = (
+        resolve_identifier_grounding_policy().answer_segment.stray_trace_terminator
+    )
+    answer = answer_segment(content, terminator=terminator)
+    matches = list(_compiled(policy.entry_label_pattern, re.MULTILINE).finditer(answer))
+    entries: list[tuple[str, str]] = []
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(answer)
+        entries.append((match.group("label"), answer[match.end() : end].strip()))
+    return entries
+
+
+def evaluate_criteria_covered(
+    *,
+    content: str,
+    grounding_source: str | None,
+    policy: ModelEvidenceCommentPolicy,
+) -> tuple[str | None, bool]:
+    """Every criterion label opens exactly one entry, in order, and no other does.
+
+    Returns ``(failure_reason_or_None, evaluated)``. A gate input with no
+    source, or a source that is not an evidence-comment prompt, is unevaluated.
+    """
+    if grounding_source is None:
+        return None, False
+    layout = _evidence_layout(grounding_source, policy)
+    if layout is None:
+        return None, False
+    expected = list(layout[0])
+    found = [label for label, _ in _evidence_entries(content, policy)]
+    if found == expected:
+        return None, True
+    missing = [label for label in expected if label not in found]
+    extra = [label for label in dict.fromkeys(found) if label not in expected]
+    repeated = [label for label in dict.fromkeys(found) if found.count(label) > 1]
+    detail = [f"expected {', '.join(expected)} once each in that order"]
+    if missing:
+        detail.append(f"missing {', '.join(missing)}")
+    if extra:
+        detail.append(f"not criteria {', '.join(extra)}")
+    if repeated:
+        detail.append(f"repeated {', '.join(repeated)}")
+    if not (missing or extra or repeated):
+        detail.append(f"found {', '.join(found)}")
+    return f"WEAK_OUTPUT: {policy.criteria_check_name}: " + "; ".join(detail), True
+
+
+def _words(text: str, minimum: int) -> set[str]:
+    return {w for w in re.findall(r"[a-z0-9_]+", text.lower()) if len(w) >= minimum}
+
+
+def evaluate_entry_cites_evidence(
+    *,
+    content: str,
+    grounding_source: str | None,
+    policy: ModelEvidenceCommentPolicy,
+) -> tuple[str | None, bool]:
+    """Each entry cites a token of the lane report or says the report holds none.
+
+    Returns ``(failure_reason_or_None, evaluated)``. An entry that is not the
+    no-evidence phrase fails when no evidence token in it occurs in the lane
+    report, or when it restates its criterion's own words.
+    """
+    if grounding_source is None:
+        return None, False
+    layout = _evidence_layout(grounding_source, policy)
+    if layout is None:
+        return None, False
+    criteria, report = layout
+    report_lower = report.lower()
+    token_res = [_compiled(p) for p in policy.evidence_token_patterns]
+    bare: list[str] = []
+    restated: list[str] = []
+    for label, text in _evidence_entries(content, policy):
+        if policy.no_evidence_phrase in text.lower():
+            continue
+        cited = any(
+            m.group(0).lower() in report_lower
+            for token_re in token_res
+            for m in token_re.finditer(text)
+        )
+        if not cited:
+            bare.append(label)
+        entry_words = _words(text, policy.min_word_length)
+        criterion_words = _words(criteria.get(label, ""), policy.min_word_length)
+        if (
+            entry_words
+            and len(entry_words & criterion_words) / len(entry_words)
+            >= policy.restatement_overlap
+        ):
+            restated.append(label)
+    if not (bare or restated):
+        return None, True
+    detail: list[str] = []
+    if bare:
+        detail.append(
+            f"entry cites no identifier, file, test, count or timestamp found in "
+            f"the lane report and does not say '{policy.no_evidence_phrase}': "
+            + ", ".join(bare[: policy.max_reported])
+        )
+    if restated:
+        detail.append(
+            "entry restates its criterion: "
+            + ", ".join(restated[: policy.max_reported])
+        )
+    return f"WEAK_OUTPUT: {policy.evidence_check_name}: " + "; ".join(detail), True
+
+
 __all__: list[str] = [
+    "evaluate_criteria_covered",
+    "evaluate_entry_cites_evidence",
     "evaluate_name_resolution",
     "evaluate_numeric_grounding",
+    "resolve_evidence_comment_policy",
     "resolve_name_resolution_policy",
     "resolve_numeric_grounding_policy",
 ]
