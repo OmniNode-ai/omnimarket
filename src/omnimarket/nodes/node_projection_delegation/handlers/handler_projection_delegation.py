@@ -49,6 +49,9 @@ from omnimarket.events.topics import (
     DELEGATE_SKILL_COMPLETED_TOPIC_V1,
     DELEGATE_SKILL_FAILED_TOPIC_V1,
 )
+from omnimarket.handlers.handler_modelled_terminal_savings import (
+    apply_modelled_terminal_savings,
+)
 from omnimarket.models.delegation.quality_bar_evidence import (
     extract_quality_bar_evidence,
 )
@@ -336,6 +339,9 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
     terminal_failure_cause: EnumDelegationTerminalFailureCause | None = Field(
         default=None
     )
+    # Canonical terminals state an outcome even when the producer names no
+    # cause. None leaves non-terminal task-delegated events unclassified.
+    terminal_ok: bool | None = Field(default=None, strict=True)
     # OMN-19448: canonical terminal trace_id, model_used and route respectively.
     trace_id: str | None = Field(default=None)
     routed_model: str | None = Field(default=None)
@@ -879,6 +885,8 @@ class HandlerProjectionDelegation:
             "override_within_bounds": event.override_within_bounds,
         }
         _stamp_declared_failure_cause(row, event.terminal_failure_cause)
+        if event.terminal_ok is not None:
+            row["terminal_ok"] = event.terminal_ok
         _stamp_terminal_trace_and_routing(row, event)
         _stamp_terminal_stop_reason(row, event.finish_reason, event.truncated)
         # Resolve only the event's declared tenant against the registry.
@@ -1142,6 +1150,7 @@ class HandlerProjectionDelegation:
         # delegation-completed.v1 canonical event. _preserve_existing_evidence
         # retains the existing non-blank value when the incoming row has none.
         _preserve_existing_evidence(db, row)
+        apply_modelled_terminal_savings(row, event)
         ok = bool(
             self._write_delegation_row(db, row, insert_only_columns=tenant_insert_only)
         )
@@ -1761,6 +1770,9 @@ def _canonical_result_to_task_delegated_payload(
         "content_verdict": payload.get("content_verdict"),
         # OMN-19448: the terminal's own cause; the converter used to drop it.
         "terminal_failure_cause": payload.get("terminal_failure_cause"),
+        # A canonical-only failure must participate in failed-row readbacks,
+        # including one whose producer omitted the typed cause.
+        "terminal_ok": quality_passed and payload.get("terminal_failure_cause") is None,
         # OMN-19448: copy the producer's trace and routing fields; UUID traces
         # are stored as TEXT so the asyncpg writer binds a string safely.
         "trace_id": (

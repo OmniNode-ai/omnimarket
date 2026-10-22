@@ -1079,7 +1079,22 @@ def _response_from_result(
     # names timeout, whatever its earlier rungs record. The budget stopped the
     # ladder with a rung in flight, so the gate did not decide it; any earlier
     # gate refusals stay on their own rungs in ``attempts``.
-    if (
+    pre_dispatch_refusal = (
+        status_value == "failed"
+        and result.get("attempts_count") == 0
+        and not attempts
+        and result.get("operational_outcome") == "boundary_failure"
+    )
+    if pre_dispatch_refusal:
+        # The inner canonical terminal reports an ingress boundary failure,
+        # before a provider or quality gate ran. The consumer-facing wire uses
+        # REFUSED_BEFORE_DISPATCH for that same zero-attempt fact; classifying
+        # its error prose as PROVIDER_ERROR makes the outer terminal invalid.
+        terminal_failure_cause = (
+            EnumDelegationTerminalFailureCause.REFUSED_BEFORE_DISPATCH
+        )
+        quality_failures = []
+    elif (
         status_value == "timeout"
         and explicit_terminal_failure_cause
         is EnumDelegationTerminalFailureCause.TIMEOUT
@@ -1127,7 +1142,9 @@ def _response_from_result(
             result.get("model_cloud_baseline") or result.get("baseline_model") or ""
         ),
     )
-    if baseline.state == "BASELINE_UNRESOLVED":
+    if baseline.state == "BASELINE_UNRESOLVED" or _cost_measured(attempts) is False:
+        # OMN-21260: savings against an unpriced cost would be the full baseline
+        # price, counted as measured. Unknown cost, unknown savings.
         cost_savings_usd: float | None = None
     elif status_value == "completed" and quality_gate_passed:
         estimate = _estimate_claude_cost_savings(
@@ -1220,7 +1237,9 @@ def _response_from_result(
         # provider returned with it is kept locally and in the attempt evidence.
         response=final_answer,
         quality_gate_passed=quality_gate_passed,
-        quality_score=_as_float(result.get("quality_score")),
+        quality_score=None
+        if pre_dispatch_refusal
+        else _as_float(result.get("quality_score")),
         required_quality_bar=_as_optional_float(result.get("required_quality_bar")),
         score_vs_required_bar=score_vs_required_bar,
         failed_acceptance_criteria=failed_acceptance_criteria,

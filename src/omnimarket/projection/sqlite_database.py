@@ -119,6 +119,7 @@ _DELEGATION_EVENTS_DECLARED_COLUMNS: tuple[str, ...] = (
     "session_id",
     "task_type",
     "tenant_id",
+    "terminal_failure_cause",
     "terminal_ok",
     "timestamp",
     "tokens_input",
@@ -661,6 +662,32 @@ _DELEGATION_SAVINGS_UNPRICED_VIEW_SQL = (
 # store step, not a statement on every connect: the sequence seed is a write, so
 # a read-only store, or a reader on a busy one, must not run it.
 _LOCAL_ENVIRONMENT_STEP = "omn19988_local_environment"
+# OMN-17427: the delegation reaper scans every 15 s for pending claims
+# (terminal_json = ''), on the runtime's event loop, and the claims table had
+# only its primary-key index, so each scan read the whole file. On a 105,322-row
+# copy of a dev claims store holding 16 pending rows that scan took 21,159 ms
+# cold and 135 to 167 ms warm; with this partial index, 113 ms cold and 1.5 to
+# 1.9 ms warm, and the build took 1,572 ms. It indexes only the pending rows and
+# changes no query result.
+_CLAIMS_PENDING_INDEX_STEP = "omn17427_claims_pending_index"
+_CLAIMS_PENDING_INDEX_DDL = (
+    "CREATE INDEX IF NOT EXISTS delegate_skill_command_claims_pending_idx "
+    "ON delegate_skill_command_claims (delivery_id) WHERE terminal_json = ''"
+)
+# OMN-17427: the delegation recovery handler asks the claim store, once per
+# delegation-completed event and on the runtime's event loop, for the claims of
+# one correlation (pending_claims), and no index covered correlation_id, so each
+# lookup read the whole claims file. On a 105,322-row copy of a dev claims store
+# that lookup took 4,446 ms cold and 39 to 41 ms warm; with this index, 7.1 ms
+# cold and under 0.1 ms warm, and the build took 165 ms. It is the SQLite
+# counterpart of the correlation index the Postgres migration
+# 0001_delegate_skill_command_claims.sql already declares, and changes no query
+# result.
+_CLAIMS_CORRELATION_INDEX_STEP = "omn17427_claims_correlation_index"
+_CLAIMS_CORRELATION_INDEX_DDL = (
+    "CREATE INDEX IF NOT EXISTS delegate_skill_command_claims_correlation_idx "
+    "ON delegate_skill_command_claims (correlation_id)"
+)
 
 # JSON-serialized columns: list/dict values are stored as TEXT JSON so the
 # sqlite row round-trips structurally for evidence queries.
@@ -923,6 +950,22 @@ class SqliteDatabaseAdapter:
                     "created the local environment table and its cursor",
                 )
             )
+        if not cls._store_step_recorded(conn, _CLAIMS_PENDING_INDEX_STEP):
+            pending.append(
+                (
+                    _CLAIMS_PENDING_INDEX_STEP,
+                    cls._create_claims_pending_index,
+                    "indexed the pending delegate-skill command claims",
+                )
+            )
+        if not cls._store_step_recorded(conn, _CLAIMS_CORRELATION_INDEX_STEP):
+            pending.append(
+                (
+                    _CLAIMS_CORRELATION_INDEX_STEP,
+                    cls._create_claims_correlation_index,
+                    "indexed the delegate-skill command claims by correlation",
+                )
+            )
         for index, (step, apply, _) in enumerate(pending):
             try:
                 conn.execute("BEGIN IMMEDIATE")
@@ -1085,6 +1128,16 @@ class SqliteDatabaseAdapter:
         conn.execute(_LOCAL_ENVIRONMENT_CURSOR_SEQ_SEED)
         for trigger in _LOCAL_ENVIRONMENT_CURSOR_TRIGGERS:
             conn.execute(trigger)
+
+    @staticmethod
+    def _create_claims_pending_index(conn: sqlite3.Connection) -> None:
+        """OMN-17427: the partial index the reaper's pending-claims query reads."""
+        conn.execute(_CLAIMS_PENDING_INDEX_DDL)
+
+    @staticmethod
+    def _create_claims_correlation_index(conn: sqlite3.Connection) -> None:
+        """OMN-17427: the index the recovery handler's correlation lookup reads."""
+        conn.execute(_CLAIMS_CORRELATION_INDEX_DDL)
 
     @staticmethod
     def _replace_delegation_model_routing_view(conn: sqlite3.Connection) -> None:

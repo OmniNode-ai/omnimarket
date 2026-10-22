@@ -404,6 +404,44 @@ claim_grounding:
     on_ungrounded: fail
     on_source_unavailable: skip_and_record
     max_reported: 25
+# OMN-17427 -- DONE-EVIDENCE COMMENT DRAFTS.
+#
+# A draft of a Linear done-evidence comment is built from a lane report and the
+# ticket's acceptance criteria. The prompt lays them out as two blocks: a line
+# `=== ACCEPTANCE CRITERIA ===` followed by one `AC<n>: <text>` line per
+# criterion, then a line `=== LANE REPORT ===` followed by the report. The draft
+# is one entry per criterion, each opening with its label. Two checks read that
+# layout. `criteria_covered`: every label of the criteria block opens exactly one
+# entry, in the criteria block's order, and no other label does.
+# `entry_cites_evidence`: an entry other than the literal no-evidence phrase
+# carries at least one token (an identifier, file or test name, count or
+# timestamp) that occurs in the lane report, and is not the criterion's own text
+# restated. The experiment of 2026-10-17 (54 drafts over 18 reports) found the
+# document gate scoring 1.0 on a draft whose entry restated its criterion and on
+# one that dropped the run result, which is why both checks exist. A prompt
+# without the two blocks leaves both UNEVALUATED (recorded skipped, never
+# passed). Both are reject-only: they fail a draft, never promote one.
+evidence_comment:
+  policy_version: "evidence-comment.v1"
+  criteria_check_name: "criteria_covered"
+  evidence_check_name: "entry_cites_evidence"
+  criteria_header_pattern: '^=== ACCEPTANCE CRITERIA ===[ \t]*$'
+  report_header_pattern: '^=== LANE REPORT ===[ \t]*$'
+  criterion_pattern: '^(?P<label>AC\d+):[ \t]*(?P<text>.*)$'
+  entry_label_pattern: '^[ \t]*(?:[-*][ \t]+|#{1,6}[ \t]+)?\**(?P<label>AC\d+)\**(?=[\s:.)*\u2013\u2014-]|$)'
+  no_evidence_phrase: "no evidence in the lane report"
+  evidence_token_patterns:
+    - '(?<![\w-])[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\w-])'
+    - '(?<![\w])(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}(?![\w])'
+    - '(?:[A-Za-z][A-Za-z0-9._-]*)?#\d{1,7}(?![\w])'
+    - '(?<![\w/-])OMN-\d{3,6}(?![\w-])'
+    - '[\w./-]+\.(?:py|yaml|yml|md|json|sh|toml)\b'
+    - '\btest_\w+'
+    - '\b\d+\s+(?:passed|failed|skipped|tests?|files?|rows?|checks?)\b'
+    - '\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}'
+  restatement_overlap: 0.9
+  min_word_length: 3
+  max_reported: 25
 # OMN-19529 -- NAME RESOLUTION FOR CODE CLASSES.
 #
 # WHY THIS EXISTS. compiles_without_errors proves only that code PARSES. Run

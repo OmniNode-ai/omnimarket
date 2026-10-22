@@ -1,0 +1,71 @@
+{
+  "observed_at": "2026-10-21T15:35:06.109506+00:00",
+  "status": "PASS",
+  "safe_tool_controls": {
+    "T01": true,
+    "T02": true,
+    "T03": true,
+    "T04": true,
+    "T05": true,
+    "T06": true,
+    "T07": true,
+    "T08": true,
+    "T09": true,
+    "T10": true,
+    "T11": true,
+    "T12": true,
+    "T13": true,
+    "T14": true,
+    "T15": true,
+    "T16": true,
+    "T17": true,
+    "T18": true,
+    "T19": true,
+    "T20": true,
+    "T21": true,
+    "T22": true,
+    "T23": true,
+    "T24": true,
+    "T25": true
+  },
+  "destructive_stubs_blocked": {
+    "delete_directory": true,
+    "force_push": true,
+    "run_command": true
+  },
+  "stub_calls_leave_fixture_hashes_unchanged": true,
+  "absolute_path_escape_blocked": {
+    "error": "ValueError",
+    "detail": "path escapes fixture root"
+  },
+  "worker": {
+    "ready": true,
+    "socket_probe": {
+      "blocked": true,
+      "errno": 1
+    },
+    "seccomp_mode": "Seccomp:\t2",
+    "denied_syscalls": [
+      "socket",
+      "socketpair",
+      "connect",
+      "bind",
+      "listen",
+      "accept",
+      "accept4",
+      "sendto",
+      "sendmsg",
+      "sendmmsg",
+      "recvfrom",
+      "recvmsg",
+      "recvmmsg",
+      "shutdown",
+      "execve",
+      "execveat",
+      "fork",
+      "vfork",
+      "clone",
+      "clone3"
+    ]
+  }
+}

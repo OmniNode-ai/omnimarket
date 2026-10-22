@@ -48,6 +48,7 @@ from omnimarket.nodes.node_local_secret_store_effect.models.model_local_secret_r
     ModelLocalSecretResult,
 )
 from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup import (
+    PROVIDERS,
     HandlerModelSetup,
     ModelSetupRefusedError,
 )
@@ -593,6 +594,12 @@ def store_key(
     except LocalSecretStoreRefusedError as refusal:
         raise ModelKeyRefusedError(str(refusal)) from None
     echo(f"Stored {secret_ref} in {store.db_path} (owner-only).")
+    if provider in PROVIDERS:
+        # OMN-21259: a new key starts untested; the old key's failed test
+        # must not keep it out of routing.
+        model_handler().handle(
+            ModelModelSetupRequest(operation="forget", provider=provider)
+        )
     route_ref = result.route_ref
     if provider is not None and route_ref is not None:
         details = [

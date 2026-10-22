@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: landing_tlc_receipt_effect
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Builds the landing controller's model-check approval receipt in CI with the controller's own gate
+  and installs a published receipt where the controller's installer reads it, so a merged controller
+  change installs without a hand step. publish runs on main in CI after the model check; sync runs on
+  the controller's host and re-verifies each receipt with the installed gate before moving it in.
+
+input_model: omnimarket.nodes.node_landing_tlc_receipt_effect.models.model_landing_tlc_publish_request.ModelLandingTlcPublishRequest
+output_model: omnimarket.nodes.node_landing_tlc_receipt_effect.models.model_landing_tlc_publish_result.ModelLandingTlcPublishResult
+handler:
+  module: omnimarket.nodes.node_landing_tlc_receipt_effect.handlers.handler_landing_tlc_publish
+  class: HandlerLandingTlcPublish
+  input_model: omnimarket.nodes.node_landing_tlc_receipt_effect.models.model_landing_tlc_publish_request.ModelLandingTlcPublishRequest
+  output_model: omnimarket.nodes.node_landing_tlc_receipt_effect.models.model_landing_tlc_publish_result.ModelLandingTlcPublishResult
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: publish_landing_tlc_receipt
+      handler:
+        name: HandlerLandingTlcPublish
+        module: omnimarket.nodes.node_landing_tlc_receipt_effect.handlers.handler_landing_tlc_publish
+      input_model: omnimarket.nodes.node_landing_tlc_receipt_effect.models.model_landing_tlc_publish_request.ModelLandingTlcPublishRequest
+      output_model: omnimarket.nodes.node_landing_tlc_receipt_effect.models.model_landing_tlc_publish_result.ModelLandingTlcPublishResult
+    - operation: sync_landing_tlc_receipts
+      handler:
+        name: HandlerLandingTlcSync
+        module: omnimarket.nodes.node_landing_tlc_receipt_effect.handlers.handler_landing_tlc_sync
+      input_model: omnimarket.nodes.node_landing_tlc_receipt_effect.models.model_landing_tlc_sync_request.ModelLandingTlcSyncRequest
+      output_model: omnimarket.nodes.node_landing_tlc_receipt_effect.models.model_landing_tlc_sync_result.ModelLandingTlcSyncResult
+
+terminal_event: onex.evt.omnimarket.landing-tlc-receipt-completed.v1
+
+descriptor:
+  runtime_profiles: []
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  side_effects:
+    - publish writes g-act-<pin>/ and its archive under the output directory
+    - sync downloads a release asset with gh and moves a verified g-act-<pin>/ into the landing state directory
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+runtime_dispatch:
+  external_trigger: The onex-landing-tlc-receipt CLI invokes the typed publish and sync handlers locally.
+externally_consumed_topics:
+  - onex.evt.omnimarket.landing-tlc-receipt-completed.v1
+
+metadata:
+  ticket: OMN-17427
+  transport_type: local

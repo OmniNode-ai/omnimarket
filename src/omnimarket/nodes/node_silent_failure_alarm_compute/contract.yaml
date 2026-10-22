@@ -1,0 +1,93 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The effect node calls these handlers in process. All decisions are pure: the caller reads the ledger, tick files, controller,
+# launchd job table and drainer, and passes the facts and persisted episodes in.
+name: silent_failure_alarm_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Decide the seven silent-failure alarms from facts a caller read, without I/O: lab-fill placed
+  under half of what it dispatched over two consecutive runs, or one lane refusal reason on most
+  of a run; the queue-status trend file older than 40 minutes while the landing controller is
+  live; a pool host that ran lanes in the last hour and sent no hook event for 30 minutes; an
+  hour with fewer merges than its bound while PRs are open, or no lane placed (OMN-19998); the
+  hook-emit drainer dead, because its supervisor job is not running, its interpreter is missing,
+  its status file is absent, or its last confirmed publish is older than 15 minutes while records
+  are queued or its cycle has stopped, with whether a reinstall is the safe answer and what the
+  reinstall did; and launchd jobs that exit nonzero on consecutive observed runs or miss their
+  interval, with one episode per job and cause for remote-lane dispatch, a cooldown per job and
+  cause, a cap on episodes opened in one tick, and a delayed push when no CLAIM cites the episode.
+  A host whose omni plugin, dispatch venv, installed controller or installed launchd lib has
+  differed from merged main for over an hour is read from the host-drift fleet fold.
+  Each verdict carries the FRICTION cells and the alert text.
+handler:
+  module: omnimarket.nodes.node_silent_failure_alarm_compute.handlers.handler_placement_share_alarm
+  class: HandlerPlacementShareAlarm
+  input_model: omnimarket.nodes.node_silent_failure_alarm_compute.models.model_placement_share_alarm.ModelPlacementShareRequest
+  output_model: omnimarket.nodes.node_silent_failure_alarm_compute.models.model_placement_share_alarm.ModelPlacementShareResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: decide_placement_share
+      handler:
+        name: HandlerPlacementShareAlarm
+        module: omnimarket.nodes.node_silent_failure_alarm_compute.handlers.handler_placement_share_alarm
+      input_model: omnimarket.nodes.node_silent_failure_alarm_compute.models.model_placement_share_alarm.ModelPlacementShareRequest
+      output_model: omnimarket.nodes.node_silent_failure_alarm_compute.models.model_placement_share_alarm.ModelPlacementShareResult
+    - operation: decide_tick_liveness
+      handler:
+        name: HandlerTickLivenessAlarm
+        module: omnimarket.nodes.node_silent_failure_alarm_compute.handlers.handler_tick_liveness_alarm
+      input_model: omnimarket.nodes.node_silent_failure_alarm_compute.models.model_tick_liveness_alarm.ModelTickLivenessRequest
+      output_model: omnimarket.nodes.node_silent_failure_alarm_compute.models.model_tick_liveness_alarm.ModelTickLivenessResult
+    - operation: decide_throughput_results
+      handler:
+        name: HandlerThroughputResultsAlarm
+        module: omnimarket.nodes.node_silent_failure_alarm_compute.handlers.handler_throughput_results_alarm
+      input_model: omnimarket.nodes.node_silent_failure_alarm_compute.models.model_throughput_results_alarm.ModelThroughputResultsRequest
+      output_model: omnimarket.nodes.node_silent_failure_alarm_compute.models.model_throughput_results_alarm.ModelThroughputResultsResult
+    - operation: decide_quiet_host
+      handler:
+        name: HandlerQuietHostAlarm
+        module: omnimarket.nodes.node_silent_failure_alarm_compute.handlers.handler_quiet_host_alarm
+      input_model: omnimarket.nodes.node_silent_failure_alarm_compute.models.model_quiet_host_alarm.ModelQuietHostRequest
+      output_model: omnimarket.nodes.node_silent_failure_alarm_compute.models.model_quiet_host_alarm.ModelQuietHostResult
+    - operation: decide_job_exit
+      handler:
+        name: HandlerJobExitAlarm
+        module: omnimarket.nodes.node_silent_failure_alarm_compute.handlers.handler_job_exit_alarm
+      input_model: omnimarket.nodes.node_silent_failure_alarm_compute.models.model_job_exit_alarm.ModelJobExitAlarmRequest
+      output_model: omnimarket.nodes.node_silent_failure_alarm_compute.models.model_job_exit_alarm.ModelJobExitAlarmResult
+    - operation: decide_drainer_dead
+      handler:
+        name: HandlerDrainerAlarm
+        module: omnimarket.nodes.node_silent_failure_alarm_compute.handlers.handler_drainer_alarm
+      input_model: omnimarket.nodes.node_silent_failure_alarm_compute.models.model_drainer_alarm.ModelDrainerRequest
+      output_model: omnimarket.nodes.node_silent_failure_alarm_compute.models.model_drainer_alarm.ModelDrainerResult
+    - operation: decide_running_vs_merged
+      handler:
+        name: HandlerRunningVsMergedAlarm
+        module: omnimarket.nodes.node_silent_failure_alarm_compute.handlers.handler_running_vs_merged_alarm
+      input_model: omnimarket.nodes.node_silent_failure_alarm_compute.models.model_running_vs_merged_alarm.ModelRunningVsMergedRequest
+      output_model: omnimarket.nodes.node_silent_failure_alarm_compute.models.model_running_vs_merged_alarm.ModelRunningVsMergedResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: []
+
+runtime_dispatch:
+  external_trigger: "The silent-failure alarm effect invokes the decision handlers in process with facts read by its host scheduler."
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+# The effect node calls these handlers in process, so the contract declares no bus topics: a
+# declared topic with no publisher or consumer would be a surface nothing can reach.
+lifecycle: experimental
+metadata:
+  ticket: OMN-17427
+  transport_type: local

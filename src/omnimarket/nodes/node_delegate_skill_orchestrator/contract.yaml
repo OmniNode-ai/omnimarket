@@ -128,12 +128,14 @@ allowed_task_types:
   - summarization
   - agent_delegation
   - escalation
+  - evidence_comment
   - documentation
   - validator_generation
   - brief_drafting
   - extraction_proposer
   - tail_summary
   - context_selection
+  - context_compaction
 
 inputs:
   prompt:
@@ -345,6 +347,10 @@ delegation_runtime_dispatch:
     completed: onex.evt.omnibase-infra.delegation-completed.v2
     failed: onex.evt.omnibase-infra.delegation-failed-routed.v2
     failed_unrouted: onex.evt.omnibase-infra.delegation-failed-unrouted.v2
+    # V2 requires an attempted model and readable config hashes. An ingress
+    # contract I/O failure has neither; accept only validated zero-attempt
+    # boundary failures on the canonical V1 failure topic.
+    pre_dispatch_failed: onex.evt.omnibase-infra.delegation-failed.v1
   request_message_type: omnibase-infra.delegation-request
   source_tool: delegate-skill-runtime-port
   consumer_group_prefix: delegate-skill-runtime-port
