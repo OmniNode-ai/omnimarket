@@ -670,6 +670,13 @@ requirements:
       - id: "AC152"
         statement: |-
           AC152: both delegation writers retain the canonical saving's counterfactual after runtime shutdown, preserve an existing pinned baseline, and invent none for a failed or zero-token terminal -- falsifier: uv run pytest tests/unit/nodes/node_projection_delegation/test_canonical_savings_counterfactual_omn20303.py -q -n 0 --no-cov
+  - id: "req-compaction-receipts-fold"
+    statement: "The compaction receipts fold derives one state per candidate, per activation and per invocation from the set of prepared, activated, fallback, installed, install-mismatch and install-uncertain receipts received, independent of their order and duplicates."
+    acceptance:
+      - id: "AC130"
+        statement: "AC130: installed and install_mismatch dominate not_installed and uncertain, installed with install_mismatch folds to conflict, prepared copies with differing assembly_hash fold to conflict, and two activations of one candidate with different model output fold to one prepared candidate with no conflict -- falsifier: uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_compaction_receipts_fold.py -q -k 'dominates or mismatch or conflict or model_outputs' fails"
+      - id: "AC131"
+        statement: "AC131: 200 seeded shuffles of a mixed receipt set, with duplicates inserted, fold to a byte-identical result, and appending a later boundary's receipts leaves every earlier activation's fold byte-identical -- falsifier: uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_compaction_receipts_fold.py -q -k 'permutations or later_boundary' fails"
   - id: "req-onex-models-lists-the-catalogue"
     statement: "onex models offers every provider the BYOK customer catalogue lets a customer route a key to, so z.ai's general API (glm) is listed, added and tested through the catalogue's own row, and no endpoint is written into the setup code."
     acceptance:
@@ -766,6 +773,11 @@ requirements:
     acceptance:
       - id: "AC182"
         statement: "AC182: a terminal emit with a slow broker close caps cleanup by its remaining publish/drain deadline on both publish success and failure, keeps failed events spooled, and cancels the timed-out background coroutine -- falsifier: uv run pytest tests/unit/nodes/node_event_emit_effect/test_session_deadline_omn17427.py -q -n 0 --no-cov --refuse-skips fails at the merge base."
+  - id: "req-declared-label-set-undeclared-backend"
+    statement: "A declared label set on a backend that does not declare json_schema support sends no provider directive, still refuses an out-of-vocabulary label and records the refusal in attempts, and a payload that omits the new wire fields is read as undeclared."
+    acceptance:
+      - id: "AC182"
+        statement: "AC182: on an undeclared backend the delegate-skill run sends no response_format, fails the garbled label with SCHEMA_VIOLATION naming it, and counts each refused attempt; a backend or call-request payload without the new fields reads as undeclared -- falsifier: uv run pytest tests/unit/delegation/test_declared_label_set_membership_omn18989.py -q fails when an omitted supports_response_format_json_schema defaults to True"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -994,6 +1006,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC182: the landing TLC receipt effect node builds, packs, installs and refuses receipts against a temporary gate and a fake release transport, and its entry point agrees with the installed package."
     command: "uv run pytest tests/nodes/node_landing_tlc_receipt_effect/test_landing_tlc_receipt_effect.py -q -p no:randomly --no-cov"
+  - kind: "tests"
+    description: "AC182: the declared label set tests pass on a declaring and an undeclared backend, and an omitted wire field reads as undeclared."
+    command: "uv run pytest tests/unit/delegation/test_declared_label_set_membership_omn18989.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -2890,6 +2905,28 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_kafka_publish_session.py -q -n 0 -p no:randomly --no-cov -k handle"
+  - id: "dod-omn17427-compaction-receipts-fold-precedence"
+    description: "The receipts fold's precedence and conflict rules hold on the fixture table."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_compaction_receipts_fold.py -q --no-cov -k 'dominates or mismatch or conflict or model_outputs'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC130"]
+  - id: "dod-omn17427-receipts-fold-order-independence"
+    description: "The receipts fold is a function of the set received: shuffles and duplicates do not change it, and a later boundary does not revise an earlier activation."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_compaction_receipts_fold.py -q --no-cov -k 'permutations or later_boundary'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC131"]
+  - id: "dod-omn17427-compaction-receipts-fold-deploy-probe"
+    description: "Deploy probe: the shipped fold node imports from its onex.nodes entry point and its contract names a handler and models that exist; the node is pure, so no service deployment or credentials are required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_compaction_receipts_fold.py -q --no-cov -k contract_metadata_and_entry_point"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac93-onex-models-lists-the-catalogue"
     description: "onex models offers every catalogue provider with a routable plan, lists GLM on a fresh profile, and adds and tests a GLM key through the catalogue's default plan row, with plan detection and the pinned delegation faked. The test file is absent at the merge base, and with it laid over the merge base six of its ten tests fail."
@@ -2966,6 +3003,21 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_unreachable_backoff_omn17427.py -q -n 0 -p no:randomly --no-cov -k backs_off_across_handler_instances"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac182-undeclared-label-set"
+    description: "AC182. The delegate-skill run on an undeclared backend sends no response_format and refuses the garbled label with each refusal counted in attempts; payloads that omit the new fields read as undeclared. Flipping the omitted-field default to True fails the three undeclared cases."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_declared_label_set_membership_omn18989.py -q -p no:cacheprovider -k 'undeclared or omit_the_new_wire_fields'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC182"]
+  - id: "dod-omn17427-undeclared-label-set-deploy"
+    description: "Deploy probe. The undeclared-backend cases and the omitted-wire-field test pass on the checked-out source. They need uv and this checkout on the hosted runner, with no provider or credentials; the cases do not exist at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/delegation/test_declared_label_set_membership_omn18989.py -q --no-cov -p no:cacheprovider -k 'undeclared or omit_the_new_wire_fields'"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac154-compaction-latency-runner"
     description: "The TA.12 runner in the hook adapter node: cold and warm trips through the adapter, wall time, the prepared-receipt phase split, refusals for missing or inconsistent timings and adapter errors, the CLI exit codes, and tabulation of its trips through the latency qualification compute. At the merge base the test module fails to collect."
