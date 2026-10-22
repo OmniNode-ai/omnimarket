@@ -8,6 +8,9 @@ import importlib.util
 import json
 import logging
 import os
+import re
+import shutil
+import subprocess
 import sys
 from collections.abc import Iterator
 from pathlib import Path
@@ -115,6 +118,8 @@ def test_build_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         "UV_TOOL_DIR",
         "UV_TOOL_BIN_DIR",
         "UV_INDEX_URL",
+        "UV_PYTHON",
+        "UV_PYTHON_INSTALL_DIR",
         "XDG_CONFIG_HOME",
         "XDG_DATA_HOME",
         "XDG_CACHE_HOME",
@@ -378,6 +383,50 @@ def test_workflow_covers_intel_macos_from_source() -> None:
     recipe = [s for s in steps if "brew install" in s.get("run", "")]
     assert len(recipe) == 1
     assert "macos-15-intel" in recipe[0]["if"]
+
+
+@pytest.mark.parametrize("job_id", ["canary", "planted-bad-pin-selftest"])
+def test_workflow_install_uses_setup_uv_python(
+    job_id: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The clean home must keep the interpreter provisioned by setup-uv.
+
+    Without its explicit selection uv can choose a newer system Python with
+    no wheels for the customer's dependencies, even though setup-uv ran.
+    Exercise the workflow's actual passthrough arguments through build_env
+    and uv's interpreter discovery, without installing any dependencies.
+    """
+    workflow = yaml.safe_load(WORKFLOW.read_text())
+    steps = workflow["jobs"][job_id]["steps"]
+    setup = next(
+        s for s in steps if s.get("uses", "").startswith("astral-sh/setup-uv@")
+    )
+    assert setup["with"]["python-version"] == "3.12"
+    run = next(s["run"] for s in steps if "run_install_canary.py" in s.get("run", ""))
+    passthrough = re.findall(r"--pass-env\s+(UV_\w+)", run)
+    python = str(Path(sys.executable).resolve())
+    python_dir = str(tmp_path / "managed-python")
+    monkeypatch.setenv("UV_PYTHON", python)
+    monkeypatch.setenv("UV_PYTHON_INSTALL_DIR", python_dir)
+    monkeypatch.setenv("OPENAI_API_KEY", "must-not-reach-install")
+    home = tmp_path / "home"
+    home.mkdir()
+    env = canary.build_env(home, passthrough)
+    assert env["UV_PYTHON"] == python
+    assert env["UV_PYTHON_INSTALL_DIR"] == python_dir
+    assert "OPENAI_API_KEY" not in env
+    uv = shutil.which("uv")
+    assert uv is not None, "the canary requires uv"
+    selected = subprocess.run(
+        [uv, "python", "find", "--offline", "--no-config"],
+        env=env,
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=30,
+    )
+    assert Path(selected.stdout.strip()).resolve() == Path(python)
 
 
 def test_stub_bind_does_no_name_lookup(monkeypatch: pytest.MonkeyPatch) -> None:

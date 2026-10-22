@@ -1,0 +1,8 @@
+{
+ "ok": false,
+ "error": {
+  "code": "invalid_request",
+  "message": "Request body is invalid",
+  "correlationId": "00000000-0000-4000-8000-000000000000"
+ }
+}
