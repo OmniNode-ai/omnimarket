@@ -807,6 +807,11 @@ requirements:
     acceptance:
       - id: "AC184"
         statement: "AC184: a tier source answering five open_work rows in forward, reversed or shuffled order yields a built pack whose rendered text carries the rows in that same order -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -k source_order fails at the merge base, where every artifact keeps the default source_priority 100 and the builder orders a tier's chunks by hash"
+  - id: "req-in-process-evidence-outcome-verdict"
+    statement: "An accepted in-process onex delegate run's delegation_events row states operational_outcome completed and content_verdict usable, as the runtime terminal of an accepted run does, because on that path only the local port's evidence terminal reaches the projection and the bus, and it named neither; a failed in-process run states neither, since the payload does not carry which gate branch refused it."
+    acceptance:
+      - id: "AC186"
+        statement: "AC186: LocalDelegationDispatchPort._project_evidence with quality_passed true publishes operational_outcome completed and content_verdict usable and the delegation projection writes both onto the row; with quality_passed false the payload names neither and the row is not completed/usable -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_in_process_evidence_outcome_verdict_omn19448.py -q fails at the merge base, where the evidence payload has no operational_outcome"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -3485,4 +3490,19 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -n 0 -p no:randomly --no-cov -k 'source_order and days1'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac186-in-process-outcome-verdict"
+    description: "The in-process evidence terminal of an accepted run publishes operational_outcome completed and content_verdict usable, and the delegation projection copies both onto the row; a failed run's terminal names neither. At the merge base the accepted-run test fails with KeyError operational_outcome."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_in_process_evidence_outcome_verdict_omn19448.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC186"]
+  - id: "dod-omn17427-in-process-outcome-deploy-probe"
+    description: "Deploy probe. In the checked-out package, _project_evidence of an accepted run publishes a terminal whose projected delegation_events row carries operational_outcome completed and content_verdict usable. It fails at the merge base and needs only uv and this checkout on the hosted runner; it does not attest a live deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_in_process_evidence_outcome_verdict_omn19448.py -q -n 0 -p no:randomly --no-cov -k test_accepted_in_process_evidence_states_completed_usable"
         cwd: "${OMNI_HOME}/omnimarket"
