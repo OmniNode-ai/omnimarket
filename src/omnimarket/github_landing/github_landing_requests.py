@@ -202,6 +202,13 @@ def merge_queue_entries_request(repository: str, branch: str) -> ModelGithubHttp
     )
 
 
+def job_request(repository: str, job_id: int) -> ModelGithubHttpRequest:
+    """GET one job, with its steps (OMN-17427)."""
+    return ModelGithubHttpRequest(
+        method="GET", path=f"{_repo_path(repository)}/actions/jobs/{job_id}"
+    )
+
+
 def job_log_request(repository: str, job_id: int) -> ModelGithubHttpRequest:
     """GET one job's plain-text log (GitHub redirects to a signed URL)."""
     return ModelGithubHttpRequest(
@@ -575,6 +582,7 @@ __all__: list[str] = [
     "head_check_runs_request",
     "issue_comments_request",
     "job_log_request",
+    "job_request",
     "landing_policy_request",
     "mark_ready_request",
     "merge_at_head_request",
