@@ -378,14 +378,35 @@ def _claim(ctx: ModelMorningToolContext) -> str | None:
     return str(json.loads(path.read_text())["stamp"]) if path.is_file() else None
 
 
+#: How much of the ledger's refusal the agent sees. The ledger prints its reason first and then
+#: echoes the whole row, so the head carries the reason and the tail only the row the agent sent.
+REFUSAL_CHARS = 1200
+#: The ledger's quantitative-claim lint (OMN-15897) refuses a count with no citation beside it.
+COUNT_LINT = "quantitative-claim"
+
+
+def _refusal(done: Result) -> str:
+    """The ledger's own reason for refusing a row, from the head of its output."""
+    text = " ".join(
+        str(done[key]).strip() for key in ("stderr", "stdout") if str(done[key]).strip()
+    )
+    reason = (
+        f"onex-ledger refused the row (exit {done['exit']}): {text[:REFUSAL_CHARS]}"
+    )
+    if COUNT_LINT in text:
+        reason += (
+            " FIX: put each count next to the citation that backs it (repo#n, a commit sha, an "
+            "OMN ticket or a run id) or leave the count out; the artifact carries the numbers."
+        )
+    return reason
+
+
 def _append(ctx: ModelMorningToolContext, row: str) -> Result:
     done = _proc(
         [*ctx.command("ledger_append_command"), row], cwd=ctx.root, timeout=330
     )
     if done["exit"] != 0:
-        raise MorningToolRefusalError(
-            f"onex-ledger refused the row: {str(done['stdout'])[-600:]} {str(done['stderr'])[-600:]}"
-        )
+        raise MorningToolRefusalError(_refusal(done))
     return done
 
 
@@ -434,7 +455,11 @@ class ModelTerminalInput(BaseModel):
     summary: CellText = Field(
         min_length=12,
         max_length=900,
-        description="what the phase delivered, with counts",
+        description=(
+            "what the phase delivered; the ledger refuses a bare count, so each number sits "
+            "next to its citation (repo#n, a commit sha, an OMN ticket or a run id) or is left "
+            "to the artifact"
+        ),
     )
     friction: CellText | None = Field(
         default=None,
@@ -456,12 +481,18 @@ def ledger_append_terminal(ctx: ModelMorningToolContext, params: BaseModel) -> R
         )
     friction = "none"
     if p.friction:
-        stamp = _now()
-        _append(
-            ctx,
-            f"{stamp} | FRICTION | lane={lane} | ticket={ticket} | "
-            f"cost=~{p.friction_cost_minutes} lane-minutes | {p.friction}",
-        )
+        # A TERMINAL the ledger refused is sent again; its FRICTION row is written once.
+        written = ctx.state() / f"friction-{ctx.phase_label}.json"
+        seen = json.loads(written.read_text()) if written.is_file() else {}
+        stamp = str(seen.get("stamp", "")) if seen.get("text") == p.friction else ""
+        if not stamp:
+            stamp = _now()
+            _append(
+                ctx,
+                f"{stamp} | FRICTION | lane={lane} | ticket={ticket} | "
+                f"cost=~{p.friction_cost_minutes} lane-minutes | {p.friction}",
+            )
+            written.write_text(json.dumps({"text": p.friction, "stamp": stamp}))
         friction = f"FRICTION {stamp}"
     cells = _cells(ctx)
     if cells.get("undisposed"):

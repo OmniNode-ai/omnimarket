@@ -439,6 +439,59 @@ def test_claim_delegation_and_terminal_go_through_the_overlay_programs(
 
 
 @pytest.mark.unit
+def test_a_refused_terminal_names_the_ledgers_reason_and_writes_its_friction_once(
+    tmp_path: Path,
+) -> None:
+    """The 2026-10-22 proof: the ledger refused a TERMINAL on its count lint three times and the
+    agent saw only the tail of the echoed row, never the reason (OMN-15897, OMN-17427)."""
+    ctx = _ctx(tmp_path)
+    _run(
+        "ledger_append_claim",
+        ctx,
+        est_hours=1,
+        displaces="nothing queued",
+        what="the dropped-work report for the day",
+    )
+    appended = tmp_path / "appended.txt"
+    refuse = _program(
+        tmp_path / "refuse.py",
+        "row = sys.argv[1]\n"
+        "if '| TERMINAL |' in row:\n"
+        "    sys.stderr.write('ledger_lock: OMN-15897 quantitative-claim lint rejected append '"
+        "'-- line 1 (bare quantitative claim(s) with no adjacent citation: \\'262 PRs\\'): ' "
+        "+ row + ' ' + 'x' * 900)\n"
+        "    sys.exit(65)\n"
+        f"open({str(appended)!r}, 'a').write(row + '\\n')",
+    )
+    refusing = ctx.model_copy(
+        update={
+            "commands": {
+                **ctx.commands,
+                "ledger_append_command": [sys.executable, str(refuse)],
+            }
+        }
+    )
+    for _ in range(2):
+        with pytest.raises(MorningToolRefusalError) as refused:
+            _run(
+                "ledger_append_terminal",
+                refusing,
+                outcome="done",
+                summary="report delivered; census of 262 PRs",
+                friction="the census read twice",
+            )
+        assert "exit 65" in str(refused.value)
+        assert "OMN-15897 quantitative-claim lint" in str(refused.value)
+        assert "'262 PRs'" in str(refused.value)
+        assert "FIX: put each count next to the citation" in str(refused.value)
+    frictions = [
+        row for row in appended.read_text().splitlines() if "| FRICTION |" in row
+    ]
+    assert len(frictions) == 1
+    assert "the census read twice" in frictions[0]
+
+
+@pytest.mark.unit
 def test_a_terminal_without_a_claim_refuses(tmp_path: Path) -> None:
     with pytest.raises(MorningToolRefusalError, match="ledger_append_claim first"):
         _run(
