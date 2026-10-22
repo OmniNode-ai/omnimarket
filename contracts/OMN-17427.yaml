@@ -807,6 +807,11 @@ requirements:
     acceptance:
       - id: "AC184"
         statement: "AC184: a tier source answering five open_work rows in forward, reversed or shuffled order yields a built pack whose rendered text carries the rows in that same order -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -k source_order fails at the merge base, where every artifact keeps the default source_priority 100 and the builder orders a tier's chunks by hash"
+  - id: "req-moved-contract-omn13213"
+    statement: "contracts/OMN-13213.yaml is carried in omnimarket, where the scheduled closer's contract resolver reads it, and loads as omnibase_core's ModelTicketContract with the role placeholder in its branch name."
+    acceptance:
+      - id: "AC186"
+        statement: "AC186: contracts/OMN-13213.yaml loads as ModelTicketContract with ticket_id OMN-13213 and its one dod_evidence item, and names the branch <operator>/omn-13213-d-reclassify-node_emit_daemon-effect-node -- falsifier: uv run pytest tests/ci/test_moved_contract_omn13213_omn17427.py -q fails at the merge base, where the contract is absent"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -1044,6 +1049,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC184: a built pack carries a tier's entries in source order."
     command: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -k source_order"
+  - kind: "tests"
+    description: "AC186: the contract moved from change control loads in omnimarket."
+    command: "uv run pytest tests/ci/test_moved_contract_omn13213_omn17427.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -3485,4 +3493,19 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -n 0 -p no:randomly --no-cov -k 'source_order and days1'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac186-moved-contract-omn13213"
+    description: "contracts/OMN-13213.yaml, moved from the change-control repository, loads as ModelTicketContract and carries the role placeholder in its branch name. Both tests fail at the merge base, where the contract is absent."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_moved_contract_omn13213_omn17427.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC186"]
+  - id: "dod-omn17427-moved-contract-deploy-probe"
+    description: "Deploy probe. The hosted runner loads the checked-out contracts/OMN-13213.yaml through omnibase_core's ModelTicketContract with the locked dependencies; no credentials. It fails at the merge base and does not attest the closer's live read."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ci/test_moved_contract_omn13213_omn17427.py -q -n 0 -p no:randomly --no-cov --refuse-skips -k loads"
         cwd: "${OMNI_HOME}/omnimarket"
