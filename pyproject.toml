@@ -469,6 +469,7 @@ node_deployment_fact_gate_effect = "omnimarket.nodes.node_deployment_fact_gate_e
 node_shadow_review_effect = "omnimarket.nodes.node_shadow_review_effect"
 node_closeout_verifier_compute = "omnimarket.nodes.node_closeout_verifier_compute"
 node_context_pack_builder_compute = "omnimarket.nodes.node_context_pack_builder_compute"
+node_context_compaction_receipts_fold_compute = "omnimarket.nodes.node_context_compaction_receipts_fold_compute"
 node_context_install_confirm_compute = "omnimarket.nodes.node_context_install_confirm_compute"
 node_context_pack_orchestrator = "omnimarket.nodes.node_context_pack_orchestrator"
 node_context_pack_render_compute = "omnimarket.nodes.node_context_pack_render_compute"
