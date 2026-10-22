@@ -274,3 +274,220 @@ def test_runtime_tick_without_database_reports_no_db(
     )
     assert result is not None
     assert result.status is EnumCleanupStatus.NO_DB
+
+
+# ---------------------------------------------------------------------------
+# Run budget: the handler runs on the runtime's event loop, so a backlog must
+# be drained across ticks and not in one blocking call.
+# ---------------------------------------------------------------------------
+
+
+def _clock(monkeypatch: pytest.MonkeyPatch, step: float) -> None:
+    now = [0.0]
+
+    def tick() -> float:
+        now[0] += step
+        return now[0]
+
+    monkeypatch.setattr(mod, "_monotonic", tick)
+
+
+def test_contract_declares_a_short_run_budget() -> None:
+    schedule = mod.contract_schedule(_CONTRACT)
+    assert 0 < schedule.max_run_seconds <= 10
+    assert schedule.backlog_retry_seconds < schedule.run_interval_seconds
+
+
+def test_run_budget_stops_after_the_first_batch_past_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _patch(monkeypatch, [_CFW], delete_counts=[100] * 20)
+    _clock(monkeypatch, step=1.0)
+
+    result = NodeRetentionCleanup().handle(
+        RetentionCleanupRequest(db_url="postgresql://unused/db", max_run_seconds=3)
+    )
+
+    # The deadline is read once at the start (t=1 -> 4); the check after each
+    # batch reads t=2, 3, 4, so the third batch is the one that ends the run.
+    assert result.tables[0].batches == 3
+    assert result.total_deleted == 300
+    assert result.tables[0].backlog_remaining is True
+    assert result.backlog_remaining is True
+    assert len([s for s in conn.log if "DELETE" in s]) == 3
+    assert conn.log[-1] == "COMMIT", "the last batch is committed, never abandoned"
+
+
+def test_run_budget_already_spent_still_makes_progress(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch(monkeypatch, [_CFW], delete_counts=[100] * 5)
+    _clock(monkeypatch, step=10.0)
+
+    result = NodeRetentionCleanup().handle(
+        RetentionCleanupRequest(db_url="postgresql://unused/db", max_run_seconds=1)
+    )
+
+    assert result.tables[0].batches == 1
+    assert result.total_deleted == 100
+
+
+def test_drained_table_reports_no_backlog_even_after_full_batches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch(monkeypatch, [_CFW], delete_counts=[100, 100, 7])
+    _clock(monkeypatch, step=0.001)
+
+    result = NodeRetentionCleanup().handle(
+        RetentionCleanupRequest(db_url="postgresql://unused/db", max_run_seconds=60)
+    )
+
+    assert result.tables[0].batches == 3
+    assert result.tables[0].backlog_remaining is False
+    assert result.backlog_remaining is False
+
+
+def test_no_budget_runs_to_max_batches_and_reports_the_backlog(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capped = _CFW.model_copy(update={"max_batches": 2})
+    _patch(monkeypatch, [capped], delete_counts=[100] * 4)
+
+    result = NodeRetentionCleanup().handle(
+        RetentionCleanupRequest(db_url="postgresql://unused/db")
+    )
+
+    assert result.tables[0].batches == 2
+    assert result.tables[0].backlog_remaining is True
+
+
+def test_tick_resumes_a_backlog_after_the_retry_wait_not_the_interval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch(monkeypatch, [_CFW], delete_counts=[100, 100, 100, 3, 50])
+    _clock(monkeypatch, step=3.0)
+    monkeypatch.setenv(mod.contract_schedule().database_url_env, "postgresql://u/db")
+    schedule = mod.contract_schedule()
+    node = NodeRetentionCleanup()
+    t0 = dt.datetime(2026, 10, 16, 23, 0, tzinfo=dt.UTC)
+    retry = dt.timedelta(seconds=schedule.backlog_retry_seconds)
+
+    first = node.handle(_tick(t0))
+    too_soon = node.handle(_tick(t0 + retry - dt.timedelta(seconds=1)))
+    second = node.handle(_tick(t0 + retry))
+    after_drain = node.handle(_tick(t0 + 2 * retry))
+    next_interval = node.handle(
+        _tick(t0 + retry + dt.timedelta(seconds=schedule.run_interval_seconds))
+    )
+
+    assert first is not None
+    assert first.backlog_remaining is True, "budget ended the first run on a full batch"
+    assert too_soon is None
+    assert second is not None
+    assert second.backlog_remaining is False, "a short batch drains the table"
+    assert after_drain is None, "drained: back to the full interval"
+    assert next_interval is not None
+
+
+# ---------------------------------------------------------------------------
+# Off the loop: one batch of the consumer_flow_windows delete was measured at
+# over 34 s on the lab dev lane, and every run takes at least one batch, so the
+# budget alone cannot keep the event loop answering. The runtime entry point
+# runs the run in a worker thread.
+# ---------------------------------------------------------------------------
+
+
+def test_runtime_entry_point_is_handle_async() -> None:
+    from omnibase_infra.runtime.auto_wiring.handler_wiring import (
+        _resolve_effective_handle_method,
+    )
+
+    node = NodeRetentionCleanup()
+    resolved = _resolve_effective_handle_method(node)
+    assert resolved is not None
+    assert getattr(resolved, "__name__", "") == "handle_async"
+
+
+def test_scheduled_run_leaves_the_event_loop_free(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+    import threading
+
+    _patch(monkeypatch, [_CFW], delete_counts=[3])
+    monkeypatch.setenv(mod.contract_schedule().database_url_env, "postgresql://u/db")
+    release = threading.Event()
+    seen: dict[str, object] = {}
+    real_run = NodeRetentionCleanup._run
+
+    def blocking_run(
+        self: NodeRetentionCleanup, request: RetentionCleanupRequest
+    ) -> mod.RetentionCleanupResult:
+        seen["thread"] = threading.current_thread()
+        # Holds the run the way a slow batch does; the loop must keep going.
+        assert release.wait(timeout=10), "the loop never ran while the run held"
+        return real_run(self, request)
+
+    monkeypatch.setattr(NodeRetentionCleanup, "_run", blocking_run)
+
+    async def scenario() -> mod.RetentionCleanupResult | None:
+        node = NodeRetentionCleanup()
+        run = asyncio.create_task(
+            node.handle_async(_tick(dt.datetime(2026, 10, 21, 20, 0, tzinfo=dt.UTC)))
+        )
+        for _ in range(200):
+            await asyncio.sleep(0.01)
+            if "thread" in seen:
+                break
+        seen["loop_ran_while_held"] = "thread" in seen and not run.done()
+        release.set()
+        return await run
+
+    result = asyncio.run(scenario())
+
+    assert result is not None
+    assert result.total_deleted == 3
+    assert seen["thread"] is not threading.main_thread()
+    assert seen["loop_ran_while_held"] is True
+
+
+def test_tick_during_a_run_is_skipped_not_queued(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+    import threading
+
+    _patch(monkeypatch, [_CFW], delete_counts=[3, 3])
+    monkeypatch.setenv(mod.contract_schedule().database_url_env, "postgresql://u/db")
+    release = threading.Event()
+    started = threading.Event()
+    runs: list[int] = []
+    real_run = NodeRetentionCleanup._run
+
+    def blocking_run(
+        self: NodeRetentionCleanup, request: RetentionCleanupRequest
+    ) -> mod.RetentionCleanupResult:
+        runs.append(1)
+        started.set()
+        assert release.wait(timeout=10)
+        return real_run(self, request)
+
+    monkeypatch.setattr(NodeRetentionCleanup, "_run", blocking_run)
+    t0 = dt.datetime(2026, 10, 21, 20, 0, tzinfo=dt.UTC)
+    late = t0 + dt.timedelta(seconds=mod.contract_schedule().run_interval_seconds)
+
+    async def scenario() -> tuple[object, object]:
+        node = NodeRetentionCleanup()
+        first = asyncio.create_task(node.handle_async(_tick(t0)))
+        while not started.is_set():
+            await asyncio.sleep(0.01)
+        # Due by the interval, but the first run still holds its thread.
+        second = await node.handle_async(_tick(late))
+        release.set()
+        return await first, second
+
+    first, second = asyncio.run(scenario())
+
+    assert first is not None
+    assert second is None, "a tick during a run must not start a second run"
+    assert runs == [1]
