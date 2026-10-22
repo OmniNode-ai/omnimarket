@@ -29,6 +29,7 @@ from typing import IO, Literal
 from pydantic import SecretStr
 
 from omnimarket.config.service_endpoints import GITHUB_GRAPHQL_URL, GITHUB_REST_URL
+from omnimarket.github_landing.github_log_window import JobLogWindow
 from omnimarket.github_landing.model_github_http_exchange import (
     GITHUB_GRAPHQL_PATH,
     ModelGithubBytesResponse,
@@ -40,6 +41,9 @@ GITHUB_API_VERSION = "2026-03-10"
 REQUEST_TIMEOUT_SECONDS = 30.0
 _MAX_TEXT_BODY = 1000
 _READ_CHUNK = 64 * 1024
+# OMN-17427: a window read streams the log to its end for total_bytes, but
+# never reads more than this; past it the read stops and says so.
+MAX_LOG_READ_BYTES = 64 * 1024 * 1024
 
 
 class GithubLandingTransportError(RuntimeError):
@@ -196,6 +200,51 @@ class UrllibGithubLandingTransport:
                 f"{request.method} {request.path}: no response ({reason})"
             ) from None
 
+    def send_bytes_window_sync(
+        self, request: ModelGithubHttpRequest, *, window: JobLogWindow
+    ) -> ModelGithubBytesResponse:
+        """Send one GET whose body is a log, kept through ``window`` (OMN-17427).
+
+        The redirect and error paths are those of :meth:`send_bytes_sync`. The
+        stream is read to its end, at most ``MAX_LOG_READ_BYTES``; the
+        response's ``over_limit`` says the read stopped at that ceiling, and
+        ``content`` is what the window kept.
+
+        Raises:
+            GithubLandingTransportError: when no response arrived.
+        """
+        opener = urllib.request.build_opener(_AuthStrippingRedirectHandler())
+        try:
+            with opener.open(
+                self._urllib_request(request), timeout=self._timeout
+            ) as resp:
+                total, ceiling_hit = _read_window(resp, window)
+                return ModelGithubBytesResponse(
+                    status=resp.status,
+                    headers=_headers(resp.headers),
+                    content=window.kept,
+                    total_bytes=total,
+                    over_limit=ceiling_hit,
+                    keep="window",
+                )
+        except urllib.error.HTTPError as exc:
+            body = exc.read(_MAX_TEXT_BODY)
+            return ModelGithubBytesResponse(
+                status=exc.code,
+                headers=_headers(exc.headers),
+                content=body,
+                total_bytes=len(body),
+                over_limit=False,
+                keep="window",
+            )
+        except (urllib.error.URLError, OSError) as exc:
+            reason = str(getattr(exc, "reason", exc)).replace(
+                self._token.get_secret_value(), "[redacted]"
+            )
+            raise GithubLandingTransportError(
+                f"{request.method} {request.path}: no response ({reason})"
+            ) from None
+
 
 class _AuthStrippingRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Follow a redirect, dropping Authorization when the host changes."""
@@ -241,8 +290,30 @@ def _read_capped(
     return bytes(kept), total, total > limit
 
 
+def _read_window(stream: IO[bytes], window: JobLogWindow) -> tuple[int, bool]:
+    """Feed ``stream`` to ``window``: (total read, stopped at the ceiling).
+
+    Reads to the end of the stream, or to ``MAX_LOG_READ_BYTES`` when the
+    stream is longer; memory stays bounded by the window plus one chunk.
+    """
+    ceiling = MAX_LOG_READ_BYTES
+    total = 0
+    while True:
+        chunk = stream.read(_READ_CHUNK)
+        if not chunk:
+            window.close(complete=True)
+            return total, False
+        if total + len(chunk) > ceiling:
+            window.feed(chunk[: ceiling - total])
+            window.close(complete=False)
+            return ceiling, True
+        total += len(chunk)
+        window.feed(chunk)
+
+
 __all__: list[str] = [
     "GITHUB_API_VERSION",
+    "MAX_LOG_READ_BYTES",
     "REQUEST_TIMEOUT_SECONDS",
     "GithubLandingTransportError",
     "UrllibGithubLandingTransport",
