@@ -633,6 +633,8 @@ requirements:
     acceptance:
       - id: "AC109"
         statement: "AC109: the dependency provenance tests accept canonical sibling dev tags without annotations and refuse foreign git sources, branches, bare revisions, malformed tags and conflicting selectors."
+      - id: "AC183"
+        statement: "AC183: check_dep_provenance.py reads the dev merge tag pattern, GitHub org and sibling list from omnibase_core's packaged internal_sibling_pins.yaml through load_contract, the same contract the Internal Sibling Pins check reads -- falsifier: uv run pytest tests/scripts/test_check_dep_provenance.py -q fails when a contract with a different dev_tag_pattern does not change the verdict, or when the script source carries its own tag regex"
   - id: "req-mint-acceptance-evidence"
     statement: "The existing retry/park implementation has reproducible handler/git-boundary and behavioral baseline controls plus a dated deployed sanitizer capture."
     acceptance:
@@ -849,6 +851,11 @@ requirements:
     acceptance:
       - id: "AC188"
         statement: "AC188: handler_agent_session.py --tools-only builds a session with --tools \"\" and one --strict-mcp-config server, refuse_unless_tools_only exits 65 on a shell, a wider grant, a second or foreign server, bypass or acceptEdits modes, or added directories, settings, agents or plugins, no catalog tool takes a command or a free path, the MCP server lists and runs only the phase's tools, and HandlerMorningPhaseTools refuses a phase with no tool set and a committing phase while session-goal has none -- falsifier: uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py tests/nodes/node_morning_ground_state_orchestrator/test_agent_session_boundary.py -q -n 0 --no-cov -p no:randomly fails at the merge base, where the tools package, the gateway and the tools-only transport do not exist"
+  - id: "req-in-process-evidence-outcome-verdict"
+    statement: "An accepted in-process onex delegate run's delegation_events row states operational_outcome completed and content_verdict usable, as the runtime terminal of an accepted run does, because on that path only the local port's evidence terminal reaches the projection and the bus, and it named neither; a failed in-process run states neither, since the payload does not carry which gate branch refused it."
+    acceptance:
+      - id: "AC188"
+        statement: "AC188: LocalDelegationDispatchPort._project_evidence with quality_passed true publishes operational_outcome completed and content_verdict usable and the delegation projection writes both onto the row; with quality_passed false the payload names neither and the row is not completed/usable -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_in_process_evidence_outcome_verdict_omn19448.py -q fails at the merge base, where the evidence payload has no operational_outcome"
   - id: "req-job-log-window-and-step-reads"
     statement: "The job_log_tail gateway read (onex scm job-log) can read a bounded window of a job log at a byte offset or the region of one named step, besides the last 64 KiB tail, with paging offsets on the result."
     acceptance:
@@ -2878,6 +2885,14 @@ dod_evidence:
         check_value: "uv run pytest tests/scripts/test_check_dep_provenance.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC109"]
+  - id: "dod-omn17427-provenance-reads-core-contract"
+    description: "The provenance gate's tag rule and sibling list are read from the omnibase_core contract."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/scripts/test_check_dep_provenance.py -q -k contract"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC183"]
   - id: "dod-omn17427-core-ref-lock-fixtures"
     description: "Supporting evidence, bound to no criterion: the sibling-pin workflow tests derive core_ref from the fixture lock for both registry releases and dev merge tags. The change is test-side only and the workflow pin step already resolves both, so these tests pass at the merge base and cannot be a must-fail control."
     source: "manual"
@@ -3571,6 +3586,21 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -n 0 -p no:randomly --no-cov -k 'source_order and days1'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac188-in-process-outcome-verdict"
+    description: "The in-process evidence terminal of an accepted run publishes operational_outcome completed and content_verdict usable, and the delegation projection copies both onto the row; a failed run's terminal names neither. At the merge base the accepted-run test fails with KeyError operational_outcome."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_in_process_evidence_outcome_verdict_omn19448.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC188"]
+  - id: "dod-omn17427-in-process-outcome-deploy-probe"
+    description: "Deploy probe. In the checked-out package, _project_evidence of an accepted run publishes a terminal whose projected delegation_events row carries operational_outcome completed and content_verdict usable. It fails at the merge base and needs only uv and this checkout on the hosted runner; it does not attest a live deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_in_process_evidence_outcome_verdict_omn19448.py -q -n 0 -p no:randomly --no-cov -k test_accepted_in_process_evidence_states_completed_usable"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac184-emit-publish-circuit"
     description: "AC184: the emit publish circuit opens only after the failure threshold, any success closes it, a probe follows the window, a clean circuit retries a slow publish once within the shared budget, and foreign or old-shape markers never block. 13 of the module's 17 tests fail at the merge base."

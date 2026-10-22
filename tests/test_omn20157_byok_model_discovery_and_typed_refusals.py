@@ -722,7 +722,9 @@ def test_cli_discovery_decides_before_storage(
         calls.append(row.provider)
         return result
 
-    monkeypatch.setattr(cli_secret, "discover_byok_model_sync", discover)
+    monkeypatch.setattr(
+        "omnimarket.handlers.handler_model_keys.discover_byok_model_sync", discover
+    )
     command = CliRunner().invoke(
         cli_secret.secret_group,
         ["set", "llm.gemini.api_key"],
