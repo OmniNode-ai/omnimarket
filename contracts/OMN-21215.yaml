@@ -31,6 +31,8 @@ dod_evidence:
     description: "The command proves the local recommendation and first-key backend load correctly and fails at the merge base because the keys are absent."
     source: "manual"
     checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/config/test_byok_default_models.py -q --no-cov -k 'local_row or first_key'"
       - check_type: "command"
         check_value: "uv run python -c \"from omnimarket.routing.byok_provider_backends import first_key_backend, recommended_local_model; r = recommended_local_model(32); assert r is not None and r.server == 'ollama'; print(first_key_backend().provider, r.model)\""
         cwd: "${OMNI_HOME}/omnimarket"
