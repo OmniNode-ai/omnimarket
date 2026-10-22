@@ -775,6 +775,11 @@ requirements:
     acceptance:
       - id: "AC182"
         statement: "AC182: node_landing_tlc_receipt_effect is a registered onex.nodes entry point of omnimarket declared once (metadata.yaml and pyproject.toml, not its contract), publish builds a receipt bound to the decision pin and packs it under tag landing-tlc-<pin8>-<model8>, refuses a model check that found a violation, ran nothing or has an unreadable pin, and sync installs a published receipt, leaves a current one alone, replaces one built from another model, refuses a receipt the gate refuses or an archive naming a path outside its directory, and reports a failed release read, in each refusal changing nothing -- falsifier: uv run pytest tests/nodes/node_landing_tlc_receipt_effect/test_landing_tlc_receipt_effect.py -q -p no:randomly --no-cov fails at the merge base, where the node does not exist"
+  - id: "req-terminal-emit-cleanup-deadline"
+    statement: "Kafka session cleanup and thread handoff share the terminal emitter's invocation deadline, and a timed-out coroutine is cancelled on the shared event loop."
+    acceptance:
+      - id: "AC182"
+        statement: "AC182: a terminal emit with a slow broker close caps cleanup by its remaining publish/drain deadline on both publish success and failure, keeps failed events spooled, and cancels the timed-out background coroutine -- falsifier: uv run pytest tests/unit/nodes/node_event_emit_effect/test_session_deadline_omn17427.py -q -n 0 --no-cov --refuse-skips fails at the merge base."
   - id: "req-declared-label-set-undeclared-backend"
     statement: "A declared label set on a backend that does not declare json_schema support sends no provider directive, still refuses an out-of-vocabulary label and records the refusal in attempts, and a payload that omits the new wire fields is read as undeclared."
     acceptance:
@@ -1043,6 +1048,21 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_projection_metering_summary/test_omn17427_store_refresh.py::test_the_envelope_context_the_runtime_adds_is_not_payload -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-terminal-cleanup-deadline"
+    description: "Slow-close fault injection reproduces the receipt delay on publish success and failure; both deadline cases and the orphaned coroutine control fail at the merge base. Current publication and failed-event durability remain asserted."
+    source: "manual"
+    binds_ac: ["AC182"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_session_deadline_omn17427.py -q -n 0 --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-terminal-cleanup-deploy-probe"
+    description: "Hosted deployment check: exercise the packaged terminal emitter with its real background event loop and a local slow-close broker. It fails at the base without network or service access. This is a runtime-path check, not a live deployment attestation."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_session_deadline_omn17427.py -q -n 0 --no-cov --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac141-canonical-baseline"
     description: "OMN-20303 AC3 failed its live readback: a runtime_shutdown terminal followed by a canonical completion produced a saving but no stored counterfactual. The regression covers both write paths, terminal orders, an originally pinned baseline, and failed/zero-token controls. It fails at the merge base; post-deploy AC3 readback remains required."
