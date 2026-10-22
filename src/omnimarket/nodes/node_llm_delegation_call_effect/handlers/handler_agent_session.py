@@ -17,10 +17,8 @@ and refused here, at the model-call boundary, so no caller can widen it.
 
 from __future__ import annotations
 
-import json
 import subprocess
 import sys
-from pathlib import Path
 
 #: Flags that would hand a tools-only agent more than its server's tools.
 TOOLS_ONLY_FORBIDDEN_FLAGS = frozenset(
@@ -63,9 +61,7 @@ def tools_only_server(mcp_config: dict[str, object]) -> str:
     return name
 
 
-def tools_only_argv(
-    model: str, mcp_config: Path, server: str, schema: str
-) -> list[str]:
+def tools_only_argv(model: str, mcp_config: str, server: str, schema: str) -> list[str]:
     """Built-in tools off, one tool server, checks on, a typed result."""
     return [
         "claude",
@@ -74,7 +70,7 @@ def tools_only_argv(
         "",
         "--strict-mcp-config",
         "--mcp-config",
-        str(mcp_config),
+        mcp_config,
         "--allowedTools",
         f"mcp__{server}",
         "--permission-mode",
@@ -139,14 +135,19 @@ class HandlerAgentSession:
         return done.returncode
 
     def run_tools_only(
-        self, model: str, brief: str, mcp_config: Path, schema: Path
+        self, model: str, brief: str, mcp_config: str, schema: str
     ) -> subprocess.CompletedProcess[str]:
         """One tools-only session; its JSON result is the caller's to read."""
-        loaded = json.loads(mcp_config.read_text(encoding="utf-8"))
+        # Keep top-level imports to subprocess and sys, the deploy probe's stdlib set.
+        import json
+
+        with open(mcp_config, encoding="utf-8") as config_file:
+            loaded = json.loads(config_file.read())
         if not isinstance(loaded, dict):
             raise AgentSessionRefusedError("the MCP config must be one JSON object")
         server = tools_only_server(loaded)
-        schema_text = schema.read_text(encoding="utf-8")
+        with open(schema, encoding="utf-8") as schema_file:
+            schema_text = schema_file.read()
         json.loads(schema_text)
         argv = tools_only_argv(model, mcp_config, server, schema_text)
         refuse_unless_tools_only(argv, server)
@@ -169,7 +170,7 @@ def main_tools_only(argv: list[str]) -> int:
         return 64
     try:
         done = HandlerAgentSession().run_tools_only(
-            argv[0], sys.stdin.read(), Path(argv[1]), Path(argv[2])
+            argv[0], sys.stdin.read(), argv[1], argv[2]
         )
     except (AgentSessionRefusedError, ValueError, OSError) as exc:
         sys.stderr.write(f"{type(exc).__name__}: {exc}\n")
