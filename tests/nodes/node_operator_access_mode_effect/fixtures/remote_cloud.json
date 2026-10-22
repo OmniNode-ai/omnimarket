@@ -1,0 +1,16 @@
+{
+  "_comment": "A cloud (CCR) session opened from the mobile app: CLAUDE_CODE_REMOTE and a remote session id.",
+  "environ": {
+    "CLAUDE_CODE_ENTRYPOINT": "remote_mobile",
+    "CLAUDE_CODE_REMOTE": "true",
+    "CLAUDE_CODE_REMOTE_SESSION_ID": "session_placeholder",
+    "CLAUDECODE": "1"
+  },
+  "payload": {
+    "session_id": "22222222-2222-2222-2222-222222222222",
+    "transcript_path": "",
+    "cwd": "/workspace/registry",
+    "hook_event_name": "SessionStart",
+    "source": "startup"
+  }
+}

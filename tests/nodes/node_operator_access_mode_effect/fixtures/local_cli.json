@@ -1,0 +1,17 @@
+{
+  "_comment": "An interactive CLI session in a terminal at the Mac.",
+  "environ": {
+    "CLAUDE_CODE_ENTRYPOINT": "cli",
+    "TERM_PROGRAM": "iTerm.app",
+    "CLAUDE_CODE_SESSION_ATTENDED": "1",
+    "CLAUDECODE": "1"
+  },
+  "payload": {
+    "session_id": "33333333-3333-3333-3333-333333333333",
+    "transcript_path": "",
+    "cwd": "/workspace/registry",
+    "hook_event_name": "SessionStart",
+    "source": "startup",
+    "permission_mode": "bypassPermissions"
+  }
+}

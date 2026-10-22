@@ -199,6 +199,47 @@ def test_support_is_off_unless_declared() -> None:
 
 
 @pytest.mark.unit
+def test_payloads_that_omit_the_new_wire_fields_read_as_undeclared() -> None:
+    """Consumer-first: an older producer that never sends the new fields is read
+    as undeclared, so no directive reaches a provider nobody probed.
+    """
+
+    backend = ModelDelegationBackendConfig.model_validate(
+        {
+            "backend_id": "some-backend",
+            "provider": "local",
+            "model_name": "m",
+            "tier": "local",
+        }
+    )
+    assert backend.supports_response_format_json_schema is False, (
+        "a backend payload that omitted the capability silently declared support"
+    )
+    assert (
+        provider_response_format_for_contract(
+            backend=backend,
+            response_contract=CLASSIFIER_CONTRACT,
+        )
+        is None
+    ), "an undeclared backend received a provider directive"
+
+    payload = {
+        "request_id": "request-1",
+        "correlation_id": "correlation-1",
+        "causation_id": "causation-1",
+        "model_id": "m",
+        "endpoint_ref": "http://example.invalid/v1/chat/completions",
+        "prompt": "Classify the labels.",
+        "prompt_hash": "hash-1",
+        "timeout_seconds": 1.0,
+    }
+    request = ModelLlmDelegationCallRequest.model_validate(payload)
+    assert request.response_format is None, (
+        "a request payload that omitted response_format acquired a provider directive"
+    )
+
+
+@pytest.mark.unit
 def test_no_declared_contract_changes_nothing() -> None:
     """A caller that declared no contract is unaffected, even on a declaring backend.
 
@@ -356,10 +397,15 @@ class _SchemaIgnoringEffect:
 
 @pytest.mark.unit
 @pytest.mark.parametrize("shape", ["invalid", "valid", "invalid_then_valid"])
+@pytest.mark.parametrize("declares", [True, False], ids=["declared", "undeclared"])
 async def test_declared_labels_survive_the_gate_and_terminal(
-    shape: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    shape: str, declares: bool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """AC1-3: replay a75a211c's corruption, a valid control, and a visible retry."""
+    """AC1-3: replay a75a211c's corruption, a valid control, and a visible retry.
+
+    An undeclared backend gets no provider directive, and its schema-ignoring
+    answer is still refused with the refusal counted in ``attempts``.
+    """
     from omnimarket.models.delegation.wire.model_delegate_skill_request import (
         ModelDelegateSkillRequest,
     )
@@ -383,7 +429,7 @@ async def test_declared_labels_survive_the_gate_and_terminal(
                 "max_tokens": 8192,
                 "timeout_ms": 240000,
                 "capabilities": ["reasoning", "document"],
-                "supports_response_format_json_schema": True,
+                **({"supports_response_format_json_schema": True} if declares else {}),
             }
         ],
     )
@@ -417,12 +463,16 @@ async def test_declared_labels_survive_the_gate_and_terminal(
         )
     )
 
+    assert response is not None
     expected_count = 1 if shape == "valid" else 2
     assert response.attempts_count == len(response.attempts) == len(effect.calls)
     assert response.attempts_count == expected_count
     for call in effect.calls:
-        assert call.response_format is not None
-        assert call.response_format["json_schema"]["schema"] == CLASSIFIER_CONTRACT
+        if declares:
+            assert call.response_format is not None
+            assert call.response_format["json_schema"]["schema"] == CLASSIFIER_CONTRACT
+        else:
+            assert call.response_format is None
 
     if shape == "invalid":
         assert response.status == "failed"

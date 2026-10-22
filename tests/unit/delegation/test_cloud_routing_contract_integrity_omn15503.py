@@ -138,7 +138,7 @@ def test_every_declared_task_class_has_a_dedicated_system_prompt() -> None:
 
 
 @pytest.mark.unit
-def test_every_declared_tier_is_structurally_routable_for_all_fifteen_classes(
+def test_every_declared_tier_is_structurally_routable_for_all_sixteen_classes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A closed tier_order cannot contain decorative, unreachable tiers."""
@@ -206,7 +206,7 @@ def test_repaired_task_classes_are_explicit_capabilities_on_every_declared_tier(
     OMN-15961: ``agent_delegation`` REMOVED from this tuple. It is no longer
     an explicit capability on any declared tier by design (see
     ``test_no_use_for_entry_claims_a_capability_its_tier_cannot_serve`` above
-    and ``test_every_declared_tier_is_structurally_routable_for_all_fifteen_classes``'s
+    and ``test_every_declared_tier_is_structurally_routable_for_all_sixteen_classes``'s
     named exception) — declaring it here would re-assert the false claim this
     ticket removed.
     """

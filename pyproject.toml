@@ -311,6 +311,7 @@ Homepage = "https://github.com/OmniNode-ai/omnimarket"
 Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
+node_landing_tlc_receipt_effect = "omnimarket.nodes.node_landing_tlc_receipt_effect"
 node_hourly_tick_effect = "omnimarket.nodes.node_hourly_tick_effect"
 node_lab_disk_growth_effect = "omnimarket.nodes.node_lab_disk_growth_effect"
 node_lab_fill_receipt_table_compute = "omnimarket.nodes.node_lab_fill_receipt_table_compute"
@@ -468,6 +469,7 @@ node_deployment_fact_gate_effect = "omnimarket.nodes.node_deployment_fact_gate_e
 node_shadow_review_effect = "omnimarket.nodes.node_shadow_review_effect"
 node_closeout_verifier_compute = "omnimarket.nodes.node_closeout_verifier_compute"
 node_context_pack_builder_compute = "omnimarket.nodes.node_context_pack_builder_compute"
+node_context_compaction_receipts_fold_compute = "omnimarket.nodes.node_context_compaction_receipts_fold_compute"
 node_context_install_confirm_compute = "omnimarket.nodes.node_context_install_confirm_compute"
 node_context_pack_orchestrator = "omnimarket.nodes.node_context_pack_orchestrator"
 node_context_pack_render_compute = "omnimarket.nodes.node_context_pack_render_compute"
@@ -986,6 +988,8 @@ node_report_anchor_probe_effect = "omnimarket.nodes.node_report_anchor_probe_eff
 node_report_validation_compute = "omnimarket.nodes.node_report_validation_compute"
 node_architecture_discovery_orchestrator = "omnimarket.nodes.node_architecture_discovery_orchestrator"
 node_dev_tag_pin_mover_compute = "omnimarket.nodes.node_dev_tag_pin_mover_compute"
+node_operator_access_mode_effect = "omnimarket.nodes.node_operator_access_mode_effect"
+node_silent_failure_alarm_compute = "omnimarket.nodes.node_silent_failure_alarm_compute"
 node_runtime_deploy_effect = "omnimarket.nodes.node_runtime_deploy_effect"
 
 [project.scripts]
@@ -994,6 +998,7 @@ onex-host-thermal = "omnimarket.nodes.node_host_thermal_observe_effect.handlers.
 onex-automation-liveness-check = "omnimarket.handlers.handler_automation_liveness_overlay_check_cli:main"
 onex-patch-apply-dispatch = "omnimarket.nodes.node_patch_apply_dispatch_effect.handlers.handler_patch_apply_dispatch_cli:main"
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
+onex-access-mode = "omnimarket.nodes.node_operator_access_mode_effect.handlers.handler_operator_hook_cli:mode_main"
 onex-runtime-deploy = "omnimarket.nodes.node_runtime_deploy_effect.handlers.handler_runtime_deploy_cli:main"
 onex-architecture-discovery = "omnimarket.nodes.node_architecture_discovery_orchestrator.handlers.handler_architecture_discovery_cli:main"
 ab-compare = "omnimarket.cli.cli_ab_compare:main"
@@ -1079,6 +1084,10 @@ lab-story-log = "omnimarket.nodes.node_lab_story_log_effect.cli:lab_story_log_co
 # host's Claude token by reference (node_lab_claude_token_effect). Discovered
 # over installed distributions like the groups above.
 lab = "omnimarket.nodes.node_lab_claude_token_effect.cli:lab_group"
+# `onex trajectory-eval` -- publish the trajectory evaluation effect's submit and poll
+# commands by hand (node_trajectory_evaluation_effect). Discovered over installed
+# distributions like the groups above.
+trajectory-eval = "omnimarket.nodes.node_trajectory_evaluation_effect.cli:trajectory_eval_group"
 
 [project.entry-points."onex.contracts"]
 # OMN-19407: config contracts a consumer reads through the installed registry
@@ -1460,6 +1469,9 @@ ignore = [
 # CLI entrypoint for the SWE-discriminator smoke battery (OMN-13988) — prints
 # progress/results to stdout like the sibling recorder scripts.
 "src/omnimarket/delegation/swe_discriminator/run_smoke.py" = ["T201"]
+# The operator-supervision hook entry prints its verdict to stdout and stderr: a hook's only
+# channel to the Claude Code client.
+"src/omnimarket/nodes/node_operator_access_mode_effect/handlers/handler_operator_hook_cli.py" = ["T201"]
 "src/omnimarket/nodes/node_lab_secret_store_override_effect/handlers/handler_lab_secret_store_override_cli.py" = ["T201"]
 "src/omnimarket/nodes/node_legacy_worktree_audit_effect/handlers/handler_legacy_worktree_audit.py" = ["T201"]
 "src/omnimarket/nodes/node_friction_synthesis_effect/handlers/handler_friction_synthesis_cli.py" = ["T201"]

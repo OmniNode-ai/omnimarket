@@ -1,0 +1,20 @@
+{
+  "_comment": "A Remote Control session driven from the phone (Claude Code 2.1.295, 2026-10-10): the environment the session hands its hooks, account and socket values replaced by placeholders.",
+  "environ": {
+    "CLAUDE_CODE_ENTRYPOINT": "sdk-cli",
+    "CLAUDE_CODE_ENVIRONMENT_KIND": "bridge",
+    "CLAUDE_CODE_BRIDGE_OWNER_ACCOUNT_UUID": "00000000-0000-0000-0000-000000000001",
+    "CLAUDE_CODE_BRIDGE_MCP_CARRIER": "spent",
+    "CLAUDE_CODE_SESSION_ATTENDED": "0",
+    "CLAUDE_CODE_CHILD_SESSION": "1",
+    "CLAUDECODE": "1"
+  },
+  "payload": {
+    "session_id": "11111111-1111-1111-1111-111111111111",
+    "transcript_path": "",
+    "cwd": "/workspace/registry",
+    "hook_event_name": "SessionStart",
+    "source": "startup",
+    "permission_mode": "bypassPermissions"
+  }
+}
