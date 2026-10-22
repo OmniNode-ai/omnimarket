@@ -47,22 +47,6 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_pr_stale_red_heal_omn19852.py -q -k release_staleness"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
-  - id: "dod-omn18010-pr4306-release-version-and-lock"
-    description: "PR #4306 retains a version above reachable published tags and a matching uv.lock package version."
-    source: "manual"
-    binds_ac: ["AC1"]
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_post_release_dev_bump_omn18010.py -q"
-        cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn18010-pr4306-release-staleness-heal"
-    description: "PR #4306 retains the release-staleness heal's newer-release and no-new-release controls."
-    source: "manual"
-    binds_ac: ["AC2"]
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_pr_stale_red_heal_omn19852.py -q -k release_staleness"
-        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn18010-pr4306-local-observer-deadline"
     description: "Run the packaged observer against real loopback HTTP and TCP services, including slow HTTP client construction and a closed port."
     source: "manual"
