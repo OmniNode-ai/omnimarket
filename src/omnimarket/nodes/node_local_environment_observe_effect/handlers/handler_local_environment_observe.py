@@ -22,16 +22,19 @@ from omnibase_infra.enums import EnumHandlerType, EnumHandlerTypeCategory
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.config.settings import get_settings
 from omnimarket.enums.enum_local_environment_mode import EnumLocalEnvironmentMode
 from omnimarket.enums.enum_local_service_state import EnumLocalServiceState
 from omnimarket.local_deployment.tenant_identity import (
     EnumLocalTenantIdentityRefusalReason,
     LocalTenantIdentityError,
     ModelLocalTenantIdentityRefusal,
+    read_local_tenant_identity,
     resolve_local_deployment_tenant_id,
 )
 from omnimarket.models.model_local_environment_status import ModelLocalEnvironmentStatus
 from omnimarket.nodes.contract_topics import contract_publish_topics
+from omnimarket.projection.tenant_registry_resolution import is_tenant_slug
 
 logger = logging.getLogger(__name__)
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
@@ -169,6 +172,69 @@ def _probe_target(manifest: CatalogManifest) -> ModelProbeTarget | None:
     return ModelProbeTarget(service=manifest.name, port=manifest.ports.internal)
 
 
+def _is_canonical_uuid(value: str) -> bool:
+    try:
+        return str(UUID(value)) == value
+    except ValueError:
+        return False
+
+
+def _refusal(
+    reason: EnumLocalTenantIdentityRefusalReason, detail: str
+) -> LocalTenantIdentityError:
+    return LocalTenantIdentityError(
+        ModelLocalTenantIdentityRefusal(reason=reason, detail=detail)
+    )
+
+
+def _resolve_observed_tenant() -> str:
+    """The tenant this observer reports for, or a typed refusal.
+
+    An install identity, when the install has one, is the tenant. A compose
+    bundle never runs ``onex local init``; it carries its tenant only as the
+    runtime's configured ``ONEX_TENANT_ID``, which the bundle's seed step records
+    in the tenant registry mirror. When there is no install identity the
+    configured tenant is the one reported for, named as configured (a uuid or a
+    slug): the projection writer confirms it against the registry mirror before
+    it stores a row, and refuses a tenant the registry does not know.
+
+    A configured tenant that is not the install identity's uuid or slug is a
+    disagreement and refuses, naming both. Neither source is a refusal, as it
+    always was.
+    """
+    configured = get_settings().onex_tenant_id.strip()
+    try:
+        installed = resolve_local_deployment_tenant_id(None)
+    except LocalTenantIdentityError as exc:
+        if (
+            exc.refusal.reason
+            is not EnumLocalTenantIdentityRefusalReason.IDENTITY_ABSENT
+            or not configured
+        ):
+            raise
+        if not (is_tenant_slug(configured) or _is_canonical_uuid(configured)):
+            raise _refusal(
+                EnumLocalTenantIdentityRefusalReason.IDENTITY_MALFORMED,
+                f"the runtime's configured tenant {configured!r} is neither a "
+                "canonical tenant uuid nor a registry slug.",
+            ) from exc
+        return configured
+    if str(UUID(installed)) != installed:
+        raise ValueError("Tenant is not a canonical UUID")
+    if configured and configured.lower() != installed:
+        identity = read_local_tenant_identity()
+        slug = identity.tenant_slug if identity is not None else None
+        if configured != slug:
+            raise _refusal(
+                EnumLocalTenantIdentityRefusalReason.IDENTITY_CONFLICT,
+                f"the runtime's configured tenant {configured!r} disagrees with "
+                f"this install's identity {installed}"
+                + (f" (slug {slug!r})" if slug else "")
+                + "; nothing is reported until they name the same tenant.",
+            )
+    return installed
+
+
 class HandlerLocalEnvironmentObserve:
     """Return observations for the runtime to publish on the contract terminal."""
 
@@ -198,9 +264,7 @@ class HandlerLocalEnvironmentObserve:
             return self._output(request, (), ())
         self._last_run = now
         try:
-            tenant = resolve_local_deployment_tenant_id(None)
-            if str(UUID(tenant)) != tenant:
-                raise ValueError("Tenant is not a canonical UUID")
+            tenant = _resolve_observed_tenant()
         except (LocalTenantIdentityError, ValueError) as exc:
             refusal = (
                 exc.refusal
