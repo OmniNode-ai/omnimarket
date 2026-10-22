@@ -1,0 +1,31 @@
+{
+  "_doc": "RULING 2026-10-21T22:32:15Z (OMN-17427): the only tools each morning phase agent is given. A phase absent here has no tool set yet and is refused before any session starts; it is never given a shell instead. 'writes' names the knowledge-base artifacts the phase's write tools may touch. 'pending' names the deterministic tools a phase still needs before it can run.",
+  "phases": {
+    "idempotency-precheck": {
+      "tools": ["clock_utc", "ledger_lane_rows", "ledger_row_commit", "kb_artifact_status"],
+      "writes": []
+    },
+    "decisions-register": {
+      "tools": [
+        "kb_worktree_prepare",
+        "decisions_register_generate",
+        "kb_scrub",
+        "kb_commit",
+        "decisions_register_check",
+        "decisions_asked"
+      ],
+      "writes": ["decisions_md", "decisions_json"]
+    }
+  },
+  "node_steps": {
+    "ledger-reconcile": "ledger_reconcile"
+  },
+  "pending": {
+    "ground-state": ["linear_sprint_project", "linear_issues", "linear_issue_labels", "kb_read_artifact", "kb_write_artifact", "delegation_accounting", "closeout_completion_row", "closeout_scope_verify", "workflow_runs_read", "workflow_run_jobs_read", "runtime_lane_health", "delegate_prose", "delegate_dispose", "ledger_append_claim", "ledger_append_terminal", "kb_worktree_prepare", "kb_scrub", "kb_commit"],
+    "morning-triage": ["triage_fences", "triage_started", "dod_verify", "linear_issues", "linear_issue_update", "linear_comment", "pull_merge_state", "delegate_prose", "delegate_dispose", "ledger_append_claim", "ledger_append_terminal"],
+    "plan-reconcile": ["kb_read_source_doc", "kb_read_artifact", "pull_merge_state", "runtime_probe", "linear_issues", "kb_write_artifact", "delegate_prose", "delegate_dispose", "ledger_append_claim", "ledger_append_terminal", "kb_worktree_prepare", "kb_scrub", "kb_commit"],
+    "integration-plan": ["kb_read_artifact", "merged_prs_in_window", "package_release_read", "image_build_runs_read", "linear_issues", "linear_issue_create", "kb_write_artifact", "delegate_prose", "delegate_dispose", "ledger_append_claim", "ledger_append_terminal", "kb_worktree_prepare", "kb_scrub", "kb_commit"],
+    "dropped-work": ["branch_head_read", "required_contexts_read", "check_runs_read", "lab_pass_receipts_read", "deploy_agent_age", "canonical_clone_health", "venv_reconcile_verdict", "kb_plan_index", "plan_lifecycle_read", "linear_issues", "lane_reports_index", "ledger_grep_lanes", "kb_write_artifact", "delegate_prose", "delegate_dispose", "ledger_append_claim", "ledger_append_terminal", "kb_worktree_prepare", "kb_scrub", "kb_commit"],
+    "session-goal": ["clock_utc", "kb_read_artifact", "kb_write_artifact", "kb_worktree_prepare", "kb_scrub", "kb_commit", "kb_push_branch", "kb_open_pr_via_github_write_node", "pr_handoff", "linear_issue_update", "linear_comment", "delegate_prose", "delegate_dispose", "ledger_append_claim", "ledger_append_terminal"]
+  }
+}
