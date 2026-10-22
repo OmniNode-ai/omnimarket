@@ -63,3 +63,13 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_measured_model_selection_compute/test_measured_model_selection_omn21207.py -q --no-cov -k ac4"
     binds_ac: ["AC4"]
+  - id: "dod-omn21207-deploy-probe"
+    description: "Deploy probe. Read the selector handler from GitHub at the checked-out commit and require select_by_measure and MeasureMissingError in it, with the ranking tests. It fails at the merge base, where the node does not exist."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_measured_model_selection_compute/test_measured_model_selection_omn21207.py -q --no-cov -k ac2"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_measured_model_selection_compute/handlers/handler_measured_model_selection.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"class MeasureMissingError\" > /dev/null'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
