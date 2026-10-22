@@ -11,9 +11,10 @@ transport, evaluator, clock), created on first use, so a bare construction does
 nothing.
 
 The setting is one of ``off``, ``in_memory`` or ``<external>_metadata`` /
-``<external>_full`` where ``<external>`` is a lowercase identifier. External
-values are recognised by shape and refused ``backend_unavailable`` until an
-adapter registers a concrete evaluator for them.
+``<external>_full`` where ``<external>`` is a lowercase identifier. The one
+registered external evaluator is ``dharma`` (OMN-20088), built on first use from
+the contract's two secret refs; it takes ``full`` content only. Any other
+external value is recognised by shape and refused ``backend_unavailable``.
 """
 
 from __future__ import annotations
@@ -33,6 +34,16 @@ from uuid import UUID
 import httpx
 import yaml
 
+from omnimarket.config.service_endpoints import DHARMA_API_URL
+from omnimarket.inference.secret_store_resolver import (
+    SecretResolutionError,
+    SecretStoreConfigurationError,
+    resolve_api_key_async,
+)
+from omnimarket.nodes.contract_topics import contract_secret_ref
+from omnimarket.nodes.node_trajectory_evaluation_effect.evaluators.evaluator_dharma import (
+    EvaluatorDharma,
+)
 from omnimarket.nodes.node_trajectory_evaluation_effect.evaluators.evaluator_in_memory import (
     EvaluatorInMemory,
 )
@@ -71,7 +82,7 @@ _LOG = logging.getLogger(__name__)
 SETTING_ENV = "ONEX_TRAJECTORY_EVALUATION_BACKEND"
 _CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
 
-_EXTERNAL = re.compile(r"^[a-z][a-z0-9]*_(metadata|full)$")
+_EXTERNAL = re.compile(r"^([a-z][a-z0-9]*)_(metadata|full)$")
 _RECEIPT_ID = re.compile(r"^[A-Za-z0-9_-]{1,200}$")
 
 _Mode = Literal["meta", "full"]
@@ -82,12 +93,15 @@ _PERMITTED: Mapping[str, frozenset[str]] = {
     "full": frozenset({"meta", "full"}),
     "in_memory": frozenset({"meta", "full"}),
 }
+# Registered external evaluators and the content modes each can take.
+_ADAPTER_MODES: Mapping[str, frozenset[str]] = {"dharma": frozenset({"full"})}
 
 
 @dataclass(frozen=True)
 class _Backend:
     in_memory: bool
     permitted: frozenset[str]
+    name: str = "in_memory"
 
 
 class _SystemClock:
@@ -109,8 +123,37 @@ def _parse_setting(raw: str | None) -> _Backend | Literal["off"] | None:
         return _Backend(in_memory=True, permitted=_PERMITTED["in_memory"])
     match = _EXTERNAL.fullmatch(value)
     if match is not None:
-        return _Backend(in_memory=False, permitted=_PERMITTED[match.group(1)])
+        return _Backend(
+            in_memory=False,
+            permitted=_PERMITTED[match.group(2)],
+            name=match.group(1),
+        )
     return None
+
+
+async def request_dharma(
+    method: str,
+    url: str,
+    *,
+    json: object | None = None,
+    params: dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,
+    transport: httpx.AsyncBaseTransport | None = None,
+    timeout_seconds: float = 30.0,
+) -> httpx.Response:
+    """Send a Dharma request at the node's registered HTTP effect boundary.
+
+    The evaluator builds campaign requests and parses responses; client
+    creation, timeout and redirect policy belong to this contract's handler.
+    """
+    async with httpx.AsyncClient(
+        transport=transport,
+        timeout=timeout_seconds,
+        follow_redirects=False,
+    ) as client:
+        return await client.request(
+            method, url, json=json, params=params, headers=headers
+        )
 
 
 class HandlerTrajectoryEvaluation:
@@ -123,6 +166,8 @@ class HandlerTrajectoryEvaluation:
         evaluator: ProtocolTrajectoryEvaluator | None = None,
         clock: ProtocolClock | None = None,
         environ: Mapping[str, str] | None = None,
+        external_evaluators: Mapping[str, ProtocolTrajectoryEvaluator] | None = None,
+        evaluator_transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         data = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
         self._scoping = ModelWorkUnitScoping.model_validate(data["work_unit_scoping"])
@@ -136,6 +181,10 @@ class HandlerTrajectoryEvaluation:
             timeout_seconds=self._scoping.visibility_timeout_ms / 1000.0,
         )
         self._in_memory: ProtocolTrajectoryEvaluator = evaluator or EvaluatorInMemory()
+        self._external: dict[str, ProtocolTrajectoryEvaluator] = dict(
+            external_evaluators or {}
+        )
+        self._evaluator_transport = evaluator_transport
 
     # -- entry ---------------------------------------------------------------
 
@@ -174,6 +223,9 @@ class HandlerTrajectoryEvaluation:
         gate = self._gate_mode(cid, backend, mode)
         if gate is not None:
             return gate
+        evaluator = await self._evaluator(cid, backend)
+        if isinstance(evaluator, ModelTrajectoryEvaluationRefused):
+            return evaluator
 
         if self._scoping.require_public_repository:
             verdict = await self._guard.check(repository, cid)
@@ -203,7 +255,6 @@ class HandlerTrajectoryEvaluation:
             prompt_text=cmd.prompt_text if mode == "full" else None,
             response_text=cmd.response_text if mode == "full" else None,
         )
-        evaluator = self._in_memory
         try:
             async with self._pacer.submit_slot():
                 receipt = await evaluator.submit(submission)
@@ -281,8 +332,10 @@ class HandlerTrajectoryEvaluation:
         gate = self._gate_mode(cid, backend, cast("_Mode", cmd.content_mode))
         if gate is not None:
             return gate
+        evaluator = await self._evaluator(cid, backend)
+        if isinstance(evaluator, ModelTrajectoryEvaluationRefused):
+            return evaluator
 
-        evaluator = self._in_memory
         await self._pacer.acquire_status_read()
         try:
             status = await evaluator.read_status(receipt_id)
@@ -323,13 +376,57 @@ class HandlerTrajectoryEvaluation:
                 Reason.CONTENT_MODE_NOT_PERMITTED,
                 f"content_mode {mode} is not permitted by the configured backend",
             )
-        if not backend.in_memory:
+        if backend.in_memory:
+            return None
+        adapter_modes = _ADAPTER_MODES.get(backend.name)
+        if adapter_modes is None:
             return self._refuse(
                 cid,
                 Reason.BACKEND_UNAVAILABLE,
                 "no evaluator is registered for the configured backend",
             )
+        if mode not in adapter_modes:
+            return self._refuse(
+                cid,
+                Reason.CONTENT_MODE_NOT_PERMITTED,
+                f"the {backend.name} evaluator does not take content_mode {mode}",
+            )
         return None
+
+    async def _evaluator(
+        self, cid: UUID, backend: _Backend
+    ) -> ProtocolTrajectoryEvaluator | ModelTrajectoryEvaluationRefused:
+        """The evaluator the setting names, built once on first use."""
+        if backend.in_memory:
+            return self._in_memory
+        existing = self._external.get(backend.name)
+        if existing is not None:
+            return existing
+        # _gate_mode admits only registered names, and dharma is the one.
+        try:
+            token = await resolve_api_key_async(
+                contract_secret_ref(_CONTRACT, "dharma.api_key"), required=True
+            )
+            org = await resolve_api_key_async(
+                contract_secret_ref(_CONTRACT, "dharma.org_id"), required=True
+            )
+            if token is None or org is None:
+                raise SecretResolutionError("a Dharma secret resolved empty")
+            built = EvaluatorDharma(
+                base_url=DHARMA_API_URL,
+                org_id=org.get_secret_value(),
+                token=token,
+                transport=self._evaluator_transport,
+            )
+        except (SecretResolutionError, SecretStoreConfigurationError, ValueError):
+            # Never the exception text: it may name a store path or a value.
+            return self._refuse(
+                cid,
+                Reason.BACKEND_MISCONFIGURED,
+                "the dharma evaluator's secrets did not resolve to a usable pair",
+            )
+        self._external[backend.name] = built
+        return built
 
     @staticmethod
     def _invalid_submit(cmd: ModelTrajectoryEvaluationSubmit) -> str | None:
