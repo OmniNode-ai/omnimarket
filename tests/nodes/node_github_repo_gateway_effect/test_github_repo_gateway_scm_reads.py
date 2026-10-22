@@ -25,11 +25,12 @@ from omnimarket.github_landing.github_landing_requests import (
     next_page_request,
 )
 from omnimarket.github_landing.github_landing_transport import (
+    JobLogWindow,
     _AuthStrippingRedirectHandler,
     _read_capped,
     _read_window,
+    step_second,
 )
-from omnimarket.github_landing.github_log_window import JobLogWindow, step_second
 from omnimarket.nodes.node_github_repo_gateway_effect import __main__ as gateway_cli
 from omnimarket.nodes.node_github_repo_gateway_effect.dispatcher import dispatch
 from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io import (

@@ -25,10 +25,10 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from omnimarket.github_landing.github_landing_transport import (
+    JobLogWindow,
     _read_capped,
     _read_window,
 )
-from omnimarket.github_landing.github_log_window import JobLogWindow
 from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubBytesResponse,
     ModelGithubHttpRequest,

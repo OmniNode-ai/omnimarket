@@ -40,7 +40,7 @@ from omnimarket.github_landing.github_landing_requests import (
     tags_request,
     workflow_runs_request,
 )
-from omnimarket.github_landing.github_log_window import JobLogWindow, step_second
+from omnimarket.github_landing.github_landing_transport import JobLogWindow, step_second
 from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubBytesResponse,
     ModelGithubHttpRequest,

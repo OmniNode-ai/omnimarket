@@ -35,9 +35,9 @@ from omnimarket.github_api import (
 )
 from omnimarket.github_landing.github_landing_transport import (
     GithubLandingTransportError,
+    JobLogWindow,
     UrllibGithubLandingTransport,
 )
-from omnimarket.github_landing.github_log_window import JobLogWindow
 from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubBytesResponse,
     ModelGithubHttpRequest,
