@@ -790,6 +790,13 @@ requirements:
     acceptance:
       - id: "AC145"
         statement: "AC145: under an injected clock each bound tier's read_ms is the clock delta in milliseconds (an unbound tier None, a raising source still timed), the compaction orchestrator's prepared and fallback receipts carry the build's elapsed build_ms (None when the barrier fails before any build) and prepared carries the package's model_section_ms, and from_prepared gives deterministic_build_ms = build_ms - model_section_ms and refuses a missing timing or a model section longer than the build -- falsifier: the focused tests fail at the merge base, where 23 of them fail because read_ms, build_ms and from_prepared do not exist"
+  - id: "req-claims-pending-index"
+    statement: "The SQLite claim store carries a partial index over the pending delegate-skill command claims, added once by a store step, so the delegation reaper's pending-claims query reads the index instead of the whole table. The index changes no claim, terminal-slot or reap answer and deletes no row."
+    acceptance:
+      - id: "AC183"
+        statement: "AC183: a fresh store and a store that predates the step both carry delegate_skill_command_claims_pending_idx after one SqliteDatabaseAdapter._connect(), the step is recorded once, and EXPLAIN QUERY PLAN of the adapter's pending-claims statement names the index; a read-only store that predates the step is read with one warning; through DelegationClaimPort over SqliteDatabaseAdapter a redelivered claim loses and is served the recorded terminal, one of two record_terminal calls wins, and stalled_claims returns exactly the overdue pending main claims, the same set as the store with the index dropped; the step leaves the claims row count unchanged (tests/unit/projection/test_omn17427_claims_pending_index.py) -- falsifier: the tests fail at the merge base, where the plan reads SCAN delegate_skill_command_claims with no index."
+      - id: "AC185"
+        statement: "AC185: a fresh store and a store that predates the step both carry delegate_skill_command_claims_correlation_idx after one SqliteDatabaseAdapter._connect(), the step is recorded once, and EXPLAIN QUERY PLAN of SELECT * FROM delegate_skill_command_claims WHERE correlation_id = :correlation_id names the index; DelegationClaimPort.pending_claims(correlation_id=...) returns the same claims with and without the index, for a correlation with exactly one pending delivery and for one reused by two deliveries, which answers an empty list (tests/unit/projection/test_omn17427_claims_pending_index.py) -- falsifier: the index tests fail at 2609fffacaa621dfe9222c33da3dd8faa447928f, where the plan reads SCAN delegate_skill_command_claims; the pending_claims test fails when the results with and without the index differ."
   - id: "req-install-canary-provisioned-python"
     statement: "Both install-canary jobs keep the Python that setup-uv provisioned when they cross the clean-home boundary, so uv resolves the selected interpreter instead of a system or downloaded one."
     acceptance:
@@ -3425,6 +3432,21 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_handler_context_compaction_orchestrator.py tests/nodes/node_context_compaction_latency_compute/test_latency_qualification.py -q -n 0 -p no:randomly --no-cov -k 'test_installed_package_records_build_and_model_section_timings or test_round_trip_from_prepared_splits_build_phases'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac183-claims-pending-index"
+    description: "Every SQLite claim store gains the pending-claims partial index once, a read-only store is still read, and the claim, terminal-slot and reap answers are the same with and without the index. The tests fail at the merge base."
+    source: "manual"
+    binds_ac: ["AC183", "AC185"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/projection/test_omn17427_claims_pending_index.py -q -n 0 -p no:randomly --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-claims-pending-index-deploy-probe"
+    description: "Deploy probe: on the hosted runner, open fresh and pre-step claim stores through the real SqliteDatabaseAdapter and DelegationClaimPort and read the query plan of the reaper's pending-claims statement. This packaged-path probe fails at the merge base and does not attest the deployed claims store."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/projection/test_omn17427_claims_pending_index.py -q -n 0 -p no:randomly --no-cov --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-canary-provisioned-python"
     description: "Dispatch cause omnimarket:canary (macos-latest). Both install-canary jobs carry setup-uv's explicit Python selection and managed installation directory across the clean-home boundary, and uv discovers that interpreter. These two cases fail at the merge base with KeyError UV_PYTHON. This is focused fix-forward evidence; it does not attest the umbrella ticket's nightly integration-pass reports or graduation review."
