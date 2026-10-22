@@ -108,10 +108,10 @@ class RealNetworkProber:
         url = urlunsplit((target.scheme, destination, target.path, target.query, ""))
         reason_url = urlunsplit((target.scheme, destination, target.path, "", ""))
         try:
-            async with asyncio.timeout(timeout):
-                async with httpx.AsyncClient(
-                    timeout=timeout, trust_env=False
-                ) as client:
+            # Build the client (synchronous SSL context load) before the deadline
+            # starts, so a slow construction is not reported as a down service.
+            async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
+                async with asyncio.timeout(timeout):
                     response = await client.get(url)
             state = EnumLocalServiceState.RUNNING
             detail = ""
