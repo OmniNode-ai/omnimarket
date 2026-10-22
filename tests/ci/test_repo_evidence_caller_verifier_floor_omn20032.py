@@ -21,7 +21,8 @@ CALLER_PATH = (
 
 # omnibase_core#1932: the squash commit that adds VERIFIER_FLOOR to the reusable's
 # "Install the pinned verifier" step.
-_FLOOR_REUSABLE_SHA = "4d16322dae9d62f96089b93421a768fb8dd8c8fe"
+# The pin moved to a descendant that keeps this: omnibase_core#2079 (OMN-19513).
+_FLOOR_REUSABLE_SHA = "5782289777210ca814c0e43b4f797826135dba78"
 
 # 0.4.303 is the first omnimarket release carrying omnimarket#3511, the refusal of
 # a contract that leaves an acceptance criterion unbound.
