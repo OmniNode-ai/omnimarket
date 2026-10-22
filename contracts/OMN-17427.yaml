@@ -824,6 +824,11 @@ requirements:
     acceptance:
       - id: "AC184"
         statement: "AC184: after one failed invocation a new handler on the same spool publishes and drains the first record; with threshold 3 invocations 1 to 3 attempt a publish and invocation 4 inside the window attempts none and returns publish_skipped_unreachable=True and publish_circuit_open=True; a success deletes the marker and resets the count; a probe after the window re-opens on failure with a fresh opened_at and on success drains the backlog in the same invocation; a first-call TimeoutError on a clean circuit is retried once to published=True under the 9 s budget, and not retried with a recorded failure or under 1 s left; an old failed_at, malformed or other-identity marker never blocks; a zero window writes no marker and reports publish_failure_count None; a quarantine leaves the count unchanged -- falsifier: uv run pytest tests/unit/nodes/node_event_emit_effect/test_publish_circuit_omn17427.py -q fails at the merge base (13 of 17 fail), where one failure spools every later publish for 120 s"
+  - id: "req-moved-contract-omn13213"
+    statement: "contracts/OMN-13213.yaml is carried in omnimarket, where the scheduled closer's contract resolver reads it, and loads as omnibase_core's ModelTicketContract with the role placeholder in its branch name."
+    acceptance:
+      - id: "AC186"
+        statement: "AC186: contracts/OMN-13213.yaml loads as ModelTicketContract with ticket_id OMN-13213 and its one dod_evidence item, and names the branch <operator>/omn-13213-d-reclassify-node_emit_daemon-effect-node -- falsifier: uv run pytest tests/ci/test_moved_contract_omn13213_omn17427.py -q fails at the merge base, where the contract is absent"
   - id: "req-tick-base-red-own-branch"
     statement: "The throughput tick's base-branch red counts only check runs whose workflow run belongs to the base branch, and names the real failing check rather than a roll-up, so a release push of the base sha to another branch does not make the base branch read red."
     acceptance:
@@ -834,6 +839,11 @@ requirements:
     acceptance:
       - id: "AC188"
         statement: "AC188: the fifteen correct causal answers in tests/unit/delegation/test_step_by_step_causal_prevent_ensure_omn19401.py, nine of them verbatim Qwen3.8-27B answers from a lab model server, pass step_by_step_explanation, and the seven non-explanations, including \"Preventing outages is the goal\", \"the ensuing outage\" and \"meaningful names\", are still vetoed -- falsifier: uv run pytest tests/unit/delegation/test_step_by_step_causal_prevent_ensure_omn19401.py -q fails at the merge base"
+  - id: "req-c28-consumer-flow-writer-throughput"
+    statement: "The in-process consumer-flow writer reuses one dispatch loop and pool across heartbeats and concurrent dispatch threads, and batches one heartbeat's deltas without losing ordering or replay refusals."
+    acceptance:
+      - id: "AC187"
+        statement: "AC187: twenty heartbeats open one pool, eight concurrent dispatch threads share one loop and pool, a 477-delta heartbeat uses at most five statements, and a 120-pair heartbeat lands every pair in input order through the real PostgreSQL writer with an older replay refused row by row -- falsifier: the focused consumer-flow dispatch and real-PostgreSQL write-path tests fail when the writer creates a loop per message or replaces its batched statements with per-delta writes."
   - id: "req-morning-phase-tools-only-session"
     statement: "A morning phase agent runs as a tools-only session: claude -p with every built-in tool off, exactly one strict MCP server granted as mcp__<server>, dontAsk permission mode and no setting sources, and the morning orchestrator's tools gateway gives each phase only its declared deterministic typed tools, refusing a phase with no tool set before any session starts."
     acceptance:
@@ -1076,6 +1086,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC184: a built pack carries a tier's entries in source order."
     command: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -k source_order"
+  - kind: "tests"
+    description: "AC186: the contract moved from change control loads in omnimarket."
+    command: "uv run pytest tests/ci/test_moved_contract_omn13213_omn17427.py -q"
   - kind: "tests"
     description: "AC186: the base-branch red counts only the base branch's own runs and names the real check."
     command: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q -k 'another_branchs_run or unlisted_run or base_red_roll_up'"
@@ -3569,6 +3582,21 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_publish_circuit_omn17427.py -q -n 0 -p no:randomly --no-cov -k one_retryable_failure_does_not_skip"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac186-moved-contract-omn13213"
+    description: "contracts/OMN-13213.yaml, moved from the change-control repository, loads as ModelTicketContract and carries the role placeholder in its branch name. Both tests fail at the merge base, where the contract is absent."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_moved_contract_omn13213_omn17427.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC186"]
+  - id: "dod-omn17427-moved-contract-deploy-probe"
+    description: "Deploy probe. The hosted runner loads the checked-out contracts/OMN-13213.yaml through omnibase_core's ModelTicketContract with the locked dependencies; no credentials. It fails at the merge base and does not attest the closer's live read."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/ci/test_moved_contract_omn13213_omn17427.py -q -n 0 -p no:randomly --no-cov --refuse-skips -k loads"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac186-tick-base-red-own-branch"
     description: "The repository status check of the throughput tick decision node ignores another branch's workflow run on the base sha and names the real check beside a roll-up base red. Two of the four new tests fail at the merge base."
     source: "manual"
@@ -3605,6 +3633,24 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/delegation/test_step_by_step_causal_prevent_ensure_omn19401.py tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py tests/unit/delegation/test_step_by_step_causal_prose_omn19401.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac187-c28-consumer-flow-writer"
+    description: "The consumer-flow writer's dispatch regressions check loop and pool reuse across twenty messages and concurrent dispatch threads, and the five-statement budget for a 477-delta heartbeat. The real PostgreSQL regression checks all 120 pairs, input order, upstream values and row-by-row refusal of an older replay."
+    source: "manual"
+    binds_ac: ["AC187"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn16874_consumer_flow_writer_dispatch.py -q -p no:randomly --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn16777_real_postgres_consumer_flow_write_path.py -q -p no:randomly --no-cov --refuse-skips -k a_wide_heartbeat_lands_every_pair_through_the_batched_statements"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-c28-consumer-flow-writer-deploy-probe"
+    description: "Deploy probe. The hosted runner exercises the checked-out consumer-flow writer's synchronous handle entry point over repeated and concurrent messages and checks its bounded statement count. It needs the locked dependencies and this checkout, with no broker, database or credentials. This runtime-path probe does not attest an installed lab deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_omn16874_consumer_flow_writer_dispatch.py -q -p no:randomly --no-cov --refuse-skips -k 'many_messages_open_one_pool or concurrent_dispatch_threads_share_one_loop or a_heartbeat_is_written_in_a_bounded_number_of_statements'"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-morning-phase-tools-only-deploy-probe"
     description: "Hosted deployment check: in the checked-out package, the gateway runs the tools-only transport and reads its typed result, the standalone handler_agent_session.py entrypoint runs a tools-only session, and the MCP server speaks stdio, all against local stubs with no network or service access. It fails at the merge base, where none of these exist. This is a runtime-path check, not a live deployment attestation."

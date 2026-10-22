@@ -39,6 +39,31 @@ _BUS_ROW_TYPES = frozenset(
 _AUTHORITY_TYPES = frozenset({"RULING", "OPERATOR-CONSENT"})
 
 
+_SUBJECT_KEYS = ("lane=", "from=")
+
+
+def _principal_stamped(line: str, principal: str, *, after_type: bool = False) -> str:
+    """``line`` with ``principal=<principal>`` as a header cell (OMN-19513).
+
+    The cell goes right after the row's subject cell (``lane=`` or ``from=``)
+    when that is the first cell after the type, so ``<ts> | CLAIM | lane=x |``
+    keeps the shape every ledger reader written before bus attribution greps
+    for; otherwise it goes right after the type. The caller's text,
+    continuations and line endings are preserved. ``after_type`` gives the
+    shape rows had before OMN-19513, for recognising a replayed request."""
+    cells = line.split(" | ", 3)
+    if (
+        not after_type
+        and len(cells) == 4
+        and cells[2].strip().startswith(_SUBJECT_KEYS)
+    ):
+        return (
+            f"{cells[0]} | {cells[1]} | {cells[2]} | principal={principal} | {cells[3]}"
+        )
+    timestamp, row_type, rest = line.split(" | ", 2)
+    return f"{timestamp} | {row_type} | principal={principal} | {rest}"
+
+
 class HandlerWorkLedgerAppendEffect:
     def __init__(
         self,
@@ -162,6 +187,7 @@ class HandlerWorkLedgerAppendEffect:
             )
         cell = f"req={request.request_id}"
         stamped_lines = request.rows.splitlines(keepends=True)
+        legacy_lines = list(stamped_lines)
         row_index = 0
         for line_index, line in enumerate(stamped_lines):
             if not _ROW_START.match(line):
@@ -193,10 +219,11 @@ class HandlerWorkLedgerAppendEffect:
                     "principal must be a header cell before row text",
                 )
             if not principals:
-                # Preserve the caller's text, continuations and line endings.
-                timestamp, row_type, rest = line.split(" | ", 2)
-                stamped_lines[line_index] = (
-                    f"{timestamp} | {row_type} | principal={authenticated_principal} | {rest}"
+                stamped_lines[line_index] = _principal_stamped(
+                    line, authenticated_principal
+                )
+                legacy_lines[line_index] = _principal_stamped(
+                    line, authenticated_principal, after_type=True
                 )
         stamped_rows = "".join(stamped_lines)
         # Every row of one request carries the same req= cell, so the request is
@@ -206,7 +233,12 @@ class HandlerWorkLedgerAppendEffect:
         landed = _request_lines(self._require_reader().read_text(), cell)
         if len(landed) == len(rows):
             existing_rows = _request_blocks(self._require_reader().read_text(), cell)
-            if existing_rows != _request_blocks(stamped_rows, cell):
+            # A request that landed before OMN-19513 carries principal= right
+            # after the type; its replay is the same request, not a conflict.
+            if existing_rows not in (
+                _request_blocks(stamped_rows, cell),
+                _request_blocks("".join(legacy_lines), cell),
+            ):
                 return receipt(
                     EnumWorkLedgerAppendStatus.REFUSED,
                     65,
