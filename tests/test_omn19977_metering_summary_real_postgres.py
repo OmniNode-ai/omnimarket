@@ -127,6 +127,20 @@ async def test_replacement_and_replay_against_real_postgres() -> None:
         assert replayed[0]["summary_json"].encode("utf-8") == replaced[0][
             "summary_json"
         ].encode("utf-8")
+
+        other = second.model_copy(
+            update={"tenant_id": "11111111-2222-5333-8444-555555555555"}
+        )
+        assert (await writer._project(other))["rows_upserted"] == 1
+        assert (await writer._project(other))["rows_upserted"] == 1
+        stored_by_tenant = {
+            row["tenant_id"]: dict(row) for row in await conn.fetch(query)
+        }
+        expected_other = HandlerProjectionMeteringSummary().handle(other).rows[0]
+        assert stored_by_tenant == {
+            second.tenant_id: dict(replayed[0]),
+            other.tenant_id: expected_other.model_dump(mode="json"),
+        }
     finally:
         try:
             await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")

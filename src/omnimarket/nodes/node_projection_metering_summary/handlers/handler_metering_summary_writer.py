@@ -170,8 +170,8 @@ class MeteringSummaryProjectionWriter(BaseProjectionRunner):
             # on the dev lane raised after folding, was redelivered, and, with
             # no `all` row ever stored, refolded every day of the tenant's runs
             # again: that loop held the main runtime's GIL ~70% of wall time
-            # and starved every other projection on it, claude_hook_events
-            # first (py-spy on the dev runtime, 2026-10-22T03:25Z).
+            # and starved every other projection on it, the hook-event
+            # projection first (py-spy on the dev runtime, 2026-10-22T03:25Z).
             returned = await self.db_for("metering_summary").execute(
                 _UPSERT,
                 *(values[col] for col in _COLUMNS),
