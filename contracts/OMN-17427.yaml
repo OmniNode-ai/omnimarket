@@ -807,6 +807,11 @@ requirements:
     acceptance:
       - id: "AC184"
         statement: "AC184: a tier source answering five open_work rows in forward, reversed or shuffled order yields a built pack whose rendered text carries the rows in that same order -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -k source_order fails at the merge base, where every artifact keeps the default source_priority 100 and the builder orders a tier's chunks by hash"
+  - id: "req-tick-base-red-own-branch"
+    statement: "The throughput tick's base-branch red counts only check runs whose workflow run belongs to the base branch, and names the real failing check rather than a roll-up, so a release push of the base sha to another branch does not make the base branch read red."
+    acceptance:
+      - id: "AC186"
+        statement: "AC186: _base_red ignores a check row whose workflow run the branch record's runs rows place on another head branch, keeps a row whose run is unlisted, and returns the non-roll-up reds when any exist -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q -k 'another_branchs_run or base_red_roll_up_beside' fails at the merge base, where a main-push run's CI Summary failure on the dev sha reads as base_branch_red and the verdict names CI Summary"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -1044,6 +1049,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC184: a built pack carries a tier's entries in source order."
     command: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -k source_order"
+  - kind: "tests"
+    description: "AC186: the base-branch red counts only the base branch's own runs and names the real check."
+    command: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q -k 'another_branchs_run or unlisted_run or base_red_roll_up'"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -3485,4 +3493,19 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -n 0 -p no:randomly --no-cov -k 'source_order and days1'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac186-tick-base-red-own-branch"
+    description: "The repository status check of the throughput tick decision node ignores another branch's workflow run on the base sha and names the real check beside a roll-up base red. Two of the four new tests fail at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC186"]
+  - id: "dod-omn17427-tick-base-red-own-branch-probe"
+    description: "Deploy probe. The hosted runner runs the checked-out node's base-red branch and roll-up tests with the locked dependencies; no credentials and no live tick. It does not attest the node deployed on the lab runtime."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q -n 0 -p no:randomly --no-cov --refuse-skips -k 'another_branchs_run or unlisted_run or base_red_roll_up'"
         cwd: "${OMNI_HOME}/omnimarket"
