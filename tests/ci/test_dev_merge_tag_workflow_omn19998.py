@@ -26,6 +26,7 @@ from typing import Any
 
 import pytest
 import yaml
+from omnibase_core.handlers.handler_internal_sibling_pins_cli import load_contract
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
 pytestmark = pytest.mark.unit
@@ -34,7 +35,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "dev-merge-tag.yml"
 JOB_ID = "dev-merge-tag"
 STEP_NAME = "Create the dev merge tag"
-TAG_PATTERN = re.compile(r"^dev-[0-9]{14}-[0-9a-f]{12}$")
+TAG_PATTERN = re.compile(load_contract().dev_tag_pattern)
 # +05:30 is 09:34:05 UTC: a name built from local time instead of UTC differs.
 FIXTURE_DATE = "2026-10-16T15:04:05+05:30"
 

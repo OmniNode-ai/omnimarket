@@ -503,6 +503,51 @@ def test_read_verb_publishes_typed_command_and_returns_terminal(
     assert answer["bus"]["correlation_id"] == str(sent.correlation_id)
 
 
+def test_job_log_passes_the_window_and_step_into_the_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    step = "Pre-apply: provision contract-declared Kafka topics"
+    result = _run(
+        [
+            "job-log",
+            REPO,
+            "--job-id",
+            "12",
+            "--step",
+            step,
+            "--offset-bytes",
+            "4096",
+            "--length-bytes",
+            "2048",
+        ]
+    )
+
+    assert result.exit_code == 0, result.output
+    sent = ModelGithubGatewayRequest.model_validate(bus.published[0][1]["payload"])
+    assert (sent.job_id, sent.step, sent.offset_bytes, sent.length_bytes) == (
+        12,
+        step,
+        4096,
+        2048,
+    )
+
+
+def test_job_log_refuses_a_length_without_offset_or_step(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    result = CliRunner().invoke(
+        scm_cli.scm_group, ["job-log", REPO, "--job-id", "12", "--length-bytes", "9"]
+    )
+
+    assert result.exit_code != 0
+    assert "length_bytes needs offset_bytes or step" in result.output
+    assert bus.published == []
+
+
 def test_run_view_returns_step_timestamps_without_an_additional_read(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

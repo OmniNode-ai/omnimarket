@@ -14,6 +14,7 @@ from urllib.parse import quote_plus
 import asyncpg
 import pytest
 
+from omnimarket.adapters.asyncpg_adapter import _refuse_unbound_tenant_scoped_write
 from omnimarket.nodes.node_metering_summary_compute.models.model_metering_summary import (
     ModelCounterfactualBaseline,
     ModelMeteringRecord,
@@ -72,7 +73,11 @@ class _ScopedConnectionAdapter:
     def __init__(self, conn: asyncpg.Connection) -> None:
         self._conn = conn
 
-    async def execute(self, query: str, *params: Any) -> list[dict[str, Any]]:
+    async def execute(
+        self, query: str, *params: Any, tenant: str | None = None
+    ) -> list[dict[str, Any]]:
+        # The real adapter's refusal of an unbound tenant-scoped write (OMN-19513).
+        _refuse_unbound_tenant_scoped_write(query, tenant)
         rows = await self._conn.fetch(_scoped(query), *params)
         return [dict(row) for row in rows]
 
@@ -122,6 +127,20 @@ async def test_replacement_and_replay_against_real_postgres() -> None:
         assert replayed[0]["summary_json"].encode("utf-8") == replaced[0][
             "summary_json"
         ].encode("utf-8")
+
+        other = second.model_copy(
+            update={"tenant_id": "11111111-2222-5333-8444-555555555555"}
+        )
+        assert (await writer._project(other))["rows_upserted"] == 1
+        assert (await writer._project(other))["rows_upserted"] == 1
+        stored_by_tenant = {
+            row["tenant_id"]: dict(row) for row in await conn.fetch(query)
+        }
+        expected_other = HandlerProjectionMeteringSummary().handle(other).rows[0]
+        assert stored_by_tenant == {
+            second.tenant_id: dict(replayed[0]),
+            other.tenant_id: expected_other.model_dump(mode="json"),
+        }
     finally:
         try:
             await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
