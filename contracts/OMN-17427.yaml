@@ -802,16 +802,28 @@ requirements:
     acceptance:
       - id: "AC183"
         statement: "AC183: _repo_verdict counts a roll-up check only for a PR whose reds are all roll-ups, so two PRs red on CI Summary and repo-evidence / dod-verify name repo-evidence / dod-verify, two PRs red on CI Summary alone still name CI Summary, and CI Summary shared only through PRs that each carry another red is no shared red -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q -k roll_up fails at the merge base, where the node names CI Summary"
+  - id: "req-retention-run-budget"
+    statement: "A scheduled retention run never holds the runtime's event loop for a whole backlog: it yields after a time budget and resumes the backlog on a short retry."
+    acceptance:
+      - id: "AC182"
+        statement: "AC182: a scheduled retention run ends after the first committed batch that finishes past schedule.max_run_seconds (always after one batch), reports backlog_remaining, and the next tick resumes after backlog_retry_seconds instead of run_interval_seconds -- falsifier: uv run pytest tests/nodes/test_omn17427_retention_cleanup_batched.py -q -n 0 --no-cov -k 'budget or backlog or retry' fails at the merge base, where a run drains to max_batches in one call and the next tick waits the full interval."
+      - id: "AC186"
+        statement: "AC186: the runtime entry point of NodeRetentionCleanup is handle_async, which runs the run in a worker thread so the event loop keeps running while a batch blocks, and a tick that arrives while a run holds its thread is skipped, not queued -- falsifier: uv run pytest tests/nodes/test_omn17427_retention_cleanup_batched.py -q -n 0 --no-cov -k 'handle_async or event_loop_free or skipped_not_queued' fails at the merge base, where the runtime calls the synchronous handle on its loop."
   - id: "req-pack-orchestrator-source-order"
     statement: "The context-pack orchestrator gives each artifact its position in its tier's source result as source_priority, so a pack carries a tier's entries in the order the source answered them rather than in content-hash order."
     acceptance:
       - id: "AC184"
         statement: "AC184: a tier source answering five open_work rows in forward, reversed or shuffled order yields a built pack whose rendered text carries the rows in that same order -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -k source_order fails at the merge base, where every artifact keeps the default source_priority 100 and the builder orders a tier's chunks by hash"
+  - id: "req-emit-publish-circuit"
+    statement: "One slow node_event_emit_effect publish no longer spools healthy publishes: the publish-backoff marker is an on-disk circuit for the publish identity that counts consecutive failed invocations, opens only at unreachable_failure_threshold (default 3) for unreachable_backoff_seconds (default 30, 0 disables), probes after the window, closes on any successful publish or drained backlog record, ignores quarantines, reads an old-shape, malformed or other-identity marker as no failures, retries a clean circuit's retryable current-event publish once within the shared 9 s budget, and reports publish_failure_count and publish_circuit_open on ModelEmitResult."
+    acceptance:
+      - id: "AC184"
+        statement: "AC184: after one failed invocation a new handler on the same spool publishes and drains the first record; with threshold 3 invocations 1 to 3 attempt a publish and invocation 4 inside the window attempts none and returns publish_skipped_unreachable=True and publish_circuit_open=True; a success deletes the marker and resets the count; a probe after the window re-opens on failure with a fresh opened_at and on success drains the backlog in the same invocation; a first-call TimeoutError on a clean circuit is retried once to published=True under the 9 s budget, and not retried with a recorded failure or under 1 s left; an old failed_at, malformed or other-identity marker never blocks; a zero window writes no marker and reports publish_failure_count None; a quarantine leaves the count unchanged -- falsifier: uv run pytest tests/unit/nodes/node_event_emit_effect/test_publish_circuit_omn17427.py -q fails at the merge base (13 of 17 fail), where one failure spools every later publish for 120 s"
   - id: "req-in-process-evidence-outcome-verdict"
     statement: "An accepted in-process onex delegate run's delegation_events row states operational_outcome completed and content_verdict usable, as the runtime terminal of an accepted run does, because on that path only the local port's evidence terminal reaches the projection and the bus, and it named neither; a failed in-process run states neither, since the payload does not carry which gate branch refused it."
     acceptance:
-      - id: "AC186"
-        statement: "AC186: LocalDelegationDispatchPort._project_evidence with quality_passed true publishes operational_outcome completed and content_verdict usable and the delegation projection writes both onto the row; with quality_passed false the payload names neither and the row is not completed/usable -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_in_process_evidence_outcome_verdict_omn19448.py -q fails at the merge base, where the evidence payload has no operational_outcome"
+      - id: "AC187"
+        statement: "AC187: LocalDelegationDispatchPort._project_evidence with quality_passed true publishes operational_outcome completed and content_verdict usable and the delegation projection writes both onto the row; with quality_passed false the payload names neither and the row is not completed/usable -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_in_process_evidence_outcome_verdict_omn19448.py -q fails at the merge base, where the evidence payload has no operational_outcome"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -3476,6 +3488,21 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_repo_status_throughput_tick_decision_compute.py -q -n 0 -p no:randomly --no-cov --refuse-skips -k roll_up"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-retention-run-budget"
+    description: "The first retention tick after a dev-lane restart deleted a consumer_flow_windows backlog in one synchronous call and held the effects event loop 8.7 minutes, so the container answered no health probe. The run-budget tests fail at the merge base."
+    source: "manual"
+    binds_ac: ["AC182", "AC186"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/test_omn17427_retention_cleanup_batched.py -q -n 0 -p no:randomly --no-cov -k 'budget or backlog or retry or handle_async or event_loop_free or skipped_not_queued' --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-retention-run-budget-deploy-probe"
+    description: "Deploy probe: on the hosted runner, read the packaged retention contract's schedule and run a budgeted batched delete against a fake connection. This packaged-path probe fails at the merge base and does not attest live loop latency."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/test_omn17427_retention_cleanup_batched.py -q -n 0 -p no:randomly --no-cov -k 'contract_declares_a_short_run_budget or stops_after_the_first_batch_past_it' --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac152-pack-source-order"
     description: "The context-pack orchestrator sets source_priority to each entry's position in its tier's source result, so the rendered pack carries a tier's entries in source order for forward, reversed and shuffled sources. At the merge base all three cases fail, because every artifact keeps source_priority 100 and the builder orders by hash."
     source: "manual"
@@ -3491,18 +3518,33 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -n 0 -p no:randomly --no-cov -k 'source_order and days1'"
         cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn17427-ac186-in-process-outcome-verdict"
+  - id: "dod-omn17427-ac187-in-process-outcome-verdict"
     description: "The in-process evidence terminal of an accepted run publishes operational_outcome completed and content_verdict usable, and the delegation projection copies both onto the row; a failed run's terminal names neither. At the merge base the accepted-run test fails with KeyError operational_outcome."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_in_process_evidence_outcome_verdict_omn19448.py -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC186"]
+    binds_ac: ["AC187"]
   - id: "dod-omn17427-in-process-outcome-deploy-probe"
     description: "Deploy probe. In the checked-out package, _project_evidence of an accepted run publishes a terminal whose projected delegation_events row carries operational_outcome completed and content_verdict usable. It fails at the merge base and needs only uv and this checkout on the hosted runner; it does not attest a live deployment."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_in_process_evidence_outcome_verdict_omn19448.py -q -n 0 -p no:randomly --no-cov -k test_accepted_in_process_evidence_states_completed_usable"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac184-emit-publish-circuit"
+    description: "AC184: the emit publish circuit opens only after the failure threshold, any success closes it, a probe follows the window, a clean circuit retries a slow publish once within the shared budget, and foreign or old-shape markers never block. 13 of the module's 17 tests fail at the merge base."
+    source: "manual"
+    binds_ac: ["AC184"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_publish_circuit_omn17427.py tests/unit/nodes/node_event_emit_effect/test_unreachable_backoff_omn17427.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-emit-publish-circuit-deploy-probe"
+    description: "Deploy probe. In the checked-out package, after one failed publish by an identity a new emit handler on the same spool still publishes and drains the spooled record. It fails at the merge base and needs only uv and this checkout on the hosted runner; no broker or credential. This is a runtime-path check, not a live deployment attestation."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_publish_circuit_omn17427.py -q -n 0 -p no:randomly --no-cov -k one_retryable_failure_does_not_skip"
         cwd: "${OMNI_HOME}/omnimarket"
