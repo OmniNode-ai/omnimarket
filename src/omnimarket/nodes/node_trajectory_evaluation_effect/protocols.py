@@ -55,9 +55,16 @@ class ModelEvaluatorStatus(BaseModel):
 class EvaluatorError(Exception):
     """Base of the evaluator's typed errors."""
 
-    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        error_code: str | None = None,
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
+        self.error_code = error_code
 
 
 class EvaluatorRateLimitedError(EvaluatorError):
@@ -73,8 +80,9 @@ class EvaluatorRejectedError(EvaluatorError):
         *,
         status_code: int | None = None,
         credit_exhausted: bool = False,
+        error_code: str | None = None,
     ) -> None:
-        super().__init__(message, status_code=status_code)
+        super().__init__(message, status_code=status_code, error_code=error_code)
         self.credit_exhausted = credit_exhausted
 
 
