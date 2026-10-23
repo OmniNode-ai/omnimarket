@@ -28,8 +28,6 @@ from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutpu
 
 from omnimarket.events.pr_landing_companion import (
     EnumPrLandingCompanionOp,
-    EnumPrLandingCompanionOutcomeKind,
-    ModelPrLandingCompanionOutcome,
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers import (
     handler_pr_lifecycle_fix as fix_module,
@@ -139,36 +137,3 @@ async def test_a_non_companion_command_yields_the_unchanged_result_as_its_only_e
     assert _comparable(event) == _comparable(expected)
     assert output.correlation_id == command.correlation_id
     assert reporter.calls == []
-
-
-@pytest.mark.unit
-async def test_an_autobind_command_yields_the_unchanged_result_then_the_typed_outcome(
-    reporter: _Reporter,
-) -> None:
-    command = _command(
-        EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND,
-        EnumPrLandingCompanionOp.REGENERATE,
-    )
-    output = await HandlerPrLifecycleFixRuntime(
-        occ_autobind_adapter=_AutobindAdapter()
-    ).handle(command)
-
-    assert isinstance(output, ModelHandlerOutput), type(output).__name__
-    assert [type(e) for e in output.events] == [
-        ModelPrLifecycleFixResult,
-        ModelPrLandingCompanionOutcome,
-    ]
-    result, outcome = output.events
-    assert isinstance(result, ModelPrLifecycleFixResult)
-    assert isinstance(outcome, ModelPrLandingCompanionOutcome)
-    expected = await HandlerPrLifecycleFix(
-        occ_autobind_adapter=_AutobindAdapter()
-    ).handle(command)
-    assert _comparable(result) == _comparable(expected)
-    assert outcome.kind is EnumPrLandingCompanionOutcomeKind.MINTED
-    assert outcome.op is EnumPrLandingCompanionOp.REGENERATE
-    assert outcome.head_sha == _HEAD
-    assert outcome.occ_pr == 11400
-    # One marker from the runtime run and one from the reference run.
-    assert len(reporter.calls) == 2
-    assert reporter.calls[0]["head_sha"] == _HEAD

@@ -121,7 +121,7 @@ def test_fetch_failure_refuses_by_default_ac1(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     occ = _make_local_clone_with_unreachable_origin(tmp_path, _TICKET)
-    monkeypatch.setenv("ONEX_CC_REPO_PATH", str(occ))
+    monkeypatch.setenv("CONTRACT_REPO_DIR", str(occ))
     monkeypatch.setenv("OCC_GOVERNANCE_REF", "origin/dev")
     monkeypatch.delenv("OMNI_HOME", raising=False)
     monkeypatch.delenv(_ALLOW_STALE_OCC_REF_ENV, raising=False)
@@ -157,7 +157,7 @@ def test_fetch_failure_override_marks_every_result_unattributable_ac5(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     occ = _make_local_clone_with_unreachable_origin(tmp_path, _TICKET)
-    monkeypatch.setenv("ONEX_CC_REPO_PATH", str(occ))
+    monkeypatch.setenv("CONTRACT_REPO_DIR", str(occ))
     monkeypatch.setenv("OCC_GOVERNANCE_REF", "origin/dev")
     monkeypatch.delenv("OMNI_HOME", raising=False)
     monkeypatch.setenv(_ALLOW_STALE_OCC_REF_ENV, "1")
@@ -215,7 +215,7 @@ def test_ref_lock_race_is_retried_once_ac3(
     _git(tmp_path, "clone", "-q", str(remote), str(occ))
     _git(occ, "checkout", "-q", "-b", "main")
 
-    monkeypatch.setenv("ONEX_CC_REPO_PATH", str(occ))
+    monkeypatch.setenv("CONTRACT_REPO_DIR", str(occ))
     # The fetch attempts themselves are stubbed: a real concurrent git
     # ref-lock race is not reproducible hermetically without genuine
     # concurrency, so this drives the SAME retry code path with a controlled
@@ -258,7 +258,7 @@ def test_non_ref_lock_failure_is_not_retried(
     occ = tmp_path / "onex_change_control"
     occ.mkdir()
     _git(occ, "init", "-q")
-    monkeypatch.setenv("ONEX_CC_REPO_PATH", str(occ))
+    monkeypatch.setenv("CONTRACT_REPO_DIR", str(occ))
     monkeypatch.setenv("OCC_GOVERNANCE_REF", "origin/dev")
     monkeypatch.delenv("OMNI_HOME", raising=False)
 
@@ -316,7 +316,7 @@ def test_provenance_resolved_sha_matches_worktree_head_ac2(
     ).stdout.strip()
     _git(occ, "checkout", "-q", "main")
 
-    monkeypatch.setenv("ONEX_CC_REPO_PATH", str(occ))
+    monkeypatch.setenv("CONTRACT_REPO_DIR", str(occ))
     monkeypatch.setenv(
         "OCC_GOVERNANCE_REF", "dev"
     )  # local branch: NOT_APPLICABLE (AC4)

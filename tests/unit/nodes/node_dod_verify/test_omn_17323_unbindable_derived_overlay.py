@@ -330,12 +330,12 @@ def _isolate_occ_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Point receipt resolution at ``tmp_path`` and nowhere else.
 
     Mirrors ``test_omn_15465_pr_live_state_carrier_misbind`` — this workspace
-    exports ``CONTRACT_REPO_DIR`` / ``ONEX_CC_REPO_PATH``, and an ambient value
+    exports ``CONTRACT_REPO_DIR`` / ``CONTRACT_REPO_DIR``, and an ambient value
     redirects the lookup away from the fixture, making the assertion vacuous.
     """
     monkeypatch.setenv("OMNI_HOME", str(tmp_path))
     monkeypatch.delenv("CONTRACT_REPO_DIR", raising=False)
-    monkeypatch.setenv("ONEX_CC_REPO_PATH", str(tmp_path / "onex_change_control"))
+    monkeypatch.setenv("CONTRACT_REPO_DIR", str(tmp_path / "onex_change_control"))
     return tmp_path / "onex_change_control"
 
 

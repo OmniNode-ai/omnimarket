@@ -1051,7 +1051,7 @@ _BUILTIN_WORD_RE = re.compile(
 
 def _occ_root() -> Path | None:
     """Same resolution order as ``EvidenceCollector._resolve_occ_root``."""
-    explicit = os.environ.get("ONEX_CC_REPO_PATH", "").strip()
+    explicit = os.environ.get("CONTRACT_REPO_DIR", "").strip()
     if explicit and Path(explicit).is_dir():
         return Path(explicit)
     return None
@@ -1438,7 +1438,7 @@ class TestOccLiveCorpusDriftDiagnostic:
     @pytest.mark.skipif(
         _OCC_ROOT is None,
         reason="host-only drift diagnostic: no onex_change_control clone reachable "
-        "(ONEX_CC_REPO_PATH). AC5 is proven by "
+        "(CONTRACT_REPO_DIR). AC5 is proven by "
         "TestAc5PinnedCorpusReCensus, which never skips.",
     )
     def test_live_corpus_has_no_surviving_tokenizer_damage(self) -> None:
@@ -1476,7 +1476,7 @@ class TestOccLiveCorpusDriftDiagnostic:
     @pytest.mark.skipif(
         _OCC_ROOT is None,
         reason="host-only drift diagnostic: no onex_change_control clone reachable "
-        "(ONEX_CC_REPO_PATH). AC5 is proven by "
+        "(CONTRACT_REPO_DIR). AC5 is proven by "
         "TestAc5PinnedCorpusReCensus, which never skips.",
     )
     def test_live_corpus_has_no_prefix_builtin_only_check_value(self) -> None:

@@ -61,13 +61,6 @@ handler_routing:
         name: HandlerEvidenceDashboardEffect
         module: omnimarket.nodes.node_evidence_dashboard_effect.handlers.handler_evidence_dashboard_effect
       description: "normalization_contract.mappings: evidence-validated -> VALIDATED/PASSED/INFO."
-    - topic: onex.evt.omnimarket.occ-pr-created.v1
-      message_category: event
-      operation: evidence_dashboard
-      handler:
-        name: HandlerEvidenceDashboardEffect
-        module: omnimarket.nodes.node_evidence_dashboard_effect.handlers.handler_evidence_dashboard_effect
-      description: "normalization_contract.mappings: occ-pr-created -> OCC_PR/PASSED/INFO."
     - topic: onex.evt.omnimarket.evidence-pipeline-completed.v1
       message_category: event
       operation: evidence_dashboard
@@ -113,7 +106,6 @@ event_bus:
     - onex.evt.omnimarket.evidence-collected.v1
     - onex.evt.omnimarket.evidence-extracted.v1
     - onex.evt.omnimarket.evidence-validated.v1
-    - onex.evt.omnimarket.occ-pr-created.v1
     - onex.evt.omnimarket.evidence-pipeline-completed.v1
     - onex.cmd.omnimarket.readiness-gate-start.v1
     - onex.evt.omnimarket.readiness-gate-completed.v1
@@ -136,7 +128,6 @@ normalization_contract:
     evidence-collected: {stage: COLLECTED, status: PASSED, severity: INFO}
     evidence-extracted: {stage: EXTRACTED, status: PASSED, severity: INFO}
     evidence-validated: {stage: VALIDATED, status: PASSED, severity: INFO}
-    occ-pr-created: {stage: OCC_PR, status: PASSED, severity: INFO}
     evidence-pipeline-completed: {stage: COMPLETED, status: PASSED, severity: INFO}
     readiness-gate-started: {stage: READINESS_GATE_STARTED, status: IN_FLIGHT, severity: INFO}
     readiness-gate-completed: {stage: READINESS_GATE_COMPLETED, status: PASSED, severity: INFO}

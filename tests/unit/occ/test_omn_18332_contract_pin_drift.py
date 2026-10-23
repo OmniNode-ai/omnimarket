@@ -36,11 +36,7 @@ deliberate edit that re-extracts, and that is the control.
 from __future__ import annotations
 
 import hashlib
-import importlib.util
-import os
 import re
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -48,9 +44,6 @@ import pytest
 from omnimarket import occ_contract_pin
 from omnimarket.occ_contract_pin import (
     MAX_CRITERION_HASH_INPUT_CHARS,
-    PORTED_FROM_PATH,
-    PORTED_FROM_REVISION,
-    contract_pin_hashes,
     criterion_hash,
     normalise_criterion,
 )
@@ -191,91 +184,3 @@ class TestTheDigestIsTheChangeControlDigest:
         decomposed = "AC1: café is green"
 
         assert criterion_hash(composed) != criterion_hash(decomposed)
-
-
-def _change_control_root() -> Path | None:
-    """The `onex_change_control` clone, or ``None`` where there is not one.
-
-    Resolved from ``OMNI_HOME`` with no default path: a hardcoded fallback
-    would silently pass this leg against the wrong tree on a machine that has
-    one.
-    """
-    omni_home = os.environ.get("OMNI_HOME")
-    if not omni_home:
-        return None
-    candidate = Path(omni_home) / "onex_change_control"
-    return candidate if (candidate / ".git").exists() else None
-
-
-def _upstream_source(root: Path) -> str | None:
-    try:
-        result = subprocess.run(
-            ["git", "show", f"{PORTED_FROM_REVISION}:{PORTED_FROM_PATH}"],
-            cwd=root,
-            capture_output=True,
-            text=True,
-            timeout=60,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError):  # pragma: no cover
-        return None
-    return result.stdout if result.returncode == 0 else None
-
-
-class TestThePinAgreesWithTheLiveConsumer:
-    """The clone leg. Runs on the lab hosts and developer machines."""
-
-    def test_the_snapshot_is_still_what_the_pinned_revision_says(self) -> None:
-        root = _change_control_root()
-        if root is None:
-            pytest.skip(
-                "no onex_change_control clone under $OMNI_HOME; the clone-free "
-                "legs above still ran and are what hosted CI enforces"
-            )
-        upstream = _upstream_source(root)
-        if upstream is None:
-            pytest.skip(
-                "the pinned onex_change_control revision is not present in this "
-                "clone (fetch it to run this leg)"
-            )
-
-        missing = [line for line in _snapshot_lines() if line not in upstream]
-
-        assert not missing, (
-            "the committed snapshot is not what the pinned revision contains; "
-            f"re-extract it rather than editing either side: {missing[:5]}"
-        )
-
-    def test_the_real_consumer_module_computes_the_same_digests(self) -> None:
-        """The end-to-end control: load OCC's module and compare digests.
-
-        Line-presence proves the bytes were copied. This proves they still MEAN
-        the same thing, over a real ticket body, through the consumer's own
-        import graph rather than through this repository's copy of it.
-        """
-        root = _change_control_root()
-        if root is None:
-            pytest.skip("no onex_change_control clone under $OMNI_HOME")
-        module_path = root / PORTED_FROM_PATH
-        if not module_path.exists():
-            pytest.skip(f"{PORTED_FROM_PATH} is absent from the clone")
-
-        spec = importlib.util.spec_from_file_location(
-            "_omn18332_live_occ_ac_criteria", module_path
-        )
-        assert spec is not None
-        assert spec.loader is not None
-        upstream_module = importlib.util.module_from_spec(spec)
-        sys.modules[spec.name] = upstream_module
-        try:
-            spec.loader.exec_module(upstream_module)
-            body = _CORPUS.read_text(encoding="utf-8")
-            theirs = {
-                label: upstream_module.criterion_hash(text)
-                for label, text in upstream_module.criteria_by_label(body).items()
-            }
-        finally:
-            sys.modules.pop(spec.name, None)
-
-        assert theirs, "positive control: the corpus must resolve some criteria"
-        assert contract_pin_hashes(body) == theirs

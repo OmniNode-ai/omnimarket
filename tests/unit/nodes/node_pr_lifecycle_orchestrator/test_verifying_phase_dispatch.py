@@ -36,8 +36,8 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecyc
     HandlerPrLifecycleOrchestrator,
     ModelPrLifecycleStartCommand,
 )
-from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.occ_stamp_readback import (
-    ModelOccStampReadbackResult,
+from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.pr_evidence_readback import (
+    ModelPrEvidenceReadbackResult,
 )
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers import (
     EnumPrCategory,
@@ -73,13 +73,13 @@ _ARM_READY_FACTS: dict[str, Any] = {
 }
 
 
-class _VerifiedOccStampReadback:
+class _VerifiedPrEvidenceReadback:
     """Stub OCC-stamp read-back that always verifies (OMN-14151 arm-gate)."""
 
     async def verify_fix_landed(
         self, repo: str, pr_number: int, ticket_id: str | None = None
-    ) -> ModelOccStampReadbackResult:
-        return ModelOccStampReadbackResult(verified=True)
+    ) -> ModelPrEvidenceReadbackResult:
+        return ModelPrEvidenceReadbackResult(verified=True)
 
 
 class _RecordingBus:
@@ -223,7 +223,7 @@ def _make_orch(
         merge=merge,
         fix=_MockFix(),
         event_bus=_RecordingBus(),
-        occ_stamp_readback=_VerifiedOccStampReadback(),
+        pr_evidence_readback=_VerifiedPrEvidenceReadback(),
     )
 
 

@@ -55,7 +55,7 @@ _HASH = "9d006777c2e97aabd867d0c48c23fac73e0608770843ba66a24fcd093b73080f"
 @pytest.fixture(autouse=True)
 def _no_ambient_occ_root(monkeypatch: pytest.MonkeyPatch) -> None:
     """OMN-19428: the OCC tree read is the one the contract lives in."""
-    for name in ("CONTRACT_REPO_DIR", "ONEX_CC_REPO_PATH", "OMNI_HOME"):
+    for name in ("CONTRACT_REPO_DIR", "CONTRACT_REPO_DIR", "OMNI_HOME"):
         monkeypatch.delenv(name, raising=False)
 
 

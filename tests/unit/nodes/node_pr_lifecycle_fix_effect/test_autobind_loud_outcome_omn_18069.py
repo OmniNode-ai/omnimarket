@@ -196,47 +196,6 @@ def _patched_rest_json(fake: Any) -> Iterator[None]:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "command",
-    [OMN_18068_FIRST, OMN_18068_SECOND],
-    ids=["offset-4508", "offset-4510"],
-)
-@pytest.mark.asyncio
-async def test_credential_failure_reports_error_outcome_on_the_product_pr(
-    command: ModelPrLifecycleFixCommand, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """RED before OMN-18069: nothing was posted and the terminal said completed."""
-    reporter = _RecordingReporter()
-    monkeypatch.setattr(
-        "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers."
-        "handler_pr_lifecycle_fix.report_autobind_outcome",
-        reporter,
-    )
-    handler = HandlerPrLifecycleFix(
-        occ_autobind_adapter=_RaisingAutobind(),
-        occ_companion_verifier=_Verifier(verified=False),
-        outcome_token_resolver=lambda: "ghs_test_token",
-    )
-
-    result = await handler.handle(command)
-
-    # The result still records the failure honestly...
-    assert result.fix_applied is False
-    assert result.error == LIVE_ERROR_TEXT
-    assert result.occ_companion_verified is False
-
-    # ...and, unlike before, it also reaches the product PR.
-    assert len(reporter.calls) == 1, (
-        "a consumed command must produce exactly one outcome"
-    )
-    call = reporter.calls[0]
-    assert call["outcome"] is EnumAutobindOutcome.ERROR
-    assert call["repo"] == command.repo
-    assert call["pr_number"] == command.pr_number
-    assert call["correlation_id"] == command.correlation_id
-    assert LIVE_ERROR_TEXT in call["reason"]
-
-
 @pytest.mark.asyncio
 async def test_two_dispatches_on_one_pr_each_get_their_own_outcome(
     monkeypatch: pytest.MonkeyPatch,
@@ -273,41 +232,6 @@ async def test_two_dispatches_on_one_pr_each_get_their_own_outcome(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    ("autobind", "verified", "expected"),
-    [
-        (_MintingAutobind(), True, EnumAutobindOutcome.MINTED),
-        (_DecliningAutobind(), False, EnumAutobindOutcome.DECLINED),
-        (_RaisingAutobind(), False, EnumAutobindOutcome.ERROR),
-    ],
-    ids=["minted", "declined", "error"],
-)
-@pytest.mark.asyncio
-async def test_every_disposition_is_reported_distinctly(
-    autobind: Any,
-    verified: bool,
-    expected: EnumAutobindOutcome,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A surface that only appears on failure cannot tell 'it worked' from
-    'nobody ran it'. All three are recorded."""
-    reporter = _RecordingReporter()
-    monkeypatch.setattr(
-        "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers."
-        "handler_pr_lifecycle_fix.report_autobind_outcome",
-        reporter,
-    )
-    handler = HandlerPrLifecycleFix(
-        occ_autobind_adapter=autobind,
-        occ_companion_verifier=_Verifier(verified=verified),
-        outcome_token_resolver=lambda: "ghs_test_token",
-    )
-
-    await handler.handle(OMN_18062_SECOND_PR)
-
-    assert [c["outcome"] for c in reporter.calls] == [expected]
-
-
 @pytest.mark.asyncio
 async def test_non_autobind_reasons_report_nothing(
     monkeypatch: pytest.MonkeyPatch,
@@ -328,30 +252,6 @@ async def test_non_autobind_reasons_report_nothing(
     )
 
     assert reporter.calls == []
-
-
-@pytest.mark.asyncio
-async def test_a_broken_reporter_never_converts_one_failure_into_two(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def _explode(**kwargs: Any) -> bool:
-        raise RuntimeError("check-runs API is down")
-
-    monkeypatch.setattr(
-        "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers."
-        "handler_pr_lifecycle_fix.report_autobind_outcome",
-        _explode,
-    )
-    handler = HandlerPrLifecycleFix(
-        occ_autobind_adapter=_RaisingAutobind(),
-        occ_companion_verifier=_Verifier(verified=False),
-        outcome_token_resolver=lambda: "ghs_test_token",
-    )
-
-    result = await handler.handle(OMN_18068_FIRST)
-
-    assert result.error == LIVE_ERROR_TEXT
-    assert result.fix_applied is False
 
 
 # ---------------------------------------------------------------------------

@@ -24,7 +24,6 @@ EXPECTED_SOURCE_TOPICS = (
     "onex.evt.omnimarket.evidence-collected.v1",
     "onex.evt.omnimarket.evidence-extracted.v1",
     "onex.evt.omnimarket.evidence-validated.v1",
-    "onex.evt.omnimarket.occ-pr-created.v1",
     "onex.evt.omnimarket.evidence-pipeline-completed.v1",
     "onex.cmd.omnimarket.readiness-gate-start.v1",
     "onex.evt.omnimarket.readiness-gate-completed.v1",

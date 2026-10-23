@@ -10,7 +10,7 @@ caller's cwd was read as the contract source. The duplicate is gone
 (OMN-17427): the declared roots decide, and nothing else.
 
 ``$OMNI_HOME`` is no longer one of those roots. The change-control clone is
-located only through ``ONEX_CC_REPO_PATH``, or derived from a contract path
+located only through ``CONTRACT_REPO_DIR``, or derived from a contract path
 that already lies inside it, the rule the dod and integration sweeps follow,
 so no resolver in the collector spells where that clone lives.
 """
@@ -43,7 +43,7 @@ def test_omni_home_unset_does_not_search_working_directory(
     _write_contract(tmp_path)
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("OMNI_HOME", raising=False)
-    monkeypatch.delenv("ONEX_CC_REPO_PATH", raising=False)
+    monkeypatch.delenv("CONTRACT_REPO_DIR", raising=False)
 
     assert EvidenceCollector()._find_contract(_TICKET) is None
 
@@ -55,7 +55,7 @@ def test_omni_home_alone_does_not_locate_contract(
     _write_contract(tmp_path)
     monkeypatch.chdir(tmp_path.parent)
     monkeypatch.setenv("OMNI_HOME", str(tmp_path))
-    monkeypatch.delenv("ONEX_CC_REPO_PATH", raising=False)
+    monkeypatch.delenv("CONTRACT_REPO_DIR", raising=False)
 
     assert EvidenceCollector()._find_contract(_TICKET) is None
 
@@ -64,18 +64,18 @@ def test_omni_home_alone_does_not_locate_contract(
 def test_onex_cc_repo_path_root_still_resolves(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # Positive control: the declared ONEX_CC_REPO_PATH root still wins.
+    # Positive control: the declared CONTRACT_REPO_DIR root still wins.
     expected = _write_contract(tmp_path)
     monkeypatch.chdir(tmp_path.parent)
     monkeypatch.delenv("OMNI_HOME", raising=False)
-    monkeypatch.setenv("ONEX_CC_REPO_PATH", str(tmp_path / "onex_change_control"))
+    monkeypatch.setenv("CONTRACT_REPO_DIR", str(tmp_path / "onex_change_control"))
 
     assert EvidenceCollector()._find_contract(_TICKET) == expected
 
 
 def _only_registry_root(monkeypatch: pytest.MonkeyPatch, root: Path) -> None:
     monkeypatch.setenv("OMNI_HOME", str(root))
-    monkeypatch.delenv("ONEX_CC_REPO_PATH", raising=False)
+    monkeypatch.delenv("CONTRACT_REPO_DIR", raising=False)
     monkeypatch.delenv("CONTRACT_REPO_DIR", raising=False)
 
 
@@ -96,7 +96,7 @@ def test_onex_cc_repo_path_locates_occ_root(
     # Positive control: the explicit locator still resolves.
     _write_contract(tmp_path)
     _only_registry_root(monkeypatch, tmp_path)
-    monkeypatch.setenv("ONEX_CC_REPO_PATH", str(tmp_path / "onex_change_control"))
+    monkeypatch.setenv("CONTRACT_REPO_DIR", str(tmp_path / "onex_change_control"))
 
     assert EvidenceCollector()._resolve_occ_root() == tmp_path / "onex_change_control"
 

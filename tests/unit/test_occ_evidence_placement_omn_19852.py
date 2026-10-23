@@ -23,9 +23,6 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
 )
 
 from omnimarket.events.occ_observation_store import insert_dod_evidence_item
-from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
-    OccCompanionEmitter,
-)
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
     append_dod_evidence_items,
 )
@@ -152,7 +149,6 @@ def test_all_producers_share_one_placement() -> None:
     block = _item(COMPANION_B)
     expected = insert_dod_evidence_blocks(base, [block])
     assert append_dod_evidence_items(base, [block]) == expected
-    assert OccCompanionEmitter._insert_dod_evidence_items(base, [block]) == expected
     assert insert_dod_evidence_item(base, block) == expected
 
 

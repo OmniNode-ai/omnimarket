@@ -3,12 +3,11 @@
 Routes fix actions:
   ci_failure                     -> flaky/infra rerun via ``gh run rerun --failed``
   code_failure                   -> lint/type/test failure, delegate to pr_polish
-  receipt_failure                -> OCC/receipt-gate failure, delegate to pr_polish
+  receipt_failure                -> repository-evidence failure, delegate to pr_polish
   conflict                       -> ``gh pr update-branch``, then pr_polish if still failing
   changes_requested              -> review-comment fix via pr_polish
-  deploy_gate_contract_not_found -> auto-create missing OCC contract via create_occ_contract
-  receipt_evidence_source_autobind -> bind OCC receipt evidence + rewrite Evidence-Source
-                                      via autobind_evidence_source (OMN-13317 F1)
+  deploy_gate_contract_not_found -> refusal for a retired companion command
+  receipt_evidence_source_autobind -> refusal for a retired companion command
 
 Protocol-injected adapters for GitHub operations and agent dispatch allow
 mock substitution in tests with zero infrastructure.
@@ -50,8 +49,8 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_autobind_outcome
     classify_companion_decline,
     primary_reason,
 )
-from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
-    classify_trivial_infra_fastpath,
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.process_error import (
+    format_process_error,
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command import (
     EnumPrBlockReason,
@@ -62,7 +61,6 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_result impor
     ModelOccCompanionVerification,
     ModelPrLifecycleFixResult,
 )
-from omnimarket.occ_git_transport import format_process_error
 
 logger = logging.getLogger(__name__)
 
@@ -336,17 +334,8 @@ def _default_head_sha_resolver(
 
 
 def _default_outcome_token_resolver() -> str | None:
-    """Lazily resolve the report-only credential (OMN-18069).
-
-    Imported inside the function so module import stays free of any secret-store
-    or contract read -- the handler module is imported by tests that must not
-    touch either.
-    """
-    from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
-        resolve_outcome_reporting_token,
-    )
-
-    return resolve_outcome_reporting_token()
+    """Retired companion commands have no default reporting credential."""
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -720,48 +709,14 @@ class HandlerPrLifecycleFix:
         if reason == EnumPrBlockReason.CONFLICT:
             return await self._github.resolve_conflicts(repo, pr), _NOT_DELEGATED
 
-        if reason == EnumPrBlockReason.DEPLOY_GATE_CONTRACT_NOT_FOUND:
-            # Trivial-infra OCC fast-path (OMN-13776): a one-line non-runtime
-            # infra edit skips the full OCC contract + receipt-chain PR
-            # entirely — no skip token, decided purely from changed_files /
-            # diff_total_lines size-and-path scoping.
-            fastpath_eligible, fastpath_reason = classify_trivial_infra_fastpath(
-                command.changed_files, command.diff_total_lines
+        if reason in (
+            EnumPrBlockReason.DEPLOY_GATE_CONTRACT_NOT_FOUND,
+            EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND,
+        ):
+            raise ValueError(
+                "OCC companion authoring is retired; evidence belongs in the "
+                "product repository's contracts directory"
             )
-            if fastpath_eligible:
-                logger.info(
-                    "PR lifecycle fix: trivial-infra OCC fast-path hit "
-                    "pr=%s repo=%s reason=%s",
-                    pr,
-                    repo,
-                    fastpath_reason,
-                )
-                return f"OCC fast-path: {fastpath_reason}", _NOT_DELEGATED
-
-            # deploy-gate failed because the OCC contract YAML is missing.
-            # ticket_id is required; raise if absent so the caller gets a clear error.
-            if not command.ticket_id:
-                msg = (
-                    f"deploy_gate_contract_not_found fix requires ticket_id "
-                    f"on {repo}#{pr}"
-                )
-                raise ValueError(msg)
-            action = await self._occ.create_occ_contract(repo, pr, command.ticket_id)
-            return action, _NOT_DELEGATED
-
-        if reason == EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND:
-            # Receipt Gate failed: Evidence-Source points at the product head
-            # SHA instead of an OCC source. Bind OCC evidence and rewrite the
-            # PR body. ticket_id is optional — the adapter detects it from the
-            # PR title/body when absent (OMN-13317 F1).
-            action = await self._occ_autobind.autobind_evidence_source(
-                repo,
-                pr,
-                command.ticket_id,
-                batch_mode=command.occ_batch_mode,
-                op=command.op,
-            )
-            return action, _NOT_DELEGATED
 
         msg = f"Unhandled block_reason: {reason!r}"
         raise ValueError(msg)

@@ -1,27 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""OMN-19428 -- the verifier accepts the fields the OCC evidence item model owns.
-
-`onex_change_control` added `supersedes_ac_binding` to its evidence item model
-(`ModelDodEvidenceItem`): the record by which a later item retires a criterion
-binding that a merged, immutable item got wrong. This collector refuses an item
-carrying any field outside its accepted set with `INVALID_DOD_EVIDENCE_ITEM`,
-and that refusal fails EVERY evidence check on the contract. It had learned
-`binds_ac` and `ac_bindings` one literal at a time and had not learned this one,
-so every contract that retires a binding -- the parent ticket's among them --
-could never verify.
-
-The fix is not a sixth literal. The OCC-local fields are read from
-`ModelDodEvidenceItem` in the contract's own OCC tree, so the next field that
-model gains is accepted on the day it merges. These tests exercise that read
-path through a stand-in OCC tree, never through a pinned field list.
-
-RED before the change:
-`test_a_contract_retiring_a_binding_is_not_rejected` failed with
-`INVALID_DOD_EVIDENCE_ITEM: strict canonical field set rejected unknown
-field(s): 'supersedes_ac_binding'=...`.
-"""
+"""Repository contract binding fields and unknown-field refusal."""
 
 from __future__ import annotations
 
@@ -29,14 +9,12 @@ import json
 from pathlib import Path
 
 import pytest
-import yaml
 
 from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
     EvidenceCollector,
 )
 from tests.unit.nodes.node_dod_verify.omn_19428_occ_tree import (
     FIXTURES,
-    MODEL_RELPATH,
     occ_contract,
     occ_tree,
 )
@@ -74,7 +52,7 @@ class ModelDodEvidenceItem(BaseModel):
 @pytest.fixture(autouse=True)
 def _no_ambient_occ_root(monkeypatch: pytest.MonkeyPatch) -> None:
     """The OCC tree under test is the one the contract lives in, never the host's."""
-    for name in ("CONTRACT_REPO_DIR", "ONEX_CC_REPO_PATH", "OMNI_HOME"):
+    for name in ("CONTRACT_REPO_DIR", "CONTRACT_REPO_DIR", "OMNI_HOME"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -116,9 +94,6 @@ def _retiring_item() -> dict[str, object]:
 
 
 _REAL_SHAPE = ("binds_ac", "ac_bindings", "supersedes_ac_binding")
-# A field the installed core model does not declare, so only the OCC model can
-# admit it and the OCC authority is consulted.
-_OCC_ONLY_FIELD = "a_field_only_the_occ_model_may_own"
 
 
 def _messages(results: list[object]) -> list[str]:
@@ -148,121 +123,6 @@ def test_a_genuinely_unknown_field_is_still_rejected(tmp_path: Path) -> None:
         "INVALID_DOD_EVIDENCE_ITEM" in m and "not_a_real_field" in m
         for m in _messages(results)
     )
-
-
-def test_authority_a_field_the_occ_model_does_not_declare_is_refused(
-    tmp_path: Path,
-) -> None:
-    """The field set follows the model: drop it from the model and it is refused.
-
-    core 0.47.51 declares ``supersedes_ac_binding`` itself, so the probe is a
-    field only the OCC model could own.
-    """
-    item = _retiring_item()
-    item[_OCC_ONLY_FIELD] = []
-    path = occ_contract(
-        tmp_path,
-        [_bound_item(), item],
-        model_source=_stand_in(_REAL_SHAPE),
-    )
-
-    results = EvidenceCollector().collect("OMN-9999", contract_path=path)
-
-    assert any(
-        "INVALID_DOD_EVIDENCE_ITEM" in m and _OCC_ONLY_FIELD in m
-        for m in _messages(results)
-    )
-
-
-def test_authority_a_field_the_occ_model_gains_is_accepted_without_a_code_change(
-    tmp_path: Path,
-) -> None:
-    """The reason for deriving: the next OCC field needs no edit here."""
-    item = _retiring_item()
-    item["a_field_added_next_month"] = []
-    path = occ_contract(
-        tmp_path,
-        [_bound_item(), item],
-        model_source=_stand_in((*_REAL_SHAPE, "a_field_added_next_month")),
-    )
-
-    results = EvidenceCollector().collect("OMN-9999", contract_path=path)
-
-    assert results
-    assert not any("INVALID_DOD_EVIDENCE_ITEM" in m for m in _messages(results))
-
-
-def test_authority_an_unreadable_model_refuses_the_contract_by_name(
-    tmp_path: Path,
-) -> None:
-    """No model, no guess: the contract is refused, and the refusal names the file.
-
-    core 0.47.53 declares ``ac_bindings`` itself, so the probe is a field only
-    the OCC model could own.
-    """
-    item = _bound_item()
-    item[_OCC_ONLY_FIELD] = []
-    path = occ_contract(tmp_path, [item, _retiring_item()])
-    (tmp_path / "onex_change_control" / MODEL_RELPATH).unlink()
-
-    results = EvidenceCollector().collect("OMN-9999", contract_path=path)
-
-    assert results
-    assert all(result.status.value == "failed" for result in results)
-    messages = _messages(results)
-    assert any(
-        "OCC_DOD_ITEM_FIELD_AUTHORITY_UNREADABLE" in m
-        and "ModelDodEvidenceItem" in m
-        and str(MODEL_RELPATH) in m
-        for m in messages
-    ), messages
-
-
-def test_authority_a_model_without_the_class_refuses_the_contract_by_name(
-    tmp_path: Path,
-) -> None:
-    item = _retiring_item()
-    item[_OCC_ONLY_FIELD] = []
-    path = occ_contract(tmp_path, [item], model_source="X = 1\n")
-
-    results = EvidenceCollector().collect("OMN-9999", contract_path=path)
-
-    assert any(
-        "OCC_DOD_ITEM_FIELD_AUTHORITY_UNREADABLE" in m and "ModelDodEvidenceItem" in m
-        for m in _messages(results)
-    )
-
-
-def test_authority_a_core_only_contract_needs_no_occ_tree(tmp_path: Path) -> None:
-    """Items inside the installed core model's fields never consult the OCC tree.
-
-    A contract outside any OCC tree, with no OCC root in the environment, still
-    verifies as before -- the OCC model is read only for a field the core model
-    does not own.
-    """
-    path = tmp_path / "OMN-9999.yaml"
-    path.write_text(
-        yaml.safe_dump(
-            {
-                "ticket_id": "OMN-9999",
-                "dod_evidence": [
-                    {
-                        "id": "dod-core",
-                        "description": "core fields only",
-                        "binds_ac": ["AC1"],
-                        "checks": [{"check_type": "command", "check_value": "true"}],
-                    }
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    results = EvidenceCollector().collect("OMN-9999", contract_path=str(path))
-
-    messages = _messages(results)
-    assert not any("INVALID_DOD_EVIDENCE_ITEM" in m for m in messages)
-    assert not any("OCC_DOD_ITEM_FIELD_AUTHORITY_UNREADABLE" in m for m in messages)
 
 
 # ---------------------------------------------------------------------------
