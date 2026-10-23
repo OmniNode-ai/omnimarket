@@ -886,6 +886,11 @@ requirements:
     acceptance:
       - id: "AC187"
         statement: "AC187: test_terminal_emit_close_uses_remaining_budget records exactly one publisher session deadline and asserts finished minus that deadline is below 0.3 seconds; both publish outcomes retain the spool and cancellation assertions, and the background-loop cancellation case passes. The source assertion check fails on the merge base, which times the whole handle call."
+  - id: "req-morning-report-phase-tools"
+    statement: "The six morning report phases have phase-owned deterministic typed tools, local readbacks and guarded effects, with actionable ledger refusals and bounded child-process lifetimes."
+    acceptance:
+      - id: "AC4303"
+        statement: "AC4303: all six report phases declare their own lane, ticket and tool guide; the server exposes only the phase's typed tools with no command or free-path input; watcher, ledger and artifact readbacks preserve their scope; publishing refuses a dry run; a refused TERMINAL includes the ledger's reason and records friction once; and a timed-out program leaves no running child -- falsifier: the focused morning report phase and tool guard tests fail against the merge-base implementation."
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -3832,4 +3837,19 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -k reads_through_an_env_prefix"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-morning-report-phase-tools"
+    description: "This PR's report-phase catalog, local reads, dry-run effect guards, ledger refusal diagnostics and process-group timeout cleanup are exercised by its focused tests. The merge base lacks tools.base and the report-phase tool modules, so the overlaid tests fail collection there."
+    source: "manual"
+    binds_ac: ["AC4303"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_morning_report_phase_tools.py tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-morning-report-tools-deploy-probe"
+    description: "Hosted deployment probe: execute the checked-out report tool catalog, watcher readback, refused-TERMINAL path and timeout cleanup against disposable local files and child processes. The merge base cannot import the report tools. The runner needs only the checkout and locked dependencies, with no credentials, network or Docker. This checks the packaged runtime path and does not attest an installed service deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_morning_report_phase_tools.py -q --no-cov -p no:randomly --refuse-skips -k 'every_report_phase_has_its_own_lane_ticket_and_tool_guide or watcher_branch_head_attributes_check_runs_to_push_on_the_integration_branch or a_refused_terminal_names_the_ledgers_reason_and_writes_its_friction_once or a_timed_out_program_takes_its_children_with_it'"
         cwd: "${OMNI_HOME}/omnimarket"
