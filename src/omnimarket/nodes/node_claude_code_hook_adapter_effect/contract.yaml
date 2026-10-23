@@ -113,7 +113,32 @@ client_bindings:
   claude_code:
     default_max_mode: observe
     host_max_modes: {}
-    bindings: []
+    # /compact, manual trigger only (OMN-21335, plan task TA.15b). The auto trigger has no row:
+    # the render refuses any session.compact row whose trigger is not "manual".
+    bindings:
+      - name: compaction
+        kind: replacing
+        hook_event: session.compact
+        matcher_tool: manual
+        command_topic: onex.cmd.omniintelligence.context-compaction-requested.v1
+        command_type: context_compaction_requested
+        arguments:
+          - {name: invocation_id, source: "@invocation_id"}
+          - {name: session_id, source: "$.session_id"}
+          - {name: cwd, source: "$.cwd"}
+          - {name: trigger, source: "$.trigger"}
+          - {name: input_messages_hash, source: "$.input_messages_hash"}
+          - {name: newest_turn, source: "$.newest_turn"}
+          - {name: barrier_id, source: "$.barrier_id"}
+          - {name: compact_model, source: "$.compact_model"}
+        awaited_events:
+          - onex.cmd.omniintelligence.context-compaction-package.v1
+          - onex.evt.omnimarket.context-compaction-prepared.v1
+          - onex.evt.omnimarket.context-compaction-fallback.v1
+        verdict_compute: context_compaction_verdict
+        deadline_ms: 30000
+        probe_rows: [P0, P6, P11a, P13, P14]
+        deny_text: compaction unavailable
 
 metadata:
   author: OmniNode Team
