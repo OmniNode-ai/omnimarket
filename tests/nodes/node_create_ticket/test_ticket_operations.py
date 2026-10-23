@@ -208,8 +208,10 @@ def test_read_without_injected_tracker_fails_loud_without_a_key(
 
 
 def test_project_is_refused_naming_the_ruling() -> None:
-    with pytest.raises(ValueError, match="Backlog with no project"):
-        ModelCreateTicketRequest(title="x", project="Sprint 2026-09-28")
+    """The request carries the project to the guard; a guard that admits it is still refused."""
+    handler = HandlerCreateTicket(ticket_guard=_FakeGuard(admitted=True))
+    with pytest.raises(TicketGuardRefusedError, match="Backlog with no project"):
+        handler.handle(ModelCreateTicketRequest(title="x", project="Sprint 2026-09-28"))
 
 
 # ---------------------------------------------------------------------------
