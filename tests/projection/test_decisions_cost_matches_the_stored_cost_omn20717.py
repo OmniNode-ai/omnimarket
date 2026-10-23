@@ -261,7 +261,8 @@ def test_a_row_stored_with_no_cost_is_republished_as_null_not_zero() -> None:
         "correlation_id",
         {
             "correlation_id": str(_NO_COST),
-            "tenant_id": _TENANT_UUID,
+            # A terminal stores the tenant as the text its event carried.
+            "tenant_id": str(_TENANT_UUID),
             "task_type": "summarization",
             "delegated_to": "Qwen3.8-27B",
             "timestamp": datetime(2026, 10, 12, 9, 0, 0, tzinfo=UTC).isoformat(),

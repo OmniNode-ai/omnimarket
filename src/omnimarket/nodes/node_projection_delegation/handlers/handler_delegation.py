@@ -1605,8 +1605,10 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             and _as_int_local(existing.get("compliance_attempts")) > 1
         ):
             row["compliance_attempts"] = existing["compliance_attempts"]
-        _preserve_run_attribution(existing, row)
         _preserve_terminal_failure(existing, row)
+        # OMN-19448: after precedence, so a model inherited from the stored row
+        # never makes an unevidenced handler failure read as evidenced.
+        _preserve_run_attribution(existing, row)
 
     async def _materialize_budget_state_async(
         self,

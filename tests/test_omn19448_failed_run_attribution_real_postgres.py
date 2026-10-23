@@ -22,6 +22,11 @@ from tests.test_omn15905_delegation_projection_writer_seam import (
 from tests.test_omn15909_real_postgres_projection_write_path_gate import (
     _provisioned_runner,
 )
+from tests.test_omn19559_terminal_precedence_real_postgres import (
+    _MODEL,
+    _skill_success,
+    _skill_timeout,
+)
 
 
 @pytest.mark.integration
@@ -75,3 +80,36 @@ async def test_a_rung_verdict_creates_no_run_row() -> None:
             "SELECT count(*) FROM delegation_events WHERE correlation_id = $1", cid
         )
         assert count == 0
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_late_handler_timeout_inherits_no_model_into_its_precedence() -> None:
+    """OMN-19448 attribution runs after precedence, so a success stays whole.
+
+    The stored success's model is not copied onto the late timeout before the
+    precedence check, so the timeout still reads as an unevidenced handler
+    failure and the evidenced success is kept, never read as not routed.
+    """
+    cid = str(uuid4())
+    async with _provisioned_runner() as (runner, connection, _schema):
+        assert await runner.project_event(
+            runner._topic_delegate_skill_completed,
+            _skill_success(cid),
+            MessageMeta(partition=0, offset=0, fallback_id=cid),
+        )
+        assert await runner.project_event(
+            runner._topic_delegate_skill_failed,
+            _skill_timeout(cid),
+            MessageMeta(partition=0, offset=1, fallback_id=cid),
+        )
+        row = await connection.fetchrow(
+            "SELECT terminal_ok, terminal_failure_cause, model_name, backend_id "
+            "FROM delegation_events WHERE correlation_id = $1",
+            cid,
+        )
+        assert row is not None
+        assert row["terminal_ok"] is True
+        assert row["terminal_failure_cause"] is None
+        assert row["model_name"] == _MODEL
+        assert row["backend_id"] != "not routed"

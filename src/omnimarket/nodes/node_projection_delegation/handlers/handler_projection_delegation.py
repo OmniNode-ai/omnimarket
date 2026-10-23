@@ -98,6 +98,7 @@ from omnimarket.nodes.node_projection_delegation.models.model_terminal_precedenc
     NOT_ROUTED,
     apply_terminal_precedence,
     fold_terminal_ownership,
+    is_failure_terminal,
     names_no_model,
     rung_verdict_fill,
     supersedes_handler_failure,
@@ -2082,8 +2083,10 @@ def _preserve_existing_evidence(
         and _as_int(existing.get("compliance_attempts")) > 1
     ):
         row["compliance_attempts"] = existing["compliance_attempts"]
-    _preserve_run_attribution(existing, row)
     _preserve_terminal_failure(existing, row)
+    # OMN-19448: after precedence, so a model inherited from the stored row
+    # never makes an unevidenced handler failure read as evidenced.
+    _preserve_run_attribution(existing, row)
 
 
 def _is_unnamed_model(value: object) -> bool:
@@ -2104,7 +2107,13 @@ def _preserve_run_attribution(
     run (a canonical terminal, a late timeout) carries no model, so whichever
     order the events arrive in, the row keeps the model that was named: this
     runs on every write, and a later event that does name a model replaces it.
+
+    A failure terminal over a stored non-failure row owns the model columns
+    (OMN-17427), so it inherits no model from the event it replaces: both
+    arrival orders then read the same failure.
     """
+    if is_failure_terminal(row) and not is_failure_terminal(existing):
+        return
     for key in ("model_name", "cost_tier_name"):
         if _is_unnamed_model(row.get(key)) and not _is_unnamed_model(existing.get(key)):
             row[key] = existing[key]
