@@ -39,12 +39,12 @@ import stat
 import threading
 from pathlib import Path
 
-import click
 import pytest
 from click.testing import CliRunner, Result
 
 from omnimarket.cli import cli_secret
 from omnimarket.cli.cli_secret import secret_group
+from omnimarket.handlers import handler_model_keys as model_keys
 
 pytestmark = pytest.mark.unit
 
@@ -62,7 +62,8 @@ def store(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
         lambda: db_path,
     )
     monkeypatch.setattr(
-        "omnimarket.cli.cli_secret._resolve_model", lambda *_args, **_kw: None
+        "omnimarket.handlers.handler_model_keys.resolve_model",
+        lambda *_args, **_kw: None,
     )
     return db_path
 
@@ -83,7 +84,7 @@ def _break_fold(monkeypatch: pytest.MonkeyPatch) -> None:
     def unavailable(*_args: object, **_kwargs: object) -> object:
         raise sqlite3.OperationalError("injected projection failure")
 
-    monkeypatch.setattr(cli_secret, "SqliteDatabaseAdapter", unavailable)
+    monkeypatch.setattr(model_keys, "SqliteDatabaseAdapter", unavailable)
 
 
 def test_r1_r7_retried_delete_after_a_failed_fold_revokes_the_key(
@@ -92,7 +93,7 @@ def test_r1_r7_retried_delete_after_a_failed_fold_revokes_the_key(
     assert _run(["set", _REF], stdin=_PLANTED).exit_code == 0
     assert len(_live_rows(store)) == 1
 
-    original = cli_secret.SqliteDatabaseAdapter
+    original = model_keys.SqliteDatabaseAdapter
     _break_fold(monkeypatch)
     failed = _run(["delete", _REF])
     assert failed.exit_code != 0
@@ -100,7 +101,7 @@ def test_r1_r7_retried_delete_after_a_failed_fold_revokes_the_key(
     assert "Run the command again" not in failed.output
     assert "onex secret list" in failed.output
 
-    monkeypatch.setattr(cli_secret, "SqliteDatabaseAdapter", original)
+    monkeypatch.setattr(model_keys, "SqliteDatabaseAdapter", original)
     _run(["delete", _REF])
     assert _live_rows(store) == []
 
@@ -109,13 +110,13 @@ def test_r2_r6_any_later_secret_command_recovers_and_clears_the_pending_file(
     store: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     assert _run(["set", _REF], stdin=_PLANTED).exit_code == 0
-    original = cli_secret.SqliteDatabaseAdapter
+    original = model_keys.SqliteDatabaseAdapter
     _break_fold(monkeypatch)
     assert _run(["delete", _REF]).exit_code != 0
     pending = store.parent / _PENDING_NAME
     assert pending.exists()
 
-    monkeypatch.setattr(cli_secret, "SqliteDatabaseAdapter", original)
+    monkeypatch.setattr(model_keys, "SqliteDatabaseAdapter", original)
     listed = _run(["list"])
     assert listed.exit_code == 0, listed.output
     assert _live_rows(store) == []
@@ -128,11 +129,11 @@ def test_r3_failed_set_force_keeps_both_the_revoke_and_the_new_row(
     assert _run(["set", _REF], stdin=_PLANTED).exit_code == 0
     [first] = _live_rows(store)
 
-    original = cli_secret.SqliteDatabaseAdapter
+    original = model_keys.SqliteDatabaseAdapter
     _break_fold(monkeypatch)
     assert _run(["set", _REF, "--force"], stdin=_PLANTED_NEW).exit_code != 0
 
-    monkeypatch.setattr(cli_secret, "SqliteDatabaseAdapter", original)
+    monkeypatch.setattr(model_keys, "SqliteDatabaseAdapter", original)
     assert _run(["list"]).exit_code == 0
     [live] = _live_rows(store)
     assert live["api_key_ref"] != first["api_key_ref"]
@@ -245,8 +246,8 @@ def _failed_fold(db_path: Path, ref: str) -> None:
         secret_ref=_REF,
         events=(ModelCredentialRevokedEvent(tenant_id="t-19985", api_key_ref=ref),),
     )
-    with contextlib.suppress(click.ClickException):
-        cli_secret._fold_credential_events(result, db_path)
+    with contextlib.suppress(model_keys.ModelKeyRefusedError):
+        model_keys.fold_credential_events(result, db_path)
 
 
 def test_r11_a_drain_never_deletes_a_batch_saved_while_it_ran(
@@ -255,7 +256,7 @@ def test_r11_a_drain_never_deletes_a_batch_saved_while_it_ran(
     pending = store.parent / _PENDING_NAME
     pending.write_text(json.dumps(_revoke("old-ref")) + "\n")
     applying, saved = threading.Event(), threading.Event()
-    real_apply = cli_secret._apply_events
+    real_apply = model_keys._apply_events
 
     def apply(lines: list[dict[str, object]], db_path: Path) -> None:
         if threading.current_thread().name == "drain":
@@ -265,7 +266,7 @@ def test_r11_a_drain_never_deletes_a_batch_saved_while_it_ran(
             return
         raise sqlite3.OperationalError("injected projection failure")
 
-    monkeypatch.setattr(cli_secret, "_apply_events", apply)
+    monkeypatch.setattr(model_keys, "_apply_events", apply)
 
     def save() -> None:
         applying.wait(_PAUSE_S * 5)
@@ -290,7 +291,7 @@ def test_r12_two_failed_folds_at_once_keep_both_batches(
 ) -> None:
     pending = store.parent / _PENDING_NAME
     read_one, wrote_two = threading.Event(), threading.Event()
-    real_read = cli_secret._read_pending
+    real_read = model_keys._read_pending
 
     def failing_apply(*_args: object) -> None:
         raise sqlite3.OperationalError("injected projection failure")
@@ -302,8 +303,8 @@ def test_r12_two_failed_folds_at_once_keep_both_batches(
             wrote_two.wait(_PAUSE_S)  # with no lock, the other save lands here
         return lines
 
-    monkeypatch.setattr(cli_secret, "_apply_events", failing_apply)
-    monkeypatch.setattr(cli_secret, "_read_pending", read)
+    monkeypatch.setattr(model_keys, "_apply_events", failing_apply)
+    monkeypatch.setattr(model_keys, "_read_pending", read)
     pending.write_text(json.dumps(_revoke("seed-ref")) + "\n")
 
     def second() -> None:

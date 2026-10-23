@@ -303,6 +303,13 @@ def _read_command(spec: ModelScmVerb) -> click.Command:
     @click.option("--status", default=None, help="run-list: the run status.")
     @click.option("--limit", type=int, default=None)
     @click.option("--tail-bytes", type=int, default=None, help="job-log.")
+    @click.option(
+        "--offset-bytes", type=int, default=None, help="job-log: window start."
+    )
+    @click.option(
+        "--length-bytes", type=int, default=None, help="job-log: window size."
+    )
+    @click.option("--step", default=None, help="job-log: one step's lines, by name.")
     @click.option("--max-bytes", type=int, default=None, help="run-download.")
     @click.option(
         "--source",

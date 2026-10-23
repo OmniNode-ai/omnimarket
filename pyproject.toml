@@ -149,6 +149,12 @@ dependencies = [
     # Raised in BOTH places.
     # OMN-17427: core 0.47.48 admits extraction_proposer, tail_summary and context_selection
     # on the wire Literal; omnibase_infra d20586c7d pins 0.47.48 (INFRA_CORE_PINS).
+    # OMN-17427: floor stays 0.47.48 because omnibase_infra pins core 0.47.48;
+    # tests/ci/test_core_pin_compat_omn17427.py refuses a floor above the newest
+    # infra pin. uv.lock carries 0.47.49 or later (0.47.49 is the first release with the internal
+    # sibling pin contract, core#2058) read by scripts/check_dep_provenance.py;
+    # that script and its tests run under uv run --frozen. Raise the floor after
+    # omnibase_infra pins 0.47.49.
     "omnibase-core>=0.47.48,<0.48.0",
     # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
     # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
@@ -1259,6 +1265,12 @@ override-dependencies = [
     # OMN-17427: floor raised 0.47.46 -> 0.47.47 (core#2029, brief_drafting).
     # OMN-17427: core 0.47.48 admits extraction_proposer, tail_summary and context_selection
     # on the wire Literal; omnibase_infra d20586c7d pins 0.47.48 (INFRA_CORE_PINS).
+    # OMN-17427: floor stays 0.47.48 because omnibase_infra pins core 0.47.48;
+    # tests/ci/test_core_pin_compat_omn17427.py refuses a floor above the newest
+    # infra pin. uv.lock carries 0.47.49 or later (0.47.49 is the first release with the internal
+    # sibling pin contract, core#2058) read by scripts/check_dep_provenance.py;
+    # that script and its tests run under uv run --frozen. Raise the floor after
+    # omnibase_infra pins 0.47.49.
     "omnibase-core>=0.47.48,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
     # OMN-18159: raised in lockstep with the dependency floor above --
