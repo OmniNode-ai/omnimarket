@@ -54,3 +54,12 @@ dod_evidence:
         cwd: ${OMNI_HOME}/omnimarket
     binds_ac:
       - AC18594103
+  - id: dod-omn18594-deploy-probe
+    description: "PR #4348 on OmniNode-ai/omnimarket: the guard handler served by GitHub at the feature commit defines HandlerReleasePinGuard. The file does not exist at the merge base, so the probe fails there."
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "gh api repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/handler_release_pin_guard.py?ref=1fa237f9ba116e55382f1fbf0fa29f925af78911 --jq .content | base64 -d | grep -c 'class HandlerReleasePinGuard'"
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac:
+      - AC18594103
