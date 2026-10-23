@@ -40,7 +40,9 @@ TENANT_B = uuid.UUID("22222222-2222-4222-8222-222222222222")
 WHEN = datetime(2026, 10, 3, 12, tzinfo=UTC)
 VIEW = "projection_cost_savings_overview"
 FORWARD = (
-    _NODES / "node_projection_savings/migrations" / "097_savings_overview_all_runs.sql"
+    _NODES
+    / "node_projection_savings/migrations"
+    / "099_savings_overview_token_directions.sql"
 )
 ORIGINAL_COLUMNS = [
     "window",
@@ -274,6 +276,8 @@ async def test_columns_are_append_only_and_the_view_keeps_invoker_rights(
         "estimated_run_count",
         "unknown_run_count",
         "run_count",
+        "tokens_input_total",
+        "tokens_output_total",
     ]
     options = await views.fetchval(
         "SELECT c.reloptions FROM pg_class c JOIN pg_namespace n "

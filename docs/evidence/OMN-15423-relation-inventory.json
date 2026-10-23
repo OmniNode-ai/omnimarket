@@ -9218,7 +9218,8 @@
         "src/omnimarket/nodes/node_projection_savings/migrations/077_create_cost_savings_overview_projection_view.sql",
         "src/omnimarket/nodes/node_projection_savings/migrations/089_savings_aggregate_views_per_tenant.sql",
         "src/omnimarket/nodes/node_projection_savings/migrations/094_savings_overview_measured_provenance.sql",
-        "src/omnimarket/nodes/node_projection_savings/migrations/097_savings_overview_all_runs.sql"
+        "src/omnimarket/nodes/node_projection_savings/migrations/097_savings_overview_all_runs.sql",
+        "src/omnimarket/nodes/node_projection_savings/migrations/099_savings_overview_token_directions.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",
