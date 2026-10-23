@@ -82,3 +82,11 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/handler_model_keys.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^def remove_key('"
+  - id: "dod-omn20816-ac5-guarded-removal-every-name"
+    description: "Removing a provider key is one locked step where the last-usable guard and deletion run under a cross-process lock (model-removal.lock), so two overlapping removals cannot both pass (M4b) and a removal waits while another process holds the lock (M4d). onex secret delete of a provider key goes through the same lock and guard for llm.<provider>.api_key (M4c), another declared llm.<provider>.<field> reference (M4f) or the live minted route reference (M4e), and deleting one of two usable keys is still allowed. Every one of these tests fails at the merge base, where the lock and the guarded delete do not exist."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_omn20816_dashboard_model_keys.py -q -n 0 --no-cov -k 'm4b or m4c or m4d or m4e or m4f'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
