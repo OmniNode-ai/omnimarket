@@ -42,7 +42,7 @@ VIEW = "projection_cost_savings_overview"
 FORWARD = (
     _NODES
     / "node_projection_savings/migrations"
-    / "099_savings_overview_token_directions.sql"
+    / "100_savings_overview_token_directions.sql"
 )
 ORIGINAL_COLUMNS = [
     "window",
