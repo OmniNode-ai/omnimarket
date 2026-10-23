@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_release_pin_guard_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Refuse a session or lane creating a release, creating or pushing a version tag, dispatching a
+  release, release-cut, train, cascade or pin-refresh workflow, running /omni:release-cut, or writing
+  or bumping a version or commit-sha pin of an internal sibling, unless an unexpired grant admits it
+  (RULING 2026-10-23T17:13:55Z). A grant is an OPERATOR-CONSENT row with approved_by=operator or
+  approved_by=cloud-owner, grant=<release|pin>:<repo>@<version> and expires=<UTC>. Releases come from
+  the overnight release train, which runs in GitHub Actions under its own App identity and never
+  through this guard. The omni plugin's PreToolUse hook runs a standard-library copy of the decision.
+input_model: omnimarket.models.model_release_pin_guard.ModelReleasePinGuardRequest
+output_model: omnimarket.models.model_release_pin_guard.ModelReleasePinGuardResult
+handler:
+  module: omnimarket.handlers.handler_release_pin_guard
+  class: HandlerReleasePinGuard
+  input_model: omnimarket.models.model_release_pin_guard.ModelReleasePinGuardRequest
+  output_model: omnimarket.models.model_release_pin_guard.ModelReleasePinGuardResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.handlers.handler_release_pin_guard:HandlerReleasePinGuard
+  handlers:
+    - operation: check_release_pin
+      handler:
+        name: HandlerReleasePinGuard
+        module: omnimarket.handlers.handler_release_pin_guard
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+terminal_event: onex.evt.omnimarket.release-pin-checked.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.release-pin-check-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.release-pin-check-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.release-pin-checked.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.release-pin-checked.v1
+metadata:
+  transport_type: kafka
+  related_tickets: [OMN-18594]
