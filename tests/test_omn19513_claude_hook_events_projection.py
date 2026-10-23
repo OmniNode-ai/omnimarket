@@ -191,6 +191,7 @@ class _InMemoryHookTables:
             "cache_creation_input_tokens",
             "cache_read_input_tokens",
             "assistant_message_count",
+            "producer_seq",
         )
         assert len(params) == len(columns)
         row = dict(zip(columns, params, strict=True))
@@ -1088,3 +1089,21 @@ def test_each_runtime_message_gets_its_own_single_connection_adapter() -> None:
     assert first.dsn == bound.dsn == second.dsn
     assert (first._min_size, first._max_size) == (1, 1)
     assert not bound.is_connected
+
+
+def test_compaction_pack_build_barrier_retains_applied_lineage_sequence() -> None:
+    event = _pre_tool_use()
+    event["stream"] = "lineage"
+    event["producer_seq"] = 69
+    tables = _InMemoryHookTables()
+    _deliver(_writer(tables), event)
+    row = tables.events[str(event["event_id"])]
+    assert row["producer_seq"] == 69
+    assert row["session_id"] == event["lineage"]["session_id"]
+
+
+def test_compaction_pack_build_barrier_accepts_unstamped_lineage_event() -> None:
+    event = _pre_tool_use()
+    tables = _InMemoryHookTables()
+    _deliver(_writer(tables), event)
+    assert tables.events[str(event["event_id"])]["producer_seq"] is None

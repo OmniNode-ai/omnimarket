@@ -135,6 +135,13 @@ def fold_session_content(
         hook_source=record.hook_source,
         emitted_at=record.emitted_at,
         source_topic=source_topic,
+        content_record_id=record.content_record_id,
+        stream=record.stream,
+        producer_seq=record.producer_seq,
+        record_type=record.record_type,
+        barrier_id=record.barrier_id,
+        high_water=record.high_water,
+        content_capture=record.content_capture,
     )
 
 

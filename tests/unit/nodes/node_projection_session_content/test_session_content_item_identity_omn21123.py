@@ -20,6 +20,9 @@ from pydantic import ValidationError
 from omnimarket.nodes.node_capture_item_identity_effect.handlers.handler_item_identity import (
     build_barrier_payload,
 )
+from omnimarket.nodes.node_projection_session_content.handlers import (
+    handler_session_content as writer_module,
+)
 from omnimarket.nodes.node_projection_session_content.handlers.session_content_fold import (
     SessionContentFoldError,
     fold_session_content,
@@ -107,3 +110,52 @@ def test_a_barrier_without_its_high_water_is_refused() -> None:
     del payload["high_water"]
     with pytest.raises(SessionContentFoldError):
         fold_session_content(ModelSessionContentRecord.model_validate(payload))
+
+
+@pytest.mark.parametrize("stream", ["lineage", "content"])
+def test_compaction_pack_build_barrier_persists_barrier_stamps(stream: str) -> None:
+    row = fold_session_content(
+        ModelSessionContentRecord.model_validate(_barrier(stream, 6))
+    )
+    persisted = dict(
+        zip(writer_module._COLUMNS, writer_module._parameters(row), strict=True)
+    )
+    assert persisted["session_id"] == SESSION
+    assert persisted["content_kind"] == "barrier"
+    assert persisted["record_type"] == "barrier"
+    assert persisted["stream"] == stream
+    assert persisted["barrier_id"] == "barrier-1"
+    assert persisted["high_water"] == 6
+    assert persisted["content_capture"] == ("enabled" if stream == "lineage" else None)
+    assert persisted["emitted_at"].isoformat() == EMITTED_AT
+
+
+def test_compaction_pack_build_barrier_persists_content_sequence() -> None:
+    row = fold_session_content(
+        ModelSessionContentRecord.model_validate(
+            _prompt(content_record_id="c-1", stream="content", producer_seq=7)
+        )
+    )
+    persisted = dict(
+        zip(writer_module._COLUMNS, writer_module._parameters(row), strict=True)
+    )
+    assert persisted["producer_seq"] == 7
+    assert persisted["stream"] == "content"
+    assert persisted["content_record_id"] == "c-1"
+
+
+def test_compaction_pack_build_barrier_keeps_legacy_content_stamps_nullable() -> None:
+    row = fold_session_content(ModelSessionContentRecord.model_validate(_prompt()))
+    persisted = dict(
+        zip(writer_module._COLUMNS, writer_module._parameters(row), strict=True)
+    )
+    for name in (
+        "content_record_id",
+        "stream",
+        "producer_seq",
+        "record_type",
+        "barrier_id",
+        "high_water",
+        "content_capture",
+    ):
+        assert persisted[name] is None

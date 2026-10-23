@@ -1,0 +1,99 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21334"
+title: "TA.11b wire compaction package building and its session barrier"
+summary: >-
+  The runtime's no-argument compaction handler binds the contract-declared pack
+  builder and a read-only probe of committed session projection sequences. Both
+  projections retain the stamps the probe needs. The command declares its package
+  terminal, and a built reply carries status and package_id alongside the existing
+  install action. Barrier waits yield the event loop; deadlines return native with
+  one failure line. Nested source tenant bindings use explicit environment overlay
+  data. Fixture runtime and real PostgreSQL evidence are recorded below. AC1's
+  live dev-bus built-package readback still requires deployment, source mounts,
+  tenant configuration and a matching adapter package. The existing profile's
+  routing authority is unchanged and resolves successfully on the lab runtime.
+  Landing also requires both node migrations to be vendored in the pinned
+  omnibase_infra release for the repository's migration parity gate.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched: ["public_api"]
+requirements:
+  - id: "req-runtime-compaction-build"
+    statement: "A compaction command reaches a live pack builder through the declared runtime handler."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: the dev runtime registers the compaction orchestrator's handler and a session.compact request on the dev bus returns a built package, not a native fallback -- falsifier: onex run-node node_context_compaction_orchestrator against the dev bus with a recorded session returns status built and a package id
+  - id: "req-session-barrier-before-build"
+    statement: "Compaction waits for both committed projection streams and falls back once at its deadline."
+    acceptance:
+      - id: "AC2"
+        statement: >-
+          AC2: a request whose session barrier has not closed waits for it and then builds, and one that outlives the deadline falls back to native with one failure line -- falsifier: uv run pytest tests -q -k compaction_pack_build_barrier
+evidence_requirements:
+  - kind: "tests"
+    description: "Contract discovery, no-argument construction, typed dispatch and restricted package publication over the real runtime with explicitly labelled fixture sources."
+    command: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_runtime_compaction_pack_build_barrier.py -q"
+  - kind: "tests"
+    description: "The ticket's barrier falsifier, including deadlines, asynchronous projection progress, source cutoffs and committed sequence stamps."
+    command: "uv run pytest tests -q -k compaction_pack_build_barrier"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21334-ac1-runtime-wiring"
+    description: >-
+      AC1 implementation evidence: actual runtime contract discovery constructs
+      the no-argument handler, dispatches a typed command, builds through the real
+      pack orchestrator over fixture factors, and publishes prepared, activated
+      and a built package reply with package_id and transport correlation on the
+      contract topics. Routing promotions are explicit test fixtures, not a
+      production configuration change. This does not claim the separately
+      outstanding live dev-bus deployment proof.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_runtime_compaction_pack_build_barrier.py tests/nodes/node_context_compaction_orchestrator/test_contracts.py -q"
+  - id: "dod-omn21334-ac2-barrier"
+    description: >-
+      AC2: a delayed stream blocks package construction until its missing sequence
+      arrives; an expired wait, including a late met read, returns native with
+      exactly one failure line and no package. The async entrypoint lets projection
+      progress continue, and missing default projection configuration never
+      bypasses the barrier. Fractional transcript cutoffs preserve the final prompt.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests -q -k compaction_pack_build_barrier"
+  - id: "dod-omn21334-deploy-postgres-barrier"
+    description: >-
+      Hosted executable PostgreSQL proof: an ephemeral loopback-only database
+      receives the real projection migrations and production fold/write SQL.
+      The production read-only probe must see holes in both streams, ignore other
+      sessions, close only after committed missing rows arrive, and recover stamps
+      from a pre-upgrade replay without duplicating events. No lab route or secret
+      is needed. This fails at the merge base, which has no probe or stamp columns;
+      it is database/runtime package evidence, not a live dev deployment claim.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "command"
+        check_value: |-
+          set -eu
+          compaction_probe=$(docker run --detach --rm --label onex.deploy-probe=OMN-21334 --env POSTGRES_HOST_AUTH_METHOD=trust --env POSTGRES_DB=compaction_proof --publish 127.0.0.1::5432 postgres:16-alpine)
+          trap 'docker rm --force "$compaction_probe" >/dev/null' EXIT
+          compaction_ready=0
+          for compaction_attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+            if docker exec "$compaction_probe" pg_isready --username postgres --dbname compaction_proof >/dev/null; then
+              compaction_ready=1
+              break
+            fi
+            sleep 0.5
+          done
+          test "$compaction_ready" = 1
+          compaction_port=$(docker port "$compaction_probe" 5432/tcp)
+          ONEX_TEST_SESSION_BARRIER_DSN="postgresql://postgres@${compaction_port}/compaction_proof" uv run pytest tests/nodes/node_context_compaction_orchestrator/test_postgres_compaction_pack_build_barrier.py -q

@@ -15,8 +15,8 @@ not declare in-process dispatch. Both are pinned by tests.
 
 Idempotency, by construction rather than by assumption:
 
-* the event row is keyed on the producer's deterministic ``event_id`` and
-  inserted ``ON CONFLICT DO NOTHING``, so a redelivery writes nothing new;
+* the event row is keyed on the producer's deterministic ``event_id``. A
+  redelivery only fills a missing producer sequence from before OMN-21334;
 * the span is an upsert whose ``tool_call_count`` is RECOUNTED from the event
   table in the same statement, never incremented, so a redelivered
   ``PostToolUse`` cannot count twice;
@@ -60,7 +60,7 @@ _SELECT_PARENT_CALL = f"""
 """
 
 _INSERT_EVENT = f"""
-    INSERT INTO {TABLE_EVENTS} (
+    INSERT INTO {TABLE_EVENTS} AS existing (
         event_id, session_id, agent_id, is_subagent, agent_type,
         parent_tool_use_id, parent_agent_id, workflow_run_id, spawn_depth,
         hook_event_name, tool_use_id, tool_name, prompt_id, turn_id,
@@ -68,15 +68,18 @@ _INSERT_EVENT = f"""
         source_topic, goal_id, parent_goal_id, lane, model, host, exit_code,
         guard, refusal_reason, input_tokens, output_tokens,
         cache_creation_input_tokens, cache_read_input_tokens,
-        assistant_message_count, ingested_at
+        assistant_message_count, producer_seq, ingested_at
     )
     VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
         $15, $16, $17, $18::jsonb, $19, $20, $21, $22, $23, $24, $25, $26,
-        $27, $28, $29, $30, $31, $32, $33, NOW()
+        $27, $28, $29, $30, $31, $32, $33, $34, NOW()
     )
-    ON CONFLICT (event_id) DO NOTHING
-    RETURNING event_id, projection_cursor, ingested_at
+    ON CONFLICT (event_id) DO UPDATE SET
+        producer_seq = EXCLUDED.producer_seq
+    WHERE existing.producer_seq IS NULL AND EXCLUDED.producer_seq IS NOT NULL
+    RETURNING event_id, projection_cursor, ingested_at,
+              (xmax = 0) AS event_inserted
 """
 
 # Recount, never increment: the count is a function of the event rows, so
@@ -181,6 +184,7 @@ def _event_params(row: ModelClaudeHookEventRow) -> tuple[Any, ...]:
         row.cache_creation_input_tokens,
         row.cache_read_input_tokens,
         row.assistant_message_count,
+        row.producer_seq,
     )
 
 
@@ -353,7 +357,9 @@ class ClaudeHookEventsProjectionWriter(BaseProjectionRunner):
         row = result.event_row
         return {
             "rows_upserted": rows_upserted,
-            "event_inserted": bool(inserted),
+            "event_inserted": bool(
+                inserted and inserted[0].get("event_inserted", True)
+            ),
             "event_id": str(row.event_id),
             "session_id": row.session_id,
             "agent_id": row.agent_id,
