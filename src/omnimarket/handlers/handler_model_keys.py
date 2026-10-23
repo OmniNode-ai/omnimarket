@@ -35,6 +35,7 @@ from pydantic import SecretStr, ValidationError
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     resolve_local_byok_credential_plan,
+    resolve_local_byok_credential_ref,
 )
 from omnimarket.nodes.node_local_secret_store_effect.handlers.handler_local_secret_store import (
     HandlerLocalSecretStore,
@@ -388,6 +389,24 @@ def _pending_lock(db_path: Path) -> Iterator[None]:
         os.close(fd)
 
 
+@contextmanager
+def _removal_lock(db_path: Path) -> Iterator[None]:
+    """Hold the provider-removal lock across processes for one removal.
+
+    The last-usable check and the deletion are one step under it: two
+    overlapping ``onex models remove`` commands could otherwise each see the
+    other provider usable and both delete, leaving none (OMN-20816).
+    """
+    path = db_path.parent / "model-removal.lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)
+
+
 def _apply_events(lines: list[dict[str, Any]], db_path: Path) -> None:
     """Apply ``{"kind", "payload"}`` records in order. Both folds are idempotent."""
     db = SqliteDatabaseAdapter(db_path)
@@ -613,12 +632,42 @@ def store_key(
     return result
 
 
+def _keyed_provider_of(secret_ref: str) -> ModelProvider | None:
+    """The keyed provider whose key ``secret_ref`` names, or None.
+
+    Either name counts: a declared ``llm.<provider>.<field>`` reference, as the
+    store's own delete classifies it (it withdraws that provider's route), or
+    the provider's live minted route reference, matched through the store's
+    resolver rather than by parsing the reference.
+    """
+    declared = _offered_provider(secret_ref)
+    if declared is not None:
+        return next((p for p in KEYED_PROVIDERS if p == declared), None)
+    db_path = LocalByokCredentialStore().db_path
+    for provider in KEYED_PROVIDERS:
+        if secret_ref == resolve_local_byok_credential_ref(provider, db_path=db_path):
+            return provider
+    return None
+
+
 def delete_key(secret_ref: str, echo: Echo = _quiet) -> ModelLocalSecretResult:
     """Remove ``secret_ref``'s value and withdraw its route key, if any.
 
     The body of ``onex secret delete``, shared with ``onex models remove`` and
-    the dashboard.
+    the dashboard. A provider's key takes the same removal lock and last-usable
+    guard as ``onex models remove``, so the lower-level command cannot remove
+    the last usable model either (OMN-20816).
     """
+    provider = _keyed_provider_of(secret_ref)
+    if provider is None:
+        return _delete_key(secret_ref, echo)
+    with _removal_lock(LocalByokCredentialStore().db_path):
+        refuse_last_usable(provider)
+        return _delete_key(secret_ref, echo)
+
+
+def _delete_key(secret_ref: str, echo: Echo) -> ModelLocalSecretResult:
+    """:func:`delete_key` without the guard, for a caller already holding the lock."""
     store = LocalByokCredentialStore()
     drain_pending_credential_events(store.db_path)
     try:
@@ -759,9 +808,10 @@ def remove_key(provider: str, echo: Echo = _quiet) -> None:
         )
     if not handler.is_set_up(provider):
         raise ModelKeyRefusedError(f"no {MODEL_LABELS[provider]} key is stored.")
-    refuse_last_usable(provider)
-    delete_key(f"llm.{provider}.api_key", echo)
-    handler.handle(ModelModelSetupRequest(operation="forget", provider=provider))
+    with _removal_lock(LocalByokCredentialStore().db_path):
+        refuse_last_usable(provider)
+        _delete_key(f"llm.{provider}.api_key", echo)
+        handler.handle(ModelModelSetupRequest(operation="forget", provider=provider))
 
 
 __all__ = [

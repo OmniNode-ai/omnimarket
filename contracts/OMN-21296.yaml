@@ -1,8 +1,8 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-21296"
-title: "The ticket contracts moved into omnimarket carry their own ticket and test evidence"
-summary: "36 ticket contracts move from the change-control repository into this repository's contracts/ directory. A focused test now proves each one is present at contracts/<id>.yaml, loads as a mapping whose ticket_id is its own id, and validates as omnibase_core's ModelTicketContract; at the merge base the files are absent and the test fails."
+title: "Moved ticket contracts retain their evidence at the canonical repository locations"
+summary: "The 36 moved ticket contracts remain checked for presence, identity and ModelTicketContract validity. OMN-13335 is historical work tracking and belongs in docs/work-tracking/contracts/, as required by the unchanged structural test. The October 23 sanitizer capture replaces the active replay at infra revision 9eb35324; the October 19 capture remains unchanged as history."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -13,13 +13,13 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: |-
-          AC1: each of the 36 moved ids has contracts/<id>.yaml, which loads with yaml.safe_load as a mapping whose ticket_id equals the id -- falsifier: the parametrized presence test fails at the merge base, where the files are absent
+          AC1: a test in omnimarket fails when any contract moved by omnimarket#4293 is absent from contracts/ or does not parse as a ticket contract, and passes at the PR head -- falsifier: uv run pytest over the moved-contract test at the merge base (fails) and at the head (passes)
       - id: "AC2"
         statement: |-
-          AC2: each of the 36 moved contracts validates as omnibase_core's ModelTicketContract with its own ticket_id -- falsifier: the parametrized validation test fails at the merge base, where the files are absent
+          AC2: omnimarket#4293 is titled with this ticket and carries contracts/<this ticket>.yaml whose dod_evidence binds AC1 -- falsifier: repo-evidence / dod-verify verdict at the PR head plus uv run pytest of the bound test
 evidence_requirements:
   - kind: "tests"
-    description: "The test file checks presence, ticket id and ModelTicketContract validation for every moved contract."
+    description: "The test file checks presence, ticket id and ModelTicketContract validation for every moved contract at its canonical location."
     command: "uv run pytest tests/ci/test_moved_ticket_contracts_present_omn21296.py -q"
 emergency_bypass:
   enabled: false
@@ -27,7 +27,7 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-omn21296-moved-contracts-present"
-    description: "Every moved id has contracts/<id>.yaml loading as a mapping with its own ticket_id."
+    description: "Every moved id loads as a mapping with its own ticket_id at its canonical location, including historical OMN-13335 under docs/work-tracking/contracts/. The added historical-location assertion fails at the repair's merge base, which still carries that file only at the legacy path."
     source: "manual"
     checks:
       - check_type: "test_passes"
@@ -42,3 +42,29 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_moved_ticket_contracts_present_omn21296.py -q -k validates_as_ticket_contract"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn21296-historical-contract-layout"
+    description: "The historical contract exists and parses at docs/work-tracking/contracts/OMN-13335.yaml, and no copy remains at contracts/OMN-13335.yaml. The base lacks the canonical copy; a duplicate legacy copy also fails the unchanged structural test."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_moved_ticket_contracts_present_omn21296.py::test_historical_contract_uses_work_tracking_location tests/unit/structure/test_contracts_dir_runtime_only.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2"]
+  - id: "dod-omn21296-current-sanitizer-replay"
+    description: "Replay the new October 23 dev-effects capture against infra 9eb35324's sanitizer source hash. Both the raw git TimeoutExpired redaction and the typed parked reason are executed through the installed sanitizer. The October 19 capture is retained unchanged."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_occ_companion_effect/test_mint_acceptance_evidence_omn15447.py::test_deployed_sanitizer_capture_replays_both_controls -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21296-sanitizer-capture-deploy-probe"
+    description: "Hosted-runner deploy artifact probe: read the dated dev-effects capture from this exact GitHub head and require the current sanitizer digest and capture date. A base without that capture fails. This proves the captured artifact, not a fresh deployment or bus-to-DLQ result."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/tests/fixtures/mint_acceptance/deployed_sanitizer_2026_10_23.json?ref=$(git rev-parse HEAD)" --jq .content | base64 -d |
+          uv run python -c 'import json,sys; c=json.load(sys.stdin); assert c["sanitizer_sha256"] == "3b0f9c880af83e30afa433280e82d23f2b9fe6f96fe2493c5ab38d3e8e6d91f1"; assert c["observed_at"].startswith("2026-10-23T")'
+context:
+  layout_correction: "The source ticket's criteria above are unchanged. The repair brief explicitly relocates historical OMN-13335 to docs/work-tracking/contracts/; the moved-contract suite preserves every id's presence and schema checks at its canonical location."
+  baseline_qualification: "At dispatched dev f475a2349, the legacy-path test passes because its invariant rejects duplicate filenames and the canonical OMN-13335 copy is absent. Copying the historical contract to the canonical location makes that unchanged test fail until its legacy copy is removed."

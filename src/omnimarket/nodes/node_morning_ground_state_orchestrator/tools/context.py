@@ -35,9 +35,36 @@ COMMAND_TEXTS = (
     "decisions_register_command",
     "shared_doc_scrub_command",
     "kb_clone_refresh_command",
+    "ledger_append_command",
+    "delegation_step_command",
+    "delegation_accounting_command",
+    "closeout_completion_command",
+    "closeout_scope_command",
+    "triage_fences_command",
+    "triage_started_command",
+    "dod_verify_command",
+    "kb_pr_create_command",
+    "pr_handoff_command",
 )
 #: The overlay texts naming the run host's locations; ``$NAME`` reads the environment.
 LOCATION_TEXTS = ("tools_root", "ledger_file", "kb_clone", "kb_worktree")
+#: Optional locations: a tool that needs one the overlay does not name refuses.
+PLACE_TEXTS = (
+    "pr_watcher_state",
+    "reports_dir",
+    "process_readme",
+    "venv_reconcile_status",
+    "venv_reconcile_log",
+    "clones_root",
+    "state_root",
+)
+#: Optional overlay values the tools read as plain facts (not places, not programs).
+FACT_VALUES = (
+    "LINEAR_TEAM_ID",
+    "PLANS_DIR",
+    "PLAN_LIFECYCLE_PATH",
+    "STANDING_CONTROL_PLAN",
+)
 #: The overlay text holding a regular expression the clone's origin URL must match.
 KB_ORIGIN_TEXT = "kb_origin_pattern"
 VARIABLE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)")
@@ -63,6 +90,23 @@ class ModelMorningToolContext(BaseModel):
     artifacts: dict[str, str]
     #: command text name -> the argument vector it runs, every ``$NAME`` already expanded.
     commands: dict[str, list[str]]
+    #: optional location text name -> its resolved path (PLACE_TEXTS).
+    places: dict[str, Path] = Field(default_factory=dict)
+    #: optional overlay facts (FACT_VALUES).
+    facts: dict[str, str] = Field(default_factory=dict)
+    #: The phase's own ledger lane, ticket and model, for its CLAIM and TERMINAL rows.
+    lane: str | None = None
+    ticket: str | None = None
+    model: str = ""
+    #: The run's private state directory (delegation drafts, the CLAIM stamp, read caches).
+    state_dir: Path | None = None
+    #: The request's window start (integrateSince) and closure-path probe pin.
+    window_start: str = ""
+    closure_probe_ticket: str = ""
+    closure_probe_ceiling_s: int = Field(default=600, gt=0)
+    #: source document key -> its workspace-relative path (the request's plan documents).
+    source_docs: dict[str, str] = Field(default_factory=dict)
+    integration_repos: list[str] = Field(default_factory=list)
 
     def artifact_path(self, key: str) -> str:
         if key not in self.artifacts:
@@ -75,6 +119,17 @@ class ModelMorningToolContext(BaseModel):
         if name not in self.commands:
             raise ValueError(f"the deployment overlay names no {name!r}")
         return list(self.commands[name])
+
+    def place(self, name: str) -> Path:
+        if name not in self.places:
+            raise ValueError(f"the deployment overlay names no {name!r}")
+        return self.places[name]
+
+    def state(self) -> Path:
+        if self.state_dir is None:
+            raise ValueError("this run has no state directory")
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        return self.state_dir
 
 
 def expand(text: str) -> str:
@@ -136,4 +191,10 @@ def build_context(
         commands={
             name: expand_command(texts[name]) for name in COMMAND_TEXTS if name in texts
         },
+        places={
+            name: Path(expand(dated(texts[name])))
+            for name in PLACE_TEXTS
+            if name in texts
+        },
+        facts={name: values[name] for name in FACT_VALUES if name in values},
     )

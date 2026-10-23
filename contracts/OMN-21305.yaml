@@ -1,0 +1,75 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21305"
+title: "A delegation refused during routing writes its one failed row"
+summary: "A keyless delegation on a fresh install is refused by refuse_undeclared_local_model before any rung runs. The refusal reached the caller but no delegation_events row was written, so the Runs page could not show the run. The local dispatch port now records the refusal as one failed terminal (no attempts, attempts_count 0, cause refused_before_dispatch) through the same projection a dispatched run uses, publishes it, and raises the refusal unchanged. AC3 (the Runs page reader) is an omnidash change and is bound in omnidash."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21305-refusal-row"
+    statement: |-
+      A delegation refused before dispatch leaves one failed, typed row for its correlation id, built through the zero-attempt construction guard.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: a delegation the routing reducer refuses publishes exactly one typed delegation terminal, and the run's store holds exactly one row for its correlation id with terminal_ok 0 and a non-null cause -- falsifier: a pytest over the delegate path with the routing reducer raising ProtocolConfigurationError, asserting one terminal published and one row written; it fails on dev today, where the raise reaches the caller and the store holds 0 rows
+      - id: "AC2"
+        statement: |-
+          AC2: the refusal's terminal is built through the same construction guard a dispatched run's terminal is, so an empty attempts list is carried rather than bypassed -- falsifier: a pytest asserting the published terminal carries attempts empty and is accepted by the OMN-19004 construction invariant, failing if the refusal path constructs a terminal outside that guard
+evidence_requirements:
+  - kind: "tests"
+    description: "The refused run leaves one failed row with cause refused_before_dispatch and no model-call row (AC1); the projected terminal has no attempts, attempts_count 0 and passes the zero-attempt guard, which refuses the same terminal claiming another cause (AC2); a declared local model still writes its row (control)."
+    command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_routing_refusal_publishes_a_terminal_omn19919.py -q -n 0 --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21305-refusal-writes-its-row"
+    description: "Unit, through LocalDelegationDispatchPort with a fresh install and no declared model or key: the refusal still reaches the caller unchanged, and the store holds exactly one delegation_events row for the run (terminal_ok 0, terminal_failure_cause refused_before_dispatch, the install tenant) and no llm_call_metrics row; the projected terminal has no attempts and attempts_count 0, and the guard refuses it with any other cause. Control: a declared local model writes its row with terminal_ok 1. Fails at the merge base (0 rows, 0 terminals)."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_routing_refusal_publishes_a_terminal_omn19919.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21305-zero-attempt-guard"
+    description: "The refusal terminal carries zero attempts and the construction guard refuses another cause for an empty attempt list."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_routing_refusal_publishes_a_terminal_omn19919.py -q --no-cov -k zero_attempt"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21305-deploy-probe"
+    description: "Hosted-runner deploy readback: dispatch the installed event emitter through the in-process ONEX runtime in its declared spool-only mode, require a successful typed receipt and exactly one persisted event for its session. The regression probe also checks refusal rows, safe YAML parsing and the terminal cleanup deadline. No lane services or credentials are required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_routing_refusal_publishes_a_terminal_omn19919.py tests/unit/nodes/node_event_emit_effect/test_session_deadline_omn17427.py tests/unit/nodes/node_event_emit_effect/test_emit_yaml_loading_omn21305.py -q --cov=src --cov-report="
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          printf '%s\n' '{"event_type":"session.started","payload":{"session_id":"omn21305-deploy-probe"}}' > "$probe_dir/input.json";
+          uv sync --locked;
+          env PYTHONDONTWRITEBYTECODE=1 ONEX_EMIT_EFFECT_SPOOL_ONLY=1 ONEX_EMIT_EFFECT_SPOOL_DIR="$probe_dir/spool" .venv/bin/onex node node_event_emit_effect --input "$probe_dir/input.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt > "$probe_dir/receipt.json";
+          .venv/bin/python - "$probe_dir" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          receipt = json.loads((root / "receipt.json").read_text())
+          assert receipt["status"] == "success", receipt
+          assert receipt["exit_code"] == 0, receipt
+          assert receipt["result"]["spool_only"] is True, receipt
+          records = [json.loads(p.read_text()) for p in (root / "spool").glob("*.json")]
+          assert len(records) == 1, records
+          assert records[0]["event_id"] == receipt["result"]["event_id"], records
+          assert records[0]["payload"]["session_id"] == "omn21305-deploy-probe", records
+          print(json.dumps({"run_id": receipt["run_id"], "status": receipt["status"], "spooled": len(records)}))
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"

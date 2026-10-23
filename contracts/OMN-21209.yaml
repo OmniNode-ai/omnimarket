@@ -1,0 +1,85 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-21209
+title: "Onboarding offers a recommended model order per work class, declared in the routing contract with its basis"
+summary: >
+  The BYOK catalogue (configs/byok_provider_backends.v1.yaml) gains a recommended_order
+  block: every served task class names an order, the order reads each key row's
+  default_models (for Ollama, the local model sized to the Mac) and cites basis OMN-21215.
+  routing/byok_provider_backends.py gains load_byok_recommended_order and recommended_models.
+  The omniclaude onboarding change (AC2) takes this order as the pre-selected answer.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21209-ac1
+    statement: "the routing contract declares a recommended ordered model list for every served work class, with no model id literal in the onboarding script or the dashboard"
+    acceptance:
+      - id: AC1
+        statement: "AC1: the routing contract declares a recommended ordered model list for every served work class, with no model id literal in the onboarding script or the dashboard -- falsifier: uv run pytest in omnimarket on a contract test that resolves the recommended order for every served class and fails on a class whose order is empty or absent"
+  - id: req-omn21209-ac2
+    statement: "onboarding offers that recommended order as the pre-selected answer for each provider key and for Ollama, and a developer who accepts it types no model id"
+    acceptance:
+      - id: AC2
+        statement: "AC2: onboarding offers that recommended order as the pre-selected answer for each provider key and for Ollama, and a developer who accepts it types no model id -- falsifier: uv run pytest tests/skills/test_lab_onboarding_script_omn20150.py -q -k recommended_order"
+  - id: req-omn21209-ac3
+    statement: "accepting the recommendation registers the same ordered list through the OMN-21059 path and the next routing plan follows it"
+    acceptance:
+      - id: AC3
+        statement: "AC3: accepting the recommendation registers the same ordered list through the OMN-21059 path and the next routing plan follows it -- falsifier: uv run pytest on a routing test that accepts the recommendation for one key and asserts the plan lists the recommended models in the recommended order"
+  - id: req-omn21209-ac4
+    statement: "each class's recommended order names the measurement or operator ruling it rests on, so a recommendation cannot be an unsourced opinion"
+    acceptance:
+      - id: AC4
+        statement: "AC4: each class's recommended order names the measurement or operator ruling it rests on, so a recommendation cannot be an unsourced opinion -- falsifier: uv run pytest on a contract test asserting every recommended class carries a non-empty basis reference, which fails today because no recommendation field exists"
+evidence_requirements:
+  - kind: tests
+    description: "Recommended order contract tests pass"
+    command: "uv run pytest tests/unit/config/test_byok_recommended_order_omn21209.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn21209-ac1-recommended-order-per-class
+    description: "Every served task class names a recommended order in byok_provider_backends.v1.yaml, and it resolves a non-empty, duplicate-free model list for every offered key and for Ollama; a class that is absent or names no declared order is refused. Fails at the merge base, whose catalogue has no recommended_order block."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/unit/config/test_byok_recommended_order_omn21209.py -q --no-cov -k ac1"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-omn21209-ac3-accepted-order-is-the-plan
+    description: "Registering a key with recommended_models through the local secret store, the path onex models add uses (OMN-21059), stores that list and the key's route walks exactly those models in that order. Fails at the merge base, which has no recommended_models."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/unit/config/test_byok_recommended_order_omn21209.py -q --no-cov -k ac3"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-omn21209-ac4-basis-per-class
+    description: "Every served class's order carries a basis naming a ticket record or ruling stamp, and an order with an empty or missing basis is refused. Fails at the merge base, which has no recommended_order block."
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/unit/config/test_byok_recommended_order_omn21209.py -q --no-cov -k ac4"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21209-deploy-probe"
+    description: "Deploy probe. Read the catalogue loader from GitHub at the checked-out commit and require recommended_models in it, with the recommended-order tests. It fails at the merge base, where the loader has no recommended order."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/config/test_byok_recommended_order_omn21209.py -q --no-cov -k ac1"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/routing/byok_provider_backends.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"def recommended_models\" > /dev/null'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: dod-omn21209-ac2-preselected-order-exists
+    description: "Each key onboarding offers (Gemini, OpenRouter, OpenAI) has a non-empty, duplicate-free recommended order, and Ollama has one recommended model for each memory class: the order onboarding pre-selects. The pre-selected answer itself is proven by the omniclaude contract's AC2 item. Fails at the merge base, which has no recommended_models."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/unit/config/test_byok_recommended_order_omn21209.py -q --no-cov -k ac2"
+        cwd: "${OMNI_HOME}/omnimarket"

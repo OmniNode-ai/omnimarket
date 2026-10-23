@@ -68,6 +68,7 @@ from omnibase_core.enums.enum_delegation_operational_outcome import (
 from omnibase_core.models.delegation.wire import (
     EnumDelegationOutputRefusalReason,
     EnumDelegationOutputShape,
+    EnumDelegationTerminalFailureCause,
     EnumQualityContractMode,
     ModelDelegationContractEvidence,
     ModelDelegationDeliverableEvidence,
@@ -76,6 +77,7 @@ from omnibase_core.models.delegation.wire import (
     ModelDelegationRawResponse,
     ModelQualityGateInput,
 )
+from omnibase_infra.errors import ProtocolConfigurationError
 
 from omnimarket.config import get_settings
 from omnimarket.delegation.acceptance_directives import (
@@ -1598,11 +1600,31 @@ class LocalDelegationDispatchPort:
             # key for any catalogue provider, that provider answers.
             if is_customer_attributed(resolved_tenant_id):
                 backend = substitute_any_registered_byok_route(backend)
-            refuse_undeclared_local_model(
-                tenant_id=resolved_tenant_id,
-                backend=backend,
-                house_refs=shipped_house_credential_refs(),
-            )
+            try:
+                refuse_undeclared_local_model(
+                    tenant_id=resolved_tenant_id,
+                    backend=backend,
+                    house_refs=shipped_house_credential_refs(),
+                )
+            except ProtocolConfigurationError as exc:
+                # OMN-21305: the refusal reached the caller but left no row, so
+                # the Runs page could not show the run. It is recorded first, as
+                # the run's one failed terminal, then raised unchanged.
+                self._project_refusal(
+                    correlation_id=correlation_id,
+                    task_type=task_type,
+                    endpoint_ref=backend.endpoint_ref,
+                    model_id=backend.model_id,
+                    prompt=prompt,
+                    source_session_id=source_session_id,
+                    tenant_id=resolved_tenant_id,
+                    failure_message=str(exc),
+                    attribution=attribution,
+                    trace_id=trace_id,
+                    queue_wait_ms=queue_wait_ms,
+                    started_monotonic=dispatch_started,
+                )
+                raise
 
         # OMN-20844: ``onex delegate --model`` names the model the customer's
         # own key runs for this call. It applies only to their BYOK route, on
@@ -4589,6 +4611,113 @@ class LocalDelegationDispatchPort:
         # local store. Idempotent downstream: the projection upserts on
         # correlation_id.
         self._publish_terminal(payload, quality_passed=quality_passed)
+
+    def _project_refusal(
+        self,
+        *,
+        correlation_id: UUID,
+        task_type: str,
+        endpoint_ref: str,
+        model_id: str,
+        prompt: str,
+        source_session_id: str | None,
+        tenant_id: str | None,
+        failure_message: str,
+        attribution: Mapping[str, str] | None = None,
+        trace_id: UUID | None = None,
+        queue_wait_ms: int | None = None,
+        started_monotonic: float | None = None,
+    ) -> None:
+        """Record a run refused before any rung was dispatched (OMN-21305).
+
+        The terminal carries no attempts and declares ``refused_before_dispatch``,
+        the one cause the OMN-19004 construction guard allows with a zero count,
+        so the row the projection writes is failed, typed and attributed to the
+        run. No call was made, so unlike ``_project_evidence`` this writes no
+        LLM call metric and no usage. Best-effort like the evidence write: a
+        projection failure is logged and the refusal still reaches the caller.
+        """
+        payload: dict[str, object] = {
+            "status": "failed",
+            "correlation_id": str(correlation_id),
+            "task_type": task_type,
+            "provider": endpoint_ref,
+            "model_name": model_id,
+            "prompt_text": prompt,
+            "response": failure_message,
+            "quality_gate_passed": False,
+            "quality_gates_failed": [failure_message],
+            "error_message": failure_message,
+            "escalation_count": 0,
+            "attempts": [],
+            # Stated, not derived: an omitted count keeps a floor of one, and
+            # only a producer that knows nothing was attempted may state zero.
+            "attempts_count": 0,
+            "terminal_failure_cause": (
+                EnumDelegationTerminalFailureCause.REFUSED_BEFORE_DISPATCH.value
+            ),
+            "metrics": {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_tokens": 0,
+                "latency_ms": 0,
+                "cost_usd": 0.0,
+                "cost_savings_usd": 0.0,
+            },
+        }
+        if source_session_id:
+            try:
+                payload["session_id"] = str(UUID(source_session_id))
+            except ValueError:
+                logger.debug(
+                    "non-UUID session id %r omitted from refusal row",
+                    source_session_id,
+                )
+        for key, value in (attribution or {}).items():
+            if key in _EVIDENCE_ATTRIBUTION_KEYS and value:
+                payload[key] = value
+        if trace_id is not None:
+            payload["trace_id"] = str(trace_id)
+        if queue_wait_ms is not None:
+            payload["queue_wait_ms"] = max(0, queue_wait_ms)
+        if started_monotonic is not None:
+            payload["execution_duration_ms"] = max(
+                0, int((time.monotonic() - started_monotonic) * 1000.0)
+            )
+        if not tenant_id:
+            raise TenantContextMissingError(
+                "OMN-18699: refusing to write a local refusal row with no tenant "
+                "identity. dispatch() resolves the tenant before routing, so "
+                "reaching this means a caller bypassed that seam."
+            )
+        payload["tenant_id"] = tenant_id
+        terminal_at: datetime | None = None
+        try:
+            ensure_install_identity_mirrored(self._evidence_db)
+            from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
+                ModelDelegateSkillTerminalProjection,
+            )
+
+            terminal = ModelDelegateSkillTerminalProjection.from_payload(payload)
+            projected = self._projection_handler.project_delegate_skill_terminal(
+                terminal, self._evidence_db
+            )
+            if projected.rows_upserted > 0:
+                terminal_at = terminal.emitted_at
+        except Exception:
+            logger.warning(
+                "Failed to project the refusal row for correlation_id=%s",
+                correlation_id,
+                exc_info=True,
+            )
+            return
+        if terminal_at is not None:
+            self._refresh_metering_summary(
+                correlation_id=correlation_id,
+                tenant_id=tenant_id,
+                terminal_at=terminal_at,
+            )
+        self._publish_terminal(payload, quality_passed=False)
 
     def _project_usage(
         self,

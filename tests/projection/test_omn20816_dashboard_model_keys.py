@@ -12,6 +12,17 @@ stays read-only). Each check names the failure it exists to catch:
       test passed, set up and last test failed with the provider's reason;
 * M4  ``onex models remove`` removes the last usable provider (decision (c):
       the guard is in the shared remove), or refuses removing one of two;
+* M4b two removals that overlap both pass the guard and leave no usable provider,
+      because the guard and the deletion are not one step;
+* M4c ``onex secret delete`` of a provider's key skips the guard, so the last
+      usable provider goes out by the lower-level command;
+* M4d the removal lock serializes threads of one process only, so a removal
+      in another process still overlaps;
+* M4e ``onex secret delete`` of a provider's minted route reference skips the
+      guard, so the last usable provider's route goes out by its other name;
+* M4f ``onex secret delete`` of another declared ``llm.<provider>.<field>``
+      reference skips the guard, though the store classifies it as that
+      provider's and withdraws its route;
 * M5  the page lists a provider it does not show (Anthropic, a local URL);
 * M7  the page and the CLI disagree about one store: a key added in the
       terminal is not what ``GET /models`` lists;
@@ -40,10 +51,11 @@ import pytest
 from click.testing import CliRunner, Result
 from fastapi.testclient import TestClient
 
-from omnimarket.cli.cli_secret import models_group
+from omnimarket.cli.cli_secret import models_group, secret_group
 from omnimarket.handlers import handler_model_keys
 from omnimarket.inference.local_byok_credential_adapter import (
     resolve_local_byok_credential_models,
+    resolve_local_byok_credential_ref,
 )
 from omnimarket.local_deployment.tenant_identity import (
     reset_local_tenant_identity_cache,
@@ -354,3 +366,207 @@ def test_ro2_get_models_carries_no_stored_key(
         if form in response.text
     ]
     assert leaks == [], f"GET /models carries a stored key: {leaks}"
+
+
+def test_m4b_two_overlapping_removals_never_leave_no_usable_provider(
+    delegations: _Delegations, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two terminal removals that read the provider states before either deletes must not both pass the last-usable guard."""
+    import contextlib
+    import threading
+
+    delegations.models[_backend("openrouter")] = _OR_MODEL
+    delegations.models[_backend("openai")] = _OAI_MODEL
+    assert _cli_add("openrouter", _OR_KEY, _OR_MODEL).exit_code == 0
+    assert _cli_add("openai", _OAI_KEY, _OAI_MODEL).exit_code == 0
+
+    original = handler_model_keys.list_providers
+    barrier = threading.Barrier(2, timeout=2.0)
+
+    def overlapping() -> Any:
+        statuses = original()
+        with contextlib.suppress(threading.BrokenBarrierError):
+            barrier.wait()
+        return statuses
+
+    monkeypatch.setattr(handler_model_keys, "list_providers", overlapping)
+
+    outcomes: dict[str, Exception | None] = {}
+
+    def worker(provider: str) -> None:
+        try:
+            handler_model_keys.remove_key(provider)
+            outcomes[provider] = None
+        except Exception as exc:
+            outcomes[provider] = exc
+
+    threads = [
+        threading.Thread(target=worker, args=("openrouter",)),
+        threading.Thread(target=worker, args=("openai",)),
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+        assert not t.is_alive()
+
+    refused = [
+        p
+        for p, e in outcomes.items()
+        if isinstance(e, handler_model_keys.LastUsableModelRefusedError)
+    ]
+    assert len(refused) == 1, f"expected exactly one refusal, got outcomes={outcomes}"
+    assert not any(
+        isinstance(e, BaseException)
+        and not isinstance(e, handler_model_keys.LastUsableModelRefusedError)
+        for e in outcomes.values()
+    ), f"unexpected exception types in outcomes={outcomes}"
+
+    rows = _rows(_client(tmp_path))
+    assert rows["openrouter"]["set_up"] or rows["openai"]["set_up"]
+    assert rows[refused[0]]["set_up"] is True
+
+
+def _cli_secret_delete(provider: str) -> Result:
+    return CliRunner().invoke(secret_group, ["delete", f"llm.{provider}.api_key"])
+
+
+def test_m4c_secret_delete_refuses_the_last_usable_providers_key(
+    delegations: _Delegations, tmp_path: Path
+) -> None:
+    delegations.models[_backend("openrouter")] = _OR_MODEL
+    assert _cli_add("openrouter", _OR_KEY, _OR_MODEL).exit_code == 0
+    refused = _cli_secret_delete("openrouter")
+    assert refused.exit_code != 0, refused.output
+    assert "at least one is required" in refused.output
+    assert _rows(_client(tmp_path))["openrouter"]["set_up"] is True
+
+
+def test_m4c_secret_delete_of_one_of_two_usable_providers_is_allowed(
+    delegations: _Delegations, tmp_path: Path
+) -> None:
+    delegations.models[_backend("openrouter")] = _OR_MODEL
+    delegations.models[_backend("openai")] = _OAI_MODEL
+    assert _cli_add("openrouter", _OR_KEY, _OR_MODEL).exit_code == 0
+    assert _cli_add("openai", _OAI_KEY, _OAI_MODEL).exit_code == 0
+    removed = _cli_secret_delete("openai")
+    assert removed.exit_code == 0, removed.output
+    assert _rows(_client(tmp_path))["openrouter"]["set_up"] is True
+
+
+def test_m4d_a_removal_waits_for_the_lock_held_by_another_process(
+    delegations: _Delegations, tmp_path: Path
+) -> None:
+    """A thread-only lock lets this removal run while another process holds the lock."""
+    import subprocess
+    import sys
+    import threading
+
+    delegations.models[_backend("openrouter")] = _OR_MODEL
+    delegations.models[_backend("openai")] = _OAI_MODEL
+    assert _cli_add("openrouter", _OR_KEY, _OR_MODEL).exit_code == 0
+    assert _cli_add("openai", _OAI_KEY, _OAI_MODEL).exit_code == 0
+    db_path = tmp_path / "delegation.sqlite"
+    assert handler_model_keys.LocalByokCredentialStore().db_path == db_path
+
+    holder_script = "\n".join(
+        [
+            "import sys",
+            "from pathlib import Path",
+            "from omnimarket.handlers.handler_model_keys import _removal_lock",
+            "with _removal_lock(Path(sys.argv[1])):",
+            "    print('held', flush=True)",
+            "    sys.stdin.read()",
+        ]
+    )
+    holder = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            holder_script,
+            str(db_path),
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert holder.stdout is not None
+        assert holder.stdin is not None
+        assert holder.stdout.readline().strip() == "held"
+        done = threading.Event()
+        outcome: list[Exception | None] = []
+
+        def worker() -> None:
+            try:
+                handler_model_keys.remove_key("openai")
+                outcome.append(None)
+            except Exception as exc:
+                outcome.append(exc)
+            done.set()
+
+        thread = threading.Thread(target=worker)
+        thread.start()
+        assert not done.wait(timeout=1.5), (
+            "the removal ran while another process held the lock"
+        )
+        holder.stdin.close()
+        assert done.wait(timeout=30), (
+            "the removal never ran after the lock was released"
+        )
+        thread.join(timeout=5)
+        assert outcome == [None], outcome
+    finally:
+        holder.kill()
+        holder.wait(timeout=10)
+    assert _rows(_client(tmp_path))["openai"]["set_up"] is False
+
+
+def test_m4e_secret_delete_refuses_the_last_usable_providers_route_ref(
+    delegations: _Delegations, tmp_path: Path
+) -> None:
+    delegations.models[_backend("openrouter")] = _OR_MODEL
+    assert _cli_add("openrouter", _OR_KEY, _OR_MODEL).exit_code == 0
+    route_ref = resolve_local_byok_credential_ref("openrouter")
+    assert route_ref is not None
+    assert route_ref.startswith("cred_localinstall_openrouter_")
+    refused = CliRunner().invoke(secret_group, ["delete", route_ref])
+    assert refused.exit_code != 0, refused.output
+    assert "at least one is required" in refused.output
+    assert resolve_local_byok_credential_ref("openrouter") == route_ref
+
+
+def test_m4e_secret_delete_of_one_of_two_usable_route_refs_is_allowed(
+    delegations: _Delegations, tmp_path: Path
+) -> None:
+    delegations.models[_backend("openrouter")] = _OR_MODEL
+    delegations.models[_backend("openai")] = _OAI_MODEL
+    assert _cli_add("openrouter", _OR_KEY, _OR_MODEL).exit_code == 0
+    assert _cli_add("openai", _OAI_KEY, _OAI_MODEL).exit_code == 0
+    route_ref = resolve_local_byok_credential_ref("openai")
+    assert route_ref is not None
+    removed = CliRunner().invoke(secret_group, ["delete", route_ref])
+    assert removed.exit_code == 0, removed.output
+    assert resolve_local_byok_credential_ref("openrouter") is not None
+
+
+def test_m4f_secret_delete_refuses_another_declared_ref_of_the_last_usable_provider(
+    delegations: _Delegations, tmp_path: Path
+) -> None:
+    delegations.models[_backend("openrouter")] = _OR_MODEL
+    # Store the other declared reference first: storing it clears the provider's
+    # last test, and the add after it is what makes the provider usable again.
+    stored = CliRunner().invoke(
+        secret_group,
+        ["set", "llm.openrouter.token", "--model", _OR_MODEL],
+        input=_OR_KEY,
+    )
+    assert stored.exit_code == 0, stored.output
+    assert _cli_add("openrouter", _OR_KEY, _OR_MODEL).exit_code == 0
+    assert _rows(_client(tmp_path))["openrouter"]["last_test"]["status"] == "passed"
+    route_ref = resolve_local_byok_credential_ref("openrouter")
+    assert route_ref is not None
+    refused = CliRunner().invoke(secret_group, ["delete", "llm.openrouter.token"])
+    assert refused.exit_code != 0, refused.output
+    assert "at least one is required" in refused.output
+    assert resolve_local_byok_credential_ref("openrouter") is not None

@@ -29,6 +29,13 @@ from omnimarket.nodes.node_event_emit_effect.errors import (
     UnresolvableTransformError,
 )
 
+# Cold emits parse the registry before their publish deadline starts. Use
+# LibYAML's safe constructors when available to reduce that first emit's cost;
+# installations without the extension retain the pure-Python safe loader.
+_REGISTRY_SAFE_LOADER: type[yaml.SafeLoader] | type[yaml.CSafeLoader] = getattr(
+    yaml, "CSafeLoader", yaml.SafeLoader
+)
+
 
 class EnumDurabilityTier(StrEnum):
     """Per-topic durability tier, as declared in the event registry.
@@ -149,7 +156,7 @@ def _load_registry(path_str: str) -> dict[str, RegisteredEvent]:
             "file out of node_emit_daemon) has not landed (see OMN-15964)."
         )
     with path.open(encoding="utf-8") as f:
-        raw = yaml.safe_load(f)
+        raw = yaml.load(f, Loader=_REGISTRY_SAFE_LOADER)
     if not isinstance(raw, dict):
         raise ValueError(f"{path}: registry YAML must be a dict")
     return _parse_registry(raw, source=path)

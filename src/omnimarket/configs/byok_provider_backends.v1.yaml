@@ -711,6 +711,44 @@ local:
       server: ollama
       download_gb: 20
 
+# OMN-21209. The recommended model order per served work class, which
+# onboarding offers as the pre-selected answer so a developer with no opinion
+# about model ids types none. A class names an order; an order says where its
+# models are read and the record it rests on. `default_models` reads each
+# customer-routable row's `default_models` for a key, and for Ollama the one
+# `local` model sized to the Mac's memory (each Ollama model is a download). Accepting it registers the
+# list through `onex models add` (OMN-21059), first tried first. Every served
+# class (a task class with no routing_availability) is listed here, and a key
+# holds one list, so onboarding registers the order `onboarding` names.
+recommended_order:
+  onboarding: baseline
+  orders:
+    baseline:
+      models: default_models
+      # The baseline recommendation the operator asked for on 2026-10-20,
+      # recorded on OMN-21215 and shipped as the catalogue's default_models.
+      basis: "OMN-21215"
+  classes:
+    code_generation: baseline
+    refactor: baseline
+    documentation: baseline
+    document: baseline
+    evidence_comment: baseline
+    research: baseline
+    test: baseline
+    validator_generation: baseline
+    reasoning: baseline
+    complex_reasoning: baseline
+    planning: baseline
+    review: baseline
+    summarization: baseline
+    escalation: baseline
+    brief_drafting: baseline
+    extraction_proposer: baseline
+    tail_summary: baseline
+    context_selection: baseline
+    context_compaction: baseline
+
 # House-keyed platform providers a customer may NOT (yet) bring a key for.
 # Silence is not allowed: a rung the platform ships a house key for is either
 # offered above or declared here with the ticket that owns lifting it.

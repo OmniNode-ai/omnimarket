@@ -58,7 +58,13 @@ REQUIRED_TEXTS = (
 )
 #: Optional: the places and programs the tools-only phase tools use (OMN-17427,
 #: RULING 2026-10-21T22:32:15Z). A tool whose name is absent refuses when it is called.
-OPTIONAL_VALUES = ("DELEGATION_ACCOUNTING_PATH",)
+OPTIONAL_VALUES = (
+    "DELEGATION_ACCOUNTING_PATH",
+    "LINEAR_TEAM_ID",
+    "PLANS_DIR",
+    "PLAN_LIFECYCLE_PATH",
+    "STANDING_CONTROL_PLAN",
+)
 OPTIONAL_TEXTS = (
     "tools_root",
     "ledger_file",
@@ -68,6 +74,23 @@ OPTIONAL_TEXTS = (
     "kb_clone_refresh_command",
     "decisions_register_command",
     "shared_doc_scrub_command",
+    "ledger_append_command",
+    "delegation_step_command",
+    "delegation_accounting_command",
+    "closeout_completion_command",
+    "closeout_scope_command",
+    "triage_fences_command",
+    "triage_started_command",
+    "dod_verify_command",
+    "kb_pr_create_command",
+    "pr_handoff_command",
+    "pr_watcher_state",
+    "reports_dir",
+    "process_readme",
+    "venv_reconcile_status",
+    "venv_reconcile_log",
+    "clones_root",
+    "state_root",
 )
 TEMPLATE_BLOCK = re.compile(r"<!-- prompt:(.*?) -->\n(.*?)\n<!-- end:\1 -->", re.S)
 

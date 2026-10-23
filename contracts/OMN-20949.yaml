@@ -17,6 +17,11 @@ requirements:
     acceptance:
       - id: "AC2"
         statement: "AC2: D2 reads the omnimarket copy and no onex_change_control path -- falsifier: a test runs _check_d2_kafka_topics against a workspace with no onex_change_control directory and gets PASS from the bundled manifest, and a planted conflicting producer at the node's manifest path still FAILs"
+  - id: "req-infra-sweep-wired"
+    statement: "omnibase_infra's required Duplication Sweep reads the repointed manifest before the change-control copy is deleted."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: The repointed reader is wired into omnibase_infra's required Duplication Sweep before the OCC copy is deleted -- falsifier: omnibase_infra's run_duplication_sweep.py D2 reads the omnimarket path and the Duplication Sweep check run on that PR's head is green"
 evidence_requirements:
   - kind: "tests"
     description: "AC1: the bundled manifest exists beside the node and parses."
@@ -52,3 +57,14 @@ dod_evidence:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_duplication_sweep/handlers/handler_duplication_sweep.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^_KAFKA_BOUNDARIES_YAML = ('"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20949-ac3-infra-d2-reads-omnimarket"
+    description: "AC3: omnibase_infra's scripts/ci/run_duplication_sweep.py at ref dev names the omnimarket node_duplication_sweep/contracts/kafka_boundaries.yaml path and names no onex_change_control path. The probe reads the file from GitHub and exits nonzero while the file still names an onex_change_control path or lacks the omnimarket path. It does not read the Duplication Sweep check run on the omnibase_infra pull request head; that run is that pull request's own required check."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_golden_chain_duplication_sweep.py -q -p no:randomly -k test_d2_manifest_path_named_for_infra_is_the_one_d2_reads"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "c=$(gh api \"repos/OmniNode-ai/omnibase_infra/contents/scripts/ci/run_duplication_sweep.py?ref=dev\" --jq .content | base64 -d) && printf '%s' \"$c\" | grep -q 'node_duplication_sweep/contracts/kafka_boundaries.yaml' && ! printf '%s' \"$c\" | grep -q 'onex_change_control' && echo D2_READS_OMNIMARKET_ONLY"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

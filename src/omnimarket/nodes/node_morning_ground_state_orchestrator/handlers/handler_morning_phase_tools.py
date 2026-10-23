@@ -19,7 +19,9 @@ if a phase agent is given a shell or a generic tool.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -39,7 +41,13 @@ from ..models.model_morning_ground_state import (
 from ..models.model_morning_overlay import ModelMorningOverlay
 from ..tools.catalog import ModelLedgerReconcileInput
 from ..tools.context import ModelMorningToolContext, build_context
-from ..tools.phases import node_step_tool, phase_tools, refuse_stranding_commit
+from ..tools.phases import (
+    node_step_tool,
+    phase_lane,
+    phase_note,
+    phase_tools,
+    refuse_stranding_commit,
+)
 from .handler_morning_phase_bus import RESULT_TYPES
 
 PACKAGE = "omnimarket.nodes.node_morning_ground_state_orchestrator"
@@ -50,6 +58,11 @@ TRANSPORT = Path(handler_agent_session.__file__)
 #: The state directory phase sessions record into, under the overlay's tools root.
 STATE_PARTS = (".onex_state", "morning-workflows", "phase-tools")
 PHASE_TIMEOUT_S = handler_agent_session.TOOLS_ONLY_TIMEOUT_S + 100
+#: How long claude waits for the morning MCP server to start (its MCP_TIMEOUT, in ms). Its
+#: 30 s default was too short on the loaded operator host: on 2026-10-22 the ground-state and
+#: triage servers, started side by side, both hit CONNECT_TIMEOUT and the phases ran with no
+#: tools. A value already in the environment wins.
+MCP_STARTUP_TIMEOUT_MS = 180000
 EXIT_REFUSED = 65
 TOOLS_NOTE = (
     "\n\nTOOLS (RULING 2026-10-21T22:32:15Z): you have no shell, no file tools and no "
@@ -106,6 +119,14 @@ def refuse_unless_morning_server(mcp_config: dict[str, JsonValue]) -> None:
         )
 
 
+def session_env() -> dict[str, str]:
+    """The phase session's environment: the caller's, with the MCP server's startup time."""
+    return {
+        **os.environ,
+        "MCP_TIMEOUT": os.environ.get("MCP_TIMEOUT") or str(MCP_STARTUP_TIMEOUT_MS),
+    }
+
+
 def transport_argv(model: str, config: Path, schema: Path) -> list[str]:
     """The agent transport's tools-only session, by its standalone entrypoint."""
     return [
@@ -137,15 +158,39 @@ class HandlerMorningPhaseTools:
         return self._overlay
 
     def context(
-        self, run: ModelMorningGroundStateRequest, label: str
+        self, run: ModelMorningGroundStateRequest, label: str, model: str = ""
     ) -> ModelMorningToolContext:
         overlay = self._overlay_or_load()
-        return build_context(
+        ctx = build_context(
             phase_label=label,
             day=run.date,
             publish=run.publish,
             values=overlay.values,
             texts=overlay.texts,
+        )
+        defaults = overlay.request_defaults
+        plans = defaults.plan_docs if run.plan_docs is None else run.plan_docs
+        docs = {f"plan_doc_{i}": doc for i, doc in enumerate(plans, 1)}
+        docs["must_do_doc"] = run.must_do_doc or defaults.must_do_doc
+        docs["off_rails_doc"] = run.off_rails_doc or defaults.off_rails_doc
+        lane, ticket = phase_lane(label)
+        return ctx.model_copy(
+            update={
+                "lane": lane,
+                "ticket": ticket,
+                "model": model,
+                "state_dir": self._run_dir(ctx, run),
+                "window_start": run.window_start,
+                "closure_probe_ticket": run.closure_probe_ticket
+                or defaults.closure_probe_ticket,
+                "closure_probe_ceiling_s": run.closure_probe_ceiling_seconds,
+                "source_docs": docs,
+                "integration_repos": list(
+                    run.integration_repos
+                    if run.integration_repos is not None
+                    else defaults.integration_repos
+                ),
+            }
         )
 
     def _run_dir(
@@ -163,7 +208,7 @@ class HandlerMorningPhaseTools:
             phase.label
         )  # refuses a phase with no tool set before anything starts
         refuse_stranding_commit(phase.label)
-        ctx = self.context(run, phase.label)
+        ctx = self.context(run, phase.label, phase.model)
         run_dir = self._run_dir(ctx, run)
         context_file = run_dir / f"{phase.label}.context.json"
         context_file.write_text(ctx.model_dump_json(indent=2), encoding="utf-8")
@@ -176,12 +221,16 @@ class HandlerMorningPhaseTools:
         argv = transport_argv(phase.model, config_file, schema_file)
         with tempfile.TemporaryDirectory(prefix="morning-phase-") as cwd:
             try:
-                done = subprocess.run(
+                # In a thread, so two phases the node gathers (ground-state and triage) run
+                # side by side as the workflow intends, instead of one blocking the loop.
+                done = await asyncio.to_thread(
+                    subprocess.run,
                     argv,
-                    input=phase.prompt + TOOLS_NOTE,
+                    input=phase.prompt + TOOLS_NOTE + phase_note(phase.label),
                     capture_output=True,
                     text=True,
                     cwd=cwd,
+                    env=session_env(),
                     timeout=PHASE_TIMEOUT_S,
                     check=False,
                 )

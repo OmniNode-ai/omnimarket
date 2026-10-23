@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """OMN-21296: the ticket contracts moved into this repository are present and valid.
 
-Each moved contract must exist at ``contracts/<id>.yaml``, load with
+Each moved contract must exist at its canonical location, load with
 ``yaml.safe_load`` as a mapping whose ``ticket_id`` is its own id, and pass
 omnibase_core's ``ModelTicketContract``, the same model the contract-compliance
 jobs and the ticket-contract-schema hook validate with.
@@ -19,6 +19,17 @@ from omnibase_core.models.ticket.model_ticket_contract import ModelTicketContrac
 pytestmark = pytest.mark.unit
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _contract_path(ticket_id: str) -> Path:
+    # OMN-13335 is historical work tracking, outside the runtime contracts path.
+    directory = (
+        REPO_ROOT / "docs" / "work-tracking" / "contracts"
+        if ticket_id == "OMN-13335"
+        else REPO_ROOT / "contracts"
+    )
+    return directory / f"{ticket_id}.yaml"
+
 
 MOVED_TICKET_IDS = (
     "OMN-12738", "OMN-12936", "OMN-13335", "OMN-14623", "OMN-15059",
@@ -37,18 +48,25 @@ def test_moved_ids_are_36_distinct() -> None:
     assert len(set(MOVED_TICKET_IDS)) == 36
 
 
+def test_historical_contract_uses_work_tracking_location() -> None:
+    path = _contract_path("OMN-13335")
+    assert path.is_file()
+    assert not (REPO_ROOT / "contracts" / path.name).exists()
+    assert ModelTicketContract.from_yaml(path.read_text()).ticket_id == "OMN-13335"
+
+
 @pytest.mark.parametrize("ticket_id", MOVED_TICKET_IDS)
 def test_moved_contract_present_with_own_ticket_id(ticket_id: str) -> None:
-    path = REPO_ROOT / "contracts" / f"{ticket_id}.yaml"
-    assert path.is_file(), f"contracts/{ticket_id}.yaml is missing"
+    path = _contract_path(ticket_id)
+    assert path.is_file(), f"{path.relative_to(REPO_ROOT)} is missing"
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    assert isinstance(data, dict), f"contracts/{ticket_id}.yaml is not a mapping"
+    assert isinstance(data, dict), f"{path.relative_to(REPO_ROOT)} is not a mapping"
     assert data.get("ticket_id") == ticket_id
 
 
 @pytest.mark.parametrize("ticket_id", MOVED_TICKET_IDS)
 def test_moved_contract_validates_as_ticket_contract(ticket_id: str) -> None:
-    path = REPO_ROOT / "contracts" / f"{ticket_id}.yaml"
-    assert path.is_file(), f"contracts/{ticket_id}.yaml is missing"
+    path = _contract_path(ticket_id)
+    assert path.is_file(), f"{path.relative_to(REPO_ROOT)} is missing"
     contract = ModelTicketContract.from_yaml(path.read_text(encoding="utf-8"))
     assert contract.ticket_id == ticket_id
