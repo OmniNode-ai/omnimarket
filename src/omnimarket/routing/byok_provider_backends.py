@@ -441,6 +441,49 @@ class ModelByokLocalRecommendation(BaseModel):
         return self
 
 
+class ModelByokRecommendedOrderSource(BaseModel):
+    """One recommended order: where its models are read, and what it rests on (OMN-21209)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: ``default_models``: a key's order is its row's ``default_models``;
+    #: Ollama's is the one ``local`` model sized to the memory.
+    models: Literal["default_models"]
+    #: The ticket whose record carries the measurement or operator ruling, or
+    #: the ruling's ledger stamp.
+    basis: str = Field(
+        pattern=r"^(OMN-[0-9]+|RULING [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z)$"
+    )
+
+
+class ModelByokRecommendedOrder(BaseModel):
+    """The catalogue's ``recommended_order`` block (OMN-21209).
+
+    Every served work class names one of ``orders``. A key holds one ordered
+    list (OMN-21059), so onboarding registers the order ``onboarding`` names.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    onboarding: str = Field(min_length=1)
+    orders: dict[str, ModelByokRecommendedOrderSource] = Field(min_length=1)
+    classes: dict[str, str] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _every_name_resolves(self) -> ModelByokRecommendedOrder:
+        if self.onboarding not in self.orders:
+            raise ValueError(
+                f"recommended_order.onboarding names {self.onboarding!r}, which "
+                "is not one of its orders"
+            )
+        unknown = sorted(c for c, o in self.classes.items() if o not in self.orders)
+        if unknown:
+            raise ValueError(
+                f"recommended_order.classes {unknown} name an order that is not declared"
+            )
+        return self
+
+
 class ByokPlanNotPermittedError(ValueError):
     """A key or named plan belongs to a plan the provider's terms bar us from routing.
 
@@ -711,6 +754,66 @@ def recommended_local_model(memory_gb: int) -> ModelByokLocalMemoryClass | None:
         if entry.min_memory_gb <= memory_gb
     ]
     return fitting[-1] if fitting else None
+
+
+def _read_recommended_order(path: Path) -> ModelByokRecommendedOrder:
+    raw = _load_document(path)
+    entry = raw.get("recommended_order")
+    if not isinstance(entry, dict):
+        raise ByokCatalogError(
+            f"BYOK provider catalog at {path} has no 'recommended_order' mapping; "
+            "onboarding reads the recommended model order per work class from it."
+        )
+    try:
+        return ModelByokRecommendedOrder.model_validate(entry)
+    except ValidationError as exc:
+        raise ByokCatalogError(
+            f"BYOK provider catalog at {path} has a mis-shaped "
+            f"'recommended_order': {exc}"
+        ) from exc
+
+
+@lru_cache(maxsize=1)
+def load_byok_recommended_order() -> ModelByokRecommendedOrder:
+    """Load and cache the catalogue's ``recommended_order`` block (OMN-21209).
+
+    Same caching contract as :func:`load_byok_provider_catalog`.
+    """
+    return _read_recommended_order(CATALOG_PATH)
+
+
+def recommended_models(
+    provider: str, *, work_class: str | None = None, memory_gb: int | None = None
+) -> tuple[str, ...]:
+    """The recommended model order for ``provider``, first tried first (OMN-21209).
+
+    ``work_class`` picks that class's order; ``None`` picks the one onboarding
+    registers. ``ollama`` needs ``memory_gb`` and gets the one ``local`` model
+    sized to it, since each Ollama model is a download; a key gets its
+    customer-routable row's ``default_models``.
+
+    Raises:
+        ByokCatalogError: the class names no order, or the provider has no
+            customer-routable row.
+    """
+    block = load_byok_recommended_order()
+    name = block.onboarding if work_class is None else block.classes.get(work_class)
+    if name is None:
+        raise ByokCatalogError(
+            f"recommended_order declares no order for work class {work_class!r}"
+        )
+    # Every order reads default_models today, the one source its Literal allows.
+    if provider == "ollama":
+        if memory_gb is None:
+            raise ByokCatalogError("Ollama's recommended order needs the memory_gb")
+        sized = recommended_local_model(memory_gb)
+        return () if sized is None else (sized.model,)
+    row = resolve_byok_provider_backend(provider)
+    if row is None:
+        raise ByokCatalogError(
+            f"the catalogue has no customer-routable {provider!r} row to recommend from"
+        )
+    return row.default_models
 
 
 def first_key_backend() -> ModelByokProviderBackend:
@@ -1109,6 +1212,8 @@ __all__: list[str] = [
     "ModelByokNotOfferedProvider",
     "ModelByokPricing",
     "ModelByokProviderBackend",
+    "ModelByokRecommendedOrder",
+    "ModelByokRecommendedOrderSource",
     "ModelCatalogueParityGap",
     "byok_automatic_plans",
     "byok_backend_max_retries",
@@ -1123,6 +1228,8 @@ __all__: list[str] = [
     "load_byok_not_offered_providers",
     "load_byok_plan_catalog",
     "load_byok_provider_catalog",
+    "load_byok_recommended_order",
+    "recommended_models",
     "require_byok_plan_permitted",
     "resolve_byok_backend_by_endpoint",
     "resolve_byok_backend_by_id",
