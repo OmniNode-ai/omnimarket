@@ -37,6 +37,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from omnibase_core.validators.no_unguarded_git_subprocess import (
+    scrub_git_location_env,
+)
 
 from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
     EvidenceCollector,
@@ -47,7 +50,11 @@ _SHARED_PREFIX = ".occ-dev-wt-shared-"
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
+        ["git", "-C", str(repo), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=scrub_git_location_env(os.environ),
     )
 
 
@@ -99,7 +106,7 @@ def _advance_dev(occ: Path, name: str) -> None:
 
 def _collector(occ: Path, omni_home: Path) -> EvidenceCollector:
     os.environ["OMNI_HOME"] = str(omni_home)
-    os.environ["ONEX_CC_REPO_PATH"] = str(occ)
+    os.environ["CONTRACT_REPO_DIR"] = str(occ)
     return EvidenceCollector()
 
 
@@ -128,7 +135,7 @@ def _materialize_in_child(occ: str, omni_home: str, out: Any) -> None:
     ``onex skill dod_verify`` processes, so the test has to be process-level.
     """
     os.environ["OMNI_HOME"] = omni_home
-    os.environ["ONEX_CC_REPO_PATH"] = occ
+    os.environ["CONTRACT_REPO_DIR"] = occ
     collector = EvidenceCollector()
     try:
         dev_root, created, _outcome, sha = collector._materialize_occ_dev_worktree()

@@ -128,7 +128,7 @@ async def _build_orch(
         merge=merge,
         fix=fix,
         event_bus=bus,
-        occ_stamp_readback=_LandedStampReadback(),
+        pr_evidence_readback=_LandedStampReadback(),
         outage_recovery_probe=outage_recovery_probe,
     )
 

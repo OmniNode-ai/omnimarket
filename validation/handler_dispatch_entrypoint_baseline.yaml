@@ -73,9 +73,6 @@ known_entrypointless:
   - contract: node_navigation_history_reducer
     handler: HandlerNavigationHistoryReducer
     module: omnimarket.nodes.node_navigation_history_reducer.handlers.handler_navigation_history_reducer
-  - contract: node_occ_evidence_draft_orchestrator
-    handler: HandlerOccEvidenceDraftOrchestrator
-    module: omnimarket.nodes.node_occ_evidence_draft_orchestrator.handlers.handler_occ_evidence_draft_orchestrator
   - contract: node_overseer_observer
     handler: NullSideEffectObserver
     module: omnimarket.nodes.node_overseer_observer.handlers.handler_side_effect_observer

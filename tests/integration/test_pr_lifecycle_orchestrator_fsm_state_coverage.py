@@ -47,8 +47,8 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecyc
     HandlerPrLifecycleOrchestrator,
     ModelPrLifecycleStartCommand,
 )
-from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.occ_stamp_readback import (
-    ModelOccStampReadbackResult,
+from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.pr_evidence_readback import (
+    ModelPrEvidenceReadbackResult,
 )
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers import (
     EnumPrCategory,
@@ -180,7 +180,7 @@ class _InjectedFaultError(RuntimeError):
     """Deterministic fault injected at a phase-entry boundary to drive X→FAILED."""
 
 
-class _VerifiedOccStampReadback:
+class _VerifiedPrEvidenceReadback:
     """Hermetic OCC-companion read-back stub (OMN-14151 arm-gate).
 
     Always verifies so the arm-gate's occ_companion_verified criterion is
@@ -189,8 +189,8 @@ class _VerifiedOccStampReadback:
 
     async def verify_fix_landed(
         self, repo: str, pr_number: int, ticket_id: str | None = None
-    ) -> ModelOccStampReadbackResult:
-        return ModelOccStampReadbackResult(verified=True, reason="test: stubbed")
+    ) -> ModelPrEvidenceReadbackResult:
+        return ModelPrEvidenceReadbackResult(verified=True, reason="test: stubbed")
 
 
 class _FsmCoverageOrchestrator(HandlerPrLifecycleOrchestrator):
@@ -212,7 +212,7 @@ class _FsmCoverageOrchestrator(HandlerPrLifecycleOrchestrator):
         fault: str | None = None,
         **kwargs: Any,
     ) -> None:
-        kwargs.setdefault("occ_stamp_readback", _VerifiedOccStampReadback())
+        kwargs.setdefault("pr_evidence_readback", _VerifiedPrEvidenceReadback())
         super().__init__(**kwargs)
         self._mock_prs = mock_prs
         self._verification_outcome = verification_outcome

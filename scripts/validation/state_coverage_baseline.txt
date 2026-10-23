@@ -160,10 +160,6 @@ node_nightly_loop_controller onex.evt.omnimarket.build-loop-fill-completed.v1
 node_nightly_loop_controller onex.evt.omnimarket.build-loop-started.v1
 node_nightly_loop_controller total_gaps_closed
 node_nightly_loop_controller total_tickets_dispatched
-node_occ_evidence_draft_orchestrator onex.cmd.omnibase-infra.delegation-request.v1
-node_occ_evidence_draft_orchestrator onex.evt.omnimarket.occ-evidence-draft-created.v1
-node_occ_evidence_draft_orchestrator onex.evt.omnimarket.occ-evidence-draft-failed.v1
-node_occ_evidence_validator_compute onex.evt.omnimarket.occ-evidence-draft-rejected.v1
 node_on_vs_off_experiment_compute onex.evt.omnimarket.on-vs-off-experiment-completed.v1
 node_on_vs_off_experiment_compute onex.evt.omnimarket.on-vs-off-experiment-failed.v1
 node_overseer_benchmarker onex.evt.omnimarket.overseer-benchmarker-completed.v1

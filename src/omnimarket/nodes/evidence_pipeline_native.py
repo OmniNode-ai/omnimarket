@@ -47,8 +47,6 @@ DEPLOYMENT_PROOF_COLLECTOR_IDENTITY = (
     "omnimarket.node_evidence_collector_effect.deployment_proof"
 )
 VERIFIER_IDENTITY = "omnimarket.node_contract_matcher_compute"
-WRITER_IDENTITY = "omnimarket.node_occ_pr_writer_effect"
-DEFAULT_OCC_REPOSITORY = "OmniNode-ai/onex_change_control"
 DEFAULT_DEPLOYMENT_PROOF_REPOSITORY = "omnimarket"
 DEPLOY_TRIGGER_SURFACE: TriggerSurface = "deploy"
 
@@ -64,15 +62,6 @@ class EvidenceCollectorAdapter(Protocol):
         self, command: ModelEvidencePipelineCommand
     ) -> Mapping[str, object] | ModelRawEvidencePayload:
         """Return raw evidence fields for the command."""
-
-
-class OccPrWriterAdapter(Protocol):
-    """Effect boundary for writing OCC evidence PRs."""
-
-    def write_pr(
-        self, validation: ModelEvidenceValidationResult
-    ) -> Mapping[str, object] | ModelOccPrReference:
-        """Create or reuse an OCC PR reference."""
 
 
 class LinearEvidenceUpdaterAdapter(Protocol):
@@ -104,11 +93,6 @@ class EvidencePipelinePorts(Protocol):
         self, bundle: ModelEvidenceBundle
     ) -> ModelEvidenceValidationResult:
         """Run deterministic contract matching."""
-
-    def write_occ_pr(
-        self, validation: ModelEvidenceValidationResult
-    ) -> ModelOccPrReference:
-        """Run OCC PR writing."""
 
     def update_linear(
         self, validation: ModelEvidenceValidationResult
@@ -257,29 +241,6 @@ class DeploymentProofEvidenceCollectorAdapter:
         }
 
 
-class DeterministicOccPrWriterAdapter:
-    """Local deterministic OCC writer used when no live adapter is injected."""
-
-    def write_pr(
-        self, validation: ModelEvidenceValidationResult
-    ) -> Mapping[str, object]:
-        key = _validation_result_hash(validation)
-        pr_number = int(hashlib.sha256(key.encode("utf-8")).hexdigest()[:6], 16)
-        pr_number = pr_number % 900000 + 1
-        ticket_slug = validation.ticket_id.lower().replace("_", "-")
-        branch = f"occ/{ticket_slug}/{validation.validation_run_id}"
-        return {
-            "occ_repository": DEFAULT_OCC_REPOSITORY,
-            "pr_number": pr_number,
-            "pr_url": f"https://github.com/{DEFAULT_OCC_REPOSITORY}/pull/{pr_number}",
-            "branch": branch,
-            "created_at": validation.validated_at,
-            "writer_identity": WRITER_IDENTITY,
-            "validation_result_hash": key,
-            "idempotency_key": f"{validation.ticket_id}:{validation.validation_run_id}",
-        }
-
-
 class NoopLinearEvidenceUpdaterAdapter:
     """Deterministic Linear adapter for dry-run/local advisory annotation."""
 
@@ -310,12 +271,10 @@ class NativeEvidencePipelinePorts:
         self,
         *,
         collector: EvidenceCollectorAdapter | None = None,
-        occ_writer: OccPrWriterAdapter | None = None,
         linear_updater: LinearEvidenceUpdaterAdapter | None = None,
         publisher: EvidencePublisherAdapter | None = None,
     ) -> None:
         self._collector = collector or DeterministicEvidenceCollectorAdapter()
-        self._occ_writer = occ_writer or DeterministicOccPrWriterAdapter()
         self._linear_updater = linear_updater or NoopLinearEvidenceUpdaterAdapter()
         self._publisher = publisher or NoopEvidencePublisherAdapter()
 
@@ -329,11 +288,6 @@ class NativeEvidencePipelinePorts:
         self, bundle: ModelEvidenceBundle
     ) -> ModelEvidenceValidationResult:
         return match_contract(bundle)
-
-    def write_occ_pr(
-        self, validation: ModelEvidenceValidationResult
-    ) -> ModelOccPrReference:
-        return write_occ_pr(validation, adapter=self._occ_writer)
 
     def update_linear(
         self, validation: ModelEvidenceValidationResult
@@ -603,40 +557,6 @@ def score_readiness(gap_report: ModelGapReport) -> ModelDeploymentReadinessResul
             for ref in gap_report.validation_result_refs
             if ref.startswith("receipt:")
         ),
-    )
-
-
-def write_occ_pr(
-    validation: ModelEvidenceValidationResult,
-    *,
-    adapter: OccPrWriterAdapter | None = None,
-) -> ModelOccPrReference:
-    writer = adapter or DeterministicOccPrWriterAdapter()
-    written = writer.write_pr(validation)
-    if isinstance(written, ModelOccPrReference):
-        return written
-    payload = dict(written)
-    pr_number_value = payload.get("pr_number")
-    pr_number = pr_number_value if isinstance(pr_number_value, int) else 1
-    return ModelOccPrReference(
-        correlation_id=validation.correlation_id,
-        validation_run_id=validation.validation_run_id,
-        ticket_id=validation.ticket_id,
-        occ_repository=str(payload.get("occ_repository") or DEFAULT_OCC_REPOSITORY),
-        pr_number=pr_number,
-        pr_url=str(payload.get("pr_url") or ""),
-        branch=str(payload.get("branch") or f"occ/{validation.validation_run_id}"),
-        created_at=str(payload.get("created_at") or validation.validated_at),
-        writer_identity=str(payload.get("writer_identity") or WRITER_IDENTITY),
-        evidence_lifecycle_state=cast(
-            EvidenceLifecycleState,
-            payload.get("evidence_lifecycle_state") or "PROVISIONAL",
-        ),
-        validation_result_hash=_optional_str(payload.get("validation_result_hash"))
-        or _validation_result_hash(validation),
-        commit_sha=_optional_str(payload.get("commit_sha")),
-        idempotency_key=_optional_str(payload.get("idempotency_key"))
-        or f"{validation.ticket_id}:{validation.validation_run_id}",
     )
 
 

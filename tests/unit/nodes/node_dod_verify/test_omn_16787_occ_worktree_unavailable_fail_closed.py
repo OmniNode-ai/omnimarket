@@ -30,10 +30,14 @@ RED-first against the ticket's acceptance criteria, driving the real
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
 import pytest
+from omnibase_core.validators.no_unguarded_git_subprocess import (
+    scrub_git_location_env,
+)
 
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
@@ -62,6 +66,7 @@ def _git(repo: Path, *args: str) -> None:
         check=True,
         capture_output=True,
         text=True,
+        env=scrub_git_location_env(os.environ),
     )
 
 
@@ -161,7 +166,7 @@ def test_worktree_materialisation_failure_refuses_by_default_ac1(
     contract".
     """
     occ = _occ_with_worktree_content_only(tmp_path)
-    monkeypatch.setenv("ONEX_CC_REPO_PATH", str(occ))
+    monkeypatch.setenv("CONTRACT_REPO_DIR", str(occ))
     monkeypatch.setenv("OCC_GOVERNANCE_REF", "origin/dev")
     monkeypatch.delenv("OMNI_HOME", raising=False)
     monkeypatch.delenv(_ALLOW_STALE_OCC_REF_ENV, raising=False)
@@ -207,7 +212,7 @@ def test_worktree_failure_override_marks_every_result_unattributable_ac2(
     governance ref, plus a standalone item names the override.
     """
     occ = _occ_with_worktree_content_only(tmp_path)
-    monkeypatch.setenv("ONEX_CC_REPO_PATH", str(occ))
+    monkeypatch.setenv("CONTRACT_REPO_DIR", str(occ))
     monkeypatch.setenv("OCC_GOVERNANCE_REF", "origin/dev")
     monkeypatch.delenv("OMNI_HOME", raising=False)
     monkeypatch.setenv(_ALLOW_STALE_OCC_REF_ENV, "1")
@@ -239,7 +244,7 @@ def test_no_occ_root_still_reports_contract_missing_not_a_worktree_refusal_ac3(
     being relabelled as a worktree fault — otherwise the new refusal would
     fire on environments that never had an OCC clone to begin with.
     """
-    monkeypatch.delenv("ONEX_CC_REPO_PATH", raising=False)
+    monkeypatch.delenv("CONTRACT_REPO_DIR", raising=False)
     monkeypatch.setenv("OMNI_HOME", str(tmp_path))  # no onex_change_control under it
     monkeypatch.delenv(_ALLOW_STALE_OCC_REF_ENV, raising=False)
 
@@ -280,7 +285,7 @@ def test_git_op_timeout_is_operator_configurable_and_times_out_closed_ac4(
     silent fallback would have produced a fully VERIFIED table.
     """
     occ = _occ_with_real_dev_ref(tmp_path)
-    monkeypatch.setenv("ONEX_CC_REPO_PATH", str(occ))
+    monkeypatch.setenv("CONTRACT_REPO_DIR", str(occ))
     monkeypatch.setenv("OCC_GOVERNANCE_REF", "origin/dev")
     monkeypatch.delenv("OMNI_HOME", raising=False)
     monkeypatch.delenv(_ALLOW_STALE_OCC_REF_ENV, raising=False)
@@ -310,7 +315,7 @@ def test_a_healthy_dev_worktree_is_unaffected_non_regression(
     ``origin/dev`` the run must verify normally and stamp a real 40-char SHA.
     """
     occ = _occ_with_real_dev_ref(tmp_path)
-    monkeypatch.setenv("ONEX_CC_REPO_PATH", str(occ))
+    monkeypatch.setenv("CONTRACT_REPO_DIR", str(occ))
     monkeypatch.setenv("OCC_GOVERNANCE_REF", "origin/dev")
     monkeypatch.delenv("OMNI_HOME", raising=False)
     monkeypatch.delenv(_ALLOW_STALE_OCC_REF_ENV, raising=False)

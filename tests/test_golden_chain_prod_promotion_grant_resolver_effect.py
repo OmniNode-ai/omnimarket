@@ -484,7 +484,7 @@ class TestFetchFromMain:
 
     def test_grant_fetch_ref_constant_is_main(self) -> None:
         assert GRANT_FETCH_REF == "main"
-        assert GRANT_REPO == "OmniNode-ai/onex_change_control"
+        assert GRANT_REPO == "OmniNode-ai/omnimarket"
         assert GRANT_FILE_PATH == "grants/prod_promotion_grants.yaml"
 
 
