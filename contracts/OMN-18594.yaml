@@ -100,5 +100,3 @@ dod_evidence:
               print(json.dumps({"case": name, "run_id": receipt["run_id"], "refuse": result["refuse"], "grant": result["grant"]}))
           PYTHON
         cwd: ${OMNI_HOME}/omnimarket
-    binds_ac:
-      - AC18594103
