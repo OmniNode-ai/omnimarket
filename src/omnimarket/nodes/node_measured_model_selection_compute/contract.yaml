@@ -1,0 +1,98 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_measured_model_selection_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure definition-B COMPUTE. Rank delegation candidates on measured cost per 1M
+  tokens (the pricing manifest) and measured p50 latency (recorded delegation
+  runs) under the one objective declared below. A missing measure raises; the
+  selector never falls back to a declared order. The decided event carries
+  every measure value with its captured_at. Stateless and deterministic.
+
+input_model:
+  name: ModelMeasuredSelectionRequest
+  module: omnimarket.models.delegation.wire.model_measured_selection_decided_event
+output_model:
+  name: ModelMeasuredSelectionDecidedEvent
+  module: omnimarket.models.delegation.wire.model_measured_selection_decided_event
+
+handler:
+  module: omnimarket.nodes.node_measured_model_selection_compute.handlers.handler_measured_model_selection
+  class: HandlerMeasuredModelSelection
+  input_model: omnimarket.models.delegation.wire.model_measured_selection_decided_event.ModelMeasuredSelectionRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: measured_model_selection
+      handler:
+        name: HandlerMeasuredModelSelection
+        module: omnimarket.nodes.node_measured_model_selection_compute.handlers.handler_measured_model_selection
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+  runtime_profiles: [main]
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.measured-model-selection-requested.v1
+terminal_event: onex.evt.omnimarket.measured-model-selection-decided.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.measured-model-selection-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.measured-model-selection-decided.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.measured-model-selection-decided.v1
+
+metadata:
+  transport_type: kafka
+
+# The selection rules (OMN-21207). The candidates are the models of the named
+# tiers in the routing contract (routing_tiers.yaml). Each candidate carries
+# WHERE its measures are read, never a value:
+#   measured_cost_per_1m: the pricing manifest entry keyed by the model id. The
+#     cost per 1M tokens is blended over input and output at input_share.
+#     Captured at the entry's effective date.
+#   measured_p50_latency: recorded delegation runs on the candidate's
+#     backend_ref under its model id. The p50 is the median latency of the
+#     runs whose terminal_ok is set inside latency.window_days. Captured at
+#     the newest run.
+# A candidate with no pricing entry, or fewer than latency.min_samples runs in
+# the window, makes the selector raise; it never falls back to the tier order.
+#
+# objective.kind cheapest_acceptable ranks on cost, then p50 latency; the ladder
+# moves to the next ranked candidate when the quality gate refuses an answer.
+# objective.basis names the ticket whose record quotes the operator approving it.
+measured_selection:
+  objective:
+    kind: cheapest_acceptable
+    basis: OMN-21207
+  # Delegation prompts carry far more input than output.
+  input_share: 0.75
+  latency:
+    window_days: 14
+    min_samples: 3
+  candidates:
+    source: routing_tiers
+    tiers: [local, cheap_cloud]
+    measured_cost_per_1m: pricing_manifest
+    measured_p50_latency: delegation_runs
+
+inputs:
+  correlation_id: {type: UUID, required: true}
+  task_type: {type: str, required: true}
+  candidates: {type: tuple, required: true}
+  pricing: {type: tuple, required: true}
+  runs: {type: tuple, required: true}
+  decided_at: {type: datetime, required: true}
+outputs:
+  correlation_id: {type: UUID}
+  task_type: {type: str}
+  selection: {type: ModelMeasuredSelection}

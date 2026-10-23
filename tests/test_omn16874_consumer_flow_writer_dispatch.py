@@ -3,16 +3,22 @@
 """OMN-16874 / OMN-16875 — the writer's dispatch contract with the runtime.
 
 ``ConsumerFlowProjectionWriter`` is dispatched **in-process** by the runtime's
-auto-wiring, once per consumed message, through a synchronous ``handle()`` that
-opens its own event loop with ``asyncio.run``. Two obligations follow from that,
-and both were unmet on the ``.201`` dev lane on 2026-08-28:
+auto-wiring, once per consumed message, through a synchronous ``handle()``.
+Three obligations follow from that:
 
-1. **Every loop-bound resource is scoped to that one loop.** ``asyncio.run``
-   closes the loop it opened, so an asyncpg pool (or an ``AIOKafkaProducer``)
-   cached across calls belongs to a loop that no longer exists. Live: 34
-   ``RuntimeError: Event loop is closed``, ``consumer_flow_windows`` at 0 rows,
-   DLQ at 36 and climbing. Two consecutive messages are driven here because one
-   cannot expose this.
+1. **Every loop-bound resource is scoped to one loop.** An asyncpg pool (or an
+   ``AIOKafkaProducer``) is bound to the loop that created it. When
+   ``handle()`` called ``asyncio.run``, a pool cached across calls belonged to
+   a loop that no longer existed. Live on the lab dev lane on 2026-08-28:
+   34 ``RuntimeError: Event loop is closed``, ``consumer_flow_windows`` at 0
+   rows, DLQ at 36 and climbing. Two consecutive messages are driven here
+   because one cannot expose this.
+
+1a. **That loop, and the pool on it, outlive the message (OMN-17427, C28).**
+   The fix for (1) opened a new loop, pool and producer for every heartbeat;
+   on 2026-10-22 the writer projected about 6 heartbeats a minute against about
+   6 arriving and sat 5.5 hours behind. The writer now keeps one dispatch loop
+   for its life, so N messages open one pool.
 
 2. **The return value is the applied event's payload.** ``handler_wiring``
    publishes the handler's result onto
@@ -24,8 +30,11 @@ and both were unmet on the ``.201`` dev lane on 2026-08-28:
 from __future__ import annotations
 
 import asyncio
+import threading
+from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -45,6 +54,9 @@ class _LoopBoundPool:
     def __init__(self) -> None:
         self.loop = asyncio.get_running_loop()
         self.closed = False
+
+    async def close(self) -> None:
+        self.closed = True
 
     def check(self) -> None:
         if self.closed:
@@ -75,7 +87,11 @@ class _RecordingAdapter:
         self._pool.check()
         self.rows.append((query, params))
         if "SELECT COUNT(*)" in query:
-            return [{"window_count": 0, "produced": 0}]
+            # One answer per probed (topic, window) the statement was bound with.
+            return [
+                {"ordinal": ordinal, "window_count": 0, "produced": 0}
+                for ordinal in range(1, len(params[0]) + 1)
+            ]
         if "MAX(ingest_sequence)" in query:
             return [{"last_sequence": None}]
         if "RETURNING" in query:
@@ -135,14 +151,17 @@ def _heartbeat(sequence: int) -> dict[str, Any]:
 
 
 @pytest.fixture
-def writer(monkeypatch: pytest.MonkeyPatch) -> ConsumerFlowProjectionWriter:
+def writer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[ConsumerFlowProjectionWriter]:
     monkeypatch.setenv("OMNIDASH_ANALYTICS_DB_URL", "postgresql://fixture/db")
     instance = ConsumerFlowProjectionWriter()
     instance._db = _RecordingAdapter()  # type: ignore[assignment]
     # The snapshot publish is a separate seam with its own transport; this test
     # is about the DB write path and the returned facts.
     instance._snapshot_exposure = None
-    return instance
+    yield instance
+    instance.close_dispatch()
 
 
 @pytest.mark.unit
@@ -415,12 +434,99 @@ def test_two_consecutive_messages_both_write(
     second = writer.handle(_heartbeat(2))
 
     adapter = writer.db
-    assert adapter.connects == 2, (  # type: ignore[attr-defined]
-        "each dispatch opens its own loop, so each must open and close its own "
-        "pool inside it"
+    assert adapter.connects == 1, (  # type: ignore[attr-defined]
+        "the second message must reuse the pool the first one opened on the "
+        "writer's dispatch loop"
     )
     assert first["rows_upserted"] >= 1
     assert second["rows_upserted"] >= 1
+
+
+@pytest.mark.unit
+def test_many_messages_open_one_pool_on_one_loop(
+    writer: ConsumerFlowProjectionWriter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-17427 (C28): N heartbeats open one asyncpg pool, not N.
+
+    The real ``AsyncpgAdapter`` is driven with ``asyncpg.create_pool`` counted,
+    so the count is of the pools the production adapter would dial. The
+    statement path still runs through the loop-affinity check above, so a pool
+    reused on a different loop would raise instead of counting as one.
+    """
+    import omnimarket.adapters.asyncpg_adapter as adapter_module
+    from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+
+    created: list[_LoopBoundPool] = []
+    recording = _RecordingAdapter()
+
+    async def _counting_create_pool(dsn: str, **_: object) -> _LoopBoundPool:
+        pool = _LoopBoundPool()
+        created.append(pool)
+        recording._pool = pool
+        return pool
+
+    monkeypatch.setattr(adapter_module.asyncpg, "create_pool", _counting_create_pool)
+    real = AsyncpgAdapter(dsn="postgresql://fixture/db")
+    monkeypatch.setattr(real, "execute", recording.execute)
+    writer._db = real
+
+    results = [writer.handle(_heartbeat(sequence)) for sequence in range(1, 21)]
+
+    assert all(result["rows_upserted"] == 1 for result in results)
+    assert len(created) == 1, (
+        f"{len(created)} pools for 20 heartbeats; the writer must open its pool "
+        "once and keep it for its life"
+    )
+    assert real.is_connected
+    assert not created[0].closed
+
+
+@pytest.mark.unit
+def test_concurrent_dispatch_threads_share_one_loop_and_one_pool(
+    writer: ConsumerFlowProjectionWriter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The runtime calls ``handle()`` from up to 8 worker threads at once.
+
+    Every call must land on the one dispatch loop, and the first connect must
+    not race a second one into existence.
+    """
+    loops: set[int] = set()
+    original = writer._project_one_message
+
+    async def _recording(*args: Any) -> dict[str, Any]:
+        loops.add(id(asyncio.get_running_loop()))
+        return await original(*args)
+
+    monkeypatch.setattr(writer, "_project_one_message", _recording)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(writer.handle, [_heartbeat(n) for n in range(1, 33)]))
+
+    assert all(result["rows_upserted"] == 1 for result in results)
+    assert len(loops) == 1
+    assert cast("_RecordingAdapter", writer.db).connects == 1
+    assert writer._dispatch_thread is not threading.current_thread()
+
+
+@pytest.mark.unit
+def test_a_heartbeat_is_written_in_a_bounded_number_of_statements(
+    writer: ConsumerFlowProjectionWriter,
+) -> None:
+    """OMN-17427 (C28): statements per heartbeat do not grow with its deltas.
+
+    One live heartbeat carried 477 consumer deltas; one statement per delta was
+    about 5,000 round trips a heartbeat.
+    """
+    payload = _heartbeat(1)
+    template = payload["flow_window"]["consumer_deltas"][0]
+    payload["flow_window"]["consumer_deltas"] = [
+        {**template, "consumer_group": f"{_STALLED_GROUP}.{index}"}
+        for index in range(477)
+    ]
+
+    writer.handle(payload)
+
+    statements = [query for query, _ in cast("_RecordingAdapter", writer.db).rows]
+    assert len(statements) <= 5, statements
 
 
 @pytest.mark.unit

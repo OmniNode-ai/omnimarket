@@ -1,0 +1,283 @@
+{
+  "_doc": "RULING 2026-10-21T22:32:15Z (OMN-17427): the only tools each morning phase agent is given. A phase absent here has no tool set yet and is refused before any session starts; it is never given a shell instead. 'writes' names the knowledge-base artifacts the phase's write tools may touch. 'lane' and 'ticket' are the phase's own ledger lane and ticket (its CLAIM and TERMINAL rows). 'note' is the phase's tool guide, appended to its brief. 'gaps' names, per phase, the reads that still have no deterministic tool: the phase runs and reports those values UNKNOWN naming the missing tool. 'pending' names the tools a refused phase still needs.",
+  "phases": {
+    "idempotency-precheck": {
+      "tools": [
+        "clock_utc",
+        "ledger_lane_rows",
+        "ledger_row_commit",
+        "kb_artifact_status"
+      ],
+      "writes": []
+    },
+    "decisions-register": {
+      "tools": [
+        "kb_worktree_prepare",
+        "decisions_register_generate",
+        "kb_scrub",
+        "kb_commit",
+        "decisions_register_check",
+        "decisions_asked"
+      ],
+      "writes": [
+        "decisions_md",
+        "decisions_json"
+      ]
+    },
+    "ground-state": {
+      "lane": "ground-state-report",
+      "ticket": "OMN-17195",
+      "tools": [
+        "clock_utc",
+        "morning_readme",
+        "ledger_append_claim",
+        "kb_worktree_prepare",
+        "kb_read_artifact",
+        "kb_artifact_status",
+        "linear_sprint_project",
+        "linear_issues",
+        "linear_issue_detail",
+        "linear_issue_labels",
+        "ticket_prs",
+        "pull_merge_state",
+        "ledger_open_claims",
+        "watcher_workflow_runs",
+        "watcher_branch_head",
+        "delegation_accounting",
+        "closeout_scope_verify",
+        "closeout_completion_row",
+        "delegate_prose",
+        "delegate_dispose",
+        "delegation_cells",
+        "kb_write_artifact",
+        "kb_scrub",
+        "kb_commit",
+        "ledger_append_terminal"
+      ],
+      "writes": [
+        "ground_state",
+        "date_snapshot",
+        "delegation_accounting"
+      ],
+      "note": [
+        "Order: ledger_append_claim, kb_worktree_prepare, then the reads, then delegate_prose for the prose cells and framing sentences (delegate_dispose each draft), kb_write_artifact ground_state, kb_write_artifact date_snapshot LAST, kb_scrub [ground_state, date_snapshot, delegation_accounting], kb_commit all three in one commit, delegation_cells for the result's delegation field, ledger_append_terminal.",
+        "The README format contract: morning_readme with no heading lists the headings; morning_readme 'The ground-state report' and each numbered section return their text.",
+        "1 FEATURE TABLE: linear_sprint_project, then linear_issues scope=sprint state_types=[started] (In Progress and In Review are both type started); ticket_prs and pull_merge_state for PR evidence (the watcher projection and canonical merge history, never GitHub).",
+        "2 and 2a: use the PR WATCHER INVENTORY and the DAILY STUCK-HOURS CARD appended to the brief; no tool reads GitHub.",
+        "3 DECISION STACK: linear_issue_detail for a sprint ticket's latest comments and description; ledger_open_claims for un-TERMINAL-ed CLAIMs and unreleased HOLDs.",
+        "4 RUNTIME / LANE HEALTH: watcher_workflow_runs and watcher_branch_head give CI and deploy workflow runs inside the watcher's window; the DELEGATION ACCOUNTING companion is delegation_accounting (it runs the reader over the run window and saves the companion itself).",
+        "5 DATE DRIFT: kb_read_artifact date_snapshot BEFORE any Linear read of dueDates; linear_issue_labels date:committed (never create it); linear_issues label=date:committed scope=workspace; linear_sprint_project gives the previous sprint, and linear_issues scope=previous_sprint and scope=sprint give both memberships (every page is read by the tool). Write the new snapshot as JSON with kb_write_artifact date_snapshot, last.",
+        "6a closeout_scope_verify; 6b closeout_completion_row for the launchd closer, and watcher_workflow_runs for the evidence-autoclose sweep workflow the README names; 6c watcher_workflow_runs for the two staging delivery and deploy workflows the README names, in their own repositories; 6d is UNKNOWN as the brief says.",
+        "Cite the tool and its input as the command behind each line."
+      ]
+    },
+    "morning-triage": {
+      "lane": "morning-triage-adjudication",
+      "ticket": "OMN-17195",
+      "tools": [
+        "clock_utc",
+        "morning_readme",
+        "ledger_append_claim",
+        "triage_fences",
+        "linear_sprint_project",
+        "linear_issues",
+        "linear_issue_detail",
+        "triage_started",
+        "ticket_prs",
+        "pull_merge_state",
+        "dod_verify",
+        "ledger_open_claims",
+        "linear_comment",
+        "linear_issue_set_state",
+        "delegate_prose",
+        "delegate_dispose",
+        "delegation_cells",
+        "ledger_append_terminal"
+      ],
+      "writes": [],
+      "note": [
+        "Order: ledger_append_claim, triage_fences, the reads and verdicts, the Linear mutations (publish mode only), delegate_prose for every comment body and the report prose (delegate_dispose each), delegation_cells, ledger_append_terminal.",
+        "Rules: morning_readme 'Triage rules' and its subsections.",
+        "Scope: linear_sprint_project, then linear_issues scope=sprint and linear_issues scope=workspace updated_within_hours=48 (state_types narrow it). Skip any issue whose children count is not 0.",
+        "0 FENCES: triage_fences; every id in fenced_tickets may get a comment, never a flip.",
+        "1 CLOSABLE: ticket_prs and pull_merge_state prove every PR merged (watcher and canonical history); dod_verify runs the verifier only on such a ticket (it refuses an open PR or no merged PR, and has a budget of 20 runs, so verify the likeliest closures first); linear_issue_detail reads the DoD boxes; linear_issue_set_state to_state_type=completed posts the adjudication comment (receipts, PR, merge sha, the line proving each AC) and flips.",
+        "2 STALE CLAIMS and 2b: triage_started (worktree, commits, ledger CLAIM) plus ticket_prs for PR events; act on UNSTARTED only, with linear_comment or linear_issue_set_state to_state_type=backlog.",
+        "3 MISFILED: In Review with no PR (ticket_prs empty) goes back with linear_issue_set_state to_state_type=started.",
+        "In a DRY run every Linear write tool refuses: record what WOULD have been done.",
+        "4 The TERMINAL's summary must carry the four counts flipped / held / corrected / commented with their ticket ids; the tool adds the run date.",
+        "linear_issues returns 50 rows per call: page a large scope with offset and next_offset, never by slicing ids or dates."
+      ]
+    },
+    "plan-reconcile": {
+      "lane": "plan-reconcile",
+      "ticket": "OMN-17195",
+      "tools": [
+        "clock_utc",
+        "morning_readme",
+        "ledger_append_claim",
+        "kb_worktree_prepare",
+        "kb_read_artifact",
+        "kb_source_doc_keys",
+        "kb_read_source_doc",
+        "kb_read_plan",
+        "ledger_lane_rows",
+        "pull_merge_state",
+        "ticket_prs",
+        "merged_prs_in_window",
+        "watcher_branch_head",
+        "watcher_workflow_runs",
+        "linear_issues",
+        "linear_issue_detail",
+        "delegate_prose",
+        "delegate_dispose",
+        "delegation_cells",
+        "kb_write_artifact",
+        "kb_scrub",
+        "kb_commit",
+        "ledger_append_terminal"
+      ],
+      "writes": [
+        "rebaseline"
+      ],
+      "note": [
+        "Order: ledger_append_claim, kb_worktree_prepare, kb_read_artifact ground_state (today's input), kb_source_doc_keys then kb_read_source_doc per key (each result names the copy read and every copy checked: record it), the per-row reads, delegate_prose for prose (delegate_dispose each), kb_write_artifact rebaseline, kb_scrub, kb_commit, delegation_cells, ledger_append_terminal.",
+        "Rules: morning_readme 'Reconcile' and 'The verdict ladder'.",
+        "LANDED proof: pull_merge_state (merged with merge sha) or ticket_prs; DEPLOYED needs a running-artifact readback, and PROBED needs the row's own probe executed in this run: no tool executes a row's free-form probe, so a row can reach PROBED only when one of your read tools IS its probe, and otherwise its highest honest stage stands with the probe named in residuals.",
+        "LINEAR MISMATCHES: linear_issues scope=workspace ids=[...] for every ticket a row carries; report only.",
+        "Today's triage TERMINAL row: ledger_lane_rows lanes=[morning-triage-adjudication, morning-triage] since_hours=24."
+      ]
+    },
+    "integration-plan": {
+      "lane": "integration-plan",
+      "ticket": "OMN-17195",
+      "tools": [
+        "clock_utc",
+        "morning_readme",
+        "ledger_append_claim",
+        "kb_worktree_prepare",
+        "kb_read_artifact",
+        "merged_prs_in_window",
+        "pull_merge_state",
+        "ticket_prs",
+        "watcher_workflow_runs",
+        "linear_sprint_project",
+        "linear_issues",
+        "linear_issue_create",
+        "delegate_prose",
+        "delegate_dispose",
+        "delegation_cells",
+        "kb_write_artifact",
+        "kb_scrub",
+        "kb_commit",
+        "ledger_append_terminal"
+      ],
+      "writes": [
+        "integration_plan"
+      ],
+      "note": [
+        "Order: ledger_append_claim, kb_worktree_prepare, kb_read_artifact rebaseline and ground_state, merged_prs_in_window for EVERY integration repo, the owner-ticket search (linear_issues scope=workspace ids=[...] or label, and scope=sprint), linear_issue_create only when the search returns nothing (publish mode only), delegate_prose (delegate_dispose each), kb_write_artifact integration_plan, kb_scrub, kb_commit, delegation_cells, ledger_append_terminal.",
+        "Rules: morning_readme 'Integrate'.",
+        "1c published artifacts: watcher_workflow_runs gives the build and publish workflow runs inside the watcher window; package index versions have no tool (see NO TOOL YET)."
+      ]
+    },
+    "dropped-work": {
+      "lane": "dropped-work",
+      "ticket": "OMN-18954",
+      "tools": [
+        "clock_utc",
+        "morning_readme",
+        "ledger_append_claim",
+        "kb_worktree_prepare",
+        "watcher_branch_head",
+        "watcher_release_branch",
+        "workflow_triggers",
+        "watcher_workflow_runs",
+        "canonical_clone_health",
+        "venv_reconcile_verdict",
+        "plan_index",
+        "plan_ticket_states",
+        "kb_read_plan",
+        "linear_sprint_project",
+        "linear_issues",
+        "lane_reports_index",
+        "delegate_prose",
+        "delegate_dispose",
+        "delegation_cells",
+        "kb_write_artifact",
+        "kb_scrub",
+        "kb_commit",
+        "ledger_append_terminal"
+      ],
+      "writes": [
+        "dropped_work"
+      ],
+      "note": [
+        "Order: ledger_append_claim, kb_worktree_prepare, the five sections' reads, delegate_prose (delegate_dispose each), kb_write_artifact dropped_work, kb_scrub, kb_commit, delegation_cells, ledger_append_terminal. Read-only on Linear and every repo.",
+        "Rules: morning_readme 'Dropped work'.",
+        "RED ON DEV HEAD: watcher_branch_head per repo gives (a) the head sha and (b) each required context's verdict over push-event runs on that branch only; workflow_triggers with the ABSENT contexts tells NOT APPLICABLE from ABSENT; watcher_release_branch gives (b2) main-sync failures; (d) watcher_workflow_runs omnibase_infra for the runtime rebuild trigger workflow; (e) canonical_clone_health (its standing control is the converge manifest it reports); (f) venv_reconcile_verdict.",
+        "STALE PLANS: plan_index (paged) for minted and text-changed ages and lifecycle fields; plan_ticket_states (paged) for every cited id's live state type with archived issues included; kb_read_plan to quote a contradicting sentence.",
+        "UNSTARTED WORK BY AGE: linear_sprint_project, then linear_issues scope=sprint and scope=projectless with state_types=[backlog, unstarted], created_before_hours (hours from 48 h before the run date's midnight to now), unassigned_only=true; drop rows whose pr_attachments is non-empty and treat attachments_complete false as incomplete. Positive control: linear_issues scope=workspace ids=[OMN-18527..OMN-18538].",
+        "UNREAD LANE REPORTS: lane_reports_index (live ledger and every archive roll, with its positive control row).",
+        "Each probe line names the tool and its input; a tool that refuses or errors is UNKNOWN in that section's unknown array."
+      ]
+    },
+    "session-goal": {
+      "lane": "session-goal",
+      "ticket": "OMN-17195",
+      "tools": [
+        "clock_utc",
+        "morning_readme",
+        "ledger_append_claim",
+        "kb_worktree_prepare",
+        "kb_read_artifact",
+        "kb_artifact_status",
+        "kb_source_doc_keys",
+        "ledger_lane_rows",
+        "pull_merge_state",
+        "linear_issues",
+        "linear_issue_detail",
+        "linear_comment",
+        "linear_issue_set_state",
+        "delegate_prose",
+        "delegate_dispose",
+        "delegation_cells",
+        "kb_write_artifact",
+        "kb_scrub",
+        "kb_commit",
+        "kb_push_branch",
+        "kb_open_pr",
+        "pr_handoff",
+        "ledger_append_terminal"
+      ],
+      "writes": [
+        "goal"
+      ],
+      "note": [
+        "Order: ledger_append_claim, kb_worktree_prepare (the same run branch keeps the earlier phases' commits), kb_read_artifact rebaseline / integration_plan / dropped_work, clock_utc for state_as_of, delegate_prose for the goal prose and the PR body (delegate_dispose each), kb_write_artifact goal, kb_scrub [goal], kb_commit [goal] what='morning goal'.",
+        "PUBLISH mode: kb_push_branch, kb_open_pr with the body (name every phase that reported BLOCKED and its absent artifact), the Linear reconciliation (linear_comment for evidence-less Done, linear_issue_set_state to_state_type=completed for a lagging board row with its probe output), delegation_cells, then pr_handoff, which writes this lane's TERMINAL: do NOT also call ledger_append_terminal. kb_pr is the PR URL kb_open_pr returned.",
+        "DRY mode: the push, PR, handoff and Linear writes refuse; call ledger_append_terminal yourself and return publish_state SKIPPED with kb_pr ''.",
+        "Rules: morning_readme 'Goal' and 'Linear reconciliation rule'."
+      ]
+    }
+  },
+  "node_steps": {
+    "ledger-reconcile": "ledger_reconcile"
+  },
+  "gaps": {
+    "ground-state": [
+      "workflow job steps and logs (6b's sweep result JSON, 6c's failing step name and the BUSINESS PROOF gate step): no GitHub read on the morning host, and the watcher projection holds no job steps",
+      "runtime / lane health receipts for the dev lane refresh, the stability lane, the prod dispatch outcome and the CI runner queue depth"
+    ],
+    "plan-reconcile": [
+      "runtime_probe: a row's own Done-proof probe as a typed operation (version or digest readback, introspection), so no row reaches DEPLOYED or PROBED unless one of the read tools is its probe"
+    ],
+    "integration-plan": [
+      "package_release_read: the package index's latest version and upload time per package",
+      "image digests pushed by the build workflows (only the watcher-window run conclusions are readable)"
+    ],
+    "dropped-work": [
+      "lab_pass_receipts_read: the lab-pass receipt artifacts for the integration head (actions artifacts API: no GitHub read on the morning host)"
+    ]
+  },
+  "pending": {}
+}

@@ -12,8 +12,8 @@
 # This offline check accepts PyPI or a registered sibling's own dev merge tag.
 # Branches, raw revisions, malformed dev tags and foreign git sources fail.
 #
-# Run when the dependency sources or this gate's implementation change, matching
-# the local pre-commit hook. A validator change must exercise the current sources.
+# The tag rule and siblings come from the locked omnibase_core contract, so a
+# uv.lock change re-runs this check alongside source and gate implementation changes.
 #
 # This job is intended to be a REQUIRED STATUS CHECK. The job name
 # "Dep Provenance Gate" must match branch protection rules (follow-up: add
@@ -63,7 +63,7 @@ jobs:
           set -euo pipefail
 
           BASE_REF="origin/${{ github.base_ref }}"
-          CHANGED=$(git diff --name-only "$BASE_REF"...HEAD -- pyproject.toml scripts/check_dep_provenance.py)
+          CHANGED=$(git diff --name-only "$BASE_REF"...HEAD -- pyproject.toml uv.lock scripts/check_dep_provenance.py)
 
           if [ -z "$CHANGED" ]; then
             echo "Dependency sources and provenance gate unchanged in this PR. Skipping."
@@ -71,4 +71,4 @@ jobs:
           fi
 
           echo "Dependency sources or provenance gate modified — verifying dependency provenance."
-          python3 scripts/check_dep_provenance.py --pyproject pyproject.toml
+          uv run --frozen python scripts/check_dep_provenance.py --pyproject pyproject.toml

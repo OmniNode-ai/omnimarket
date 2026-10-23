@@ -59,7 +59,9 @@ def _detect_returns(
         calls.append(provider)
         return detection
 
-    monkeypatch.setattr("omnimarket.cli.cli_secret.detect_byok_plan", _fake)
+    monkeypatch.setattr(
+        "omnimarket.handlers.handler_model_keys.detect_byok_plan", _fake
+    )
     return calls
 
 

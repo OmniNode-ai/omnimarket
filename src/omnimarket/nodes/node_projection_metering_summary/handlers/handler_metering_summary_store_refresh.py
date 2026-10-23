@@ -31,6 +31,7 @@ from omnimarket.models.model_metering_summary_refresh_requested import (
     ModelMeteringSummaryRefreshRequested,
 )
 from omnimarket.nodes.node_metering_summary_compute import (
+    METERING_CAUSE_COLUMN,
     METERING_COLUMNS,
     ModelCounterfactualBaseline,
     ModelMeteringRecord,
@@ -52,7 +53,8 @@ VISIBLE_TENANTS_SQL = (
 )
 # OMN-19970: the dev seed's rows are never in a stored figure.
 RECORDS_SQL = (
-    f"SELECT {', '.join(METERING_COLUMNS)} FROM public.delegation_events "
+    f"SELECT {', '.join((*METERING_COLUMNS, METERING_CAUSE_COLUMN))} "
+    "FROM public.delegation_events "
     "WHERE tenant_id::text = $1 AND data_source <> 'fixture'"
 )
 STORED_ALL_SQL = (

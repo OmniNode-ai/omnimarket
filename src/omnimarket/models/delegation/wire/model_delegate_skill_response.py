@@ -1230,10 +1230,14 @@ class ModelDelegateSkillResponse(BaseModel):
             self.status == "timeout"
             and cause is EnumDelegationTerminalFailureCause.TIMEOUT
         )
+        # OMN-21264: a run handed back to its caller is not a provider claim;
+        # the gate refusals stay on their rungs, the hand-back is the outcome.
+        returned = cause is EnumDelegationTerminalFailureCause.RETURNED_TO_CALLER
         if (
             cause is not None
             and cause is not EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
             and not budget_cancelled
+            and not returned
             and _gate_decided(self.attempts)
         ):
             refused = sum(

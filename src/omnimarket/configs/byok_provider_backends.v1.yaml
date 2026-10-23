@@ -233,6 +233,15 @@ providers:
         tags: [free, cheapest, large_context]
       - pattern: 'qwen/qwen(?P<generation>[0-9]+(?:\.[0-9]+)?)-coder[a-z0-9.-]*:free'
         tags: [free, coder]
+    # OMN-21215: what onboarding offers as this key's "Default", cheapest
+    # first. Each id matches an entry above; the developer accepts or changes it.
+    default_models:
+      - "google/gemma-4-31b-it:free"
+      - "nvidia/nemotron-3-super-120b-a12b:free"
+      - "nvidia/nemotron-3-ultra-550b-a55b:free"
+    # OMN-21215: the key a new developer adds first. Free models at $0 on
+    # their own account, and one key reaches several model families.
+    first_key: true
     # OMN-18265. Live: this slug answered HTTP 200 carrying
     # {"error": {"message": "Upstream error from Nvidia: Service temporarily
     # overloaded", "code": 502, "metadata": {"error_type":
@@ -325,6 +334,10 @@ providers:
     model_preference:
       - pattern: 'glm-(?P<generation>[0-9]+(?:\.[0-9]+)?)-flash'
         tags: [cheapest, flash]
+    # OMN-21215: what onboarding offers as this key's "Default", cheapest
+    # first. Each id matches an entry above; the developer accepts or changes it.
+    default_models:
+      - "glm-5.3-flash"
     # OMN-18265. Same budget as the OpenRouter row: a Coding-Plan key is
     # metered by quota rather than per token, so a retry has no marginal
     # cost on the registering account either.
@@ -399,6 +412,11 @@ providers:
         tags: [cheapest, flash]
       - pattern: 'glm-(?P<generation>[0-9]+(?:\.[0-9]+)?)-flashx'
         tags: [flash]
+    # OMN-21215: what onboarding offers as this key's "Default", cheapest
+    # first. Each id matches an entry above; the developer accepts or changes it.
+    default_models:
+      - "glm-4.5-flash"
+      - "glm-5.3-flash"
     max_retries: 2
     timeout_ms: 300000
     max_tokens: 65536
@@ -459,6 +477,11 @@ providers:
         tags: [cheapest, flash_lite]
       - pattern: 'gemini-(?P<generation>[0-9]+(?:\.[0-9]+)?)-flash'
         tags: [flash]
+    # OMN-21215: what onboarding offers as this key's "Default", cheapest
+    # first. Each id matches an entry above; the developer accepts or changes it.
+    default_models:
+      - "gemini-3.5-flash-lite"
+      - "gemini-3.8-flash"
     max_retries: 2
     timeout_ms: 60000
     # Flash-family output cap (OMN-13161), mirrored from the platform rung.
@@ -515,6 +538,12 @@ providers:
         tags: [mini]
       - pattern: 'gpt-4o-mini'
         tags: [mini]
+    # OMN-21215: what onboarding offers as this key's "Default", cheapest
+    # first. Each id matches an entry above; the developer accepts or changes it.
+    default_models:
+      - "gpt-4.1-nano"
+      - "gpt-4.1-mini"
+      - "gpt-4o-mini"
     max_retries: 2
     timeout_ms: 60000
     max_tokens: 8192
@@ -576,6 +605,11 @@ providers:
         tags: [cheapest, haiku]
       - pattern: 'claude-sonnet-(?P<generation>[0-9]+(?:-[0-9]{1,2})?)(?:-[0-9]{8})?'
         tags: [sonnet]
+    # OMN-21215: what onboarding offers as this key's "Default", cheapest
+    # first. Each id matches an entry above; the developer accepts or changes it.
+    default_models:
+      - "claude-haiku-5-5"
+      - "claude-sonnet-5-5"
     max_retries: 2
     timeout_ms: 120000
     max_tokens: 8192
@@ -623,6 +657,11 @@ providers:
         tags: [cheapest, haiku]
       - pattern: 'claude-sonnet-(?P<generation>[0-9]+(?:-[0-9]{1,2})?)(?:-[0-9]{8})?'
         tags: [sonnet]
+    # OMN-21215: what onboarding offers as this key's "Default", cheapest
+    # first. Each id matches an entry above; the developer accepts or changes it.
+    default_models:
+      - "claude-haiku-5-5"
+      - "claude-sonnet-5-5"
     max_retries: 2
     timeout_ms: 120000
     max_tokens: 8192
@@ -638,6 +677,74 @@ providers:
             per-model RPM, input TPM and output TPM by usage tier. Not a single
             published number. Cached input tokens that are read do not count
             toward input TPM on current models.
+
+# OMN-21215. The local row: one recommended model per Mac memory class, with the
+# server that runs it on the developer's machine. Not a key and not a route: the
+# developer pulls the model and registers it like any local model they choose.
+# A machine resolves the class with the largest min_memory_gb not above its
+# memory; below 16 GB nothing is recommended. Sizes are Ollama's listed
+# downloads (ollama.com/library/qwen2.5-coder). The 16 GB pick is the one the
+# `ollama` block in bifrost_delegation.yaml already pulls (OMN-20326).
+# default_models lists the classes' models in memory order.
+local:
+  default_models:
+    - "qwen2.5-coder:7b"
+    - "qwen2.5-coder:14b"
+    - "qwen2.5-coder:32b"
+  memory_classes:
+    - memory_class: "16gb"
+      min_memory_gb: 16
+      model: "qwen2.5-coder:7b"
+      server: ollama
+      download_gb: 5
+    - memory_class: "32gb"
+      min_memory_gb: 32
+      model: "qwen2.5-coder:14b"
+      server: ollama
+      download_gb: 9
+    - memory_class: "64gb_plus"
+      min_memory_gb: 64
+      model: "qwen2.5-coder:32b"
+      server: ollama
+      download_gb: 20
+
+# OMN-21209. The recommended model order per served work class, which
+# onboarding offers as the pre-selected answer so a developer with no opinion
+# about model ids types none. A class names an order; an order says where its
+# models are read and the record it rests on. `default_models` reads each
+# customer-routable row's `default_models` for a key, and for Ollama the one
+# `local` model sized to the Mac's memory (each Ollama model is a download). Accepting it registers the
+# list through `onex models add` (OMN-21059), first tried first. Every served
+# class (a task class with no routing_availability) is listed here, and a key
+# holds one list, so onboarding registers the order `onboarding` names.
+recommended_order:
+  onboarding: baseline
+  orders:
+    baseline:
+      models: default_models
+      # The baseline recommendation the operator asked for on 2026-10-20,
+      # recorded on OMN-21215 and shipped as the catalogue's default_models.
+      basis: "OMN-21215"
+  classes:
+    code_generation: baseline
+    refactor: baseline
+    documentation: baseline
+    document: baseline
+    evidence_comment: baseline
+    research: baseline
+    test: baseline
+    validator_generation: baseline
+    reasoning: baseline
+    complex_reasoning: baseline
+    planning: baseline
+    review: baseline
+    summarization: baseline
+    escalation: baseline
+    brief_drafting: baseline
+    extraction_proposer: baseline
+    tail_summary: baseline
+    context_selection: baseline
+    context_compaction: baseline
 
 # House-keyed platform providers a customer may NOT (yet) bring a key for.
 # Silence is not allowed: a rung the platform ships a house key for is either

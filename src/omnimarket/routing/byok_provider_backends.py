@@ -337,6 +337,32 @@ class ModelByokProviderBackend(BaseModel):
     limit_model: ModelByokLimitModel
     #: OMN-20154. Declared only when the model's price is not its tier's.
     pricing: ModelByokPricing | None = None
+    #: OMN-21215. The models onboarding offers as this key's "Default", in
+    #: order, cheapest first. A recommendation the developer accepts or changes,
+    #: never a model routed without their choice (``customer_chooses_model``).
+    #: Every id must match one of the row's ``model_preference`` entries.
+    default_models: tuple[str, ...] = ()
+    #: OMN-21215. The key a new developer adds first. Exactly one row sets it.
+    first_key: bool = False
+
+    @model_validator(mode="after")
+    def _default_models_are_preferred_and_distinct(self) -> ModelByokProviderBackend:
+        if len(set(self.default_models)) != len(self.default_models):
+            raise ValueError(
+                f"default_models of {self.provider!r} plan {self.plan!r} names a "
+                "model more than once"
+            )
+        for model in self.default_models:
+            if not any(
+                preference.generation_of(model) is not None
+                for preference in self.model_preference
+            ):
+                raise ValueError(
+                    f"default_models of {self.provider!r} plan {self.plan!r} names "
+                    f"{model!r}, which no model_preference entry matches; a "
+                    "recommended model must be one the row's preferences describe"
+                )
+        return self
 
     @model_validator(mode="after")
     def _a_detection_only_row_declares_its_refusal(self) -> ModelByokProviderBackend:
@@ -364,6 +390,96 @@ class ModelByokProviderBackend(BaseModel):
                 "a row with customer_routable false must declare its refusal_code "
                 "and refusal_message, so a key that lands on it is refused with a "
                 "typed reason and never silently"
+            )
+        return self
+
+
+class ModelByokLocalMemoryClass(BaseModel):
+    """The local model recommended for one Mac memory class (OMN-21215)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    memory_class: Literal["16gb", "32gb", "64gb_plus"]
+    #: The smallest unified memory, in GB, the class covers.
+    min_memory_gb: int = Field(gt=0)
+    #: The model id as the server names it (an Ollama tag for ``ollama``).
+    model: str = Field(min_length=1)
+    #: The server that runs the model on the developer's machine.
+    server: str = Field(min_length=1)
+    download_gb: int = Field(gt=0)
+
+
+class ModelByokLocalRecommendation(BaseModel):
+    """The catalogue's ``local`` row: one recommended model per memory class.
+
+    OMN-21215. ``memory_classes`` is ordered by ``min_memory_gb`` ascending and
+    names each class once; ``default_models`` is the same models in that order,
+    which is what onboarding offers as the local "Default".
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    default_models: tuple[str, ...] = Field(min_length=1)
+    memory_classes: tuple[ModelByokLocalMemoryClass, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _one_entry_per_class_in_memory_order(self) -> ModelByokLocalRecommendation:
+        classes = [entry.memory_class for entry in self.memory_classes]
+        if len(set(classes)) != len(classes):
+            raise ValueError("local memory_classes names a memory class twice")
+        floors = [entry.min_memory_gb for entry in self.memory_classes]
+        if floors != sorted(set(floors)):
+            raise ValueError(
+                "local memory_classes must be ordered by min_memory_gb, strictly "
+                "ascending"
+            )
+        if self.default_models != tuple(entry.model for entry in self.memory_classes):
+            raise ValueError(
+                "local default_models must list the memory classes' models in "
+                "memory order"
+            )
+        return self
+
+
+class ModelByokRecommendedOrderSource(BaseModel):
+    """One recommended order: where its models are read, and what it rests on (OMN-21209)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: ``default_models``: a key's order is its row's ``default_models``;
+    #: Ollama's is the one ``local`` model sized to the memory.
+    models: Literal["default_models"]
+    #: The ticket whose record carries the measurement or operator ruling, or
+    #: the ruling's ledger stamp.
+    basis: str = Field(
+        pattern=r"^(OMN-[0-9]+|RULING [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z)$"
+    )
+
+
+class ModelByokRecommendedOrder(BaseModel):
+    """The catalogue's ``recommended_order`` block (OMN-21209).
+
+    Every served work class names one of ``orders``. A key holds one ordered
+    list (OMN-21059), so onboarding registers the order ``onboarding`` names.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    onboarding: str = Field(min_length=1)
+    orders: dict[str, ModelByokRecommendedOrderSource] = Field(min_length=1)
+    classes: dict[str, str] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _every_name_resolves(self) -> ModelByokRecommendedOrder:
+        if self.onboarding not in self.orders:
+            raise ValueError(
+                f"recommended_order.onboarding names {self.onboarding!r}, which "
+                "is not one of its orders"
+            )
+        unknown = sorted(c for c, o in self.classes.items() if o not in self.orders)
+        if unknown:
+            raise ValueError(
+                f"recommended_order.classes {unknown} name an order that is not declared"
             )
         return self
 
@@ -476,6 +592,19 @@ def _read_plan_catalog(
         backend_ids.add(backend.backend_id)
         catalog[key] = backend
 
+    first_keys = [row for row in catalog.values() if row.first_key]
+    if len(first_keys) > 1:
+        raise ByokCatalogError(
+            f"BYOK provider catalog at {path} marks {len(first_keys)} rows "
+            "first_key; at most one row is the key a new developer adds first."
+        )
+    if any(not row.customer_routable for row in first_keys):
+        raise ByokCatalogError(
+            f"BYOK provider catalog at {path} marks a row that is not "
+            "customer_routable as first_key; the first key must be one a route "
+            "can address."
+        )
+
     by_provider: dict[str, list[ModelByokProviderBackend]] = {}
     for backend in catalog.values():
         by_provider.setdefault(backend.provider, []).append(backend)
@@ -586,6 +715,133 @@ def load_byok_not_offered_providers() -> dict[str, ModelByokNotOfferedProvider]:
     ``load_byok_not_offered_providers.cache_clear()`` in tests that rewrite it.
     """
     return _read_not_offered(CATALOG_PATH)
+
+
+def _read_local_recommendation(path: Path) -> ModelByokLocalRecommendation:
+    raw = _load_document(path)
+    entry = raw.get("local")
+    if not isinstance(entry, dict):
+        raise ByokCatalogError(
+            f"BYOK provider catalog at {path} has no 'local' mapping; onboarding "
+            "reads the recommended local model per memory class from it."
+        )
+    try:
+        return ModelByokLocalRecommendation.model_validate(entry)
+    except ValidationError as exc:
+        raise ByokCatalogError(
+            f"BYOK provider catalog at {path} has a mis-shaped 'local' row: {exc}"
+        ) from exc
+
+
+@lru_cache(maxsize=1)
+def load_byok_local_recommendation() -> ModelByokLocalRecommendation:
+    """Load and cache the catalogue's ``local`` row (OMN-21215).
+
+    Same caching contract as :func:`load_byok_provider_catalog`.
+    """
+    return _read_local_recommendation(CATALOG_PATH)
+
+
+def recommended_local_model(memory_gb: int) -> ModelByokLocalMemoryClass | None:
+    """The local model recommended for a machine with ``memory_gb`` of memory.
+
+    The entry with the largest ``min_memory_gb`` not above ``memory_gb``;
+    ``None`` below the smallest class, where no local model is recommended.
+    """
+    fitting = [
+        entry
+        for entry in load_byok_local_recommendation().memory_classes
+        if entry.min_memory_gb <= memory_gb
+    ]
+    return fitting[-1] if fitting else None
+
+
+def _read_recommended_order(path: Path) -> ModelByokRecommendedOrder:
+    raw = _load_document(path)
+    entry = raw.get("recommended_order")
+    if not isinstance(entry, dict):
+        raise ByokCatalogError(
+            f"BYOK provider catalog at {path} has no 'recommended_order' mapping; "
+            "onboarding reads the recommended model order per work class from it."
+        )
+    try:
+        return ModelByokRecommendedOrder.model_validate(entry)
+    except ValidationError as exc:
+        raise ByokCatalogError(
+            f"BYOK provider catalog at {path} has a mis-shaped "
+            f"'recommended_order': {exc}"
+        ) from exc
+
+
+@lru_cache(maxsize=1)
+def load_byok_recommended_order() -> ModelByokRecommendedOrder:
+    """Load and cache the catalogue's ``recommended_order`` block (OMN-21209).
+
+    Same caching contract as :func:`load_byok_provider_catalog`.
+    """
+    return _read_recommended_order(CATALOG_PATH)
+
+
+def _recommended_order_name(work_class: str | None) -> str:
+    block = load_byok_recommended_order()
+    name = block.onboarding if work_class is None else block.classes.get(work_class)
+    if name is None:
+        raise ByokCatalogError(
+            f"recommended_order declares no order for work class {work_class!r}"
+        )
+    # Every order reads default_models today, the one source its Literal allows.
+    return name
+
+
+def recommended_models(
+    provider: str, *, work_class: str | None = None
+) -> tuple[str, ...]:
+    """The recommended model order for ``provider``'s key, first tried first (OMN-21209).
+
+    ``work_class`` picks that class's order; ``None`` picks the one onboarding
+    registers. A key's order is its customer-routable row's ``default_models``.
+
+    Raises:
+        ByokCatalogError: the class names no order, or the provider has no
+            customer-routable row.
+    """
+    _recommended_order_name(work_class)
+    row = resolve_byok_provider_backend(provider)
+    if row is None:
+        raise ByokCatalogError(
+            f"the catalogue has no customer-routable {provider!r} row to recommend from"
+        )
+    return row.default_models
+
+
+def recommended_local_models(
+    memory_gb: int, *, work_class: str | None = None
+) -> tuple[str, ...]:
+    """The recommended Ollama order for a Mac with ``memory_gb`` (OMN-21209).
+
+    The one ``local`` model sized to the memory, since each Ollama model is a
+    download; empty below the smallest memory class.
+
+    Raises:
+        ByokCatalogError: the class names no order.
+    """
+    _recommended_order_name(work_class)
+    sized = recommended_local_model(memory_gb)
+    return () if sized is None else (sized.model,)
+
+
+def first_key_backend() -> ModelByokProviderBackend:
+    """The row a new developer adds a key for first (OMN-21215).
+
+    Raises:
+        ByokCatalogError: no row is marked ``first_key``.
+    """
+    for row in load_byok_plan_catalog().values():
+        if row.first_key:
+            return row
+    raise ByokCatalogError(
+        f"BYOK provider catalog at {CATALOG_PATH} marks no row first_key."
+    )
 
 
 def customer_provider_catalogue() -> tuple[str, ...]:
@@ -970,6 +1226,8 @@ __all__: list[str] = [
     "ModelByokNotOfferedProvider",
     "ModelByokPricing",
     "ModelByokProviderBackend",
+    "ModelByokRecommendedOrder",
+    "ModelByokRecommendedOrderSource",
     "ModelCatalogueParityGap",
     "byok_automatic_plans",
     "byok_backend_max_retries",
@@ -984,6 +1242,9 @@ __all__: list[str] = [
     "load_byok_not_offered_providers",
     "load_byok_plan_catalog",
     "load_byok_provider_catalog",
+    "load_byok_recommended_order",
+    "recommended_local_models",
+    "recommended_models",
     "require_byok_plan_permitted",
     "resolve_byok_backend_by_endpoint",
     "resolve_byok_backend_by_id",

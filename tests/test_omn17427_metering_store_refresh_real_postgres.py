@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import os
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import quote_plus
@@ -20,6 +21,7 @@ from urllib.parse import quote_plus
 import asyncpg
 import pytest
 
+from omnimarket.adapters.asyncpg_adapter import _refuse_unbound_tenant_scoped_write
 from omnimarket.models.model_metering_summary_refresh_requested import (
     EnumMeteringRefreshReason,
     ModelMeteringSummaryRefreshRequested,
@@ -63,7 +65,8 @@ CREATE TABLE {_SCHEMA}.delegation_events (
     tokens_output INT NOT NULL DEFAULT 0,
     cost_usd NUMERIC,
     cost_savings_usd NUMERIC NOT NULL DEFAULT 0,
-    data_source TEXT NOT NULL DEFAULT 'real'
+    data_source TEXT NOT NULL DEFAULT 'real',
+    terminal_failure_cause TEXT
 )
 """
 
@@ -96,6 +99,8 @@ class _ScopedConnectionAdapter:
     async def execute(
         self, query: str, *params: Any, tenant: str | None = None
     ) -> list[dict[str, Any]]:
+        # The real adapter's refusal of an unbound tenant-scoped write (OMN-19513).
+        _refuse_unbound_tenant_scoped_write(query, tenant)
         rows = await self._conn.fetch(_scoped(query), *params)
         return [dict(row) for row in rows]
 
@@ -155,6 +160,61 @@ async def test_store_refresh_reads_typed_runs_and_writes_rows() -> None:
         assert rows[0]["runs_total"] == 2
         assert rows[0]["tokens_in"] == 200
         assert rows[0]["as_of"] == "2026-10-19T09:00:00.000001+00:00"
+    finally:
+        try:
+            await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        finally:
+            await conn.close()
+
+
+@pytest.mark.integration
+async def test_a_run_returned_to_its_caller_is_stored_as_zero_savings() -> None:
+    """OMN-21264: the stored summary the dashboard reads books a returned run at zero.
+
+    No answer was accepted, so the run saved nothing. Stored as measured, never
+    as unknown, whatever its recorded tokens.
+    """
+    conn = await _connect_or_skip()
+    try:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        await conn.execute(f"CREATE SCHEMA {_SCHEMA}")
+        for migration in _MIGRATIONS:
+            await conn.execute(_scoped(migration.read_text(encoding="utf-8")))
+        await conn.execute(_DELEGATION_EVENTS)
+        await conn.execute(
+            f"INSERT INTO {_SCHEMA}.delegation_events (correlation_id, tenant_id, "
+            "created_at, delegated_to, task_type, tokens_input, tokens_output, "
+            "cost_usd, terminal_failure_cause) "
+            "VALUES ('returned', $1::uuid, $2, 'gpt-5-nano', 'document', 0, 0, "
+            "0.0006, 'returned_to_caller')",
+            _TENANT,
+            datetime(2026, 10, 19, 9, tzinfo=UTC),
+        )
+        writer = MeteringSummaryProjectionWriter.__new__(
+            MeteringSummaryProjectionWriter
+        )
+        writer._db = cast(Any, _ScopedConnectionAdapter(conn))
+        writer._standalone_bindings = None
+
+        await writer._refresh(
+            ModelMeteringSummaryRefreshRequested(
+                refresh_id="returned-to-caller-test",
+                reason=EnumMeteringRefreshReason.BACKFILL,
+                requested_at=datetime(2026, 10, 19, 10, tzinfo=UTC),
+            )
+        )
+
+        row = await conn.fetchrow(
+            f"SELECT runs_total, runs_measured, runs_unknown_tokens, savings_usd, "
+            f"baseline_state FROM {_SCHEMA}.metering_summary "
+            "WHERE window_kind = 'all'"
+        )
+        assert row is not None
+        assert row["runs_total"] == 1
+        assert row["runs_measured"] == 1
+        assert row["runs_unknown_tokens"] == 0
+        if row["baseline_state"] == "resolved":
+            assert Decimal(row["savings_usd"]) == 0
     finally:
         try:
             await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
