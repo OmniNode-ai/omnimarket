@@ -63,6 +63,16 @@ requirements:
     acceptance:
       - id: "AC9"
         statement: "AC9: a bus CLAIM stamped by the serve reads '| CLAIM | lane=<lane> | principal=<login> |', a MSG reads '| MSG | from=<lane> | principal=<login> |', and a replay of a request that landed principal-first is a duplicate -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_append_effect/test_handler_work_ledger_append_effect.py -q --no-cov -k 'subject_cell or principal_after_lane or before_omn_19513' fails against the pre-change handler"
+  - id: "req-metering-summary-tenant-write"
+    statement: "Metering summary writes bind the row's tenant so a store refresh can persist its folded rows through the tenant-scoped adapter boundary."
+    acceptance:
+      - id: "AC11"
+        statement: "AC11: writer dispatch and store refresh bind each upsert to its row's tenant, persist the all-time and daily summaries, and replace rows on replay -- falsifier: the focused writer and store-refresh tests fail with TenantScopedWriteUnboundError when the writer's tenant binding is removed."
+  - id: "req-hook-actor-producer-set"
+    statement: "The hook-event wire model accepts every actor value the producer's envelope contract declares, so a Codex record is projected instead of dead-lettered."
+    acceptance:
+      - id: "AC12"
+        statement: "AC12: an event with actor claude, codex or unknown validates and writes one row, and an actor outside that set is refused -- falsifier: uv run pytest tests/test_omn19513_claude_hook_events_projection.py -q --no-cov -k 'producer_actor or actor_outside' fails with the wire model at Literal[\"claude\"]"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 and AC2: registry passthrough and the raw-value wire model, plus the projection and emit-effect suites over the converted fixtures."
@@ -199,3 +209,26 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_work_ledger_append_effect/test_handler_work_ledger_append_effect.py -q --no-cov -k 'subject_cell or principal_after_lane or before_omn_19513'"
     binds_ac: ["AC9"]
+  - id: "dod-omn19513-ac8-metering-tenant-write"
+    description: "AC11: run the writer dispatch and store refresh through adapters that enforce the real tenant-scoped-write refusal and verify the stored rows and replay behavior."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_projection_metering_summary/test_writer.py tests/nodes/node_projection_metering_summary/test_omn17427_store_refresh.py -q -n 0 -p no:randomly --no-cov"
+    binds_ac: ["AC11"]
+  - id: "dod-omn19513-metering-tenant-deploy-probe"
+    description: "Hosted deploy probe: dispatch the checked-out metering writer against a real SQLite summary table while enforcing the asyncpg adapter's tenant-write boundary, then read back the rows after dispatch and replay. This needs no external database or lane credentials and fails when the upsert omits tenant. It verifies the checkout's write path; a live lane readback remains separate."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_projection_metering_summary/test_writer.py -q -n 0 -p no:randomly --no-cov -k test_writer_upserts_on_two_dispatches_and_closes_after_failure"
+    binds_ac: ["AC11"]
+  - id: "dod-omn19513-ac12-hook-actor-producer-set"
+    description: "AC12: the wire model takes actor claude, codex and unknown and refuses another value; the acceptance cases fail against the merge-base model, which allows only claude."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19513_claude_hook_events_projection.py -q --no-cov -k 'producer_actor or actor_outside'"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_claude_hook_events/models/model_claude_hook_event_wire.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"actor: Literal[\\\"claude\\\", \\\"codex\\\", \\\"unknown\\\"]\" > /dev/null'"
+    binds_ac: ["AC12"]

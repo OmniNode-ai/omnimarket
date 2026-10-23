@@ -139,7 +139,8 @@ def test_a_budget_cancelled_run_names_timeout_and_keeps_its_gate_refusal(
 
 def test_a_run_that_ended_on_its_own_ladder_is_still_decided_by_the_gate() -> None:
     # Positive control for OMN-19004: no budget cancel, a gate refusal, then a
-    # real 429 on the last rung. The gate decided the run, as before.
+    # real 429 on the last rung. The gate decided the run, as before; since
+    # OMN-21264 the run goes back to its caller with the gate as its reason.
     terminal = _terminal(
         {
             "status": "failed",
@@ -153,5 +154,9 @@ def test_a_run_that_ended_on_its_own_ladder_is_still_decided_by_the_gate() -> No
     assert terminal.status == "failed"
     assert (
         terminal.terminal_failure_cause
-        is EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
+        is EnumDelegationTerminalFailureCause.RETURNED_TO_CALLER
+    )
+    assert (
+        terminal.terminal_failure_reason
+        == EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED.value
     )

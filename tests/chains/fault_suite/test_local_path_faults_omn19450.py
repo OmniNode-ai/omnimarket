@@ -167,7 +167,19 @@ async def _run_fault(
 
 def _assert_failed(response: ModelDelegateSkillResponse, fault: str) -> None:
     assert response.status == "failed", response.model_dump(mode="json")
-    assert response.terminal_failure_cause is _EXPECTED_CAUSES[fault], (
+    if fault == "timeout":
+        # A run whose clock ran out keeps its own cause (OMN-21264).
+        assert response.terminal_failure_cause is _EXPECTED_CAUSES[fault], (
+            response.model_dump(mode="json")
+        )
+        return
+    # OMN-21264: the chosen model failed, so the run goes back to its caller;
+    # the cause that decided it stays readable as the reason.
+    assert (
+        response.terminal_failure_cause
+        is EnumDelegationTerminalFailureCause.RETURNED_TO_CALLER
+    ), response.model_dump(mode="json")
+    assert response.terminal_failure_reason == _EXPECTED_CAUSES[fault].value, (
         response.model_dump(mode="json")
     )
 
@@ -243,14 +255,16 @@ async def test_the_five_faults_have_pairwise_distinct_evidence_and_none_reads_pr
         for fault in faults
     }
     for fault, response in responses.items():
-        assert response.terminal_failure_cause is not (
-            EnumDelegationTerminalFailureCause.PROVIDER_ERROR
+        assert EnumDelegationTerminalFailureCause.PROVIDER_ERROR.value not in (
+            response.terminal_failure_cause,
+            response.terminal_failure_reason,
         ), (fault, response.model_dump(mode="json"))
         _assert_failed(response, fault)
     assert (
         len(
             {
-                responses[fault].terminal_failure_cause
+                responses[fault].terminal_failure_reason
+                or responses[fault].terminal_failure_cause
                 for fault in ("wrong_key", "quota", "timeout")
             }
         )

@@ -13,6 +13,8 @@ plugin the ticket-creation guard runs from. This module spells none of it, so
 the guard and the nodes cannot drift apart on what a lane-created item is.
 
 * :func:`declared_lane` -- the lane identity the launcher declared, if any.
+* :func:`lane_caller` -- why the caller is a lane (a declared lane, a subagent or a
+  headless session), empty for an interactive operator session.
 * :func:`stamp_description` -- put the stamp on the first line, once.
 * :func:`resolve_label_id` -- the Linear label id for a name, creating it once.
 * :func:`admit_lane_intake` -- the guard's lane-intake rules (identity, label,
@@ -33,6 +35,8 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict
 
 _LANE_ENV_KEYS = ("ONEX_LANE", "ONEX_REMOTE_LANE")
+#: Set in the environment of a session another session started (a workflow subagent).
+_SUBAGENT_ENV_KEY = "CLAUDE_CODE_CHILD_SESSION"
 _GUARD_TIMEOUT_S = 60
 #: The plugin's ``hooks/lib/<guard>`` -> ``hooks/config/ticket_creation_policy.json``.
 _POLICY_RELPATH = Path("config") / "ticket_creation_policy.json"
@@ -85,6 +89,25 @@ def declared_lane(environ: Mapping[str, str] | None = None) -> str:
     """The lane identity the launcher declared, ``""`` when it declared none."""
     env = os.environ if environ is None else environ
     return next((env[k].strip() for k in _LANE_ENV_KEYS if env.get(k, "").strip()), "")
+
+
+def lane_caller(environ: Mapping[str, str] | None = None) -> str:
+    """Why the caller is a lane, ``""`` for an interactive operator session.
+
+    The same test the plugin's pillar-owner Linear hook applies to a lane's ``save_issue``: a declared
+    lane (``ONEX_LANE`` or ``ONEX_REMOTE_LANE``), a subagent session, or a headless session (a Claude
+    Code entrypoint other than the interactive ``cli``).
+    """
+    env = os.environ if environ is None else environ
+    lane = declared_lane(env)
+    if lane:
+        return f"declared lane {lane}"
+    if env.get(_SUBAGENT_ENV_KEY, "").strip().lower() not in ("", "0", "false"):
+        return "subagent session"
+    entry = env.get("CLAUDE_CODE_ENTRYPOINT", "").strip()
+    if entry and entry != "cli":
+        return f"headless session ({entry})"
+    return ""
 
 
 def stamp_description(

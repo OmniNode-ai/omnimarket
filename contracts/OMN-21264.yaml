@@ -1,0 +1,61 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21264"
+title: "When every model a developer chose fails, delegation ends returned_to_caller with zero savings and the Claude Code session does the task"
+summary: >-
+  Decision D3: a delegate-skill run whose every attempt failed and none was accepted (not a budget timeout, a runtime shutdown or a refusal before dispatch) now ends with terminal cause returned_to_caller (omnibase_core 0.47.53, OMN-21210). It books zero savings, its cost is the sum of the failed attempts, its response is empty, and its error message tells the caller plainly that no chosen model finished the task and the session should do it. onex delegate and /onex:delegate print that line and write an empty result.txt through omnibase_infra's existing renderer and run-file writer. Metering (onex metering, the stored metering summary the dashboard reads, and each row's modelled savings) counts such a run as measured with zero savings, never unknown.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21264-returned-to-caller"
+    statement: "An exhausted ladder hands the task back to the caller with zero savings, plainly, on every surface."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: when every chosen model's attempt fails, the run's terminal cause is `returned_to_caller`, savings are 0, and cost is the sum of the failed attempts -- falsifier: a handler test with two stub backends that both fail, asserting the receipt fields
+      - id: "AC2"
+        statement: >-
+          AC2: `onex delegate` and /onex:delegate tell the caller plainly that no chosen model finished the task and the session should do it, and write no unaccepted answer as the result -- falsifier: a CLI test asserting the message and that result.txt is absent or empty
+      - id: "AC3"
+        statement: >-
+          AC3: the dashboard and `onex metering` count such a run with zero savings, not as unknown -- falsifier: a metering test on a returned_to_caller row
+evidence_requirements:
+  - kind: "tests"
+    description: "The handler, CLI and metering tests for a run handed back to its caller."
+    command: "uv run pytest tests/unit/delegation/test_omn21264_returned_to_caller.py -q -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21264-ac1-handler-returns-to-caller"
+    description: "Two stub backends both fail: the terminal names returned_to_caller, savings 0, cost the sum of the two attempts."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn21264_returned_to_caller.py -q -n 0 -k every_chosen_model_failing"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21264-ac2-cli-says-do-it-yourself"
+    description: "onex delegate's renderer prints that no chosen model finished the task and the session should do it, and the run-file writer leaves result.txt empty."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn21264_returned_to_caller.py -q -n 0 -k cli_tells_the_caller"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21264-ac3-metering-zero-not-unknown"
+    description: "A returned_to_caller row is measured with zero savings in the metering summary (with and without recorded tokens or spend) and in the per-row modelled saving the dashboard reads."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn21264_returned_to_caller.py -q -n 0 -k \"metering_counts_a_returned_run or the_row_the_dashboard_reads\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21264-deploy-probe"
+    description: "Deploy probe: the delegate-skill handler read from GitHub at the checked-out commit carries the returned_to_caller message. A head without it fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/handlers/handler_delegate_skill.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'RETURNED_TO_CALLER_MESSAGE'"
