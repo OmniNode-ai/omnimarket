@@ -68,7 +68,7 @@ dod_evidence:
     binds_ac: ["AC2"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests -q -k compaction_pack_build_barrier"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build_barrier.py -q -k compaction_pack_build_barrier"
   - id: "dod-omn21334-deploy-postgres-barrier"
     description: >-
       Hosted executable PostgreSQL proof: an ephemeral loopback-only database
