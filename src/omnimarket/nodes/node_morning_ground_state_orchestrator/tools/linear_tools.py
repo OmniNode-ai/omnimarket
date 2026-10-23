@@ -80,7 +80,11 @@ def _graphql(query: str, variables: dict[str, Any]) -> dict[str, Any]:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=60) as response:
+        with (
+            urllib.request.urlopen(  # no-contract-check: the morning tools' one Linear boundary; endpoint from service_endpoints, key from the secret-store resolver
+                request, timeout=60
+            ) as response
+        ):
             data = json.loads(response.read())
     except (urllib.error.URLError, TimeoutError, ValueError) as exc:
         raise LinearUnavailableError(f"Linear read failed: {exc}") from None

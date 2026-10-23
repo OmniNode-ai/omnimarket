@@ -556,7 +556,9 @@ def test_a_commit_past_its_hook_time_leaves_no_index_lock(
     git("commit", "-qm", "a")
     hooks = repo / ".hooks"
     hooks.mkdir()
-    (hooks / "pre-commit").write_text("#!/bin/sh\nsleep 30\n")
+    # Recent git holds the index lock while pre-commit runs; older git (2.43) does not, so
+    # the hook holds it too and the case does not depend on the runner's git version.
+    (hooks / "pre-commit").write_text("#!/bin/sh\ntouch .git/index.lock\nsleep 30\n")
     (hooks / "pre-commit").chmod(0o755)
     (repo / "a.txt").write_text("b\n")
     git("add", "a.txt")
