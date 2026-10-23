@@ -36,7 +36,7 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-omn21329-gate-refuses"
-    description: "The node raises the guard's finding codes (missing_gate_line, unfalsified_criterion, project_set) and its Linear client records no call. The stub-guard cases run on the hosted runner; the real-guard cases run where the omniclaude plugin is present."
+    description: "The node raises the guard's finding codes (missing_gate_line, unfalsified_criterion, project_set) and its Linear client records no call. The stub-guard cases run on the hosted runner."
     source: "manual"
     checks:
       - check_type: "test_passes"

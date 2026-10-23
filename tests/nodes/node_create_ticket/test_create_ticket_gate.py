@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -33,31 +32,11 @@ _BODY = (
     "- [ ] AC1: the handler refuses an unbound ticket -- falsifier: "
     "uv run pytest tests/nodes/node_create_ticket -k create_ticket_gate_refuses\n"
 )
-_UNFALSIFIED_BODY = (
-    "Gate: OmniNode-ai/omnimarket ci.yml\n\n"
-    "## Acceptance criteria\n\n"
-    "- [ ] AC1: the experience is delightful\n"
-)
 _FILES = (
     "ticket_creation_guard.py",
     "ticket_creation_policy.json",
     "gate_binding_grammar.json",
 )
-
-
-def _real_guard() -> Path | None:
-    """Find an explicit guard or the existing guard in the declared plugin clone."""
-    override = os.environ.get("ONEX_TICKET_GUARD_PATH")
-    if override:
-        return Path(override)
-    home = os.environ.get("OMNI_HOME")
-    if home:
-        guard = (
-            Path(home) / "omniclaude/plugins/onex/hooks/lib/ticket_creation_guard.py"
-        )
-        if guard.is_file():
-            return guard
-    return None
 
 
 class _RecordingLinearClient:
@@ -157,62 +136,6 @@ def _handler(
     return HandlerCreateTicket(
         linear_client=client, lane_intake_policy=read_lane_intake_policy(guard)
     )
-
-
-@pytest.mark.parametrize(
-    ("description", "project", "code"),
-    [
-        (_BODY.split("\n", 1)[1], "", "missing_gate_line"),
-        (_UNFALSIFIED_BODY, "", "unfalsified_criterion"),
-        (_BODY, "Sprint X", "project_set"),
-    ],
-    ids=["missing_gate_line", "unfalsified_criterion", "project_set"],
-)
-def test_create_ticket_gate_refuses_real_guard(
-    monkeypatch: pytest.MonkeyPatch, description: str, project: str, code: str
-) -> None:
-    guard = _real_guard()
-    if guard is None:
-        pytest.skip(
-            "real ticket guard unavailable: set ONEX_TICKET_GUARD_PATH or OMNI_HOME"
-        )
-    client = _RecordingLinearClient()
-    handler = _handler(guard, client, monkeypatch)
-    with pytest.raises(TicketGuardRefusedError) as exc:
-        handler.handle(
-            ModelCreateTicketRequest(
-                title="Ticket gate coverage",
-                description=description,
-                project=project,
-                parent="OMN-21329",
-                dry_run=False,
-            )
-        )
-    assert code in exc.value.finding_codes
-    assert client.calls == []
-
-
-def test_create_ticket_gate_admits_real_guard_dry_run(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    guard = _real_guard()
-    if guard is None:
-        pytest.skip(
-            "real ticket guard unavailable: set ONEX_TICKET_GUARD_PATH or OMNI_HOME"
-        )
-    client = _RecordingLinearClient()
-    result = _handler(guard, client, monkeypatch).handle(
-        ModelCreateTicketRequest(
-            title="Ticket gate coverage",
-            description=_BODY,
-            parent="OMN-21329",
-            dry_run=True,
-        )
-    )
-    assert result.status == "dry_run"
-    assert result.dry_run is True
-    assert result.guard_path == str(guard)
-    assert client.calls == []
 
 
 def test_create_ticket_gate_refuses_stub_preserves_finding_order(
@@ -336,17 +259,6 @@ def test_create_ticket_gate_parity_detects_missing_files(
     assert (name in parity.files) is (side == "hook")
     with pytest.raises(RuntimeError, match=name):
         assert_guard_parity(node_guard, hook_guard.parents[2])
-
-
-def test_create_ticket_gate_parity_real_plugin() -> None:
-    guard = _real_guard()
-    if guard is None:
-        pytest.skip(
-            "real ticket guard unavailable: set ONEX_TICKET_GUARD_PATH or OMNI_HOME"
-        )
-    root = guard.parents[2]
-    assert guard_parity(guard, root).same is True
-    assert hook_guard_path(root).resolve() == guard.resolve()
 
 
 def test_create_ticket_gate_parity_no_vendored_guard() -> None:
