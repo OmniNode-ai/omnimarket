@@ -231,7 +231,13 @@ def test_the_handler_replay_names_the_gate(fixture: str, emitted_cause: str) -> 
     )
 
     assert isinstance(terminal, ModelDelegateSkillFailed)
-    assert terminal.terminal_failure_cause is _GATE
+    # OMN-21264: no rung was accepted, so the run goes back to its caller; the
+    # gate that decided it stays readable as the reason.
+    assert (
+        terminal.terminal_failure_cause
+        is EnumDelegationTerminalFailureCause.RETURNED_TO_CALLER
+    )
+    assert terminal.terminal_failure_reason == _GATE.value
     assert terminal.quality_gate_passed is False
 
 

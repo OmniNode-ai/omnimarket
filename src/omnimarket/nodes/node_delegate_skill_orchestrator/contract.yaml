@@ -75,6 +75,9 @@ outputs:
       # run was in flight; the handler answers its cancellation with this.
       - runtime_shutdown
       - refused_before_dispatch
+      # OMN-21264: every model the developer chose failed; the session does
+      # the task itself and the run books zero savings.
+      - returned_to_caller
     description: Stable machine-readable terminal failure cause when known.
   credential_refusal:
     type: dict

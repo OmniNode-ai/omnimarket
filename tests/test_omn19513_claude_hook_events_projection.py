@@ -665,6 +665,27 @@ def test_the_producers_item_identity_stamp_is_accepted_and_stored_as_the_same_ro
     assert list(tables.events) == [str(plain.event_id)]
 
 
+@pytest.mark.parametrize("actor", ["claude", "codex", "unknown"])
+def test_every_producer_actor_is_accepted_and_stored_as_the_same_row(
+    actor: str,
+) -> None:
+    event = _pre_tool_use()
+    event["actor"] = actor
+    wire = ModelClaudeHookEventWire.model_validate(event)
+
+    assert wire.actor == actor
+    tables = _InMemoryHookTables()
+    _deliver(_writer(tables), event)
+    assert list(tables.events) == [str(wire.event_id)]
+
+
+def test_an_actor_outside_the_producer_set_is_refused() -> None:
+    event = _pre_tool_use()
+    event["actor"] = "gemini"
+    with pytest.raises(ValidationError, match="actor"):
+        ModelClaudeHookEventWire.model_validate(event)
+
+
 @pytest.mark.parametrize(
     ("stream", "producer_seq"),
     [("content", 1), ("lineage", 0), ("lineage", "7"), ("lineage", True)],
