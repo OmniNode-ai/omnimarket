@@ -34,6 +34,7 @@ from omnimarket.routing.byok_provider_backends import (
     _read_recommended_order,
     load_byok_local_recommendation,
     load_byok_recommended_order,
+    recommended_local_models,
     recommended_models,
     resolve_byok_backend_by_id,
     resolve_byok_provider_backend,
@@ -61,7 +62,7 @@ def test_ac1_every_served_class_resolves_a_recommended_order() -> None:
             models = recommended_models(provider, work_class=work_class)
             assert models
             assert len(models) == len(set(models))
-        assert recommended_models("ollama", work_class=work_class, memory_gb=32)
+        assert recommended_local_models(32, work_class=work_class)
 
 
 def test_ac1_a_class_missing_from_the_contract_is_refused() -> None:
@@ -104,9 +105,9 @@ def test_ac1_ollama_order_is_the_model_sized_to_the_mac() -> None:
         entry.min_memory_gb: entry.model
         for entry in load_byok_local_recommendation().memory_classes
     }
-    assert recommended_models("ollama", memory_gb=32) == (by_floor[32],)
-    assert recommended_models("ollama", memory_gb=128) == (by_floor[64],)
-    assert recommended_models("ollama", memory_gb=8) == ()
+    assert recommended_local_models(32) == (by_floor[32],)
+    assert recommended_local_models(128) == (by_floor[64],)
+    assert recommended_local_models(8) == ()
 
 
 @pytest.mark.parametrize(
@@ -211,4 +212,4 @@ def test_ac2_onboarding_has_a_preselected_order_for_each_key_it_offers(
 def test_ac2_onboarding_has_a_preselected_ollama_model_for_each_memory_class(
     memory_gb: int,
 ) -> None:
-    assert len(recommended_models("ollama", memory_gb=memory_gb)) == 1
+    assert len(recommended_local_models(memory_gb)) == 1
