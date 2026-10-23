@@ -1,0 +1,56 @@
+schema_version: "1.0.0"
+ticket_id: OMN-18594
+title: The release and pin guard refuses releases, version tags and sibling pins without a grant
+summary: RULING 2026-10-23T17:13:55Z. node_release_pin_guard_compute is the canonical home of the decision the omni plugin's PreToolUse hook runs. It refuses a release, a version tag or tag push, a release, train, cascade or pin-refresh workflow dispatch, the release-cut skill and its scripts, and a sibling version or commit-sha pin write, unless an unexpired OPERATOR-CONSENT row with approved_by=operator or cloud-owner, a grant cell naming the repo and version, and an expiry admits it.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn18594-guard-refuses
+    statement: Every guarded shape is refused without a grant and ordinary calls are admitted.
+    acceptance:
+      - id: AC18594101
+        statement: "AC18594101: each guarded Bash, Skill and file-edit shape is refused and each ordinary call admitted -- falsifier: test_release_pin_guard.py fails"
+  - id: req-omn18594-grant-admits
+    statement: An unexpired operator or cloud-owner grant admits exactly its repo and version, and an expired, unapproved, versionless or future row grants nothing.
+    acceptance:
+      - id: AC18594102
+        statement: "AC18594102: a grant admits its repo and version only, and the five non-grant rows grant nothing -- falsifier: the grant tests in test_release_pin_guard.py fail"
+      - id: AC18594103
+        statement: "AC18594103: the contract-resolved handler answers over the in-memory bus on the declared topics -- falsifier: test_golden_chain_release_pin_guard_compute.py fails"
+evidence_requirements:
+  - kind: tests
+    description: The guard's unit and golden chain tests pass.
+    command: uv run pytest tests/nodes/node_release_pin_guard_compute/test_release_pin_guard.py tests/test_golden_chain_release_pin_guard_compute.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn18594-ac1-shapes
+    description: Every guarded shape is refused and ordinary calls are admitted.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_release_pin_guard_compute/test_release_pin_guard.py -q -k "refused or admitted"
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac:
+      - AC18594101
+  - id: dod-omn18594-ac2-grants
+    description: A grant admits only its repo and version; non-grant rows grant nothing.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_release_pin_guard_compute/test_release_pin_guard.py -q -k "grant"
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac:
+      - AC18594102
+  - id: dod-omn18594-ac3-golden-chain
+    description: The contract-resolved handler round trip over the in-memory bus.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_golden_chain_release_pin_guard_compute.py -q
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac:
+      - AC18594103
