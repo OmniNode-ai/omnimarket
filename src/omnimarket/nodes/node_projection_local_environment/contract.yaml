@@ -8,8 +8,10 @@ description: >
   OMN-19988. Stores the latest report of each local service per tenant and mode,
   with the verdict and open alert the report's time gives it and every sibling it
   re-judges, and serves those rows to the Overview Environment panel and the API
-  Keys card. The tenant arrives as the install's tenant uuid; any other form is
-  refused to the DLQ.
+  Keys card. The tenant arrives as a canonical tenant uuid or a registry slug and
+  is confirmed against tenant_registry_mirror inside the write's transaction; the
+  row is stored under the uuid the registry records. A tenant the registry does
+  not know, or any other form, is refused to the DLQ.
 runtime_profiles: [tenant-projection]
 
 handler:

@@ -7,11 +7,13 @@ It applies the same pure plan the local store applies
 a lock on the tenant's mode, a read of that mode's rows, then one upsert per
 planned row. Each written row is published as a snapshot delta.
 
-The tenant must arrive as the install's tenant uuid in its canonical form. A
-slug or any other form is refused, so the runtime dead-letters it: the dashboard
-reads by the uuid, so a row stored under anything else is never served. The
-producers resolve the tenant before they publish (the native report reads the
-install's identity, which holds the uuid).
+The tenant must arrive as a canonical tenant uuid or as a registry slug (the
+form the compose bundle carries as ``ONEX_TENANT_ID``), and the writer confirms
+it against ``tenant_registry_mirror`` before it stores anything. A tenant the
+registry does not know, or any other form, is refused, so the runtime
+dead-letters it. The row is stored under the uuid the registry recorded: the
+dashboard reads by the uuid, so a row stored under anything else is never
+served.
 """
 
 from __future__ import annotations
@@ -43,6 +45,13 @@ from omnimarket.projection.envelope import strip_runner_injected_keys
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
 from omnimarket.projection.tenant_isolation import TENANT_GUC
+from omnimarket.projection.tenant_registry_resolution import (
+    TENANT_REGISTRY_MIRROR_TABLE,
+    TENANT_REGISTRY_PROJECTION_NODE,
+    TenantRegistryResolutionError,
+    async_registry_tenant_uuid,
+    is_tenant_slug,
+)
 
 # Every column a report writes, in statement order. projection_cursor is the
 # table's own sequence; updated_at is the plan's stamp.
@@ -96,17 +105,40 @@ _UPSERT_ROW = (
 
 
 def require_tenant_uuid(tenant_id: str) -> str:
-    """The tenant as the install's uuid in canonical form, or a refusal."""
+    """The tenant as a canonical uuid or a registry slug, or a refusal.
+
+    Which registry row it names is confirmed against the mirror inside the
+    write's transaction (``confirm_registry_tenant``); this only refuses forms
+    that can never name one.
+    """
     try:
         canonical = str(uuid.UUID(tenant_id))
     except ValueError:
         canonical = ""
-    if canonical != tenant_id:
+    if canonical != tenant_id and not is_tenant_slug(tenant_id):
         raise ValueError(
-            f"local environment report refused: tenant {tenant_id!r} is not a "
-            "canonical tenant uuid; the producer resolves the tenant before it publishes"
+            f"local environment report refused: tenant {tenant_id!r} is neither a "
+            "canonical tenant uuid nor a registry slug"
         )
     return tenant_id
+
+
+async def confirm_registry_tenant(conn: Any, tenant_id: str) -> str:
+    """The uuid the tenant registry mirror records for this tenant, or a refusal.
+
+    Nothing is invented or defaulted: a tenant the mirror holds no row for
+    raises, which the runtime dead-letters, and nothing is stored under it.
+    """
+    registered = await async_registry_tenant_uuid(conn, tenant_id)
+    if registered is None:
+        raise TenantRegistryResolutionError(
+            f"local environment report refused: no row in "
+            f"{TENANT_REGISTRY_MIRROR_TABLE} records tenant {tenant_id!r}. Either "
+            "the tenant was never registered (the bundle's registry seed step "
+            f"records ONEX_TENANT_ID) or {TENANT_REGISTRY_PROJECTION_NODE} has "
+            "not materialized it yet; no tenant is invented for the report."
+        )
+    return str(registered)
 
 
 def _parameter(name: str, value: object) -> object:
@@ -207,10 +239,18 @@ class LocalEnvironmentProjectionWriter(BaseProjectionRunner):
         # ValidationError and the tenant refusal must reach the runtime's
         # POISON/DLQ classifier.
         report = ModelLocalEnvironmentStatus.model_validate(payload)
-        tenant = require_tenant_uuid(report.tenant_id)
+        require_tenant_uuid(report.tenant_id)
         written: list[dict[str, Any]] = []
         replayed: list[dict[str, Any]] = []
         async with self.db.pool.acquire() as conn, conn.transaction():
+            tenant = await confirm_registry_tenant(conn, report.tenant_id)
+            if tenant != report.tenant_id:
+                # Stored and served under the registry's uuid. The report id is
+                # derived again from that tenant, so a redelivery of the same
+                # report is still recognised.
+                report = ModelLocalEnvironmentStatus.model_validate(
+                    {**report.model_dump(), "tenant_id": tenant, "report_id": None}
+                )
             await conn.execute("SELECT set_config($1, $2, true)", TENANT_GUC, tenant)
             # One writer per tenant's mode at a time: the plan judges every row
             # of the mode, so two reports must not both plan from the same read.
@@ -260,4 +300,8 @@ class LocalEnvironmentProjectionWriter(BaseProjectionRunner):
         return written
 
 
-__all__ = ["LocalEnvironmentProjectionWriter", "require_tenant_uuid"]
+__all__ = [
+    "LocalEnvironmentProjectionWriter",
+    "confirm_registry_tenant",
+    "require_tenant_uuid",
+]

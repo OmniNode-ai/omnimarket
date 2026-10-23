@@ -44,6 +44,7 @@ from datetime import datetime
 from pathlib import Path
 
 from omnimarket.nodes.node_metering_summary_compute.models.model_metering_record_row import (
+    METERING_CAUSE_COLUMN,
     METERING_COLUMNS,
     metering_record_from_row,
     normalise_occurred_at,
@@ -114,10 +115,15 @@ def _iter_rows(db_path: Path) -> Iterator[sqlite3.Row]:
                 str(info[1])
                 for info in conn.execute("PRAGMA table_info(delegation_events)")
             }
+            optional = tuple(
+                column
+                for column in (_DATA_SOURCE_COLUMN, METERING_CAUSE_COLUMN)
+                if column in columns
+            )
             select = (
-                f"SELECT {', '.join((*METERING_COLUMNS, _DATA_SOURCE_COLUMN))} "
+                f"SELECT {', '.join((*METERING_COLUMNS, *optional))} "
                 "FROM delegation_events"
-                if _DATA_SOURCE_COLUMN in columns
+                if optional
                 else _SELECT
             )
             cursor = conn.execute(select)

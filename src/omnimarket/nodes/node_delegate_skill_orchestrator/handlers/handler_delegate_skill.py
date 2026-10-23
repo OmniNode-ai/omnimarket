@@ -133,6 +133,22 @@ from omnimarket.pricing import (
 
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "timeout"})
 
+#: OMN-21264: causes that are not the ladder running out. A run whose clock ran
+#: out (its dispatch deadline or a call's own timeout), that the runtime cut
+#: off, that was refused before dispatch, or that nothing ever terminated did
+#: not exhaust the developer's chosen models, so it keeps its own cause.
+_NOT_AN_EXHAUSTED_LADDER = frozenset(
+    {
+        EnumDelegationTerminalFailureCause.TIMEOUT,
+        EnumDelegationTerminalFailureCause.RUNTIME_SHUTDOWN,
+        EnumDelegationTerminalFailureCause.NO_TERMINAL,
+        EnumDelegationTerminalFailureCause.REFUSED_BEFORE_DISPATCH,
+    }
+)
+RETURNED_TO_CALLER_MESSAGE = (
+    "no model you chose finished the task; do the task in this session"
+)
+
 
 class ProtocolDelegationDispatchPort(Protocol):
     """Injected port for delegation dispatch. Implementation is runtime-owned.
@@ -1107,6 +1123,31 @@ def _response_from_result(
         terminal_failure_cause = (
             explicit_terminal_failure_cause or terminal_failure_cause
         )
+    # OMN-21264, decision D3: every model the developer chose was tried and none
+    # was accepted, so the run goes back to its caller. Each attempt's own
+    # cause stays on its attempt record; the run's cause names the hand-back,
+    # and the message tells the caller plainly that the session does the task.
+    returned_to_caller = (
+        status_value == "failed"
+        and bool(attempts)
+        and not any(attempt.quality_gate_passed for attempt in attempts)
+        and terminal_failure_cause not in _NOT_AN_EXHAUSTED_LADDER
+    )
+    # The cause that decided the last rung stays readable as the reason, so a
+    # gate veto, a quota refusal and a rejected key are still told apart.
+    returned_reason: str | None = None
+    if returned_to_caller:
+        if terminal_failure_cause is not None:
+            returned_reason = terminal_failure_cause.value
+        terminal_failure_cause = EnumDelegationTerminalFailureCause.RETURNED_TO_CALLER
+        last_error = error_message or next(
+            (a.error_message for a in reversed(attempts) if a.error_message), ""
+        )
+        error_message = (
+            f"{RETURNED_TO_CALLER_MESSAGE} (last error: {last_error})"
+            if last_error
+            else RETURNED_TO_CALLER_MESSAGE
+        )
     score_vs_required_bar = _as_quality_score_comparison(
         result.get("score_vs_required_bar")
     )
@@ -1135,6 +1176,11 @@ def _response_from_result(
                 f"{criterion} ({observed})" if observed else criterion,
             )
     actual_cost_usd = _measured_cost_usd(result)
+    if returned_to_caller:
+        # OMN-21264: the run cost what every failed attempt cost.
+        actual_cost_usd = max(
+            actual_cost_usd, sum(attempt.cost_usd for attempt in attempts)
+        )
     baseline = resolve_baseline_model(
         overlay=result.get("overlay", {}),
         store=result.get("store", {}),
@@ -1142,10 +1188,14 @@ def _response_from_result(
             result.get("model_cloud_baseline") or result.get("baseline_model") or ""
         ),
     )
-    if baseline.state == "BASELINE_UNRESOLVED" or _cost_measured(attempts) is False:
+    if returned_to_caller:
+        # OMN-21264: no answer was accepted, so nothing was saved, whatever the
+        # baseline or the pricing state.
+        cost_savings_usd: float | None = 0.0
+    elif baseline.state == "BASELINE_UNRESOLVED" or _cost_measured(attempts) is False:
         # OMN-21260: savings against an unpriced cost would be the full baseline
         # price, counted as measured. Unknown cost, unknown savings.
-        cost_savings_usd: float | None = None
+        cost_savings_usd = None
     elif status_value == "completed" and quality_gate_passed:
         estimate = _estimate_claude_cost_savings(
             result,
@@ -1162,6 +1212,10 @@ def _response_from_result(
         cost_savings_usd = 0.0
     manifest_version = _as_optional_int(result.get("pricing_manifest_version"))
     final_answer, response_reasoning = final_answer_text(str(result.get("content", "")))
+    if returned_to_caller:
+        # OMN-21264: no attempt's text was accepted, so none is the result. The
+        # attempts keep their own evidence.
+        final_answer, response_reasoning = "", ""
     if (
         response_reasoning
         and deciding_attempt is not None
@@ -1244,6 +1298,7 @@ def _response_from_result(
         score_vs_required_bar=score_vs_required_bar,
         failed_acceptance_criteria=failed_acceptance_criteria,
         terminal_failure_cause=terminal_failure_cause,
+        terminal_failure_reason=returned_reason,
         response_contract_evidence=result.get("response_contract_evidence"),
         budget_evidence=budget_evidence,
         preamble_chars=result.get("preamble_chars"),
@@ -1282,7 +1337,11 @@ def _response_from_result(
         escalation_count=_as_int(result.get("escalation_count")),
         attempts_count=_response_attempts_count(result, attempts),
         attempts=attempts,
-        response_source_attempt=_response_source_attempt(result, attempts),
+        # OMN-21264: a run handed back to its caller carries no answer, so no
+        # attempt is named as its source.
+        response_source_attempt=None
+        if returned_to_caller
+        else _response_source_attempt(result, attempts),
         # OMN-18852: queue and execution as separate terminal facts. The
         # dispatch port reports neither -- both are measured by the handler,
         # which is the only party that knows when it picked the record up.

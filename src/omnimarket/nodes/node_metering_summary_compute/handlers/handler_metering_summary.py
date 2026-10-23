@@ -123,6 +123,20 @@ class HandlerMeteringSummary:
                 bucket.tokens_in += tokens_in
                 bucket.tokens_out += tokens_out
 
+            if record.returned_to_caller:
+                # OMN-21264: no answer was accepted, so the run saved nothing.
+                # Its recorded spend still counts, and its counterfactual is
+                # that spend, so the headline subtraction books exactly zero.
+                returned_spend = record.spend_usd or Decimal("0")
+                runs_measured += 1
+                bucket.runs_measured += 1
+                spend_total += returned_spend
+                bucket.spend += returned_spend
+                if baseline is not None:
+                    counterfactual_total += returned_spend
+                    run_savings[index] = Decimal("0")
+                continue
+
             # The two guards below reproduce EnumMeteringMeasurement's rules in
             # the order they narrow the type. The enum on the record is the
             # readable statement of the same classification and is what the

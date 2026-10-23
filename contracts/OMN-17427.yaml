@@ -851,6 +851,11 @@ requirements:
     acceptance:
       - id: "AC188"
         statement: "AC188: the fifteen correct causal answers in tests/unit/delegation/test_step_by_step_causal_prevent_ensure_omn19401.py, nine of them verbatim Qwen3.8-27B answers from a lab model server, pass step_by_step_explanation, and the seven non-explanations, including \"Preventing outages is the goal\", \"the ensuing outage\" and \"meaningful names\", are still vetoed -- falsifier: uv run pytest tests/unit/delegation/test_step_by_step_causal_prevent_ensure_omn19401.py -q fails at the merge base"
+  - id: "req-create-ticket-pillar-lane-refusal"
+    statement: "node_create_ticket refuses --pillar for a pillar whose owner map entry declares assignable_by_lanes false when the caller is a lane (ONEX_LANE or ONEX_REMOTE_LANE, a subagent session, or a headless session), before the ticket-creation guard records anything; an interactive operator session, a pillar without the flag and a ticket with no pillar are unchanged."
+    acceptance:
+      - id: "AC188"
+        statement: "AC188: a lane's create request, and its dry run, naming a pillar whose entry sets assignable_by_lanes false raises refused for a lane with no assignee and no guard input; an interactive session assigns that owner, a lane assigns an unflagged pillar's owner, a lane with no pillar files under the creator, and handler_lane_intake.lane_caller answers the pillar hook's test over eight environments (tests/nodes/node_create_ticket/test_pillar_lane_refusal.py) -- falsifier: uv run pytest tests/nodes/node_create_ticket/test_pillar_lane_refusal.py -q fails at the merge base, where lane_caller does not exist and the file cannot be collected"
   - id: "req-c28-consumer-flow-writer-throughput"
     statement: "The in-process consumer-flow writer reuses one dispatch loop and pool across heartbeats and concurrent dispatch threads, and batches one heartbeat's deltas without losing ordering or replay refusals."
     acceptance:
@@ -3717,6 +3722,21 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/delegation/test_step_by_step_causal_prevent_ensure_omn19401.py tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py tests/unit/delegation/test_step_by_step_causal_prose_omn19401.py -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac188-pillar-lane-refusal"
+    description: "AC188: node_create_ticket refuses a lane's --pillar for a pillar whose owner the map keeps out of lanes' hands, before the guard spends intake budget, and leaves an interactive session, an unflagged pillar and a pillar-less ticket unchanged. The file fails collection at the merge base, where handler_lane_intake.lane_caller does not exist. This is focused fix-forward evidence; it does not attest the umbrella ticket's nightly integration-pass reports or graduation review."
+    source: "manual"
+    binds_ac: ["AC188"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_create_ticket/test_pillar_lane_refusal.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-pillar-lane-refusal-probe"
+    description: "Deploy probe. In the checked-out package, a lane's create request and its dry run naming a flagged pillar are refused before the guard records anything. It fails at the merge base and needs only uv and this checkout on the hosted runner; no Linear credential and no live pillar map. It does not attest a live deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/nodes/node_create_ticket/test_pillar_lane_refusal.py -q -n 0 -p no:randomly --no-cov -k 'cannot_assign_the_locked_pillar_owner or dry_run_is_refused'"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac187-c28-consumer-flow-writer"
     description: "The consumer-flow writer's dispatch regressions check loop and pool reuse across twenty messages and concurrent dispatch threads, and the five-statement budget for a 477-delta heartbeat. The real PostgreSQL regression checks all 120 pairs, input order, upstream values and row-by-row refusal of an older replay."
     source: "manual"
@@ -3796,7 +3816,7 @@ dod_evidence:
           PY
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "test_passes"
-        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_event_emit_effect/test_session_deadline_omn17427.py -q -n 0 --no-cov --refuse-skips"
+        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_session_deadline_omn17427.py -q -n 0 --no-cov --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-terminal-cleanup-clock-deploy-probe"
     description: "Deploy probe. On the hosted runner, execute the checked-out terminal emitter and Kafka publisher against a slow-close broker and temporary spool. Both publish outcomes must cancel the close within the remaining session budget and preserve the expected spool state. Locked dependencies and the checkout suffice; this is a packaged runtime-path probe with no broker, credentials or live deployment claim."
@@ -3804,4 +3824,12 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_event_emit_effect/test_session_deadline_omn17427.py -q -n 0 --no-cov --refuse-skips -k terminal_emit_close_uses_remaining_budget"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-evidence-binding-reads-env-prefix"
+    description: "The repo evidence binding check reads through a leading env VAR=value prefix, so a bound test_passes check written as env ... uv run pytest <file> counts as pytest evidence, as the verifier already treats it. At the merge base the env-prefixed cases are refused and the dev head's own contract fails the binding test."
+    source: "manual"
+    binds_ac: ["AC23"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -k reads_through_an_env_prefix"
         cwd: "${OMNI_HOME}/omnimarket"

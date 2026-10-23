@@ -32,6 +32,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import pytest
 import yaml
@@ -95,8 +96,15 @@ def _report(
 class _Conn:
     """An in-memory local_environment table behind the statements the writer sends."""
 
-    def __init__(self, table: dict[tuple[str, str, str], dict[str, Any]]) -> None:
+    def __init__(
+        self,
+        table: dict[tuple[str, str, str], dict[str, Any]],
+        registry: dict[str, str] | None = None,
+    ) -> None:
         self.table = table
+        # tenant_registry_mirror as {slug: uuid}; the tenant these tests write
+        # under is recorded there, as the bundle's seed step records it.
+        self.registry = registry if registry is not None else {"local-test": TENANT}
         self.statements: list[tuple[str, tuple[Any, ...]]] = []
         self.tenant_setting: str | None = None
         self.in_transaction = False
@@ -115,6 +123,17 @@ class _Conn:
         if "set_config" in sql:
             self.tenant_setting = str(args[1])
         return "OK"
+
+    async def fetchval(self, sql: str, *args: Any) -> Any:
+        """The registry mirror reads; not a recorded statement of the write."""
+        assert "tenant_registry_mirror" in sql, sql
+        if "WHERE tenant_uuid" in sql:
+            found = [u for u in self.registry.values() if u == str(args[0])]
+            return UUID(found[0]) if found else None
+        if "WHERE tenant_slug" in sql:
+            found_uuid = self.registry.get(str(args[0]))
+            return UUID(found_uuid) if found_uuid else None
+        raise AssertionError(f"unexpected registry read: {sql}")
 
     async def fetch(self, sql: str, *args: Any) -> list[dict[str, Any]]:
         self.statements.append((sql, args))
@@ -156,9 +175,10 @@ class _Db:
 
 def _writer(
     table: dict[tuple[str, str, str], dict[str, Any]],
+    registry: dict[str, str] | None = None,
 ) -> tuple[LocalEnvironmentProjectionWriter, _Conn, list[dict[str, Any]]]:
     writer = LocalEnvironmentProjectionWriter()
-    conn = _Conn(table)
+    conn = _Conn(table, registry)
     patch = pytest.MonkeyPatch()
     patch.setattr(writer, "_db", _Db(conn))
     published: list[dict[str, Any]] = []

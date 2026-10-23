@@ -40,7 +40,7 @@ import os
 import re
 import subprocess
 import sys
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from enum import StrEnum
 from pathlib import Path
@@ -55,6 +55,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from omnimarket.handlers.handler_lane_intake import (
     ModelLaneIntakePolicy,
     declared_lane,
+    lane_caller,
     read_lane_intake_policy,
     resolve_label_id,
     stamp_description,
@@ -177,6 +178,22 @@ def _pillar_owners_path() -> Path:
     return Path(home).parent / _PILLAR_OWNERS_RELPATH
 
 
+def _pillar_entry(pillar: str, path: Path) -> dict[str, Any]:
+    """The pillar's entry in the owner map; a map or pillar that cannot be read raises."""
+    try:
+        document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise RuntimeError(f"pillar_owners map unreadable at {path}: {exc}") from exc
+    if not isinstance(document, dict):
+        raise RuntimeError(f"pillar_owners map at {path} must be a mapping")
+    pillars = document.get("pillars")
+    entry = pillars.get(pillar) if isinstance(pillars, dict) else None
+    owner = entry.get("owner_linear_user_id") if isinstance(entry, dict) else None
+    if not isinstance(entry, dict) or not isinstance(owner, str) or not owner.strip():
+        raise RuntimeError(f"pillar {pillar!r} has no owner_linear_user_id in {path}")
+    return dict(entry)
+
+
 def _resolve_pillar_owner(pillar: str | None, path: Path) -> str | None:
     """Return the Linear user id for the ticket's pillar, or None for the creator default.
 
@@ -188,18 +205,32 @@ def _resolve_pillar_owner(pillar: str | None, path: Path) -> str | None:
     """
     if not pillar:
         return None
-    try:
-        document = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except OSError as exc:
-        raise RuntimeError(f"pillar_owners map unreadable at {path}: {exc}") from exc
-    if not isinstance(document, dict):
-        raise RuntimeError(f"pillar_owners map at {path} must be a mapping")
-    pillars = document.get("pillars")
-    entry = pillars.get(pillar) if isinstance(pillars, dict) else None
-    owner = entry.get("owner_linear_user_id") if isinstance(entry, dict) else None
-    if not isinstance(owner, str) or not owner.strip():
-        raise RuntimeError(f"pillar {pillar!r} has no owner_linear_user_id in {path}")
-    return owner.strip()
+    return str(_pillar_entry(pillar, path)["owner_linear_user_id"]).strip()
+
+
+def _refuse_lane_assignment(
+    pillar: str | None, path: Path, environ: Mapping[str, str] | None = None
+) -> None:
+    """Refuse a lane's assignment of a pillar whose map entry says lanes may not assign its owner.
+
+    The pillar map declares ``assignable_by_lanes: false`` for such an owner (OMN-17427). This
+    node, run by a lane (a declared lane, a subagent or a headless session), then neither assigns
+    that owner nor files the ticket for them; the operator or the owner files it. New tickets
+    carry no project, so there is no project of the owner's to file into
+    (``ModelCreateTicketRequest.project`` is refused).
+    """
+    if not pillar:
+        return
+    entry = _pillar_entry(pillar, path)
+    if entry.get("assignable_by_lanes") is not False:
+        return
+    caller = lane_caller(environ)
+    if caller:
+        raise RuntimeError(
+            f"pillar {pillar!r} is refused for a lane ({caller}): lanes may not create tickets "
+            "for that pillar's owner or assign them work. Leave --pillar off to file the ticket "
+            "under the creator and name the owner's area in the description (OMN-17427)."
+        )
 
 
 class EnumTicketOperation(StrEnum):
@@ -888,6 +919,12 @@ class HandlerCreateTicket:
                 validation_errors=errors,
                 dry_run=request.dry_run,
             )
+
+        # A lane may not assign a pillar whose owner the map keeps out of lanes' hands (OMN-17427),
+        # and the refusal comes before the guard so it spends none of the day's intake budget.
+        _refuse_lane_assignment(
+            request.pillar, self._pillar_owners_path or _pillar_owners_path()
+        )
 
         # The ticket-creation guard (OMN-17942) judges the exact payload this
         # node files: Backlog, no project, the caller's description unchanged.
