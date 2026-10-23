@@ -35,6 +35,7 @@ from pydantic import SecretStr, ValidationError
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     resolve_local_byok_credential_plan,
+    resolve_local_byok_credential_ref,
 )
 from omnimarket.nodes.node_local_secret_store_effect.handlers.handler_local_secret_store import (
     HandlerLocalSecretStore,
@@ -632,9 +633,17 @@ def store_key(
 
 
 def _keyed_provider_of(secret_ref: str) -> ModelProvider | None:
-    """The keyed provider whose key ``secret_ref`` names, or None."""
+    """The keyed provider whose key ``secret_ref`` names, or None.
+
+    Either name counts: ``llm.<provider>.api_key``, or the provider's live
+    minted route reference, matched through the store's own resolver rather
+    than by parsing the reference.
+    """
+    db_path = LocalByokCredentialStore().db_path
     for provider in KEYED_PROVIDERS:
         if secret_ref == f"llm.{provider}.api_key":
+            return provider
+        if secret_ref == resolve_local_byok_credential_ref(provider, db_path=db_path):
             return provider
     return None
 

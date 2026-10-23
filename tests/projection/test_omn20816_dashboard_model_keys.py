@@ -18,6 +18,8 @@ stays read-only). Each check names the failure it exists to catch:
       usable provider goes out by the lower-level command;
 * M4d the removal lock serializes threads of one process only, so a removal
       in another process still overlaps;
+* M4e ``onex secret delete`` of a provider's minted route reference skips the
+      guard, so the last usable provider's route goes out by its other name;
 * M5  the page lists a provider it does not show (Anthropic, a local URL);
 * M7  the page and the CLI disagree about one store: a key added in the
       terminal is not what ``GET /models`` lists;
@@ -50,6 +52,7 @@ from omnimarket.cli.cli_secret import models_group, secret_group
 from omnimarket.handlers import handler_model_keys
 from omnimarket.inference.local_byok_credential_adapter import (
     resolve_local_byok_credential_models,
+    resolve_local_byok_credential_ref,
 )
 from omnimarket.local_deployment.tenant_identity import (
     reset_local_tenant_identity_cache,
@@ -507,3 +510,31 @@ def test_m4d_a_removal_waits_for_the_lock_held_by_another_process(
         holder.kill()
         holder.wait(timeout=10)
     assert _rows(_client(tmp_path))["openai"]["set_up"] is False
+
+
+def test_m4e_secret_delete_refuses_the_last_usable_providers_route_ref(
+    delegations: _Delegations, tmp_path: Path
+) -> None:
+    delegations.models[_backend("openrouter")] = _OR_MODEL
+    assert _cli_add("openrouter", _OR_KEY, _OR_MODEL).exit_code == 0
+    route_ref = resolve_local_byok_credential_ref("openrouter")
+    assert route_ref is not None
+    assert route_ref.startswith("cred_localinstall_openrouter_")
+    refused = CliRunner().invoke(secret_group, ["delete", route_ref])
+    assert refused.exit_code != 0, refused.output
+    assert "at least one is required" in refused.output
+    assert resolve_local_byok_credential_ref("openrouter") == route_ref
+
+
+def test_m4e_secret_delete_of_one_of_two_usable_route_refs_is_allowed(
+    delegations: _Delegations, tmp_path: Path
+) -> None:
+    delegations.models[_backend("openrouter")] = _OR_MODEL
+    delegations.models[_backend("openai")] = _OAI_MODEL
+    assert _cli_add("openrouter", _OR_KEY, _OR_MODEL).exit_code == 0
+    assert _cli_add("openai", _OAI_KEY, _OAI_MODEL).exit_code == 0
+    route_ref = resolve_local_byok_credential_ref("openai")
+    assert route_ref is not None
+    removed = CliRunner().invoke(secret_group, ["delete", route_ref])
+    assert removed.exit_code == 0, removed.output
+    assert resolve_local_byok_credential_ref("openrouter") is not None
