@@ -30,6 +30,13 @@ requirements:
       - id: "AC5"
         statement: |-
           AC5: 401, 403 and 400 are rejected with Dharma's error code, 402 trips the credit stop, 429 is rate limited, 503, a redirect, a non-JSON body and a connection failure are transport errors, and the token never appears in an error -- falsifier: the parametrized error tests in test_evaluator_dharma.py
+  - id: "req-dharma-refusal-carries-code"
+    statement: |-
+      A refusal from Dharma names Dharma's own error code in the node's outcome, so a policy refusal is diagnosable from the outcome alone.
+    acceptance:
+      - id: "AC6"
+        statement: |-
+          AC6: a 403 with Dharma's recorded managed_runtime_requires_real_organization body yields Refused target_rejected with detail "status 403 managed_runtime_requires_real_organization" and no launch; a code that is not a plain identifier is dropped, never echoed -- falsifier: test_launch_errors_are_classified, test_invalid_error_codes_are_not_exposed and test_dharma_rejection_carries_error_code
 evidence_requirements:
   - kind: "tests"
     description: "Evaluator tests on recorded Dharma responses and the node's handler tests."
@@ -55,6 +62,14 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_trajectory_evaluation_effect/test_evaluator_dharma.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3", "AC4", "AC5"]
+  - id: "dod-omn20088-refusal-code"
+    description: "Dharma's error code reaches the node's Refused detail; free text never does."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_trajectory_evaluation_effect/test_evaluator_dharma.py tests/unit/nodes/node_trajectory_evaluation_effect/test_handler_trajectory_evaluation.py -q -k 'launch_errors_are_classified or invalid_error_codes or rejection_carries_error_code'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
   - id: "dod-omn20088-deploy-probe"
     description: "Hosted source readback of the Dharma evaluator and its registration at the checked-out revision. The evaluator lookup fails at the merge base, which has no evaluator file, and the content assertions fail if the evaluator class or the full-content-only registration is absent. This checks published source; the adapter lands off by default, so no lane runs it until a lane sets dharma_full."
     source: "manual"
@@ -62,4 +77,7 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_trajectory_evaluation_effect/evaluators/evaluator_dharma.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"class EvaluatorDharma\")' | grep -qx true && gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_trajectory_evaluation_effect/handlers/handler_trajectory_evaluation.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"{\\\"dharma\\\": frozenset({\\\"full\\\"})}\")' | grep -qx true"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_trajectory_evaluation_effect/handlers/handler_trajectory_evaluation.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"exc.error_code\")' | grep -qx true"
         cwd: "${OMNI_HOME}/omnimarket"
