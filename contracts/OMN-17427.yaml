@@ -826,6 +826,11 @@ requirements:
     acceptance:
       - id: "AC184"
         statement: "AC184: a tier source answering five open_work rows in forward, reversed or shuffled order yields a built pack whose rendered text carries the rows in that same order -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -k source_order fails at the merge base, where every artifact keeps the default source_priority 100 and the builder orders a tier's chunks by hash"
+  - id: "req-cc0130-committed-contract"
+    statement: "The CC0130 migration makes the OMN-13213 ticket contract resolvable from an immutable commit in the product repository."
+    acceptance:
+      - id: "AC4301"
+        statement: "AC4301: the real ticket-contract prerequisite handler resolves OMN-13213 from HEAD's Git blob without a failure; a working-tree-only copy cannot satisfy it -- falsifier: uv run pytest tests/test_omn17427_cc0130_committed_contract.py -q fails at the merge base, whose commit carries no contracts/OMN-13213.yaml."
   - id: "req-emit-publish-circuit"
     statement: "One slow node_event_emit_effect publish no longer spools healthy publishes: the publish-backoff marker is an on-disk circuit for the publish identity that counts consecutive failed invocations, opens only at unreachable_failure_threshold (default 3) for unreachable_backoff_seconds (default 30, 0 disables), probes after the window, closes on any successful publish or drained backlog record, ignores quarantines, reads an old-shape, malformed or other-identity marker as no failures, retries a clean circuit's retryable current-event publish once within the shared 9 s budget, and reports publish_failure_count and publish_circuit_open on ModelEmitResult."
     acceptance:
@@ -3616,6 +3621,20 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -n 0 -p no:randomly --no-cov -k 'source_order and days1'"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-cc0130-committed-contract"
+    description: "The real ticket-contract prerequisite handler reads OMN-13213 from the product commit and checks its static prerequisites. The merge-base commit lacks that blob even when the verifier overlays the migrated file into its working tree."
+    source: "manual"
+    binds_ac: ["AC4301"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn17427_cc0130_committed_contract.py -q -p no:randomly --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-cc0130-deploy-probe"
+    description: "Hosted deploy probe for the migrated contract artifact. The real handler resolves the committed OMN-13213 contract without network access, external receipts or services; it refuses at the merge base where the Git blob is absent."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_omn17427_cc0130_committed_contract.py -q -p no:randomly --no-cov --refuse-skips"
   - id: "dod-omn17427-ac188-in-process-outcome-verdict"
     description: "The in-process evidence terminal of an accepted run publishes operational_outcome completed and content_verdict usable, and the delegation projection copies both onto the row; a failed run's terminal names neither. At the merge base the accepted-run test fails with KeyError operational_outcome."
     source: "manual"
