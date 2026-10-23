@@ -1423,7 +1423,12 @@ class HandlerProjectionDelegation:
         # passed run's verdict. The terminal carries every rung on its ladder
         # and owns the row; the verdict only fills a blank ``score_source``.
         correlation_id = str(event.correlation_id)
-        existing = db.query(TABLE, {CONFLICT_KEY: correlation_id})
+        # Probe under the write tenant, as ``_preserve_existing_evidence`` does
+        # (OMN-20651): an unscoped read under FORCE RLS sees no row, so the
+        # verdict would never fill its terminal's blank ``score_source``.
+        existing = db.query(
+            TABLE, {CONFLICT_KEY: correlation_id, "tenant_id": write_tenant}
+        )
         fill = rung_verdict_fill(
             existing[0] if existing else None,
             {"score_source": event.score_source or None},

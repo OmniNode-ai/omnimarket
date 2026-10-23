@@ -113,6 +113,7 @@ def _verdict(correlation_id: str) -> ModelQualityGateResult:
         passed=True,
         quality_score=1.0,
         actual_score=1.0,
+        score_source="deterministic_acceptance",
     )
 
 
@@ -244,9 +245,10 @@ class TestTheDriftedSyncFixtureIsFaithful:
 
 @pytest.mark.integration
 class TestTheDeployedVerdictLandsOnTheDriftedLane:
-    def test_a_verdict_with_no_prior_row_writes(
+    def test_a_verdict_with_no_prior_row_writes_nothing(
         self, drifted_sync_adapter: tuple[_SyncAsyncpgAdapter, Any]
     ) -> None:
+        """OMN-19448 rule 1: a rung's verdict never creates the run row."""
         adapter, (loop, conn, _schema) = drifted_sync_adapter
         correlation_id = str(uuid4())
         result = _handler().project_quality_gate_result(
@@ -255,19 +257,14 @@ class TestTheDeployedVerdictLandsOnTheDriftedLane:
             tenant_identity=_TENANT_UUID,
             event_timestamp=_EVENT_TIMESTAMP,
         )
-        assert result.rows_upserted == 1
+        assert result.rows_upserted == 0
         row = loop.run_until_complete(
             conn.fetchrow(
-                f"SELECT task_type, delegated_to, timestamp, quality_gate_passed "
-                f"FROM {TABLE} WHERE correlation_id = $1",
+                f"SELECT 1 FROM {TABLE} WHERE correlation_id = $1",
                 correlation_id,
             )
         )
-        assert row is not None
-        assert row["task_type"] == ""
-        assert row["delegated_to"] == ""
-        assert row["timestamp"] == _EVENT_TIMESTAMP
-        assert row["quality_gate_passed"] is True
+        assert row is None
 
     def test_a_verdict_after_its_terminal_never_erases_the_recorded_values(
         self, drifted_sync_adapter: tuple[_SyncAsyncpgAdapter, Any]
@@ -289,7 +286,7 @@ class TestTheDeployedVerdictLandsOnTheDriftedLane:
         )
         row = loop.run_until_complete(
             conn.fetchrow(
-                f"SELECT task_type, delegated_to, quality_gate_passed "
+                f"SELECT task_type, delegated_to, score_source "
                 f"FROM {TABLE} WHERE correlation_id = $1",
                 correlation_id,
             )
@@ -299,8 +296,9 @@ class TestTheDeployedVerdictLandsOnTheDriftedLane:
         assert row["delegated_to"] == "node_delegate_skill_orchestrator"
         # Negative control on the insert-only set: the verdict's OWN fact must
         # still have been applied, or "insert-only" has simply widened to
-        # everything and made every verdict after the first a no-op.
-        assert row["quality_gate_passed"] is True
+        # everything and made every verdict after the first a no-op. Under
+        # OMN-19448 rule 1 that fact is a blank score_source and nothing else.
+        assert row["score_source"] == "deterministic_acceptance"
 
     def test_a_later_terminal_overwrites_the_placeholders(
         self, drifted_sync_adapter: tuple[_SyncAsyncpgAdapter, Any]

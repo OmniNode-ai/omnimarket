@@ -391,7 +391,8 @@ def _fetch_row(admin: Any, correlation_id: str) -> dict[str, Any] | None:
     with admin.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
             f"SELECT tenant_id, model_name, tokens_output, task_type, "
-            f"quality_gate_passed FROM {TABLE} WHERE correlation_id = %s",
+            f"quality_gate_passed, quality_gate_detail, score_source "
+            f"FROM {TABLE} WHERE correlation_id = %s",
             (correlation_id,),
         )
         record = cur.fetchone()
