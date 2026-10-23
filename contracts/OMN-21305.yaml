@@ -43,9 +43,33 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn21305-deploy-probe"
-    description: "Deploy probe against the checked-out package on the hosted runner: a refused delegation writes its failed row, and terminal event publishing cancels slow cleanup within the shared deadline. Uses local stores and an injected broker; no lane services or credentials are required."
+    description: "Hosted-runner deploy readback: dispatch the installed event emitter through the in-process ONEX runtime in its declared spool-only mode, require a successful typed receipt and exactly one persisted event for its session. The regression probe also checks refusal rows, safe YAML parsing and the terminal cleanup deadline. No lane services or credentials are required."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_routing_refusal_publishes_a_terminal_omn19919.py tests/unit/nodes/node_event_emit_effect/test_session_deadline_omn17427.py tests/unit/nodes/node_event_emit_effect/test_emit_yaml_loading_omn21305.py -q --cov=src --cov-report="
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          printf '%s\n' '{"event_type":"session.started","payload":{"session_id":"omn21305-deploy-probe"}}' > "$probe_dir/input.json";
+          uv sync --locked;
+          env PYTHONDONTWRITEBYTECODE=1 ONEX_EMIT_EFFECT_SPOOL_ONLY=1 ONEX_EMIT_EFFECT_SPOOL_DIR="$probe_dir/spool" .venv/bin/onex node node_event_emit_effect --input "$probe_dir/input.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt > "$probe_dir/receipt.json";
+          .venv/bin/python - "$probe_dir" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          receipt = json.loads((root / "receipt.json").read_text())
+          assert receipt["status"] == "success", receipt
+          assert receipt["exit_code"] == 0, receipt
+          assert receipt["result"]["spool_only"] is True, receipt
+          records = [json.loads(p.read_text()) for p in (root / "spool").glob("*.json")]
+          assert len(records) == 1, records
+          assert records[0]["event_id"] == receipt["result"]["event_id"], records
+          assert records[0]["payload"]["session_id"] == "omn21305-deploy-probe", records
+          print(json.dumps({"run_id": receipt["run_id"], "status": receipt["status"], "spooled": len(records)}))
+          PY
         cwd: "${OMNI_HOME}/omnimarket"
