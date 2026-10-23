@@ -1,0 +1,55 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21349"
+title: "The local SQLite store opens on a machine whose delegate-skill claims table predates the delivery_id column"
+summary: "A store step ordered before the pending-claims index step moves an old-shape delegate_skill_command_claims table (no delivery_id) aside under a legacy name and creates the current shape, in the step's own write transaction. No old row is dropped or given a delivery_id, because no mapping from an old row to a delivery_id is defined."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-claims-table-old-shape"
+    statement: |-
+      Opening a local store whose claims table has the older columns (correlation_id, tenant_id, claimed_at, terminal_json) no longer fails; the old rows stay in a renamed table and both claims indexes are built on the current-shape table.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: a store step ordered before the pending-claims index migrates an old-shape delegate_skill_command_claims table to the current shape inside one transaction, keeping the old rows in a renamed table -- falsifier: uv run pytest tests -k claims_table_old_shape
+      - id: "AC2"
+        statement: |-
+          AC2: opening a store that already has the current shape is unchanged and the pending-claims index still exists after the step -- falsifier: uv run pytest tests -k claims_pending_index
+      - id: "AC3"
+        statement: |-
+          AC3: the recorded old-table shape from h200 (four columns, no delivery_id) is the fixture, and the test fails on the unfixed code -- falsifier: uv run pytest tests -k claims_table_old_shape
+evidence_requirements:
+  - kind: "tests"
+    description: "The old-shape and pending-index claims tests pass."
+    command: "uv run pytest tests/unit/projection -q -p no:randomly --no-cov -k 'claims_table_old_shape or claims_pending_index'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21349-old-shape-migrates"
+    description: "A store built with the four old columns and one row opens, the old row is kept in the renamed legacy table, the current-shape table and both claims indexes exist, and a second open changes nothing. The same tests fail on the unfixed adapter at e00c6bc53 (four of the five), which carries the same index step as a5cc39667."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/projection/test_omn21349_claims_table_old_shape.py -q -p no:randomly --no-cov -k claims_table_old_shape"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21349-pending-index-unchanged"
+    description: "A current-shape store gains no legacy table and keeps the pending-claims index; the existing pending-index tests pass unchanged."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/projection -q -p no:randomly --no-cov -k claims_pending_index"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21349-incident-fixture"
+    description: "The fixture is the h200 shape: correlation_id, tenant_id, claimed_at and terminal_json with no delivery_id. The test module's first test opens it through SqliteDatabaseAdapter and fails without the step."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/projection/test_omn21349_claims_table_old_shape.py -q -p no:randomly --no-cov -k claims_table_old_shape_preserved_and_reopened"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
