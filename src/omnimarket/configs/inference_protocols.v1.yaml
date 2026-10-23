@@ -35,6 +35,7 @@ profiles:
       - "document"
       - "documentation"
       - "summarization"
+      - "context_compaction"
       - "review"
       - "planning"
       - "test"
@@ -97,6 +98,7 @@ profiles:
       - "document"
       - "documentation"
       - "summarization"
+      - "context_compaction"
       - "review"
       - "planning"
       - "test"
@@ -516,6 +518,7 @@ profiles:
       - "review"
       - "code_review"
       - "summarization"
+      - "context_compaction"
       - "agent_delegation"
       - "escalation"
     request_options:

@@ -88,6 +88,7 @@ from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction 
     reduce_delegation_attempts,
 )
 from omnimarket.nodes.node_projection_delegation.models.model_terminal_precedence import (
+    apply_terminal_precedence,
     fold_terminal_ownership,
 )
 from omnimarket.pricing import build_premium_counterfactual, resolve_tier_cost
@@ -1599,6 +1600,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             tenant=tenant,
         )
         if not existing_rows:
+            # OMN-19448: same first-write reconcile as the sync writer.
+            apply_terminal_precedence({}, row)
             return
         existing = existing_rows[0]
         # OMN-17427: same terminal ownership decision as the sync preserve step.
