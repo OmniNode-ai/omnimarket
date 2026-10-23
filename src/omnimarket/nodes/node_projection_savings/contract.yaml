@@ -221,6 +221,10 @@ projection_api:
         # OMN-20717: migration 096 appends the count of delegations no cost
         # model priced, so a total that adds them in as 0 says how many it holds.
         - unpriced_call_count
+        # Measured monetary population and the excluded run classes.
+        - measured_run_count
+        - estimated_run_count
+        - unknown_run_count
       json_columns:
         - sessions
       freshness_column: latest_projection_updated_at
@@ -311,6 +315,8 @@ projection_api:
         # OMN-20008: measured totals exclude these persisted provenance classes.
         - estimated_run_count
         - unknown_run_count
+        # All combined runs, including those excluded from monetary totals.
+        - run_count
       json_columns:
         - rows
         - recent_runs

@@ -40,9 +40,7 @@ TENANT_B = uuid.UUID("22222222-2222-4222-8222-222222222222")
 WHEN = datetime(2026, 10, 3, 12, tzinfo=UTC)
 VIEW = "projection_cost_savings_overview"
 FORWARD = (
-    _NODES
-    / "node_projection_savings/migrations"
-    / "094_savings_overview_measured_provenance.sql"
+    _NODES / "node_projection_savings/migrations" / "097_savings_overview_all_runs.sql"
 )
 ORIGINAL_COLUMNS = [
     "window",
@@ -141,7 +139,9 @@ async def test_unmeasured_additions_do_not_move_any_measured_monetary_total(
     assert before["total_cost_usd"] == 1, "positive control: measured cost exists"
     assert before["total_savings_usd"] == 2
     assert after["savings_rate"] == before["savings_rate"]
-    assert after["tokens_total"] == before["tokens_total"]
+    # All-run token totals under OMN-21206 AC1; monetary totals stay measured.
+    assert before["tokens_total"] == 200
+    assert after["tokens_total"] == 800
     assert after["measured_run_count"] == 1
     assert after["estimated_run_count"] == (1 if basis == "estimated" else 0)
     assert after["unknown_run_count"] == (0 if basis == "estimated" else 1)
@@ -185,7 +185,7 @@ async def test_model_monetary_totals_exclude_estimated_and_unknown_runs(
     assert models[0]["cost_usd"] == 1
     assert models[0]["baseline_cost_usd"] == 3
     assert models[0]["savings_usd"] == 2
-    assert models[0]["tokens_total"] == 200
+    assert models[0]["tokens_total"] == 600
 
 
 async def test_no_measured_runs_are_missing_money_not_a_measured_zero(
@@ -269,7 +269,12 @@ async def test_columns_are_append_only_and_the_view_keeps_invoker_rights(
             VIEW,
         )
     ]
-    assert columns == [*ORIGINAL_COLUMNS, "estimated_run_count", "unknown_run_count"]
+    assert columns == [
+        *ORIGINAL_COLUMNS,
+        "estimated_run_count",
+        "unknown_run_count",
+        "run_count",
+    ]
     options = await views.fetchval(
         "SELECT c.reloptions FROM pg_class c JOIN pg_namespace n "
         "ON c.relnamespace = n.oid WHERE c.relname = $1 "

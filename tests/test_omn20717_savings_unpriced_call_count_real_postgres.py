@@ -179,7 +179,13 @@ async def test_the_count_is_appended_and_the_view_still_reads_as_its_invoker(
             SAVINGS,
         )
     ]
-    assert columns == [*EXISTING_COLUMNS, "unpriced_call_count"]
+    assert columns == [
+        *EXISTING_COLUMNS,
+        "unpriced_call_count",
+        "measured_run_count",
+        "estimated_run_count",
+        "unknown_run_count",
+    ]
     options = await views.fetchval(
         "SELECT c.reloptions FROM pg_class c JOIN pg_namespace n"
         " ON n.oid = c.relnamespace WHERE n.nspname = $1 AND c.relname = $2",
