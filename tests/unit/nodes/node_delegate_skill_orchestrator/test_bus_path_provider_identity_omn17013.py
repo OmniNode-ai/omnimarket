@@ -479,7 +479,9 @@ async def test_v2_bus_terminal_identity_reaches_receipt(
         assert response.quality_score == 0.95
         assert response.score_vs_required_bar == "at_or_above_bar"
     else:
-        assert response.error_message == terminal.terminal_failure_reason
+        # OMN-21264: a run handed back to its caller wraps the reason in the
+        # sentence that tells the caller to do the task; it is still there.
+        assert terminal.terminal_failure_reason in response.error_message
 
 
 @pytest.mark.unit

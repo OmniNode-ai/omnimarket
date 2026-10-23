@@ -87,6 +87,14 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn19988_local_environment_writer_real_postgres.py -q --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn19988-ac1-runtime-tenant-probe-budget"
+    description: "AC1's mode 2 rows reach the store from a stock compose bundle, which runs no onex local init: the observer reports for the runtime's configured tenant (a canonical uuid or a registry slug; anything else, or one that disagrees with an install identity, refuses and probes nothing), and the writer confirms that tenant against tenant_registry_mirror inside the write transaction, refusing an unknown one before anything is written. The HTTP probe's budget covers the network exchange only, so slow client construction does not read a running service as DOWN, while a server that never answers still reads DOWN. At the merge base the observer refuses every tick with identity_absent, the writer does not read the registry, and the client is built inside the budget, so these tests fail there."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19988_observer_runtime_tenant.py tests/test_omn19988_local_environment_writer_registry.py tests/test_omn19988_prober_budget_excludes_client_setup.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
   - id: "dod-omn19988-environment-writer-deploy-probe"
     description: "Deploy probe. The local environment writer GitHub serves at the checked-out commit exists; the probe reads handler_local_environment_writer.py from GitHub at that commit and exits nonzero on a tree without its writer class (the file is absent at the merge base), so it fails there."
     source: "manual"

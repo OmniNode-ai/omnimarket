@@ -168,8 +168,13 @@ async def test_handler_maps_structured_truth_and_history_as_best_effort() -> Non
     assert response.required_quality_bar == 0.85
     assert response.score_vs_required_bar is EnumQualityScoreComparison.AT_OR_ABOVE_BAR
     assert response.failed_acceptance_criteria == ("missing independent evidence",)
+    # OMN-21264: no attempt was accepted, so the run goes back to its caller;
+    # the quota refusal that decided it stays readable as the reason.
     assert response.terminal_failure_cause is (
-        EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
+        EnumDelegationTerminalFailureCause.RETURNED_TO_CALLER
+    )
+    assert response.terminal_failure_reason == (
+        EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED.value
     )
     assert response.attempts_count == 3
     assert len(response.attempts) == 1

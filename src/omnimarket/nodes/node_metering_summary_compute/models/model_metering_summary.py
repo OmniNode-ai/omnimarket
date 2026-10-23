@@ -155,6 +155,14 @@ class ModelMeteringRecord(BaseModel):
             "reconciliation only; the baseline behind it is not on the record."
         ),
     )
+    returned_to_caller: bool = Field(
+        default=False,
+        description=(
+            "OMN-21264: every model the developer chose failed and the session "
+            "did the task. Such a run saved nothing, which is a measurement: it "
+            "counts as measured with zero savings, never as unknown."
+        ),
+    )
 
     @property
     def has_tokens(self) -> bool:
@@ -168,6 +176,8 @@ class ModelMeteringRecord(BaseModel):
     @property
     def measurement(self) -> EnumMeteringMeasurement:
         """This run's measurement class — the AC3 unknown/zero distinction."""
+        if self.returned_to_caller:
+            return EnumMeteringMeasurement.MEASURED
         if not self.has_tokens:
             return EnumMeteringMeasurement.UNKNOWN_TOKENS
         if self.spend_usd is None:
