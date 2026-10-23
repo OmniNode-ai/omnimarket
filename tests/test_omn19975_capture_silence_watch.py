@@ -18,6 +18,9 @@ from uuid import UUID
 
 import pytest
 import yaml
+from omnibase_core.protocols.runtime.protocol_local_runtime_bus import (
+    ProtocolLocalRuntimeBus,
+)
 from pydantic import SecretStr
 
 from omnimarket.models.liveness.model_automation_liveness import (
@@ -177,7 +180,8 @@ def test_classifier_states(
         assert unknown[0].error
 
 
-def test_silent_actor_raises_one_alarm_with_episode_key(
+@pytest.mark.asyncio
+async def test_silent_actor_raises_one_alarm_with_episode_key(
     single_source_contract: Path,
 ) -> None:
     publisher, reader, clock = _Publisher(), _Reader(), _Clock()
@@ -188,7 +192,7 @@ def test_silent_actor_raises_one_alarm_with_episode_key(
         contract_path=single_source_contract,
         host="test-host",
     )
-    result = handler.handle(ModelCaptureWatchTrigger(correlation_id=CORRELATION))
+    result = await handler.handle(ModelCaptureWatchTrigger(correlation_id=CORRELATION))
     calls = publisher.matching("slack-publish")
     assert len(calls) == 1
     raw = yaml.safe_load(single_source_contract.read_text())
@@ -215,16 +219,17 @@ def test_silent_actor_raises_one_alarm_with_episode_key(
         == result
     )
     clock.value += 600
-    second = handler.handle(ModelCaptureWatchTrigger())
+    second = await handler.handle(ModelCaptureWatchTrigger())
     assert second.deliveries[0].idempotency_key == command.idempotency_key
 
 
-def test_stale_source_raises_one_source_alarm_not_per_actor(
+@pytest.mark.asyncio
+async def test_stale_source_raises_one_source_alarm_not_per_actor(
     single_source_contract: Path,
 ) -> None:
     reader = _Reader(source_age=2000, actors=("a", "b", "c"))
     publisher = _Publisher()
-    result = HandlerCaptureSilenceWatch(
+    result = await HandlerCaptureSilenceWatch(
         reader=reader,
         event_publisher=publisher,
         clock=_Clock(),
@@ -251,9 +256,10 @@ def test_stale_source_raises_one_source_alarm_not_per_actor(
     assert result.deliveries[0].actor is None
 
 
-def test_actor_outside_active_window_is_not_read() -> None:
+@pytest.mark.asyncio
+async def test_actor_outside_active_window_is_not_read() -> None:
     reader = _Reader(actors=())
-    result = HandlerCaptureSilenceWatch(
+    result = await HandlerCaptureSilenceWatch(
         reader=reader,
         event_publisher=_Publisher(),
         clock=_Clock(),
@@ -267,7 +273,8 @@ def test_actor_outside_active_window_is_not_read() -> None:
     assert all(v.scope == "source" for v in result.verdicts)
 
 
-def test_heartbeat_published_every_tick() -> None:
+@pytest.mark.asyncio
+async def test_heartbeat_published_every_tick() -> None:
     publisher, clock = _Publisher(), _Clock()
     handler = HandlerCaptureSilenceWatch(
         reader=_Reader(actor_age=0),
@@ -277,7 +284,7 @@ def test_heartbeat_published_every_tick() -> None:
         pid=123,
     )
     for _ in range(2):
-        result = handler.handle(ModelCaptureWatchTrigger())
+        result = await handler.handle(ModelCaptureWatchTrigger())
         assert result.heartbeat_published
         assert result.heartbeat_error is None
         assert all(v.state is EnumCaptureWatchState.FRESH for v in result.verdicts)
@@ -308,12 +315,13 @@ def test_heartbeat_published_every_tick() -> None:
     assert not publisher.matching("slack-publish")
 
 
-def test_reader_failure_is_unknown_never_alarms(
+@pytest.mark.asyncio
+async def test_reader_failure_is_unknown_never_alarms(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     publisher = _Publisher()
     with caplog.at_level(logging.ERROR):
-        result = HandlerCaptureSilenceWatch(
+        result = await HandlerCaptureSilenceWatch(
             reader=_Reader(error="database dark"),
             event_publisher=publisher,
             clock=_Clock(),
@@ -326,11 +334,12 @@ def test_reader_failure_is_unknown_never_alarms(
     assert result.heartbeat_published
 
 
-def test_publish_failure_is_recorded_not_raised(
+@pytest.mark.asyncio
+async def test_publish_failure_is_recorded_not_raised(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     with caplog.at_level(logging.ERROR):
-        result = HandlerCaptureSilenceWatch(
+        result = await HandlerCaptureSilenceWatch(
             reader=_Reader(),
             event_publisher=_Publisher(error="bus down"),
             clock=_Clock(),
@@ -344,11 +353,12 @@ def test_publish_failure_is_recorded_not_raised(
     assert "bus down" in caplog.text
 
 
-def test_contract_bounds_change_behaviour(
+@pytest.mark.asyncio
+async def test_contract_bounds_change_behaviour(
     single_source_contract: Path, tmp_path: Path
 ) -> None:
     reader = _Reader(actor_age=100)
-    original = HandlerCaptureSilenceWatch(
+    original = await HandlerCaptureSilenceWatch(
         reader=reader,
         event_publisher=_Publisher(),
         clock=_Clock(),
@@ -357,7 +367,7 @@ def test_contract_bounds_change_behaviour(
     ).handle(ModelCaptureWatchTrigger())
     raw = yaml.safe_load(single_source_contract.read_text())
     raw["capture_sources"][0]["actor_silence_seconds"] = 99
-    modified = HandlerCaptureSilenceWatch(
+    modified = await HandlerCaptureSilenceWatch(
         reader=reader,
         event_publisher=_Publisher(),
         clock=_Clock(),
@@ -478,7 +488,8 @@ def test_config_fails_closed(tmp_path: Path, block: str, value: object) -> None:
         load_capture_watch_config(_contract_copy(tmp_path, raw))
 
 
-def test_empty_source_renotifies_but_timestamp_episode_does_not(
+@pytest.mark.asyncio
+async def test_empty_source_renotifies_but_timestamp_episode_does_not(
     single_source_contract: Path,
 ) -> None:
     clock = _Clock()
@@ -491,10 +502,16 @@ def test_empty_source_renotifies_but_timestamp_episode_does_not(
             contract_path=single_source_contract,
             host="test-host",
         )
-        first = handler.handle(ModelCaptureWatchTrigger()).deliveries[0].idempotency_key
+        first = (
+            (await handler.handle(ModelCaptureWatchTrigger()))
+            .deliveries[0]
+            .idempotency_key
+        )
         clock.value += policy.renotify_after_seconds
         second = (
-            handler.handle(ModelCaptureWatchTrigger()).deliveries[0].idempotency_key
+            (await handler.handle(ModelCaptureWatchTrigger()))
+            .deliveries[0]
+            .idempotency_key
         )
         assert (first != second) is (age is None)
         if age is None:
@@ -515,7 +532,8 @@ def test_dsn_uses_only_contract_identity(monkeypatch: pytest.MonkeyPatch) -> Non
     assert resolve_reads_source_dsn(source) == "test-dsn"
 
 
-def test_missing_dsn_is_lazy_unknown_and_recovers(
+@pytest.mark.asyncio
+async def test_missing_dsn_is_lazy_unknown_and_recovers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     binding = load_capture_watch_config(CONTRACT_PATH)[1]
@@ -523,18 +541,19 @@ def test_missing_dsn_is_lazy_unknown_and_recovers(
     handler = HandlerCaptureSilenceWatch(
         event_publisher=_Publisher(), clock=_Clock(), host="test-host"
     )
-    first = handler.handle(ModelCaptureWatchTrigger())
+    first = await handler.handle(ModelCaptureWatchTrigger())
     assert all(v.state is EnumCaptureWatchState.UNKNOWN for v in first.verdicts)
     assert first.heartbeat_published
     monkeypatch.setenv(binding.dsn_env, "test-dsn")
     factory = MagicMock(return_value=_Reader(actor_age=0))
     monkeypatch.setattr(HANDLER_MODULE, "PostgresCaptureWatchReader", factory)
-    second = handler.handle(ModelCaptureWatchTrigger())
+    second = await handler.handle(ModelCaptureWatchTrigger())
     factory.assert_called_once_with(dsn="test-dsn")
     assert all(v.state is EnumCaptureWatchState.FRESH for v in second.verdicts)
 
 
-def test_unresolved_channel_records_failure_and_keeps_heartbeat(
+@pytest.mark.asyncio
+async def test_unresolved_channel_records_failure_and_keeps_heartbeat(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     monkeypatch.setattr(
@@ -542,7 +561,7 @@ def test_unresolved_channel_records_failure_and_keeps_heartbeat(
     )
     publisher = _Publisher()
     with caplog.at_level(logging.ERROR):
-        result = HandlerCaptureSilenceWatch(
+        result = await HandlerCaptureSilenceWatch(
             reader=_Reader(),
             event_publisher=publisher,
             clock=_Clock(),
@@ -554,11 +573,12 @@ def test_unresolved_channel_records_failure_and_keeps_heartbeat(
     assert result.heartbeat_published
 
 
-def test_one_dark_source_does_not_abort_the_rest() -> None:
+@pytest.mark.asyncio
+async def test_one_dark_source_does_not_abort_the_rest() -> None:
     reader = MagicMock()
     reader.read.side_effect = [RuntimeError("first source dark"), _Reader().observation]
     publisher = _Publisher()
-    result = HandlerCaptureSilenceWatch(
+    result = await HandlerCaptureSilenceWatch(
         reader=reader, event_publisher=publisher, clock=_Clock(), host="test-host"
     ).handle(ModelCaptureWatchTrigger())
     assert [v.state for v in result.verdicts] == [
@@ -631,7 +651,8 @@ def test_cli_failure_exits_three(
 @pytest.mark.parametrize(
     "broker_variable", ["KAFKA_BROKERS", "KAFKA_BOOTSTRAP_SERVERS"]
 )
-def test_cli_kafka_publishes_immediately_with_auth_and_namespace(
+@pytest.mark.asyncio
+async def test_cli_kafka_publishes_immediately_with_auth_and_namespace(
     monkeypatch: pytest.MonkeyPatch, broker_variable: str
 ) -> None:
     factory = MagicMock()
@@ -654,7 +675,7 @@ def test_cli_kafka_publishes_immediately_with_auth_and_namespace(
     monkeypatch.setattr(cli, "apply_topic_namespace", lambda topic: f"test.{topic}")
     topic = yaml.safe_load(CONTRACT_PATH.read_text())["terminal_event"]
     payload = b'{"test": true}'
-    cli._publish(topic, payload, dry_run=False)
+    await cli._publish(topic, payload, dry_run=False)
     auth.assert_called_once_with()
     factory.assert_called_once_with(
         bootstrap_servers="test-broker:9092", security_protocol="SASL_SSL"
@@ -662,3 +683,68 @@ def test_cli_kafka_publishes_immediately_with_auth_and_namespace(
     producer.start.assert_awaited_once_with()
     producer.send_and_wait.assert_awaited_once_with(f"test.{topic}", payload)
     producer.stop.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reader_error", [None, "database dark"])
+async def test_runtime_bus_publishes_heartbeat_and_terminal(
+    reader_error: str | None,
+) -> None:
+    from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+
+    bus = EventBusInmemory()
+    await bus.start()
+    seen: list[tuple[str, bytes]] = []
+    raw = yaml.safe_load(CONTRACT_PATH.read_text())
+
+    async def receive(message: Any) -> None:
+        seen.append((message.topic, message.value))
+
+    try:
+        for topic in raw["event_bus"]["publish_topics"]:
+            await bus.subscribe(
+                topic, on_message=receive, group_id="capture-watch-test"
+            )
+        result = await HandlerCaptureSilenceWatch(
+            reader=_Reader(actor_age=0, error=reader_error),
+            event_bus=bus,
+            clock=_Clock(),
+            host="test-host",
+        ).handle(ModelCaptureWatchTrigger())
+        assert result.heartbeat_published
+        assert result.deliveries == ()
+        assert all(
+            v.state == ("UNKNOWN" if reader_error else "FRESH") for v in result.verdicts
+        )
+        heartbeats = [
+            payload for topic, payload in seen if "automation-heartbeat" in topic
+        ]
+        assert len(heartbeats) == 1
+        assert (
+            ModelAutomationHeartbeat.model_validate_json(heartbeats[0]).process_id
+            == "capture-silence-watch"
+        )
+        terminal = [
+            payload for topic, payload in seen if topic == raw["terminal_event"]
+        ]
+        assert len(terminal) == 1
+        assert ModelCaptureWatchEvaluation.model_validate_json(terminal[0]) == result
+    finally:
+        await bus.close()
+
+
+@pytest.mark.asyncio
+async def test_runtime_bus_publish_failure_is_recorded() -> None:
+    bus = MagicMock(spec=ProtocolLocalRuntimeBus)
+    bus.publish = AsyncMock(side_effect=RuntimeError("runtime bus dark"))
+    result = await HandlerCaptureSilenceWatch(
+        reader=_Reader(), event_bus=bus, clock=_Clock(), host="test-host"
+    ).handle(ModelCaptureWatchTrigger())
+    assert len(result.deliveries) == 2
+    assert all(
+        not d.published and "runtime bus dark" in (d.error or "")
+        for d in result.deliveries
+    )
+    assert not result.heartbeat_published
+    assert "runtime bus dark" in (result.heartbeat_error or "")
+    assert bus.publish.await_count == 4

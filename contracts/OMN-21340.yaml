@@ -54,14 +54,33 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-omn21340-deploy-probe"
-    description: "Hosted-runner deploy check: the node imports from the installed package, its contract loads with both capture sources, and a dry-run tick with no database DSN completes as UNKNOWN (exit 3) with an evaluation on stdout and a heartbeat line, never a crash. No lane services or credentials are required."
+    description: "Hosted-runner deploy probe: dispatch the installed node through ONEX with its in-memory runtime bus and the database DSN absent. Require a successful typed receipt, exactly two UNKNOWN source verdicts, no alarms, and a published heartbeat. This exercises runtime bus injection without lane credentials or services; it does not claim a production rollout."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: |
-          set -u;
-          uv sync --locked;
-          out="$(env -u OMNINODE_INTERNAL_DB_URL -u KAFKA_BROKERS -u KAFKA_BOOTSTRAP_SERVERS .venv/bin/python -m omnimarket.nodes.node_capture_silence_watch_effect tick --dry-run 2>/dev/null)"; rc=$?;
-          test "$rc" -eq 3;
-          printf '%s' "$out" | .venv/bin/python -c 'import json,sys; e=json.loads(sys.stdin.read()); ids={v["source_id"] for v in e["verdicts"]}; assert ids=={"ledger_rows","hook_events"}, ids; assert all(v["state"]=="UNKNOWN" for v in e["verdicts"]), e; print("deploy-probe ok", sorted(ids))'
+          set -eu;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          probe_python="$(uv run --locked python -c 'import sys; print(sys.executable)')";
+          probe_bin="$(dirname "$probe_python")";
+          printf '%s\n' '{}' > "$probe_dir/input.json";
+          env -u OMNINODE_INTERNAL_DB_URL COMPOSE_PROJECT_NAME=landing-l15835-lab PYTHONDONTWRITEBYTECODE=1 "$probe_bin/onex" node node_capture_silence_watch_effect --input "$probe_dir/input.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+          "$probe_python" -c '
+          import json
+          import sys
+          from pathlib import Path
+          receipt = json.loads(Path(sys.argv[1]).read_text())
+          assert receipt["status"] == "success", receipt
+          assert receipt["exit_code"] == 0, receipt
+          result = receipt["result"]
+          verdicts = result["verdicts"]
+          assert len(verdicts) == 2, verdicts
+          assert {v["source_id"] for v in verdicts} == {"ledger_rows", "hook_events"}, verdicts
+          assert all(v["scope"] == "source" and v["state"] == "UNKNOWN" for v in verdicts), verdicts
+          assert result["deliveries"] == [], result
+          assert result["heartbeat_published"] is True, result
+          assert result["heartbeat_error"] is None, result
+          print(json.dumps({"run_id": receipt["run_id"], "status": receipt["status"], "unknown_sources": len(verdicts), "heartbeat_published": result["heartbeat_published"]}))
+          ' "$probe_dir/receipt.json"
         cwd: "${OMNI_HOME}/omnimarket"

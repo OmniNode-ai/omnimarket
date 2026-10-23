@@ -10,7 +10,7 @@ import json
 import os
 import socket
 import sys
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Never
 
 from omnimarket.nodes.node_capture_silence_watch_effect.handlers.handler_capture_silence_watch import (
@@ -29,19 +29,19 @@ class _Parser(argparse.ArgumentParser):
 
 
 def build_handler(
-    *, event_publisher: Callable[[str, bytes], None], host: str
+    *, event_publisher: Callable[[str, bytes], Awaitable[None] | None], host: str
 ) -> HandlerCaptureSilenceWatch:
     """Keep timer assembly overridable by hermetic CLI callers."""
     return HandlerCaptureSilenceWatch(event_publisher=event_publisher, host=host)
 
 
-def _publish(topic: str, payload: bytes, *, dry_run: bool) -> None:
+async def _publish(topic: str, payload: bytes, *, dry_run: bool) -> None:
     """Send each event immediately, or print its topic-addressed JSON to stderr."""
     brokers = os.environ.get("KAFKA_BROKERS") or os.environ.get(
         "KAFKA_BOOTSTRAP_SERVERS"
     )
     if brokers and not dry_run:
-        asyncio.run(_publish_kafka(brokers, topic, payload))
+        await _publish_kafka(brokers, topic, payload)
     else:
         sys.stderr.write(
             json.dumps({"topic": topic, "payload": json.loads(payload)}) + "\n"
@@ -76,7 +76,7 @@ def main(argv: list[str] | None = None) -> int:
             ),
             host=os.environ.get("ONEX_HOST_NAME") or socket.gethostname(),
         )
-        result = handler.handle(ModelCaptureWatchTrigger())
+        result = asyncio.run(handler.handle(ModelCaptureWatchTrigger()))
     except (ValueError, OSError) as exc:
         sys.stderr.write(f"INDETERMINATE: {exc}\n")
         return 3

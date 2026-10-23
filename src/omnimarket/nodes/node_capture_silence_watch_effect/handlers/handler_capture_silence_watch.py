@@ -4,14 +4,20 @@
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 import logging
 import os
 import socket
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
+
+from omnibase_core.protocols.runtime.protocol_local_runtime_bus import (
+    ProtocolLocalRuntimeBus,
+)
 
 from omnimarket.inference.secret_store_resolver import resolve_api_key_loop_safe
 from omnimarket.nodes.contract_topics import (
@@ -61,7 +67,8 @@ class HandlerCaptureSilenceWatch:
     def __init__(
         self,
         *,
-        event_publisher: Callable[[str, bytes], None] | None = None,
+        event_publisher: Callable[[str, bytes], Awaitable[None] | None] | None = None,
+        event_bus: ProtocolLocalRuntimeBus | None = None,
         reader: ProtocolCaptureWatchReader | None = None,
         clock: Callable[[], float] | None = None,
         contract_path: Path | None = None,
@@ -83,6 +90,7 @@ class HandlerCaptureSilenceWatch:
         except ValueError as exc:
             raise CaptureWatchPolicyError(str(exc)) from exc
         self._publisher = event_publisher
+        self._event_bus = event_bus
         self._reader = reader
         self._clock = clock or time.time
         self._host = host or socket.gethostname()
@@ -95,7 +103,9 @@ class HandlerCaptureSilenceWatch:
             raise CaptureWatchPolicyError(f"contract must declare one {fragment} topic")
         return matches[0]
 
-    def handle(self, request: ModelCaptureWatchTrigger) -> ModelCaptureWatchEvaluation:
+    async def handle(
+        self, request: ModelCaptureWatchTrigger
+    ) -> ModelCaptureWatchEvaluation:
         """Return every finding and delivery attempt; emit progress on every tick."""
         epoch = self._clock()
         now = datetime.fromtimestamp(epoch, tz=UTC)
@@ -114,7 +124,9 @@ class HandlerCaptureSilenceWatch:
                         dsn=resolve_reads_source_dsn(self._binding)
                     )
                 observation = ModelCaptureObservation.model_validate(
-                    self._reader.read(source, active_since=active_since)
+                    await asyncio.to_thread(
+                        self._reader.read, source, active_since=active_since
+                    )
                 )
             except Exception as exc:
                 error = f"{type(exc).__name__}: {exc}"
@@ -131,13 +143,17 @@ class HandlerCaptureSilenceWatch:
                 )
             elif source_verdict.state is EnumCaptureWatchState.STALE:
                 deliveries.append(
-                    self._publish_alarm(source, source_verdict, epoch, correlation_id)
+                    await self._publish_alarm(
+                        source, source_verdict, epoch, correlation_id
+                    )
                 )
             else:
                 for verdict in findings[1:]:
                     if verdict.state is EnumCaptureWatchState.SILENT:
                         deliveries.append(
-                            self._publish_alarm(source, verdict, epoch, correlation_id)
+                            await self._publish_alarm(
+                                source, verdict, epoch, correlation_id
+                            )
                         )
         heartbeat = build_heartbeat(
             process_id=self._policy.heartbeat_process_id,
@@ -148,7 +164,7 @@ class HandlerCaptureSilenceWatch:
             progress_counter=int(epoch) // _SECONDS_PER_MINUTE,
             demand_count=sum(verdict.scope == "actor" for verdict in verdicts),
         )
-        heartbeat_error = self._publish_json(
+        heartbeat_error = await self._publish_json(
             self._heartbeat_topic,
             heartbeat.model_dump_json(exclude_none=True).encode("utf-8"),
         )
@@ -159,25 +175,30 @@ class HandlerCaptureSilenceWatch:
             heartbeat_published=heartbeat_error is None,
             heartbeat_error=heartbeat_error,
         )
-        self._publish_json(
+        await self._publish_json(
             self._terminal_topic, evaluation.model_dump_json().encode("utf-8")
         )
         return evaluation
 
-    def _publish_json(self, topic: str, payload: bytes) -> str | None:
+    async def _publish_json(self, topic: str, payload: bytes) -> str | None:
         try:
-            if self._publisher is None:
+            if self._publisher is not None:
+                pending = self._publisher(topic, payload)
+                if inspect.isawaitable(pending):
+                    await pending
+            elif self._event_bus is not None:
+                await self._event_bus.publish(topic, None, payload)
+            else:
                 raise RuntimeError(
-                    "no event_publisher was injected; event was not published"
+                    "no event_publisher or event_bus was injected; event was not published"
                 )
-            self._publisher(topic, payload)
         except Exception as exc:
             error = f"{type(exc).__name__}: {exc}"
             logger.error("Capture event NOT published: topic=%s error=%s", topic, error)
             return error
         return None
 
-    def _publish_alarm(
+    async def _publish_alarm(
         self,
         source: ModelCaptureSource,
         verdict: ModelCaptureWatchVerdict,
@@ -209,7 +230,7 @@ class HandlerCaptureSilenceWatch:
                 idempotency_key=key,
                 correlation_id=correlation_id,
             )
-            error = self._publish_json(
+            error = await self._publish_json(
                 self._slack_topic, command.model_dump_json().encode("utf-8")
             )
         except Exception as exc:
