@@ -1,0 +1,67 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21340"
+title: "A capture silence watch alarms when a principal's ledger rows or a host's hook events stop"
+summary: "Adds node_capture_silence_watch_effect. Per principal (the work_ledger_rows principal cell) and per host (claude_hook_events) it reads the newest row inside a 24-hour active window, raises one Slack command per silence episode for an actor silent past its source bound, one source alarm when a whole source is older than its bound, and publishes its own automation heartbeat every tick. It runs as a oneshot tick from a lab timer inside the dev lane's effects runtime."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21340-capture-silence-watch"
+    statement: |-
+      A principal or host that wrote in the active window and then stops, or a whole capture source that stops, raises one alarm per episode, and the watcher's own heartbeat makes its silence visible.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: an actor that wrote inside the active window and is silent past its source bound raises exactly one Slack command whose idempotency key names the actor and its newest-row epoch, and a second tick over the same silence raises the same key -- falsifier: uv run pytest tests/test_omn19975_capture_silence_watch.py -q -k silent_actor
+      - id: "AC2"
+        statement: |-
+          AC2: a whole source older than its bound raises one source alarm and no per-actor alarm, and an unreadable source raises none and is UNKNOWN -- falsifier: uv run pytest tests/test_omn19975_capture_silence_watch.py -q -k 'stale_source or reader_failure'
+      - id: "AC3"
+        statement: |-
+          AC3: every tick publishes one automation heartbeat for the watcher itself, including a tick whose reads fail -- falsifier: uv run pytest tests/test_omn19975_capture_silence_watch.py -q -k heartbeat
+evidence_requirements:
+  - kind: "tests"
+    description: "Hermetic unit tests over the pure classifier, the handler with a fake reader and publisher, the Postgres reader's SQL binding, the contract bounds and the CLI dry run."
+    command: "uv run pytest tests/test_omn19975_capture_silence_watch.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21340-silent-actor-one-alarm"
+    description: "A silent actor raises exactly one Slack command that validates as ModelSlackPublish, keyed by actor and newest-row epoch; a later tick over the same silence repeats the key."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19975_capture_silence_watch.py -q --no-cov -k silent_actor"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21340-stale-source-and-unknown"
+    description: "A stale source raises one source alarm and no per-actor alarms; an unreadable source is UNKNOWN and raises nothing."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19975_capture_silence_watch.py -q --no-cov -k 'stale_source or reader_failure'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21340-heartbeat-every-tick"
+    description: "Every tick publishes one ModelAutomationHeartbeat for the watcher, including a tick whose reads fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19975_capture_silence_watch.py -q --no-cov -k heartbeat"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21340-deploy-probe"
+    description: "Hosted-runner deploy check: the node imports from the installed package, its contract loads with both capture sources, and a dry-run tick with no database DSN completes as UNKNOWN (exit 3) with an evaluation on stdout and a heartbeat line, never a crash. No lane services or credentials are required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -u;
+          uv sync --locked;
+          out="$(env -u OMNINODE_INTERNAL_DB_URL -u KAFKA_BROKERS -u KAFKA_BOOTSTRAP_SERVERS .venv/bin/python -m omnimarket.nodes.node_capture_silence_watch_effect tick --dry-run 2>/dev/null)"; rc=$?;
+          test "$rc" -eq 3;
+          printf '%s' "$out" | .venv/bin/python -c 'import json,sys; e=json.loads(sys.stdin.read()); ids={v["source_id"] for v in e["verdicts"]}; assert ids=={"ledger_rows","hook_events"}, ids; assert all(v["state"]=="UNKNOWN" for v in e["verdicts"]), e; print("deploy-probe ok", sorted(ids))'
+        cwd: "${OMNI_HOME}/omnimarket"
