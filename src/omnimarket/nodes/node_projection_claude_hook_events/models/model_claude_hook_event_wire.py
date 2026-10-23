@@ -249,7 +249,8 @@ class ModelClaudeHookEventWire(BaseModel):
     schema_version: Literal["1.0.0"]
     hook_event_name: EnumClaudeHookEventName
     emitted_at: AwareDatetime
-    actor: Literal["claude"]
+    #: OMN-19513: the producer's hook_actor_envelope.yaml declares claude, codex, unknown.
+    actor: Literal["claude", "codex", "unknown"]
     claude_code_version: str | None = None
     #: OMN-17427: the hostname of the machine that emitted the event.
     host: str | None = Field(default=None, min_length=1)
