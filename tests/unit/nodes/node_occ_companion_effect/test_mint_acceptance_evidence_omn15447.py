@@ -127,10 +127,10 @@ def test_deployed_sanitizer_capture_replays_both_controls() -> None:
     """Replay the dated live capture; this test makes no deployment claim."""
     from omnibase_infra.utils import util_error_sanitization as sanitizer
 
-    capture = json.loads((_FIXTURES / "deployed_sanitizer.json").read_text())
+    capture = json.loads((_FIXTURES / "deployed_sanitizer_2026_10_23.json").read_text())
     assert capture["container"] == "omninode-runtime-effects"
     assert capture["host"] == "h201"
-    assert capture["observed_at"].startswith("2026-10-19T")
+    assert capture["observed_at"].startswith("2026-10-23T")
     assert (
         capture["sanitizer_sha256"]
         == hashlib.sha256(inspect.getsource(sanitizer).encode()).hexdigest()
@@ -139,6 +139,15 @@ def test_deployed_sanitizer_capture_replays_both_controls() -> None:
         capture["raw_sanitized"]
         == "TimeoutExpired: [REDACTED - potentially sensitive data]"
     )
+    raw = subprocess.TimeoutExpired(
+        [
+            "git",
+            "clone",
+            "https://x-access-token:***@github.com/OmniNode-ai/onex_change_control",
+        ],
+        120.0,
+    )
+    assert sanitizer.sanitize_error_message(raw) == capture["raw_sanitized"]
     parked = OccCompanionMintParkedError(
         repo="OmniNode-ai/omnibase_infra",
         pr_number=2550,

@@ -1,0 +1,11 @@
+{
+  "observed_at": "2026-10-23T04:53:38.796504+00:00",
+  "container": "omninode-runtime-effects",
+  "host": "h201",
+  "sanitizer_sha256": "3b0f9c880af83e30afa433280e82d23f2b9fe6f96fe2493c5ab38d3e8e6d91f1",
+  "raw_sanitized": "TimeoutExpired: [REDACTED - potentially sensitive data]",
+  "parked_reason": "OmniNode-ai/omnibase_infra#2550: OCC companion mint PARKED class=git_timeout attempts=3/3. The mint request is preserved on the dead-letter topic and is replayable.",
+  "parked_sanitized": "OccCompanionMintParkedError: OmniNode-ai/omnibase_infra#2550: OCC companion mint PARKED class=git_timeout attempts=3/3. The mint request is preserved on the dead-letter topic and is replayable.",
+  "scope": "Read-only execution of synthetic exceptions through the sanitizer installed in the dev effects container. No mint was published; this is not bus-to-DLQ evidence.",
+  "command": "docker exec omninode-runtime-effects python -c 'import hashlib,inspect,json,subprocess; from datetime import datetime,timezone; import omnibase_infra.utils.util_error_sanitization as s; from omnimarket.nodes.node_occ_companion_effect.mint_retry_policy import OccCompanionMintParkedError; from omnimarket.enums.enum_mint_failure_class import EnumMintFailureClass; e=OccCompanionMintParkedError(repo=\"OmniNode-ai/omnibase_infra\",pr_number=2550,failure_class=EnumMintFailureClass.GIT_TIMEOUT,attempts=3,max_attempts=3); raw=subprocess.TimeoutExpired([\"git\",\"clone\",\"https://x-access-token:***@github.com/OmniNode-ai/onex_change_control\"],120.0); print(json.dumps({\"observed_at\":datetime.now(timezone.utc).isoformat(),\"container\":\"omninode-runtime-effects\",\"host\":\"h201\",\"sanitizer_sha256\":hashlib.sha256(inspect.getsource(s).encode()).hexdigest(),\"raw_sanitized\":s.sanitize_error_message(raw),\"parked_reason\":str(e),\"parked_sanitized\":s.sanitize_error_message(e)}))'"
+}

@@ -54,7 +54,7 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-mint-acceptance-ac4"
-    description: "Replay the read-only dev-effects sanitizer capture from 2026-10-19T22:40:17Z. The raw exception redacts; the typed reason survives with the normal exception-class prefix. The capture records the installed source hash and exact probe command. Hosted verification replays against identical sanitizer source; it makes no fresh deployment or bus-to-DLQ claim."
+    description: "Replay the read-only dev-effects sanitizer capture from 2026-10-23T04:53:38Z against infra 9eb35324's sanitizer. The raw exception redacts; the typed reason survives with the normal exception-class prefix. The capture records the installed source hash and exact probe command; the October 19 capture remains unchanged as history. Hosted verification replays against identical sanitizer source; it makes no fresh deployment or bus-to-DLQ claim."
     source: "manual"
     checks:
       - check_type: "test_passes"
