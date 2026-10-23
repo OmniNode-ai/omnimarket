@@ -658,6 +658,11 @@ _DELEGATION_SAVINGS_UNPRICED_VIEW_SQL = (
     "omnimarket.nodes.node_projection_savings",
     "sqlite/delegation_savings_view_unpriced.sql",
 )
+_DELEGATION_SAVINGS_MEASURED_VIEW_STEP = "omn21206_delegation_savings_measured_view"
+_DELEGATION_SAVINGS_MEASURED_VIEW_SQL = (
+    "omnimarket.nodes.node_projection_savings",
+    "sqlite/delegation_savings_view_measured.sql",
+)
 # OMN-19988: the local environment table, its cursor sequence and triggers. A
 # store step, not a statement on every connect: the sequence seed is a write, so
 # a read-only store, or a reader on a busy one, must not run it.
@@ -939,6 +944,14 @@ class SqliteDatabaseAdapter:
                     "re-created the delegation savings view with its unpriced-call count",
                 )
             )
+        if not cls._store_step_recorded(conn, _DELEGATION_SAVINGS_MEASURED_VIEW_STEP):
+            pending.append(
+                (
+                    _DELEGATION_SAVINGS_MEASURED_VIEW_STEP,
+                    cls._create_delegation_savings_measured_view,
+                    "restricted savings money to measured runs and counted each basis",
+                )
+            )
         if not cls._store_step_recorded(
             conn, _DELEGATION_MODEL_ROUTING_TIER_MODELS_STEP
         ):
@@ -1179,6 +1192,14 @@ class SqliteDatabaseAdapter:
         revision is a new step, never an edit to this one.
         """
         package, resource = _DELEGATION_SAVINGS_UNPRICED_VIEW_SQL
+        ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
+        conn.execute("DROP VIEW IF EXISTS projection_delegation_savings")
+        conn.execute(ddl)
+
+    @staticmethod
+    def _create_delegation_savings_measured_view(conn: sqlite3.Connection) -> None:
+        """Replace the view once on both new and previously upgraded stores."""
+        package, resource = _DELEGATION_SAVINGS_MEASURED_VIEW_SQL
         ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
         conn.execute("DROP VIEW IF EXISTS projection_delegation_savings")
         conn.execute(ddl)

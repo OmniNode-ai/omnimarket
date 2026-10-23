@@ -1,0 +1,140 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21206"
+title: "Overview and Delegation Evidence views count tokens and runs over every run and savings over measured runs, from one token source and a fixed row choice"
+summary: >-
+  Overview and Delegation Evidence count all runs and their own tokens,
+  measured-only money, and excluded provenance classes, using one fixed
+  estimate ordering. The real falsifiers must pass on the implementation;
+  postdeploy reconciliation remains a separate sanctioned readback.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-ac1"
+    statement: "Preserve the live ticket criterion AC1 and its falsifier."
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: projection_cost_savings_overview serves tokens_total and its run count over every combined row of the tenant, and total_cost_usd and total_savings_usd over measured rows only, with an excluded unknown-cost run count beside them -- falsifier: a real-Postgres pytest over a fixture holding measured, estimated and unknown rows fails when the token total leaves out the unknown rows or the savings total includes them
+  - id: "req-ac2"
+    statement: "Preserve the live ticket criterion AC2 and its falsifier."
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: projection_delegation_savings serves cumulative_savings_usd and cumulative_local_cost_usd over measured rows only, with the same excluded count -- falsifier: the same pytest run against delegation.savings
+  - id: "req-ac3"
+    statement: "Preserve the live ticket criterion AC3 and its falsifier."
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: Both views take a run's tokens from delegation_events tokens_input plus tokens_output; Overview counts the approved combined population, so its token total equals delegation.token-usage total_tokens plus the tokens of the savings-only rows (rows with a savings_estimates row and no delegation event) for the same tenant, and the run counts decompose the same way -- falsifier: the real-Postgres pytest asserting that exact decomposition, and the OMN-21203 reconciliation SQL re-run on the development lane showing Overview minus token-usage equals the savings-only population exactly
+  - id: "req-ac4"
+    statement: "Preserve the live ticket criterion AC4 and its falsifier."
+    acceptance:
+      - id: "AC4"
+        statement: |-
+          AC4: when several savings_estimates rows share a session, both views pick the same row on every read -- falsifier: a real-Postgres pytest with two tied rows that differ in tokens reads each view 20 times and finds one value
+evidence_requirements:
+  - kind: "tests"
+    description: "Hosted disposable PostgreSQL proof; never run against a shared development database. RED and GREEN receipts are required."
+    command: "uv run pytest tests/test_omn21206_view_population_real_postgres.py -q -n 0 -p no:randomly --no-cov"
+  - kind: "tests"
+    description: "Local SQLite measured totals, zero versus unknown and one-time existing-store upgrade, using disposable files."
+    command: "uv run pytest tests/unit/projection/test_omn21206_sqlite_savings_population.py -q -n 0 -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21206-population"
+    description: "Real PostgreSQL fixtures assert all combined runs and tokens, measured-only monetary totals and excluded provenance counts for separate tenants."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21206_view_population_real_postgres.py -q -n 0 -p no:randomly --no-cov -k 'all_runs_and_tokens_but_only_measured_money or each_view_excludes_unmeasured_money_independently'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21206-evidence"
+    description: "Real PostgreSQL fixtures independently assert measured-only Delegation Evidence money and excluded provenance counts."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21206_view_population_real_postgres.py -q -n 0 -p no:randomly --no-cov -k 'all_runs_and_tokens_but_only_measured_money or each_view_excludes_unmeasured_money_independently'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21206-tokens"
+    description: "The real PostgreSQL fixtures derive event and latest savings-only populations independently and assert exact token and run decomposition for zero, one and two savings-only runs, with duplicate estimates, a zero-token run, completion tokens and a second tenant. The separate sanctioned same-snapshot postdeploy reconciliation required by AC3 is not executed by this hosted fixture binding."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21206_view_population_real_postgres.py -q -n 0 -p no:randomly --no-cov -k 'tokens_equal_events_plus_savings_only_rows'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21206-row-choice"
+    description: "Real PostgreSQL reads both views in twenty fresh transactions with tied estimates and also checks that later updates outrank creation time. Exact expected values reject a stable but wrong row."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21206_view_population_real_postgres.py -q -n 0 -p no:randomly --no-cov -k 'tied_estimates_choose_highest_primary_key_every_transaction or earlier_created_but_later_updated_row_wins_in_both_views'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21206-deploy-served-counts"
+    description: >-
+      Read-only deployment probe: the real projection API serves the two
+      tenant-scoped exposures with their appended integer provenance counts,
+      and each row's total equals the three class counts. Missing columns,
+      HTTP refusal, an empty row, wrong tenant or inconsistent counts fail.
+      Each of the three GETs has a six-second timeout. This is unbound local
+      deployment evidence; the four hosted AC bindings remain independent.
+      It does not replace AC3's sanctioned repeatable-read reconciliation or
+      compare money across separately timed live requests.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          set -eu
+          test -n "${ONEX_LAB_PROJECTION_API:?set the deployed projection API URL}"
+          test -n "${ONEX_TENANT_ID:?set the tenant UUID served by that deployment}"
+          mkdir -p .onex_state;
+          catalogue_file="$(mktemp "$PWD/.onex_state/omn21206-catalogue.XXXXXX")";
+          curl --fail --silent --show-error --max-time 6 "${ONEX_LAB_PROJECTION_API%/}/projections" --output "$catalogue_file";
+          printf 'OMN21206-DEPLOY-CATALOGUE %s\n' "$catalogue_file";
+          ONEX_CATALOGUE_FILE="$catalogue_file" uv run --frozen python - <<'PROBE'
+          import json
+          import os
+          import subprocess
+          import urllib.parse
+          from pathlib import Path
+          api = os.environ["ONEX_LAB_PROJECTION_API"].rstrip("/")
+          tenant = os.environ["ONEX_TENANT_ID"]
+          def get(path):
+              result = subprocess.run(["curl", "--fail", "--silent", "--show-error", "--max-time", "6", api + path], check=True, capture_output=True, text=True)
+              return json.loads(result.stdout)
+          expected = {
+              "onex.snapshot.projection.cost.savings-overview.v1": ("projection_cost_savings_overview", "run_count"),
+              "onex.snapshot.projection.delegation.savings.v1": ("projection_delegation_savings", "session_count"),
+          }
+          catalogue = json.loads(Path(os.environ["ONEX_CATALOGUE_FILE"]).read_text())["topics"]
+          counts = ("measured_run_count", "estimated_run_count", "unknown_run_count")
+          for topic, (table, total) in expected.items():
+              matches = [entry for entry in catalogue if entry["topic"] == topic]
+              assert len(matches) == 1, (topic, "catalogue entry")
+              entry = matches[0]
+              assert entry["table"] == table and entry["bus_backed"] is True, (topic, "source")
+              assert entry["status"] == "ok" and entry["tenant_scoped"] is True, (topic, "readiness")
+              assert {total, *counts} <= set(entry["columns"]), (topic, "deployment lacks appended counts")
+              page = get("/projection/" + topic + "?" + urllib.parse.urlencode({"tenant": tenant, "limit": 1}))
+              assert page["topic"] == topic and page["tenant"] == tenant, (topic, "response identity")
+              assert page["row_count"] == len(page["rows"]) == 1, (topic, "nonempty singleton")
+              row = page["rows"][0]
+              assert row["tenant_id"] == tenant, (topic, "tenant row")
+              if total == "run_count":
+                  assert row["window"] == "all", "Overview all-time row required"
+              for key in (total, *counts):
+                  assert type(row[key]) is int and row[key] >= 0, (topic, key)
+              assert row[total] == sum(row[key] for key in counts), (topic, "class sum")
+          print("OMN21206-DEPLOY-OK exposures=2 tenant=" + tenant)
+          PROBE
+        cwd: "${OMNI_HOME}/omnimarket"

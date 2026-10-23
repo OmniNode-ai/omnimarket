@@ -150,9 +150,9 @@ async def _seed(conn: asyncpg.Connection) -> None:
         INSERT INTO savings_estimates (
             event_timestamp, session_id, model_local, model_cloud_baseline,
             local_cost_usd, cloud_cost_usd, savings_usd, tenant_id,
-            task_type, prompt_tokens, completion_tokens
+            task_type, prompt_tokens, completion_tokens, usage_source
         ) VALUES ($1, $2, 'qwen2.5-coder', 'claude-opus-4.1',
-                  $3, $4, $5, $6, 'code_generation', 100, 200)
+                  $3, $4, $5, $6, 'code_generation', 100, 200, 'measured')
         """,
         _WHEN,
         RUN_A,
