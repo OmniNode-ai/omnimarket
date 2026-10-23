@@ -10,7 +10,7 @@ interfaces_touched: []
 requirements:
   - id: "req-transcribed-acceptance-criteria"
     statement: |-
-      The acceptance criteria these changes serve, as declared on the OMN-21015 ticket body, read on 2026-10-15 (AC3) and 2026-10-14 (AC2 and AC4). The ticket body is the source and this block is the copy.
+      The acceptance criteria these changes serve, as declared on the OMN-21015 ticket body, read on 2026-10-15 (AC3) and 2026-10-14 (AC2 and AC4), and the 2026-10-23 amendment (AC17). The ticket body is the source and this block is the copy.
     acceptance:
       - id: "AC3"
         statement: |-
@@ -21,6 +21,9 @@ requirements:
       - id: "AC4"
         statement: |-
           AC4: Usage shows tokens in and tokens out per day as a stacked series split by model (requirement US-1), and its by-model table shows each model's share of calls and its tier beside the calls column it already has -- falsifier: the window sums differ from `onex metering --json`, or the shares do not sum to 100
+      - id: "AC17"
+        statement: |-
+          AC17: `cost.savings-overview.v1` serves `tokens_input_total` = `COALESCE(SUM(prompt_tokens), 0)` and `tokens_output_total` = `COALESCE(SUM(completion_tokens), 0)` over the same `combined_runs` rows, tenant and window as `tokens_total`, so the two sum to it -- falsifier: a real-Postgres test in hosted CI, with runs from both sources for two tenants, fails when either column is absent from the served row, when input + output differs from `tokens_total` for a tenant, or when the two directions are swapped
 evidence_requirements:
   - kind: tests
     description: >-
@@ -186,3 +189,21 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_usage_by_model_day/handlers/handler_usage_by_model_day_writer.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '_TIER_KEY_IN_FORCE'"
+  - id: dod-omn21015-ac17-overview-directions-pg
+    description: >-
+      Real Postgres in hosted CI: the overview's tokens_input_total and tokens_output_total are the prompt and completion sums over the same combined runs and tenant as tokens_total (input 103 and output 10 against 113), a matched run keeps its event's directions, a zero-token run still counts, and the 097 column-order test expects both names appended last. At the merge base the columns do not exist, so it fails there.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_omn21015_overview_token_directions_real_postgres.py tests/test_omn21206_view_population_real_postgres.py::test_new_columns_append_and_invoker_rights_survive -q -p no:randomly
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC17]
+  - id: dod-omn21015-ac17-overview-token-columns-declared
+    description: >-
+      No database: the overview exposure in node_projection_savings/contract.yaml lists both columns after run_count, and the newest migration that defines the view appends them last. Both fail at the merge base.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/projection/test_omn21015_overview_token_columns_declared.py -q -p no:randomly
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC17]

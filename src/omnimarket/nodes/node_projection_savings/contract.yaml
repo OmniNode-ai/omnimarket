@@ -317,6 +317,9 @@ projection_api:
         - unknown_run_count
         # All combined runs, including those excluded from monetary totals.
         - run_count
+        # OMN-21015: the token directions over the same runs; they sum to tokens_total.
+        - tokens_input_total
+        - tokens_output_total
       json_columns:
         - rows
         - recent_runs
