@@ -631,12 +631,32 @@ def store_key(
     return result
 
 
+def _keyed_provider_of(secret_ref: str) -> ModelProvider | None:
+    """The keyed provider whose key ``secret_ref`` names, or None."""
+    for provider in KEYED_PROVIDERS:
+        if secret_ref == f"llm.{provider}.api_key":
+            return provider
+    return None
+
+
 def delete_key(secret_ref: str, echo: Echo = _quiet) -> ModelLocalSecretResult:
     """Remove ``secret_ref``'s value and withdraw its route key, if any.
 
     The body of ``onex secret delete``, shared with ``onex models remove`` and
-    the dashboard.
+    the dashboard. A provider's key takes the same removal lock and last-usable
+    guard as ``onex models remove``, so the lower-level command cannot remove
+    the last usable model either (OMN-20816).
     """
+    provider = _keyed_provider_of(secret_ref)
+    if provider is None:
+        return _delete_key(secret_ref, echo)
+    with _removal_lock(LocalByokCredentialStore().db_path):
+        refuse_last_usable(provider)
+        return _delete_key(secret_ref, echo)
+
+
+def _delete_key(secret_ref: str, echo: Echo) -> ModelLocalSecretResult:
+    """:func:`delete_key` without the guard, for a caller already holding the lock."""
     store = LocalByokCredentialStore()
     drain_pending_credential_events(store.db_path)
     try:
@@ -779,7 +799,7 @@ def remove_key(provider: str, echo: Echo = _quiet) -> None:
         raise ModelKeyRefusedError(f"no {MODEL_LABELS[provider]} key is stored.")
     with _removal_lock(LocalByokCredentialStore().db_path):
         refuse_last_usable(provider)
-        delete_key(f"llm.{provider}.api_key", echo)
+        _delete_key(f"llm.{provider}.api_key", echo)
         handler.handle(ModelModelSetupRequest(operation="forget", provider=provider))
 
 

@@ -14,6 +14,10 @@ stays read-only). Each check names the failure it exists to catch:
       the guard is in the shared remove), or refuses removing one of two;
 * M4b two removals that overlap both pass the guard and leave no usable provider,
       because the guard and the deletion are not one step;
+* M4c ``onex secret delete`` of a provider's key skips the guard, so the last
+      usable provider goes out by the lower-level command;
+* M4d the removal lock serializes threads of one process only, so a removal
+      in another process still overlaps;
 * M5  the page lists a provider it does not show (Anthropic, a local URL);
 * M7  the page and the CLI disagree about one store: a key added in the
       terminal is not what ``GET /models`` lists;
@@ -42,7 +46,7 @@ import pytest
 from click.testing import CliRunner, Result
 from fastapi.testclient import TestClient
 
-from omnimarket.cli.cli_secret import models_group
+from omnimarket.cli.cli_secret import models_group, secret_group
 from omnimarket.handlers import handler_model_keys
 from omnimarket.inference.local_byok_credential_adapter import (
     resolve_local_byok_credential_models,
@@ -415,3 +419,91 @@ def test_m4b_two_overlapping_removals_never_leave_no_usable_provider(
     rows = _rows(_client(tmp_path))
     assert rows["openrouter"]["set_up"] or rows["openai"]["set_up"]
     assert rows[refused[0]]["set_up"] is True
+
+
+def _cli_secret_delete(provider: str) -> Result:
+    return CliRunner().invoke(secret_group, ["delete", f"llm.{provider}.api_key"])
+
+
+def test_m4c_secret_delete_refuses_the_last_usable_providers_key(
+    delegations: _Delegations, tmp_path: Path
+) -> None:
+    delegations.models[_backend("openrouter")] = _OR_MODEL
+    assert _cli_add("openrouter", _OR_KEY, _OR_MODEL).exit_code == 0
+    refused = _cli_secret_delete("openrouter")
+    assert refused.exit_code != 0, refused.output
+    assert "at least one is required" in refused.output
+    assert _rows(_client(tmp_path))["openrouter"]["set_up"] is True
+
+
+def test_m4c_secret_delete_of_one_of_two_usable_providers_is_allowed(
+    delegations: _Delegations, tmp_path: Path
+) -> None:
+    delegations.models[_backend("openrouter")] = _OR_MODEL
+    delegations.models[_backend("openai")] = _OAI_MODEL
+    assert _cli_add("openrouter", _OR_KEY, _OR_MODEL).exit_code == 0
+    assert _cli_add("openai", _OAI_KEY, _OAI_MODEL).exit_code == 0
+    removed = _cli_secret_delete("openai")
+    assert removed.exit_code == 0, removed.output
+    assert _rows(_client(tmp_path))["openrouter"]["set_up"] is True
+
+
+def test_m4d_a_removal_waits_for_the_lock_held_by_another_process(
+    delegations: _Delegations, tmp_path: Path
+) -> None:
+    """A thread-only lock lets this removal run while another process holds the lock."""
+    import subprocess
+    import sys
+    import threading
+
+    delegations.models[_backend("openrouter")] = _OR_MODEL
+    delegations.models[_backend("openai")] = _OAI_MODEL
+    assert _cli_add("openrouter", _OR_KEY, _OR_MODEL).exit_code == 0
+    assert _cli_add("openai", _OAI_KEY, _OAI_MODEL).exit_code == 0
+    db_path = tmp_path / "delegation.sqlite"
+    assert handler_model_keys.LocalByokCredentialStore().db_path == db_path
+
+    holder = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "import sys; from pathlib import Path; "
+            "from omnimarket.handlers.handler_model_keys import _removal_lock\n"
+            "with _removal_lock(Path(sys.argv[1])):\n"
+            "    print('held', flush=True); sys.stdin.read()",
+            str(db_path),
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert holder.stdout is not None
+        assert holder.stdin is not None
+        assert holder.stdout.readline().strip() == "held"
+        done = threading.Event()
+        outcome: list[BaseException | None] = []
+
+        def worker() -> None:
+            try:
+                handler_model_keys.remove_key("openai")
+                outcome.append(None)
+            except BaseException as exc:
+                outcome.append(exc)
+            done.set()
+
+        thread = threading.Thread(target=worker)
+        thread.start()
+        assert not done.wait(timeout=1.5), (
+            "the removal ran while another process held the lock"
+        )
+        holder.stdin.close()
+        assert done.wait(timeout=30), (
+            "the removal never ran after the lock was released"
+        )
+        thread.join(timeout=5)
+        assert outcome == [None], outcome
+    finally:
+        holder.kill()
+        holder.wait(timeout=10)
+    assert _rows(_client(tmp_path))["openai"]["set_up"] is False
