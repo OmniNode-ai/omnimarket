@@ -129,7 +129,6 @@ scripts/ci/check_model_registry_served_names.py
 scripts/ci/check_nightly_corpus_budget.py
 scripts/ci/check_no_hardcoded_topics.py
 scripts/ci/check_node_metadata_dependencies.py
-scripts/ci/check_one_occ_producer.py
 scripts/ci/check_pr_hold_marker.py
 scripts/ci/check_projection_write_path_db_gate.py
 scripts/ci/check_registry_projection_reconcile.py
@@ -213,7 +212,6 @@ scripts/proof_of_life_seam_parallel.py
 scripts/publish_canary_command.py
 scripts/publish_incremental_scan.py
 scripts/publish_kb_adr_command.py
-scripts/publish_occ_autobind_command.py
 scripts/publish_pr_merged_event.py
 scripts/run-projection-migrations.py
 scripts/run_codex_runtime_request.py
@@ -532,7 +530,6 @@ src/omnimarket/merge_control/model_outage_breaker_policy.py
 src/omnimarket/merge_control/outage_circuit_breaker.py
 src/omnimarket/merge_control/reason_code_classifier.py
 src/omnimarket/occ_ac_transcription.py
-src/omnimarket/occ_autoauthor_attestation.py
 src/omnimarket/occ_content_probe.py
 src/omnimarket/occ_contention.py
 src/omnimarket/occ_contract_pin.py
@@ -541,8 +538,6 @@ src/omnimarket/occ_criterion_normalizer.py
 src/omnimarket/occ_criterion_units.py
 src/omnimarket/occ_evidence_placement.py
 src/omnimarket/occ_evidence_probative_class.py
-src/omnimarket/occ_git_transport.py
-src/omnimarket/occ_github_auth.py
 src/omnimarket/pack/__init__.py
 src/omnimarket/pack/model_context_pack_artifact.py
 src/omnimarket/pack/model_context_pack_builder_request.py

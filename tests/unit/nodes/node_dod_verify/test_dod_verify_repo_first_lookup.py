@@ -22,7 +22,6 @@ same worlds at the base commit (``fixtures/omn20886_occ_only_lookup_replay.json`
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -52,13 +51,10 @@ from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
 from tests.unit.nodes.node_dod_verify.omn_20886_repo_world import (
     World,
     contract,
-    occ_only_world,
-    snapshot,
 )
 
 pytestmark = pytest.mark.unit
 
-_REPLAY = Path(__file__).parent / "fixtures" / "omn20886_occ_only_lookup_replay.json"
 _REAL_RUN_GATE = EvidenceCollector.run_durable_gate
 _AUDIENCE = EnumDodVerifyExecutionAudience.LOCAL_DONE_GATE
 
@@ -205,28 +201,8 @@ def test_two_repos_one_without_repo_evidence_run_is_not_governing(
 
 
 # --------------------------------------------------------------------------- #
-# AC3: onex_change_control only, and no contract anywhere.
+# AC3: no contract anywhere.
 # --------------------------------------------------------------------------- #
-
-
-@pytest.mark.parametrize(
-    "case",
-    ["product_prs_without_contract", "product_contract_without_repo_evidence_run"],
-)
-def test_occ_only_ticket_resolves_exactly_as_recorded(
-    world: World, monkeypatch: pytest.MonkeyPatch, case: str
-) -> None:
-    ticket = occ_only_world(world, case)
-    world.install(monkeypatch)
-
-    collector = EvidenceCollector()
-    try:
-        results = collector.collect(ticket, execution_audience=_AUDIENCE)
-    finally:
-        collector.release_occ_dev_snapshot()
-
-    recorded = json.loads(_REPLAY.read_text(encoding="utf-8"))["cases"][case]
-    assert snapshot(collector, results, world) == recorded
 
 
 def test_no_contract_anywhere_still_refuses(

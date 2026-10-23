@@ -228,7 +228,7 @@ class TestCliExitsNonZeroOnMissingContract:
         self,
     ) -> None:
         """No --contract-path and no discoverable OCC contract (no
-        ONEX_CC_REPO_PATH / OMNI_HOME in the subprocess env) -> exit != 0.
+        CONTRACT_REPO_DIR / OMNI_HOME in the subprocess env) -> exit != 0.
         """
         result = self._run_main(ticket_id="OMN-NOEXIST-CLI-15380")
 

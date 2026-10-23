@@ -22,12 +22,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-import yaml
 from omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_pipeline_command import (
     ModelEvidencePipelineCommand,
-)
-from omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_validation_result import (
-    ModelEvidenceValidationResult,
 )
 
 from omnimarket.events.occ_evidence import (
@@ -46,7 +42,6 @@ from omnimarket.nodes.node_evidence_collector_effect import (
 from omnimarket.nodes.node_evidence_extractor_compute import (
     HandlerEvidenceExtractorCompute,
 )
-from omnimarket.nodes.node_occ_pr_writer_effect import HandlerOccPrWriterEffect
 
 _DEPLOYMENT_ID = UUID("11111111-1111-4111-8111-111111111111")
 _CORRELATION_ID = UUID("22222222-2222-4222-8222-222222222222")
@@ -128,53 +123,6 @@ def test_collected_to_extracted_chain_carries_deployment_proof_facts() -> None:
     )
     bundle_again = extract_evidence(raw_again)
     assert bundle_again.evidence_bundle_hash == bundle.evidence_bundle_hash
-
-
-def _validation_result() -> ModelEvidenceValidationResult:
-    return ModelEvidenceValidationResult(
-        correlation_id=str(_CORRELATION_ID),
-        validation_run_id="run-omn-12579",
-        ticket_id="OMN-12579",
-        repository="omnimarket",
-        contract_hash="sha256:contract",
-        evidence_bundle_hash="sha256:bundle",
-        verifier_identity="omnimarket.node_occ_evidence_validator_compute",
-        validator_version="evidence-readiness-native-v1",
-        validated_at="2026-06-01T12:00:01Z",
-        validation_state="PASSED",
-        evidence_lifecycle_state="VALIDATED",
-        topology_affecting=True,
-        evidence_refs=(f"deployment:{_DEPLOYMENT_ID}",),
-    )
-
-
-def test_occ_pr_writer_consumes_evidence_validated_event() -> None:
-    # The OCC PR writer's wiring contract: it consumes a ModelEvidenceValidationResult
-    # (the payload of onex.evt.omnimarket.evidence-validated.v1) and emits a
-    # provisional OCC PR reference (onex.evt.omnimarket.occ-pr-created.v1).
-    validation = _validation_result()
-
-    occ_pr = HandlerOccPrWriterEffect().handle(validation)
-
-    assert occ_pr.ticket_id == "OMN-12579"
-    assert occ_pr.correlation_id == str(_CORRELATION_ID)
-    assert occ_pr.validation_run_id == "run-omn-12579"
-    assert occ_pr.evidence_lifecycle_state == "PROVISIONAL"
-    assert occ_pr.occ_repository == "OmniNode-ai/onex_change_control"
-    assert occ_pr.pr_url.endswith(f"/pull/{occ_pr.pr_number}")
-
-
-def test_occ_pr_writer_consumer_subscribes_to_evidence_validated_topic() -> None:
-    contract_path = "src/omnimarket/nodes/node_occ_pr_writer_effect/contract.yaml"
-    with open(contract_path, encoding="utf-8") as handle:
-        contract = yaml.safe_load(handle)
-
-    subscribe = set(contract["event_bus"]["subscribe_topics"])
-    publish = set(contract["event_bus"]["publish_topics"])
-    assert "onex.evt.omnimarket.evidence-validated.v1" in subscribe
-    assert "onex.evt.omnimarket.occ-pr-created.v1" in publish
-    # The wired consumer entrypoint must accept the validated-evidence model.
-    assert contract["input_model"]["name"] == "ModelEvidenceValidationResult"
 
 
 def test_collector_handler_accepts_proof_derived_command() -> None:

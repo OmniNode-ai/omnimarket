@@ -12,11 +12,8 @@ the publishers really send, not against a payload this test built.
 
 from __future__ import annotations
 
-import importlib.util
 import json
 from pathlib import Path
-from types import ModuleType
-from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
@@ -46,17 +43,6 @@ def _recorded_payloads() -> list[dict[str, object]]:
     return [record["value"] for record in doc["records"]]
 
 
-def _load_publisher() -> ModuleType:
-    spec = importlib.util.spec_from_file_location(
-        "publish_occ_autobind_command_omn19827", _PUBLISHER
-    )
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 def test_recorded_payloads_are_real_and_carry_no_op() -> None:
     payloads = _recorded_payloads()
     assert len(payloads) >= 2
@@ -70,20 +56,6 @@ def test_recorded_publisher_payload_reads_as_derive(payload: dict[str, object]) 
     command = ModelPrLifecycleFixCommand.model_validate(payload)
     assert command.op is EnumPrLandingCompanionOp.DERIVE
     assert command.block_reason is EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
-
-
-def test_publisher_still_sends_no_op_and_the_consumer_reads_derive() -> None:
-    publisher = _load_publisher()
-    payload = publisher.build_payload(
-        repo="OmniNode-ai/omnimarket",
-        pr_number=2977,
-        ticket="OMN-18856",
-        correlation_id=str(uuid4()),
-    )
-    assert "op" not in payload
-    wire = json.loads(json.dumps(payload, default=str))
-    command = ModelPrLifecycleFixCommand.model_validate(wire)
-    assert command.op is EnumPrLandingCompanionOp.DERIVE
 
 
 @pytest.mark.parametrize(

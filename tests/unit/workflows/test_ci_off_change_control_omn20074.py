@@ -164,9 +164,8 @@ def test_dead_occ_observer_node_is_deleted(name: str) -> None:
 
 
 def test_dead_occ_observer_node_positive_control() -> None:
-    """The same reads find the companion effect node, which stays until its
-    remaining callers are retired, so the absences above are not an unreadable
-    tree."""
-    assert (ROOT / "src/omnimarket/nodes/node_occ_companion_effect").is_dir()
+    """The same reads find the dod-verify node, which stays, so the absences
+    above are not an unreadable tree."""
+    assert (ROOT / "src/omnimarket/nodes/node_dod_verify").is_dir()
     entry_points = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    assert "node_occ_companion_effect = " in entry_points
+    assert "node_dod_verify = " in entry_points

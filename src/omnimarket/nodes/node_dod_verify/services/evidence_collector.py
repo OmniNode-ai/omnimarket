@@ -16,11 +16,9 @@ pre-populate evidence_results (tests, event-bus consumers).
 
 from __future__ import annotations
 
-import ast
 import atexit
 import contextlib
 import fcntl
-import functools
 import glob
 import hashlib
 import importlib.util
@@ -121,6 +119,9 @@ from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import 
     ModelRepoEvidenceVerdict,
     ModelTicketMergedPr,
 )
+from omnimarket.nodes.node_dod_verify.models.model_repo_contract_dod_item import (
+    ModelRepoContractDodItem,
+)
 from omnimarket.nodes.node_dod_verify.models.model_ticket_criteria_read import (
     ModelTicketCriteriaRead,
 )
@@ -178,7 +179,7 @@ logger = logging.getLogger(__name__)
 # Default contract search roots (first match wins). The change-control clone is
 # located only by ONEX_CC_REPO_PATH, never under $OMNI_HOME (OMN-17427).
 _DEFAULT_CONTRACT_ROOTS: list[str] = [
-    "${ONEX_CC_REPO_PATH}/contracts",
+    "${CONTRACT_REPO_DIR}/contracts",
 ]
 
 # OMN-13888 (scope 6): OCC governance is dev-targeted — contracts and receipts
@@ -196,97 +197,12 @@ _DEFAULT_OCC_GOVERNANCE_REF = "origin/dev"
 # metadata, not a second evidence-audience schema.  Deriving the base field set
 # and default from the core model prevents this consumer from drifting when the
 # canonical contract evolves.
-_CANONICAL_DOD_ITEM_FIELDS = frozenset(ModelContractDodItem.model_fields)
+_CANONICAL_DOD_ITEM_FIELDS = frozenset(ModelRepoContractDodItem.model_fields)
 # The explicit PR-binding fields this collector's own live-state verifier reads
 # (``_resolve_pr_bindings``). They are this consumer's execution metadata, so
 # this consumer is their authority.
 _LOCAL_PR_BINDING_FIELDS = frozenset({"pr", "repo", "pr_number"})
 _LOCAL_DOD_ITEM_FIELDS = _CANONICAL_DOD_ITEM_FIELDS | _LOCAL_PR_BINDING_FIELDS
-
-# OMN-19428: every OTHER item field an OCC contract may carry is owned by
-# `onex_change_control`'s own evidence item model, which is `extra="forbid"` and
-# is what the OCC compliance and binding gates validate every item against.
-# This collector used to hand-list those fields (`ac_bindings` for OMN-18236),
-# one literal per OCC release, and missed `supersedes_ac_binding` (OMN-18577):
-# every contract that retires a binding was refused wholesale. They are now read
-# from that model, in the OCC tree the contract itself was read from, so a
-# contract and the schema it was written against always come from one revision.
-# `onex_change_control` is not in this repository's dependency set, so the model
-# is read as source (its annotated class fields), never imported or executed.
-_OCC_DOD_ITEM_MODEL_RELPATH = Path("src/onex_change_control/models/model_dod_check.py")
-_OCC_DOD_ITEM_MODEL_CLASS = "ModelDodEvidenceItem"
-_OCC_FIELD_AUTHORITY_UNREADABLE = "OCC_DOD_ITEM_FIELD_AUTHORITY_UNREADABLE"
-
-
-class OccDodItemFieldAuthorityError(Exception):
-    """The OCC evidence item model that owns an item's fields could not be read."""
-
-
-def _annotated_field_names(
-    classes: dict[str, ast.ClassDef], name: str, seen: frozenset[str]
-) -> frozenset[str]:
-    """Pydantic field names of ``name``: its annotated attributes and its bases'.
-
-    ``model_config``, ``ClassVar`` annotations and underscore names are not
-    fields. A base class defined in the same module contributes its fields; a
-    base defined elsewhere (``BaseModel``) contributes none.
-    """
-    node = classes[name]
-    names: set[str] = set()
-    for base in node.bases:
-        if isinstance(base, ast.Name) and base.id in classes and base.id not in seen:
-            names |= _annotated_field_names(classes, base.id, seen | {name})
-    for stmt in node.body:
-        if not isinstance(stmt, ast.AnnAssign) or not isinstance(stmt.target, ast.Name):
-            continue
-        field_name = stmt.target.id
-        if field_name == "model_config" or field_name.startswith("_"):
-            continue
-        if "ClassVar" in ast.unparse(stmt.annotation):
-            continue
-        names.add(field_name)
-    return frozenset(names)
-
-
-@functools.lru_cache(maxsize=32)
-def _occ_dod_item_fields_at(
-    model_path: str, mtime_ns: int, size: int
-) -> frozenset[str]:
-    """Parse the OCC model source once per file revision (mtime and size key it)."""
-    del mtime_ns, size  # cache key only
-    try:
-        tree = ast.parse(Path(model_path).read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, SyntaxError, ValueError) as exc:
-        raise OccDodItemFieldAuthorityError(
-            f"cannot parse {model_path}: {type(exc).__name__}: {exc}"
-        ) from exc
-    classes = {node.name: node for node in tree.body if isinstance(node, ast.ClassDef)}
-    if _OCC_DOD_ITEM_MODEL_CLASS not in classes:
-        raise OccDodItemFieldAuthorityError(
-            f"{model_path} defines no class {_OCC_DOD_ITEM_MODEL_CLASS}"
-        )
-    fields = _annotated_field_names(classes, _OCC_DOD_ITEM_MODEL_CLASS, frozenset())
-    if not fields:
-        raise OccDodItemFieldAuthorityError(
-            f"{_OCC_DOD_ITEM_MODEL_CLASS} in {model_path} declares no fields"
-        )
-    return fields
-
-
-def occ_dod_item_fields(occ_root: Path) -> frozenset[str]:
-    """The evidence item fields ``onex_change_control`` declares, read from ``occ_root``.
-
-    Raises :class:`OccDodItemFieldAuthorityError` when the model file is absent,
-    unparseable, or does not define the class. Never falls back to a list.
-    """
-    model_path = occ_root / _OCC_DOD_ITEM_MODEL_RELPATH
-    try:
-        stat = model_path.stat()
-    except OSError as exc:
-        raise OccDodItemFieldAuthorityError(
-            f"cannot read {model_path}: {type(exc).__name__}: {exc}"
-        ) from exc
-    return _occ_dod_item_fields_at(str(model_path), stat.st_mtime_ns, stat.st_size)
 
 
 def _draft_binding_labels(
@@ -3000,7 +2916,7 @@ class EvidenceCollector:
 
     def _resolve_occ_root(self) -> Path | None:
         """Return the OCC repo root from ``ONEX_CC_REPO_PATH``, or None."""
-        cc_repo_path = os.environ.get("ONEX_CC_REPO_PATH", "").strip()
+        cc_repo_path = os.environ.get("CONTRACT_REPO_DIR", "").strip()
         if cc_repo_path and Path(cc_repo_path).is_dir():
             return Path(cc_repo_path)
         return None
@@ -3689,8 +3605,7 @@ class EvidenceCollector:
         # OMN-15443: validate the complete contract's execution audience before
         # resolving supersessions or running ANY declared/local-GitHub effect.
         # A later malformed item must not allow an earlier valid sibling to run.
-        # OMN-19428: the OCC tree the contract came from owns every item field
-        # the core model does not; see ``occ_dod_item_fields``.
+        # Repository binding extensions are declared by this verifier.
         contract_repo_dir = self._resolve_contract_repo_dir(path)
         audience_failures = self._validate_evidence_audiences(
             dod_items,
@@ -4029,16 +3944,13 @@ class EvidenceCollector:
         loud, which prevents a misspelled ``execution_scope`` key from silently
         taking the canonical default.
 
-        OMN-19428: a field outside the core model and this collector's own
-        PR-binding fields is looked up in ``onex_change_control``'s evidence
-        item model under ``occ_root`` (the contract's own OCC tree). That model
-        is read only when such a field appears, so a core-only contract needs no
-        OCC tree. When it cannot be read the contract is refused by name, never
-        admitted on a guess.
+        Repository binding fields are owned by ModelRepoContractDodItem. The
+        contract's repository is never used as an executable schema source.
         """
+        del (
+            occ_root
+        )  # retained argument for callers; schema comes from the installed model
         failures: list[ModelEvidenceCheckResult] = []
-        occ_fields: frozenset[str] | None = None
-        occ_error: str | None = None
         allowed_values = ", ".join(
             scope.value for scope in EnumDodEvidenceExecutionScope
         )
@@ -4065,43 +3977,6 @@ class EvidenceCollector:
             description = str(item.get("description", evidence_id))
 
             unknown_fields = [key for key in item if key not in _LOCAL_DOD_ITEM_FIELDS]
-            if unknown_fields and occ_fields is None and occ_error is None:
-                if occ_root is None:
-                    occ_error = (
-                        "no onex_change_control tree resolvable for this contract "
-                        "(set CONTRACT_REPO_DIR or ONEX_CC_REPO_PATH)"
-                    )
-                else:
-                    try:
-                        occ_fields = occ_dod_item_fields(occ_root)
-                    except OccDodItemFieldAuthorityError as exc:
-                        occ_error = str(exc)
-            if unknown_fields and occ_error is not None:
-                rendered_names = ", ".join(
-                    f"{key!r}={item[key]!r}"
-                    for key in sorted(unknown_fields, key=lambda value: repr(value))
-                )
-                failures.append(
-                    ModelEvidenceCheckResult(
-                        evidence_id=evidence_id,
-                        description=description,
-                        status=EnumEvidenceCheckStatus.FAILED,
-                        message=(
-                            f"{_OCC_FIELD_AUTHORITY_UNREADABLE}: item carries "
-                            f"field(s) {rendered_names} that the core model does "
-                            "not own, and the onex_change_control model that "
-                            f"does ({_OCC_DOD_ITEM_MODEL_CLASS} in "
-                            f"{_OCC_DOD_ITEM_MODEL_RELPATH}) could not be read: "
-                            f"{occ_error}; refusing to execute any evidence "
-                            "check from this contract."
-                        ),
-                    )
-                )
-                continue
-            if occ_fields is not None:
-                unknown_fields = [
-                    key for key in unknown_fields if key not in occ_fields
-                ]
             if unknown_fields:
                 rendered = ", ".join(
                     f"{key!r}={item[key]!r}"
@@ -5674,74 +5549,20 @@ class EvidenceCollector:
         return cmd_str, None
 
     def _infer_occ_cwd(self, contract_path: Path | None) -> str | None:
-        """Return the onex_change_control repo path when contract is from OCC.
-
-        Detects OCC contracts by checking whether the contract path contains
-        ``onex_change_control`` as a path component, and returns the root of
-        that same tree, so greps run against the revision the contract was
-        read from. Returns None for all other contracts (cwd stays inherited).
-        """
-        # OMN-13888 (scope 6): during a dev-resolved collect, greps must run
-        # inside the origin/dev worktree so dev-only receipt files are visible.
-        if self._occ_dev_root:
-            return self._occ_dev_root
-        if contract_path is None:
-            return None
-        if "onex_change_control" not in contract_path.parts:
-            return None
-        parts = contract_path.parts
-        occ_root = Path(*parts[: parts.index("onex_change_control") + 1])
-        if occ_root.is_dir():
-            return str(occ_root)
-        return None
+        """Run repository-relative checks against the contract's own tree."""
+        return self._resolve_contract_repo_dir(contract_path)
 
     def _resolve_contract_repo_dir(self, contract_path: Path | None) -> str | None:
-        """Resolve the OCC repo root for the ``$CONTRACT_REPO_DIR`` check token.
-
-        OMN-13857: contract check commands embed ``$CONTRACT_REPO_DIR`` (e.g.
-        ``grep -q ... "$CONTRACT_REPO_DIR/drift/dod_receipts/<T>/.../command.yaml"``).
-        Before this fix the token was only satisfied when the *caller* happened to
-        export ``CONTRACT_REPO_DIR``; unset it expanded to the empty string and
-        every receipt-backed check FAILED with a missing-prefix path — a
-        false-negative verdict on genuinely-passing evidence.
-
-        Resolution is deterministic and does not depend on the caller's shell:
-
-        1. An explicit non-empty ``CONTRACT_REPO_DIR`` in the environment wins
-           (honours a deliberate CI / operator override).
-        2. Otherwise, if the contract lives under ``onex_change_control/``, the
-           OCC root is derived from the contract path itself — correct even when
-           ``OMNI_HOME`` is unset or points elsewhere.
-        3. Otherwise ``$ONEX_CC_REPO_PATH`` when set.
-
-        ``$OMNI_HOME`` is not consulted (OMN-17427): the change-control clone is
-        located only by ``ONEX_CC_REPO_PATH`` or by the contract's own path.
-
-        Returns the absolute OCC root, or ``None`` when it cannot be resolved
-        (the check then runs with the token unset — the fail-closed pre-fix
-        behaviour — rather than silently guessing a wrong root).
-        """
+        """Resolve check paths inside the repository that owns this contract."""
         explicit = os.environ.get("CONTRACT_REPO_DIR", "").strip()
         if explicit:
             return explicit
-
-        # OMN-13888 (scope 6): a materialised origin/dev worktree is the OCC root
-        # for receipt-backed greps during a dev-resolved collect.
         if self._occ_dev_root:
             return self._occ_dev_root
-
-        # Derive from the contract path when it lives inside the OCC clone.
-        if contract_path is not None and "onex_change_control" in contract_path.parts:
-            parts = contract_path.parts
-            occ_index = parts.index("onex_change_control")
-            occ_root = Path(*parts[: occ_index + 1])
-            if occ_root.is_dir():
-                return str(occ_root)
-
-        cc_repo_path = os.environ.get("ONEX_CC_REPO_PATH", "").strip()
-        if cc_repo_path:
-            return cc_repo_path
-
+        if contract_path is not None:
+            for parent in contract_path.resolve().parents:
+                if parent.name == "contracts":
+                    return str(parent.parent)
         return None
 
     # ------------------------------------------------------------------

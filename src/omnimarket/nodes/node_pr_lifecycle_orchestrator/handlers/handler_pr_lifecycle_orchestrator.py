@@ -65,9 +65,9 @@ from omnimarket.merge_control.reason_code_classifier import (
     dominant_reason_code,
 )
 from omnimarket.models.ci_red_triage import DEFAULT_GITHUB_OWNER
-from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.occ_stamp_readback import (
-    ProtocolOccStampReadback,
-    _UnverifiedOccStampReadback,
+from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.pr_evidence_readback import (
+    ProtocolPrEvidenceReadback,
+    _UnverifiedPrEvidenceReadback,
 )
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers import (
     EnumPrCategory,
@@ -904,7 +904,13 @@ def _block_reason_for_fix(pr: TriageRecord) -> Any:
     block_reason = (pr.block_reason or "").strip()
     if block_reason:
         try:
-            return EnumPrBlockReason(block_reason)
+            resolved = EnumPrBlockReason(block_reason)
+            if resolved in {
+                EnumPrBlockReason.DEPLOY_GATE_CONTRACT_NOT_FOUND,
+                EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND,
+            }:
+                return EnumPrBlockReason.RECEIPT_FAILURE
+            return resolved
         except ValueError:
             pass
 
@@ -913,12 +919,10 @@ def _block_reason_for_fix(pr: TriageRecord) -> Any:
     if pr.category == EnumPrCategory.CONFLICTED:
         return EnumPrBlockReason.CONFLICT
 
-    # OMN-13987 CP1: a failed deploy-gate check means the PR's own OCC deploy
-    # contract is missing (or the trivial-infra fast-path applies). Route to the
-    # contract auto-create arm. Keyed on the machine check name, so it never
-    # collides with the receipt-gate (OCC_DEPENDENCY) or genuine code failures.
+    # A missing product contract is repaired in its own repository by the
+    # normal evidence-remediation adapter.
     if _has_deploy_gate_failure(failed_check_names):
-        return EnumPrBlockReason.DEPLOY_GATE_CONTRACT_NOT_FOUND
+        return EnumPrBlockReason.RECEIPT_FAILURE
 
     # OMN-13990 follow-up (round 2): drop cosmetic non-required checks (e.g.
     # "Enable Auto-Merge", which fails BY DESIGN org-wide) before comparing
@@ -933,16 +937,8 @@ def _block_reason_for_fix(pr: TriageRecord) -> Any:
         evidence_signature_checks
         and evidence_signature_checks <= _OCC_EVIDENCE_CHECK_NAMES
     ):
-        # OMN-13987 CP1 (extended, OMN-13990 follow-up): a failure set drawn
-        # ENTIRELY from {receipt gate, occ-preflight} plus cosmetic checks —
-        # either alone, or both together — has a ticket is the
-        # Evidence-Source-autobind class (OMN-13317 — the "green-except-OCC-
-        # companion" PR). Route to the cheap machine rebind; the adapter is
-        # self-guarding (no-ops when Evidence-Source is already an OCC
-        # source). Without a ticket, autobind cannot run, so genuine receipt
-        # failures keep the existing agent RECEIPT_FAILURE path.
-        if pr.ticket_ids:
-            return EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
+        # Repository evidence failures use ordinary receipt remediation.
+        # Ticket presence never dispatches a companion writer.
         return EnumPrBlockReason.RECEIPT_FAILURE
 
     if pr.category == EnumPrCategory.NEEDS_REVIEW:
@@ -1049,7 +1045,7 @@ class HandlerPrLifecycleOrchestrator:
         event_bus: ProtocolEventBusPublisher,
         ledger_store: ProtocolPrLedgerStore | None = None,
         projection_db: ProtocolProjectionDatabaseSync | None = None,
-        occ_stamp_readback: ProtocolOccStampReadback | None = None,
+        pr_evidence_readback: ProtocolPrEvidenceReadback | None = None,
         outage_recovery_probe: Callable[[], bool] | None = None,
     ) -> None:
         self._topic_phase_transition = TOPIC_PHASE_TRANSITION
@@ -1089,15 +1085,15 @@ class HandlerPrLifecycleOrchestrator:
         # product PR body back (Piece-2 parser, live gh state) and confirms the
         # stamp landed — never on the fix handler's self-reported return
         # (CLAUDE.md Rule 3). Defaults fail-closed (proves nothing -> counts
-        # nothing); _ensure_sub_handlers wires the live OccStampReadback for real
+        # nothing); _ensure_sub_handlers wires the live PrEvidenceReadback for real
         # runs. This generalizes the OMN-14173 autobind read-back to every arm
         # and closes OMN-14174's dispatch-vs-effect over-count.
-        self._occ_stamp_readback: ProtocolOccStampReadback = (
-            occ_stamp_readback
-            if occ_stamp_readback is not None
-            else _UnverifiedOccStampReadback()
+        self._pr_evidence_readback: ProtocolPrEvidenceReadback = (
+            pr_evidence_readback
+            if pr_evidence_readback is not None
+            else _UnverifiedPrEvidenceReadback()
         )
-        self._occ_stamp_readback_injected = occ_stamp_readback is not None
+        self._pr_evidence_readback_injected = pr_evidence_readback is not None
         # OMN-14774 (F-07): optional read-only recovery probe the outage circuit
         # breaker calls to decide whether GitHub's API has recovered enough to
         # resume REST-dependent mutations. It MUST be side-effect-free (a bare
@@ -1472,32 +1468,16 @@ class HandlerPrLifecycleOrchestrator:
                 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix import (
                     HandlerPrLifecycleFix,
                 )
-                from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
-                    OccCompanionEmitter,
-                )
-                from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_verifier import (
-                    OccCompanionVerifier,
-                )
 
                 # WS-D/D2 (OMN-13940): DelegatedFixAdapter + JsonFileTwoStrikeStore
                 # are wired explicitly (not left to HandlerPrLifecycleFix's
                 # test-convenience noop/in-memory defaults) so real merge-sweep
                 # runs actually attempt the delegated path and the two-strike
                 # counter survives across ticks.
-                # OMN-14285: one OCC producer (OccCompanionEmitter) serves both the
-                # deploy-gate and autobind failure classes; the single instance is
-                # shared across both slots.
-                occ_emitter = OccCompanionEmitter()
+                # Product-repository repairs use the normal effect adapters.
                 fix_handler = HandlerPrLifecycleFix(
                     github_adapter=GitHubCliAdapter(),
                     agent_dispatch_adapter=PrPolishDispatchAdapter(),
-                    occ_contract_adapter=occ_emitter,
-                    occ_autobind_adapter=occ_emitter,
-                    # OMN-14173: live read-back verifier so prs_fixed is gated on
-                    # a CONFIRMED pushed OCC companion, not on fix_applied. Without
-                    # this the autobind arm reported prs_fixed while authoring zero
-                    # companions (merge_sweep --fix-only false-success).
-                    occ_companion_verifier=OccCompanionVerifier(),
                     delegation_fix_adapter=DelegatedFixAdapter(),
                     two_strike_store=JsonFileTwoStrikeStore(),
                 )
@@ -1548,12 +1528,12 @@ class HandlerPrLifecycleOrchestrator:
         # is gated on a CONFIRMED landed OCC companion (read back over live gh
         # state), not on the fix handler's dispatch-time self-report. Skipped when
         # an explicit read-back was injected (tests inject a hermetic double).
-        if not self._occ_stamp_readback_injected:
-            from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.occ_stamp_readback import (
-                OccStampReadback,
+        if not self._pr_evidence_readback_injected:
+            from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.pr_evidence_readback import (
+                PrEvidenceReadback,
             )
 
-            self._occ_stamp_readback = OccStampReadback()
+            self._pr_evidence_readback = PrEvidenceReadback()
 
     async def handle(
         self,
@@ -2639,7 +2619,7 @@ class HandlerPrLifecycleOrchestrator:
         assert self._arm_gate is not None
         occ_companion_verified: bool | None = None
         if policy.action_mode is EnumArmActionMode.ENFORCE and not policy.kill_switch:
-            occ_readback = await self._occ_stamp_readback.verify_fix_landed(
+            occ_readback = await self._pr_evidence_readback.verify_fix_landed(
                 pr.repo, pr.pr_number
             )
             occ_companion_verified = occ_readback.verified
@@ -3268,7 +3248,7 @@ class HandlerPrLifecycleOrchestrator:
                 # never hits the network.
                 counted_as_fixed = False
                 if fix_applied and not dry_run:
-                    readback = await self._occ_stamp_readback.verify_fix_landed(
+                    readback = await self._pr_evidence_readback.verify_fix_landed(
                         pr.repo, pr.pr_number, fix_command.ticket_id
                     )
                     counted_as_fixed = readback.verified

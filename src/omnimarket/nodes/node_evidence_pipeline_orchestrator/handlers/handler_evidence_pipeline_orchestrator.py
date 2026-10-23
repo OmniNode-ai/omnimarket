@@ -5,8 +5,8 @@ from collections.abc import Mapping
 from omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_pipeline_command import (
     ModelEvidencePipelineCommand,
 )
-from omnibase_compat.contracts.evidence_pipeline.wire.model_occ_pr_reference import (
-    ModelOccPrReference,
+from omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_validation_result import (
+    ModelEvidenceValidationResult,
 )
 
 from omnimarket.nodes.evidence_pipeline_native import (
@@ -24,13 +24,11 @@ class HandlerEvidencePipelineOrchestrator:
 
     def handle(
         self, request: ModelEvidencePipelineCommand | Mapping[str, object]
-    ) -> ModelOccPrReference:
+    ) -> ModelEvidenceValidationResult:
         command = coerce_command(request)
         raw = self._ports.collect(command)
         bundle = self._ports.extract(raw)
         validation = self._ports.match_contract(bundle)
-        occ_pr = self._ports.write_occ_pr(validation)
         self._ports.update_linear(validation)
         self._ports.publish(validation)
-        self._ports.publish(occ_pr)
-        return occ_pr
+        return validation

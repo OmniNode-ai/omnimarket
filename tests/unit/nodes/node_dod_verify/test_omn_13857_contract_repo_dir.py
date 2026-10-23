@@ -28,7 +28,7 @@ from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
 
 
 def _clear_repo_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    for var in ("CONTRACT_REPO_DIR", "OMNI_HOME", "ONEX_CC_REPO_PATH"):
+    for var in ("CONTRACT_REPO_DIR", "OMNI_HOME", "CONTRACT_REPO_DIR"):
         monkeypatch.delenv(var, raising=False)
 
 
@@ -99,7 +99,7 @@ class TestResolveContractRepoDir:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _clear_repo_env(monkeypatch)
-        monkeypatch.setenv("ONEX_CC_REPO_PATH", "/cc/repo")
+        monkeypatch.setenv("CONTRACT_REPO_DIR", "/cc/repo")
         # Contract not under an OCC tree -> path derivation misses, env used.
         plain = tmp_path / "OMN-3.yaml"
         plain.write_text("ticket_id: OMN-3\n", encoding="utf-8")

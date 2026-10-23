@@ -49,7 +49,6 @@ _NORMALIZATION: dict[str, tuple[DashboardStage, DashboardStatus, DashboardSeveri
     "evidence-collected": ("COLLECTED", "PASSED", "INFO"),
     "evidence-extracted": ("EXTRACTED", "PASSED", "INFO"),
     "evidence-validated": ("VALIDATED", "PASSED", "INFO"),
-    "occ-pr-created": ("OCC_PR", "PASSED", "INFO"),
     "evidence-pipeline-completed": ("COMPLETED", "PASSED", "INFO"),
     "readiness-gate-started": ("READINESS_GATE_STARTED", "IN_FLIGHT", "INFO"),
     "readiness-gate-completed": ("READINESS_GATE_COMPLETED", "PASSED", "INFO"),

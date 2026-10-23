@@ -180,7 +180,7 @@ def _arrange_occ(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *tickets: str
 ) -> None:
     occ = _occ_without_a_dev_ref(tmp_path, *tickets)
-    monkeypatch.setenv("ONEX_CC_REPO_PATH", str(occ))
+    monkeypatch.setenv("CONTRACT_REPO_DIR", str(occ))
     monkeypatch.setenv("OCC_GOVERNANCE_REF", "origin/dev")
     monkeypatch.delenv("OMNI_HOME", raising=False)
     monkeypatch.delenv(_ALLOW_STALE_OCC_REF_ENV, raising=False)

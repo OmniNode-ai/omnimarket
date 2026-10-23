@@ -379,10 +379,10 @@ class TestLiveStateBindingFromHardcodedOwnCheck:
         occ_root = tmp_path / "onex_change_control"
         monkeypatch.setenv("OMNI_HOME", str(tmp_path))
         monkeypatch.delenv("CONTRACT_REPO_DIR", raising=False)
-        # OMN-15390: an ambient ``ONEX_CC_REPO_PATH`` (this workspace exports
+        # OMN-15390: an ambient ``CONTRACT_REPO_DIR`` (this workspace exports
         # one) would redirect the receipt lookup away from ``tmp_path`` and the
         # assertions below would read a vacuous green, so pin it to the fixture.
-        monkeypatch.setenv("ONEX_CC_REPO_PATH", str(occ_root))
+        monkeypatch.setenv("CONTRACT_REPO_DIR", str(occ_root))
         ticket = "OMN-99010"
         item_id = "dod-omn-99010-pr-2536-rebind"
         item = {
@@ -447,10 +447,10 @@ class TestLiveStateOmittedAndNotedForUnresolvableBinding:
         occ_root = tmp_path / "onex_change_control"
         monkeypatch.setenv("OMNI_HOME", str(tmp_path))
         monkeypatch.delenv("CONTRACT_REPO_DIR", raising=False)
-        # OMN-15390: an ambient ``ONEX_CC_REPO_PATH`` (this workspace exports
+        # OMN-15390: an ambient ``CONTRACT_REPO_DIR`` (this workspace exports
         # one) would redirect the receipt lookup away from ``tmp_path`` and the
         # assertions below would read a vacuous green, so pin it to the fixture.
-        monkeypatch.setenv("ONEX_CC_REPO_PATH", str(occ_root))
+        monkeypatch.setenv("CONTRACT_REPO_DIR", str(occ_root))
         ticket = "OMN-99012"
         item_id = "dod-unparseable-id"
         item = {
@@ -478,10 +478,10 @@ class TestLiveStateOmittedAndNotedForUnresolvableBinding:
         occ_root = tmp_path / "onex_change_control"
         monkeypatch.setenv("OMNI_HOME", str(tmp_path))
         monkeypatch.delenv("CONTRACT_REPO_DIR", raising=False)
-        # OMN-15390: an ambient ``ONEX_CC_REPO_PATH`` (this workspace exports
+        # OMN-15390: an ambient ``CONTRACT_REPO_DIR`` (this workspace exports
         # one) would redirect the receipt lookup away from ``tmp_path`` and the
         # assertions below would read a vacuous green, so pin it to the fixture.
-        monkeypatch.setenv("ONEX_CC_REPO_PATH", str(occ_root))
+        monkeypatch.setenv("CONTRACT_REPO_DIR", str(occ_root))
         ticket = "OMN-99013"
         item_id = "dod-unparseable-id-2"
         item = {

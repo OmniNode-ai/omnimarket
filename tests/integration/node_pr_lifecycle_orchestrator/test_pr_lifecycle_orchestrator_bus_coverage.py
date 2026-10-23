@@ -70,8 +70,8 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecyc
     ModelPrLifecycleResult,
     ModelPrLifecycleStartCommand,
 )
-from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.occ_stamp_readback import (
-    ModelOccStampReadbackResult,
+from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.pr_evidence_readback import (
+    ModelPrEvidenceReadbackResult,
 )
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers import (
     EnumPrCategory,
@@ -209,7 +209,7 @@ class _MockFix:
         return FixResult(prs_dispatched=1, prs_skipped=0)
 
 
-class _VerifiedOccStampReadback:
+class _VerifiedPrEvidenceReadback:
     """Hermetic OCC-companion read-back stub (OMN-14151 arm-gate).
 
     Always verifies so the arm-gate's occ_companion_verified criterion is
@@ -218,8 +218,8 @@ class _VerifiedOccStampReadback:
 
     async def verify_fix_landed(
         self, repo: str, pr_number: int, ticket_id: str | None = None
-    ) -> ModelOccStampReadbackResult:
-        return ModelOccStampReadbackResult(verified=True, reason="test: stubbed")
+    ) -> ModelPrEvidenceReadbackResult:
+        return ModelPrEvidenceReadbackResult(verified=True, reason="test: stubbed")
 
 
 class _HarnessOrchestrator(HandlerPrLifecycleOrchestrator):
@@ -241,7 +241,7 @@ class _HarnessOrchestrator(HandlerPrLifecycleOrchestrator):
         fault_on_action: EnumOrchestratorAction | None = None,
         **kwargs: Any,
     ) -> None:
-        kwargs.setdefault("occ_stamp_readback", _VerifiedOccStampReadback())
+        kwargs.setdefault("pr_evidence_readback", _VerifiedPrEvidenceReadback())
         super().__init__(**kwargs)
         self._census = census
         self._probe_outcome = probe_outcome

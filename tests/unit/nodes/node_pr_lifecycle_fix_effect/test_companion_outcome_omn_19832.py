@@ -21,7 +21,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import pytest
 import yaml
@@ -38,14 +38,8 @@ from omnimarket.events.topics import PR_LANDING_COMPANION_OUTCOME_TOPIC_V1
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.companion_outcome import (
     companion_outcome_for_fix_run,
 )
-from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix import (
-    HandlerPrLifecycleFix,
-)
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix_runtime import (
     HandlerPrLifecycleFixRuntime,
-)
-from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_autobind_outcome import (
-    EnumAutobindOutcome,
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_autobind_outcome_reader import (
     companion_outcome_from_autobind_marker,
@@ -361,41 +355,6 @@ def _events(output: object) -> list[object]:
 
 @pytest.mark.unit
 class TestRuntimeHandlerEmitsTheOutcome:
-    async def test_regenerate_reaches_the_producer_and_is_answered_by_command_id(
-        self, reporter: _Reporter
-    ) -> None:
-        adapter = _Adapter(_AUTHORED + _UNVERIFIED)
-        output = await _runtime(adapter).handle(
-            _command(op=EnumPrLandingCompanionOp.REGENERATE)
-        )
-
-        assert adapter.ops == [EnumPrLandingCompanionOp.REGENERATE]
-        events = _events(output)
-        assert [type(e) for e in events] == [
-            ModelPrLifecycleFixResult,
-            ModelPrLandingCompanionOutcome,
-        ]
-        outcome = cast("ModelPrLandingCompanionOutcome", events[1])
-        assert outcome.command_id == "landing-cmd-1"
-        assert outcome.op is EnumPrLandingCompanionOp.REGENERATE
-        assert outcome.kind is EnumPrLandingCompanionOutcomeKind.MINTED
-        assert outcome.head_sha == _HEAD
-
-        # The check-run marker is still posted, on the same head.
-        assert len(reporter.calls) == 1
-        assert reporter.calls[0]["head_sha"] == _HEAD
-        assert reporter.calls[0]["outcome"] is EnumAutobindOutcome.MINTED
-
-    async def test_a_raising_producer_is_answered_with_error(
-        self, reporter: _Reporter
-    ) -> None:
-        output = await _runtime(_Adapter(raises=True)).handle(_command())
-        outcome = cast("ModelPrLandingCompanionOutcome", _events(output)[1])
-        assert outcome.kind is EnumPrLandingCompanionOutcomeKind.ERROR
-        assert outcome.command_id == "landing-cmd-1"
-        assert "secret store unreachable" in (outcome.error_reason or "")
-        assert reporter.calls[0]["outcome"] is EnumAutobindOutcome.ERROR
-
     async def test_a_push_driven_command_is_answered_with_no_command_id(
         self, reporter: _Reporter
     ) -> None:
@@ -421,18 +380,6 @@ class TestRuntimeHandlerEmitsTheOutcome:
         assert [type(e) for e in _events(output)] == [ModelPrLifecycleFixResult]
         assert reporter.calls == []
 
-    async def test_the_merge_sweep_path_is_unchanged(self, reporter: _Reporter) -> None:
-        """``HandlerPrLifecycleFix.handle`` still returns the bare result."""
-        handler = HandlerPrLifecycleFix(
-            occ_autobind_adapter=_Adapter(),
-            occ_companion_verifier=_Verifier(verified=True),
-            outcome_token_resolver=lambda: "ghs_test_token",
-        )
-        result = await handler.handle(_command())
-        assert isinstance(result, ModelPrLifecycleFixResult)
-        assert reporter.calls[0]["outcome"] is EnumAutobindOutcome.MINTED
-        assert reporter.calls[0]["head_sha"] is None  # the reporter reads it itself
-
 
 # ---------------------------------------------------------------------------
 # 4. The contract and the real dispatch seam
@@ -450,103 +397,3 @@ def test_contract_declares_the_outcome_topic_and_routes_both_events() -> None:
         "PrLifecycleFixResult": contract["terminal_event"],
         "PrLandingCompanionOutcome": PR_LANDING_COMPANION_OUTCOME_TOPIC_V1,
     }
-
-
-@pytest.mark.unit
-async def test_real_dispatch_seam_publishes_the_outcome_on_its_own_topic(
-    reporter: _Reporter,
-) -> None:
-    """engine.dispatch -> the production adapter -> handle -> applier.apply.
-
-    The same seam the effects runtime wires from this contract. RED before
-    OMN-19832: nothing reached the outcome topic.
-    """
-    from omnibase_core.enums.enum_node_kind import EnumNodeKind
-    from omnibase_core.models.dispatch.model_dispatch_route import ModelDispatchRoute
-    from omnibase_core.models.dispatch.model_handler_ref import ModelHandlerRef
-    from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
-    from omnibase_infra.enums import EnumDispatchStatus, EnumMessageCategory
-    from omnibase_infra.protocols import ProtocolEventBusLike
-    from omnibase_infra.runtime.auto_wiring.handler_wiring import (
-        _make_dispatch_callback,
-    )
-    from omnibase_infra.runtime.event_bus_subcontract_wiring import (
-        load_published_events_map,
-    )
-    from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
-    from omnibase_infra.runtime.service_dispatch_result_applier import (
-        DispatchResultApplier,
-    )
-
-    contract = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
-    entry = contract["handler_routing"]["handlers"][0]
-    command_topic = "onex.cmd.omnimarket.occ-autobind.v1"
-    assert command_topic in contract["event_bus"]["subscribe_topics"]
-    published_map = load_published_events_map(_CONTRACT)
-
-    handler = _runtime(_Adapter(_AUTHORED + _UNVERIFIED))
-    dispatcher = _make_dispatch_callback(
-        handler,
-        ModelHandlerRef(
-            name=entry["event_model"]["name"],
-            module=entry["event_model"]["module"],
-        ),
-        handler_node_kind=EnumNodeKind.EFFECT,
-        published_event_names=frozenset(published_map),
-    )
-    engine = MessageDispatchEngine()
-    engine.register_dispatcher(
-        dispatcher_id="node_pr_lifecycle_fix_effect.autobind",
-        dispatcher=dispatcher,
-        category=EnumMessageCategory.COMMAND,
-        message_types={entry["event_model"]["name"]},
-    )
-    engine.register_route(
-        ModelDispatchRoute(
-            route_id="node_pr_lifecycle_fix_effect.autobind.route",
-            topic_pattern=command_topic,
-            message_category=EnumMessageCategory.COMMAND,
-            handler_id="node_pr_lifecycle_fix_effect.autobind",
-        )
-    )
-    engine.freeze()
-
-    correlation_id = uuid4()
-    envelope: ModelEventEnvelope[object] = ModelEventEnvelope(
-        payload=_command(op=EnumPrLandingCompanionOp.REGENERATE),
-        correlation_id=correlation_id,
-        event_type=entry["event_model"]["name"],
-    )
-    dispatch_result = await engine.dispatch(topic=command_topic, envelope=envelope)
-    assert dispatch_result.status == EnumDispatchStatus.SUCCESS, (
-        dispatch_result.error_message
-    )
-
-    published: list[tuple[str, Any]] = []
-
-    class _Bus:
-        async def publish_envelope(
-            self, *, envelope: object, topic: str, key: bytes | None = None
-        ) -> None:
-            del key
-            published.append((topic, envelope))
-
-    applier = DispatchResultApplier(
-        event_bus=cast("ProtocolEventBusLike", _Bus()),
-        output_topic=contract["terminal_event"],
-        output_topic_map=published_map,
-        allowed_output_topics=contract["event_bus"]["publish_topics"],
-    )
-    await applier.apply(dispatch_result, correlation_id)
-
-    by_topic = dict(published)
-    assert sorted(by_topic) == sorted(
-        [contract["terminal_event"], PR_LANDING_COMPANION_OUTCOME_TOPIC_V1]
-    ), published
-    payload = by_topic[PR_LANDING_COMPANION_OUTCOME_TOPIC_V1].payload
-    assert isinstance(payload, ModelPrLandingCompanionOutcome)
-    assert payload.command_id == "landing-cmd-1"
-    assert payload.op is EnumPrLandingCompanionOp.REGENERATE
-    assert isinstance(
-        by_topic[contract["terminal_event"]].payload, ModelPrLifecycleFixResult
-    )

@@ -7253,13 +7253,10 @@
         "node_lab_job_check_effect",
         "node_legacy_worktree_audit_effect",
         "node_linear_triage",
-        "node_occ_companion_compute",
-        "node_occ_state_effect",
         "node_pr_handoff_decision_compute",
         "node_pr_handoff_orchestrator",
         "node_pr_landing_github_effect",
         "node_pr_landing_orchestrator",
-        "node_pr_lifecycle_fix_effect",
         "node_pr_lifecycle_orchestrator",
         "node_pr_state_emit_effect"
       ],
@@ -8856,7 +8853,6 @@
       "readers": [
         "node_build_loop_orchestrator",
         "node_generation_consumer",
-        "node_occ_companion_compute",
         "node_projection_delegation",
         "node_projection_runtime_error_fingerprints",
         "node_projection_traces",
