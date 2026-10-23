@@ -429,11 +429,13 @@ def test_the_parent_watch_returns_when_stopped() -> None:
     watch_parent(stop, get_ppid=lambda: 100, on_orphaned=lambda: pytest.fail("fired"))
 
 
-def test_the_shipped_contract_loads_an_empty_inventory_until_a_binding_ticket_adds_rows() -> (
+def test_the_shipped_contract_loads_the_manual_compaction_row_and_nothing_else() -> (
     None
 ):
     section = load_client_section()
-    assert section.bindings == ()
+    assert [(b.name, b.hook_event, b.matcher_tool) for b in section.bindings] == [
+        ("compaction", "session.compact", "manual")
+    ]
 
 
 def test_a_handler_built_without_a_client_refuses_to_handle(replacing_binding) -> None:
