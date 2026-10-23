@@ -27,18 +27,51 @@ def endpoint_host(endpoint_url: str) -> str | None:
         return None
 
 
+def _is_config_swap(
+    entry: Mapping[str, object], previous: Mapping[str, object]
+) -> bool:
+    """The same backend and model retried with another configuration."""
+    configuration = entry.get("configuration")
+    return (
+        configuration is not None
+        and previous.get("configuration") is not None
+        and configuration != previous.get("configuration")
+        and entry.get("backend_id") == previous.get("backend_id")
+        and entry.get("model_id") == previous.get("model_id")
+    )
+
+
 def stamp_attempt_lineage(
-    rungs: Sequence[Mapping[str, object]], *, correlation_id: UUID
+    rungs: Sequence[Mapping[str, object]],
+    *,
+    correlation_id: UUID,
+    size_band: str | None = None,
+    configuration: Mapping[str, object] | None = None,
 ) -> list[dict[str, object]]:
-    """Copy the ladder, retaining producer lineage and filling whole-request defaults."""
+    """Copy the ladder, retaining producer lineage and filling whole-request defaults.
+
+    ``size_band`` and ``configuration`` are the request's own, filled only
+    where a rung does not carry one. A rung redelivered with an attempt id
+    already in the ladder is the same attempt, and is kept once.
+    """
     stamped: list[dict[str, object]] = []
-    for index, rung in enumerate(rungs):
+    seen: set[str] = set()
+    for rung in rungs:
+        index = len(stamped)
         entry = dict(rung)
         entry.setdefault("attempt_id", str(attempt_id_for(correlation_id, index)))
+        if isinstance(entry["attempt_id"], UUID):
+            entry["attempt_id"] = str(entry["attempt_id"])
+        if entry["attempt_id"] is not None and entry["attempt_id"] in seen:
+            continue
+        if configuration is not None:
+            entry.setdefault("configuration", dict(configuration))
         entry.setdefault(
             "attempt_kind",
             EnumDelegationAttemptKind.FIRST_TRY.value
             if index == 0
+            else EnumDelegationAttemptKind.CONFIG_SWAP.value
+            if _is_config_swap(entry, stamped[-1])
             else EnumDelegationAttemptKind.WHOLE_ESCALATION.value,
         )
         entry.setdefault(
@@ -46,11 +79,13 @@ def stamp_attempt_lineage(
         )
         entry.setdefault("split_id", None)
         entry.setdefault("host", None)
-        entry.setdefault("size_band", None)
-        for key in ("attempt_id", "parent_attempt_id", "split_id"):
+        entry.setdefault("size_band", size_band)
+        for key in ("parent_attempt_id", "split_id"):
             if isinstance(entry[key], UUID):
                 entry[key] = str(entry[key])
         if isinstance(entry["attempt_kind"], EnumDelegationAttemptKind):
             entry["attempt_kind"] = entry["attempt_kind"].value
+        if entry["attempt_id"] is not None:
+            seen.add(str(entry["attempt_id"]))
         stamped.append(entry)
     return stamped

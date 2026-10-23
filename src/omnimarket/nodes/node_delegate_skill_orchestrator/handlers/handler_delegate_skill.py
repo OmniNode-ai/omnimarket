@@ -72,6 +72,9 @@ from omnimarket.models.delegation.delegation_ticket_id import (
 from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
 )
+from omnimarket.models.delegation.wire.model_attempt_configuration import (
+    ModelAttemptConfiguration,
+)
 from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
     ModelAttemptRubricVerdict,
 )
@@ -713,6 +716,15 @@ def _lineage_fields(raw: dict[str, object]) -> dict[str, Any]:
             fields[key] = None
     host = raw.get("host")
     fields["host"] = host if isinstance(host, str) and host else None
+    configuration = raw.get("configuration")
+    try:
+        fields["configuration"] = (
+            ModelAttemptConfiguration.model_validate(configuration)
+            if isinstance(configuration, dict | ModelAttemptConfiguration)
+            else None
+        )
+    except ValidationError:
+        fields["configuration"] = None
     return fields
 
 
