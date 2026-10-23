@@ -55,4 +55,3 @@ dod_evidence:
         check_value: |-
           bash -o pipefail -c 'ref="$(git rev-parse HEAD)"; gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_inference_intent.py?ref=${ref}" --jq .content | base64 --decode | grep -F "def _post_owning_client() -> httpx.Response:" >/dev/null && gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/projection/sqlite_database.py?ref=${ref}" --jq .content | base64 --decode | grep -F "verify_sqlite_store_header(Path(db_path))" >/dev/null'
         cwd: "."
-    binds_ac: ["AC1", "AC2"]
