@@ -179,13 +179,17 @@ def envelope_tenant_identity(data: Mapping[str, Any]) -> str | None:
     return None
 
 
-#: OMN-19970: a projected row's provenance. ``real`` is every row a real
-#: delegation wrote; ``fixture`` is a row the dev and demo seed wrote through the
-#: same projection so dashboard pages have rows before the real chain is
-#: complete. Measured sums exclude ``fixture`` rows unless a reader opts in.
+#: OMN-19448 / OMN-19970: a projected row's provenance. ``real`` is ordinary
+#: delegation traffic; ``experiment`` is typed synthetic traffic; ``fixture``
+#: is a row the dev and demo seed wrote through the same projection. The seed
+#: marker wins over synthetic provenance. Measured sums exclude ``fixture``
+#: rows unless a reader opts in.
 DATA_SOURCE_REAL: Final[str] = "real"
 DATA_SOURCE_FIXTURE: Final[str] = "fixture"
-DATA_SOURCES: Final[frozenset[str]] = frozenset({DATA_SOURCE_REAL, DATA_SOURCE_FIXTURE})
+DATA_SOURCE_EXPERIMENT: Final[str] = "experiment"
+DATA_SOURCES: Final[frozenset[str]] = frozenset(
+    {DATA_SOURCE_REAL, DATA_SOURCE_FIXTURE, DATA_SOURCE_EXPERIMENT}
+)
 #: The ``ModelEnvelopeMetadata.tags`` key the seed stamps.
 DATA_SOURCE_TAG: Final[str] = "data_source"
 

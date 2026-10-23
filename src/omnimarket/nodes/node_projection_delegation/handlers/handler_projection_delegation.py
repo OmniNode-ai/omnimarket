@@ -76,6 +76,9 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_cal
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_cohort_key_fold import (
     HandlerDelegationCohortKeyFold,
 )
+from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_data_source_fold import (
+    HandlerDelegationDataSourceFold,
+)
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_lineage_fold import (
     HandlerDelegationLineageFold,
 )
@@ -963,8 +966,8 @@ class HandlerProjectionDelegation:
         dropped here. Dedup against synthetic re-emits is handled by the
         correlation_id UPSERT key plus _preserve_existing_evidence.
         """
-        # OMN-19970: provenance. ``fixture`` only from the dev and demo seed,
-        # which writes through this same method; every other caller is ``real``.
+        # OMN-19448: typed synthetic provenance; the fixture seed wins.
+        data_source = HandlerDelegationDataSourceFold().handle(event, data_source)
         if data_source not in DATA_SOURCES:
             raise ValueError(
                 f"data_source must be one of {sorted(DATA_SOURCES)}, got {data_source!r}"

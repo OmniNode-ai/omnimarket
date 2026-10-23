@@ -30,6 +30,16 @@ requirements:
       - id: "AC5"
         statement: |-
           AC5: the delegate-skill terminal and the canonical terminal write the three columns, a measured zero is stored as zero, an unmeasured value stays NULL, and a later sparse terminal does not erase them -- falsifier: uv run pytest tests/unit/delegation/test_terminal_timing_and_requested_model_omn19448.py -q
+  - id: "req-experiment-data-source-and-quarantine"
+    statement: |-
+      A run the caller declares synthetic through the request's own provenance is stored data_source experiment, and a poison terminal too large for the DLQ producer is still quarantined with a bounded envelope, so the delegate-skill terminals behind it reach delegation_events with their backend_id and host.
+    acceptance:
+      - id: "AC6"
+        statement: |-
+          AC6: a delegate-skill terminal whose provenance traffic_class is synthetic is written with data_source experiment by both projection writers, a terminal without it stays real, the lane name is never read, and migration 0064 admits the value -- falsifier: uv run pytest tests/unit/projection/test_delegation_data_source_experiment_omn19448.py -q
+      - id: "AC7"
+        statement: |-
+          AC7: a poison event whose serialized DLQ envelope exceeds the producer limit is published bounded with its correlation_id, the offset is committed, and the next recorded delegate-skill terminal is projected with its backend_id and host -- falsifier: uv run pytest tests/unit/projection/test_dlq_oversize_poison_omn19448.py tests/unit/projection/test_delegation_backend_host_after_quarantine_omn19448.py -q
 evidence_requirements:
   - kind: "tests"
     description: "The stop reason column tests."
@@ -45,6 +55,22 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn19448-experiment-data-source"
+    description: "Both projection writers store data_source experiment for a terminal whose request provenance traffic_class is synthetic, keep real for any other terminal including one from a lane named like an eval lane, and the real PostgreSQL check admits experiment through migration 0064 while still refusing an unknown value."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/projection/test_delegation_data_source_experiment_omn19448.py tests/test_omn19448_experiment_data_source_real_postgres.py -q -n 0 --no-cov -p no:cacheprovider --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn19448-oversize-poison-quarantine"
+    description: "A delegate-skill terminal of about 1.79 MB with no tenant is quarantined on the DLQ within the producer limit with its correlation_id, the offset is committed, and the next recorded terminal is projected with backend_id local-heavy-reasoning and host recorded on the terminal."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/projection/test_dlq_oversize_poison_omn19448.py tests/unit/projection/test_delegation_backend_host_after_quarantine_omn19448.py -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
   - id: "dod-stop-reason-columns-ac1"
     description: "Migration 0053 adds the nullable finish_reason and truncated columns idempotently and ships a rollback."
     source: "manual"
