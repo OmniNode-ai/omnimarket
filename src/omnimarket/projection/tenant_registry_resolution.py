@@ -61,6 +61,7 @@ responsible for catching it up -- the OMN-16930 diagnosis lesson, where a bare
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from datetime import datetime
 from typing import Protocol
@@ -79,12 +80,14 @@ __all__ = [
     "MIRROR_CATCHUP_POLL_SECONDS",
     "TENANT_REGISTRY_MIRROR_TABLE",
     "TENANT_REGISTRY_PROJECTION_NODE",
+    "TENANT_SLUG_PATTERN",
     "ProtocolTenantRegistryReader",
     "TenantRegistryResolutionError",
     "async_house_tenant_write_uuid",
     "async_registry_mirror_watermark",
     "async_registry_tenant_uuid",
     "async_resolve_write_tenant_uuid",
+    "is_tenant_slug",
     "parse_tenant_uuid",
     "resolve_registry_tenant_uuid",
     "resolve_registry_tenant_uuid_or_none",
@@ -94,6 +97,16 @@ __all__ = [
 
 TENANT_REGISTRY_MIRROR_TABLE = "tenant_registry_mirror"
 TENANT_REGISTRY_PROJECTION_NODE = "node_projection_tenant_registry"
+
+#: The slug shape the local bundle's registry seed step accepts for
+#: ``ONEX_TENANT_ID`` (omnibase_infra ``local-tenant-registry-seed``).
+TENANT_SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
+
+
+def is_tenant_slug(value: str) -> bool:
+    """True when ``value`` has the shape the local registry seed records."""
+    return TENANT_SLUG_PATTERN.fullmatch(value) is not None
+
 
 _REGISTRY_SLUG_LOOKUP_SQL = (
     f"SELECT tenant_uuid FROM {TENANT_REGISTRY_MIRROR_TABLE} WHERE tenant_slug = $1"

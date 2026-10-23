@@ -17,7 +17,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from urllib.parse import quote_plus
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import asyncpg
 import pytest
@@ -85,7 +85,26 @@ async def test_real_postgres_writer_types_replay_late_and_stale_siblings(
                 .replace("public.", f"{schema}.")
                 .replace("ON SCHEMA public ", f"ON SCHEMA {schema} ")
             )
-        pool = await asyncpg.create_pool(dsn, min_size=1, max_size=1)
+        # The writer confirms the tenant against tenant_registry_mirror, which
+        # it names unqualified; the disposable schema carries its own mirror
+        # row for the tenant, as the bundle's registry seed step records it.
+        await conn.execute(
+            f"CREATE TABLE {schema}.tenant_registry_mirror ("
+            "tenant_slug TEXT PRIMARY KEY, tenant_uuid UUID NOT NULL, "
+            "status TEXT NOT NULL, observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW())"
+        )
+        await conn.execute(
+            f"INSERT INTO {schema}.tenant_registry_mirror "
+            "(tenant_slug, tenant_uuid, status) VALUES ($1, $2, 'active')",
+            "omn19988-writer",
+            UUID(_TENANT),
+        )
+        pool = await asyncpg.create_pool(
+            dsn,
+            min_size=1,
+            max_size=1,
+            server_settings={"search_path": f"{schema}, public"},
+        )
         assert pool is not None
         # Scope only relation names to the disposable schema. All parameters,
         # transactions, planning and asyncpg execution use the real writer.
