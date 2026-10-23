@@ -57,6 +57,12 @@ from omnimarket.nodes.node_event_emit_effect.errors import (
     UngovernedTopicError,
 )
 
+# This policy is loaded on the first emit alongside the topic registry. Both
+# loaders use safe constructors; LibYAML avoids Python scanning on that path.
+_CONTRACT_SAFE_LOADER: type[yaml.SafeLoader] | type[yaml.CSafeLoader] = getattr(
+    yaml, "CSafeLoader", yaml.SafeLoader
+)
+
 JsonDict = dict[str, object]
 
 
@@ -518,7 +524,7 @@ def _load(path_str: str) -> RedactionContract:
             source=path_str, detail="capture redaction contract not found"
         )
     with path.open(encoding="utf-8") as handle:
-        return _parse(yaml.safe_load(handle), source=path)
+        return _parse(yaml.load(handle, Loader=_CONTRACT_SAFE_LOADER), source=path)
 
 
 def load_contract(path: Path | None = None) -> RedactionContract:
