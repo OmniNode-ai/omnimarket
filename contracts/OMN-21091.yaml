@@ -1,0 +1,75 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21091"
+title: "T0.1 Capability probe: P14 capture lag, the session-content projection keeps four records in flight"
+summary: "P14 re-measured on the dev lane 2026-10-23 13:00Z-14:25Z by joining broker append timestamps to projected rows. The time is held between the broker and the projected row (content stream p95 172.415 s, hook stream p95 81.997 s); hook fire to broker is p95 under 11 s on both streams. The hook-event projection already keeps four records in flight; the session-content projection was serial behind a per-writer lock and opened a two-connection pool per record. Its contract now declares consume_concurrency max_in_flight_records 4, and each runtime message writes through its own single-connection adapter on the runtime-bound DSN. This contract binds only the code change this repository carries for P14."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21091-p14-content-projection-concurrency"
+    statement: |-
+      The session-content projection permits four records in flight, gives each runtime message its own single-connection adapter, and folds records delivered in any order to the same rows.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the report answers every row of section 3 (P0-P19) with supported, unsupported or untested, quoting the evidence line and the positive control's result -- falsifier: any row without a quoted transcript line, capture event id, process sample, broker config line or declaration, or a "supported" row whose control is absent.
+      - id: "AC2"
+        statement: |-
+          AC2: the report pins `claude --version` and the sha256 of the regenerated declarations -- falsifier: the two version strings disagree or the hash is absent.
+      - id: "AC3"
+        statement: |-
+          AC3: the report measures no path this plan has yet to build -- falsifier: a latency row for the compaction build, `context_pack` or client-call admission.
+evidence_requirements:
+  - kind: "tests"
+    description: "The session-content writer declares four records in flight, four messages write at once (a barrier of four times out against the serial merge-base writer), each message gets its own single-connection adapter, and reversed delivery records the same statements."
+    command: "uv run pytest tests/unit/nodes/node_projection_session_content/ tests/unit/nodes/test_golden_chain_session_content_omn19550.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21091-ac1-p14-capture-path"
+    description: "P14 evidence this repository carries: the projection hop that held the content stream's lag now runs four records at once on isolated adapters. The probe report row that quotes the per-hop measurement is not bound here. Fails at the merge base (no consume_concurrency key, no _message_db, the barrier of four breaks)."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_session_content/test_session_content_consume_concurrency_omn21091.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21091-ac2-existing-projection-suite"
+    description: "The version pin and declaration hash are probe report fields, not bound here. This repository's check is that the session-content projection suite, including its golden chain, still passes unchanged after the concurrency change."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_session_content/ tests/unit/nodes/test_golden_chain_session_content_omn19550.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21091-ac3-capture-path-only"
+    description: "The change and its measurement touch only the existing capture path (hook capture, emit drainer, bus, session-content projection). No compaction build, context_pack or client-call admission path is changed or timed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_session_content/test_session_content_consume_concurrency_omn21091.py -q --no-cov -k reverse"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21091-deploy-probe"
+    description: "Hosted-runner deploy readback: the runtime's own consume-concurrency loader (omnibase_infra auto-wiring) reads the session-content contract as four records in flight, the same bound it reads for the hook-event projection, and the writer suite passes. No lane services or credentials are required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          uv sync --locked;
+          .venv/bin/python - <<'PY'
+          from pathlib import Path
+          from omnibase_infra.runtime.auto_wiring.models.model_consume_concurrency import load_consume_concurrency
+          nodes = Path("src/omnimarket/nodes")
+          content = load_consume_concurrency(nodes / "node_projection_session_content" / "contract.yaml")
+          hook = load_consume_concurrency(nodes / "node_projection_claude_hook_events" / "contract.yaml")
+          assert content.max_in_flight_records == 4, content
+          assert hook.max_in_flight_records == 4, hook
+          print({"session_content": content.max_in_flight_records, "claude_hook_events": hook.max_in_flight_records})
+          PY
+          env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_projection_session_content/ -q --no-cov
+        cwd: "${OMNI_HOME}/omnimarket"
