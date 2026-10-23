@@ -46,11 +46,11 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn21091-ac3-capture-path-only"
-    description: "The change and its measurement touch only the existing capture path (hook capture, emit drainer, bus, session-content projection). No compaction build, context_pack or client-call admission path is changed or timed."
+    description: "The change and its measurement touch only the existing capture path (hook capture, emit drainer, bus, session-content projection). No compaction build, context_pack or client-call admission path is changed or timed. The bound file is the capture-path concurrency suite, reversed delivery included; it fails at the merge base, where the projection declares no consume_concurrency."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_projection_session_content/test_session_content_consume_concurrency_omn21091.py -q --no-cov -k reverse"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_session_content/test_session_content_consume_concurrency_omn21091.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-omn21091-deploy-probe"
