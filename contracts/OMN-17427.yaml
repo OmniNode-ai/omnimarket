@@ -3796,7 +3796,7 @@ dod_evidence:
           PY
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "test_passes"
-        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_event_emit_effect/test_session_deadline_omn17427.py -q -n 0 --no-cov --refuse-skips"
+        check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_session_deadline_omn17427.py -q -n 0 --no-cov --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-terminal-cleanup-clock-deploy-probe"
     description: "Deploy probe. On the hosted runner, execute the checked-out terminal emitter and Kafka publisher against a slow-close broker and temporary spool. Both publish outcomes must cancel the close within the remaining session budget and preserve the expected spool state. Locked dependencies and the checkout suffice; this is a packaged runtime-path probe with no broker, credentials or live deployment claim."
@@ -3804,4 +3804,12 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_event_emit_effect/test_session_deadline_omn17427.py -q -n 0 --no-cov --refuse-skips -k terminal_emit_close_uses_remaining_budget"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-evidence-binding-reads-env-prefix"
+    description: "The repo evidence binding check reads through a leading env VAR=value prefix, so a bound test_passes check written as env ... uv run pytest <file> counts as pytest evidence, as the verifier already treats it. At the merge base the env-prefixed cases are refused and the dev head's own contract fails the binding test."
+    source: "manual"
+    binds_ac: ["AC23"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -k reads_through_an_env_prefix"
         cwd: "${OMNI_HOME}/omnimarket"

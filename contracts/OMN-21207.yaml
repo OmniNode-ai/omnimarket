@@ -1,0 +1,75 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21207"
+title: "Delegation picks a model from measured cost and latency, not a declared tier order"
+summary: "node_measured_model_selection_compute ranks delegation candidates on measured cost per 1M tokens (the pricing manifest) and measured p50 latency (recorded delegation runs). Its contract declares, per candidate, where each measure is read, never the value, and one objective, cheapest_acceptable. A missing measure raises MeasureMissingError instead of falling back to the declared order. The new ModelMeasuredSelectionDecidedEvent carries every measure value with its captured_at. objective.basis names this ticket, whose record links the note quoting the operator."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched: ["events"]
+requirements:
+  - id: "req-ac1-measure-sources"
+    statement: "The routing contract declares measured cost and latency sources for each candidate model."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: The routing contract declares, per candidate model, a measured cost per 1M tokens and a measured p50 latency, read from the pricing manifest and from recorded delegation runs rather than hardcoded -- falsifier: pytest in the routing package fails when a candidate carries no measured cost field or no measured latency field."
+  - id: "req-ac2-ranks-and-raises"
+    statement: "Selection ranks candidates on the declared objective and raises when a measure is missing."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: Selection ranks candidates on those two measures under one declared objective, and raises when a measure is missing instead of silently falling back to the declared order -- falsifier: a pytest case with one candidate's latency absent asserts the selector raises, and fails today because the selector has no measure input at all."
+  - id: "req-ac3-decision-records-measures"
+    statement: "Each delegation decision records the measure values it read and their capture times."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: Each delegation decision records which measure values it read and when they were captured, so the choice can be re-derived afterwards -- falsifier: pytest asserts the emitted delegation event carries the measure values and their captured_at, and fails today because ModelTaskDelegatedEvent carries model_name only (OMN-7764)."
+  - id: "req-ac4-objective-basis"
+    statement: "The knowledge base records the selector objective and the operator approval."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: A requirements note in the knowledge base states the objective the selector optimises (cheapest acceptable, fastest acceptable, or a stated weighting) and quotes the operator approving it -- falsifier: no such note exists in knowledge-base, or the note names no objective and carries no operator quote."
+evidence_requirements:
+  - kind: "tests"
+    description: "Run the whole routing measured selection test file."
+    command: "uv run pytest tests/nodes/node_measured_model_selection_compute/test_measured_model_selection_omn21207.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21207-ac1-measure-sources"
+    description: "Proves AC1 by running the ac1 tests; it fails at the merge base because node_measured_model_selection_compute does not exist there."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_measured_model_selection_compute/test_measured_model_selection_omn21207.py -q --no-cov -k ac1"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21207-ac2-ranks-and-raises"
+    description: "Proves AC2 by running the ac2 tests; it fails at the merge base because node_measured_model_selection_compute does not exist there."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_measured_model_selection_compute/test_measured_model_selection_omn21207.py -q --no-cov -k ac2"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21207-ac3-decision-records-measures"
+    description: "Proves AC3 by running the ac3 tests; it fails at the merge base because node_measured_model_selection_compute does not exist there."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_measured_model_selection_compute/test_measured_model_selection_omn21207.py -q --no-cov -k ac3"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21207-ac4-objective-basis"
+    description: "Proves AC4 by running the ac4 tests; it fails at the merge base because node_measured_model_selection_compute does not exist there."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_measured_model_selection_compute/test_measured_model_selection_omn21207.py -q --no-cov -k ac4"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21207-deploy-probe"
+    description: "Deploy probe. Read the selector handler from GitHub at the checked-out commit and require select_by_measure and MeasureMissingError in it, with the ranking tests. It fails at the merge base, where the node does not exist."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_measured_model_selection_compute/test_measured_model_selection_omn21207.py -q --no-cov -k ac2"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_measured_model_selection_compute/handlers/handler_measured_model_selection.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"class MeasureMissingError\" > /dev/null'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
