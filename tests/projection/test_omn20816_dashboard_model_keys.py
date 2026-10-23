@@ -391,13 +391,13 @@ def test_m4b_two_overlapping_removals_never_leave_no_usable_provider(
 
     monkeypatch.setattr(handler_model_keys, "list_providers", overlapping)
 
-    outcomes: dict[str, BaseException | None] = {}
+    outcomes: dict[str, Exception | None] = {}
 
     def worker(provider: str) -> None:
         try:
             handler_model_keys.remove_key(provider)
             outcomes[provider] = None
-        except BaseException as exc:
+        except Exception as exc:
             outcomes[provider] = exc
 
     threads = [
@@ -469,14 +469,21 @@ def test_m4d_a_removal_waits_for_the_lock_held_by_another_process(
     db_path = tmp_path / "delegation.sqlite"
     assert handler_model_keys.LocalByokCredentialStore().db_path == db_path
 
+    holder_script = "\n".join(
+        [
+            "import sys",
+            "from pathlib import Path",
+            "from omnimarket.handlers.handler_model_keys import _removal_lock",
+            "with _removal_lock(Path(sys.argv[1])):",
+            "    print('held', flush=True)",
+            "    sys.stdin.read()",
+        ]
+    )
     holder = subprocess.Popen(
         [
             sys.executable,
             "-c",
-            "import sys; from pathlib import Path; "
-            "from omnimarket.handlers.handler_model_keys import _removal_lock\n"
-            "with _removal_lock(Path(sys.argv[1])):\n"
-            "    print('held', flush=True); sys.stdin.read()",
+            holder_script,
             str(db_path),
         ],
         stdin=subprocess.PIPE,
@@ -488,13 +495,13 @@ def test_m4d_a_removal_waits_for_the_lock_held_by_another_process(
         assert holder.stdin is not None
         assert holder.stdout.readline().strip() == "held"
         done = threading.Event()
-        outcome: list[BaseException | None] = []
+        outcome: list[Exception | None] = []
 
         def worker() -> None:
             try:
                 handler_model_keys.remove_key("openai")
                 outcome.append(None)
-            except BaseException as exc:
+            except Exception as exc:
                 outcome.append(exc)
             done.set()
 
