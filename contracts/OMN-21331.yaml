@@ -1,0 +1,53 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-21331
+title: omnimarket reads omnibase_core through its dev-merge tag for the canonical file shape check
+summary: The Canonical File Shape job in omnimarket reads omnibase_core through a dev-merge tag instead of a
+  commit sha. The job already runs on pull requests and the merge queue; this pull request carries AC2
+  and AC4 for omnimarket. AC1 is the validator change in omnibase_core and AC3 is a ruleset change per repository.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21331-omnimarket-canonical-file-shape
+    statement: The canonical file shape check runs on pull requests and the merge queue in omnimarket, refuses
+      a planted new script, and reads omnibase_core through its dev-merge tag.
+    acceptance:
+      - id: AC2
+        statement: "AC2: omnimarket runs the canonical file shape check on pull requests and the merge queue
+          and a planted new script is refused there -- falsifier: the planted-sample output in the rollout
+          PR body, and the job's own planted-sample step"
+      - id: AC4
+        statement: "AC4: the canonical file shape workflow in omnimarket reads omnibase_core through the dev-merge
+          tag, not a commit sha -- falsifier: git grep for a 40-hex omnibase_core reference on the CANONICAL_FILE_SHAPE_CORE
+          line returns nothing"
+evidence_requirements:
+  - kind: ci
+    description: The workflow triggers on pull requests and the merge queue and carries the planted-sample step.
+    command: grep -q "merge_group:" .github/workflows/ci.yml && grep -q "pull_request" .github/workflows/ci.yml && grep -q "zz_canary_planted" .github/workflows/ci.yml
+  - kind: ci
+    description: The canonical file shape workflow names a dev-merge tag and no commit sha for omnibase_core.
+    command: "! git grep -qE 'CANONICAL_FILE_SHAPE_CORE: .*[0-9a-f]{40}' -- .github/workflows && git grep -q 'CANONICAL_FILE_SHAPE_CORE: .*omnibase_core@dev-' -- .github/workflows"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn21331-ac2
+    description: The workflow triggers on pull requests and the merge queue and its planted-sample step is present.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: grep -q "merge_group:" .github/workflows/ci.yml && grep -q "pull_request" .github/workflows/ci.yml && grep -q "zz_canary_planted" .github/workflows/ci.yml
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac:
+      - AC2
+  - id: dod-omn21331-ac4
+    description: The canonical file shape workflow names a dev-merge tag and no commit sha for omnibase_core.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "! git grep -qE 'CANONICAL_FILE_SHAPE_CORE: .*[0-9a-f]{40}' -- .github/workflows && git grep -q 'CANONICAL_FILE_SHAPE_CORE: .*omnibase_core@dev-' -- .github/workflows"
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac:
+      - AC4
