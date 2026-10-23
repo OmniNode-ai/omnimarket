@@ -881,6 +881,11 @@ requirements:
     acceptance:
       - id: "AC187"
         statement: "AC187: test_terminal_emit_close_uses_remaining_budget records exactly one publisher session deadline and asserts finished minus that deadline is below 0.3 seconds; both publish outcomes retain the spool and cancellation assertions, and the background-loop cancellation case passes. The source assertion check fails on the merge base, which times the whole handle call."
+  - id: "req-unstated-outcome-pair"
+    statement: "A delegation_events row whose terminal states neither operational_outcome nor content_verdict, and whose stored row states neither, carries the pair its own terminal evidence decides: completed/usable for an evidenced success (terminal_ok, a model and an accepted rung), the pair its cause maps to for a typed failure. A stated pair is never replaced, and the async writer reconciles a first write the way the sync writer does."
+    acceptance:
+      - id: "AC190"
+        statement: "AC190: through both projection writers a harness-shaped or local delegate-skill success that declares no pair stores completed/usable, a first-written timeout, provider_error or quality_gate_refused failure stores the pair outcome_for_failure_cause gives, a canonical completed/correct survives a later unpaired success, and an unevidenced success, a non-terminal event, a causeless failure and a half-stated pair are left unchanged (tests/test_omn19448_unstated_outcome_pair.py) -- falsifier: the 7 writer tests fail at the merge base with KeyError operational_outcome, where both columns stay unnamed"
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -3812,4 +3817,22 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -k reads_through_an_env_prefix"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac190-unstated-outcome-pair"
+    description: "Both projection writers state the outcome pair an unpaired terminal's own evidence decides and keep a stated pair. The 7 in-memory writer tests and the 4 real-PostgreSQL cases (sync and async writer, unpaired harness success and handler timeout, on the migrated table) fail at the merge base; the 7 controls pass there and here."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19448_unstated_outcome_pair.py tests/test_omn19559_terminal_precedence.py tests/test_omn17427_terminal_fold_order.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19448_unstated_outcome_pair_real_postgres.py -q -n 0 -p no:randomly --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC190"]
+  - id: "dod-omn17427-unstated-outcome-pair-deploy-probe"
+    description: "Deploy probe. The hosted runner projects a harness-shaped delegate-skill terminal through the checked-out sync writer on the in-memory adapter and the async writer's first-write preserve step, with the locked dependencies and no database or credentials. It fails at the merge base and does not attest the writer deployed on the lab runtime."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_omn19448_unstated_outcome_pair.py -q -n 0 -p no:randomly --no-cov --refuse-skips -k 'harness_terminal or async_writer_first'"
         cwd: "${OMNI_HOME}/omnimarket"
