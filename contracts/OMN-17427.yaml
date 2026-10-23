@@ -406,6 +406,11 @@ requirements:
     acceptance:
       - id: "AC101"
         statement: "AC101: in a pool holding one revoked and one good token, one mark-revoked of the revoked label makes resolve return the good token, the first mark carries one ALERT naming the label and a repeat mark carries none, a forced re-add clears the revocation, and a pool whose every token is limited or revoked resolves nothing and exits 4 with an ALARM status line -- falsifier: uv run pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_pool.py -q -k 'revoked or revocation' fails at the merge base"
+  - id: "req-context-compaction-task-class"
+    statement: "context_compaction is an internal delegation task class: the compaction orchestrator can name it, it is never resolved from prompt text, it declares an execution budget and a ladder it can reach, every market consumer of the task-class universe accepts it, and the summarization-shaped inference protocol profiles shape its requests."
+    acceptance:
+      - id: "AC184"
+        statement: "AC184: the task-class authority lists context_compaction as internal with empty selection phrases, an execution budget and a reachable tier_order, ModelDelegationRequest and ModelDelegateSkillRequest accept it, and the cloud-glm-no-think, cloud-glm-5-3-thinking and openrouter-reasoning-minimal-excluded inference protocol profiles each list it once beside summarization -- falsifier: uv run pytest tests/unit/delegation/test_context_compaction_task_class_omn17427.py -q fails at the merge base, whose protocol profiles do not list context_compaction"
   - id: "req-publisher-fixture-one-copy"
     statement: "omnimarket resolves a golden chain's publisher through the one publisher contract fixture in omnibase_infra and holds no parser or index of its own."
     acceptance:
@@ -891,6 +896,11 @@ requirements:
     acceptance:
       - id: "AC190"
         statement: "AC190: through both projection writers a harness-shaped or local delegate-skill success that declares no pair stores completed/usable, a first-written timeout, provider_error or quality_gate_refused failure stores the pair outcome_for_failure_cause gives, a canonical completed/correct survives a later unpaired success, and an unevidenced success, a non-terminal event, a causeless failure and a half-stated pair are left unchanged (tests/test_omn19448_unstated_outcome_pair.py) -- falsifier: the 7 writer tests fail at the merge base with KeyError operational_outcome, where both columns stay unnamed"
+  - id: "req-morning-report-phase-tools"
+    statement: "The six morning report phases have phase-owned deterministic typed tools, local readbacks and guarded effects, with actionable ledger refusals and bounded child-process lifetimes."
+    acceptance:
+      - id: "AC4303"
+        statement: "AC4303: all six report phases declare their own lane, ticket and tool guide; the server exposes only the phase's typed tools with no command or free-path input; watcher, ledger and artifact readbacks preserve their scope; publishing refuses a dry run; a refused TERMINAL includes the ledger's reason and records friction once; and a timed-out program leaves no running child -- falsifier: the focused morning report phase and tool guard tests fail against the merge-base implementation."
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -1272,6 +1282,40 @@ dod_evidence:
           assert '"mark_revoked"' in committed("models/model_claude_token_pool.py")
           assert '"mark-revoked"' in committed("__main__.py")
           print("Claude token pool revoked-token artifact probe: PASS")
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-context-compaction-task-class-unit"
+    description: "The context_compaction task class is internal, never resolved from a prompt, budgeted, has a reachable ladder, is accepted by both delegation request models, and is listed once on each summarization-shaped inference protocol profile. The protocol-profile tests fail at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_context_compaction_task_class_omn17427.py tests/unit/inference/test_task_class_authority_omn15651.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC184"]
+  - id: "dod-omn17427-context-compaction-deploy-probe"
+    description: "Deploy probe. The hosted runner reads the subject commit's task-class contract and delegation request model using git, PyYAML and Python's standard library and checks the context_compaction class, its budget, its Literal member and its listing on the cloud-glm-no-think, cloud-glm-5-3-thinking and openrouter-reasoning-minimal-excluded inference protocol profiles. The merge base lists it on none of those three profiles. This checks the artifact and does not attest a live deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          python3 - <<'PY'
+          import subprocess
+          import yaml
+
+          def committed(path):
+              return subprocess.check_output(["git", "show", "HEAD:" + path], text=True)
+
+          contracts = yaml.safe_load(committed("src/omnimarket/configs/task_class_contracts.v1.yaml"))
+          entry = contracts["task_classes"]["context_compaction"]
+          assert entry["gateway_exposure"] == "internal"
+          assert entry["selection"]["phrases"] == []
+          assert "context_compaction" in contracts["execution_budgets"]
+          assert '"context_compaction"' in committed("src/omnimarket/models/delegation/wire/model_delegation_request.py")
+          protocols = yaml.safe_load(committed("src/omnimarket/configs/inference_protocols.v1.yaml"))
+          task_types = {profile["profile_id"]: profile.get("task_types", []) for profile in protocols["profiles"]}
+          for profile_id in ("cloud-glm-no-think", "cloud-glm-5-3-thinking", "openrouter-reasoning-minimal-excluded"):
+              assert task_types[profile_id].count("context_compaction") == 1, profile_id
+          print("context_compaction task class artifact probe: PASS")
           PY
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac74-patch-apply-dispatch"
@@ -3855,4 +3899,19 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/test_omn19448_unstated_outcome_pair.py -q -n 0 -p no:randomly --no-cov --refuse-skips -k 'harness_terminal or async_writer_first'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-morning-report-phase-tools"
+    description: "This PR's report-phase catalog, local reads, dry-run effect guards, ledger refusal diagnostics and process-group timeout cleanup are exercised by its focused tests. The merge base lacks tools.base and the report-phase tool modules, so the overlaid tests fail collection there."
+    source: "manual"
+    binds_ac: ["AC4303"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_morning_report_phase_tools.py tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-morning-report-tools-deploy-probe"
+    description: "Hosted deployment probe: execute the checked-out report tool catalog, watcher readback, refused-TERMINAL path and timeout cleanup against disposable local files and child processes. The merge base cannot import the report tools. The runner needs only the checkout and locked dependencies, with no credentials, network or Docker. This checks the packaged runtime path and does not attest an installed service deployment."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_morning_report_phase_tools.py -q --no-cov -p no:randomly --refuse-skips -k 'every_report_phase_has_its_own_lane_ticket_and_tool_guide or watcher_branch_head_attributes_check_runs_to_push_on_the_integration_branch or a_refused_terminal_names_the_ledgers_reason_and_writes_its_friction_once or a_timed_out_program_takes_its_children_with_it'"
         cwd: "${OMNI_HOME}/omnimarket"

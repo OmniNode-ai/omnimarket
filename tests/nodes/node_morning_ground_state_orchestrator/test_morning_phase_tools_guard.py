@@ -358,7 +358,7 @@ def test_a_phase_with_no_tool_set_is_refused_before_any_session(
     marker = _fake_transport(tmp_path, monkeypatch, "")
     with pytest.raises(MorningPhaseToolsMissingError, match="never a shell"):
         asyncio.run(
-            _gateway(tmp_path).run(request(), _phase("ground-state", "GroundState", {}))
+            _gateway(tmp_path).run(request(), _phase("not-a-phase", "Unknown", {}))
         )
     assert not marker.exists()
 
@@ -369,6 +369,12 @@ def test_a_committing_phase_waits_for_the_phase_that_pushes_its_branch(
 ) -> None:
     _env(monkeypatch, tmp_path)
     marker = _fake_transport(tmp_path, monkeypatch, "")
+    from omnimarket.nodes.node_morning_ground_state_orchestrator.tools import phases
+
+    real = phases.has_tool_set
+    monkeypatch.setattr(
+        phases, "has_tool_set", lambda label: label != "session-goal" and real(label)
+    )
     phase = _phase("decisions-register", "DecisionsRegister", {})
     with pytest.raises(MorningPhaseToolsMissingError, match="strands the next run"):
         asyncio.run(_gateway(tmp_path).run(request(), phase))
@@ -418,11 +424,16 @@ def test_the_overlay_model_accepts_every_tool_key() -> None:
     )
     from omnimarket.nodes.node_morning_ground_state_orchestrator.tools import context
 
-    texts = {*context.COMMAND_TEXTS, *context.LOCATION_TEXTS, context.KB_ORIGIN_TEXT}
+    texts = {
+        *context.COMMAND_TEXTS,
+        *context.LOCATION_TEXTS,
+        *context.PLACE_TEXTS,
+        context.KB_ORIGIN_TEXT,
+    }
     assert texts <= set(overlay_model.OPTIONAL_TEXTS) | set(
         overlay_model.REQUIRED_TEXTS
     )
-    values = set(context.ARTIFACT_VALUES.values())
+    values = {*context.ARTIFACT_VALUES.values(), *context.FACT_VALUES}
     assert values <= set(overlay_model.OPTIONAL_VALUES) | set(
         overlay_model.REQUIRED_VALUES
     )
