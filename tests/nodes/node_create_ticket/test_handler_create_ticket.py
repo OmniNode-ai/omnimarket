@@ -275,12 +275,23 @@ def test_gateway_refuses_when_the_team_has_no_backlog_state() -> None:
         )
 
 
-def test_request_refuses_a_project_naming_the_ruling() -> None:
-    from pydantic import ValidationError
+def test_a_project_is_judged_by_the_guard_and_never_filed() -> None:
+    """The guard refuses a project with its own finding; an admitting guard still files none."""
+    from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
+        HandlerCreateTicket,
+        ModelTicketGuardDecision,
+        TicketGuardRefusedError,
+    )
 
-    assert ModelCreateTicketRequest(title="ok").project == ""
-    with pytest.raises(ValidationError, match="OMN-17427"):
-        ModelCreateTicketRequest(title="x", project="Sprint 2026-09-28")
+    class _Admit:
+        def check(self, tool_input: dict[str, object]) -> ModelTicketGuardDecision:
+            assert tool_input["project"] == "Sprint 2026-09-28"
+            return ModelTicketGuardDecision(admitted=True)
+
+    request = ModelCreateTicketRequest(title="x", project="Sprint 2026-09-28")
+    with pytest.raises(TicketGuardRefusedError, match="OMN-17427") as raised:
+        HandlerCreateTicket(ticket_guard=_Admit()).handle(request)
+    assert raised.value.finding_codes == ["project_set"]
 
 
 # ---------------------------------------------------------------------------

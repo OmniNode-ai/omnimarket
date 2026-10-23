@@ -187,6 +187,34 @@ async def test_dharma_full_submits_to_the_registered_evaluator() -> None:
     assert dharma.reads == 2
 
 
+@pytest.mark.parametrize(
+    ("code", "detail"),
+    [
+        (
+            "managed_runtime_requires_real_organization",
+            "status 403 managed_runtime_requires_real_organization",
+        ),
+        (None, "status 403"),
+    ],
+)
+async def test_dharma_rejection_carries_error_code(
+    code: str | None, detail: str
+) -> None:
+    github = Github()
+    dharma = RecordingEvaluator()
+    dharma.fail_with = EvaluatorRejectedError("x", status_code=403, error_code=code)
+    handler = HandlerTrajectoryEvaluation(
+        transport=github.transport(),
+        external_evaluators={"dharma": dharma},
+        clock=FakeClock(),
+        environ={SETTING: "dharma_full"},
+    )
+    out = await handler.handle(full_cmd())
+    _refused(out, "target_rejected")
+    assert isinstance(out, ModelTrajectoryEvaluationRefused)
+    assert out.detail == detail
+
+
 async def test_dharma_without_resolvable_secrets_is_misconfigured(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

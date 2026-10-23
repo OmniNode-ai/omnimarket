@@ -158,7 +158,8 @@ def test_an_escalating_run_writes_one_lineage_entry_per_attempt(
     assert stored[0]["parent_attempt_id"] is None
     assert stored[1]["parent_attempt_id"] == stored[0]["attempt_id"]
     assert [rung["split_id"] for rung in stored] == [None, None]
-    assert [rung["size_band"] for rung in stored] == [None, None]
+    # Both rungs carry the request's measured band, one value for the request.
+    assert [rung["size_band"] for rung in stored] == ["small", "small"]
     assert [rung["acceptance_decision"] for rung in stored] == ["climb", "accept"]
     for rung in stored:
         assert rung["rubric_verdict"]["rubric_version"]

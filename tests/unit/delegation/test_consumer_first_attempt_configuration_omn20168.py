@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-20168: the attempt record accepts ``configuration`` before it is emitted.
+"""OMN-20168: the attempt record decodes ``configuration``.
 
-Every delegation attempt will record the configuration it was sent with: the
-call parameters (temperature, top_p, max tokens, reasoning effort) and the
-context strategy. The deployed consumer must decode that key first (the
-wire-compatibility gate grades omniclaude's pinned omnimarket commit).
+Every delegation attempt records the configuration it was sent with: the call
+parameters (temperature, top_p, max tokens, reasoning effort) and the context
+strategy. The consumer-first release dropped the key; the attempt record now
+declares it, so it decodes and is kept.
 """
 
 from __future__ import annotations
@@ -46,12 +46,14 @@ def test_an_attempt_carrying_configuration_decodes(
         _ATTEMPT | {"configuration": value}
     )
     assert record.backend_id == "cloud-glm"
-    assert "configuration" not in record.model_dump(mode="json")
+    assert record.model_dump(mode="json")["configuration"] == value
 
 
-def test_configuration_is_a_forthcoming_attempt_key_only() -> None:
-    assert "configuration" in model_delegate_skill_response._FORTHCOMING_ATTEMPT_KEYS
-    assert "configuration" not in ModelDelegateSkillAttemptRecord.model_fields
+def test_configuration_is_a_declared_attempt_field() -> None:
+    assert (
+        "configuration" not in model_delegate_skill_response._FORTHCOMING_ATTEMPT_KEYS
+    )
+    assert "configuration" in ModelDelegateSkillAttemptRecord.model_fields
     assert (
         "configuration" not in model_delegate_skill_response._FORTHCOMING_TERMINAL_KEYS
     )

@@ -1,0 +1,5 @@
+{
+ "ok": false,
+ "error": "managed_runtime_requires_real_organization",
+ "message": "Managed runtime operations require a provisioned organization."
+}
