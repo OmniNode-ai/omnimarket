@@ -59,6 +59,24 @@ def test_caller_workflow_shape() -> None:
     assert "secrets: inherit" not in text, "caller must not inherit secrets"
 
 
+_ENV_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*")
+
+
+def _pytest_argv(check_value: str) -> list[str]:
+    """The argv of a `uv run pytest` check, after any leading `env VAR=value` prefix.
+
+    `env PYTHONDONTWRITEBYTECODE=1 uv run pytest ...` runs the same test as
+    `uv run pytest ...`; the verifier accepts both (omnimarket#4317), so the
+    binding check does too. Anything else returns an empty list.
+    """
+    tokens = shlex.split(check_value)
+    if tokens[:1] == ["env"]:
+        tokens = tokens[1:]
+        while tokens and _ENV_ASSIGNMENT.fullmatch(tokens[0]):
+            tokens = tokens[1:]
+    return tokens if tokens[:3] == ["uv", "run", "pytest"] else []
+
+
 def contract_binds_violations(name: str, contract: dict[str, Any]) -> list[str]:
     violations: list[str] = []
     criteria = {
@@ -80,25 +98,22 @@ def contract_binds_violations(name: str, contract: dict[str, Any]) -> list[str]:
         if "binds_ac" not in item:
             continue
         bound.update(item["binds_ac"])
-        checks = [
-            check
+        argvs = [
+            _pytest_argv(check.get("check_value", ""))
             for check in item.get("checks", [])
             if check.get("check_type") == "test_passes"
-            and check.get("check_value", "").startswith("uv run pytest ")
         ]
         selectors = [
             next(
                 (
                     path
-                    for path in (
-                        token.split("::", 1)[0]
-                        for token in shlex.split(check["check_value"])
-                    )
+                    for path in (token.split("::", 1)[0] for token in argv)
                     if path.endswith(".py") or path.endswith("/tests")
                 ),
                 "",
             )
-            for check in checks
+            for argv in argvs
+            if argv
         ]
         # A criterion about a merged PR body is bound to a grep over that
         # body, which exits non-zero when the sentence is absent.
@@ -201,6 +216,42 @@ def test_contract_binds_accepts_an_unbound_command_only_deploy_probe() -> None:
     }
     violations = contract_binds_violations("OMN-0.yaml", contract)
     assert violations == []
+
+
+@pytest.mark.parametrize(
+    ("check_value", "bound"),
+    [
+        (
+            "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q",
+            True,
+        ),
+        (
+            "env A=1 B=2 uv run pytest tests/ci/test_repo_evidence_caller_workflow.py",
+            True,
+        ),
+        (
+            "env PYTHONDONTWRITEBYTECODE=1 python -m pytest tests/ci/test_repo_evidence_caller_workflow.py",
+            False,
+        ),
+        ("env uv run pytest tests/ci/no_such_test_file.py", False),
+    ],
+)
+def test_contract_binds_reads_through_an_env_prefix(
+    check_value: str, bound: bool
+) -> None:
+    """An `env VAR=value` prefix runs the same pytest; only the runner and file decide."""
+    contract = {
+        "requirements": [{"acceptance": [{"id": "AC1"}]}],
+        "dod_evidence": [
+            {
+                "id": "dod-env-prefixed-test",
+                "binds_ac": ["AC1"],
+                "checks": [{"check_type": "test_passes", "check_value": check_value}],
+            },
+        ],
+    }
+    violations = contract_binds_violations("OMN-0.yaml", contract)
+    assert (violations == []) is bound
 
 
 # OMN-20073: omnibase_core#1884 added the dependency-bot and pin-only writer-app

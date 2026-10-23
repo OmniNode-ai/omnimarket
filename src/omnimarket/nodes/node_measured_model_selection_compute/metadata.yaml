@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_measured_model_selection_compute
+version: "1.0.0"
+description: "Rank delegation candidates on measured cost per 1M tokens and measured p50 latency under one declared objective."
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_measured_model_selection_compute: "omnimarket.nodes.node_measured_model_selection_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: read_only
+dependencies:
+  - "pydantic>=2.0"
+  - "pyyaml>=6.0"
+  - "omnibase-infra>=0.38.3"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "delegation", "deterministic", "routing"]
+pack: "core"
+display_name: "Measured Model Selection"
+node_role: "compute"

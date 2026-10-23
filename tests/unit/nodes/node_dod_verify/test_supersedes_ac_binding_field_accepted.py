@@ -195,8 +195,14 @@ def test_authority_a_field_the_occ_model_gains_is_accepted_without_a_code_change
 def test_authority_an_unreadable_model_refuses_the_contract_by_name(
     tmp_path: Path,
 ) -> None:
-    """No model, no guess: the contract is refused, and the refusal names the file."""
-    path = occ_contract(tmp_path, [_bound_item(), _retiring_item()])
+    """No model, no guess: the contract is refused, and the refusal names the file.
+
+    core 0.47.53 declares ``ac_bindings`` itself, so the probe is a field only
+    the OCC model could own.
+    """
+    item = _bound_item()
+    item[_OCC_ONLY_FIELD] = []
+    path = occ_contract(tmp_path, [item, _retiring_item()])
     (tmp_path / "onex_change_control" / MODEL_RELPATH).unlink()
 
     results = EvidenceCollector().collect("OMN-9999", contract_path=path)
