@@ -31,7 +31,6 @@ from omnimarket.nodes.node_evidence_publisher_effect import (
 )
 from omnimarket.nodes.node_gap_analyzer_compute import HandlerGapAnalyzerCompute
 from omnimarket.nodes.node_linear_updater_effect import HandlerLinearUpdaterEffect
-from omnimarket.nodes.node_occ_pr_writer_effect import HandlerOccPrWriterEffect
 from omnimarket.nodes.node_readiness_gate_orchestrator import (
     HandlerReadinessGateOrchestrator,
 )
@@ -49,7 +48,6 @@ SCOPED_NODES = (
     "node_contract_matcher_compute",
     "node_gap_analyzer_compute",
     "node_linear_updater_effect",
-    "node_occ_pr_writer_effect",
     "node_readiness_gate_orchestrator",
     "node_readiness_scorer_compute",
 )
@@ -99,7 +97,6 @@ def test_native_evidence_readiness_chain_is_deterministic() -> None:
     raw = HandlerEvidenceCollectorEffect().handle(command)
     bundle = HandlerEvidenceExtractorCompute().handle(raw)
     validation = HandlerContractMatcherCompute().handle(bundle)
-    occ_pr = HandlerOccPrWriterEffect().handle(validation)
     updated = HandlerLinearUpdaterEffect().handle(validation)
     published = HandlerEvidencePublisherEffect().handle(updated)
     gap_report = HandlerGapAnalyzerCompute().handle(validation)
@@ -113,7 +110,7 @@ def test_native_evidence_readiness_chain_is_deterministic() -> None:
     assert bundle.evidence_bundle_hash.startswith("sha256:")
     assert validation.validation_state == "PASSED"
     assert validation.evidence_lifecycle_state == "VALIDATED"
-    assert occ_pr.ticket_id == "OMN-12395"
+    assert validation.ticket_id == "OMN-12395"
     assert "linear:linear_update=acknowledged" in updated.evidence_refs
     assert published.validation_run_id == "run-omn-12395"
     assert gap_report.gap_classifications == {}
@@ -157,7 +154,6 @@ class _RecordingPorts:
         self.collector = HandlerEvidenceCollectorEffect()
         self.extractor = HandlerEvidenceExtractorCompute()
         self.matcher = HandlerContractMatcherCompute()
-        self.occ = HandlerOccPrWriterEffect()
         self.linear = HandlerLinearUpdaterEffect()
         self.publisher = HandlerEvidencePublisherEffect()
 
@@ -172,10 +168,6 @@ class _RecordingPorts:
     def match_contract(self, bundle):
         self.calls.append("match_contract")
         return self.matcher.handle(bundle)
-
-    def write_occ_pr(self, validation: ModelEvidenceValidationResult):
-        self.calls.append("write_occ_pr")
-        return self.occ.handle(validation)
 
     def update_linear(self, validation: ModelEvidenceValidationResult):
         self.calls.append("update_linear")
@@ -197,16 +189,14 @@ class _RecordingPublisher:
 
 def test_orchestrator_uses_typed_ports_for_local_chain() -> None:
     ports = _RecordingPorts()
-    occ_ref = HandlerEvidencePipelineOrchestrator(ports=ports).handle(_command())
+    validation = HandlerEvidencePipelineOrchestrator(ports=ports).handle(_command())
 
-    assert occ_ref.pr_url.endswith(f"/pull/{occ_ref.pr_number}")
+    assert validation.validation_state == "PASSED"
     assert ports.calls == [
         "collect",
         "extract",
         "match_contract",
-        "write_occ_pr",
         "update_linear",
-        "publish",
         "publish",
     ]
 

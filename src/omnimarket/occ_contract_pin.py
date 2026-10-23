@@ -74,11 +74,9 @@ from typing import Final
 PORTED_FROM_REVISION: Final[str] = "ab4be01bda1f2f1e50859b3097014ded955ab1b7"
 
 #: The upstream file they came from, relative to the `onex_change_control` root.
-PORTED_FROM_PATH: Final[str] = "src/onex_change_control/validation/ac_criteria.py"
 
 __all__ = [
     "MAX_CRITERION_HASH_INPUT_CHARS",
-    "PORTED_FROM_PATH",
     "PORTED_FROM_REVISION",
     "acceptance_criteria_items",
     "canonical_ac_label",

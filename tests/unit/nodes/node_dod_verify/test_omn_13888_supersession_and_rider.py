@@ -11,11 +11,15 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
 import pytest
 import yaml
+from omnibase_core.validators.no_unguarded_git_subprocess import (
+    scrub_git_location_env,
+)
 
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumEvidenceCheckStatus,
@@ -323,6 +327,7 @@ def _git(repo: Path, *args: str) -> None:
         check=True,
         capture_output=True,
         text=True,
+        env=scrub_git_location_env(os.environ),
     )
 
 
@@ -363,7 +368,7 @@ def test_evidence_collector_resolves_dev_only_contract(
     # Back to main so the working tree lacks the contract.
     _git(occ, "checkout", "-q", "main")
 
-    monkeypatch.setenv("ONEX_CC_REPO_PATH", str(occ))
+    monkeypatch.setenv("CONTRACT_REPO_DIR", str(occ))
     monkeypatch.setenv(
         "OCC_GOVERNANCE_REF", "dev"
     )  # local branch stands in for origin/dev
@@ -436,7 +441,7 @@ def test_evidence_collector_prefers_dev_over_stale_main_copy(
     # Working tree back on main → the STALE copy is present on disk.
     _git(occ, "checkout", "-q", "main")
 
-    monkeypatch.setenv("ONEX_CC_REPO_PATH", str(occ))
+    monkeypatch.setenv("CONTRACT_REPO_DIR", str(occ))
     monkeypatch.setenv("OCC_GOVERNANCE_REF", "dev")
     monkeypatch.delenv("OMNI_HOME", raising=False)
 

@@ -261,11 +261,6 @@ requirements:
     acceptance:
     - id: AC49
       statement: 'AC49: the contract subscribes to the runtime tick with a 01:00 to 05:00 America/New_York window, a tick runs once per interval inside it, and onex lab-archive run is registered and exits 2 on a refused host -- falsifier: the focused pytest finds a run outside the window, a second run inside the interval, or an unregistered verb'
-  - id: req-consumer-gate-parity-on-core
-    statement: The golden-gate consumer-gate parity tests drive omnibase_core's ports of the onex_change_control gate scripts and need no onex_change_control checkout.
-    acceptance:
-    - id: AC58
-      statement: 'AC58: the consumer-gate parity tests import the omnibase_core ports of lint_contract_check_values, check_contract_substance_floor, contract_compliance_check and evidence_admissibility and none of them skips for a missing onex_change_control checkout -- falsifier: the focused pytest reports a skip naming the onex_change_control checkout, or an import of a sibling onex_change_control path'
   - id: "req-lab-story-log"
     statement: "The work ledger's week becomes a sanitized story log by a node, with private names replaced by roles from the public-repo hygiene vocabulary, and the log is never written when a private name survives."
     acceptance:
@@ -421,6 +416,11 @@ requirements:
     acceptance:
       - id: "AC71"
         statement: "AC71: a start command with route delegation makes each model call a HandlerDelegateSkill call of task type review pinned to the route key, a delegation that does not complete fails that route, and the completed event carries the verdict and the merged findings (none and no verdict on a failed run) -- falsifier: uv run pytest tests/unit/nodes/node_hostile_reviewer_orchestrator/test_delegation_review_route.py tests/test_golden_chain_hostile_reviewer_orchestrator.py -q -p no:randomly"
+  - id: "req-retire-remaining-change-control-paths"
+    statement: "Evidence stays in the product repository and no companion writer or observer is registered."
+    acceptance:
+      - id: "AC74"
+        statement: "AC74: retired writer and observer nodes are absent from disk and discovery, queued companion commands refuse without a writer, product evidence readback requires its current head and passing repository evidence checks, and binding fields are accepted without another checkout while unknown fields refuse -- falsifier: uv run pytest tests/test_omn17427_occ_retirement.py -q fails at the merge base"
   - id: "req-cli-run-node-on-expected-missing-list"
     statement: "A node that is run as a CLI and has no onex.nodes entry point is named on the dogfood inventory's expected-missing list, so the inventory check reports no unexplained directory."
     acceptance:
@@ -531,7 +531,7 @@ requirements:
     statement: "The two report-only OCC observer nodes that no workflow, bus producer or node calls are deleted from omnimarket, so their change-control repository slugs and clone paths leave the code."
     acceptance:
       - id: "AC76"
-        statement: "AC76: node_occ_attestation_observe and node_occ_observation_effect, their tests and their pyproject entry points are absent while node_occ_companion_effect stays -- falsifier: uv run pytest tests/unit/workflows/test_ci_off_change_control_omn20074.py -q -k observer fails at the merge base"
+        statement: "AC76: node_occ_attestation_observe and node_occ_observation_effect, their tests and their pyproject entry points are absent while node_dod_verify stays -- falsifier: uv run pytest tests/unit/workflows/test_ci_off_change_control_omn20074.py -q -k observer fails at the merge base"
   - id: "req-served-model-cache-reconciliation"
     statement: "Both inference boundaries refresh a cached served-model mismatch before refusing a call after a provider replaces its model, and retain the refusal when the refresh is unreadable or still mismatches."
     acceptance:
@@ -604,11 +604,6 @@ requirements:
     acceptance:
       - id: "AC103"
         statement: "AC103: config/test_file_durations.json records every collected non-kafka test file that dev 9978f18ad left unrecorded, and test_committed_record_names_nearly_every_test_file passes -- falsifier: the test fails at 9978f18ad with 161 of 3189 files (5.0%) unrecorded"
-  - id: "req-occ-autobind-clone-timeout-retry"
-    statement: "The occ-autobind producer's shallow clone of onex_change_control is attempted a second time after a git timeout, with the partial clone removed first, inside the node's declared descriptor timeout; any other clone failure is not retried."
-    acceptance:
-      - id: "AC104"
-        statement: "AC104: OccCompanionEmitter._clone_and_branch retries a clone that raised TimeoutExpired once after removing the partial clone directory, raises the final TimeoutExpired after 2 attempts, raises a CalledProcessError after 1 attempt, and 2 attempts at the per-op git timeout stay under the node's contract descriptor timeout_ms -- falsifier: uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_clone_timeout_retry_omn_15447.py -q fails at the merge base"
   - id: "req-step-by-step-causal-connectives"
     statement: "The step_by_step_explanation check accepts a correct causal explanation walked through with a connective outside the six OMN-19401 shipped, matched only at the start of a word, and still vetoes an answer that asserts without explaining."
     acceptance:
@@ -640,11 +635,6 @@ requirements:
         statement: "AC109: the dependency provenance tests accept canonical sibling dev tags without annotations and refuse foreign git sources, branches, bare revisions, malformed tags and conflicting selectors."
       - id: "AC183"
         statement: "AC183: check_dep_provenance.py reads the dev merge tag pattern, GitHub org and sibling list from omnibase_core's packaged internal_sibling_pins.yaml through load_contract, the same contract the Internal Sibling Pins check reads -- falsifier: uv run pytest tests/scripts/test_check_dep_provenance.py -q fails when a contract with a different dev_tag_pattern does not change the verdict, or when the script source carries its own tag regex"
-  - id: "req-mint-acceptance-evidence"
-    statement: "The existing retry/park implementation has reproducible handler/git-boundary and behavioral baseline controls plus a dated deployed sanitizer capture."
-    acceptance:
-      - id: "AC110"
-        statement: "AC110: the real handler git timeout parks after the declared attempt budget, the identical assertion is behaviorally red with the pre-policy handle method, and the dated deployed sanitizer capture preserves the typed reason and redacts the raw control -- falsifier: uv run pytest tests/unit/nodes/node_occ_companion_effect/test_mint_acceptance_evidence_omn15447.py -q --no-cov fails. No real bus-to-DLQ readback or accepted Done receipt is claimed."
   - id: "req-landing-stall-liveness"
     statement: "A stall the landing controller holds (a red cause, a red base branch, an open plugin version bump) is a typed transition that the automation-liveness watchdog judges against a bus-event overlay deadline, so a hold past its bound opens one episode, raises one alarm carrying the cause, the repository, the minutes and the last decision text, and clears when it moves."
     acceptance:
@@ -903,9 +893,6 @@ requirements:
         statement: "AC4303: all six report phases declare their own lane, ticket and tool guide; the server exposes only the phase's typed tools with no command or free-path input; watcher, ledger and artifact readbacks preserve their scope; publishing refuses a dry run; a refused TERMINAL includes the ledger's reason and records friction once; and a timed-out program leaves no running child -- falsifier: the focused morning report phase and tool guard tests fail against the merge-base implementation."
 evidence_requirements:
   - kind: "tests"
-    description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
-    command: "uv run pytest tests/test_market_node_runtime_dogfood.py::test_market_node_runtime_dogfood_inventory_classifies_all_entry_points -q"
-  - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
     command: "uv run pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_pool.py tests/nodes/node_claude_token_pool_effect/test_golden_chain_claude_token_pool_effect.py -q"
   - kind: "tests"
@@ -1047,6 +1034,9 @@ evidence_requirements:
     description: "AC71: the delegation review route and the completed event's verdict and findings."
     command: "uv run pytest tests/unit/nodes/node_hostile_reviewer_orchestrator/test_delegation_review_route.py tests/test_golden_chain_hostile_reviewer_orchestrator.py -q -p no:randomly"
   - kind: "tests"
+    description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
+    command: "uv run pytest tests/test_market_node_runtime_dogfood.py::test_market_node_runtime_dogfood_inventory_classifies_all_entry_points -q"
+  - kind: "tests"
     description: "AC73: the gateway pr_text read reports head_repo and is_cross_repository for same-repository, fork and gone-repository heads."
     command: "uv run pytest tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_scm_reads.py -q -k pr_text"
   - kind: "tests"
@@ -1093,9 +1083,6 @@ evidence_requirements:
   - kind: "tests"
     description: "AC107: the lab SLI pack constructs but refuses handle before any probe or push unless a deployment explicitly enables its overlay, and rejects a broken status."
     command: "uv run pytest tests/nodes/node_lab_sli_compute/test_lab_sli_pack_gate.py -q"
-  - kind: "tests"
-    description: "AC104: the occ-autobind producer retries a timed-out OCC clone once and no other clone failure."
-    command: "uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_clone_timeout_retry_omn_15447.py -q"
   - kind: "tests"
     description: "AC105: correct causal answers pass step_by_step_explanation and non-explanations are still vetoed."
     command: "uv run pytest tests/unit/delegation/test_step_by_step_causal_fixture_omn17427.py -q"
@@ -1206,14 +1193,6 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/nodes/node_projection_delegation/test_canonical_savings_counterfactual_omn20303.py -q -n 0 --no-cov -k 'test_sync_canonical_saving_keeps_counterfactual or test_async_canonical_keeps_counterfactual_after_shutdown'"
         cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn17427-dogfood-inventory-lists-token-pool"
-    description: "The market node runtime dogfood inventory test passes with node_claude_token_pool_effect on the expected-missing entry point list. The list is in the test file, which this pull request changes, so the merge base with the test side laid over it passes the same test. The check names the one inventory test rather than the whole file, which takes longer than the per-check budget."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_market_node_runtime_dogfood.py::test_market_node_runtime_dogfood_inventory_classifies_all_entry_points -q"
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC72"]
   - id: "dod-omn17427-claude-token-pool-unit"
     description: "Account rotation, reset, all-limited alarm, secret-free metadata and CLI refusal paths run against a temporary local secret store. The test file and node are absent at the merge base."
     source: "manual"
@@ -1803,41 +1782,6 @@ dod_evidence:
     binds_ac:
     - AC48
     - AC49
-  - id: dod-omn17427-ac58-consumer-gate-parity-on-core
-    description: 'AC58: consumer-gate parity tests run against the omnibase_core ports with no onex_change_control checkout.'
-    source: manual
-    checks:
-    - check_type: command
-      check_value: |
-        uv run python - <<'PY'
-        import ast
-        import subprocess
-
-        expected = {
-            "scripts/lint_contract_check_values.py": "omnibase_core.handlers.handler_contract_check_values_lint",
-            "scripts/validation/check_contract_substance_floor.py": "omnibase_core.handlers.handler_contract_substance_floor",
-            "src/onex_change_control/scripts/contract_compliance_check.py": "omnibase_core.handlers.handler_contract_compliance_check",
-            "src/onex_change_control/validation/evidence_admissibility.py": "omnibase_core.handlers.handler_evidence_admissibility",
-        }
-        # Inspect the subject commit: the control overlays the new tests on the
-        # merge base, so executing those tests alone cannot detect this migration.
-        for name in ("test_occ_autobind_contention_omn_15247.py", "test_occ_emitter_literal_pins_omn_15407.py"):
-            path = "tests/unit/nodes/node_pr_lifecycle_fix_effect/" + name
-            source = subprocess.check_output(["git", "show", "HEAD:" + path], text=True)
-            tree = ast.parse(source)
-            ports = [node for node in tree.body if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == "_CORE_PORTS" for target in node.targets)]
-            assert len(ports) == 1 and ast.literal_eval(ports[0].value) == expected, path + ": core port mapping missing or incorrect"
-            loader = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "_load_occ_module")
-            assert ast.unparse(loader.body[-1]) == "return importlib.import_module(_CORE_PORTS[relpath])", path + ": loader does not import the core port"
-            assert not any(isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "spec_from_file_location" for node in ast.walk(loader)), path + ": sibling checkout loader remains"
-            print(path + ": committed core port imports verified")
-        PY
-      cwd: ${OMNI_HOME}/omnimarket
-    - check_type: test_passes
-      check_value: uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_autobind_contention_omn_15247.py tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_emitter_literal_pins_omn_15407.py -q -p no:randomly -k "ConsumerGateParity"
-      cwd: ${OMNI_HOME}/omnimarket
-    binds_ac:
-    - AC58
   - id: "dod-omn17427-ac52-lab-story-log"
     description: "The weekly story log keeps the week's rows, themes and figures, and no planted private name or quoted operator word survives."
     source: "manual"
@@ -2222,6 +2166,32 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_hostile_reviewer_orchestrator/handlers/handler_delegation_review_inference.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("REVIEW_TASK_TYPE", "backend_id=model_key", "HandlerDelegateSkill")); print("hostile reviewer delegation route deploy probe: PASS")'
+  - id: "dod-omn17427-ac72-repo-evidence-retirement"
+    description: "Repository evidence retirement regression: discovery, legacy refusal, binding schema, current-head readback, and the source-derived relation inventory."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn17427_occ_retirement.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/scripts/test_application_relation_inventory.py::test_checked_in_inventory_is_source_derived_and_current -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC74"]
+  - id: "dod-omn17427-ac72-repo-evidence-deploy-probe"
+    description: "Deploy probe. The repository metadata at the checked-out revision registers the repository verifier and no retired writer or observer node. The probe fails on the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/pyproject.toml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys, tomllib; nodes = tomllib.loads(sys.stdin.read())["project"]["entry-points"]["onex.nodes"]; assert "node_dod_verify" in nodes; assert not any(name.startswith("node_occ_") for name in nodes); print("repository evidence retirement deploy probe: PASS")'
+  - id: "dod-omn17427-dogfood-inventory-lists-token-pool"
+    description: "The market node runtime dogfood inventory test passes with node_claude_token_pool_effect on the expected-missing entry point list. The list is in the test file, which this pull request changes, so the merge base with the test side laid over it passes the same test. The check names the one inventory test rather than the whole file, which takes longer than the per-check budget."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_market_node_runtime_dogfood.py::test_market_node_runtime_dogfood_inventory_classifies_all_entry_points -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC72"]
   - id: "dod-omn17427-ac70-gateway-pr-text-cross-repository"
     description: "The gateway pr_text read reports head_repo and is_cross_repository for same-repository, fork and gone-repository heads."
     source: "manual"
@@ -2576,12 +2546,12 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC76"]
   - id: "dod-omn17427-dead-occ-observers-deploy-probe"
-    description: "Deploy probe. GitHub serves pyproject.toml at the checked-out HEAD with no entry point for the two observer nodes and one for node_occ_companion_effect. It fails at the merge base, which registers both, and needs only GitHub access and Python on the hosted runner."
+    description: "Deploy probe. GitHub serves pyproject.toml at the checked-out HEAD with no entry point for the two observer nodes and one for node_dod_verify. It fails at the merge base, which registers both, and needs only GitHub access and Python on the hosted runner."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: >-
-          gh api "repos/OmniNode-ai/omnimarket/contents/pyproject.toml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert "node_occ_attestation_observe = " not in source; assert "node_occ_observation_effect = " not in source; assert "node_occ_companion_effect = " in source; print("dead occ observers deploy probe: PASS")'
+          gh api "repos/OmniNode-ai/omnimarket/contents/pyproject.toml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert "node_occ_attestation_observe = " not in source; assert "node_occ_observation_effect = " not in source; assert "node_dod_verify = " in source; print("dead occ observers deploy probe: PASS")'
   - id: "dod-omn17427-ac83-served-model-cache"
     description: "Both inference boundaries reconcile a cached model mismatch and retain a refusal without fresh matching evidence."
     source: "manual"
@@ -2866,21 +2836,6 @@ dod_evidence:
           print("PR 4212 merge package deploy probe: PASS")
           PY
         cwd: "."
-  - id: "dod-omn17427-ac104-occ-clone-timeout-retry"
-    description: "The occ-autobind producer's OCC clone is retried once after a git timeout with the partial clone removed, the final timeout and any non-timeout failure propagate, and the attempts fit the node's descriptor timeout. Against the merge base 3 of the 4 tests fail; after the change all 4 pass."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_clone_timeout_retry_omn_15447.py -q"
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC104"]
-  - id: "dod-omn17427-occ-clone-retry-deploy-probe"
-    description: "Deploy probe. The checked-out emitter declares two clone attempts and the clone budget test passes against the node's own contract.yaml. It fails at the merge base, where the constant is absent, and needs only uv and this checkout on the hosted runner."
-    source: "manual"
-    checks:
-      - check_type: "command"
-        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_clone_timeout_retry_omn_15447.py -q --no-cov -k test_clone_attempts_fit_contract_timeout"
-        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-causal-connectives"
     description: "The causal connective fixture proves correct causal answers pass step_by_step_explanation and non-explanations are still vetoed."
     source: "manual"
@@ -2986,21 +2941,6 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/scripts/test_check_dep_provenance.py -q"
-        cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn17427-mint-acceptance-evidence"
-    description: "Reproduce the real handler/git timeout, the exact pre-policy handle negative control and the dated deployed sanitizer capture replay. All checks run offline on the hosted runner."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_occ_companion_effect/test_mint_acceptance_evidence_omn15447.py -q --no-cov"
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC110"]
-  - id: "dod-omn17427-mint-acceptance-deploy-probe"
-    description: "Deploy probe. Replay the dated dev-effects sanitizer capture against the locked dependency's identical sanitizer source: the raw exception must redact and the typed parked reason must remain readable. Hosted execution needs only dependencies and the committed fixture, no Docker, credentials, broker or live runtime. This is a capture replay, not fresh deployment verification."
-    source: "manual"
-    checks:
-      - check_type: "command"
-        check_value: "uv run pytest tests/unit/nodes/node_occ_companion_effect/test_mint_acceptance_evidence_omn15447.py::test_deployed_sanitizer_capture_replays_both_controls -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-landing-stall-replay"
     description: "Replay of the 2026-10-19 held cause through the landing stall fold, the watchdog compute and the delivery effect with a fake channel, plus the fold's transition rules and the node contract. The node and the tests are absent at the merge base."

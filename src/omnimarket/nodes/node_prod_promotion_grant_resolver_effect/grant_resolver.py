@@ -6,7 +6,7 @@ Parses the ``onex_change_control`` ``grants/prod_promotion_grants.yaml`` trust
 anchor (the OMN-13437 schema) and resolves it against one redeploy request key
 ``(promotion_batch_id, image_digest, lane=prod)``. This module does ZERO I/O — it
 takes the already-fetched file bytes + a deterministic ``evaluated_at`` and
-returns a typed resolution. The fetch (from ``onex_change_control@main``) lives in
+returns a typed resolution. The fetch (from ``omnimarket@main``) lives in
 the handler's I/O boundary.
 
 onex_change_control keeps ZERO Python import on omnimarket: the grant file is the
@@ -23,7 +23,7 @@ Match + lifecycle rules (DoD):
 Dual-control (``approved_by != requested_by``) is intentionally NOT enforced
 (OMN-14814): with a single CODEOWNER, a second-approver requirement would
 permanently wedge prod promotion. The anti-self-*issuance* guarantee is
-preserved elsewhere — the grant is fetched from ``onex_change_control@main`` in
+preserved elsewhere — the grant is fetched from ``omnimarket@main`` in
 the handler's I/O boundary, so a request still cannot author the authorization
 that approves it. This resolver only stops rejecting a grant whose approver
 equals the requester.

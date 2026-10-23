@@ -288,24 +288,3 @@ def snapshot(
         if subject is None
         else [subject.source.value, subject.repository, subject.repo_path],
     }
-
-
-def occ_only_world(world: World, case: str) -> str:
-    ticket = "OMN-90203"
-    if case == "product_prs_without_contract":
-        world.merge(
-            "omniclaude",
-            2573,
-            f"fix({ticket}): claim identity",
-            {"src/claim.py": "x = 1\n"},
-        )
-    elif case == "product_contract_without_repo_evidence_run":
-        world.merge(
-            "omnimarket",
-            71,
-            f"feat({ticket}): carries a contract",
-            {f"contracts/{ticket}.yaml": contract(ticket, "dod-market", ["AC1"])},
-            run=None,
-        )
-    world.occ({ticket: contract(ticket, "dod-occ", ["AC1"])})
-    return ticket

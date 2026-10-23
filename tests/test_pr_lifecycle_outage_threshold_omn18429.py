@@ -151,7 +151,7 @@ async def _run(
         merge=merge,
         fix=fix,
         event_bus=cast(ProtocolEventBusPublisher, raw_bus),
-        occ_stamp_readback=_LandedStampReadback(),
+        pr_evidence_readback=_LandedStampReadback(),
         outage_recovery_probe=None,
     )
     command = _make_command(

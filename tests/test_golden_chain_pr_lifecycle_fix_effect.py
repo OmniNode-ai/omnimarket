@@ -278,67 +278,6 @@ class TestPrLifecycleFixEffectGoldenChain:
         assert agent.review_fix_calls == [("OmniNode-ai/omnimarket", 42, "OMN-8085")]
         assert gh.rerun_calls == [], "receipt_failure must not trigger CI rerun"
 
-    async def test_deploy_gate_contract_not_found_routes_to_occ_adapter(
-        self, event_bus: EventBusInmemory
-    ) -> None:
-        """deploy_gate_contract_not_found -> OCC contract auto-creation."""
-        gh = _MockGitHubAdapter()
-        agent = _MockAgentDispatchAdapter()
-        occ = _MockOccContractAdapter()
-        handler = HandlerPrLifecycleFix(
-            github_adapter=gh,
-            agent_dispatch_adapter=agent,
-            occ_contract_adapter=occ,
-        )
-        command = _make_command(
-            block_reason=EnumPrBlockReason.DEPLOY_GATE_CONTRACT_NOT_FOUND
-        )
-
-        result = await handler.handle(command)
-
-        assert result.fix_applied is True
-        assert result.block_reason == EnumPrBlockReason.DEPLOY_GATE_CONTRACT_NOT_FOUND
-        assert "OCC contract" in result.fix_action
-        assert occ.create_calls == [("OmniNode-ai/omnimarket", 42, "OMN-8085")]
-        assert gh.rerun_calls == [], "contract-not-found must not trigger CI rerun"
-        assert agent.review_fix_calls == [], (
-            "contract-not-found must not dispatch review-fix"
-        )
-
-    async def test_deploy_gate_contract_not_found_missing_ticket_id_errors(
-        self, event_bus: EventBusInmemory
-    ) -> None:
-        """deploy_gate_contract_not_found without ticket_id -> fix_applied=False, error set."""
-        occ = _MockOccContractAdapter()
-        handler = HandlerPrLifecycleFix(occ_contract_adapter=occ)
-        command = _make_command(
-            block_reason=EnumPrBlockReason.DEPLOY_GATE_CONTRACT_NOT_FOUND,
-            ticket_id=None,
-        )
-
-        result = await handler.handle(command)
-
-        assert result.fix_applied is False
-        assert result.error is not None
-        assert "ticket_id" in result.error
-        assert occ.create_calls == [], "create must not be called when ticket_id absent"
-
-    async def test_deploy_gate_contract_not_found_noop_in_dry_run(
-        self, event_bus: EventBusInmemory
-    ) -> None:
-        """deploy_gate_contract_not_found with noop adapter (dry_run) returns [noop]."""
-        handler = HandlerPrLifecycleFix()  # _NoopOccContractAdapter injected
-        command = _make_command(
-            block_reason=EnumPrBlockReason.DEPLOY_GATE_CONTRACT_NOT_FOUND,
-            dry_run=True,
-        )
-
-        result = await handler.handle(command)
-
-        assert result.fix_applied is True
-        assert "[noop]" in result.fix_action
-        assert result.error is None
-
     async def test_all_block_reasons_covered(self, event_bus: EventBusInmemory) -> None:
         """All EnumPrBlockReason values route without error."""
         gh = _MockGitHubAdapter()
@@ -353,7 +292,15 @@ class TestPrLifecycleFixEffectGoldenChain:
         for reason in EnumPrBlockReason:
             command = _make_command(block_reason=reason)
             result = await handler.handle(command)
-            assert result.fix_applied is True, (
-                f"reason={reason} should route successfully"
-            )
-            assert result.error is None, f"reason={reason} should not error"
+            if reason in {
+                EnumPrBlockReason.DEPLOY_GATE_CONTRACT_NOT_FOUND,
+                EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND,
+            }:
+                assert result.fix_applied is False
+                assert result.error is not None
+                assert "retired" in result.error
+            else:
+                assert result.fix_applied is True, (
+                    f"reason={reason} should route successfully"
+                )
+                assert result.error is None, f"reason={reason} should not error"

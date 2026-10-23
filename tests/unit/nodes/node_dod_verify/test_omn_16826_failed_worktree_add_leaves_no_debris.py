@@ -34,11 +34,15 @@ every other assertion here fails against the pre-fix collector.
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 from typing import Any
 
 import pytest
+from omnibase_core.validators.no_unguarded_git_subprocess import (
+    scrub_git_location_env,
+)
 
 from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
     EvidenceCollector,
@@ -54,6 +58,7 @@ def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
         check=True,
         capture_output=True,
         text=True,
+        env=scrub_git_location_env(os.environ),
     )
 
 
@@ -102,7 +107,7 @@ def _make_locked_half_add(occ: Path, parent: Path, slug: str) -> Path:
 
 
 def _collector_for(occ: Path, parent: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
-    monkeypatch.setenv("ONEX_CC_REPO_PATH", str(occ))
+    monkeypatch.setenv("CONTRACT_REPO_DIR", str(occ))
     monkeypatch.setenv("OMNI_HOME", str(parent))
     return EvidenceCollector()
 

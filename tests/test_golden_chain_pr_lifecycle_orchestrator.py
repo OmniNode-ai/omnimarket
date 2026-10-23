@@ -387,20 +387,20 @@ class _LandedStampReadback:
 
     The golden-chain / FSM / routing tests here assert ``prs_fixed`` reflects a
     dispatched-and-landed fix; they do NOT exercise the read-back gate itself
-    (that lives in ``test_occ_stamp_readback_gate.py``), so they inject a
+    (that lives in ``test_pr_evidence_readback_gate.py``), so they inject a
     read-back that confirms the companion. Injecting it also keeps these tests
     hermetic — without an injected read-back ``_ensure_sub_handlers`` wires the
-    live ``OccStampReadback`` (a real ``gh pr view`` subprocess).
+    live ``PrEvidenceReadback`` (a real ``gh pr view`` subprocess).
     """
 
     async def verify_fix_landed(
         self, repo: str, pr_number: int, ticket_id: str | None = None
     ) -> Any:
-        from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.occ_stamp_readback import (
-            ModelOccStampReadbackResult,
+        from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.pr_evidence_readback import (
+            ModelPrEvidenceReadbackResult,
         )
 
-        return ModelOccStampReadbackResult(verified=True, reason="test: landed")
+        return ModelPrEvidenceReadbackResult(verified=True, reason="test: landed")
 
 
 async def _make_orchestrator(
@@ -413,7 +413,7 @@ async def _make_orchestrator(
     event_bus: EventBusInmemory | None = None,
     changed_files_by_pr: dict[tuple[str, int], list[str]] | None = None,
     probe_outcome: EnumVerificationOutcome = EnumVerificationOutcome.MERGED,
-    occ_stamp_readback: Any = None,
+    pr_evidence_readback: Any = None,
 ) -> _TestOrchestrator:
     from typing import cast
 
@@ -439,8 +439,8 @@ async def _make_orchestrator(
         fix=fix or MockFix(),
         event_bus=bus,
         # OMN-14191: inject a hermetic read-back so prs_fixed counts a landed
-        # fix without wiring the live gh OccStampReadback subprocess.
-        occ_stamp_readback=occ_stamp_readback or _LandedStampReadback(),
+        # fix without wiring the live gh PrEvidenceReadback subprocess.
+        pr_evidence_readback=pr_evidence_readback or _LandedStampReadback(),
     )
 
 
@@ -1471,7 +1471,7 @@ class TestOrchestratorFixReasonRouting:
                 EnumPrCategory.RED,
                 "Receipt Gate-only failure with a ticket — Evidence-Source autobind.",
                 ("verify / verify",),
-                EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND,
+                EnumPrBlockReason.RECEIPT_FAILURE,
             ),
             (
                 EnumPrCategory.RED,

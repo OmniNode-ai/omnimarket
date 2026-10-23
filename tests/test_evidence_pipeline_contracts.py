@@ -58,12 +58,6 @@ EXPECTED_NODES = {
         "subscribe": {"onex.cmd.omnimarket.evidence-pipeline-start.v1"},
         "publish": {"onex.evt.omnimarket.evidence-collected.v1"},
     },
-    "node_occ_pr_writer_effect": {
-        "node_type": "EFFECT_GENERIC",
-        "terminal_event": "onex.evt.omnimarket.occ-pr-created.v1",
-        "subscribe": {"onex.evt.omnimarket.evidence-validated.v1"},
-        "publish": {"onex.evt.omnimarket.occ-pr-created.v1"},
-    },
     "node_linear_updater_effect": {
         "node_type": "EFFECT_GENERIC",
         "terminal_event": "onex.evt.omnimarket.linear-evidence-updated.v1",
@@ -75,7 +69,6 @@ EXPECTED_NODES = {
         "terminal_event": "onex.evt.omnimarket.evidence-published.v1",
         "subscribe": {
             "onex.evt.omnimarket.evidence-validated.v1",
-            "onex.evt.omnimarket.occ-pr-created.v1",
             "onex.evt.omnimarket.readiness-scored.v1",
         },
         "publish": {"onex.evt.omnimarket.evidence-published.v1"},
@@ -86,7 +79,6 @@ EXPECTED_NODES = {
         "subscribe": {
             "onex.evt.omnimarket.evidence-validated.v1",
             "onex.evt.omnimarket.readiness-scored.v1",
-            "onex.evt.omnimarket.occ-pr-created.v1",
         },
         "publish": {"onex.evt.omnimarket.deployment-evidence-reduced.v1"},
     },

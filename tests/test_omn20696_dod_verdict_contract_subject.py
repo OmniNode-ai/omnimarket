@@ -243,7 +243,7 @@ def test_a_bound_subject_without_a_commit_cannot_be_constructed() -> None:
         )
     with pytest.raises(ValidationError):
         ModelDodContractSubject(
-            source=EnumDodContractSource.ONEX_CHANGE_CONTROL,
+            source=EnumDodContractSource.PRODUCT_REPOSITORY,
             repository=None,
             commit_sha="a" * 40,
             repo_path=_CONTRACT_REL,
@@ -587,7 +587,7 @@ def test_a_rebuilt_table_keeps_the_contract_subject_of_every_run() -> None:
     table = _project(_history())
     sources = sorted(row["contract_source"] for row in table.values())
     assert sources == [
-        "onex_change_control",
+        "product_repository",
         "product_repository",
         "product_repository",
         "product_repository",

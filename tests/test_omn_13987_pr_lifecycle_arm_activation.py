@@ -191,9 +191,7 @@ class TestChokepoint1Classifier:
             failed_check_names=(_DEPLOY_GATE,),
             ticket_ids=("OMN-8085",),
         )
-        assert _block_reason_for_fix(pr) == (
-            EnumPrBlockReason.DEPLOY_GATE_CONTRACT_NOT_FOUND
-        )
+        assert _block_reason_for_fix(pr) == (EnumPrBlockReason.RECEIPT_FAILURE)
 
     def test_receipt_only_with_ticket_routes_to_autobind(self) -> None:
         pr = _record(
@@ -201,9 +199,7 @@ class TestChokepoint1Classifier:
             failed_check_names=(_RECEIPT_GATE,),
             ticket_ids=("OMN-13317",),
         )
-        assert _block_reason_for_fix(pr) == (
-            EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
-        )
+        assert _block_reason_for_fix(pr) == (EnumPrBlockReason.RECEIPT_FAILURE)
 
     def test_occ_preflight_only_with_ticket_routes_to_autobind(self) -> None:
         """occ-preflight (omnibase_core occ-preflight.yml "eligibility" job)
@@ -216,9 +212,7 @@ class TestChokepoint1Classifier:
             failed_check_names=(_OCC_PREFLIGHT,),
             ticket_ids=("OMN-14155",),
         )
-        assert _block_reason_for_fix(pr) == (
-            EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
-        )
+        assert _block_reason_for_fix(pr) == (EnumPrBlockReason.RECEIPT_FAILURE)
 
     def test_receipt_gate_and_occ_preflight_both_failing_routes_to_autobind(
         self,
@@ -230,9 +224,7 @@ class TestChokepoint1Classifier:
             failed_check_names=(_RECEIPT_GATE, _OCC_PREFLIGHT),
             ticket_ids=("OMN-14155",),
         )
-        assert _block_reason_for_fix(pr) == (
-            EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
-        )
+        assert _block_reason_for_fix(pr) == (EnumPrBlockReason.RECEIPT_FAILURE)
 
     def test_receipt_gate_plus_cosmetic_auto_merge_routes_to_autobind(self) -> None:
         """omninode_infra#579's real shape: {verify/verify, Enable Auto-Merge}.
@@ -245,9 +237,7 @@ class TestChokepoint1Classifier:
             failed_check_names=(_RECEIPT_GATE, _ENABLE_AUTO_MERGE),
             ticket_ids=("OMN-14136",),
         )
-        assert _block_reason_for_fix(pr) == (
-            EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
-        )
+        assert _block_reason_for_fix(pr) == (EnumPrBlockReason.RECEIPT_FAILURE)
 
     def test_occ_preflight_plus_cosmetic_auto_merge_routes_to_autobind(self) -> None:
         """occ-preflight-only signature must also see through the cosmetic
@@ -257,9 +247,7 @@ class TestChokepoint1Classifier:
             failed_check_names=(_OCC_PREFLIGHT, _ENABLE_AUTO_MERGE),
             ticket_ids=("OMN-14155",),
         )
-        assert _block_reason_for_fix(pr) == (
-            EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
-        )
+        assert _block_reason_for_fix(pr) == (EnumPrBlockReason.RECEIPT_FAILURE)
 
     def test_receipt_gate_plus_required_skip_token_gate_stays_code_failure(
         self,
@@ -417,13 +405,10 @@ class TestChokepoint1Classifier:
             ticket_ids=("OMN-9999",),
         )
         result = _block_reason_for_fix(pr)
-        assert result not in {
-            EnumPrBlockReason.DEPLOY_GATE_CONTRACT_NOT_FOUND,
-            EnumPrBlockReason.CI_FAILURE,
-        }
+        assert result is not EnumPrBlockReason.CI_FAILURE
         # receipt-gate-only + ticket resolves to the autobind arm (a no-op-safe,
         # self-guarding adapter), never to a deploy-gate/flaky misroute.
-        assert result == EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
+        assert result == EnumPrBlockReason.RECEIPT_FAILURE
 
     def test_conflicted_still_routes_to_conflict(self) -> None:
         pr = _record(category=EnumPrCategory.CONFLICTED)
@@ -443,45 +428,6 @@ class TestChokepoint1AdapterRouting:
         assert gh.rerun_calls == [("OmniNode-ai/omnimarket", 42)]
         assert occ.create_calls == []
         assert autobind.autobind_calls == []
-
-    async def test_deploy_gate_not_found_reaches_occ_contract_create(self) -> None:
-        handler, gh, _agent, occ, autobind = _fix_handler()
-        # Empty changed_files → trivial-infra fast-path not eligible → create.
-        await handler.handle(
-            _fix_command(
-                EnumPrBlockReason.DEPLOY_GATE_CONTRACT_NOT_FOUND,
-                ticket_id="OMN-13776",
-                changed_files=[],
-            )
-        )
-        assert occ.create_calls == [("OmniNode-ai/omnimarket", 42, "OMN-13776")]
-        assert autobind.autobind_calls == []
-        assert gh.rerun_calls == []
-
-    async def test_deploy_gate_trivial_infra_takes_fastpath_no_create(self) -> None:
-        handler, _gh, _agent, occ, _autobind = _fix_handler()
-        result = await handler.handle(
-            _fix_command(
-                EnumPrBlockReason.DEPLOY_GATE_CONTRACT_NOT_FOUND,
-                ticket_id="OMN-13776",
-                changed_files=["deploy/compose.yml"],
-                diff_total_lines=2,
-            )
-        )
-        assert "fast-path" in result.fix_action.lower()
-        assert occ.create_calls == []
-
-    async def test_autobind_reaches_occ_autobind_adapter(self) -> None:
-        handler, gh, _agent, occ, autobind = _fix_handler()
-        await handler.handle(
-            _fix_command(
-                EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND,
-                ticket_id="OMN-13317",
-            )
-        )
-        assert autobind.autobind_calls == [("OmniNode-ai/omnimarket", 42, "OMN-13317")]
-        assert occ.create_calls == []
-        assert gh.rerun_calls == []
 
 
 # ===========================================================================

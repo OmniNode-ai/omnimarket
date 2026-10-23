@@ -32,7 +32,7 @@ TWO_STRIKE_THRESHOLD = 2
 
 # Path-substring denylist (case-insensitive). Any changed_files hit refuses.
 _DENYLIST_PATH_PATTERNS: tuple[str, ...] = (
-    "onex_change_control/",
+    "contracts/",
     "deploy-gate",
     "no-raw-prod-bypass",
     "prod_promotion_grants",

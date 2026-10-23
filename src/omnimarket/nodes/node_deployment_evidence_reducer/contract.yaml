@@ -72,7 +72,6 @@ event_bus:
   subscribe_topics:
     - onex.evt.omnimarket.evidence-validated.v1
     - onex.evt.omnimarket.readiness-scored.v1
-    - onex.evt.omnimarket.occ-pr-created.v1
   publish_topics:
     - onex.evt.omnimarket.deployment-evidence-reduced.v1
 
@@ -177,12 +176,6 @@ state_machine:
       from_state: reduced
       to_state: reduced
       trigger: readiness_scored
-    # OCC PR creation folded.
-    - version: {major: 1, minor: 0, patch: 0}
-      transition_name: reduced_to_reduced_on_occ_pr_created
-      from_state: reduced
-      to_state: reduced
-      trigger: occ_pr_created
     # Re-observe own projection (idempotent).
     - version: {major: 1, minor: 0, patch: 0}
       transition_name: reduced_to_reduced_on_deployment_evidence_reduced

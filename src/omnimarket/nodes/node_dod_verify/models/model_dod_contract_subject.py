@@ -30,10 +30,7 @@ class ModelDodContractSubject(BaseModel):
             and re.fullmatch(r"([0-9a-f]{40}|[0-9a-f]{64})", self.commit_sha) is None
         ):
             raise ValueError("commit_sha must be a full lowercase hex object id")
-        if self.source in (
-            EnumDodContractSource.PRODUCT_REPOSITORY,
-            EnumDodContractSource.ONEX_CHANGE_CONTROL,
-        ):
+        if self.source is EnumDodContractSource.PRODUCT_REPOSITORY:
             if any(
                 value is None
                 for value in (self.repository, self.commit_sha, self.repo_path)

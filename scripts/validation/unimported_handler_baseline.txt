@@ -47,8 +47,6 @@ src/omnimarket/nodes/node_local_supervisor/handlers/handler_local_supervisor.py:
 src/omnimarket/nodes/node_merge_effect/handlers/handler_merge.py:HandlerMergeEffect # Legacy dormant handler; no external Python import yet.
 src/omnimarket/nodes/node_model_comparison_runner/handlers/handler_model_comparison.py:HandlerModelComparisonRunner # Legacy dormant handler; no external Python import yet.
 src/omnimarket/nodes/node_observability_sink_effect/handlers/handler_observability_sink_effect.py:HandlerObservabilitySinkEffect # Legacy dormant handler; no external Python import yet.
-src/omnimarket/nodes/node_occ_evidence_draft_orchestrator/handlers/handler_occ_evidence_draft_orchestrator.py:HandlerOccEvidenceDraftOrchestrator # Legacy dormant handler; no external Python import yet.
-src/omnimarket/nodes/node_occ_evidence_validator_compute/handlers/handler_occ_evidence_validator.py:HandlerOccEvidenceValidator # Legacy dormant handler; no external Python import yet.
 src/omnimarket/nodes/node_pipeline_cache_effect/handlers/handler_pipeline_cache.py:HandlerPipelineCache # Legacy dormant handler; no external Python import yet.
 src/omnimarket/nodes/node_polish_task_classifier/handlers/handler_classifier.py:HandlerPolishTaskClassifier # Legacy dormant handler; no external Python import yet.
 src/omnimarket/nodes/node_post_merge_knowledge_sync_orchestrator/handlers/handler_post_merge_sync.py:HandlerPostMergeSyncOrchestrator # Legacy dormant handler; no external Python import yet.

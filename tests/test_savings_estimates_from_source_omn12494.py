@@ -29,10 +29,17 @@ from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
 HANDLER = HandlerProjectionSavings()
 HANDLER._delegate_skill_baseline_model = "claude-opus-4-6"
-handler_projection_savings.build_premium_counterfactual = partial(
-    build_premium_counterfactual, premium_model="claude-opus-4-6"
-)
 CORR = "2e9f0b13-6c7d-5e8f-9012-3b4c5d6e7f81"
+
+
+@pytest.fixture(autouse=True)
+def _pin_premium_counterfactual(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the premium baseline for each test without leaking to other modules."""
+    monkeypatch.setattr(
+        handler_projection_savings,
+        "build_premium_counterfactual",
+        partial(build_premium_counterfactual, premium_model="claude-opus-4-6"),
+    )
 
 
 def _source_payload(

@@ -50,13 +50,6 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_moved_ticket_contracts_present_omn21296.py::test_historical_contract_uses_work_tracking_location tests/unit/structure/test_contracts_dir_runtime_only.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1", "AC2"]
-  - id: "dod-omn21296-current-sanitizer-replay"
-    description: "Replay the new October 23 dev-effects capture against infra 9eb35324's sanitizer source hash. Both the raw git TimeoutExpired redaction and the typed parked reason are executed through the installed sanitizer. The October 19 capture is retained unchanged."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_occ_companion_effect/test_mint_acceptance_evidence_omn15447.py::test_deployed_sanitizer_capture_replays_both_controls -q --no-cov"
-        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21296-sanitizer-capture-deploy-probe"
     description: "Hosted-runner deploy artifact probe: read the dated dev-effects capture from this exact GitHub head and require the current sanitizer digest and capture date. A base without that capture fails. This proves the captured artifact, not a fresh deployment or bus-to-DLQ result."
     source: "manual"

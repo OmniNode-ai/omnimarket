@@ -28,7 +28,7 @@ NODE_DIR = (
 )
 CONTRACT = NODE_DIR / "contract.yaml"
 COMPLETED_TOPIC = "onex.evt.omnimarket.evidence-pipeline-completed.v1"
-STATES = ["COLLECTING", "EXTRACTING", "MATCHING", "GENERATING_PR", "COMPLETE"]
+STATES = ["COLLECTING", "EXTRACTING", "MATCHING", "PUBLISHING", "COMPLETE"]
 
 
 def _contract() -> dict[str, Any]:
