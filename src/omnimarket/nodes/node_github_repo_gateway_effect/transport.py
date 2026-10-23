@@ -35,6 +35,7 @@ from omnimarket.github_api import (
 )
 from omnimarket.github_landing.github_landing_transport import (
     GithubLandingTransportError,
+    JobLogWindow,
     UrllibGithubLandingTransport,
 )
 from omnimarket.github_landing.model_github_http_exchange import (
@@ -140,6 +141,12 @@ class GitHubReadTransportProtocol(Protocol):
         """Send one GET whose body is bytes, read under ``limit``."""
         ...
 
+    def send_bytes_window_sync(
+        self, request: ModelGithubHttpRequest, *, window: JobLogWindow
+    ) -> ModelGithubBytesResponse:
+        """Send one GET whose body is a log, kept through ``window``."""
+        ...
+
 
 def _normalize_rollup_contexts(
     rollup_nodes: list[dict[str, Any]],
@@ -204,6 +211,14 @@ class RealGitHubReadTransport(GitHubReadTransportProtocol):
     ) -> ModelGithubBytesResponse:
         try:
             return self._sender.send_bytes_sync(request, limit=limit, keep=keep)
+        except GithubLandingTransportError as exc:
+            raise GitHubTransportError(f"GitHub request failed: {exc}") from exc
+
+    def send_bytes_window_sync(
+        self, request: ModelGithubHttpRequest, *, window: JobLogWindow
+    ) -> ModelGithubBytesResponse:
+        try:
+            return self._sender.send_bytes_window_sync(request, window=window)
         except GithubLandingTransportError as exc:
             raise GitHubTransportError(f"GitHub request failed: {exc}") from exc
 

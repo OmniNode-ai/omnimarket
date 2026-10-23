@@ -531,6 +531,20 @@ _HEURISTIC_CONTAINS_ANY_CHECKS: dict[str, tuple[str, tuple[str, ...]]] = {
             "since",
             "as a result",
             "this means",
+            # OMN-19401: 240 lab answers of Qwen3.8-27B to explanation prompts,
+            # sent without the numbered-steps directive (2026-10-20), refused
+            # nine correct ones walked through with a prevented or ensured
+            # result or a purpose clause. The participles match only after a
+            # comma or "and", so "Preventing outages is the goal" still fails
+            # (fixture: tests/unit/delegation/
+            # test_step_by_step_causal_prevent_ensure_omn19401.py).
+            ", preventing ",
+            " and preventing ",
+            ", ensuring ",
+            ", meaning ",
+            " which prevents",
+            " to ensure that",
+            " to prevent ",
             " thus",
             " hence",
             ", so ",
