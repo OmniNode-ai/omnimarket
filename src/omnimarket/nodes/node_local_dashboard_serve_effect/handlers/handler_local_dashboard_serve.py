@@ -74,6 +74,7 @@ from typing import Any, Protocol
 from fastapi import FastAPI, Query, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 
+from omnimarket.handlers import handler_model_keys as model_keys
 from omnimarket.handlers.handler_local_environment_judgement import (
     load_local_alert_rules,
 )
@@ -280,10 +281,40 @@ def create_dashboard_app(
             body["as_of"] = body.get("latest_event_at")
         return JSONResponse(status_code=result.http_status, content=body)
 
+    _register_model_keys(app)
+
     if pages is not None:
         _register_pages(app, pages)
 
     return app
+
+
+def _register_model_keys(app: FastAPI) -> None:
+    """List the model providers for the Credentials page, read-only (OMN-20816).
+
+    ``GET /models`` serves the rows ``onex models list`` prints, from
+    :mod:`omnimarket.handlers.handler_model_keys`, for the providers the page
+    shows. Each row says whether the provider is set up, its models and its
+    last test; no key or part of one is in it. Nothing on this server adds,
+    replaces or removes a key: keys change only through ``onex models add`` and
+    ``onex models remove``, so no key is ever sent to the dashboard.
+
+    The read runs in a worker thread: it reads the local store and the model
+    config files, blocking I/O that would otherwise hold the event loop.
+    """
+
+    @app.get("/models")
+    async def model_keys_list() -> JSONResponse:
+        rows = await asyncio.to_thread(model_keys.list_providers)
+        return JSONResponse(
+            {
+                "providers": [
+                    row.model_dump(mode="json")
+                    for row in rows
+                    if row.provider in model_keys.DASHBOARD_PROVIDERS
+                ]
+            }
+        )
 
 
 def _register_pages(app: FastAPI, pages: Path) -> None:

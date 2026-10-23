@@ -17,6 +17,9 @@ from omnimarket.nodes.node_work_ledger_append_effect import (
     HandlerWorkLedgerAppendEffect,
     ModelWorkLedgerAppendRequest,
 )
+from omnimarket.nodes.node_work_ledger_append_effect.handlers.handler_work_ledger_append_effect import (
+    _principal_stamped,
+)
 from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
     LocalLedgerFile,
     ModelAppendCommandResult,
@@ -47,8 +50,38 @@ def _attributed(rows: str, principal: str = "developer") -> str:
 def _attribute_line(line: str, principal: str) -> str:
     if not line.startswith("2026-"):
         return line
+    cells = line.split(" | ", 3)
+    if len(cells) == 4 and cells[2].startswith(("lane=", "from=")):
+        return (
+            f"{cells[0]} | {cells[1]} | {cells[2]} | principal={principal} | {cells[3]}"
+        )
     timestamp, kind, text = line.split(" | ", 2)
     return f"{timestamp} | {kind} | principal={principal} | {text}"
+
+
+@pytest.mark.parametrize(
+    ("row", "stamped"),
+    [
+        (
+            "2026-10-22T04:30:00Z | CLAIM | lane=test | ticket=OMN-1 | req=r | text\n",
+            "2026-10-22T04:30:00Z | CLAIM | lane=test | principal=developer"
+            " | ticket=OMN-1 | req=r | text\n",
+        ),
+        (
+            "2026-10-22T04:30:00Z | MSG | from=a | id=x | to=b | req=r | text\n",
+            "2026-10-22T04:30:00Z | MSG | from=a | principal=developer"
+            " | id=x | to=b | req=r | text\n",
+        ),
+        (
+            "2026-10-22T04:30:00Z | STATUS | ticket=OMN-1 | lane=test | req=r | text\n",
+            "2026-10-22T04:30:00Z | STATUS | principal=developer"
+            " | ticket=OMN-1 | lane=test | req=r | text\n",
+        ),
+    ],
+)
+def test_principal_follows_the_subject_cell(row: str, stamped: str) -> None:
+    """A lane-second reader (``| CLAIM | lane=<lane> |``) still matches a bus row (OMN-19513)."""
+    assert _principal_stamped(row, "developer") == stamped
 
 
 @pytest.mark.parametrize("writer", [None, "unregistered"])
@@ -599,3 +632,31 @@ def test_operator_principal_writes_mirrored_rows_without_a_writer_topic(
     receipt = handler.handle(_request(), writer_principal="operator-principal")
     assert receipt.status is EnumWorkLedgerAppendStatus.ACCEPTED
     assert receipt.principal == "operator-principal"
+
+
+def test_replay_of_a_request_landed_before_omn_19513_is_a_duplicate(
+    tmp_path: Path,
+) -> None:
+    """A request that landed with principal= right after the type is not re-refused."""
+    path = _ledger(tmp_path)
+    request_id = uuid4()
+    row = _row(request_id)
+    timestamp, kind, rest = row.split(" | ", 2)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(f"{timestamp} | {kind} | principal=developer | {rest}\n")
+    runner = _Runner(path)
+    receipt = _handler(runner, LocalLedgerFile(path), "ledger").handle(
+        _request(row, request_id), writer_principal="developer"
+    )
+    assert receipt.status is EnumWorkLedgerAppendStatus.DUPLICATE
+    assert runner.calls == []
+
+
+def test_new_row_carries_principal_after_lane(tmp_path: Path) -> None:
+    path = _ledger(tmp_path)
+    runner = _Runner(path)
+    receipt = _handler(runner, LocalLedgerFile(path), "ledger").handle(
+        _request(), writer_principal="developer"
+    )
+    assert receipt.status is EnumWorkLedgerAppendStatus.ACCEPTED
+    assert " | STATUS | lane=test | principal=developer | req=" in runner.calls[0]

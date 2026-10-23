@@ -55,7 +55,10 @@ def local_store_at_tmp(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     ):
         monkeypatch.setattr(f"{module}.default_evidence_db_path", lambda: db_path)
     # The provider's model list is not under test; no network is used.
-    monkeypatch.setattr("omnimarket.cli.cli_secret._resolve_model", lambda *_args: None)
+    monkeypatch.setattr(
+        "omnimarket.handlers.handler_model_keys.resolve_model",
+        lambda *_args, **_kw: None,
+    )
     return db_path
 
 
@@ -279,6 +282,9 @@ class TestListTestRemove:
     ) -> None:
         _fake(monkeypatch, tmp_path)
         _run(["add", "openai"], stdin=f"{_OPENAI_KEY}\n")
+        # OMN-20816 decision (c): the last usable provider cannot be removed, so a
+        # second one that passes its test is set up first.
+        _run(["add", "gemini"], stdin=f"{_GEMINI_KEY}\n")
         result = _run(["remove", "openai"])
 
         assert result.exit_code == 0, result.output

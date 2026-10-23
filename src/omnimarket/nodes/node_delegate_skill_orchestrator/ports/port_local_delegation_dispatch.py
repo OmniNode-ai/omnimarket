@@ -59,6 +59,12 @@ from typing import Any, Literal, TypedDict, cast
 from uuid import UUID
 
 import yaml
+from omnibase_core.enums.enum_delegation_content_verdict import (
+    EnumDelegationContentVerdict,
+)
+from omnibase_core.enums.enum_delegation_operational_outcome import (
+    EnumDelegationOperationalOutcome,
+)
 from omnibase_core.models.delegation.wire import (
     EnumDelegationOutputRefusalReason,
     EnumDelegationOutputShape,
@@ -4442,6 +4448,13 @@ class LocalDelegationDispatchPort:
         for key, value in (attribution or {}).items():
             if key in _EVIDENCE_ATTRIBUTION_KEYS and value:
                 payload[key] = value
+        # OMN-19448: accepted runs mirror the runtime's completed/usable pair.
+        # OMN-19448: failed runs need gate-branch evidence this payload lacks.
+        if quality_passed:
+            payload["operational_outcome"] = (
+                EnumDelegationOperationalOutcome.COMPLETED.value
+            )
+            payload["content_verdict"] = EnumDelegationContentVerdict.USABLE.value
         # OMN-19448: only this terminal reaches the in-process projection and bus.
         # Preserve measured zero; absent inputs mean unmeasured, never zero.
         if trace_id is not None:

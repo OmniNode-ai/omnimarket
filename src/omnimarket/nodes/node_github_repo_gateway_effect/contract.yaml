@@ -27,7 +27,9 @@ description: >
   onex.evt.omnimarket.github-repo-gateway-read-completed.v1, whose result is
   discriminated by `operation`. List reads page inside the node up to the
   request's limit (at most 300) and say when they were cut; job_log_tail keeps
-  at most 64 KiB of the log's end; artifacts fetches one archive only when it
+  at most 64 KiB of the log's end, or with offset_bytes or step a window of at
+  most 64 KiB from that offset of the log or of the named step's region;
+  artifacts fetches one archive only when it
   is at most max_bytes (at most 512 KiB) and otherwise refuses with a typed
   reason. The GitHub token is resolved at the effect boundary from the
   contract-declared api_key_ref via the canonical secret-store resolver.

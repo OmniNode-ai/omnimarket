@@ -20,6 +20,7 @@ from typing import Any, cast
 import pytest
 import yaml
 
+from omnimarket.adapters.asyncpg_adapter import _refuse_unbound_tenant_scoped_write
 from omnimarket.models.model_metering_summary_refresh_requested import (
     EnumMeteringRefreshReason,
     ModelMeteringSummaryRefreshRequested,
@@ -100,8 +101,13 @@ class FakeStore:
             row = self.rows.get(key)
             return [] if row is None else [row]
         if sql.startswith("INSERT INTO public.metering_summary"):
+            # The real adapter refuses a tenant-scoped write with no tenant=
+            # before it acquires a connection (OMN-15919); a fake that accepted
+            # one hid the refusal that stalled the dev lane (OMN-19513).
+            _refuse_unbound_tenant_scoped_write(sql, tenant)
             columns = sql[sql.index("(") + 1 : sql.index(")")].split(", ")
             row = dict(zip(columns, params, strict=True))
+            assert tenant == row["tenant_id"]
             key = (
                 row["tenant_id"],
                 row["window_kind"],

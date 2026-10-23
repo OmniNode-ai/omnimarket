@@ -178,6 +178,11 @@ class _StubTransport:
     ) -> ModelGithubBytesResponse:
         raise AssertionError(f"_StubTransport does not send {request.path}")
 
+    def send_bytes_window_sync(
+        self, request: ModelGithubHttpRequest, *, window: object
+    ) -> ModelGithubBytesResponse:
+        raise AssertionError(f"_StubTransport does not send {request.path}")
+
 
 def _request(op: EnumGithubGatewayOperation) -> ModelGithubGatewayRequest:
     pr_scoped = op not in (
