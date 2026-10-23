@@ -258,6 +258,31 @@ def outcome_for_failure_cause(cause: str) -> tuple[str, str]:
     return outcome.value, verdict.value
 
 
+def _state_unstated_outcome(
+    existing: Mapping[str, object], row: dict[str, object]
+) -> None:
+    """OMN-19448: give an unstated terminal pair the meaning its evidence decides.
+
+    Harness and in-process delegate-skill terminals and a first-written failure
+    get their own pair. Completed/usable is the canonical producer's pair for a
+    gate-passed answer. A stated pair is never replaced.
+    """
+    if not all(
+        _is_blank(row.get(column)) and _is_blank(existing.get(column))
+        for column in ("operational_outcome", "content_verdict")
+    ):
+        return
+    merged = {**existing, **row}
+    cause = merged.get("terminal_failure_cause")
+    if _flag(merged.get("terminal_ok")) is False and not _is_blank(cause):
+        row["operational_outcome"], row["content_verdict"] = outcome_for_failure_cause(
+            str(cause)
+        )
+    elif _flag(merged.get("terminal_ok")) is True and is_evidenced_success(merged):
+        row["operational_outcome"] = EnumDelegationOperationalOutcome.COMPLETED.value
+        row["content_verdict"] = EnumDelegationContentVerdict.USABLE.value
+
+
 def apply_terminal_precedence(
     existing: Mapping[str, object], row: dict[str, object]
 ) -> None:
@@ -281,6 +306,7 @@ def apply_terminal_precedence(
         row["operational_outcome"] = failure_outcome
         if verdict in ("usable", "correct") or (reaper_failure and _is_blank(verdict)):
             row["content_verdict"] = failure_verdict
+    _state_unstated_outcome(existing, row)
 
 
 def supersedes_handler_failure(
