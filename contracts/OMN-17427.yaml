@@ -3808,6 +3808,7 @@ dod_evidence:
   - id: "dod-omn17427-evidence-binding-reads-env-prefix"
     description: "The repo evidence binding check reads through a leading env VAR=value prefix, so a bound test_passes check written as env ... uv run pytest <file> counts as pytest evidence, as the verifier already treats it. At the merge base the env-prefixed cases are refused and the dev head's own contract fails the binding test."
     source: "manual"
+    binds_ac: ["AC23"]
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov -k reads_through_an_env_prefix"
