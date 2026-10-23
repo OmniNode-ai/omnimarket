@@ -17,6 +17,11 @@ requirements:
     acceptance:
       - id: AC1
         statement: "AC1: the routing contract declares a recommended ordered model list for every served work class, with no model id literal in the onboarding script or the dashboard -- falsifier: uv run pytest in omnimarket on a contract test that resolves the recommended order for every served class and fails on a class whose order is empty or absent"
+  - id: req-omn21209-ac2
+    statement: "onboarding offers that recommended order as the pre-selected answer for each provider key and for Ollama, and a developer who accepts it types no model id"
+    acceptance:
+      - id: AC2
+        statement: "AC2: onboarding offers that recommended order as the pre-selected answer for each provider key and for Ollama, and a developer who accepts it types no model id -- falsifier: uv run pytest tests/skills/test_lab_onboarding_script_omn20150.py -q -k recommended_order"
   - id: req-omn21209-ac3
     statement: "accepting the recommendation registers the same ordered list through the OMN-21059 path and the next routing plan follows it"
     acceptance:
@@ -70,3 +75,11 @@ dod_evidence:
         check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/routing/byok_provider_backends.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"def recommended_models\" > /dev/null'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: dod-omn21209-ac2-preselected-order-exists
+    description: "Each key onboarding offers (Gemini, OpenRouter, OpenAI) has a non-empty, duplicate-free recommended order, and Ollama has one recommended model for each memory class: the order onboarding pre-selects. The pre-selected answer itself is proven by the omniclaude contract's AC2 item. Fails at the merge base, which has no recommended_models."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/unit/config/test_byok_recommended_order_omn21209.py -q --no-cov -k ac2"
+        cwd: "${OMNI_HOME}/omnimarket"

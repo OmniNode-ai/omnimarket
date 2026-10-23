@@ -195,3 +195,20 @@ def test_ac4_an_unsourced_order_is_refused(tmp_path: Path) -> None:
     )
     with pytest.raises(ByokCatalogError):
         _read_recommended_order(missing_basis)
+
+
+@pytest.mark.parametrize("provider", ["gemini", "openrouter", "openai"])
+def test_ac2_onboarding_has_a_preselected_order_for_each_key_it_offers(
+    provider: str,
+) -> None:
+    """Onboarding offers these three keys; each has the order it pre-selects."""
+    models = recommended_models(provider)
+    assert models
+    assert len(models) == len(set(models))
+
+
+@pytest.mark.parametrize("memory_gb", [16, 32, 64])
+def test_ac2_onboarding_has_a_preselected_ollama_model_for_each_memory_class(
+    memory_gb: int,
+) -> None:
+    assert len(recommended_models("ollama", memory_gb=memory_gb)) == 1
