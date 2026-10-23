@@ -176,6 +176,11 @@ requirements:
     acceptance:
       - id: "AC32"
         statement: "AC32: node_lab_claude_token_effect, against a fake host and a fake store, stores, deploys and probes a set token and removes the host's .limited marker on an answer, restores the previous token on the host and in the store on a limit notice or failed deploy, rotates a limited host onto the first spare that answers and records the rotation event, says no-spare once per marker, and onex lab claude-token takes no token argument and never echoes the piped token -- falsifier: uv run pytest tests/nodes/node_lab_claude_token_effect/test_lab_claude_token_effect.py tests/nodes/node_lab_claude_token_effect/test_lab_claude_token_cli.py -q fails at the merge base"
+  - id: "req-lane-queue-start-decision-node"
+    statement: "The lane queue starts a waiting lane whenever a host that can take it has a free slot: the start decision is an omnimarket node over per-host engine slots, the lane's effective pin, its relaunch window and the priority claims of the lanes that can use the slot, so a lane pinned to a full host is not relaunched against free slots elsewhere and a queued higher-class lane that cannot use a slot does not hold it back."
+    acceptance:
+      - id: "AC33"
+        statement: "AC33: node_lane_queue_start_decision_compute, on the queue the ledger recorded on 2026-10-23 (nine lanes, 8 free slots over three hosts, one host full), starts eight lanes urgent class first and holds the ninth for no free slot; holds a lane pinned to the full host as pinned-host-full while 8 slots are free elsewhere; starts an other-class lane on the pool's last free slot when the queued process-fix lane cannot use it; and reopens a relaunch window after 300 s or when the relaunch ended no-host again -- falsifier: uv run pytest tests/nodes/node_lane_queue_start_decision_compute -q fails at the merge base, where the node does not exist"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -189,6 +194,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The placement tests read every workflow file for the fleet fallback, the ci.yml job, .pre-commit-config.yaml and the CI Summary gate list."
     command: "uv run pytest tests/ci/test_public_runner_placement_omn19998.py -q"
+  - kind: "tests"
+    description: "The lane queue start decision tests, built from the 2026-10-23 recorded queue."
+    command: "uv run pytest tests/nodes/node_lane_queue_start_decision_compute -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -759,3 +767,19 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           uv run python -c 'from importlib.metadata import entry_points; from pathlib import Path; import yaml; e=next(e for e in entry_points(group="onex.nodes") if e.name == "node_lab_claude_token_effect"); c=yaml.safe_load(Path(e.load().__file__).with_name("contract.yaml").read_text()); assert c["dependency_ownership"] == ["store", "shell"]; assert c["descriptor"]["runtime_profiles"] == []'
+  - id: "dod-omn19998-lane-queue-start-decision"
+    description: "The start decision on the recorded 2026-10-23 queue and its pin, holdback and relaunch-window cases. The tests fail at the merge base, where the node does not exist."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lane_queue_start_decision_compute/test_lane_queue_start_decision.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC33"]
+  - id: "dod-omn19998-lane-queue-start-deploy-probe"
+    description: "Hosted-runner readback loads the installed node entry point and runs its handler on the lane pinned to a full host with 8 free slots elsewhere: the lane is held as pinned-host-full and starts nothing. The previous package has no such entry point and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run python -c 'from importlib.metadata import entry_points; from omnimarket.nodes.node_lane_queue_start_decision_compute.models.model_lane_queue_start_decision import ModelLaneQueueStartRequest as R; e=next(e for e in entry_points(group="onex.nodes") if e.name == "node_lane_queue_start_decision_compute"); e.load(); from omnimarket.nodes.node_lane_queue_start_decision_compute.handlers.handler_lane_queue_start_decision import HandlerLaneQueueStartDecision as H; r=H().handle(R.model_validate({"now": "2026-10-23T14:13:00Z", "priority_classes": ["process-fix", "other"], "entries": [{"lane": "pinned", "model": "sonnet", "priority_class": "other", "enqueued_at": "2026-10-23T11:55:00Z", "updated_at": "2026-10-23T11:55:00Z", "pin": "h200", "pin_strict": True}], "hosts": [{"name": "h200"}, {"name": "h201", "claude_slots": 4}, {"name": "h202", "claude_slots": 4}]})); assert not r.starts and r.held[0].reason_code == "pinned-host-full"'
+        cwd: "${OMNI_HOME}/omnimarket"
