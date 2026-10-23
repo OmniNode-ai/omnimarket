@@ -1,0 +1,21 @@
+{
+  "_source": "Entries rebuilt from the rolling ledger no-host MSG rows of 2026-10-23 (enqueued_at is the row's 'queued until' minus the 3 h term; updated_at is the lane's last no-host row) and from the orchestrator's measurement of that day: 8 free slots, 7 idle hosts, one other-class lane pinned to h200 for 138 minutes. The pinned lane and the h200 pin are the orchestrator's account; their names are not in the ledger.",
+  "now": "2026-10-23T14:13:00Z",
+  "entries": [
+    {"lane": "consumer-rejoin-1300", "model": "sonnet", "priority_class": "other", "enqueued_at": "2026-10-23T13:00:55Z", "updated_at": "2026-10-23T13:45:51Z", "launched_at": "2026-10-23T13:45:49Z", "pin": "h201", "pin_since": "2026-10-23T13:00:55Z", "last_reason": "no host has a free lane slot"},
+    {"lane": "capture-watch-1315", "model": "sonnet", "priority_class": "other", "enqueued_at": "2026-10-23T13:14:54Z", "updated_at": "2026-10-23T13:45:50Z", "launched_at": "2026-10-23T13:45:48Z", "pin": null, "pin_since": "2026-10-23T13:14:54Z", "last_reason": "engine-pool: no host on the codex hosts has a free slot"},
+    {"lane": "occi-retirement-plan-r5-1310", "model": "sonnet", "priority_class": "other", "enqueued_at": "2026-10-23T13:45:52Z", "updated_at": "2026-10-23T13:45:52Z", "pin": null, "pin_since": "2026-10-23T13:45:52Z", "last_reason": "no host has a free lane slot"},
+    {"lane": "canon-everywhere-r2-1345", "model": "sonnet", "priority_class": "other", "enqueued_at": "2026-10-23T13:45:52Z", "updated_at": "2026-10-23T14:11:05Z", "launched_at": "2026-10-23T14:11:03Z", "pin": null, "pin_since": "2026-10-23T13:45:52Z", "last_reason": "no host has a free lane slot"},
+    {"lane": "omniclaude-dev-tag-1345", "model": "sonnet", "priority_class": "other", "enqueued_at": "2026-10-23T13:45:53Z", "updated_at": "2026-10-23T13:45:54Z", "pin": null, "pin_since": "2026-10-23T13:45:53Z", "last_reason": "no host has a free lane slot"},
+    {"lane": "lane-queue-start-1400", "model": "sonnet", "priority_class": "process-fix", "enqueued_at": "2026-10-23T14:01:18Z", "updated_at": "2026-10-23T14:01:18Z", "pin": null, "pin_since": "2026-10-23T14:01:18Z", "last_reason": "no host has a free lane slot"},
+    {"lane": "cmod-ta12-latency-1400", "model": "sonnet", "priority_class": "other", "enqueued_at": "2026-10-23T14:01:19Z", "updated_at": "2026-10-23T14:01:19Z", "pin": null, "pin_since": "2026-10-23T14:01:19Z", "last_reason": "no host has a free lane slot"},
+    {"lane": "claims-store-pr-1400", "model": "sonnet", "priority_class": "other", "enqueued_at": "2026-10-23T14:01:20Z", "updated_at": "2026-10-23T14:01:20Z", "pin": null, "pin_since": "2026-10-23T14:01:20Z", "last_reason": "no host has a free lane slot"},
+    {"lane": "m4-c17-c29-diagnose-1410", "model": "sonnet", "priority_class": "other", "enqueued_at": "2026-10-23T14:12:19Z", "updated_at": "2026-10-23T14:12:19Z", "pin": null, "pin_since": "2026-10-23T14:12:19Z", "last_reason": "no host has a free lane slot"}
+  ],
+  "hosts": [
+    {"name": "h200", "claude_slots": 0, "codex_slots": 0},
+    {"name": "h201", "claude_slots": 3, "codex_slots": 3},
+    {"name": "h202", "claude_slots": 3, "codex_slots": 3},
+    {"name": "h101", "claude_slots": 2, "codex_slots": 2}
+  ]
+}

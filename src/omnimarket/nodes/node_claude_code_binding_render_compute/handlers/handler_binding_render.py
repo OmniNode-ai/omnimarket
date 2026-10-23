@@ -28,8 +28,13 @@ from omnimarket.nodes.node_claude_code_binding_render_compute.handlers import (
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.binding_render_error import (
     BindingRenderError,
 )
+from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_claude_code_hook_adapter import (
+    INVOCATION_ID_SOURCE,
+)
 
 ADAPTER_COMMAND = "onex-claude-code-hook"
+COMPACT_EVENT = "session.compact"
+COMPACT_MANUAL_TRIGGER = "manual"
 _NAME = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 _HOOK_INPUT_PATH = re.compile(r"^\$(\.[A-Za-z_][A-Za-z0-9_]*)+$")
 
@@ -45,12 +50,22 @@ def _literal(value: str) -> str:
 
 
 def validate_binding(binding: ModelClientBinding) -> None:
+    if binding.hook_event == COMPACT_EVENT and (
+        binding.kind is not EnumBindingKind.REPLACING
+        or binding.matcher_tool != COMPACT_MANUAL_TRIGGER
+    ):
+        raise BindingRenderError(
+            f"binding {binding.name!r} for {COMPACT_EVENT} must be replacing "
+            "with the manual trigger"
+        )
     if not _NAME.match(binding.name):
         raise BindingRenderError(
             f"binding name {binding.name!r} is not a lower-case identifier"
         )
     for argument in binding.arguments:
-        if not _HOOK_INPUT_PATH.match(argument.source):
+        if argument.source != INVOCATION_ID_SOURCE and not _HOOK_INPUT_PATH.match(
+            argument.source
+        ):
             raise BindingRenderError(
                 f"binding {binding.name!r} argument {argument.name!r} source "
                 f"{argument.source!r} is not drawn from the hook input (a $.path)"
@@ -125,8 +140,9 @@ class HandlerClaudeCodeBindingRender:
             )
         parts.append(tpl.REGISTER_OPEN)
         for binding in replacing:
+            matcher_key = {COMPACT_EVENT: "trigger"}.get(binding.hook_event, "tool")
             matcher = (
-                "{ tool: " + _literal(binding.matcher_tool) + " }"
+                "{ " + matcher_key + ": " + _literal(binding.matcher_tool) + " }"
                 if binding.matcher_tool is not None
                 else "{}"
             )
