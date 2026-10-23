@@ -826,6 +826,11 @@ requirements:
     acceptance:
       - id: "AC184"
         statement: "AC184: a tier source answering five open_work rows in forward, reversed or shuffled order yields a built pack whose rendered text carries the rows in that same order -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -k source_order fails at the merge base, where every artifact keeps the default source_priority 100 and the builder orders a tier's chunks by hash"
+  - id: "req-cc0130-committed-contract"
+    statement: "The CC0130 migration makes the OMN-13213 ticket contract resolvable from an immutable commit in the product repository."
+    acceptance:
+      - id: "AC4301"
+        statement: "AC4301: the real ticket-contract prerequisite handler resolves OMN-13213 from HEAD's Git blob without a failure; a working-tree-only copy cannot satisfy it -- falsifier: uv run pytest tests/test_omn17427_cc0130_committed_contract.py -q fails at the merge base, whose commit carries no contracts/OMN-13213.yaml."
   - id: "req-emit-publish-circuit"
     statement: "One slow node_event_emit_effect publish no longer spools healthy publishes: the publish-backoff marker is an on-disk circuit for the publish identity that counts consecutive failed invocations, opens only at unreachable_failure_threshold (default 3) for unreachable_backoff_seconds (default 30, 0 disables), probes after the window, closes on any successful publish or drained backlog record, ignores quarantines, reads an old-shape, malformed or other-identity marker as no failures, retries a clean circuit's retryable current-event publish once within the shared 9 s budget, and reports publish_failure_count and publish_circuit_open on ModelEmitResult."
     acceptance:
@@ -871,6 +876,11 @@ requirements:
     acceptance:
       - id: "AC189"
         statement: "AC189: an open whose store step raises after BEGIN IMMEDIATE, and a credential open whose commit is refused by a reader's SHARED lock, each leave the store free for a BEGIN IMMEDIATE with timeout 0 while the raised exception is still referenced -- falsifier: uv run pytest tests/unit/projection/test_sqlite_connect_releases_lock_on_failure_omn17427.py -q fails at the merge base, where the refused connection keeps RESERVED"
+  - id: "req-terminal-emit-test-cleanup-clock"
+    statement: "The terminal emitter regression test measures cleanup from the shared session deadline, so topic resolution, enrichment and durable spool writes do not consume its cleanup allowance."
+    acceptance:
+      - id: "AC187"
+        statement: "AC187: test_terminal_emit_close_uses_remaining_budget records exactly one publisher session deadline and asserts finished minus that deadline is below 0.3 seconds; both publish outcomes retain the spool and cancellation assertions, and the background-loop cancellation case passes. The source assertion check fails on the merge base, which times the whole handle call."
 evidence_requirements:
   - kind: "tests"
     description: "AC72: the market node runtime dogfood inventory test passes with the CLI-run token pool node on the expected-missing list."
@@ -3611,6 +3621,20 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_handler_context_pack_orchestrator.py -q -n 0 -p no:randomly --no-cov -k 'source_order and days1'"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-cc0130-committed-contract"
+    description: "The real ticket-contract prerequisite handler reads OMN-13213 from the product commit and checks its static prerequisites. The merge-base commit lacks that blob even when the verifier overlays the migrated file into its working tree."
+    source: "manual"
+    binds_ac: ["AC4301"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn17427_cc0130_committed_contract.py -q -p no:randomly --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-cc0130-deploy-probe"
+    description: "Hosted deploy probe for the migrated contract artifact. The real handler resolves the committed OMN-13213 contract without network access, external receipts or services; it refuses at the merge base where the Git blob is absent."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_omn17427_cc0130_committed_contract.py -q -p no:randomly --no-cov --refuse-skips"
   - id: "dod-omn17427-ac188-in-process-outcome-verdict"
     description: "The in-process evidence terminal of an accepted run publishes operational_outcome completed and content_verdict usable, and the delegation projection copies both onto the row; a failed run's terminal names neither. At the merge base the accepted-run test fails with KeyError operational_outcome."
     source: "manual"
@@ -3747,4 +3771,37 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run pytest tests/unit/projection/test_sqlite_connect_releases_lock_on_failure_omn17427.py -q -n 0 -p no:randomly --no-cov -k credential_open"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac187-terminal-cleanup-test-clock"
+    description: "This PR scopes the terminal cleanup regression's timing to the deadline handed to the publisher session while retaining its 0.3 second allowance. The source check refuses the merge-base test, which measures the whole handle call. The focused runtime tests exercise both publish outcomes and background coroutine cancellation."
+    source: "manual"
+    binds_ac: ["AC187"]
+    checks:
+      - check_type: "command"
+        check_value: |-
+          python3 - <<'PY'
+          import ast
+          from pathlib import Path
+
+          path = Path('tests/unit/nodes/node_event_emit_effect/test_session_deadline_omn17427.py')
+          tree = ast.parse(path.read_text())
+          test = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'test_terminal_emit_close_uses_remaining_budget')
+          statements = {ast.unparse(node) for node in ast.walk(test)}
+          assert 'cleanup_after_budget = finished - session_deadlines[0]' in statements
+          assert 'len(session_deadlines) == 1' in statements
+          assert 'cleanup_after_budget < 0.3' in statements
+          assert 'session_deadlines.append(deadline)' in statements
+          assert 'real_session(deadline=deadline)' in statements
+          print('terminal cleanup timing is bound to the recorded session deadline with the 0.3 second limit')
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_event_emit_effect/test_session_deadline_omn17427.py -q -n 0 --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-terminal-cleanup-clock-deploy-probe"
+    description: "Deploy probe. On the hosted runner, execute the checked-out terminal emitter and Kafka publisher against a slow-close broker and temporary spool. Both publish outcomes must cancel the close within the remaining session budget and preserve the expected spool state. Locked dependencies and the checkout suffice; this is a packaged runtime-path probe with no broker, credentials or live deployment claim."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_event_emit_effect/test_session_deadline_omn17427.py -q -n 0 --no-cov --refuse-skips -k terminal_emit_close_uses_remaining_budget"
         cwd: "${OMNI_HOME}/omnimarket"

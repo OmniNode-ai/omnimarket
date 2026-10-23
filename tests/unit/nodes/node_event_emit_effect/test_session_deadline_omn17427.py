@@ -49,24 +49,42 @@ class SlowCloseBroker:
 
 @pytest.mark.parametrize("fail_publish", [False, True])
 def test_terminal_emit_close_uses_remaining_budget(
-    tmp_path: Path, fail_publish: bool
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fail_publish: bool
 ) -> None:
     broker = SlowCloseBroker(fail_publish=fail_publish)
     publisher = module.KafkaEventPublisher(
         "fake-bootstrap:9092", bus_factory=lambda: broker, publish_timeout_seconds=0.5
     )
     spool = SpoolOutbox(tmp_path / "spool")
+    # The handler fixes its shared deadline before it opens the session, so the
+    # deadline handed to session() is the moment the 0.1 s drain budget ends.
+    # Topic resolution, enrichment and the spool's fsyncs run before that point
+    # and vary with the host, so the bound times only what follows it.
+    session_deadlines: list[float] = []
+    real_session = publisher.session
+
+    def recording_session(*, deadline: float | None = None) -> Any:
+        assert deadline is not None
+        session_deadlines.append(deadline)
+        return real_session(deadline=deadline)
+
+    monkeypatch.setattr(publisher, "session", recording_session)
     handler = module.HandlerEventEmitEffect(
         spool=spool, publish_adapter=publisher, drain_budget_seconds=0.1
     )
-    start = time.monotonic()
     result = handler.handle(
         ModelEmitRequest(event_type="session.started", payload={"session_id": "budget"})
     )
-    elapsed = time.monotonic() - start
+    finished = time.monotonic()
+    assert len(session_deadlines) == 1
+    cleanup_after_budget = finished - session_deadlines[0]
     assert result.published is not fail_publish
     assert spool.pending_count() == int(fail_publish)
-    assert elapsed < 0.3, f"cleanup restarted the budget: {elapsed:.3f}s"
+    # A cleanup that restarted the budget would wait out the 0.5 s publish
+    # timeout (the broker's close sleeps 30 s) and land past this bound.
+    assert cleanup_after_budget < 0.3, (
+        f"cleanup restarted the budget: {cleanup_after_budget:.3f}s after the deadline"
+    )
     assert broker.close_started.wait(1)
     assert broker.close_cancelled.wait(1), (
         "timed-out close kept running on the shared loop"
