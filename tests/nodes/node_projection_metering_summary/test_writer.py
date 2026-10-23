@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 import yaml
 
+from omnimarket.adapters.asyncpg_adapter import _refuse_unbound_tenant_scoped_write
 from omnimarket.nodes.node_projection_metering_summary import (
     HandlerProjectionMeteringSummary,
     ModelMeteringSummaryFoldRequest,
@@ -61,6 +62,7 @@ class SqlRecordingAdapter:
         self.connects = 0
         self.closes = 0
         self.fail = False
+        self.tenants: list[str | None] = []
 
     async def connect(self) -> None:
         self.loop = asyncio.get_running_loop()
@@ -70,8 +72,14 @@ class SqlRecordingAdapter:
         self.closes += 1
         self.loop = None
 
-    async def execute(self, sql: str, *params: Any) -> list[dict[str, Any]]:
+    async def execute(
+        self, sql: str, *params: Any, tenant: str | None = None
+    ) -> list[dict[str, Any]]:
         assert self.loop is asyncio.get_running_loop()
+        # The real adapter's refusal, before any statement (OMN-15919): the
+        # writer must bind the row's tenant or it writes nothing (OMN-19513).
+        _refuse_unbound_tenant_scoped_write(sql, tenant)
+        self.tenants.append(tenant)
         if self.fail:
             raise RuntimeError("database unavailable")
         rows = self.connection.execute(
@@ -96,6 +104,7 @@ def test_writer_upserts_on_two_dispatches_and_closes_after_failure() -> None:
     }
     try:
         assert writer.handle(data)["rows_upserted"] == 2
+        assert adapter.tenants == ["local", "local"]
         data["as_of"] = "2026-09-28T13:00:00+00:00"
         assert writer.handle(data)["rows_upserted"] == 2
         expected = HandlerProjectionMeteringSummary().handle(

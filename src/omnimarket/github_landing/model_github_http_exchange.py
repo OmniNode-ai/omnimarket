@@ -97,6 +97,8 @@ class ModelGithubBytesResponse(BaseModel):
     artifact's archive (zip). ``keep="head"`` stops reading past ``limit`` and
     sets ``over_limit``; ``keep="tail"`` reads the whole stream and keeps only
     its last ``limit`` bytes, with ``total_bytes`` the full length read.
+    ``keep="window"`` (OMN-17427) keeps what a job-log window selected, and
+    ``over_limit`` says the read stopped at the transport's read ceiling.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -106,4 +108,4 @@ class ModelGithubBytesResponse(BaseModel):
     content: bytes
     total_bytes: int = Field(ge=0)
     over_limit: bool
-    keep: Literal["head", "tail"]
+    keep: Literal["head", "tail", "window"]

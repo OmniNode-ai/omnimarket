@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -138,7 +139,11 @@ class _RecordingAdapter:
         self._pool.check()
         self.rows.append((query, params))
         if "SELECT COUNT(*)" in query:
-            return [{"window_count": 0, "produced": 0}]
+            # One answer per probed (topic, window) the statement was bound with.
+            return [
+                {"ordinal": ordinal, "window_count": 0, "produced": 0}
+                for ordinal in range(1, len(params[0]) + 1)
+            ]
         if "MAX(ingest_sequence)" in query:
             return [{"last_sequence": None}]
         if "RETURNING" in query:
@@ -200,14 +205,17 @@ def _heartbeat(sequence: int) -> dict[str, Any]:
 
 
 @pytest.fixture
-def writer(monkeypatch: pytest.MonkeyPatch) -> ConsumerFlowProjectionWriter:
+def writer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[ConsumerFlowProjectionWriter]:
     monkeypatch.setenv("OMNIDASH_ANALYTICS_DB_URL", "postgresql://fixture/db")
     instance = ConsumerFlowProjectionWriter()
     instance._db = _RecordingAdapter()  # type: ignore[assignment]
     # The snapshot publish is a separate seam with its own transport; this file
     # is about the payload the applied event carries.
     instance._snapshot_exposure = None
-    return instance
+    yield instance
+    instance.close_dispatch()
 
 
 @pytest.fixture
