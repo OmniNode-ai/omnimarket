@@ -2,7 +2,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-20168"
 title: "Every delegation attempt records its kind, lineage, host and size band"
-summary: "omnimarket stamps each delegation attempt with attempt_id, attempt_kind, host, parent_attempt_id, size_band and split_id on the durable attempt row and the bus attempt record, and the wire consumer declares and retains those six keys. size_band is a present null until the size band node feeds it. Each acceptance criterion is bound to the pull request's own tests."
+summary: "omnimarket stamps each delegation attempt with attempt_id, attempt_kind, host, parent_attempt_id, size_band and split_id on the durable attempt row and the bus attempt record. Each rung also carries the configuration it was sent with and the request's measured size band, a rung redelivered under an existing attempt id is kept once, and the same backend and model retried with another configuration is a config_swap. Each acceptance criterion is bound to the pull request's own tests."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -26,7 +26,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "The attempt lineage, consumer-first and local dispatch seam tests."
-    command: "uv run pytest tests/unit/delegation/test_attempt_events_omn20168.py tests/unit/delegation/test_consumer_first_attempt_lineage_omn20168.py tests/test_omn20168_local_dispatch_attempt_lineage_seam.py -q"
+    command: "uv run pytest tests/unit/delegation/test_attempt_events_omn20168.py tests/unit/delegation/test_attempt_event_producer_omn20168.py tests/unit/delegation/test_consumer_first_attempt_lineage_omn20168.py tests/unit/delegation/test_consumer_first_attempt_configuration_omn20168.py tests/test_omn20168_local_dispatch_attempt_lineage_seam.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -110,3 +110,47 @@ dod_evidence:
         check_value: |-
           sh -c 'docker run --rm -v "${PWD}:/workspace:ro" -w /workspace postgres:16-alpine sh -c "set -eu; grep -Fq \"{\\\"backend_pinned\\\", \\\"configuration\\\"}\" src/omnimarket/models/delegation/wire/model_delegate_skill_response.py"'
         cwd: "."
+  - id: "dod-attempt-producer-ac1"
+    description: "A real escalating local dispatch writes a first try and an escalation, and a split ladder writes a split child and a recombine check, each with backend_id, host, model, the request's size band, the rubric version and verdict, the attempt kind and the parent attempt id. Fails at the merge base, where the size band is a present null and the stamper takes no request band."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_attempt_event_producer_omn20168.py -q --no-cov -p no:randomly -k attempt_event_fields"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-attempt-producer-ac2"
+    description: "A rung redelivered under an attempt id already in the ladder is kept once on the stamped ladder, the stored row and the typed terminal, and the whole terminal delivered again is the same row. Fails at the merge base, which keeps the redelivered rung as a second attempt."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_attempt_event_producer_omn20168.py -q --no-cov -p no:randomly -k attempt_event_idempotent"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-attempt-producer-ac3"
+    description: "In-process half of AC3: an escalated dispatch writes one attempt event per entry in its ladder with distinct backends, each carrying its configuration, and the positive control (a single-attempt run) writes exactly one. The dev-lane query half is recorded on the ticket. Fails at the merge base, where no rung carries a configuration."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_attempt_event_producer_omn20168.py -q --no-cov -p no:randomly -k one_event_per_attempt_with_distinct_backends"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-attempt-producer-ac4"
+    description: "Every rung of a real dispatch carries its configuration (effective max tokens, temperature, top_p, reasoning effort, context strategy id) on the row and the typed record, and the same backend and model retried with another configuration is stamped config_swap with its parent attempt id. Fails at the merge base, where the attempt record drops configuration and the stamper never derives config_swap."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_attempt_event_producer_omn20168.py -q --no-cov -p no:randomly -k \"attempt_event_configuration or config_swap_attempt_kind\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-attempt-configuration-declared-deploy-probe"
+    description: "Deploy probe. Read the attempt record from GitHub at the checked-out commit and require configuration declared as a field, with the consumer test that it decodes and is kept. This supersedes dod-attempt-configuration-deploy-smoke, which probed the consumer-first set that dropped configuration; that set no longer names it because the attempt record now declares it."
+    source: "manual"
+    evidence_artifact: "supersedes_dod_evidence:dod-attempt-configuration-deploy-smoke"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_consumer_first_attempt_configuration_omn20168.py -q --no-cov -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/models/delegation/wire/model_delegate_skill_response.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"configuration: ModelAttemptConfiguration | None\" > /dev/null'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]

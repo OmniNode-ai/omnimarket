@@ -155,10 +155,19 @@ def test_a_lane_with_no_pillar_files_under_the_creator(
     assert client.assignees == [None]
 
 
-def test_a_lane_cannot_file_into_a_project_either() -> None:
+def test_a_lane_cannot_file_into_a_project_either(
+    tmp_path: Path, caller_env: pytest.MonkeyPatch
+) -> None:
     """New tickets carry no project, so an owner's project is out of reach of this node."""
-    with pytest.raises(ValueError, match="project="):
-        ModelCreateTicketRequest(title="t", pillar="locked", project="Owner project")
+    caller_env.setenv("ONEX_LANE", "some-lane")
+    handler, _, client = _handler(tmp_path)
+    with pytest.raises(RuntimeError, match="locked"):
+        handler.handle(
+            ModelCreateTicketRequest(
+                title="t", pillar="locked", project="Owner project"
+            )
+        )
+    assert client.assignees == []
 
 
 def test_the_packaged_map_shape_is_what_the_refusal_reads(tmp_path: Path) -> None:
