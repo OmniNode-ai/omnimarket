@@ -143,6 +143,21 @@ class TestDuplicationSweepGoldenChain:
             assert entry["producer_repo"]
             assert entry["consumer_repo"]
 
+    async def test_d2_manifest_path_named_for_infra_is_the_one_d2_reads(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """OMN-20949 AC3: the repo-relative path omnibase_infra's Duplication
+        Sweep reads is the manifest D2 reads, and D2 names no change-control path."""
+        infra_path = Path(
+            "src/omnimarket/nodes/node_duplication_sweep/contracts/kafka_boundaries.yaml"
+        )
+        repo_root = Path(__file__).resolve().parent.parent
+        assert (repo_root / infra_path).resolve() == _KAFKA_BOUNDARIES_YAML.resolve()
+        assert handler_duplication_sweep._KAFKA_BOUNDARIES_LABEL.endswith(
+            infra_path.as_posix()
+        )
+        assert "onex_change_control" not in str(_KAFKA_BOUNDARIES_YAML)
+
     async def test_d2_bundled_manifest_lists_no_retired_change_control_boundary(
         self, event_bus: EventBusInmemory
     ) -> None:
