@@ -48,6 +48,7 @@ from omnimarket.nodes.node_trajectory_evaluation_effect.protocols import (
 
 _ORG_ID = re.compile(r"^[A-Za-z0-9_-]{3,100}$")
 _CAMPAIGN_ID = re.compile(r"^[A-Za-z0-9-]{1,100}$")
+_ERROR_CODE = re.compile(r"^[A-Za-z0-9_.-]{1,100}$")
 _JUDGMENT = re.compile(
     r"^\W*JUDGMENT:\W*(BLOCK|ACCEPTABLE|INSUFFICIENT_EVIDENCE)\b", re.MULTILINE
 )
@@ -262,13 +263,17 @@ def _raise_for(response: httpx.Response) -> NoReturn:
         code = ModelDharmaError.model_validate_json(response.content).code
     except ValidationError:
         code = None
+    if code is not None and _ERROR_CODE.fullmatch(code) is None:
+        code = None
     detail = f"Dharma status {status}" + (f" {code}" if code else "")
     if status == 429:
-        raise EvaluatorRateLimitedError(detail, status_code=status)
+        raise EvaluatorRateLimitedError(detail, status_code=status, error_code=code)
     if status in _RETRYABLE:
-        raise EvaluatorTransportError(detail, status_code=status)
+        raise EvaluatorTransportError(detail, status_code=status, error_code=code)
     if status == 402:
-        raise EvaluatorRejectedError(detail, status_code=status, credit_exhausted=True)
+        raise EvaluatorRejectedError(
+            detail, status_code=status, credit_exhausted=True, error_code=code
+        )
     if status in _REJECTED:
-        raise EvaluatorRejectedError(detail, status_code=status)
-    raise EvaluatorTransportError(detail, status_code=status)
+        raise EvaluatorRejectedError(detail, status_code=status, error_code=code)
+    raise EvaluatorTransportError(detail, status_code=status, error_code=code)

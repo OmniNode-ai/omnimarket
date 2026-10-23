@@ -31,6 +31,7 @@ from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
     HandlerCreateTicket,
     ModelCreateTicketRequest,
     ModelCreateTicketResult,
+    TicketGuardRefusedError,
 )
 
 _log = logging.getLogger(__name__)
@@ -147,6 +148,9 @@ def main() -> None:
             ticket_id=args.ticket_id,
             team=args.team,
             validation_errors=[f"{type(exc).__name__}: {exc}"],
+            finding_codes=(
+                exc.finding_codes if isinstance(exc, TicketGuardRefusedError) else []
+            ),
             dry_run=args.dry_run,
         )
 
