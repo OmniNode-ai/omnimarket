@@ -39,8 +39,8 @@ dod_evidence:
           set -eu;
           probe_dir="$(mktemp -d)";
           trap 'rm -rf "$probe_dir"' EXIT;
-          uv sync --locked;
-          env PYTHONDONTWRITEBYTECODE=1 .venv/bin/python - "$probe_dir" <<'PY'
+          export PYTHONDONTWRITEBYTECODE=1;
+          uv run --locked python - "$probe_dir" <<'PY'
           import json
           import sys
           from pathlib import Path
