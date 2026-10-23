@@ -27,4 +27,6 @@ def _no_network_plan_detection(monkeypatch: pytest.MonkeyPatch) -> None:
             provider=provider, plan="general_api", outcome="detected"
         )
 
-    monkeypatch.setattr("omnimarket.cli.cli_secret.detect_byok_plan", _general)
+    monkeypatch.setattr(
+        "omnimarket.handlers.handler_model_keys.detect_byok_plan", _general
+    )

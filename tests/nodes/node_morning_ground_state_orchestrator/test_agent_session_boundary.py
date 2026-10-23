@@ -130,7 +130,7 @@ def test_a_tools_only_session_has_no_built_in_tool_and_one_server(
     schema.write_text('{"type": "object"}')
     config = _config(tmp_path, {"morning": {"command": "python3", "args": []}})
     done = session.HandlerAgentSession().run_tools_only(
-        "sonnet", "the brief", config, schema
+        "sonnet", "the brief", str(config), str(schema)
     )
     assert done.returncode == 0
     ((argv,),) = [calls]
@@ -159,7 +159,7 @@ def test_a_tools_only_session_needs_exactly_one_named_server(
     schema.write_text("{}")
     with pytest.raises(session.AgentSessionRefusedError):
         session.HandlerAgentSession().run_tools_only(
-            "sonnet", "x", _config(tmp_path, servers), schema
+            "sonnet", "x", str(_config(tmp_path, servers)), str(schema)
         )
 
 
@@ -179,7 +179,7 @@ def test_a_tools_only_session_needs_exactly_one_named_server(
 def test_the_tools_only_guard_refuses_a_shell_or_a_wider_grant(
     flag: str, value: str
 ) -> None:
-    argv = session.tools_only_argv("sonnet", Path("mcp.json"), "morning", "{}")
+    argv = session.tools_only_argv("sonnet", "mcp.json", "morning", "{}")
     session.refuse_unless_tools_only(argv, "morning")
     argv[argv.index(flag) + 1] = value
     with pytest.raises(
@@ -199,10 +199,10 @@ def test_the_tools_only_guard_refuses_a_shell_or_a_wider_grant(
     ],
 )
 def test_the_tools_only_guard_refuses_added_power(extra: list[str]) -> None:
-    argv = session.tools_only_argv("sonnet", Path("mcp.json"), "morning", "{}") + extra
+    argv = session.tools_only_argv("sonnet", "mcp.json", "morning", "{}") + extra
     with pytest.raises(session.AgentSessionRefusedError):
         session.refuse_unless_tools_only(argv, "morning")
-    stripped = session.tools_only_argv("sonnet", Path("mcp.json"), "morning", "{}")
+    stripped = session.tools_only_argv("sonnet", "mcp.json", "morning", "{}")
     stripped.remove("--strict-mcp-config")
     with pytest.raises(session.AgentSessionRefusedError, match="strict-mcp-config"):
         session.refuse_unless_tools_only(stripped, "morning")

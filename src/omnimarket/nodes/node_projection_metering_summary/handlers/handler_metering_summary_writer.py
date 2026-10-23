@@ -28,6 +28,7 @@ from omnimarket.nodes.node_projection_metering_summary.handlers.handler_projecti
 )
 from omnimarket.projection.protocol_database import ProtocolProjectionDatabaseSync
 from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
+from omnimarket.projection.tenant_isolation import resolve_write_tenant
 
 _CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
 CONFLICT_KEY = "tenant_id,window_kind,window_start,baseline_model"
@@ -164,8 +165,19 @@ class MeteringSummaryProjectionWriter(BaseProjectionRunner):
         count = 0
         for row in result.rows:
             values = row.model_dump(mode="json")
+            # OMN-19513: the upsert names tenant_id, so the adapter refuses it
+            # without the row's own tenant (OMN-15919). Unbound, every refresh
+            # on the dev lane raised after folding, was redelivered, and, with
+            # no `all` row ever stored, refolded every day of the tenant's runs
+            # again: that loop held the main runtime's GIL ~70% of wall time
+            # and starved every other projection on it, the hook-event
+            # projection first (py-spy on the dev runtime, 2026-10-22T03:25Z).
             returned = await self.db_for("metering_summary").execute(
-                _UPSERT, *(values[col] for col in _COLUMNS)
+                _UPSERT,
+                *(values[col] for col in _COLUMNS),
+                tenant=resolve_write_tenant(
+                    values["tenant_id"], table="metering_summary"
+                ),
             )
             count += len(returned)
         return {

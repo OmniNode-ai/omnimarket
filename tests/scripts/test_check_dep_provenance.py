@@ -9,6 +9,7 @@ import importlib.util
 from pathlib import Path
 
 import pytest
+from omnibase_core.handlers.handler_internal_sibling_pins_cli import load_contract
 
 pytestmark = pytest.mark.unit
 
@@ -205,13 +206,7 @@ def test_missing_pyproject_fails_closed(mod, tmp_path: Path) -> None:
 
 DEV_TAG = "dev-20261019090050-c330f5a7d597"
 SIBLING_PACKAGES = {
-    "omnibase-core": "omnibase_core",
-    "omnibase-spi": "omnibase_spi",
-    "omnibase-compat": "omnibase_compat",
-    "omnibase-infra": "omnibase_infra",
-    "omninode-memory": "omnimemory",
-    "omninode-intelligence": "omniintelligence",
-    "omninode-claude": "omniclaude",
+    sibling.distribution: sibling.repo for sibling in load_contract().siblings
 }
 
 
@@ -285,6 +280,30 @@ def test_dev_merge_tag_does_not_exempt_a_non_sibling_package(mod) -> None:
         f'tag = "{DEV_TAG}" }}\n'
     )
     assert len(mod.find_violations(text)) == 1
+
+
+def test_contract_excludes_omnibase_compat_dev_merge_tag(mod) -> None:
+    text = (
+        "[tool.uv.sources]\n"
+        'omnibase-compat = { git = "https://github.com/OmniNode-ai/omnibase_compat", '
+        f'tag = "{DEV_TAG}" }}\n'
+    )
+    assert len(mod.find_violations(text)) == 1
+
+
+def test_contract_dev_tag_pattern_controls_verdict(mod) -> None:
+    contract = load_contract().model_copy(update={"dev_tag_pattern": r"^rel-[0-9]+$"})
+    text = (
+        "[tool.uv.sources]\n"
+        'omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core", '
+        'tag = "rel-1" }\n'
+    )
+    assert mod.find_violations(text, contract) == []
+    assert len(mod.find_violations(text.replace("rel-1", DEV_TAG), contract)) == 1
+
+
+def test_script_uses_contract_without_its_own_tag_regex() -> None:
+    assert "[0-9]{14}" not in _SCRIPT.read_text()
 
 
 @pytest.mark.parametrize(

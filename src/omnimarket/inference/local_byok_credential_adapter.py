@@ -189,43 +189,48 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     db_path.touch(mode=0o600, exist_ok=True)
     db_path.chmod(0o600)
     conn = sqlite3.connect(str(db_path))  # no-contract-check: secret-store boundary
-    conn.row_factory = sqlite3.Row
-    # OMN-21059: the model list cascades off its credential row, so a delete or
-    # a replace of the row can never leave a stale list behind.
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute(_LOCAL_CREDENTIAL_DDL)
-    conn.execute(_LOCAL_CREDENTIAL_MODEL_DDL)
-    # OMN-20157: a database created before plans existed has no ``plan`` column.
-    # ``CREATE TABLE IF NOT EXISTS`` leaves it as it was, so add the column the
-    # one time it is missing. Nullable: a row with no plan resolves the
-    # provider's default plan, which is what every earlier row meant.
-    columns = {
-        row["name"]
-        for row in conn.execute(f"PRAGMA table_info({LOCAL_CREDENTIAL_TABLE})")
-    }
-    if "plan" not in columns:
-        conn.execute(f"ALTER TABLE {LOCAL_CREDENTIAL_TABLE} ADD COLUMN plan TEXT")
-    # OMN-20157: the model the key resolved from the provider's own model list.
-    # Nullable on the same terms: a row with no model is resolved at call time.
-    if "model" not in columns:
-        conn.execute(f"ALTER TABLE {LOCAL_CREDENTIAL_TABLE} ADD COLUMN model TEXT")
-    # OMN-21078: only a recorded catalogue pick may be re-aimed. Earlier rows
-    # have no record and are treated as the customer's choice.
-    if "model_chosen_by" not in columns:
+    # OMN-17427: close on setup failure so its traceback cannot retain a write lock.
+    try:
+        conn.row_factory = sqlite3.Row
+        # OMN-21059: the model list cascades off its credential row, so a delete or
+        # a replace of the row can never leave a stale list behind.
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute(_LOCAL_CREDENTIAL_DDL)
+        conn.execute(_LOCAL_CREDENTIAL_MODEL_DDL)
+        # OMN-20157: a database created before plans existed has no ``plan`` column.
+        # ``CREATE TABLE IF NOT EXISTS`` leaves it as it was, so add the column the
+        # one time it is missing. Nullable: a row with no plan resolves the
+        # provider's default plan, which is what every earlier row meant.
+        columns = {
+            row["name"]
+            for row in conn.execute(f"PRAGMA table_info({LOCAL_CREDENTIAL_TABLE})")
+        }
+        if "plan" not in columns:
+            conn.execute(f"ALTER TABLE {LOCAL_CREDENTIAL_TABLE} ADD COLUMN plan TEXT")
+        # OMN-20157: the model the key resolved from the provider's own model list.
+        # Nullable on the same terms: a row with no model is resolved at call time.
+        if "model" not in columns:
+            conn.execute(f"ALTER TABLE {LOCAL_CREDENTIAL_TABLE} ADD COLUMN model TEXT")
+        # OMN-21078: only a recorded catalogue pick may be re-aimed. Earlier rows
+        # have no record and are treated as the customer's choice.
+        if "model_chosen_by" not in columns:
+            conn.execute(
+                f"ALTER TABLE {LOCAL_CREDENTIAL_TABLE} ADD COLUMN model_chosen_by TEXT"
+            )
+        # OMN-21059: a credential stored with the single ``model`` column becomes a
+        # list of one at position 0, keeping its recorded chooser. Idempotent: a
+        # credential that already has list rows is left as it is.
         conn.execute(
-            f"ALTER TABLE {LOCAL_CREDENTIAL_TABLE} ADD COLUMN model_chosen_by TEXT"
+            f"INSERT INTO {LOCAL_CREDENTIAL_MODEL_TABLE} "
+            "(secret_ref, position, model, chosen_by) "
+            f"SELECT secret_ref, 0, model, model_chosen_by FROM {LOCAL_CREDENTIAL_TABLE} "
+            "WHERE model IS NOT NULL AND model != '' AND secret_ref NOT IN "
+            f"(SELECT secret_ref FROM {LOCAL_CREDENTIAL_MODEL_TABLE})"
         )
-    # OMN-21059: a credential stored with the single ``model`` column becomes a
-    # list of one at position 0, keeping its recorded chooser. Idempotent: a
-    # credential that already has list rows is left as it is.
-    conn.execute(
-        f"INSERT INTO {LOCAL_CREDENTIAL_MODEL_TABLE} "
-        "(secret_ref, position, model, chosen_by) "
-        f"SELECT secret_ref, 0, model, model_chosen_by FROM {LOCAL_CREDENTIAL_TABLE} "
-        "WHERE model IS NOT NULL AND model != '' AND secret_ref NOT IN "
-        f"(SELECT secret_ref FROM {LOCAL_CREDENTIAL_MODEL_TABLE})"
-    )
-    conn.commit()
+        conn.commit()
+    except BaseException:
+        conn.close()
+        raise
     return conn
 
 

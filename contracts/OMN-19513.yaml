@@ -43,6 +43,31 @@ requirements:
     acceptance:
       - id: "AC7"
         statement: "AC7: the 2026-10-18 reviewer words joined to their question become one RULING with the words verbatim and the session link, the key-approval words and words with no joined question go to the orchestrator inbox, a plain yes to a proposal naming both scope lists becomes an OPERATOR-CONSENT with the scopes copied, and the effect appends the row after the capture rows with no double on resume -- falsifier: uv run pytest tests/unit/nodes/node_operator_capture_compute/test_words_promotion.py tests/unit/nodes/node_operator_capture_effect/test_words_promotion_effect.py -q --no-cov fails with the promotion handler absent"
+  - id: "req-receipt-gate-scope-repin"
+    statement: "The repo-evidence caller pins the omnibase_core receipt-gate reusable whose dod-verify job has a 60-minute budget and verifies only the evidence a pull request adds or changes."
+    acceptance:
+      - id: "AC8"
+        statement: "AC8: call-repo-evidence-gate.yml pins receipt-gate.yml at 5782289777210ca814c0e43b4f797826135dba78 (omnibase_core#2079, a descendant of #2077) with its inputs unchanged -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_scope_repin_omn19513.py -q --no-cov fails against the pre-change caller"
+  - id: "req-hook-consume-concurrency"
+    statement: "The hook-event projection permits four records in flight and converges to the same rows when events arrive in reverse order."
+    acceptance:
+      - id: "AC9"
+        statement: "AC9: the writer contract declares max_in_flight_records as 4 and every reversed fixture scenario folds to the same event and span rows as in-order delivery; the declaration test fails against the serial merge-base contract -- falsifier: uv run pytest tests/test_omn19513_claude_hook_events_projection.py -q --no-cov -k four_records_in_flight"
+  - id: "req-hook-message-adapter-isolation"
+    statement: "Runtime-dispatched hook events use distinct single-connection adapters on the runtime-bound DSN so concurrent messages do not close each other's pool."
+    acceptance:
+      - id: "AC10"
+        statement: "AC10: two runtime messages receive distinct adapters with the bound DSN and min_size=max_size=1, without connecting the shared adapter; the adapter test fails against the merge-base writer -- falsifier: uv run pytest tests/test_omn19513_claude_hook_events_projection.py -q --no-cov -k each_runtime_message_gets_its_own_single_connection_adapter"
+  - id: "req-principal-after-lane"
+    statement: "A row the work-ledger serve attributes keeps lane= (or from=) as the cell right after the type: principal= goes right after that subject cell, never as the last cell, and right after the type when the first cell is not a subject cell."
+    acceptance:
+      - id: "AC9"
+        statement: "AC9: a bus CLAIM stamped by the serve reads '| CLAIM | lane=<lane> | principal=<login> |', a MSG reads '| MSG | from=<lane> | principal=<login> |', and a replay of a request that landed principal-first is a duplicate -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_append_effect/test_handler_work_ledger_append_effect.py -q --no-cov -k 'subject_cell or principal_after_lane or before_omn_19513' fails against the pre-change handler"
+  - id: "req-metering-summary-tenant-write"
+    statement: "Metering summary writes bind the row's tenant so a store refresh can persist its folded rows through the tenant-scoped adapter boundary."
+    acceptance:
+      - id: "AC11"
+        statement: "AC11: writer dispatch and store refresh bind each upsert to its row's tenant, persist the all-time and daily summaries, and replace rows on replay -- falsifier: the focused writer and store-refresh tests fail with TenantScopedWriteUnboundError when the writer's tenant binding is removed."
 evidence_requirements:
   - kind: "tests"
     description: "AC1 and AC2: registry passthrough and the raw-value wire model, plus the projection and emit-effect suites over the converted fixtures."
@@ -121,3 +146,75 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_operator_capture_compute/test_words_promotion.py tests/unit/nodes/node_operator_capture_effect/test_words_promotion_effect.py -q --no-cov"
     binds_ac: ["AC7"]
+  - id: "dod-omn19513-ac8-receipt-gate-scope-repin"
+    description: "AC8: the caller pins the receipt-gate reusable of omnibase_core#2079 and keeps its inputs."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_scope_repin_omn19513.py -q --no-cov"
+    binds_ac: ["AC8"]
+  - id: "dod-omn19513-ac9-consume-concurrency"
+    description: "AC9: pin four in-flight records and replay each hook fixture in reverse order, comparing the resulting event and span rows."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19513_claude_hook_events_projection.py -q --no-cov -k 'four_records_in_flight or delivered_in_reverse'"
+    binds_ac: ["AC9"]
+  - id: "dod-omn19513-ac10-message-adapter-isolation"
+    description: "AC10: pin distinct single-connection adapters on the runtime-bound DSN and leave the shared adapter disconnected."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19513_claude_hook_events_projection.py -q --no-cov -k each_runtime_message_gets_its_own_single_connection_adapter"
+    binds_ac: ["AC10"]
+  - id: "dod-omn19513-concurrency-deploy-artifact-probe"
+    description: "Hosted deploy artifact probe: load the packaged hook writer and its adjacent runtime contract, require four in-flight records, and construct two isolated single-connection adapters on the bound DSN without opening a network connection. This checks the deployable artifact; live throughput remains a separate runtime readback. The serial merge-base contract and shared-adapter writer fail this probe."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19513_claude_hook_events_projection.py -q --no-cov -k 'four_records_in_flight or each_runtime_message_gets_its_own_single_connection_adapter'"
+      - check_type: "command"
+        check_value: |-
+          env PYTHONDONTWRITEBYTECODE=1 uv run python - <<'PROBE'
+          import inspect
+          from pathlib import Path
+          import yaml
+          from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+          from omnimarket.nodes.node_projection_claude_hook_events.handlers.handler_claude_hook_events_writer import ClaudeHookEventsProjectionWriter
+          writer = ClaudeHookEventsProjectionWriter()
+          contract_path = Path(inspect.getfile(ClaudeHookEventsProjectionWriter)).parent.parent / "contract.yaml"
+          contract = yaml.safe_load(contract_path.read_text())
+          assert contract["consume_concurrency"]["max_in_flight_records"] == 4
+          bound = AsyncpgAdapter(dsn="postgresql://hook_writer@db.invalid/omnidash")
+          writer._db = bound
+          first, second = writer._message_db(), writer._message_db()
+          assert first is not second and first is not bound and second is not bound
+          assert first.dsn == bound.dsn == second.dsn
+          assert (first._min_size, first._max_size) == (1, 1)
+          assert (second._min_size, second._max_size) == (1, 1)
+          assert not bound.is_connected and not first.is_connected and not second.is_connected
+          print("OMN19513-DEPLOY-ARTIFACT-OK in_flight=4 isolated_adapters=2 pool_size=1")
+          PROBE
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC9", "AC10"]
+  - id: "dod-omn19513-ac9-principal-after-lane"
+    description: "The serve's principal stamp keeps lane= second so lane-second ledger readers (pr-handoff handoff.sh among them) find a bus-written CLAIM."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_work_ledger_append_effect/test_handler_work_ledger_append_effect.py -q --no-cov -k 'subject_cell or principal_after_lane or before_omn_19513'"
+    binds_ac: ["AC9"]
+  - id: "dod-omn19513-ac8-metering-tenant-write"
+    description: "AC11: run the writer dispatch and store refresh through adapters that enforce the real tenant-scoped-write refusal and verify the stored rows and replay behavior."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_projection_metering_summary/test_writer.py tests/nodes/node_projection_metering_summary/test_omn17427_store_refresh.py -q -n 0 -p no:randomly --no-cov"
+    binds_ac: ["AC11"]
+  - id: "dod-omn19513-metering-tenant-deploy-probe"
+    description: "Hosted deploy probe: dispatch the checked-out metering writer against a real SQLite summary table while enforcing the asyncpg adapter's tenant-write boundary, then read back the rows after dispatch and replay. This needs no external database or lane credentials and fails when the upsert omits tenant. It verifies the checkout's write path; a live lane readback remains separate."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_projection_metering_summary/test_writer.py -q -n 0 -p no:randomly --no-cov -k test_writer_upserts_on_two_dispatches_and_closes_after_failure"
+    binds_ac: ["AC11"]

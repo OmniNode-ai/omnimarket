@@ -285,7 +285,9 @@ def test_onex_secret_set_records_that_the_customer_chose_a_free_model(
 def test_every_shipped_row_records_its_model_as_the_customers() -> None:
     # OMN-21059: every shipped row has the customer choose, so a stored model is
     # theirs whether or not it came with --model.
-    from omnimarket.cli.cli_secret import _model_chosen_by
+    from omnimarket.handlers.handler_model_keys import (
+        model_chosen_by as _model_chosen_by,
+    )
 
     assert _model_chosen_by("gemini", None, "gemini-3.5-flash-lite", None) == "customer"
     assert _model_chosen_by("gemini", None, "gemini-3.5-flash-lite", "x") == "customer"
@@ -295,7 +297,9 @@ def test_every_shipped_row_records_its_model_as_the_customers() -> None:
 
 @pytest.mark.usefixtures("catalogue_picks_models")
 def test_a_model_the_catalogue_resolved_is_recorded_as_its_pick() -> None:
-    from omnimarket.cli.cli_secret import _model_chosen_by
+    from omnimarket.handlers.handler_model_keys import (
+        model_chosen_by as _model_chosen_by,
+    )
 
     assert (
         _model_chosen_by("gemini", None, "gemini-3.5-flash-lite", None) == "catalogue"
