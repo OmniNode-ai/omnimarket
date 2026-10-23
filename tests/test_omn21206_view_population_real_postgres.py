@@ -92,6 +92,7 @@ async def estimate(
     model: str = "served-model",
     created: datetime = WHEN,
     updated: datetime = WHEN,
+    tenant: uuid.UUID = TENANT,
 ) -> None:
     await conn.execute(
         """INSERT INTO savings_estimates (
@@ -108,7 +109,7 @@ async def estimate(
         Decimal(cost),
         Decimal(cost * 3),
         Decimal(cost * 2),
-        str(TENANT),
+        str(tenant),
         tokens,
         created,
         updated,
@@ -150,21 +151,96 @@ async def test_all_runs_and_tokens_but_only_measured_money(
     assert (await row(views, EVIDENCE, OTHER))["cumulative_savings_usd"] == 18
 
 
+@pytest.mark.parametrize("savings_only_count", [0, 1, 2])
 async def test_tokens_equal_events_plus_savings_only_rows(
     views: asyncpg.Connection,
+    savings_only_count: int,
 ) -> None:
     await population(views)
+    # Keep the event total constant while ensuring output tokens contribute.
+    await views.execute(
+        "UPDATE delegation_events SET tokens_input=19, tokens_output=3 "
+        "WHERE tenant_id=$1 AND correlation_id='estimated'",
+        TENANT,
+    )
+    if savings_only_count == 0:
+        await views.execute(
+            "DELETE FROM savings_estimates WHERE tenant_id=$1 "
+            "AND session_id='savings-only'",
+            str(TENANT),
+        )
+    else:
+        # Counting raw estimates, or selecting by id alone, adds the wrong 900.
+        await estimate(
+            views,
+            "savings-only",
+            900,
+            2,
+            row_id=3,
+            model="older-estimate",
+            created=WHEN - timedelta(days=1),
+            updated=WHEN - timedelta(days=1),
+        )
+    if savings_only_count == 2:
+        # Zero tokens still contributes one combined run.
+        await estimate(views, "zero-token-only", 0, 1, row_id=4)
+    # A higher-id estimate with the same key in another tenant must not win.
+    await estimate(
+        views,
+        "savings-only",
+        999,
+        1,
+        row_id=99,
+        model="other-tenant-estimate",
+        tenant=OTHER,
+    )
     usage = await views.fetchval(
         "SELECT total_tokens FROM projection_delegation_token_usage WHERE tenant_id=$1",
         TENANT,
     )
-    assert usage == 69, "positive control: all three event rows contributed"
-    assert (await row(views, OVERVIEW))["tokens_total"] == usage + 44
-    sessions = (await row(views, EVIDENCE))["sessions"]
+    events = await views.fetchrow(
+        "SELECT count(*) AS runs, sum(tokens_input+tokens_output) AS tokens "
+        "FROM delegation_events WHERE tenant_id=$1",
+        TENANT,
+    )
+    assert events is not None
+    assert events["runs"] == 3
+    assert events["tokens"] == usage == 69
+    only = await views.fetchrow(
+        """WITH latest AS (
+            SELECT DISTINCT ON (session_id) session_id,
+                COALESCE(prompt_tokens,0)+COALESCE(completion_tokens,0) AS tokens
+            FROM savings_estimates WHERE tenant_id=$1::text
+              AND session_id IS NOT NULL
+            ORDER BY session_id,
+                COALESCE(updated_at,created_at,event_timestamp) DESC, id DESC
+        ), missing AS (
+            SELECT session_id AS run_key FROM latest
+            EXCEPT
+            SELECT COALESCE(NULLIF(correlation_id,''),NULLIF(session_id,''),id::text)
+            FROM delegation_events WHERE tenant_id=$1::uuid
+        )
+        SELECT count(*) AS runs, COALESCE(sum(tokens),0) AS tokens
+        FROM latest JOIN missing ON missing.run_key=latest.session_id""",
+        str(TENANT),
+    )
+    assert only is not None
+    assert only["runs"] == savings_only_count
+    assert only["tokens"] == (44 if savings_only_count else 0)
+    overview = await row(views, OVERVIEW)
+    evidence = await row(views, EVIDENCE)
+    assert overview["tokens_total"] - usage == only["tokens"]
+    assert overview["run_count"] - events["runs"] == only["runs"]
+    assert evidence["session_count"] == events["runs"] + only["runs"]
+    assert (await row(views, OVERVIEW, OTHER))["tokens_total"] == 1499
+    sessions = evidence["sessions"]
     if isinstance(sessions, str):
         sessions = json.loads(sessions)
+    assert len(sessions) == events["runs"] + only["runs"]
     matched = next(s for s in sessions if s["session_id"] == "matched")
     assert (matched["prompt_tokens"], matched["completion_tokens"]) == (14, 0)
+    completed = next(s for s in sessions if s["session_id"] == "estimated")
+    assert (completed["prompt_tokens"], completed["completion_tokens"]) == (19, 3)
 
 
 @pytest.mark.parametrize(

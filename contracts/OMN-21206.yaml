@@ -28,7 +28,7 @@ requirements:
     acceptance:
       - id: "AC3"
         statement: |-
-          AC3: both views take a run's tokens from delegation_events tokens_input plus tokens_output, so Overview's token total equals delegation.token-usage total_tokens for the same tenant -- falsifier: the same pytest asserting equality, and the OMN-21203 reconciliation SQL re-run on the development lane showing equal token headlines
+          AC3: Both views take a run's tokens from delegation_events tokens_input plus tokens_output; Overview counts the approved combined population, so its token total equals delegation.token-usage total_tokens plus the tokens of the savings-only rows (rows with a savings_estimates row and no delegation event) for the same tenant, and the run counts decompose the same way -- falsifier: the real-Postgres pytest asserting that exact decomposition, and the OMN-21203 reconciliation SQL re-run on the development lane showing Overview minus token-usage equals the savings-only population exactly
   - id: "req-ac4"
     statement: "Preserve the live ticket criterion AC4 and its falsifier."
     acceptance:
@@ -64,7 +64,7 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn21206-tokens"
-    description: "The real PostgreSQL fixture asserts event-owned tokens plus the explicitly supported savings-only rows. The separate sanctioned postdeploy reconciliation required by AC3 remains outstanding; this item proves the fixture half only."
+    description: "The real PostgreSQL fixtures derive event and latest savings-only populations independently and assert exact token and run decomposition for zero, one and two savings-only runs, with duplicate estimates, a zero-token run, completion tokens and a second tenant. The separate sanctioned same-snapshot postdeploy reconciliation required by AC3 is not executed by this hosted fixture binding."
     source: "manual"
     checks:
       - check_type: "test_passes"
