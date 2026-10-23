@@ -38,10 +38,20 @@ dod_evidence:
         cwd: ${OMNI_HOME}/omnimarket
     binds_ac: ["AC4"]
   - id: dod-omn21340-deploy-hosted-declaration
-    description: "Hosted deploy probe. The declaration is read from this repository's own contract, so the live surface for the change is its declaration test on a hosted runner."
+    description: "Hosted deployment artifact readback fetches the landing mirror's runtime contract from GitHub at the checked-out revision. It requires the landing decision topic under consumed_events, covers every subscribe topic, and refuses shared-runtime auto-wiring. Missing content, invalid YAML or the merge-base declaration fails the probe. This reads published source; it does not claim a lane rollout."
     source: manual
     execution_scope: hosted_and_local
     checks:
       - check_type: command
-        check_value: "uv run pytest -q tests/unit/work_ledger_bus/test_landing_topic_declared.py"
+        check_value: |-
+          bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_work_ledger_landing_mirror/contract.yaml" | python3 -c '\''import sys, yaml
+          contract = yaml.safe_load(sys.stdin.read())
+          assert contract["name"] == "node_work_ledger_landing_mirror"
+          topic = contract["runtime_dispatch"]["command_topic"]
+          consumed = {entry["topic"]: entry["event_type"] for entry in contract["consumed_events"]}
+          assert consumed[topic] == "ModelLandingDecision"
+          assert contract["runtime_dispatch"]["subscribe_topics"]
+          assert set(contract["runtime_dispatch"]["subscribe_topics"]) <= consumed.keys()
+          assert "event_bus" not in contract and "handler_routing" not in contract
+          print("Published landing mirror declares its landing decision subscription for provisioning")'\'''
         cwd: ${OMNI_HOME}/omnimarket
