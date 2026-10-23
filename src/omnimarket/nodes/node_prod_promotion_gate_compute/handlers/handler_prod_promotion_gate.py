@@ -63,6 +63,8 @@ def _decide_gate(
             outcome=EnumProdGateOutcome.ALLOWED_LANE_NOT_GATED,
         )
 
+    # Resolver refusals bypass the legacy shortcuts below so the full gate's
+    # first check preserves anchor provenance regardless of lineage or readiness.
     # OMN-13656: a stability-candidate / non-main-lineage image is refused for
     # prod BEFORE the no-projection same-digest fallback, so a workspace-built
     # candidate can never slip through the legacy un-gated path either. Authorized
@@ -75,7 +77,7 @@ def _decide_gate(
         command.promotion_grant is not None
         and command.promotion_grant.authorizes_candidate
     )
-    if is_candidate and not candidate_authorized:
+    if command.grant_refusal is None and is_candidate and not candidate_authorized:
         return ModelProdPromotionGateDecision(
             allowed=False,
             image_digest=None,
@@ -91,7 +93,7 @@ def _decide_gate(
             outcome=EnumProdGateOutcome.CANDIDATE_NOT_AUTHORIZED,
         )
 
-    if command.readiness_projection is None:
+    if command.grant_refusal is None and command.readiness_projection is None:
         digest_gate = evaluate_prod_digest_gate(
             requested_digest=command.requested_image_digest,
             stability_readiness=None,
@@ -119,6 +121,8 @@ def _decide_gate(
             rollback_target=rollback_target,
             requested_by=command.requested_by,
             promotion_grant=command.promotion_grant,
+            grant_refusal=command.grant_refusal,
+            grant_refusal_detail=command.grant_refusal_detail,
             promotion_class=command.promotion_class,
             non_main_lineage=command.non_main_lineage,
             evaluated_at=command.evaluated_at,
