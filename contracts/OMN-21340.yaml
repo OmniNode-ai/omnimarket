@@ -1,0 +1,47 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21340"
+title: "The landing mirror declares the topic it subscribes to, so the topic provisioner creates it"
+summary: >
+  The ledger host's serve subscribes to the landing decision terminal through
+  node_work_ledger_landing_mirror's runtime_dispatch.subscribe_topics. The platform topic
+  provisioner reads event_bus, consumed_events, published_events, produced_events and
+  projection_api, not runtime_dispatch, so no declaration made the topic exist on the dev broker
+  and the serve exited at start when its consumer timed out. The mirror contract now lists the
+  topic under consumed_events, and a test pins that every subscribe topic of the mirror is also a
+  consumed_events topic. The capture silence watch criteria on the ticket itself are carried by the
+  omnimarket pull request for the watch, not by this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21340-landing-mirror-topic-provisionable
+    statement: "Every topic the landing mirror subscribes to is declared where the topic provisioner reads it."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: every runtime_dispatch.subscribe_topics entry of node_work_ledger_landing_mirror is also a consumed_events topic of that contract, and the contract declares no event_bus or handler_routing -- falsifier: uv run pytest -q tests/unit/work_ledger_bus/test_landing_topic_declared.py fails at the merge base and passes at the head"
+evidence_requirements:
+  - kind: tests
+    description: "The declaration test pins the mirror's subscribed topics against its consumed_events."
+    command: "uv run pytest -q tests/unit/work_ledger_bus/test_landing_topic_declared.py"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn21340-ac4-landing-topic-declared
+    description: "The landing mirror contract lists its subscribed topic under consumed_events."
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest -q tests/unit/work_ledger_bus/test_landing_topic_declared.py"
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: ["AC4"]
+  - id: dod-omn21340-deploy-hosted-declaration
+    description: "Hosted deploy probe. The declaration is read from this repository's own contract, so the live surface for the change is its declaration test on a hosted runner."
+    source: manual
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: command
+        check_value: "uv run pytest -q tests/unit/work_ledger_bus/test_landing_topic_declared.py"
+        cwd: ${OMNI_HOME}/omnimarket
