@@ -140,7 +140,8 @@ async def _event_rows(conn: asyncpg.Connection) -> dict[str, dict[str, Any]]:
         record = dict(row)
         record.pop("ingested_at")
         record.pop("projection_cursor")
-        assert record.pop("producer_seq") is None
+        producer_seq = record.pop("producer_seq")
+        assert producer_seq is None
         # OMN-20031: no scenario event binds a goal, so both columns are NULL.
         goal_id = record.pop("goal_id")
         parent_goal_id = record.pop("parent_goal_id")
