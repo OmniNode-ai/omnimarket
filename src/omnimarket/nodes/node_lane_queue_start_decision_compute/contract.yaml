@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_queue_start_decision_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Pure lane queue start decisions from caller-supplied queue, host and waiting-unit
+  facts. A lane pinned to a full host must not relaunch against pool-wide free
+  slots, and queued higher-class lanes that cannot use a slot must not hold it
+  back. Resolves relaunch windows, effective pins, engine slots and priority
+  claims without reading files, environment or a clock.
+input_model:
+  name: ModelLaneQueueStartRequest
+  module: omnimarket.nodes.node_lane_queue_start_decision_compute.models.model_lane_queue_start_decision
+output_model:
+  name: ModelLaneQueueStartResult
+  module: omnimarket.nodes.node_lane_queue_start_decision_compute.models.model_lane_queue_start_decision
+handler:
+  module: omnimarket.nodes.node_lane_queue_start_decision_compute.handlers.handler_lane_queue_start_decision
+  class: HandlerLaneQueueStartDecision
+  input_model: omnimarket.nodes.node_lane_queue_start_decision_compute.models.model_lane_queue_start_decision.ModelLaneQueueStartRequest
+  output_model: omnimarket.nodes.node_lane_queue_start_decision_compute.models.model_lane_queue_start_decision.ModelLaneQueueStartResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_lane_queue_start_decision_compute.handlers.handler_lane_queue_start_decision:HandlerLaneQueueStartDecision
+  handlers:
+    - operation: decide_lane_queue_start
+      topic: onex.cmd.omnimarket.lane-queue-start-decision-requested.v1
+      handler:
+        name: HandlerLaneQueueStartDecision
+        module: omnimarket.nodes.node_lane_queue_start_decision_compute.handlers.handler_lane_queue_start_decision
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+inputs:
+  now: {type: str, required: true, description: Caller-supplied ISO-Z time.}
+  priority_classes: {type: list, required: true, description: Highest class first and other last.}
+  entries: {type: list, required: true}
+  hosts: {type: list, required: true}
+  waiting_units: {type: list, required: false}
+  relaunch_s: {type: float, required: false}
+  pin_s: {type: float, required: false}
+outputs:
+  starts: {type: list}
+  held: {type: list}
+  depth: {type: int}
+  oldest_lane: {type: str}
+  oldest_wait_s: {type: int}
+terminal_event: onex.evt.omnimarket.lane-queue-start-decided.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lane-queue-start-decision-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.lane-queue-start-decision-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.lane-queue-start-decided.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.lane-queue-start-decided.v1
+metadata:
+  transport_type: inmemory
+  description: Lane queue start decisions
+  author: OmniNode Team
+  created: "2026-10-23"
