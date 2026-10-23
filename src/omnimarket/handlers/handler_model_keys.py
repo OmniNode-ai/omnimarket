@@ -635,14 +635,16 @@ def store_key(
 def _keyed_provider_of(secret_ref: str) -> ModelProvider | None:
     """The keyed provider whose key ``secret_ref`` names, or None.
 
-    Either name counts: ``llm.<provider>.api_key``, or the provider's live
-    minted route reference, matched through the store's own resolver rather
-    than by parsing the reference.
+    Either name counts: a declared ``llm.<provider>.<field>`` reference, as the
+    store's own delete classifies it (it withdraws that provider's route), or
+    the provider's live minted route reference, matched through the store's
+    resolver rather than by parsing the reference.
     """
+    declared = _offered_provider(secret_ref)
+    if declared is not None:
+        return next((p for p in KEYED_PROVIDERS if p == declared), None)
     db_path = LocalByokCredentialStore().db_path
     for provider in KEYED_PROVIDERS:
-        if secret_ref == f"llm.{provider}.api_key":
-            return provider
         if secret_ref == resolve_local_byok_credential_ref(provider, db_path=db_path):
             return provider
     return None

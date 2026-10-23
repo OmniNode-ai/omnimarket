@@ -20,6 +20,9 @@ stays read-only). Each check names the failure it exists to catch:
       in another process still overlaps;
 * M4e ``onex secret delete`` of a provider's minted route reference skips the
       guard, so the last usable provider's route goes out by its other name;
+* M4f ``onex secret delete`` of another declared ``llm.<provider>.<field>``
+      reference skips the guard, though the store classifies it as that
+      provider's and withdraws its route;
 * M5  the page lists a provider it does not show (Anthropic, a local URL);
 * M7  the page and the CLI disagree about one store: a key added in the
       terminal is not what ``GET /models`` lists;
@@ -537,4 +540,26 @@ def test_m4e_secret_delete_of_one_of_two_usable_route_refs_is_allowed(
     assert route_ref is not None
     removed = CliRunner().invoke(secret_group, ["delete", route_ref])
     assert removed.exit_code == 0, removed.output
+    assert resolve_local_byok_credential_ref("openrouter") is not None
+
+
+def test_m4f_secret_delete_refuses_another_declared_ref_of_the_last_usable_provider(
+    delegations: _Delegations, tmp_path: Path
+) -> None:
+    delegations.models[_backend("openrouter")] = _OR_MODEL
+    # Store the other declared reference first: storing it clears the provider's
+    # last test, and the add after it is what makes the provider usable again.
+    stored = CliRunner().invoke(
+        secret_group,
+        ["set", "llm.openrouter.token", "--model", _OR_MODEL],
+        input=_OR_KEY,
+    )
+    assert stored.exit_code == 0, stored.output
+    assert _cli_add("openrouter", _OR_KEY, _OR_MODEL).exit_code == 0
+    assert _rows(_client(tmp_path))["openrouter"]["last_test"]["status"] == "passed"
+    route_ref = resolve_local_byok_credential_ref("openrouter")
+    assert route_ref is not None
+    refused = CliRunner().invoke(secret_group, ["delete", "llm.openrouter.token"])
+    assert refused.exit_code != 0, refused.output
+    assert "at least one is required" in refused.output
     assert resolve_local_byok_credential_ref("openrouter") is not None
