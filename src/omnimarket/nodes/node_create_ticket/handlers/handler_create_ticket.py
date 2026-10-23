@@ -50,7 +50,7 @@ import yaml
 from omnibase_infra.adapters.project_tracker.linear_graphql_project_tracker_adapter import (
     AdapterLinearGraphQLProjectTracker,
 )
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.handlers.handler_lane_intake import (
     ModelLaneIntakePolicy,
@@ -288,21 +288,11 @@ class ModelCreateTicketRequest(BaseModel):
     )
     project: str = Field(
         default="",
-        description="Refused when non-empty: new tickets go to the Backlog with no project.",
+        description=(
+            "Refused when non-empty: new tickets go to the Backlog with no project. The "
+            "ticket-creation guard refuses it with its project_set finding."
+        ),
     )
-
-    @field_validator("project")
-    @classmethod
-    def _refuse_project(cls, value: str) -> str:
-        """Operator ruling 2026-09-30T14:30:05Z (OMN-17427): a new ticket is
-        created in the Backlog with NO project. Fail loud, never drop it."""
-        if value.strip():
-            raise ValueError(
-                f"project={value!r} refused: every new ticket is created in the "
-                "Backlog with no project (operator ruling 2026-09-30T14:30:05Z, "
-                "OMN-17427). Moving a ticket into a sprint is the operator's call."
-            )
-        return value
 
     @model_validator(mode="after")
     def _fields_for_operation(self) -> ModelCreateTicketRequest:
@@ -345,6 +335,10 @@ class ModelCreateTicketResult(BaseModel):
     interfaces_touched: list[str] = Field(default_factory=list)
     contract_completeness: str = Field(default="stub")
     validation_errors: list[str] = Field(default_factory=list)
+    finding_codes: list[str] = Field(
+        default_factory=list,
+        description="The guard's own finding codes when it refused the request.",
+    )
     description_body: str = Field(
         default="",
         description="The description sent to Linear (create) or read from it (read).",
@@ -367,7 +361,15 @@ class TicketGuardUnavailableError(RuntimeError):
 
 
 class TicketGuardRefusedError(RuntimeError):
-    """The ticket-creation guard refused the create, or could not decide."""
+    """The ticket-creation guard refused the create, or could not decide.
+
+    ``finding_codes`` are the guard's own finding codes (``project_set``,
+    ``missing_gate_line``, ...), in the order the guard reported them.
+    """
+
+    def __init__(self, message: str, finding_codes: Sequence[str] = ()) -> None:
+        super().__init__(message)
+        self.finding_codes = list(finding_codes)
 
 
 class ModelTicketGuardDecision(BaseModel):
@@ -378,6 +380,19 @@ class ModelTicketGuardDecision(BaseModel):
     admitted: bool
     reason: str = ""
     guard_path: str = ""
+    finding_codes: list[str] = Field(
+        default_factory=list,
+        description="The guard's own finding codes, as it reported them on a refusal.",
+    )
+
+
+# The guard prints one "  * [<code>] <field>: ..." line per finding in its reason.
+_FINDING_CODE_RE = re.compile(r"^\s*\*\s+\[([a-z][a-z0-9_]*)\]", re.MULTILINE)
+
+
+def guard_finding_codes(reason: str) -> list[str]:
+    """The finding codes the guard named in a refusal ``reason``, in order."""
+    return _FINDING_CODE_RE.findall(reason)
 
 
 @runtime_checkable
@@ -492,7 +507,10 @@ class InstalledPluginTicketGuard:
             except (ValueError, AttributeError):
                 reason = done.stdout
             return ModelTicketGuardDecision(
-                admitted=False, reason=reason, guard_path=path
+                admitted=False,
+                reason=reason,
+                guard_path=path,
+                finding_codes=guard_finding_codes(reason),
             )
         return ModelTicketGuardDecision(
             admitted=False,
@@ -802,7 +820,8 @@ class HandlerCreateTicket:
         if not decision.admitted:
             raise TicketGuardRefusedError(
                 "node_create_ticket: the ticket-creation guard refused this "
-                f"transition ({decision.guard_path}):\n{decision.reason}"
+                f"transition ({decision.guard_path}):\n{decision.reason}",
+                decision.finding_codes,
             )
         if request.dry_run:
             return ModelCreateTicketResult(
@@ -947,11 +966,23 @@ class HandlerCreateTicket:
         }
         if request.parent:
             tool_input["parentId"] = request.parent
+        if request.project.strip():
+            # Judged by the guard, which refuses it with its own project_set finding.
+            tool_input["project"] = request.project
         decision = self._get_guard(lane, record=not request.dry_run).check(tool_input)
         if not decision.admitted:
             raise TicketGuardRefusedError(
                 "node_create_ticket: the ticket-creation guard refused this create "
-                f"({decision.guard_path}):\n{decision.reason}"
+                f"({decision.guard_path}):\n{decision.reason}",
+                decision.finding_codes,
+            )
+        if request.project.strip():
+            # A guard that admits a project is not this node's guard (OMN-17427): never file it.
+            raise TicketGuardRefusedError(
+                f"node_create_ticket: project={request.project!r} refused: every new "
+                "ticket is created in the Backlog with no project (operator ruling "
+                "2026-09-30T14:30:05Z, OMN-17427).",
+                ["project_set"],
             )
 
         if request.dry_run:
@@ -1023,5 +1054,6 @@ __all__: list[str] = [
     "TicketGuardUnavailableError",
     "TicketStateResolverProtocol",
     "TicketTrackerProtocol",
+    "guard_finding_codes",
     "locate_ticket_guard",
 ]

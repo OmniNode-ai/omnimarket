@@ -450,9 +450,10 @@ class HandlerTrajectoryEvaluation:
         if isinstance(exc, EvaluatorRejectedError):
             if exc.credit_exhausted:
                 self._pacer.trip_credit_stop()
-            return self._refuse(
-                cid, Reason.TARGET_REJECTED, f"status {exc.status_code}"
-            )
+            detail = f"status {exc.status_code}"
+            if exc.error_code:
+                detail += f" {exc.error_code}"
+            return self._refuse(cid, Reason.TARGET_REJECTED, detail)
         return self._fail(cid, Reason.EVALUATOR_TRANSPORT)
 
     @staticmethod

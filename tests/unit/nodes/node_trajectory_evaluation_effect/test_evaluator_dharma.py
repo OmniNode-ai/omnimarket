@@ -21,6 +21,7 @@ from omnimarket.nodes.node_trajectory_evaluation_effect.models.model_dharma impo
     TASK_MAX_CHARS,
 )
 from omnimarket.nodes.node_trajectory_evaluation_effect.protocols import (
+    EvaluatorError,
     EvaluatorRateLimitedError,
     EvaluatorRejectedError,
     EvaluatorTransportError,
@@ -217,6 +218,12 @@ async def test_malformed_receipt_id_is_refused_before_any_call(receipt: str) -> 
         (401, "error_401_invalid_token.json", EvaluatorRejectedError, "invalid_token"),
         (403, "error_403_org_not_found.json", EvaluatorRejectedError, "org_not_found"),
         (
+            403,
+            "error_403_managed_runtime_requires_real_organization.json",
+            EvaluatorRejectedError,
+            "managed_runtime_requires_real_organization",
+        ),
+        (
             400,
             "error_400_invalid_contract.json",
             EvaluatorRejectedError,
@@ -230,16 +237,52 @@ async def test_malformed_receipt_id_is_refused_before_any_call(receipt: str) -> 
         ),
         (429, "synthetic_error_429.json", EvaluatorRateLimitedError, "rate_limited"),
         (503, "synthetic_error_503.json", EvaluatorTransportError, "unavailable"),
+        (500, "synthetic_error_503.json", EvaluatorTransportError, "unavailable"),
     ],
 )
+@pytest.mark.parametrize("method", ["GET", "POST"])
 async def test_launch_errors_are_classified(
-    status: int, name: str, error: type[Exception], code: str
+    status: int, name: str, error: type[EvaluatorError], code: str, method: str
 ) -> None:
-    dharma = Dharma(post=reply(status, name))
+    dharma = Dharma(**{method.lower(): reply(status, name)})
     with pytest.raises(error) as info:
         await dharma.evaluator().submit(submission())
-    assert code in str(info.value)
+    assert info.value.status_code == status
+    assert info.value.error_code == code
+    assert str(info.value) == f"Dharma status {status} {code}"
     assert TOKEN not in str(info.value)
+    if method == "GET":
+        assert dharma.posts == []
+
+
+@pytest.mark.parametrize("nested", [False, True])
+@pytest.mark.parametrize(
+    "code",
+    [None, "", "free text", "invalid\n", "a" * 101, "café", "Bearer " + TOKEN],
+)
+async def test_invalid_error_codes_are_not_exposed(
+    code: str | None, nested: bool
+) -> None:
+    body = {
+        "ok": False,
+        "error": {"code": code, "message": TOKEN} if nested else code,
+        "message": TOKEN,
+    }
+    dharma = Dharma(get=lambda _r: httpx.Response(403, json=body))
+    with pytest.raises(EvaluatorRejectedError) as info:
+        await dharma.evaluator().submit(submission())
+    assert info.value.error_code is None
+    assert str(info.value) == "Dharma status 403"
+    assert dharma.posts == []
+
+
+@pytest.mark.parametrize("code", ["A0_.-", "a" * 100])
+async def test_valid_error_code_boundaries_are_preserved(code: str) -> None:
+    dharma = Dharma(get=lambda _r: httpx.Response(403, json={"error": code}))
+    with pytest.raises(EvaluatorRejectedError) as info:
+        await dharma.evaluator().submit(submission())
+    assert info.value.error_code == code
+    assert str(info.value) == f"Dharma status 403 {code}"
 
 
 async def test_402_trips_the_credit_stop() -> None:
@@ -247,6 +290,7 @@ async def test_402_trips_the_credit_stop() -> None:
     with pytest.raises(EvaluatorRejectedError) as info:
         await dharma.evaluator().submit(submission())
     assert info.value.credit_exhausted is True
+    assert info.value.error_code == "insufficient_credits"
 
 
 async def test_redirect_is_not_followed() -> None:

@@ -123,6 +123,7 @@ from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailure
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.events.emit_effect_topic_publisher import EmitEffectTopicPublisher
 from omnimarket.events.provider_quota import ModelProviderQuotaObserved
+from omnimarket.handlers.handler_size_band_measurement import measure_size_band
 from omnimarket.inference import provider_quota_state
 from omnimarket.inference.protocol_config import (
     apply_inference_protocol,
@@ -143,6 +144,7 @@ from omnimarket.inference.provider_quota_state import (
     read_provider_quota_snapshot,
 )
 from omnimarket.inference.task_class_authority import (
+    resolve_size_band_thresholds,
     resolve_task_class_execution_budget,
     resolve_task_class_execution_required,
     resolve_task_class_rung_floor_seconds,
@@ -179,6 +181,9 @@ from omnimarket.models.delegation.wire.model_answer_gate_request import (
     ModelAnswerGateRequest,
     ModelAnswerJudgeCall,
     ModelIndependentJudgeVerdict,
+)
+from omnimarket.models.delegation.wire.model_attempt_configuration import (
+    ModelAttemptConfiguration,
 )
 from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
 from omnimarket.models.delegation.wire.model_named_test_run_request import (
@@ -1170,6 +1175,45 @@ def _start_in_flight_attempt(
     progress.in_flight_calls = []
 
 
+# OMN-20168: the measured band's letters, as the attempt record names them.
+_ATTEMPT_SIZE_BANDS: dict[str, str] = {"S": "small", "M": "medium", "L": "large"}
+
+
+def _request_size_band(
+    *, task_type: str, prompt: str, acceptance_criteria: tuple[str, ...]
+) -> str | None:
+    """The request's size band, or None when the class declares no thresholds."""
+    resolved = resolve_size_band_thresholds(task_type)
+    if resolved is None:
+        return None
+    thresholds, reference = resolved
+    measured = measure_size_band(
+        task_class=task_type,
+        prompt=prompt,
+        context_pack="",
+        sources=(),
+        acceptance_criteria=acceptance_criteria,
+        thresholds=thresholds,
+        thresholds_reference=reference,
+    )
+    return _ATTEMPT_SIZE_BANDS.get(measured.band.value)
+
+
+def _attempt_configuration(
+    backend: ModelResolvedDelegationBackend,
+    *,
+    max_tokens: int | None,
+    temperature: float | None,
+) -> dict[str, object]:
+    """The call parameters one rung is dispatched with (OMN-20168)."""
+    return ModelAttemptConfiguration(
+        max_tokens=resolve_effective_max_tokens(
+            requested=max_tokens, backend_max_tokens=backend.max_tokens
+        ),
+        temperature=temperature,
+    ).model_dump(mode="json")
+
+
 def _settle_in_flight_attempt(
     progress: ModelDelegationDispatchProgress | None,
     outcome: _AttemptOutcome,
@@ -1468,6 +1512,11 @@ class LocalDelegationDispatchPort:
         queue_wait_ms: int | None = None,
     ) -> dict[str, object]:
         dispatch_started = time.monotonic()
+        attempt_size_band = _request_size_band(
+            task_type=task_type,
+            prompt=prompt,
+            acceptance_criteria=acceptance_criteria,
+        )
         # OMN-18931: the no-escalation fault route is admitted only by the
         # trusted runtime consumer for a declared dogfood fault backend. The
         # in-process port has no such guard, so it refuses rather than running
@@ -1843,6 +1892,11 @@ class LocalDelegationDispatchPort:
                         ),
                         "error_message": over_budget_message,
                         "host": endpoint_host(backend.endpoint_ref),
+                        # OMN-20168: what this rung was sent with, and the request's band.
+                        "configuration": _attempt_configuration(
+                            backend, max_tokens=max_tokens, temperature=temperature
+                        ),
+                        "size_band": attempt_size_band,
                         "acceptance_decision": (
                             EnumDelegationAcceptanceDecision.CLIMB.value
                         ),
@@ -2126,6 +2180,11 @@ class LocalDelegationDispatchPort:
                         # it answered, the same facts the bus path records.
                         "provider_id": _attempt_provider_id(backend.endpoint_ref),
                         "host": endpoint_host(backend.endpoint_ref),
+                        # OMN-20168: what this rung was sent with, and the request's band.
+                        "configuration": _attempt_configuration(
+                            backend, max_tokens=max_tokens, temperature=temperature
+                        ),
+                        "size_band": attempt_size_band,
                         "http_status": transport_result.http_status,
                         "provider_code": transport_result.provider_code,
                         # OMN-14063: surface WHY this tier was skipped (e.g. "endpoint
@@ -2451,6 +2510,11 @@ class LocalDelegationDispatchPort:
                         "failure_class": earlier.failure_class.value,
                         "provider_id": _attempt_provider_id(backend.endpoint_ref),
                         "host": endpoint_host(backend.endpoint_ref),
+                        # OMN-20168: what this rung was sent with, and the request's band.
+                        "configuration": _attempt_configuration(
+                            backend, max_tokens=max_tokens, temperature=temperature
+                        ),
+                        "size_band": attempt_size_band,
                         "http_status": earlier.http_status,
                         "error_message": earlier.error_message,
                         "acceptance_decision": (
@@ -2477,6 +2541,11 @@ class LocalDelegationDispatchPort:
                     # accept is a quality-gate failure, typed as one.
                     "provider_id": _attempt_provider_id(backend.endpoint_ref),
                     "host": endpoint_host(backend.endpoint_ref),
+                    # OMN-20168: what this rung was sent with, and the request's band.
+                    "configuration": _attempt_configuration(
+                        backend, max_tokens=max_tokens, temperature=temperature
+                    ),
+                    "size_band": attempt_size_band,
                     "http_status": result.http_status,
                     "failure_class": (
                         None

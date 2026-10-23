@@ -1,0 +1,114 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21329"
+title: "Lab lanes mint Linear tickets through node_create_ticket, which runs the create gate inside the node"
+summary: "node_create_ticket judges every create with the omniclaude ticket-creation guard before any Linear call and now reports the guard's own finding codes, including project_set for a request that sets a project. A parity module compares the guard, policy and grammar the node runs with the ones the MCP save_issue hook registers. The remote-lane runner and lane_brief check --lab change for AC5 lives in the internal plugin, not in this repository; this contract binds AC1 to AC3 and the offline half of AC4. The live AC4 read-back on a lab host is run by the orchestrator after merge."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-create-ticket-gate"
+    statement: |-
+      node_create_ticket refuses what the create gate refuses with the guard's own finding codes and no Linear call, creates what the guard admits in Backlog with no project, and runs the same guard and policy the MCP hook loads.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: node_create_ticket refuses a payload the create gate refuses (no Gate line, a criterion without a falsifier, a project set) with the guard's own finding codes, and makes no Linear call -- falsifier: uv run pytest tests -q -k create_ticket_gate_refuses
+      - id: "AC2"
+        statement: |-
+          AC2: node_create_ticket admits a payload the guard admits and creates the issue in Backlog with no project, returning its id -- falsifier: uv run pytest tests -q -k create_ticket_gate_admits
+      - id: "AC3"
+        statement: |-
+          AC3: the guard the node runs is the same code and policy the MCP hook loads, not a copy; a test fails when the two differ -- falsifier: uv run pytest tests -q -k create_ticket_gate_parity
+      - id: "AC4"
+        statement: |-
+          AC4: on a lab host, a headless lane mints one ticket through the node with the host key and reads it back -- falsifier: onex run-node node_create_ticket on a lab host returns an OMN id that get_issue reads back in Backlog
+      - id: "AC5"
+        statement: |-
+          AC5: the remote-lane runner and lane_brief check admit a lab brief that mints through the node and still refuse one that asks for the MCP path -- falsifier: uv run pytest plugins/omni/skills/remote-lane/tests -q -k mint_through_node_admitted
+evidence_requirements:
+  - kind: "tests"
+    description: "Every node_create_ticket test passes, the create_ticket_gate tests included."
+    command: "uv run pytest tests/nodes/node_create_ticket tests/test_golden_chain_create_ticket.py -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21329-gate-refuses"
+    description: "The node raises the guard's finding codes (missing_gate_line, unfalsified_criterion, project_set) and its Linear client records no call. The stub-guard cases run on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_create_ticket/test_create_ticket_gate.py -q -p no:randomly --no-cov -k create_ticket_gate_refuses"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21329-gate-admits"
+    description: "A payload the guard admits is created once through the Linear client in Backlog with no project, and the result carries the ticket id."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_create_ticket/test_create_ticket_gate.py -q -p no:randomly --no-cov -k create_ticket_gate_admits"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21329-gate-parity"
+    description: "The guard, policy and grammar bytes the node runs equal the ones the registered save_issue hook loads; one differing byte fails the test, and no copy of the three files exists under src/omnimarket."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_create_ticket/test_create_ticket_gate.py -q -p no:randomly --no-cov -k create_ticket_gate_parity"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21329-lab-readback"
+    description: "Offline half of the live read-back: the node's command-line entry prints the guard's finding codes and exits 1 on a refusal, so a headless lane reads the result. The live run on a lab host (mint one ticket with the host key, read it back in Backlog) is pending and is run by the orchestrator after merge; this check does not stand in for it."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_create_ticket/test_create_ticket_gate.py -q -p no:randomly --no-cov -k create_ticket_gate_refuses_cli"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21329-brief-mint-through-node"
+    description: "Offline node prerequisite for AC5: the brief can use a node that admits a guarded create into Backlog without a project and reports a refusal through its CLI with the guard finding codes. These behavioral assertions replace the runtime import sweep, which also passed before this change. The internal plugin runner and lane_brief check --lab remain outside this repository; this check does not validate their brief admission rules."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_create_ticket/test_create_ticket_gate.py -q -p no:randomly --no-cov -k 'create_ticket_gate_admits_stub or create_ticket_gate_refuses_cli'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn21329-deploy-node-cli"
+    description: "Hosted deploy smoke: dispatch node_create_ticket through the in-process ONEX runtime with an executable admitting test guard and dry_run true. Require a successful typed receipt, status dry_run, no ticket id, and the finding_codes array added by this change. The merge-base result lacks finding_codes. No Linear key, installed plugin, or lane services are required. This checks the packaged node at the evaluated checkout, not a production rollout or the pending live ticket mint."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          uv sync --locked;
+          .venv/bin/python -c '
+          import json
+          import sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          (root / "hooks/lib").mkdir(parents=True)
+          (root / "hooks/config").mkdir()
+          (root / "hooks/lib/ticket_creation_guard.py").write_text("import sys\nsys.exit(0)\n")
+          (root / "hooks/config/ticket_creation_policy.json").write_text(json.dumps({"lane_intake": {"label": "lane-created", "stamp_prefix": "created-by-lane:"}}))
+          (root / "input.json").write_text(json.dumps({"title": "Ticket gate deploy smoke", "description": "Offline admission probe", "dry_run": True}))
+          ' "$probe_dir";
+          env COMPOSE_PROJECT_NAME=landing-l15663-lab PYTHONDONTWRITEBYTECODE=1 ONEX_LANE=omn21329-deploy-probe ONEX_TICKET_GUARD_PATH="$probe_dir/hooks/lib/ticket_creation_guard.py" .venv/bin/onex node node_create_ticket --input "$probe_dir/input.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+          .venv/bin/python -c '
+          import json
+          import sys
+          from pathlib import Path
+          receipt = json.loads(Path(sys.argv[1]).read_text())
+          assert receipt["status"] == "success", receipt
+          assert receipt["exit_code"] == 0, receipt
+          result = receipt["result"]
+          assert result["status"] == "dry_run", result
+          assert result["ticket_id"] == "", result
+          assert result["dry_run"] is True, result
+          assert result["finding_codes"] == [], result
+          print(json.dumps({"run_id": receipt["run_id"], "status": result["status"], "finding_codes": result["finding_codes"]}))
+          ' "$probe_dir/receipt.json";
+        cwd: "${OMNI_HOME}/omnimarket"
