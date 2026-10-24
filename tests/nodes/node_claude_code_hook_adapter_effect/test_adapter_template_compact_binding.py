@@ -29,6 +29,7 @@ from omnimarket.nodes.node_claude_code_binding_install_effect.models import (
     ModelBindingInstallRequest,
 )
 from omnimarket.nodes.node_claude_code_binding_render_compute.handlers.handler_binding_render import (
+    ADAPTER_COMMAND,
     HandlerClaudeCodeBindingRender,
 )
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.binding_render_error import (
@@ -65,6 +66,9 @@ def _work_tree_probe_ends_at_tmp_path(
 
     monkeypatch.setattr(
         handler_binding_install, "_inside_a_work_tree", inside_tmp_path_work_tree
+    )
+    monkeypatch.setattr(
+        handler_binding_install, "_resolve_adapter_command", lambda: ADAPTER_COMMAND
     )
 
 

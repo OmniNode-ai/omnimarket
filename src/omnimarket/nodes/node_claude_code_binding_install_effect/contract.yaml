@@ -22,7 +22,7 @@ node_version:
 node_type: EFFECT_GENERIC
 
 description: >
-  Writes the rendered module to the Claude Code mods location (never inside a repository), reads it back and compares its sha256 with the render's, and writes additive registrations into the user settings only. Installs only rows whose probe rows the capability report marks supported.
+  Writes the rendered module to the Claude Code mods location (never inside a repository), reads it back and compares its sha256 with the render's, and writes additive registrations into the user settings only. Names the installed mod folder in CLAUDE_CODE_PLUGIN_DIRS of the same user settings, because Claude Code reads no mods folder by itself, and renders the adapter command resolved from the installing environment. Installs only rows whose probe rows the capability report marks supported.
 
 input_model:
   name: ModelBindingInstallRequest
