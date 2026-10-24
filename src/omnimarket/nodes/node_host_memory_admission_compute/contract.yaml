@@ -5,7 +5,7 @@
 name: "node_host_memory_admission_compute"
 lifecycle: experimental
 node_type: "COMPUTE_GENERIC"
-runtime_profiles: [main]
+runtime_profiles: []
 contract_version:
   major: 1
   minor: 0
@@ -33,6 +33,7 @@ handler:
   module: "omnimarket.nodes.node_host_memory_admission_compute.handlers.handler_host_memory_admission"
   class: "HandlerHostMemoryAdmission"
   input_model: "omnimarket.nodes.node_host_memory_admission_compute.models.model_host_memory_admission.ModelHostMemoryAdmissionRequest"
+  output_model: "omnimarket.nodes.node_host_memory_admission_compute.models.model_host_memory_admission.ModelHostMemoryAdmissionVerdict"
 handler_routing:
   routing_strategy: "operation_match"
   default_handler: "omnimarket.nodes.node_host_memory_admission_compute.handlers.handler_host_memory_admission:HandlerHostMemoryAdmission"
@@ -41,10 +42,15 @@ handler_routing:
       handler:
         name: "HandlerHostMemoryAdmission"
         module: "omnimarket.nodes.node_host_memory_admission_compute.handlers.handler_host_memory_admission"
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: "Direct Python invocation of the handler with one host memory reading and admission thresholds."
 descriptor:
   node_archetype: compute
   purity: pure
-  runtime_profiles: [main]
+  runtime_profiles: []
   idempotent: true
   timeout_ms: 5000
 replay:
@@ -52,7 +58,7 @@ replay:
   timestamp_authority: ingest_sequence
   deterministic: true
 metadata:
-  transport_type: inmemory
+  transport_type: local
   description: "Host Memory Admission Compute — pure policy with no external transport."
   author: "OmniNode Team"
   created: "2026-10-24"

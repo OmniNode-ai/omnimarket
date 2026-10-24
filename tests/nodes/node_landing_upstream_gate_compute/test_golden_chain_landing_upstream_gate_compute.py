@@ -130,7 +130,10 @@ def test_contract_default_handler_resolves_to_the_packaged_handler() -> None:
         (Path(package.__file__).parent / "contract.yaml").read_text()
     )
     assert contract["name"] == "node_landing_upstream_gate_compute"
-    assert "event_bus" not in contract
+    assert contract["event_bus"] == {"subscribe_topics": [], "publish_topics": []}
+    assert contract["metadata"]["transport_type"] == "local"
+    assert contract["descriptor"]["runtime_profiles"] == []
+    assert contract["runtime_dispatch"]["external_trigger"].strip()
     assert "terminal_event" not in contract
     module_name, class_name = contract["handler_routing"]["default_handler"].split(":")
     handler_class = getattr(importlib.import_module(module_name), class_name)

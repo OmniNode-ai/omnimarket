@@ -12,7 +12,7 @@ entry_points:
     node_host_memory_admission_compute: "omnimarket.nodes.node_host_memory_admission_compute"
 capabilities:
   standalone: true
-  full_runtime: true
+  full_runtime: false
   requires_network: false
   requires_repo: false
   requires_secrets: false

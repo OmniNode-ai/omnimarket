@@ -12,7 +12,7 @@ entry_points:
     node_merge_sweep_same_head_compute: "omnimarket.nodes.node_merge_sweep_same_head_compute"
 capabilities:
   standalone: true
-  full_runtime: true
+  full_runtime: false
   requires_network: false
   requires_repo: false
   requires_secrets: false
