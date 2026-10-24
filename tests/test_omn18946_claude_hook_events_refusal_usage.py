@@ -253,4 +253,5 @@ def test_the_row_params_follow_the_column_order() -> None:
     row = _fold(_event("AssistantUsage"))
     params = writer_module._event_params(row)
 
-    assert params[-7:] == (None, None, 12, 345, 6, 78, 2)
+    assert params[-8:-1] == (None, None, 12, 345, 6, 78, 2)
+    assert params[-1] is None  # OMN-21334: an unstamped event has no sequence.

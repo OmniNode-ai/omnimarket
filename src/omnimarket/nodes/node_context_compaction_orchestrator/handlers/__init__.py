@@ -1,7 +1,15 @@
-"""Handlers for node_context_compaction_orchestrator."""
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Handlers and runtime binding for compaction (OMN-21334)."""
 
+from __future__ import annotations
+
+from omnimarket.nodes.node_context_compaction_orchestrator.handlers.compaction_runtime_binding import (
+    bind_compaction_ports,
+    load_compaction_runtime_binding,
+)
 from omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_compaction_pack_build import (
-    HandlerCompactionPackBuild,
+    HandlerCompactionPackBuildBus,
 )
 from omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_context_compaction_orchestrator import (
     HandlerContextCompactionOrchestrator,
@@ -11,7 +19,9 @@ from omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_sess
 )
 
 __all__ = [
-    "HandlerCompactionPackBuild",
+    "HandlerCompactionPackBuildBus",
     "HandlerContextCompactionOrchestrator",
     "HandlerSessionBarrierWait",
+    "bind_compaction_ports",
+    "load_compaction_runtime_binding",
 ]

@@ -10,8 +10,8 @@ description: >
   complete post-transition row per job_id, and lab_job_transitions, one
   append-only row per (job_id, seq).
 
-  ONE ORDERING AUTHORITY. The orchestrator's per-job seq, assigned in the
-  compare-and-set that writes its state_io row. The state upsert refuses an
+  ONE ORDERING AUTHORITY. The delegation effect's per-job seq, assigned in the
+  compare-and-set that writes its execution row and outbox. The state upsert refuses an
   equal or lower seq in its conflict arm's WHERE; the transitions append
   refuses a seq it already holds. An event time is never the order: the
   outbox is at-least-once and can redeliver or emit older transitions late.
@@ -40,7 +40,7 @@ handler_routing:
 terminal_event: onex.evt.omnimarket.projection-lab-job-applied.v1
 
 golden_path:
-  - "node_lab_job_orchestrator (M3) publishes each reducer transition and its post-transition row with the CAS-assigned seq"
+  - "node_llm_delegation_call_effect publishes each session reducer transition and its post-transition row with the CAS-assigned seq"
   - "This reducer folds one transitioned event into a state row dict and a transition row dict"
   - "The writer appends the transition, refusing a seq it already holds"
   - "The writer upserts the state row, refusing an equal or lower seq in the conflict arm's WHERE"
@@ -82,19 +82,13 @@ db_io:
   ordering_key: seq
 
 event_bus:
-  # M3 owns this publication but is not yet a node contract. The explicit
-  # external producer below keeps this M2 consumer visible to the HARD graph
-  # gate until the orchestrator's publication declaration lands.
+  # The delegation effect publishes the same typed row the writer consumes.
   subscribe_topics:
     - onex.evt.omnimarket.lab-job-transitioned.v1
   publish_topics:
     - onex.evt.omnimarket.projection-lab-job-applied.v1
   dlq_topics:
     - onex.dlq.omnimarket.projection-lab-job-malformed.v1
-
-externally_produced_topics:
-  - topic: onex.evt.omnimarket.lab-job-transitioned.v1
-    producer: "node_lab_job_orchestrator (plan step M3, not yet built), publishing each reducer transition with its CAS-assigned seq -- not yet a node contract"
 
 externally_consumed_topics:
   - onex.evt.omnimarket.projection-lab-job-applied.v1

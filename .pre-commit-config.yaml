@@ -1240,6 +1240,15 @@ repos:
       # MUST resolve through delegation_config_provenance — raw reads always block.
       # Broad env-read violations run in report mode (Wave 0); provenance-bypass
       # violations always exit 1. SYNC with ci.yml step "Delegation env-read gate".
+      - id: delegation-target-seams
+        name: Delegation target and lab-job seam gate
+        language: system
+        entry: uv run --frozen pytest tests/unit/nodes/node_llm_delegation_call_effect/test_delegation_targets.py -q --no-cov
+        files: ^(src/omnimarket/models/delegation/model_delegation_target\.py|src/omnimarket/nodes/(node_llm_delegation_call_effect|node_model_router|node_lab_job_reducer|node_lab_job_submit_effect|node_projection_lab_job)/.*|tests/unit/nodes/node_llm_delegation_call_effect/test_delegation_targets\.py)$
+        pass_filenames: false
+        require_serial: true
+        stages: [pre-commit]
+
       - id: delegation-env-read-gate
         require_serial: true
         name: Delegation env-read gate (OMN-13295)

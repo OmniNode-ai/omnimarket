@@ -111,16 +111,20 @@ event_bus:
     - onex.cmd.omniintelligence.context-pack-requested.v1
   publish_topics:
     - onex.cmd.omniintelligence.context-pack-built.v1
+    - onex.cmd.omniintelligence.context-pack-failed.v1
 
-# The reply is awaited by the caller that published the command (the onex skill
-# context_pack remote locus and inline consumers), not by another node.
+# Each reply is awaited by the caller that published the command (the onex skill
+# context_pack remote locus, inline consumers, and the compaction orchestrator
+# through its request_response declaration), correlated by the command's id.
 externally_consumed_topics:
   - onex.cmd.omniintelligence.context-pack-built.v1
+  - onex.cmd.omniintelligence.context-pack-failed.v1
 
 runtime_dispatch:
   command_topic: onex.cmd.omniintelligence.context-pack-requested.v1
   terminal_events:
     success: onex.cmd.omniintelligence.context-pack-built.v1
+    failure: onex.cmd.omniintelligence.context-pack-failed.v1
 
 terminal_event: onex.cmd.omniintelligence.context-pack-built.v1
 

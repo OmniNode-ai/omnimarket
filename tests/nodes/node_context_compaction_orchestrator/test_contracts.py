@@ -28,6 +28,7 @@ REPO = Path(__file__).resolve().parents[3]
 NODE = "node_context_compaction_orchestrator"
 NODE_DIR = REPO / "src" / "omnimarket" / "nodes" / NODE
 COMMAND = "onex.cmd.omniintelligence.context-compaction-requested.v1"
+PACK_REQUEST = "onex.cmd.omniintelligence.context-pack-requested.v1"
 PACKAGE = "onex.cmd.omniintelligence.context-compaction-package.v1"
 RECEIPTS = [
     "onex.evt.omnimarket.context-compaction-prepared.v1",
@@ -46,8 +47,11 @@ def _contract() -> dict[str, Any]:
 def test_the_contract_declares_its_command_reply_and_receipts() -> None:
     contract = _contract()
     assert contract["event_bus"]["subscribe_topics"] == [COMMAND]
-    assert contract["event_bus"]["publish_topics"] == [PACKAGE, *RECEIPTS]
+    assert contract["event_bus"]["publish_topics"] == [PACK_REQUEST, PACKAGE, *RECEIPTS]
     assert contract["runtime_dispatch"]["command_topic"] == COMMAND
+    assert contract["terminal_event"] == PACKAGE
+    assert contract["runtime_dispatch"]["terminal_events"]["success"] == PACKAGE
+    assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]
     assert contract["externally_consumed_topics"] == [PACKAGE, *RECEIPTS]
 
 
@@ -55,7 +59,9 @@ def test_published_events_route_every_emission_class_to_a_declared_topic() -> No
     contract = _contract()
     published = {e["event_type"]: e["topic"] for e in contract["published_events"]}
     assert published == published_event_topics()
-    assert sorted(published.values()) == sorted(contract["event_bus"]["publish_topics"])
+    assert sorted([*published.values(), PACK_REQUEST]) == sorted(
+        contract["event_bus"]["publish_topics"]
+    )
     for model in (
         ModelContextCompactionPrepared,
         ModelContextCompactionActivated,
@@ -66,11 +72,15 @@ def test_published_events_route_every_emission_class_to_a_declared_topic() -> No
 
 
 def test_content_travels_only_on_the_restricted_command_family() -> None:
-    """The package reply carries content, so it is the one onex.cmd.omniintelligence publish."""
+    """The pack command and package reply use the restricted command family."""
     publish = _contract()["event_bus"]["publish_topics"]
     content_bearing = [t for t in publish if t.startswith("onex.cmd.omniintelligence.")]
-    assert content_bearing == [PACKAGE]
-    assert all(t.startswith("onex.evt.omnimarket.") for t in publish if t != PACKAGE)
+    assert content_bearing == [PACK_REQUEST, PACKAGE]
+    assert all(
+        t.startswith("onex.evt.omnimarket.")
+        for t in publish
+        if t not in {PACKAGE, PACK_REQUEST}
+    )
 
 
 def test_the_contract_handler_and_models_resolve() -> None:
@@ -91,8 +101,14 @@ def test_the_node_is_registered_as_an_onex_node_entry_point() -> None:
 def test_the_node_package_imports_no_event_envelope() -> None:
     sources = list(NODE_DIR.rglob("*.py"))
     assert sources
-    for path in sources:
-        assert "ModelEventEnvelope" not in path.read_text(encoding="utf-8"), path
+    # The runtime frames every emission. The one envelope is the outgoing pack
+    # command, which carries its own id for the correlated reply.
+    framing = [
+        path.name
+        for path in sources
+        if "ModelEventEnvelope" in path.read_text(encoding="utf-8")
+    ]
+    assert framing == ["handler_compaction_pack_build.py"]
 
 
 def test_the_handler_hardcodes_no_topic_string() -> None:

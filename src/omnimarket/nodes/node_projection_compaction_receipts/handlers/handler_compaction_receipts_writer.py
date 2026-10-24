@@ -60,9 +60,15 @@ class CompactionReceiptsProjectionWriter(BaseProjectionRunner):
         with path.open(encoding="utf-8") as handle:
             self._contract: dict[str, Any] = yaml.safe_load(handle)
         self._fold = HandlerProjectionCompactionReceipts()
-        (self._snapshot_exposure,) = load_projection_exposures_from_contract(
+        exposures = load_projection_exposures_from_contract(
             self._contract, self._contract["name"], path
         )
+        if len(exposures) != 1:
+            raise ValueError(
+                f"{path} must declare exactly one projection exposure, "
+                f"found {len(exposures)}"
+            )
+        self._snapshot_exposure = exposures[0]
 
     @property
     def subscribe_topics(self) -> list[str]:

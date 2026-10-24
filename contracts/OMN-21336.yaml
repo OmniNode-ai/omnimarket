@@ -56,13 +56,11 @@ dod_evidence:
         check_value: "uv run pytest tests/test_compaction_receipts_projection_writer.py -q -k projection_read_returns_installed_with_boundary_uuid"
     binds_ac: ["AC2"]
   - id: "dod-omn21336-deploy-writer-and-read-exposure"
-    description: "Falsifiable hosted deployment preparation smoke in an ephemeral Python 3.12 container: import the packaged writer, resolve its contract's sole runtime handler, require the install-confirm terminal as its subscription, and read installed with its boundary through the shipped exposure. These tests fail at the merge base where the node and exposure are absent. No lab route, broker or live database is required. After deployment, run /compact on a lab session and read node_projection_read_effect with topic onex.snapshot.projection.compaction-receipts.v1; require verdict installed and that session's boundary uuid. Live AC2 remains pending until that read succeeds."
+    description: "Falsifiable hosted deployment preparation smoke: the local topology at the pinned omnibase_infra revision grants omninode_runtime the compaction_receipts table, and the focused tests import the packaged writer, resolve its contract's sole runtime handler, require the install-confirm terminal as its subscription, and read installed with its boundary through the shipped exposure. These tests fail at the merge base where the node and exposure are absent. No lab route, broker or live database is required. After deployment, run /compact on a lab session and read node_projection_read_effect with topic onex.snapshot.projection.compaction-receipts.v1; require verdict installed and that session's boundary uuid. Live AC2 remains pending until that read succeeds."
     source: "manual"
     checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_compaction_receipts_projection_writer.py -q -k 'consumer_contract_and_read_exposure or projection_read_returns_installed_with_boundary_uuid'"
       - check_type: "command"
-        check_value: |-
-          env docker run --rm --volume "$PWD:/workspace:ro" --workdir /workspace \
-          --env UV_PROJECT_ENVIRONMENT=/tmp/omnimarket-venv \
-          ghcr.io/astral-sh/uv:python3.12-bookworm \
-          sh -c 'uv sync --frozen --quiet && uv run --no-sync pytest tests/test_compaction_receipts_projection_writer.py -q -k "consumer_contract_and_read_exposure or projection_read_returns_installed_with_boundary_uuid"'
+        check_value: "gh api 'repos/OmniNode-ai/omnibase_infra/contents/src/omnibase_infra/topology/instances/local.yaml?ref=3078fa4ec02b3c242502a6de8ca21729b66cc48a' -H 'Accept: application/vnd.github.raw' | grep -q -- '- compaction_receipts'"
     binds_ac: ["AC2"]

@@ -735,6 +735,15 @@ requirements:
     acceptance:
       - id: "AC159"
         statement: "AC159: LocalHostReader.read returns one lane-guard:<sha256> tool per installed lane_guard_host.py whose sha256 equals its directory name, sorted among the other tools, and none for an empty home, an altered copy or a directory that is not a sha256 -- falsifier: uv run pytest tests/unit/lab_work/test_lab_work_host_bus.py -q -n 0 -k lane_guard fails at the merge base, where LocalHostReader takes no home and advertises no lane-guard entry"
+  - id: "req-delegation-target-adapters"
+    statement: "The existing delegation call effect owns the target adapters (model-call, claude-code, codex, claude-glm) and consumes canonical lab job submissions through runtime routing; harnesses are adapters inside the one effect node and everything else is a handler (operator RULING 2026-10-20T11:52:25Z)."
+    acceptance:
+      - id: "AC163"
+        statement: "AC163: the runtime discovers the existing effect's lab-job handler and dispatches the submit node's ModelEventEnvelope to it; the handler retains the original brief, records reducer transitions, and refuses a second launch for a taken job -- falsifier: uv run pytest tests/unit/nodes/node_llm_delegation_call_effect/test_delegation_targets.py -k 'runtime_discovers or launches_once or wire_models' -q"
+      - id: "AC164"
+        statement: "AC164: coding-session adapters launch a brief on stdin in a worktree at the requested full commit and retain a typed receipt; a replay returns that receipt, and a reused identity with different instructions is refused -- falsifier: uv run pytest tests/unit/nodes/node_llm_delegation_call_effect/test_delegation_targets.py -k 'session_adapter or agent_adapters or exact_commit' -q"
+      - id: "AC162"
+        statement: "AC162: the model adapter uses the model router's complete endpoint and the generic inference handler's wire shape; contract generation parameters survive overrides and unmeasured, ignored or rejected parameters are refused before inference -- falsifier: uv run pytest tests/unit/nodes/node_llm_delegation_call_effect/test_delegation_targets.py -k 'model_adapter or parameters or generation_overrides' -q"
   - id: "req-ticket-contract-schema-hook"
     statement: "A ticket contract that omnibase_core's ModelTicketContract refuses is caught by a pre-commit hook before the push, by the same validation CI's Contract Compliance Check runs."
     acceptance:
@@ -935,6 +944,11 @@ requirements:
         with incorrect counts remain FINDING. The triage CLI exits nonzero for actionable findings
         and zero for only named omissions or APPROVE. Falsifier: the recorded-findings, wrong-facts,
         incorrect-count and triage CLI tests fail without these behaviors.'
+  - id: req-shard-plan-record-freshness
+    statement: The committed per-file durations record names all but a handful of the test files, so the shard planner does not weight unrecorded files at the median.
+    acceptance:
+    - id: AC4400
+      statement: 'AC4400: config/test_file_durations.json leaves fewer than 50 test files unrecorded -- falsifier: uv run pytest tests/unit/test_ci_shard_plan_record_freshness_omn17427.py -q fails at the merge base (162 unrecorded) and passes at the head (6).'
 evidence_requirements:
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
@@ -3366,6 +3380,37 @@ dod_evidence:
           print("lane guard advertisement deploy probe: PASS")
           PY
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac163-runtime-lab-submission"
+    description: "Runtime dispatcher and submit-envelope seam, with a shared store test double; live lab ownership and process proof remain separate."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_llm_delegation_call_effect/test_delegation_targets.py -k 'runtime_discovers or launches_once or wire_models' -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC163"]
+  - id: "dod-omn17427-ac161-session-adapters"
+    description: "Exact-commit git worktree and subprocess boundary with a deterministic CLI fixture; this is not a real coding-agent session."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_llm_delegation_call_effect/test_delegation_targets.py -k 'session_adapter or agent_adapters or exact_commit' -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC164"]
+  - id: "dod-omn17427-ac162-generation-routing"
+    description: "Generic inference payload and logical routing; this is not a live per-provider compatibility matrix."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_llm_delegation_call_effect/test_delegation_targets.py -k 'model_adapter or parameters or generation_overrides' -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC162"]
+  - id: "dod-omn17427-delegation-targets-deploy-probe"
+    description: "Hosted falsifier for the deployment artifact's subscription and dispatch wiring; live dev-slot execution is a separate required lab observation."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_llm_delegation_call_effect/test_delegation_targets.py -k runtime_discovers -q"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac160-contract-schema-hook"
     description: "Every ticket contract loads as ModelTicketContract, a 51-character dod_evidence id is refused, and the check is wired as a pre-commit hook. The tests fail at the merge base."
     source: "manual"
@@ -3981,4 +4026,12 @@ dod_evidence:
     checks:
     - check_type: command
       check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_owner_summary_effect/test_omitted_line_contract.py -q --no-cov -p no:randomly --refuse-skips -k triage_cli
+      cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn17427-shard-plan-record-freshness
+    source: manual
+    binds_ac: [AC4400]
+    description: The committed durations record leaves fewer than 50 test files unrecorded. The test fails at the merge base, where 162 files are unrecorded, and passes at the head, where 6 are.
+    checks:
+    - check_type: test_passes
+      check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/test_ci_shard_plan_record_freshness_omn17427.py -q --no-cov -p no:randomly --refuse-skips
       cwd: ${OMNI_HOME}/omnimarket

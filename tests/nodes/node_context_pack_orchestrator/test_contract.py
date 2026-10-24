@@ -36,7 +36,15 @@ def test_contract_topics_are_the_restricted_request_and_result_pair() -> None:
     assert bus["subscribe_topics"] == [
         "onex.cmd.omniintelligence.context-pack-requested.v1"
     ]
-    assert bus["publish_topics"] == ["onex.cmd.omniintelligence.context-pack-built.v1"]
+    assert bus["publish_topics"] == [
+        "onex.cmd.omniintelligence.context-pack-built.v1",
+        "onex.cmd.omniintelligence.context-pack-failed.v1",
+    ]
+    assert (
+        _CONTRACT["runtime_dispatch"]["terminal_events"]["failure"]
+        == bus["publish_topics"][1]
+    )
+    assert _CONTRACT["externally_consumed_topics"] == bus["publish_topics"]
     assert _CONTRACT["terminal_event"] == bus["publish_topics"][0]
 
 
