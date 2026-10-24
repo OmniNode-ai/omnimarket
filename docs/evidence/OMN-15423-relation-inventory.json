@@ -3506,6 +3506,7 @@
       "partitioning": [],
       "producer": "node_projection_claude_hook_events",
       "readers": [
+        "node_beacon_trace_capture_effect",
         "node_capture_silence_watch_effect",
         "node_context_compaction_orchestrator",
         "node_projection_claude_hook_events",
@@ -8976,6 +8977,7 @@
       "partitioning": [],
       "producer": "node_projection_traces",
       "readers": [
+        "node_beacon_trace_capture_effect",
         "node_build_loop_orchestrator",
         "node_generation_consumer",
         "node_projection_delegation",

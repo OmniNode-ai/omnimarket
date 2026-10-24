@@ -247,3 +247,23 @@ dod_evidence:
         check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_beacon_trace_capture_effect/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"name: beacon_trace_capture_effect\" > /dev/null'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC13"]
+  - id: "dod-omn19513-ac13-beacon-relation-inventory"
+    description: "AC13 hosted artifact probe: regenerate the source-derived relation inventory in check mode and require the Beacon capture node in the claude_hook_events and traces reader lists. Runs on the checkout without external services; the stale inventory at the dispatch head fails."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q --no-cov -k 'checked_in_inventory_is_source_derived_and_current or compaction_receipts_ownership_and_migration_delivery'"
+      - check_type: "command"
+        check_value: |-
+          set -e
+          env PYTHONDONTWRITEBYTECODE=1 uv run python scripts/generate_application_relation_inventory.py --check
+          env PYTHONDONTWRITEBYTECODE=1 uv run python - <<'PROBE'
+          import json
+          from pathlib import Path
+          inventory = json.loads(Path("docs/evidence/OMN-15423-relation-inventory.json").read_text())
+          tables = {row["name"]: row for row in inventory["relations"] if row["kind"] == "table"}
+          for name in ("claude_hook_events", "traces"):
+              assert "node_beacon_trace_capture_effect" in tables[name]["readers"], name
+          print("BEACON-RELATION-INVENTORY-OK readers=claude_hook_events,traces")
+          PROBE
+    binds_ac: ["AC13"]
