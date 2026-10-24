@@ -412,6 +412,10 @@ class TestBuildProjectionTopicMap:
             "unknown_run_count",
             # OMN-21206: all runs, beside the measured monetary population.
             "run_count",
+            # OMN-21015: appended by migration 100, the token directions over
+            # the same runs; they sum to tokens_total.
+            "tokens_input_total",
+            "tokens_output_total",
         )
         assert cfg.json_columns == ("rows", "recent_runs", "warnings")
         assert cfg.freshness_column == "latest_projection_updated_at"
@@ -1011,7 +1015,9 @@ class TestOmn15800ExposureParity:
         topic_map = real_topic_map
         # 76 after OMN-19988: onex.snapshot.projection.local-environment.v1,
         # the Environment panel's and the API Keys card's served rows.
-        assert len(topic_map) == 76
+        # 77 after OMN-21336: onex.snapshot.projection.compaction-receipts.v1,
+        # bus-backed with its writer in the same change.
+        assert len(topic_map) == 77
         for liveness_topic in (
             "onex.snapshot.projection.automation-liveness.v1",
             "onex.snapshot.projection.automation-liveness-runs.v1",
