@@ -38,6 +38,9 @@ from omnimarket.models.delegation.model_escalation_transitions import (
     EnumMoveKind,
     EnumTransitionKind,
 )
+from omnimarket.models.delegation.model_transition_decision import (
+    ModelTransitionDecisionRequest,
+)
 from omnimarket.models.delegation.wire.model_probe_ladder import (
     PROBE_LADDER_SOURCE_SURFACE,
     ModelProbeLadder,
@@ -87,9 +90,6 @@ from omnimarket.routing.model_escalation_decision_request import (
 )
 from omnimarket.routing.model_escalation_decision_result import (
     ModelEscalationDecisionResult,
-)
-from omnimarket.routing.model_transition_decision import (
-    ModelTransitionDecisionRequest,
 )
 from omnimarket.routing.task_class_contract_path import (
     TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
@@ -708,8 +708,8 @@ def test_transition_table_a_move_is_recorded_with_its_kind_and_cause(
             "cause": "rate_limited",
             "move_kind": "tier_climb",
         }
-        # The typed terminal accepts the record, so the run's evidence row is
-        # written with the move on it.
+        # The evidence row is written, and its attempt names the move. The
+        # released wire record has no typed field for it yet.
         connection = sqlite3.connect(tmp_path / "delegation.sqlite")
         try:
             (history,) = connection.execute(
@@ -717,7 +717,10 @@ def test_transition_table_a_move_is_recorded_with_its_kind_and_cause(
             ).fetchone()
         finally:
             connection.close()
-        assert json.loads(history)[0]["transition"]["cause"] == "rate_limited"
+        assert (
+            "transition=move:rate_limited:tier_climb"
+            in (json.loads(history)[0]["acceptance_detail"])
+        )
     else:
         cid = _bus_route(bus, "research")
         events = bus.handle_inference_response(

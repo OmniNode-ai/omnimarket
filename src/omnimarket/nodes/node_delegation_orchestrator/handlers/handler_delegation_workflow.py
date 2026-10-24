@@ -163,6 +163,9 @@ from omnimarket.models.delegation.model_escalation_transitions import (
     EnumEscalationCause,
     EnumTransitionKind,
 )
+from omnimarket.models.delegation.model_transition_decision import (
+    ModelTransitionDecisionRequest,
+)
 from omnimarket.models.delegation.quality_bar_evidence import (
     format_quality_bar_labels,
 )
@@ -274,9 +277,6 @@ from omnimarket.routing.model_escalation_decision_request import (
 )
 from omnimarket.routing.model_escalation_decision_result import (
     ModelEscalationDecisionResult,
-)
-from omnimarket.routing.model_transition_decision import (
-    ModelTransitionDecisionRequest,
 )
 from omnimarket.routing.routing_tiers_path import resolve_routing_tiers_path
 from omnimarket.routing.task_class_contract_path import (

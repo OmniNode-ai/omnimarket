@@ -72,9 +72,6 @@ from omnimarket.models.delegation.delegation_ticket_id import (
 from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
 )
-from omnimarket.models.delegation.model_escalation_transitions import (
-    ModelAttemptTransition,
-)
 from omnimarket.models.delegation.wire.model_attempt_configuration import (
     ModelAttemptConfiguration,
 )
@@ -792,14 +789,6 @@ def _attempt_records(
                 rubric_verdict = ModelAttemptRubricVerdict.model_validate(raw_verdict)
             except ValidationError:
                 rubric_verdict = None
-        # OMN-21213: the transition the port recorded for this attempt.
-        transition = None
-        raw_transition = raw.get("transition")
-        if isinstance(raw_transition, dict):
-            try:
-                transition = ModelAttemptTransition.model_validate(raw_transition)
-            except ValidationError:
-                transition = None
         if from_escalation_history:
             failure_reasons = _as_str_list(raw.get("failure_reasons"))
             decision = _as_acceptance_decision(raw.get("acceptance_decision"))
@@ -892,7 +881,6 @@ def _attempt_records(
                 finish_reason=_as_finish_reason(raw.get("finish_reason")),
                 **truncated_fields,
                 rubric_verdict=rubric_verdict,
-                transition=transition,
                 reasoning_preamble=str(raw.get("reasoning_preamble") or ""),
                 # OMN-18297: the budget comparison, when one was performed.
                 input_tokens_measured=_as_optional_int(

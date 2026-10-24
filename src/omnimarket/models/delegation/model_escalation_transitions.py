@@ -131,20 +131,9 @@ class ModelTaskClassTransitions(BaseModel):
         return EnumTransitionKind.TERMINATE
 
 
-class ModelAttemptTransition(BaseModel):
-    """What a run did after one attempt, as an attempt record carries it."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    kind: EnumTransitionKind
-    cause: EnumEscalationCause
-    move_kind: EnumMoveKind | None = None
-
-
 __all__ = [
     "EnumEscalationCause",
     "EnumMoveKind",
     "EnumTransitionKind",
-    "ModelAttemptTransition",
     "ModelTaskClassTransitions",
 ]

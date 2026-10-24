@@ -40,15 +40,15 @@ from omnimarket.models.delegation.model_escalation_transitions import (
     EnumMoveKind,
     EnumTransitionKind,
 )
+from omnimarket.models.delegation.model_transition_decision import (
+    ModelTransitionDecision,
+    ModelTransitionDecisionRequest,
+)
 from omnimarket.routing.model_escalation_decision_request import (
     ModelEscalationDecisionRequest,
 )
 from omnimarket.routing.model_escalation_decision_result import (
     ModelEscalationDecisionResult,
-)
-from omnimarket.routing.model_transition_decision import (
-    ModelTransitionDecision,
-    ModelTransitionDecisionRequest,
 )
 
 _MAX_ATTEMPTS_REACHED_REASON = "max_escalation_attempts_reached"

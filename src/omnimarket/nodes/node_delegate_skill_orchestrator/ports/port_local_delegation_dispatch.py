@@ -181,6 +181,10 @@ from omnimarket.models.delegation.model_escalation_transitions import (
     EnumMoveKind,
     EnumTransitionKind,
 )
+from omnimarket.models.delegation.model_transition_decision import (
+    ModelTransitionDecision,
+    ModelTransitionDecisionRequest,
+)
 from omnimarket.models.delegation.wire.model_answer_gate_request import (
     EnumAnswerGateKind,
     EnumIndependentJudgeVerdict,
@@ -355,10 +359,6 @@ from omnimarket.routing.local_byok_route import (
     resolve_pinned_byok_route,
     substitute_any_registered_byok_route,
     substitute_local_byok_route,
-)
-from omnimarket.routing.model_transition_decision import (
-    ModelTransitionDecision,
-    ModelTransitionDecisionRequest,
 )
 from omnimarket.routing.roi_overlay import (
     ModelRoutingRoiOverlay,
@@ -894,15 +894,28 @@ def _moved(
     return decision.model_copy(update={"move_kind": move_kind})
 
 
-def _transition_record(decision: ModelTransitionDecision) -> dict[str, str | None]:
-    """The attempt record's ``transition``: what the run did next, and why."""
-    return {
+def _record_transition(
+    attempt: dict[str, object], decision: ModelTransitionDecision
+) -> None:
+    """Record what the run did after ``attempt``, and the cause that decided it.
+
+    ``transition`` is the typed form for the in-process result. The wire
+    attempt record a released consumer reads has no such field yet, so the same
+    fact is appended to ``acceptance_detail`` as
+    ``transition=<kind>:<cause>[:<move_kind>]``, which reaches the evidence row.
+    """
+    attempt["transition"] = {
         "kind": decision.kind.value,
         "cause": decision.cause.value,
         "move_kind": (
             decision.move_kind.value if decision.move_kind is not None else None
         ),
     }
+    stamp = f"transition={decision.kind.value}:{decision.cause.value}"
+    if decision.move_kind is not None:
+        stamp = f"{stamp}:{decision.move_kind.value}"
+    detail = str(attempt.get("acceptance_detail") or "")
+    attempt["acceptance_detail"] = f"{detail} {stamp}".strip()
 
 
 def _is_retryable_transport_failure(
@@ -2479,7 +2492,8 @@ class LocalDelegationDispatchPort:
                     }
                 )
 
-                attempts[-1]["transition"] = _transition_record(
+                _record_transition(
+                    attempts[-1],
                     transport_transition
                     if byok_same_backend_retry
                     else _moved(transport_transition, EnumMoveKind.MODEL_MOVE)
@@ -2497,7 +2511,7 @@ class LocalDelegationDispatchPort:
                         escalation_count=escalation_count,
                         max_escalations=max_escalations,
                         next_rung_available=False,
-                    )
+                    ),
                 )
 
                 if byok_same_backend_retry:
@@ -3115,7 +3129,7 @@ class LocalDelegationDispatchPort:
                 retries_on_rung=redrafts,
                 rung_retry_budget=redraft_budget,
             )
-            attempts[-1]["transition"] = _transition_record(quality_transition)
+            _record_transition(attempts[-1], quality_transition)
             if quality_transition.kind is EnumTransitionKind.RETRY:
                 local_retry_counts[current_tier] = redrafts + 1
                 logger.info(
@@ -4870,7 +4884,20 @@ class LocalDelegationDispatchPort:
             "quality_gates_failed": [] if quality_passed else [failure_message],
             "error_message": failure_message,
             "escalation_count": escalation_count,
-            "attempts": stamp_attempt_lineage(attempts, correlation_id=correlation_id),
+            # OMN-21213: the typed ``transition`` stays in the in-process result;
+            # the released wire record does not carry it yet, so the evidence
+            # row reads it from ``acceptance_detail``.
+            "attempts": stamp_attempt_lineage(
+                [
+                    {
+                        key: value
+                        for key, value in attempt.items()
+                        if key != "transition"
+                    }
+                    for attempt in attempts
+                ],
+                correlation_id=correlation_id,
+            ),
             # OMN-19448: the deciding inference result's stop reason.
             "finish_reason": result.finish_reason.value,
             "truncated": is_truncated_by_output_budget(result.finish_reason),
