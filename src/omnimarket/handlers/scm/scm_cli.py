@@ -16,10 +16,10 @@ A lane does GitHub work through this command and no ``gh`` verb:
   no node operation: they are answered from the canonical clone and the watcher
   state, and a read they cannot answer exits 3 with the reason, never reaching
   the bus or GitHub.
-- **Other reads** (pr-review, pr-ticket, branch-protection, run-list, run-view,
-  job-log, run-download, release-list) publish the gateway's typed request.
+- **Other reads** (pr-review, pr-ticket, pr-threads, branch-protection, run-list,
+  run-view, job-log, run-download, release-list) publish the gateway's typed request.
 - **PR authoring writes** (pr-create, pr-edit, pr-ready, pr-close, pr-comment,
-  workflow-run, check-run-create) publish node_github_repo_write_effect's typed
+  pr-thread-reply, workflow-run, check-run-create) publish node_github_repo_write_effect's typed
   request. Its guards apply: quota floor, expected head, idempotency, and the claim pr-close
   needs. pr-edit, pr-ready and pr-close take the expected head from the
   watcher state when ``--head-sha`` is not given. pr-close reads the claim the
@@ -273,6 +273,7 @@ _PR_SCOPED_READS: Final[frozenset[str]] = frozenset(
         "ci_checks",
         "merge_commit_sha",
         "merged_pr",
+        "pr_review_threads",
         "review_gate",
         "ticket_ref",
     }
@@ -496,6 +497,7 @@ _WRITE_OPTIONS: Final[dict[str, tuple[str, ...]]] = {
     "pr_ready": (),
     "pr_close": ("run", "claims_dir"),
     "pr_comment": ("body", "body_file"),
+    "pr_thread_reply": ("thread", "body", "body_file"),
     "workflow_dispatch": ("workflow", "ref", "input"),
     "check_run_create": (
         "name",
@@ -559,6 +561,14 @@ _OPTION_DECORATORS: Final[
         help="Where this host's claim registry keeps the claim you took "
         "($ONEX_PR_CLAIMS_DIR, else $ONEX_STATE_DIR/pr-queue/claims). The claim "
         "is read here and sent on the command; the directory itself is not.",
+    ),
+    "thread": click.option(
+        "--thread",
+        "thread_comment_id",
+        required=True,
+        type=click.IntRange(min=1),
+        help="The id of the review comment that starts the thread "
+        "(`onex scm pr-threads` lists them).",
     ),
     "workflow": click.option("--workflow", required=True),
     "ref": click.option("--ref", required=True),
@@ -649,7 +659,7 @@ def _write_command(spec: ModelScmVerb) -> click.Command:
         given: dict[str, JsonValue] = {
             name: value
             for name, value in fields.items()
-            if value is not None and isinstance(value, (str, bool))
+            if value is not None and isinstance(value, (str, bool, int))
         }
         if spec.operation == EnumRepoWriteOperation.CHECK_RUN_CREATE:
             given["head_sha"] = head_sha

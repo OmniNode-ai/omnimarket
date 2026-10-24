@@ -48,6 +48,7 @@ LANE_WRITES: dict[str, str] = {
     "pr comment": "pr_comment",
     "workflow run": "workflow_dispatch",
     "api --method POST /repos/{o}/{r}/check-runs": "check_run_create",
+    "api --method POST /repos/{o}/{r}/pulls/{n}/comments/{id}/replies": "pr_thread_reply",
 }
 _REGISTRY_OWNER = "OmniNode-ai"
 
@@ -175,6 +176,18 @@ _CONTRACT_PLANTS = [
         "operation check_run_create does not say",
         id="check-run-description-reworded",
     ),
+    pytest.param(
+        _drop_operation,
+        "pr_thread_reply",
+        "no operation pr_thread_reply",
+        id="thread-reply-dropped",
+    ),
+    pytest.param(
+        _reword_description,
+        "pr_thread_reply",
+        "operation pr_thread_reply does not say",
+        id="thread-reply-description-reworded",
+    ),
 ]
 
 
@@ -193,6 +206,12 @@ def test_check_refuses_a_planted_contract_violation(
 
 
 _DISPATCH_PLANTS = [
+    pytest.param(
+        'operation="pr_thread_reply"',
+        'operation="pr_thread_post"',
+        "SCM_VERBS has no write verb for operation pr_thread_reply",
+        id="thread-reply-verb-points-at-another-operation",
+    ),
     pytest.param(
         'operation="pr_edit"',
         'operation="pr_amend"',

@@ -248,15 +248,34 @@ def _seeded_store() -> InmemoryDatabaseAdapter:
 
 
 def test_a_row_stored_with_no_cost_is_republished_as_null_not_zero() -> None:
-    """A verdict that arrives before its terminal writes a row with no cost."""
+    """A terminal stored with no cost is republished as NULL by a later write.
+
+    OMN-19448 rule 1: a verdict no longer creates the row, so the row is seeded as
+    its terminal stored it and the verdict's blank-``score_source`` fill is the
+    write that republishes it.
+    """
     publisher = _RecordingPublisher()
     db = _seeded_store()
+    db.upsert(
+        "delegation_events",
+        "correlation_id",
+        {
+            "correlation_id": str(_NO_COST),
+            # A terminal stores the tenant as the text its event carried.
+            "tenant_id": str(_TENANT_UUID),
+            "task_type": "summarization",
+            "delegated_to": "Qwen3.8-27B",
+            "timestamp": datetime(2026, 10, 12, 9, 0, 0, tzinfo=UTC).isoformat(),
+            "cost_usd": None,
+        },
+    )
     HandlerProjectionDelegation(publisher=publisher).project_quality_gate_result(
         ModelQualityGateResult(
             correlation_id=_NO_COST,
             passed=True,
             quality_score=1.0,
             actual_score=1.0,
+            score_source="deterministic_acceptance",
         ),
         db,
         tenant_identity=_SLUG,

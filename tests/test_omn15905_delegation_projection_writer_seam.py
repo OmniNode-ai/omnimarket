@@ -359,139 +359,102 @@ class TestQualityGateResultWriterParity:
     """quality-gate-result.v1 -> delegation_events (OMN-15850/OMN-15905)."""
 
     def test_quality_gate_result_writes_row_with_matching_verdict(self) -> None:
-        """The deterministic-scoring path publishes ONLY this topic. Before
-        OMN-15905 the standalone runner had no branch for it at all --
-        ``project_event`` fell through to ``return False`` and the
-        business-proof ``quality_gate`` check FAILed with "no delegation
-        projection row" for every deterministic-path delegation.
-        """
-        runner = DelegationProjectionRunner()
+        """OMN-19448 rule 1: dispatch accepts a verdict-first event without a row."""
+        published: list[str] = []
+
+        async def publish(topic: str, value: bytes) -> None:
+            published.append(topic)
+
+        runner = DelegationProjectionRunner(publish_fn=publish)
         mock_db = _mock_db()
         runner._db = mock_db  # type: ignore[assignment]
-
         topic = runner._topic_quality_gate_result
-        assert topic, (
-            "contract must already declare quality-gate-result.v1 "
-            "(landed by omnimarket#2052 / OMN-15850)"
+        assert topic, "contract must declare quality-gate-result.v1"
+        ok = asyncio.run(
+            runner.project_event(
+                topic,
+                _real_quality_gate_result_payload(
+                    correlation_id=_CORRELATION_ID, passed=True
+                ),
+                MessageMeta(partition=0, offset=2, fallback_id=_CORRELATION_ID),
+            )
         )
-        data = _real_quality_gate_result_payload(
-            correlation_id=_CORRELATION_ID, passed=True
-        )
-        meta = MessageMeta(partition=0, offset=2, fallback_id=_CORRELATION_ID)
-
-        ok = asyncio.run(runner.project_event(topic, data, meta))
-
-        # This is the RED assertion pre-port: `project_event` returned False
-        # because no topic branch matched quality-gate-result.v1 at all.
         assert ok is True
-        insert_calls = [
-            c
-            for c in mock_db.execute.await_args_list
-            if str(c.args[0]).strip().startswith("INSERT INTO delegation_events")
-        ]
-        assert len(insert_calls) == 1
-        by_column = _param_by_column(insert_calls[0].args)
-        assert by_column["correlation_id"] == _CORRELATION_ID
-        assert by_column["quality_gate_passed"] is True
-        assert by_column["score_source"] == "deterministic_acceptance"
-        # OMN-15905 acceptance-lane defect: a fresh row stamps created_at
-        # (handler_delegation.py:461) -- must be a real datetime, not a
-        # wall-clock isoformat() string.
-        assert isinstance(by_column["created_at"], datetime), (
-            "delegation_events.created_at must bind a datetime object, not a "
-            f"wall-clock isoformat() string (got {type(by_column['created_at'])!r})"
-        )
+        assert [
+            call
+            for call in mock_db.execute.await_args_list
+            if str(call.args[0]).strip().startswith("INSERT INTO delegation_events")
+        ] == []
+        # The runner's applied acknowledgement is not a row republish.
+        assert [
+            t
+            for t in published
+            if t != "onex.evt.omnimarket.projection-delegation-applied.v1"
+        ] == []
 
     def test_quality_gate_result_on_existing_row_only_updates_verdict_columns(
         self,
     ) -> None:
-        """A terminal event already wrote task_type/delegated_to/tenant_id;
-        the quality-gate-result UPSERT must not clobber those columns --
-        the targeted-column UPSERT (OMN-15905's ``_dynamic_upsert``) only
-        names the verdict-owned columns, matching
-        ``HandlerProjectionDelegation.project_quality_gate_result``'s own
-        documented ON CONFLICT semantics.
-        """
+        """OMN-19448 rule 1: only score_source fills; the terminal decides the run."""
         runner = DelegationProjectionRunner()
         mock_db = _mock_db()
-        # Simulate an existing row from an earlier terminal write.
-        mock_db.execute = _scripted_execute(
-            [
-                [
-                    {
-                        "correlation_id": _CORRELATION_ID,
-                        "tenant_id": _TENANT,
-                        "task_type": "code-review",
-                        "quality_gate_passed": False,
-                    }
-                ],
-                None,
-            ]
-        )
+        terminal = {
+            "correlation_id": _CORRELATION_ID,
+            "tenant_id": "91c74442-1233-4c97-b191-911a10346fdf",
+            "task_type": "code-review",
+            "delegated_to": "glm-5.2",
+            "model_name": "glm-5.2",
+            "backend_id": "zai",
+            "host": "h201",
+            "quality_gate_passed": False,
+            "quality_gate_detail": "terminal refusal",
+            "actual_score": 0.4,
+            "timestamp": datetime.fromisoformat("2026-09-07T00:00:00+00:00"),
+            "created_at": datetime.fromisoformat("2026-09-07T00:00:00+00:00"),
+            "score_source": None,
+        }
+        mock_db.execute = _scripted_execute([[dict(terminal)], []])
         runner._db = mock_db  # type: ignore[assignment]
-
-        topic = runner._topic_quality_gate_result
-        data = _real_quality_gate_result_payload(
-            correlation_id=_CORRELATION_ID, passed=True
+        ok = asyncio.run(
+            runner.project_event(
+                runner._topic_quality_gate_result,
+                _real_quality_gate_result_payload(
+                    correlation_id=_CORRELATION_ID, passed=True
+                ),
+                MessageMeta(partition=0, offset=3, fallback_id=_CORRELATION_ID),
+            )
         )
-        meta = MessageMeta(partition=0, offset=3, fallback_id=_CORRELATION_ID)
-
-        ok = asyncio.run(runner.project_event(topic, data, meta))
-
         assert ok is True
         insert_call = _last_delegation_write(mock_db)
         sql = str(insert_call.args[0])
-        # OMN-17228 amends the SHAPE of the task_type/delegated_to assertion
-        # the same way OMN-17422 amended tenant_id's below, and for the same
-        # reason one step further along. The intent is unchanged and still
-        # enforced: a verdict must not re-state the task type of a delegation a
-        # terminal event already recorded, which is now held by keeping both
-        # columns out of the DO UPDATE SET clause. They must nevertheless
-        # appear in the INSERT column list, because Postgres evaluates NOT NULL
-        # against the proposed INSERT row BEFORE the conflict is resolved, and
-        # on onex-dev both columns are NOT NULL with no DEFAULT (0007 declares
-        # one but its ADD COLUMN IF NOT EXISTS no-ops on a pre-existing
-        # column). Omitting them proposed a row with nothing in those columns
-        # and was refused with `null value in column "task_type" ... violates
-        # not-null constraint` -- 28 DLQ entries with their offsets committed
-        # between 2026-09-08T18:41Z and 2026-09-10T05:01Z.
-        # OMN-17422 amends the SHAPE this asserts, not its intent. The
-        # already-resolved tenant on an existing row must still be untouched --
-        # that is now enforced by keeping tenant_id out of the DO UPDATE SET
-        # clause. It must nevertheless appear in the INSERT column list:
-        # Postgres evaluates the tenant policy's WITH CHECK against the proposed
-        # INSERT row BEFORE the conflict is resolved, so omitting the column
-        # proposes a row carrying the column DEFAULT and is refused outright
-        # whenever app.tenant_id is anything else -- which is how every
-        # quality-gate verdict on onex-dev was rejected with "new row violates
-        # row-level security policy" and DLQ'd with its offset committed.
-        _insert_columns, _update_clause = sql.split("ON CONFLICT", 1)
-        # RETURNING reads columns; it does not overwrite them.
-        _update_clause = _update_clause.split(" RETURNING ", 1)[0]
-        assert "tenant_id" not in _update_clause, (
-            "quality-gate-result UPSERT must not overwrite tenant_id -- an "
-            "already-resolved tenant on the row is untouched"
-        )
-        assert "tenant_id" in _insert_columns, (
-            "the proposed INSERT row must name its tenant or the RLS policy "
-            "refuses the statement (OMN-17422)"
-        )
-        for _column in ("task_type", "delegated_to"):
-            assert _column not in _update_clause, (
-                f"quality-gate-result UPSERT must not overwrite {_column} -- it "
-                "is not the verdict's column to own, and a terminal event's "
-                "recorded value stands"
-            )
-            assert _column in _insert_columns, (
-                f"the proposed INSERT row must name {_column} or the NOT NULL "
-                "constraint refuses the statement on a lane whose DEFAULT the "
-                "0007 reconciliation block could not install (OMN-17228)"
-            )
+        insert_columns, update_clause = sql.split("ON CONFLICT", 1)
+        update_clause = update_clause.split(" RETURNING ", 1)[0]
+        updated_columns = {
+            part.split("=", 1)[0].strip()
+            for part in update_clause.split("DO UPDATE SET", 1)[1].split(",")
+        }
+        assert updated_columns == {"score_source", "writer_identity", "written_at"}
+        for column in ("tenant_id", "timestamp", "task_type", "delegated_to"):
+            assert column in insert_columns
+            assert column not in update_clause
         by_column = _param_by_column(insert_call.args)
-        assert by_column["quality_gate_passed"] is True
-        # A pre-existing row means created_at is NOT re-stamped (OMN-13171
-        # sticky-created_at semantics).
+        assert by_column == {
+            "correlation_id": _CORRELATION_ID,
+            "tenant_id": terminal["tenant_id"],
+            "task_type": "",
+            "delegated_to": "",
+            "timestamp": datetime.fromisoformat("2026-09-08T10:02:41.550000+00:00"),
+            "score_source": "deterministic_acceptance",
+        }
+        assert isinstance(by_column["timestamp"], datetime)
         assert "created_at" not in by_column
+        stored = {
+            **terminal,
+            **{
+                key: value for key, value in by_column.items() if key in updated_columns
+            },
+        }
+        assert stored == {**terminal, "score_source": "deterministic_acceptance"}
 
 
 def _real_delegate_skill_terminal_payload(*, correlation_id: str) -> dict[str, Any]:

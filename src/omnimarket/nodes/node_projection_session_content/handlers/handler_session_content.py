@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import threading
 from collections.abc import Coroutine
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -117,7 +116,6 @@ class SessionContentProjectionWriter(BaseProjectionRunner):
         path = contract_path or Path(__file__).resolve().parent.parent / "contract.yaml"
         with open(path, encoding="utf-8") as handle:
             self._contract: dict[str, Any] = yaml.safe_load(handle)
-        self._dispatch_lock = threading.Lock()
 
     @property
     def topics(self) -> list[str]:
@@ -144,22 +142,42 @@ class SessionContentProjectionWriter(BaseProjectionRunner):
         )
         for injected in [k for k in input_data if k.startswith("_")]:
             input_data.pop(injected)
-        with self._dispatch_lock:
-            result = self._run(self._project_one_message(topic, input_data, meta))
+        result = self._run(self._project_one_message(topic, input_data, meta))
         return result.model_dump()
 
     async def _project_one_message(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> ModelSessionContentWriteResult:
         """Own the pool for exactly the loop this message is projected on."""
+        db = self._message_db()
+        await db.connect()
         try:
-            await self.db.connect()
-            return await self._write(topic, data)
+            return await self._write(db, topic, data)
         finally:
-            await self.db.close()
+            await db.close()
+
+    def _message_db(self) -> Any:
+        """The adapter that one runtime-dispatched message writes through.
+
+        The contract declares ``consume_concurrency``, so the runtime may run
+        several messages at once, each in its own thread and event loop. A
+        pool belongs to the loop that opened it. Sharing the writer's adapter
+        would let concurrent messages close each other's pool mid-statement.
+        Each message therefore gets its own adapter on the DSN the runtime
+        bound (OMN-21091). It has one connection, because the message writes
+        one row. A test double is not an ``AsyncpgAdapter`` and is used as
+        given.
+        """
+        # Lazy import, as in BaseProjectionRunner (OMN-15800 AC6).
+        from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+
+        db = self.db
+        if isinstance(db, AsyncpgAdapter):
+            return AsyncpgAdapter(dsn=db.dsn, min_size=1, max_size=1)
+        return db
 
     async def _write(
-        self, topic: str, data: dict[str, Any]
+        self, db: Any, topic: str, data: dict[str, Any]
     ) -> ModelSessionContentWriteResult:
         if topic != SUBSCRIBE_TOPIC:
             raise SessionContentFoldError(
@@ -168,14 +186,14 @@ class SessionContentProjectionWriter(BaseProjectionRunner):
         row = fold_session_content(
             ModelSessionContentRecord.model_validate(data), source_topic=topic
         )
-        await self.db.execute(_UPSERT, *_parameters(row))
+        await db.execute(_UPSERT, *_parameters(row))
         return ModelSessionContentWriteResult(rows_upserted=1, event_id=row.event_id)
 
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
         """The base runner's standalone entry. Same write as :meth:`handle`."""
-        await self._write(topic, data)
+        await self._write(self.db, topic, data)
         return True
 
     @staticmethod

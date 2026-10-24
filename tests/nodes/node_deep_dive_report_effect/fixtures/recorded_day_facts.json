@@ -1,0 +1,18 @@
+{
+  "merged_changes": [
+    {"repo": "omnimarket", "number": 4332, "title": "fix(dispatch): preserve the terminal outcome", "merged_at": "2026-10-23T12:30:00Z", "tickets": ["OMN-21352"]},
+    {"repo": "omnimarket", "number": 4333, "title": "feat(report): add structured evidence", "merged_at": "2026-10-23T13:00:00Z", "tickets": ["OMN-21353"]},
+    {"repo": "omnibase_core", "number": 2101, "title": "feat(schema): expose outcome metadata", "merged_at": "2026-10-23T14:00:00Z", "tickets": ["OMN-21354"]},
+    {"repo": "omnibase_core", "number": 2102, "title": "docs: describe the event envelope", "merged_at": "2026-10-23T15:00:00Z", "tickets": []}
+  ],
+  "clone_only_commits": [
+    {"repo": "omnimarket", "pr": 4335, "tickets": ["OMN-21355"], "subject": "test(report): cover quiet days"},
+    {"repo": "omnimarket", "pr": null, "tickets": [], "subject": "Unlinked local experiment"}
+  ],
+  "lanes_closed": [
+    {"ts": "2026-10-23T12:00:00Z", "lane": "lane-a", "ticket": "OMN-21352", "outcome": "merged", "pr": "omnimarket#4332", "delegated": false, "codex": true, "text": "A missing terminal field caused retries; retaining it fixes replay."},
+    {"ts": "2026-10-23T16:00:00Z", "lane": "lane-blocked", "ticket": "OMN-21356", "outcome": "blocked-dependency", "pr": "", "delegated": false, "codex": true, "text": "Waiting for the schema release."},
+    {"ts": "2026-10-23T17:00:00Z", "lane": "lane-superseded", "ticket": "OMN-21357", "outcome": "superseded", "pr": "", "delegated": true, "codex": false, "text": "The existing reducer already handles this case."}
+  ],
+  "errors": ["Optional source unavailable"]
+}

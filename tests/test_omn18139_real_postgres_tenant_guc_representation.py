@@ -478,6 +478,18 @@ class TestTheFixtureIsFaithful:
         asyncio.run(_run())
 
 
+async def _seed_terminal_row(admin: asyncpg.Connection, correlation_id: str) -> None:
+    """OMN-19448 rule 1: a verdict only fills a row its terminal wrote."""
+    await admin.execute(
+        "INSERT INTO delegation_events "
+        "(correlation_id, timestamp, task_type, delegated_to, tenant_id) "
+        "VALUES ($1, $2, 'code-review', 'glm-5.2', $3::uuid)",
+        correlation_id,
+        datetime(2026, 9, 9, tzinfo=UTC),
+        _TENANT_UUID,
+    )
+
+
 @pytest.mark.integration
 class TestTheDelegationApplySurvivesTheAggregateRepublish:
     def test_a_quality_gate_verdict_applies_and_republishes(self) -> None:
@@ -494,6 +506,7 @@ class TestTheDelegationApplySurvivesTheAggregateRepublish:
         async def _run() -> None:
             async with _rls_bound_runner() as (runner, admin, _schema):
                 correlation_id = str(uuid4())
+                await _seed_terminal_row(admin, correlation_id)
 
                 ok = await runner.project_event(
                     runner._topic_quality_gate_result,
@@ -503,13 +516,15 @@ class TestTheDelegationApplySurvivesTheAggregateRepublish:
                 assert ok is True
 
                 row = await admin.fetchrow(
-                    "SELECT tenant_id, quality_gate_passed FROM delegation_events "
+                    "SELECT tenant_id, score_source FROM delegation_events "
                     "WHERE correlation_id = $1",
                     correlation_id,
                 )
-                assert row is not None, "the verdict wrote no row"
+                assert row is not None
                 assert str(row["tenant_id"]) == _TENANT_UUID
-                assert row["quality_gate_passed"] is True
+                assert row["score_source"] == "deterministic_acceptance", (
+                    "the verdict wrote nothing on its terminal's row"
+                )
 
         asyncio.run(_run())
 
@@ -520,8 +535,9 @@ class TestTheDelegationApplySurvivesTheAggregateRepublish:
         resolver is."""
 
         async def _run() -> None:
-            async with _rls_bound_runner() as (runner, _admin, _schema):
+            async with _rls_bound_runner() as (runner, admin, _schema):
                 correlation_id = str(uuid4())
+                await _seed_terminal_row(admin, correlation_id)
                 assert runner._last_delegation_write_tenant is None
 
                 ok = await runner.project_event(

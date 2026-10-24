@@ -1,0 +1,43 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-21331
+title: omnimarket reads omnibase_core through its dev-merge tag for the canonical file shape check
+summary: The Canonical File Shape job in omnimarket reads omnibase_core through a dev-merge tag instead of a
+  commit sha. This pull request carries AC4 for omnimarket. AC2 (the job runs on pull requests and the merge
+  queue and refuses a planted script) is already on the base, so no check of this pull request can fail
+  there. AC1 is the validator change in omnibase_core and AC3 is a ruleset change per repository.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21331-omnimarket-canonical-file-shape
+    statement: The canonical file shape check in omnimarket reads omnibase_core through its dev-merge tag.
+    acceptance:
+      - id: AC4
+        statement: "AC4: the canonical file shape workflow in omnimarket reads omnibase_core through the dev-merge
+          tag, not a commit sha -- falsifier: uv run pytest tests/ci/test_imperative_contract_guard_caller_omn21002.py
+          -k dev_merge_tag fails when CANONICAL_FILE_SHAPE_CORE names a commit sha"
+evidence_requirements:
+  - kind: tests
+    description: The parity test refuses a CANONICAL_FILE_SHAPE_CORE that is not an omnibase_core dev-merge tag.
+    command: uv run pytest tests/ci/test_imperative_contract_guard_caller_omn21002.py -q -n 0 -p no:randomly --no-cov -k dev_merge_tag
+  - kind: ci
+    description: The canonical file shape workflow names a dev-merge tag and no commit sha for omnibase_core.
+    command: "! git grep -qE 'CANONICAL_FILE_SHAPE_CORE: .*[0-9a-f]{40}' -- .github/workflows && git grep -q 'CANONICAL_FILE_SHAPE_CORE: .*omnibase_core@dev-' -- .github/workflows"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn21331-ac4
+    description: The canonical file shape workflow names a dev-merge tag and no commit sha for omnibase_core.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/ci/test_imperative_contract_guard_caller_omn21002.py -q -n 0 -p no:randomly --no-cov -k dev_merge_tag
+        cwd: ${OMNI_HOME}/omnimarket
+      - check_type: command
+        check_value: "! git grep -qE 'CANONICAL_FILE_SHAPE_CORE: .*[0-9a-f]{40}' -- .github/workflows && git grep -q 'CANONICAL_FILE_SHAPE_CORE: .*omnibase_core@dev-' -- .github/workflows"
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac:
+      - AC4

@@ -1,0 +1,104 @@
+{
+  "pages": [
+    {
+      "data": {
+        "repository": {
+          "pullRequest": {
+            "reviewThreads": {
+              "totalCount": 4,
+              "pageInfo": {"hasNextPage": true, "endCursor": "Y3Vyc29yOnYyOpHOAAAAAg=="},
+              "nodes": [
+                {
+                  "id": "PRRT_kwDOExample0001",
+                  "isResolved": false,
+                  "isOutdated": false,
+                  "path": "src/omnimarket/example/handler.py",
+                  "line": 12,
+                  "comments": {
+                    "totalCount": 2,
+                    "nodes": [
+                      {
+                        "databaseId": 2410010001,
+                        "url": "https://github.com/OmniNode-ai/omnimarket/pull/4000#discussion_r2410010001",
+                        "body": "This cache is never evicted.",
+                        "createdAt": "2026-10-23T21:04:11Z",
+                        "author": {"login": "review-bot"}
+                      },
+                      {
+                        "databaseId": 2410010002,
+                        "url": "https://github.com/OmniNode-ai/omnimarket/pull/4000#discussion_r2410010002",
+                        "body": "Bounded in the next commit.",
+                        "createdAt": "2026-10-23T21:20:40Z",
+                        "author": {"login": "author-lane"}
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "PRRT_kwDOExample0002",
+                  "isResolved": true,
+                  "isOutdated": true,
+                  "path": "src/omnimarket/example/models.py",
+                  "line": null,
+                  "comments": {
+                    "totalCount": 1,
+                    "nodes": [
+                      {
+                        "databaseId": 2410010005,
+                        "url": "https://github.com/OmniNode-ai/omnimarket/pull/4000#discussion_r2410010005",
+                        "body": "Rename this field.",
+                        "createdAt": "2026-10-23T21:06:00Z",
+                        "author": null
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "data": {
+        "repository": {
+          "pullRequest": {
+            "reviewThreads": {
+              "totalCount": 4,
+              "pageInfo": {"hasNextPage": false, "endCursor": "Y3Vyc29yOnYyOpHOAAAAAw=="},
+              "nodes": [
+                {
+                  "id": "PRRT_kwDOExample0003",
+                  "isResolved": false,
+                  "isOutdated": false,
+                  "path": "README.md",
+                  "line": 3,
+                  "comments": {
+                    "totalCount": 1,
+                    "nodes": [
+                      {
+                        "databaseId": 2410010009,
+                        "url": "https://github.com/OmniNode-ai/omnimarket/pull/4000#discussion_r2410010009",
+                        "body": "Typo in this heading.",
+                        "createdAt": "2026-10-23T21:30:00Z",
+                        "author": {"login": "review-bot"}
+                      }
+                    ]
+                  }
+                },
+                {
+                  "id": "PRRT_kwDOExample0004",
+                  "isResolved": false,
+                  "isOutdated": false,
+                  "path": "README.md",
+                  "line": 9,
+                  "comments": {"totalCount": 0, "nodes": []}
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

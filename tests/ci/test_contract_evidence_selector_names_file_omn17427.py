@@ -102,3 +102,26 @@ def test_omn20890_park_ladder_checks_name_the_causes_test_file() -> None:
     assert len(selectors) == 4, selectors
     assert set(selectors) == {expected}
     assert (REPO_ROOT / expected).is_file()
+
+
+def test_omn21335_compact_binding_checks_name_the_test_file_and_bind_tests() -> None:
+    path = REPO_ROOT / "contracts" / "OMN-21335.yaml"
+    contract: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8"))
+    expected = (
+        "tests/nodes/node_claude_code_hook_adapter_effect/"
+        "test_adapter_template_compact_binding.py"
+    )
+    items = {item["id"]: item for item in contract["dod_evidence"]}
+    for item_id in (
+        "dod-omn21335-ac1-template-tests",
+        "dod-omn21335-ac2-install-readback",
+    ):
+        selectors = [
+            _pytest_selector(check["check_value"])
+            for check in items[item_id].get("checks", [])
+            if check.get("check_type") == "test_passes"
+        ]
+        assert selectors == [expected], (item_id, selectors)
+    # A command-only deploy probe is evidence the verifier runs, not a binding.
+    assert "binds_ac" not in items["dod-omn21335-deploy-render-runtime"]
+    assert (REPO_ROOT / expected).is_file()

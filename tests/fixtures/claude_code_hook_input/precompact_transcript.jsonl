@@ -1,0 +1,5 @@
+{"type":"user","sessionId":"7f3c2a1e-5b6d-4e8f-9a0b-1c2d3e4f5a6b","message":{"role":"user","content":"Summarise the failing test."}}
+{"type":"assistant","sessionId":"7f3c2a1e-5b6d-4e8f-9a0b-1c2d3e4f5a6b","message":{"role":"assistant","content":[{"type":"text","text":"Reading it now."},{"type":"tool_use","id":"toolu_01","name":"Read","input":{"file_path":"tests/test_x.py"}},{"type":"text","text":"Then I will run it."}]}}
+{"type":"user","sessionId":"7f3c2a1e-5b6d-4e8f-9a0b-1c2d3e4f5a6b","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01","content":"def test_x(): assert 1 == 2"}]}}
+{"type":"user","isMeta":true,"sessionId":"7f3c2a1e-5b6d-4e8f-9a0b-1c2d3e4f5a6b","message":{"role":"user","content":"<local-command-caveat>meta</local-command-caveat>"}}
+{"type":"summary","summary":"not a message","leafUuid":"0"}

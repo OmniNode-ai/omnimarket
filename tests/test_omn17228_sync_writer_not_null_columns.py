@@ -91,6 +91,7 @@ class _RecordingAttestedAdapter:
         self.rows: list[dict[str, object]] = []
         self.insert_only: list[frozenset[str]] = []
         self._existing = existing or []
+        self.stored: list[dict[str, object]] = [dict(row) for row in self._existing]
         self.registry = InmemoryDatabaseAdapter()
         seed_tenant_registry(self.registry)
 
@@ -119,7 +120,15 @@ class _RecordingAttestedAdapter:
         # returns what it stored, so the double stamps them too -- the handler
         # refuses a row whose ``written_at`` is not a timestamp, and a double
         # that skipped this would fail every test for the wrong reason.
-        stored = dict(row)
+        stored = dict(self._existing[0]) if self._existing else {}
+        stored.update(
+            {
+                key: value
+                for key, value in row.items()
+                if not stored or key not in insert_only_columns
+            }
+        )
+        self.stored = [stored]
         stored.setdefault("writer_identity", "test_writer")
         stored.setdefault("written_at", datetime(2026, 9, 15, tzinfo=UTC))
         return [stored]
@@ -160,6 +169,7 @@ def _verdict() -> ModelQualityGateResult:
         passed=True,
         quality_score=0.91,
         actual_score=0.91,
+        score_source="deterministic_acceptance",
     )
 
 
@@ -181,14 +191,41 @@ def _drive_sync_verdict(
     *, existing: list[dict[str, object]] | None = None
 ) -> _RecordingAttestedAdapter:
     """Run the DEPLOYED quality-gate write path against a recording store."""
+    # OMN-19448 rule 1: exercise the remaining fill on a terminal-owned row.
+    if existing is None:
+        existing = [
+            {
+                "correlation_id": CORRELATION_ID,
+                "task_type": "code_review",
+                "delegated_to": "local",
+                "model_name": "qwen",
+                "backend_id": "local-qwen",
+                "host": "h201",
+                "quality_gate_passed": False,
+                "quality_gate_detail": "terminal refusal",
+                "actual_score": 0.4,
+                "timestamp": "2026-09-14T00:00:00+00:00",
+                "tenant_id": "820272f9-4aaf-5add-a2df-0af942852ab2",
+                "score_source": None,
+            }
+        ]
     db = _RecordingAttestedAdapter(existing=existing)
     handler = HandlerProjectionDelegation(publisher=_RecordingPublisher())
-    handler.project_quality_gate_result(
+    result = handler.project_quality_gate_result(
         _verdict(),
         db,
         tenant_identity=HOUSE_TENANT_SLUG,
         event_timestamp=datetime(2026, 9, 15, tzinfo=UTC),
     )
+    if existing:
+        assert result.rows_upserted == 1
+        assert {key: db.stored[0][key] for key in existing[0]} == {
+            **existing[0],
+            "score_source": "deterministic_acceptance",
+        }
+    else:
+        assert result.rows_upserted == 0
+        assert db.rows == []
     return db
 
 
@@ -196,6 +233,7 @@ class TestTheDeployedVerdictPathNamesEveryDefaultlessColumn:
     """The RED half: this is what the running pod could not do."""
 
     def test_row_names_task_type(self) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         db = _drive_sync_verdict()
         assert db.rows, "the verdict path proposed no row at all"
         assert "task_type" in db.rows[0], (
@@ -206,6 +244,7 @@ class TestTheDeployedVerdictPathNamesEveryDefaultlessColumn:
         )
 
     def test_row_names_delegated_to(self) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         db = _drive_sync_verdict()
         assert "delegated_to" in db.rows[0], (
             "delegated_to is the next unnamed NOT NULL column; Postgres reports "
@@ -214,6 +253,7 @@ class TestTheDeployedVerdictPathNamesEveryDefaultlessColumn:
         )
 
     def test_row_names_the_whole_measured_defaultless_set(self) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         db = _drive_sync_verdict()
         missing = DEFAULTLESS_NOT_NULL - set(db.rows[0])
         assert not missing, (
@@ -222,6 +262,7 @@ class TestTheDeployedVerdictPathNamesEveryDefaultlessColumn:
         )
 
     def test_the_placeholder_is_the_schemas_own_default(self) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         """Empty string, not a sentinel: ``0007`` declares ``DEFAULT ''``.
 
         A verdict carries no task type -- ``ModelQualityGateResult`` is
@@ -235,43 +276,42 @@ class TestTheDeployedVerdictPathNamesEveryDefaultlessColumn:
 
 class TestThePlaceholdersNeverEraseARecordedValue:
     def test_task_type_and_delegated_to_are_insert_only(self) -> None:
-        """Naming them makes the INSERT arm valid; holding them out of DO UPDATE
-        is what stops a late verdict from blanking a real task type a terminal
-        event already recorded.
-        """
-        db = _drive_sync_verdict(existing=[{"correlation_id": CORRELATION_ID}])
+        """OMN-19448 rule 1: placeholders cannot erase terminal-owned columns."""
+        db = _drive_sync_verdict()
         assert db.insert_only, "no write reached the attested seam"
-        assert db.insert_only[0] >= DEFAULTLESS_NOT_NULL, (
-            "the placeholders are in DO UPDATE SET, so a verdict arriving after "
-            f"its terminal erases the recorded values (insert_only={sorted(db.insert_only[0])})"
-        )
+        assert db.insert_only[0] == DEFAULTLESS_NOT_NULL
+        stored = db._existing[0]
+        proposed = db.rows[0]
+        updated = {
+            **stored,
+            **{
+                key: value
+                for key, value in proposed.items()
+                if key not in db.insert_only[0]
+            },
+        }
+        assert updated == {**stored, "score_source": "deterministic_acceptance"}
 
     def test_the_row_is_valid_even_when_the_terminal_landed_first(self) -> None:
-        """The residual the previous revision stated and did not close.
-
-        ``timestamp`` used to be named only on a fresh row, so a verdict
-        arriving AFTER its terminal proposed a NULL for it on a lane whose
-        DEFAULT went missing -- the same NotNullViolation one column along.
-        """
-        db = _drive_sync_verdict(existing=[{"correlation_id": CORRELATION_ID}])
-        missing = DEFAULTLESS_NOT_NULL - set(db.rows[0])
-        assert not missing, (
-            f"an existing-row verdict still leaves {sorted(missing)} to a "
-            "DEFAULT onex-dev does not have"
-        )
+        """OMN-19448 rule 1: the remaining fill still proposes a valid INSERT."""
+        db = _drive_sync_verdict()
+        assert set(db.rows[0]) >= DEFAULTLESS_NOT_NULL
+        assert db.rows[0]["timestamp"] == datetime(2026, 9, 15, tzinfo=UTC)
 
     def test_the_verdicts_own_columns_are_still_overwritten(self) -> None:
-        """A negative control: insert-only must not have widened to everything.
-
-        Without this, a fix that simply marked the whole row insert-only would
-        pass the test above while making every verdict after the first a no-op.
-        """
-        db = _drive_sync_verdict(existing=[{"correlation_id": CORRELATION_ID}])
-        for column in ("quality_gate_passed", "actual_score"):
-            assert column in db.rows[0]
-            assert column not in db.insert_only[0], (
-                f"{column} is the verdict's own fact and must still update"
-            )
+        """OMN-19448 rule 1: only a blank score_source may be filled."""
+        db = _drive_sync_verdict()
+        assert set(db.rows[0]) == {
+            "correlation_id",
+            "tenant_id",
+            "timestamp",
+            "task_type",
+            "delegated_to",
+            "score_source",
+        }
+        assert db.rows[0]["score_source"] == "deterministic_acceptance"
+        assert "score_source" not in db.insert_only[0]
+        assert db.insert_only[0] == DEFAULTLESS_NOT_NULL
 
 
 class TestTheTerminalPathIsUnchanged:
@@ -328,6 +368,7 @@ class TestTheTwoWritersCannotDivergeAgain:
         assert self._async_verdict_row_columns() == DEFAULTLESS_NOT_NULL
 
     def test_the_deployed_twin_names_exactly_what_the_async_twin_names(self) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         db = _drive_sync_verdict()
         sync_columns = {c for c in DEFAULTLESS_NOT_NULL if c in db.rows[0]}
         assert sync_columns == self._async_verdict_row_columns(), (
@@ -346,11 +387,14 @@ class TestTheFixtureCouldFail:
         assert DEFAULTLESS_NOT_NULL - set(db.rows[0]) == DEFAULTLESS_NOT_NULL
 
     def test_the_handler_refuses_a_store_without_attested_write(self) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         class _UpsertOnly:
             def upsert(self, table: str, key: str, row: dict[str, Any]) -> bool:
                 return True
 
             def query(self, table: str, filters: Any = None, **kw: Any) -> list[Any]:
+                if table == "delegation_events":
+                    return [{"correlation_id": CORRELATION_ID, "score_source": None}]
                 return []
 
         handler = HandlerProjectionDelegation(publisher=_RecordingPublisher())

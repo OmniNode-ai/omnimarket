@@ -127,9 +127,9 @@ client_bindings:
           - {name: session_id, source: "$.session_id"}
           - {name: cwd, source: "$.cwd"}
           - {name: trigger, source: "$.trigger"}
-          - {name: input_messages_hash, source: "$.input_messages_hash"}
+          - {name: input_messages_hash, source: "@input_messages_hash"}
           - {name: newest_turn, source: "$.newest_turn"}
-          - {name: barrier_id, source: "$.barrier_id"}
+          - {name: barrier_id, source: "@session_barrier"}
           - {name: compact_model, source: "$.compact_model"}
         awaited_events:
           - onex.cmd.omniintelligence.context-compaction-package.v1

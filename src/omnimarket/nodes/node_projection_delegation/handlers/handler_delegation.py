@@ -72,13 +72,16 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     _is_zero,
     _judge_verdict_projection_row,
     _measure_actual_cost,
+    _preserve_run_attribution,
     _preserve_terminal_failure,
     _stamp_accepting_attempt,
     _stamp_declared_failure_cause,
+    _stamp_not_routed,
     _stamp_routing_tier,
     _stamp_terminal_stop_reason,
     _stamp_terminal_timing_and_requested_model,
     _stamp_terminal_trace_and_routing,
+    _stamp_unmeasured_latency,
     _unpriced_cost_as_null,
     compute_generation_proof_fields,
 )
@@ -93,6 +96,7 @@ from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction 
 from omnimarket.nodes.node_projection_delegation.models.model_terminal_precedence import (
     apply_terminal_precedence,
     fold_terminal_ownership,
+    rung_verdict_fill,
 )
 from omnimarket.pricing import build_premium_counterfactual, resolve_tier_cost
 from omnimarket.projection.discovery import (
@@ -1201,115 +1205,46 @@ class DelegationProjectionRunner(BaseProjectionRunner):
                 meta,
             )
 
-        row: dict[str, object] = {
-            "correlation_id": str(event.correlation_id),
-            # OMN-15583: always NAMED, never left to a column default. Postgres
-            # evaluates NOT NULL against the PROPOSED insert row before the
-            # conflict is resolved, so an omitted no-default column fails the
-            # statement even when it was only ever going to take the DO UPDATE
-            # arm -- the same "the INSERT arm is the non-obvious half" property
-            # ``insert_only_columns`` documents below for RLS.
-            "timestamp": event_timestamp,
-            # OMN-17228: the same defect as ``timestamp``, on the two columns
-            # the OMN-15583 fix did not reach. ``delegation_events.task_type``
-            # and ``delegated_to`` are both ``TEXT NOT NULL DEFAULT ''`` in
-            # ``0007_delegation_events.sql``'s CREATE TABLE and both are
-            # re-declared in its OMN-15376 reconciliation block as
-            # ``ADD COLUMN IF NOT EXISTS ... DEFAULT ''`` -- which no-ops on a
-            # column that already exists and therefore never installs the
-            # missing DEFAULT on a drifted lane. onex-dev (DEV-SYSTEM
-            # ``i-06169517a92b45f86``) is exactly such a lane: read live from
-            # ``information_schema.columns`` on ``omnidash_analytics``
-            # 2026-09-10, ``task_type`` and ``delegated_to`` are
-            # ``is_nullable=NO`` with ``column_default=NULL``, while
-            # ``model_name`` -- declared identically -- did acquire its
-            # ``''::text`` default because that column did NOT pre-exist. The
-            # difference is invisible from the migration alone, which is why
-            # this path names the value instead of trusting the schema.
-            #
-            # Measured consequence, same readback: 28 of the 107 retained
-            # entries on the contract-declared DLQ are ``null value in column
-            # "task_type" of relation "delegation_events" violates not-null
-            # constraint``, offsets 208-258, 2026-09-08T18:41:03.645Z through
-            # 2026-09-10T05:01:33.932Z, 19 of them in the last 24 hours. They
-            # begin where the ``timestamp`` class ends (offset 210,
-            # 2026-09-08T20:52:47.876Z) because Postgres reports one NOT NULL
-            # violation at a time: fixing ``timestamp`` alone moved the
-            # statement's failure to the next unnamed column. ``delegated_to``
-            # is the one after that, and is named here for the same reason
-            # rather than discovered by a third DLQ class.
-            #
-            # The value is the empty string because that is precisely what
-            # ``0007`` declares as these columns' DEFAULT: naming it reproduces
-            # the schema's own intent without depending on a DEFAULT that a
-            # drifted lane does not have. ``ModelQualityGateResult`` is
-            # ``extra="forbid"`` and carries neither field, so the verdict has
-            # nothing truer to say about them -- and unlike ``timestamp``,
-            # absence here is not unattributable, it is simply not this event's
-            # to state. Both are ``insert_only_columns`` below, so a verdict
-            # that arrives before its terminal creates a valid row without
-            # asserting a task type, and the terminal event that follows fills
-            # in the real values through the DO UPDATE arm (it names both and
-            # holds neither insert-only). A verdict arriving after its terminal
-            # never touches them at all.
-            "task_type": "",
-            "delegated_to": "",
-            "quality_gate_passed": event.passed,
-            "quality_gate_detail": "; ".join(event.failure_reasons) or None,
-            "actual_score": (
-                event.actual_score
-                if event.actual_score is not None
-                else event.quality_score
-            ),
-            "score_source": event.score_source or None,
-        }
-        # OMN-15919: the existing-row probe must run under the SAME tenant the
-        # pending write will use, or an RLS-enforced writer never sees the row
-        # it is about to annotate. OMN-17422: that tenant is now the one
-        # resolved above rather than an independent
-        # ``resolve_write_tenant(None, ...)`` call, so the probe and the write
-        # cannot be scoped to different tenants.
+        # OMN-19448: a rung's verdict is not the run's (see the sync twin and
+        # ``rung_verdict_fill``). The verdict never creates the row and never
+        # states the run's verdict, detail or score; it only fills a blank
+        # ``score_source`` on a row its terminal already wrote. The probe runs
+        # under the SAME tenant the write uses (OMN-15919 / OMN-17422).
+        correlation_id = str(event.correlation_id)
         existing = await self.db.execute(
-            f"SELECT 1 FROM {self._table_delegation} WHERE correlation_id = $1",
-            row["correlation_id"],
+            f"SELECT * FROM {self._table_delegation} WHERE correlation_id = $1",
+            correlation_id,
             tenant=write_tenant,
         )
-        if not existing:
-            # OMN-13171 pattern: only a genuine fresh row needs the explicit
-            # stamp -- an UPDATE leaves a terminal event's created_at intact
-            # because it is not named in this dict (targeted-column UPSERT).
-            # OMN-15905: bind a real datetime, not an isoformat() string --
-            # asyncpg's TIMESTAMPTZ codec requires a datetime.datetime
-            # instance and raises DataError on a str param.
-            row["created_at"] = datetime.now(tz=UTC)
-        # OMN-17422: the verdict row ALWAYS names its tenant, and that name is
-        # never allowed to overwrite an existing row's own attribution --
-        # ``insert_only_columns`` below is what holds both at once. Naming it
-        # is what makes the proposed INSERT row satisfy the policy instead of
-        # inheriting a column DEFAULT the GUC does not match (see
-        # ``_dynamic_upsert``); keeping it out of ``DO UPDATE SET`` is what
-        # stops a verdict from re-attributing a delegation row a terminal event
-        # already recorded.
-        row["tenant_id"] = write_tenant
+        fill = rung_verdict_fill(
+            dict(existing[0]) if existing else None,
+            {"score_source": event.score_source or None},
+        )
+        if not fill:
+            logger.info(
+                "quality-gate verdict for correlation_id=%s writes no row "
+                "(OMN-19448): %s",
+                correlation_id,
+                "the run's terminal has not been projected yet and a rung's "
+                "verdict does not author the run row"
+                if not existing
+                else "the stored terminal owns the run's verdict",
+            )
+            return True
+        row: dict[str, object] = {
+            "correlation_id": correlation_id,
+            "tenant_id": write_tenant,
+            # OMN-15583 / OMN-17228: named so the proposed INSERT row satisfies
+            # NOT NULL on a drifted lane; held insert-only below so they never
+            # touch the stored terminal's values or attribution.
+            "timestamp": event_timestamp,
+            "task_type": "",
+            "delegated_to": "",
+            **fill,
+        }
         await self._write_delegation_row(
             row,
             meta,
-            # OMN-15583: ``timestamp`` joins ``tenant_id`` as insert-only for
-            # the same reason -- the verdict names it so its own INSERT row is
-            # valid, and must never re-time a delegation row a terminal event
-            # already recorded. Holding it structurally (rather than via the
-            # ``existing`` probe above, the way ``created_at`` is held) also
-            # closes the probe's read-then-write race: a terminal landing
-            # between the probe and this statement takes the DO UPDATE arm,
-            # which no longer carries ``timestamp``.
-            #
-            # OMN-17228: ``task_type`` and ``delegated_to`` join them on the
-            # same terms. The verdict names them so its own proposed INSERT row
-            # satisfies NOT NULL on a lane whose DEFAULT went missing, and
-            # holding them out of DO UPDATE SET is what stops the empty-string
-            # placeholder from erasing a real task type a terminal event
-            # already recorded -- including in the read-then-write window the
-            # ``existing`` probe above cannot close.
             insert_only_columns=frozenset(
                 {"tenant_id", "timestamp", "task_type", "delegated_to"}
             ),
@@ -1656,6 +1591,11 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             "finish_reason",
             "requested_model",
         ):
+            # OMN-17427: a failure over a stored completion owns the model
+            # columns, so it inherits no routed model from the event it
+            # replaces and both arrival orders read the same failure.
+            if key == "routed_model" and not carry_score:
+                continue
             if _is_blank(row.get(key)) and not _is_blank(existing.get(key)):
                 row[key] = existing[key]
                 if key == "finish_reason" and row.get("truncated") is None:
@@ -1674,6 +1614,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         ):
             row["compliance_attempts"] = existing["compliance_attempts"]
         _preserve_terminal_failure(existing, row)
+        # OMN-19448: after precedence, so a model inherited from the stored row
+        # never makes an unevidenced handler failure read as evidenced.
+        _preserve_run_attribution(existing, row)
 
     async def _materialize_budget_state_async(
         self,
@@ -1846,6 +1789,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         _stamp_terminal_trace_and_routing(row, event)
         _stamp_terminal_stop_reason(row, event.finish_reason, event.truncated)
         await self._preserve_existing_evidence_async(row)
+        _stamp_not_routed(row)
         # Same fallback as the sync writer: an original pinned counterfactual
         # wins over the canonical savings writer's reconstructed baseline.
         if row.get("premium_counterfactual") is None and canonical_counterfactual:
@@ -2146,6 +2090,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         # late-arriving timeout terminal must not clobber the real answer an
         # earlier delegation-completed.v1 already wrote).
         await self._preserve_existing_evidence_async(row)
+        _stamp_not_routed(row)
+        _stamp_unmeasured_latency(row, event.execution_duration_ms)
         apply_modelled_terminal_savings(row, event)
         await self._write_delegation_row(
             row, meta, insert_only_columns=tenant_insert_only

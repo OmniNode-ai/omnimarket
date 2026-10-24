@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-17228: the quality-gate-result projection must NAME every NOT NULL
+"""OMN-19448 rule 1: only score_source fills on a stored terminal row.
+
+OMN-17228: the quality-gate-result projection must NAME every NOT NULL
 ``delegation_events`` column whose DEFAULT a drifted lane does not have.
 
 This is the same defect OMN-15583 closed for ``timestamp``, on the two columns
@@ -61,7 +63,8 @@ and carries neither field, so a verdict simply has nothing to say about the
 task type, and refusing the event (the posture the time and tenant paths take)
 would drop every verdict on every lane forever.
 
-BOTH ARE INSERT-ONLY. In the measured corpus the verdict arrives BEFORE its
+HISTORICAL CONTEXT (superseded by OMN-19448 rule 1). In the measured corpus
+the verdict arrived BEFORE its
 terminal every time -- e.g. correlation ``8b9bf103-32f6-4fd8-93fb-7edd7d643112``
 at offsets 258/259, verdict 2026-09-10T05:01:33.932Z, terminal 1.589s later --
 so the verdict is usually the row's creator and must produce a valid INSERT.
@@ -158,9 +161,31 @@ def _quality_gate_delivery(*, correlation_id: str) -> dict[str, Any]:
     return unwrapped
 
 
-def _mock_db() -> AsyncMock:
+def _mock_db(*, correlation_id: str) -> AsyncMock:
     db = AsyncMock()
-    db.execute = AsyncMock(return_value=[])
+    terminal = {
+        "correlation_id": correlation_id,
+        "tenant_id": "91c74442-1233-4c97-b191-911a10346fdf",
+        "task_type": "code-review",
+        "delegated_to": "glm-5.2",
+        "model_name": "glm-5.2",
+        "backend_id": "zai",
+        "host": "h201",
+        "quality_gate_passed": False,
+        "quality_gate_detail": "terminal refusal",
+        "actual_score": 0.4,
+        "timestamp": datetime(2026, 9, 9, tzinfo=UTC),
+        "score_source": None,
+    }
+
+    async def execute(sql: str, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+        if sql.startswith("SELECT * FROM delegation_events"):
+            assert args == (correlation_id,)
+            assert kwargs["tenant"] == terminal["tenant_id"]
+            return [dict(terminal)]
+        return []
+
+    db.execute = AsyncMock(side_effect=execute)
     db.fetchval = AsyncMock(return_value=None)
     return db
 
@@ -192,6 +217,19 @@ def _run_verdict(mock_db: AsyncMock, *, correlation_id: str, offset: int) -> boo
             MessageMeta(partition=0, offset=offset, fallback_id=correlation_id),
         )
     )
+    assert _do_update_columns(mock_db) == {
+        "score_source",
+        "writer_identity",
+        "written_at",
+    }
+    assert set(_proposed_row(mock_db)) == {
+        "correlation_id",
+        "tenant_id",
+        "timestamp",
+        "task_type",
+        "delegated_to",
+        "score_source",
+    }
     return bool(result)
 
 
@@ -337,12 +375,13 @@ class TestTheMigrationCannotGuaranteeTheseDefaults:
 @pytest.mark.unit
 class TestVerdictRowNamesEveryDefaultlessNotNullColumn:
     def test_row_names_task_type(self) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         """RED before OMN-17228: ``task_type`` was not a column of this INSERT
         at all, so on onex-dev -- where the column carries no DEFAULT -- the
         statement raised 23502 and the verdict went to the DLQ with its offset
         committed, 28 times between 2026-09-08T18:41Z and 2026-09-10T05:01Z."""
-        mock_db = _mock_db()
         correlation_id = str(uuid4())
+        mock_db = _mock_db(correlation_id=correlation_id)
 
         assert _run_verdict(mock_db, correlation_id=correlation_id, offset=208) is True
 
@@ -355,10 +394,11 @@ class TestVerdictRowNamesEveryDefaultlessNotNullColumn:
         assert row["task_type"] == ""
 
     def test_row_names_delegated_to(self) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         """The next column in line. Fixing ``task_type`` alone would move the
         23502 here, exactly as fixing ``timestamp`` moved it to ``task_type``."""
-        mock_db = _mock_db()
         correlation_id = str(uuid4())
+        mock_db = _mock_db(correlation_id=correlation_id)
 
         assert _run_verdict(mock_db, correlation_id=correlation_id, offset=209) is True
 
@@ -369,12 +409,13 @@ class TestVerdictRowNamesEveryDefaultlessNotNullColumn:
         assert row["delegated_to"] == ""
 
     def test_row_names_the_whole_measured_defaultless_set(self) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         """The invariant, stated once over the set rather than per column: no
         NOT NULL column measured without a DEFAULT on onex-dev may be left to
         the schema. This is the assertion that makes a fifth DLQ class on this
         path a red test instead of a live discovery."""
-        mock_db = _mock_db()
         correlation_id = str(uuid4())
+        mock_db = _mock_db(correlation_id=correlation_id)
 
         assert _run_verdict(mock_db, correlation_id=correlation_id, offset=210) is True
 
@@ -389,12 +430,13 @@ class TestVerdictRowNamesEveryDefaultlessNotNullColumn:
 @pytest.mark.unit
 class TestThePlaceholdersNeverOverwriteARecordedValue:
     def test_task_type_and_delegated_to_are_insert_only(self) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         """The reverse failure the fix must not introduce. A verdict that
         arrives AFTER its terminal takes the DO UPDATE arm; if the empty-string
         placeholders were in ``DO UPDATE SET`` they would erase the real task
         type the terminal recorded."""
-        mock_db = _mock_db()
         correlation_id = str(uuid4())
+        mock_db = _mock_db(correlation_id=correlation_id)
 
         assert _run_verdict(mock_db, correlation_id=correlation_id, offset=211) is True
 
@@ -408,19 +450,23 @@ class TestThePlaceholdersNeverOverwriteARecordedValue:
         assert "timestamp" not in overwritten
 
     def test_the_verdicts_own_columns_are_still_overwritten(self) -> None:
-        """Positive control for the assertion above: an empty ``DO UPDATE SET``
-        would satisfy it vacuously. The verdict's actual payload must still
-        update an existing row."""
-        mock_db = _mock_db()
+        """OMN-19448 rule 1: the verdict updates score_source alone."""
         correlation_id = str(uuid4())
-
+        mock_db = _mock_db(correlation_id=correlation_id)
         assert _run_verdict(mock_db, correlation_id=correlation_id, offset=212) is True
-
-        overwritten = _do_update_columns(mock_db)
-        assert "quality_gate_passed" in overwritten, (
-            "the verdict must still write its own verdict onto an existing row"
-        )
-        assert "actual_score" in overwritten
+        assert _do_update_columns(mock_db) == {
+            "score_source",
+            "writer_identity",
+            "written_at",
+        }
+        assert _proposed_row(mock_db) == {
+            "correlation_id": correlation_id,
+            "tenant_id": "91c74442-1233-4c97-b191-911a10346fdf",
+            "task_type": "",
+            "delegated_to": "",
+            "timestamp": _ENVELOPE_TIMESTAMP,
+            "score_source": "deterministic_acceptance",
+        }
 
     def test_the_terminal_path_still_overwrites_them(self) -> None:
         """The other half of the self-healing claim, asserted on the shipped

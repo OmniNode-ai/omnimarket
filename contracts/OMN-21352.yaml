@@ -1,0 +1,88 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21352"
+title: "A nightly technical deep dive lands in the knowledge base for agents, citing the day's commits and ledger rows"
+summary: "node_deep_dive_report_effect gains a technical deep dive for an agent starting work: what changed by area, causes found and their fixes, decisions made and restated, open blockers, and what was tried and ruled out. It reads the owner summary's facts and the dropped-decisions data as JSON and the work ledger's rows for the UTC day. Every claim cites a pull request or commit and, where one exists, the ledger row by timestamp and lane; a claim with none of these is refused and the report is not written. Operator rulings are pointed at, never quoted, and listed terms are redacted. The nightly host tick that runs it and opens the knowledge base pull request is declared in the host installer contract."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21352-technical-deep-dive"
+    statement: "The node renders a cited technical deep dive for one UTC day and refuses an uncited claim before anything is published."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a nightly host tick runs node_deep_dive_report_effect and opens one knowledge base pull request with beta/deep-dives/<date>-technical-deep-dive.md that passes kb-doc-gate -- falsifier: the tick's heartbeat and the pull request for the night after it installs, with kb-doc-gate green at its head"
+      - id: "AC2"
+        statement: "AC2: every claim in the report cites a commit sha or pull request and, where one exists, a ledger row by timestamp and lane; a claim with neither is refused before the pull request opens -- falsifier: uv run pytest over the node's citation check with a planted uncited claim as positive control"
+      - id: "AC3"
+        statement: "AC3: the report carries sections for what changed by area, causes found and fixes, decisions made and restated that day (from the dropped-decisions data), open blockers, and what an agent should not rediscover -- falsifier: uv run pytest over the renderer with a recorded day's facts asserting each section and its citations"
+evidence_requirements:
+  - kind: "tests"
+    description: "The technical deep dive tests render a recorded day, refuse a planted uncited claim, and run the CLI the tick calls; none exists at the merge base."
+    command: "uv run pytest tests/nodes/node_deep_dive_report_effect/test_technical_deep_dive.py -q --no-cov -k technical_deep_dive"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21352-ac1-cli-the-tick-runs"
+    description: "AC1, node half: the CLI the nightly tick runs writes the report file on success and exits 2 without writing it when a claim is uncited. The tick itself, its heartbeat and the first nightly pull request are the host installer half and stay pending until the operator host installs it."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_deep_dive_report_effect/test_technical_deep_dive.py -q --no-cov -k cli"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21352-ac2-citation-refusal"
+    description: "AC2: a planted claim with no commit, pull request or ledger row makes the render raise UncitedClaimError naming exactly that claim, and a cited list passes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_deep_dive_report_effect/test_technical_deep_dive.py -q --no-cov -k citation_check_refuses_planted_uncited_claim"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21352-ac3-sections"
+    description: "AC3: the recorded day's facts, ledger rows and dropped-decisions data render all five sections, each bullet with its citation, and the ledger fallback renders rulings as pointers."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_deep_dive_report_effect/test_technical_deep_dive.py -q --no-cov -k 'renders_every_section or fall_back'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21352-deploy-cli-smoke"
+    description: "Hosted deploy smoke: dispatch the packaged report node through ONEX over an in-memory bus in dry-run mode and require a successful typed receipt with the requested date and quiet-day result. Then run its technical CLI over the recorded day's fixtures into a temporary directory, require exit 0, the five section headings and a citation on every bullet; plant a facts file whose merged change has no number and require the change to be left out, not rendered. At the merge base the technical subcommand does not exist. This probes the installed package without lane services or credentials; the nightly host tick remains pending."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          export PYTHONDONTWRITEBYTECODE=1;
+          probe_python="$(uv run --locked python -c 'import sys; print(sys.executable)')";
+          probe_bin="$(dirname "$probe_python")";
+          printf '%s\n' '{"root":".","date":"2026-10-23","dry_run":true}' > "$probe_dir/input.json";
+          "$probe_bin/onex" node node_deep_dive_report_effect --input "$probe_dir/input.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+          "$probe_python" -c '
+          import json
+          import sys
+          from pathlib import Path
+          receipt = json.loads(Path(sys.argv[1]).read_text())
+          assert receipt["status"] == "success", receipt
+          assert receipt["exit_code"] == 0, receipt
+          assert receipt["result_model"] == "omnimarket.nodes.node_deep_dive_report_effect.models.model_deep_dive_report_io.ModelDeepDiveReportResultEvent", receipt
+          result = receipt["result"]
+          assert result["report_date"] == "2026-10-23", result
+          assert result["quiet_day"] is True, result
+          assert result["metrics"]["total_prs"] == 0, result
+          assert "dry_run: no workspace reads performed" in result["report_markdown"], result
+          print(json.dumps({"run_id": receipt["run_id"], "status": receipt["status"], "report_date": result["report_date"], "quiet_day": result["quiet_day"]}))
+          ' "$probe_dir/receipt.json";
+          fixtures=tests/nodes/node_deep_dive_report_effect/fixtures;
+          uv run --locked python -m omnimarket.nodes.node_deep_dive_report_effect technical --date 2026-10-23 --facts "$fixtures/recorded_day_facts.json" --dropped-decisions "$fixtures/recorded_day_dropped_decisions.json" --ledger "$fixtures/recorded_day_ledger.md" --out "$probe_dir/report.md";
+          for heading in "## What changed, by area" "## Causes found and their fixes" "## Decisions made and restated" "## Open blockers" "## Do not rediscover"; do grep -qxF "$heading" "$probe_dir/report.md"; done;
+          ! grep -E '^- ' "$probe_dir/report.md" | grep -vE ' — |None recorded|^- [a-z_]+: [0-9]+$|^- decisions from:|^- left out|^- source error:';
+          printf '{"merged_changes":[{"repo":"omnimarket","title":"feat: no number"}]}' > "$probe_dir/facts.json";
+          uv run --locked python -m omnimarket.nodes.node_deep_dive_report_effect technical --date 2026-10-23 --facts "$probe_dir/facts.json" --out "$probe_dir/planted.md";
+          ! grep -q "no number" "$probe_dir/planted.md";
+          grep -q "left out for lack of a citation: 1" "$probe_dir/planted.md"
+        cwd: "${OMNI_HOME}/omnimarket"

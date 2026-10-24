@@ -111,6 +111,13 @@ def test_adapter_template_compact_binding_manual_renders_trigger_and_argv() -> N
     assert 'on("session.compact", { trigger: "manual" }' in text
     assert f"['onex-claude-code-hook', '--binding', '{binding.name}']" in text
     assert '{ tool: "manual" }' not in text
+    assert "never_started: 'deny'" in text
+    assert "other: 'deny'" in text
+    assert f"deny: (ran, fall) => ({{ deny: {json.dumps(binding.deny_text)} }})" in text
+    assert (
+        "plan.lines.forEach(line => $.ui.log(line))\n    return ANSWER[plan.answer](plan.ran, () => next(e))"
+        in text
+    )
 
 
 @pytest.mark.parametrize("trigger", ["auto", None, "other"])
