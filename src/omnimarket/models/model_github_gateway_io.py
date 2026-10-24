@@ -44,6 +44,8 @@ class EnumGithubGatewayOperation(StrEnum):
     # OMN-21146
     COMMIT_CHECK_RUNS = "commit_check_runs"
     MERGED_PR = "merged_pr"
+    # The review threads of a PR, with the resolved state only GraphQL reports.
+    PR_REVIEW_THREADS = "pr_review_threads"
 
 
 # Operations scoped to a single PR require ``pr_number``.
@@ -56,6 +58,7 @@ _PR_SCOPED_OPERATIONS: frozenset[EnumGithubGatewayOperation] = frozenset(
         EnumGithubGatewayOperation.TICKET_REF,
         EnumGithubGatewayOperation.PR_TEXT,
         EnumGithubGatewayOperation.MERGED_PR,
+        EnumGithubGatewayOperation.PR_REVIEW_THREADS,
     }
 )
 # Operations scoped to one workflow run require ``run_id``.
@@ -707,6 +710,52 @@ class ModelMergedPrResult(BaseModel):
     merged_at: str | None = None
 
 
+class ModelPrReviewThreadComment(BaseModel):
+    """One comment of a review thread."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    comment_id: int
+    author: str
+    created_at: str
+    url: str
+    body: str
+    body_truncated: bool
+
+
+class ModelPrReviewThread(BaseModel):
+    """One review thread: where it sits, whether it is resolved, its comments.
+
+    ``root_comment_id`` is the id of the thread's first comment, the id a reply
+    to the thread names.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    thread_id: str
+    is_resolved: bool
+    is_outdated: bool
+    path: str | None = None
+    line: int | None = None
+    root_comment_id: int
+    comment_count: int = Field(
+        ..., ge=0, description="GitHub's count; comments holds the first of them."
+    )
+    comments: list[ModelPrReviewThreadComment] = Field(default_factory=list)
+
+
+class ModelPrReviewThreadsResult(_ModelBoundedList):
+    """A PR's review threads, oldest first, with resolved state (GraphQL).
+
+    ``total_count`` and ``truncated`` describe the threads.
+    """
+
+    operation: Literal["pr_review_threads"] = "pr_review_threads"
+    repo: str
+    pr_number: int
+    threads: list[ModelPrReviewThread] = Field(default_factory=list)
+
+
 GithubGatewayResult = Annotated[
     ModelPrStatusResult
     | ModelCiChecksResult
@@ -723,7 +772,8 @@ GithubGatewayResult = Annotated[
     | ModelReleasesResult
     | ModelPrHeadsResult
     | ModelCommitCheckRunsResult
-    | ModelMergedPrResult,
+    | ModelMergedPrResult
+    | ModelPrReviewThreadsResult,
     Field(discriminator="operation"),
 ]
 
@@ -771,6 +821,9 @@ __all__: list[str] = [
     "ModelPrComment",
     "ModelPrHead",
     "ModelPrHeadsResult",
+    "ModelPrReviewThread",
+    "ModelPrReviewThreadComment",
+    "ModelPrReviewThreadsResult",
     "ModelPrStatusResult",
     "ModelPrTextResult",
     "ModelRelease",

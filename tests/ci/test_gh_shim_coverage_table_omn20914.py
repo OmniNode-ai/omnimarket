@@ -293,6 +293,7 @@ def test_the_hook_files_filter_selects_what_the_shim_reads(watched: str) -> None
         ("replaces gh api --method POST", "replaces gh api --method GET"),
         ("replaces gh api --method POST", "calls gh api --method POST"),
         ('verb="check-run-create"', 'verb="check-run-post"'),
+        ('verb="pr-thread-reply"', 'verb="pr-thread-post"'),
         ('replaces="gh api --method POST', 'replaces="gh api --method PATCH'),
     ],
 )
@@ -304,9 +305,10 @@ def test_api_write_replacement_drift_is_refused(old: str, new: str) -> None:
     )
 
 
-def test_api_write_requires_exactly_one_served_operation() -> None:
+@pytest.mark.parametrize("operation", ["check_run_create", "pr_thread_reply"])
+def test_api_write_requires_exactly_one_served_operation(operation: str) -> None:
     contract_text, dispatch_text = _real()
-    removed = [spec for spec in SCM_VERBS if spec.operation != "check_run_create"]
+    removed = [spec for spec in SCM_VERBS if spec.operation != operation]
     assert shim_coverage_violations(contract_text, dispatch_text, removed)
-    spec = next(spec for spec in SCM_VERBS if spec.operation == "check_run_create")
+    spec = next(spec for spec in SCM_VERBS if spec.operation == operation)
     assert shim_coverage_violations(contract_text, dispatch_text, [*SCM_VERBS, spec])

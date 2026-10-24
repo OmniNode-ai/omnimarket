@@ -1,0 +1,11 @@
+{
+  "trigger": "manual",
+  "instructions": "keep the open requirements",
+  "messages": [
+    {"role": "user", "text": "Summarise the failing test.", "toolUses": [], "handle": "h1"},
+    {"role": "assistant", "text": "Reading it now.", "toolUses": [{"id": "toolu_01", "name": "Read"}], "handle": "h2"},
+    {"role": "user", "text": "", "toolUses": [], "toolResults": [{"tool_use_id": "toolu_01", "text": "def test_x(): assert 1 == 2", "isError": false}], "handle": "h3"}
+  ],
+  "session_id": "7f3c2a1e-5b6d-4e8f-9a0b-1c2d3e4f5a6b",
+  "cwd": "/w"
+}

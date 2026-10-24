@@ -185,6 +185,40 @@ def _mock_db() -> AsyncMock:
     return db
 
 
+def _seed_terminal(mock_db: AsyncMock, correlation_id: str) -> None:
+    """Supply the terminal-owned row for the remaining verdict fill."""
+    terminal = {
+        "correlation_id": correlation_id,
+        "tenant_id": "91c74442-1233-4c97-b191-911a10346fdf",
+        "task_type": "code-review",
+        "delegated_to": "glm-5.2",
+        "model_name": "glm-5.2",
+        "backend_id": "zai",
+        "host": "h201",
+        "quality_gate_passed": False,
+        "quality_gate_detail": "terminal refusal",
+        "actual_score": 0.4,
+        "timestamp": datetime(2026, 9, 7, tzinfo=UTC),
+        "score_source": None,
+    }
+
+    async def execute(sql: str, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+        if sql.startswith("SELECT * FROM delegation_events"):
+            assert args == (correlation_id,)
+            assert kwargs["tenant"] == terminal["tenant_id"]
+            return [dict(terminal)]
+        if sql.startswith("INSERT INTO delegation_events"):
+            update = sql.split("DO UPDATE SET", 1)[1].split(" RETURNING ", 1)[0]
+            assert {part.split("=", 1)[0].strip() for part in update.split(",")} == {
+                "score_source",
+                "writer_identity",
+                "written_at",
+            }
+        return []
+
+    mock_db.execute = AsyncMock(side_effect=execute)
+
+
 def _insert_calls(mock_db: AsyncMock) -> list[Any]:
     return [
         call
@@ -296,6 +330,7 @@ class TestTheMigrationSaysTimestampIsNotNull:
 @pytest.mark.unit
 class TestQualityGateResultRowCarriesTheEnvelopeEventTime:
     def test_row_timestamp_equals_the_envelope_time(self) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         """RED before OMN-15583: ``timestamp`` was not a column of this INSERT
         at all, so on onex-dev -- where the column carries no DEFAULT -- the
         statement raised 23502 and the verdict went to the DLQ with its offset
@@ -305,6 +340,7 @@ class TestQualityGateResultRowCarriesTheEnvelopeEventTime:
         mock_db = _mock_db()
         runner._db = mock_db
         correlation_id = str(uuid4())
+        _seed_terminal(mock_db, correlation_id)
 
         ok = asyncio.run(
             runner.project_event(
@@ -324,6 +360,7 @@ class TestQualityGateResultRowCarriesTheEnvelopeEventTime:
         assert row["timestamp"] == _ENVELOPE_TIMESTAMP
 
     def test_the_bound_value_is_a_datetime_not_a_string(self) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         """asyncpg's TIMESTAMPTZ codec raises DataError on a str param
         (OMN-15905's acceptance-lane defect at a different call site)."""
         _published, capture = _capture_publishes()
@@ -331,6 +368,7 @@ class TestQualityGateResultRowCarriesTheEnvelopeEventTime:
         mock_db = _mock_db()
         runner._db = mock_db
         correlation_id = str(uuid4())
+        _seed_terminal(mock_db, correlation_id)
 
         asyncio.run(
             runner.project_event(
@@ -343,6 +381,7 @@ class TestQualityGateResultRowCarriesTheEnvelopeEventTime:
         assert isinstance(_proposed_row(mock_db)["timestamp"], datetime)
 
     def test_the_time_is_the_producers_not_the_projections_wall_clock(self) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         """The distinction the whole ticket turns on: ``DEFAULT NOW()`` and
         ``datetime.now()`` both record the WRITE time. This column is the
         EVENT time."""
@@ -351,6 +390,7 @@ class TestQualityGateResultRowCarriesTheEnvelopeEventTime:
         mock_db = _mock_db()
         runner._db = mock_db
         correlation_id = str(uuid4())
+        _seed_terminal(mock_db, correlation_id)
         before = datetime.now(tz=UTC)
 
         asyncio.run(
@@ -370,6 +410,7 @@ class TestQualityGateResultRowCarriesTheEnvelopeEventTime:
     def test_timestamp_is_insert_only_and_never_re_times_an_existing_row(
         self,
     ) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         """A verdict annotates a delegation row; it must never restate WHEN the
         delegation happened. Held structurally by ``insert_only_columns`` rather
         than by the existing-row probe, so a terminal landing between the probe
@@ -379,6 +420,7 @@ class TestQualityGateResultRowCarriesTheEnvelopeEventTime:
         mock_db = _mock_db()
         runner._db = mock_db
         correlation_id = str(uuid4())
+        _seed_terminal(mock_db, correlation_id)
 
         asyncio.run(
             runner.project_event(
@@ -474,6 +516,8 @@ def _row_for_each_write_site() -> dict[str, dict[str, Any]]:
         mock_db = _mock_db()
         runner._db = mock_db
         correlation_id = str(uuid4())
+        if name == "quality_gate_result":
+            _seed_terminal(mock_db, correlation_id)
         topic = topic_of(runner)
         assert topic, f"contract must declare the {name} topic"
         ok = asyncio.run(
@@ -491,6 +535,7 @@ def _row_for_each_write_site() -> dict[str, dict[str, Any]]:
 @pytest.mark.unit
 class TestEveryWriteSiteSatisfiesTheNotNullSet:
     def test_every_not_null_column_is_supplied_or_schema_defaulted(self) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         """For each write site, every NOT NULL column is either bound by the row
         or carries a DEFAULT in the migration that created the table. A column
         that is neither is a 23502 waiting for a producer that omits it."""
@@ -505,6 +550,7 @@ class TestEveryWriteSiteSatisfiesTheNotNullSet:
                 )
 
     def test_every_write_site_supplies_timestamp_itself(self) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         """The stronger rule this ticket adds. ``timestamp`` HAS a DEFAULT in
         the migration, which is exactly why its absence went unnoticed for so
         long -- and that default is missing on a warm lane whose column predates

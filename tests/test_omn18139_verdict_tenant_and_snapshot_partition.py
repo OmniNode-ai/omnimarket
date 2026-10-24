@@ -200,6 +200,7 @@ class TestTheRecordedTenantIsStillHonoured:
 
     @pytest.mark.asyncio
     async def test_a_verdict_carrying_a_tenant_is_written_under_it(self) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         runner = _runner()
 
         async def _resolve(identity: str | None) -> str | None:
@@ -213,15 +214,59 @@ class TestTheRecordedTenantIsStillHonoured:
             seen.append(kwargs)
 
         runner._dynamic_upsert = _upsert  # type: ignore[assignment]
+        correlation_id = str(uuid4())
+        terminal = {
+            "correlation_id": correlation_id,
+            "tenant_id": _SUBMITTING_TENANT,
+            "task_type": "code-review",
+            "delegated_to": "glm-5.2",
+            "model_name": "glm-5.2",
+            "backend_id": "zai",
+            "host": "h201",
+            "quality_gate_passed": False,
+            "quality_gate_detail": "terminal refusal",
+            "actual_score": 0.4,
+            "timestamp": "2026-09-09T00:00:00+00:00",
+            "score_source": None,
+        }
+
+        async def execute(sql: str, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+            assert sql.startswith("SELECT * FROM delegation_events")
+            assert args == (correlation_id,)
+            assert kwargs["tenant"] == _SUBMITTING_TENANT
+            return [dict(terminal)]
+
+        runner._db.execute = AsyncMock(side_effect=execute)
 
         await runner._project_quality_gate_result(
-            _verdict(correlation_id=str(uuid4()), tenant_id=_SUBMITTING_TENANT),
+            _verdict(correlation_id=correlation_id, tenant_id=_SUBMITTING_TENANT),
             MessageMeta(partition=0, offset=266, fallback_id="f"),
         )
 
         assert len(seen) == 1, "an attributable verdict was not written"
         # The central writer resolves the GUC from this already resolved row tenant.
         assert seen[0]["row"]["tenant_id"] == _SUBMITTING_TENANT
+        assert seen[0]["insert_only_columns"] == frozenset(
+            {"tenant_id", "timestamp", "task_type", "delegated_to"}
+        )
+        row = seen[0]["row"]
+        assert set(row) == {
+            "correlation_id",
+            "tenant_id",
+            "timestamp",
+            "task_type",
+            "delegated_to",
+            "score_source",
+        }
+        updated = {
+            **terminal,
+            **{
+                key: value
+                for key, value in row.items()
+                if key not in seen[0]["insert_only_columns"]
+            },
+        }
+        assert updated == {**terminal, "score_source": "deterministic_acceptance"}
 
 
 class TestTheTenantPartitionSurvivesTheSnapshotBoundary:

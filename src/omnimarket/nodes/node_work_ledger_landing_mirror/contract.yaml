@@ -35,6 +35,12 @@ runtime_dispatch:
   command_topic: onex.evt.omnimarket.pr-landing-decision-completed.v1
   subscribe_topics:
     - onex.evt.omnimarket.pr-landing-decision-completed.v1
+# The provisioner reads consumed_events, not runtime_dispatch; this entry
+# makes the topic exist on the broker.
+consumed_events:
+  - event_type: ModelLandingDecision
+    topic: onex.evt.omnimarket.pr-landing-decision-completed.v1
+    description: The landing decision node's success terminal, mirrored into ledger rows by the ledger host's serve.
 published_events:
   - event_type: ModelWorkLedgerAppendRequest
     topic: onex.cmd.omnimarket.work-ledger-append-requested.v1

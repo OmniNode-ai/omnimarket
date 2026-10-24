@@ -224,7 +224,10 @@ class TestAStoredFailureIsNeverPartlyOverwritten:
             assert row["operational_outcome"] == "timeout"
             assert row["content_verdict"] == "not_applicable"
             assert row["quality_gate_passed"] is False
-            assert not row["model_name"]
+            # OMN-19448: the failure owns the model columns and was never
+            # routed, so it reads what the reverse order reads.
+            assert row["model_name"] == "not routed (timeout)"
+            assert row["delegated_to"] == row["model_name"]
             assert not row["actual_score"]
 
     async def test_inner_completed_alone_is_the_row(self) -> None:

@@ -1,0 +1,138 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21341"
+title: "TA.15c omnimarket half: the rendered mod module writes one failure line on every failure path"
+summary: "The rendered Claude Code mod module's fixed failure table fell back natively (or denied) with no line at all, so a /compact whose adapter was absent, exited non-zero or threw was silent. Each failure plan now carries exactly one transcript line, naming the exit code or the error text, that the hook writes through $.ui.log before it falls back or denies as before. This is the one failure line OMN-21116 AC2 asks for. The adapter default receipt-mode client spec moves to omnibase_infra.handlers.handler_receipt_mode_publish_await:HandlerReceiptModePublishAwait, the omnibase_infra half of OMN-21341 (AC1); AC2 (no exit 4) is proven on h200 once a dev-merge tag of omnibase_infra carrying it is installed."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21341-failure-line"
+    statement: |-
+      Every failure path of the rendered module, at every host maximum mode, writes exactly one $.ui.log line before it falls back natively or denies. Failure plans carry a reason; the engine interface is used only directly in the hook and never passed to a table.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: the rendered mod module's fixed failure table writes exactly one transcript line through $.ui.log on every failure path (adapter absent, non-zero exit, thrown hook) before it falls back natively or denies -- falsifier: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_render.py -q fails.
+evidence_requirements:
+  - kind: "tests"
+    description: "AC3: the render tests, including the one-line-per-failure-entry test at every max mode and the no-branching residue check."
+    command: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_render.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21341-failure-line"
+    description: "AC3: one $.ui.log line per failure path, no branching added."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_render.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21341-deploy-failure-line-runtime"
+    description: "Hosted deploy smoke: dispatch the shipped manual compaction binding through the in-process ONEX render node at every maximum mode and read its typed receipts. Require successful receipts, a module hash matching its bytes, exactly one failure line before each expected native or deny disposition by executing the rendered JavaScript for non-zero exits, missing adapters, rejected processes and thrown hooks. Also require silent successful output and native success. The pre-change template has no log calls. No lane services, credentials, or production install are required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          export COMPOSE_PROJECT_NAME=landing-l16133-lab;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+          uv run --locked python - "$probe_dir" <<'PY'
+          import sys
+          from pathlib import Path
+          from omnimarket.models.claude_code_binding import EnumClientMaxMode, ModelBindingRenderRequest
+          from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_client_bindings_loader import load_client_section
+          root = Path(sys.argv[1])
+          bindings = load_client_section().bindings
+          assert len(bindings) == 1 and bindings[0].hook_event == "session.compact" and bindings[0].matcher_tool == "manual", bindings
+          for mode in EnumClientMaxMode:
+              request = ModelBindingRenderRequest(bindings=bindings, max_mode=mode)
+              (root / f"{mode.value}.input.json").write_text(request.model_dump_json())
+          PY
+          for mode in observe selective required; do
+            env ONEX_LANE=omn21341-deploy-probe "$runtime_bin/onex" node node_claude_code_binding_render_compute --input "$probe_dir/$mode.input.json" --state-root "$probe_dir/$mode.state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/$mode.receipt.json";
+          done;
+          uv run --locked python - "$probe_dir" <<'PY'
+          import hashlib
+          import json
+          import sys
+          import subprocess
+          from pathlib import Path
+          from omnimarket.models.claude_code_binding import EnumClientMaxMode
+          root = Path(sys.argv[1])
+          for mode in EnumClientMaxMode:
+              receipt = json.loads((root / f"{mode.value}.receipt.json").read_text())
+              assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+              rendered = receipt["result"]
+              text = rendered["module_text"]
+              digest = hashlib.sha256(text.encode()).hexdigest()
+              assert digest == rendered["module_sha256"], receipt
+              assert 'on("session.compact", { trigger: "manual" }' in text
+              table = text.split("const FALLBACK = {", 1)[1].split("\n}", 1)[0]
+              entries = [line.strip() for line in table.splitlines() if line.strip()]
+              assert [entry.split(":", 1)[0] for entry in entries] == ["never_started", "other"], entries
+              dispositions = {"observe": ("native", "native"), "selective": ("native", "deny"), "required": ("deny", "deny")}
+              for entry, disposition in zip(entries, dispositions[mode.value], strict=True):
+                  assert entry.split(":", 1)[1].strip().rstrip(",") == repr(disposition), entry
+              assert "false: ran => ({ ran, lines: [FAILED + 'exit ' + ran.exitCode], answer: FALLBACK.other })" in text
+              assert "lines: [FAILED + String(err)], answer: FALLBACK[KIND[String(PATTERN_compaction.test(String(err)))]]" in text
+              assert text.index("plan.lines.forEach(line => $.ui.log(line))") < text.index("return ANSWER[plan.answer]")
+              assert ".catch(($, e, next) => ($.ui.log(FAILED + 'hook threw'), ANSWER[FALLBACK.other](undefined, () => next(e))))" in text
+              assert text.count("$.ui.log(") == 2
+              assert "import type { Register } from 'claude-code'" in text
+              assert "export const register: Register =" in text
+              executable = text.replace("import type { Register } from 'claude-code'", "").replace("export const register: Register =", "const register =")
+              harness = r"""
+          const mode = process.argv[2]
+          const prefix = 'onex hook adapter did not answer: '
+          let hook, catcher
+          const on = (event, matcher, handler) => {
+            if (event !== 'session.compact' || matcher.trigger !== 'manual') throw Error('wrong binding')
+            hook = handler
+            return { catch: handler => { catcher = handler } }
+          }
+          register(on)
+          const cases = [
+            { name: 'exit', result: { exitCode: 4, stdout: '' }, why: 'exit 4', kind: 'other' },
+            { name: 'missing', error: 'ENOENT adapter absent', why: 'Error: ENOENT adapter absent', kind: 'never_started' },
+            { name: 'rejected', error: 'adapter failed', why: 'Error: adapter failed', kind: 'other' },
+            { name: 'thrown', result: { exitCode: 0, stdout: '{invalid' }, why: 'hook threw', kind: 'other' },
+            { name: 'native-success', result: { exitCode: 0, stdout: '' }, kind: 'native' },
+            { name: 'output-success', result: { exitCode: 0, stdout: '{"updatedMessages":[]}' }, kind: 'output' },
+          ]
+          for (const item of cases) {
+            const seen = []
+            const e = { trigger: 'manual', messages: [] }
+            const $ = {
+              session: { id: async () => 'probe-session', cwd: async () => '/probe' },
+              process: { run: async (argv, options) => {
+                const input = JSON.parse(options.stdin)
+                if (input.session_id !== 'probe-session' || input.cwd !== '/probe') throw Error('missing engine input')
+                if (item.error) throw Error(item.error)
+                return item.result
+              } },
+              ui: { log: line => { seen.push(['log', line]) } },
+            }
+            const next = event => { if (event !== e) throw Error('wrong event'); seen.push(['native']); return { native: true } }
+            let answer
+            try { answer = await hook($, e, next) }
+            catch (error) { answer = await catcher($, e, next) }
+            const native = item.kind === 'native' || (item.kind === 'never_started' && mode !== 'required') || (item.kind === 'other' && mode === 'observe')
+            const expected = item.why ? [['log', prefix + item.why]] : []
+            if (native) expected.push(['native'])
+            const result = item.kind === 'output' ? { updatedMessages: [] } : native ? { native: true } : { deny: 'compaction unavailable' }
+            if (JSON.stringify(seen) !== JSON.stringify(expected)) throw Error(JSON.stringify({ mode, case: item.name, seen, expected }))
+            if (JSON.stringify(answer) !== JSON.stringify(result)) throw Error(JSON.stringify({ mode, case: item.name, answer, result }))
+            console.log(JSON.stringify({ mode, case: item.name, logs: seen.filter(row => row[0] === 'log').length, disposition: native ? 'native' : item.kind === 'output' ? 'output' : 'deny' }))
+          }
+          """
+              subprocess.run(["node", "--input-type=module", "-", mode.value], input=executable + harness, text=True, check=True)
+              print(json.dumps({"mode": mode.value, "run_id": receipt["run_id"], "sha256": digest, "failure_entries": len(entries), "runtime_readback": True}))
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"

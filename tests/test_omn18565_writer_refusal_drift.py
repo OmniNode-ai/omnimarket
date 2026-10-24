@@ -175,29 +175,42 @@ class TestBothWritersRefuseAnUnattributableVerdict:
         )
 
     def test_the_sync_path_still_writes_an_attributed_verdict(self) -> None:
-        """Negative control on both assertions above.
-
-        Without it, a writer that refused EVERY verdict -- including the
-        attributed ones the fix exists to let through -- would satisfy this
-        module completely.
-        """
+        """OMN-19448 rule 1: an attributed verdict fills only a stored row's source."""
         db = InmemoryDatabaseAdapter()
         correlation_id = str(uuid4())
-
+        terminal = {
+            "correlation_id": correlation_id,
+            "tenant_id": "820272f9-4aaf-5add-a2df-0af942852ab2",
+            "task_type": "code-review",
+            "delegated_to": "qwen",
+            "model_name": "qwen",
+            "backend_id": "local-qwen",
+            "host": "h201",
+            "quality_gate_passed": False,
+            "quality_gate_detail": "terminal refusal",
+            "actual_score": 0.4,
+            "timestamp": "2026-09-16T00:00:00+00:00",
+            "score_source": None,
+        }
+        db.upsert(TABLE, "correlation_id", terminal)
         result = HandlerProjectionDelegation().project_quality_gate_result(
             ModelQualityGateResult(
                 correlation_id=correlation_id,
                 passed=True,
                 quality_score=1.0,
                 actual_score=1.0,
+                score_source="deterministic_acceptance",
             ),
             db,
             tenant_identity="omninode",
             event_timestamp=_ENVELOPE_TIMESTAMP,
         )
-
         assert result.rows_upserted == 1
-        assert db.query(TABLE, {"correlation_id": correlation_id})
+        (stored,) = db.query(TABLE, {"correlation_id": correlation_id})
+        assert {key: stored[key] for key in terminal} == {
+            **terminal,
+            "score_source": "deterministic_acceptance",
+        }
 
 
 class TestNeitherVerdictPathCanReachTheHouseTenant:

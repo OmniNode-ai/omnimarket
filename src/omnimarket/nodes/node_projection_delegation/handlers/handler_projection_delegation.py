@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -95,8 +95,12 @@ from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction 
     reduce_delegation_attempts,
 )
 from omnimarket.nodes.node_projection_delegation.models.model_terminal_precedence import (
+    NOT_ROUTED,
     apply_terminal_precedence,
     fold_terminal_ownership,
+    is_failure_terminal,
+    names_no_model,
+    rung_verdict_fill,
     supersedes_handler_failure,
 )
 from omnimarket.pricing import (
@@ -137,6 +141,12 @@ from omnimarket.projection.tenant_registry_resolution import (
 
 TABLE = "delegation_events"
 CONFLICT_KEY = "correlation_id"
+# The delegated_to a delegate-skill terminal states when it names no model or
+# provider (ModelDelegationEventProjectionRow.from_terminal_event).
+_DELEGATE_SKILL_PLACEHOLDER = "delegate-skill"
+# OMN-19448: what a failed run that was never routed reads for model, backend
+# and host, and the model values that name no model.
+_UNNAMED_MODELS = frozenset({"unknown", "none"})
 GENERATION_TABLE = "generation_events"
 JUDGE_VERDICT_TABLE = "delegation_judge_verdict_events"
 JUDGE_VERDICT_CONFLICT_KEY = "event_hash"
@@ -909,6 +919,7 @@ class HandlerProjectionDelegation:
         )
         row.update(evidence)
         _preserve_existing_evidence(db, row)
+        _stamp_not_routed(row)
         # OMN-20303: the canonical completion can outlive the outer handler
         # during shutdown. Keep the same token-derived baseline the savings
         # writer uses, only after retaining any originally pinned baseline.
@@ -1150,6 +1161,8 @@ class HandlerProjectionDelegation:
         # delegation-completed.v1 canonical event. _preserve_existing_evidence
         # retains the existing non-blank value when the incoming row has none.
         _preserve_existing_evidence(db, row)
+        _stamp_not_routed(row)
+        _stamp_unmeasured_latency(row, event.execution_duration_ms)
         apply_modelled_terminal_savings(row, event)
         ok = bool(
             self._write_delegation_row(db, row, insert_only_columns=tenant_insert_only)
@@ -1256,7 +1269,13 @@ class HandlerProjectionDelegation:
         tenant_identity: str | None = None,
         event_timestamp: datetime | None = None,
     ) -> ModelProjectionResult:
-        """UPSERT a quality-gate verdict onto the delegation_events row.
+        """Fill what a rung's quality-gate verdict may add to its run's row.
+
+        OMN-19448 supersedes the verdict-first INSERT described below: a verdict
+        is one rung's, the run's terminal owns the row, and the verdict now
+        creates no row and states no run verdict, detail or score (see
+        ``rung_verdict_fill``). The history that follows explains the NOT NULL
+        and tenant columns the remaining write still names.
 
         OMN-15850. The business-proof ``quality_gate`` check
         (``evaluate_business_proof.py::_check_quality_gate``) reads
@@ -1397,110 +1416,50 @@ class HandlerProjectionDelegation:
             )
             return ModelProjectionResult(rows_upserted=0, table=TABLE)
         write_tenant = resolved_tenant_uuid
+        # OMN-19448: a rung's verdict is not the run's. The workflow publishes
+        # one verdict per rung before the run's terminal, so a verdict that
+        # created the row (task type, model, tokens and tier blank, verdict
+        # false) showed every climbing run as a failed run with an unknown model
+        # until its terminal landed, and a late first-rung refusal rewrote a
+        # passed run's verdict. The terminal carries every rung on its ladder
+        # and owns the row; the verdict only fills a blank ``score_source``.
+        correlation_id = str(event.correlation_id)
+        # Probe under the write tenant, as ``_preserve_existing_evidence`` does
+        # (OMN-20651): an unscoped read under FORCE RLS sees no row, so the
+        # verdict would never fill its terminal's blank ``score_source``.
+        existing = db.query(
+            TABLE, {CONFLICT_KEY: correlation_id, "tenant_id": write_tenant}
+        )
+        fill = rung_verdict_fill(
+            existing[0] if existing else None,
+            {"score_source": event.score_source or None},
+        )
+        if not fill:
+            logger.info(
+                "quality-gate verdict for correlation_id=%s writes no row "
+                "(OMN-19448): %s",
+                correlation_id,
+                "the run's terminal has not been projected yet and a rung's "
+                "verdict does not author the run row"
+                if not existing
+                else "the stored terminal owns the run's verdict",
+            )
+            return ModelProjectionResult(rows_upserted=0, table=TABLE)
         row: dict[str, object] = {
-            "correlation_id": str(event.correlation_id),
-            # OMN-17422: the verdict row always NAMES its tenant. Leaving the
-            # key off let the deployed column DEFAULT supply the value while
-            # ``resolve_write_tenant`` synthesised the ``app.tenant_id`` GUC
-            # from an independent authority, and Postgres refuses the proposed
-            # INSERT row of an ``ON CONFLICT`` statement whenever those two
-            # disagree -- the onex-dev refusal this ticket closes. The async
-            # twin additionally keeps the column out of its ``DO UPDATE SET``
-            # clause; this path writes through the shared
-            # ``DatabaseAdapter.upsert`` protocol, which has no per-column
-            # update seam, so on an existing row it rewrites the attribution
-            # with the value it resolved from the producer's own envelope
-            # stamp -- the same identity the terminal event recorded, or a
-            # refusal under RLS if it is not.
+            "correlation_id": correlation_id,
             "tenant_id": write_tenant,
-            # OMN-17228: named here for the same reason ``timestamp`` is named
-            # below, and on the same measured lane fact.
-            # ``delegation_events.task_type`` and ``delegated_to`` are both
-            # ``TEXT NOT NULL DEFAULT ''`` in ``0007_delegation_events.sql``'s
-            # CREATE TABLE and both are re-declared in its OMN-15376
-            # reconciliation block as ``ADD COLUMN IF NOT EXISTS ... DEFAULT
-            # ''`` -- which no-ops on a column that already exists and
-            # therefore never installs the missing DEFAULT on a drifted lane.
-            # onex-dev (DEV-SYSTEM ``i-06169517a92b45f86``) is such a lane:
-            # read live from ``information_schema.columns`` 2026-09-10, both
-            # are ``is_nullable=NO`` with ``column_default=NULL``. Postgres
-            # evaluates NOT NULL against the PROPOSED insert row before the
-            # conflict is resolved, so omitting them fails the statement even
-            # when it was only ever going to take the DO UPDATE arm.
-            #
-            # THIS PATH IS THE ONE THAT RUNS. The async twin
-            # (``handler_delegation._project_quality_gate_result``) took this
-            # fix on 2026-09-10 and this file's own prose asserted the twin was
-            # what the deployed ``omnimarket-projection-delegation-writer``
-            # runs. It is not: the writer is dispatched by the omnibase_infra
-            # runtime's auto-wiring, which calls THIS handler. Live traceback
-            # from the running pod, 2026-09-15T16:43Z --
-            # ``handler_projection_delegation.py:1195`` ->
-            # ``:525`` -> ``psycopg2.errors.NotNullViolation: null value in
-            # column "task_type"``. The refusal is not dead-lettered on that
-            # path: omnibase_infra wraps it in
-            # ``ProjectionNotMaterializedError`` and withholds the offset
-            # (OMN-17379), so one verdict wedged the partition rather than
-            # costing one row.
-            #
-            # The value is the empty string because that is precisely what
-            # ``0007`` declares as these columns' DEFAULT, so naming it
-            # reproduces the schema's own intent without depending on a DEFAULT
-            # a drifted lane does not have. ``ModelQualityGateResult`` is
-            # ``extra="forbid"`` and carries neither field, so the verdict has
-            # nothing truer to say about them. Both are held insert-only below.
+            # OMN-15583 / OMN-17228: named so the proposed INSERT row satisfies
+            # NOT NULL on a lane whose DEFAULTs went missing, and held insert-only
+            # so they never touch the stored terminal's values.
             "task_type": "",
             "delegated_to": "",
-            "quality_gate_passed": event.passed,
-            "quality_gate_detail": "; ".join(event.failure_reasons) or None,
-            "actual_score": (
-                event.actual_score
-                if event.actual_score is not None
-                else event.quality_score
-            ),
-            "score_source": event.score_source or None,
+            "timestamp": event_timestamp,
+            **fill,
         }
-        existing = db.query(TABLE, {CONFLICT_KEY: row["correlation_id"]})
-        if not existing:
-            # OMN-13171 pattern: only a genuine fresh row needs the explicit
-            # stamp -- an UPDATE leaves the terminal event's created_at intact
-            # because it is not named in this dict (ON CONFLICT DO UPDATE SET
-            # <listed columns only>).
-            row["created_at"] = datetime.now(tz=UTC).isoformat()
-        # OMN-15583 / OMN-17228: ``timestamp`` is named UNCONDITIONALLY, not
-        # only on a fresh row, and held insert-only below.
-        #
-        # The previous revision named it inside the ``not existing`` branch and
-        # explained that as the fresh-row-only guard, citing "the shared
-        # ``DatabaseAdapter.upsert`` protocol, which has no per-column
-        # insert-only seam" and asserting that the async twin "is the path the
-        # deployed ``omnimarket-projection-delegation-writer`` runs". Both
-        # halves are now false. OMN-18159 routed all three write paths through
-        # ``_write_delegation_row``, which takes ``insert_only_columns``, so
-        # the seam exists here; and the live traceback above proves THIS
-        # handler is the deployed one.
-        #
-        # The residual that revision stated -- "on a drifted lane whose
-        # ``timestamp`` column has no default, an existing-row UPSERT from THIS
-        # path still proposes a NULL for it" -- was therefore reachable, not
-        # hypothetical: a verdict arriving after its terminal on onex-dev
-        # proposes a NULL ``timestamp`` and wedges the partition exactly as
-        # ``task_type`` did. Naming it always and holding it insert-only closes
-        # that and the probe's read-then-write race in one move: a terminal
-        # landing between the probe and this statement takes the DO UPDATE arm,
-        # which no longer carries it.
-        row["timestamp"] = event_timestamp
         ok = bool(
             self._write_delegation_row(
                 db,
                 row,
-                # Named so the proposed INSERT row is valid on a lane whose
-                # DEFAULTs went missing; held out of DO UPDATE SET so the
-                # empty-string placeholders can never erase a real task type,
-                # target or event time a terminal event already recorded. This
-                # is the same frozenset the async twin passes, and the
-                # divergence between the two is what
-                # ``tests/test_omn17228_sync_writer_not_null_columns.py`` binds.
                 insert_only_columns=frozenset(
                     {"task_type", "delegated_to", "timestamp"}
                 ),
@@ -2107,6 +2066,11 @@ def _preserve_existing_evidence(
         "finish_reason",
         "requested_model",
     ):
+        # OMN-17427: a failure over a stored completion owns the model
+        # columns, so it inherits no routed model from the event it
+        # replaces and both arrival orders read the same failure.
+        if key == "routed_model" and not carry_score:
+            continue
         if _is_blank(row.get(key)) and not _is_blank(existing.get(key)):
             row[key] = existing[key]
             if key == "finish_reason" and row.get("truncated") is None:
@@ -2125,6 +2089,78 @@ def _preserve_existing_evidence(
     ):
         row["compliance_attempts"] = existing["compliance_attempts"]
     _preserve_terminal_failure(existing, row)
+    # OMN-19448: after precedence, so a model inherited from the stored row
+    # never makes an unevidenced handler failure read as evidenced.
+    _preserve_run_attribution(existing, row)
+
+
+def _is_unnamed_model(value: object) -> bool:
+    """True for a model column that names no model (OMN-19448)."""
+    return (
+        _is_blank(value)
+        or str(value).strip().lower() in _UNNAMED_MODELS
+        or names_no_model(value)
+    )
+
+
+def _preserve_run_attribution(
+    existing: Mapping[str, object], row: dict[str, object]
+) -> None:
+    """Keep the model a stored event named when a later event names none (OMN-19448).
+
+    A failed run names the model of its last rung. A sparse event for the same
+    run (a canonical terminal, a late timeout) carries no model, so whichever
+    order the events arrive in, the row keeps the model that was named: this
+    runs on every write, and a later event that does name a model replaces it.
+
+    A failure terminal over a stored non-failure row owns the model columns
+    (OMN-17427), so it inherits no model from the event it replaces: both
+    arrival orders then read the same failure.
+    """
+    if is_failure_terminal(row) and not is_failure_terminal(existing):
+        return
+    for key in ("model_name", "cost_tier_name"):
+        if _is_unnamed_model(row.get(key)) and not _is_unnamed_model(existing.get(key)):
+            row[key] = existing[key]
+    stored_target = existing.get("delegated_to")
+    if (
+        (
+            _is_blank(row.get("delegated_to"))
+            or row.get("delegated_to") == _DELEGATE_SKILL_PLACEHOLDER
+        )
+        and not _is_unnamed_model(stored_target)
+        and stored_target != _DELEGATE_SKILL_PLACEHOLDER
+    ):
+        row["delegated_to"] = stored_target
+
+
+def _stamp_not_routed(row: dict[str, object]) -> None:
+    """Name a failed run that carried no try as not routed, with the reason (OMN-19448).
+
+    A run that failed before any try (a timeout before routing, a runtime
+    shutdown) has no rung to name a model, backend or host from, and its row
+    used to read blank, which the dashboard shows as an unknown model. When
+    neither this event nor an earlier one named a model, the row reads
+    ``not routed (<cause>)`` for the model and ``not routed`` for the backend and
+    host, so a failed run never reads unknown. A run that was routed names its
+    routed model and backend instead and is not touched here.
+    """
+    if row.get("terminal_ok") is not False:
+        return
+    if not _is_unnamed_model(row.get("model_name")) or not _is_blank(
+        row.get("routed_model")
+    ):
+        return
+    cause = row.get("terminal_failure_cause")
+    reason = str(cause) if not _is_blank(cause) else "no routing decision recorded"
+    row["model_name"] = f"{NOT_ROUTED} ({reason})"
+    if _is_blank(row.get("delegated_to")) or (
+        row.get("delegated_to") == _DELEGATE_SKILL_PLACEHOLDER
+    ):
+        row["delegated_to"] = row["model_name"]
+    for key in ("backend_id", "host"):
+        if _is_blank(row.get(key)):
+            row[key] = NOT_ROUTED
 
 
 def _deciding_rung_stop_reason(rungs: object) -> tuple[str | None, bool | None]:
@@ -2213,6 +2249,26 @@ def _stamp_terminal_timing_and_requested_model(
             row[key] = value
 
 
+def _stamp_unmeasured_latency(
+    row: dict[str, object], execution_duration_ms: int | None
+) -> None:
+    """Report a run's measured duration when no latency reached its row (OMN-19448).
+
+    A budget-cancelled, shut-down or failed delegate-skill terminal states
+    ``latency_ms`` 0 because no call was timed, and 1,397 of 1,630 failed rows
+    on the dev lane in the week to 2026-10-22 read a 0 ms duration. The handler
+    measured how long the run took (``execution_duration_ms``); that is the
+    row's duration when no event, this one or an earlier one kept by the
+    preserve step, supplied a latency. A measured latency is never replaced.
+    """
+    duration = _nonnegative_int_or_none(execution_duration_ms)
+    if not duration:
+        return
+    for key in ("latency_ms", "delegation_latency_ms"):
+        if _is_zero(row.get(key)):
+            row[key] = duration
+
+
 def _blank_to_none(value: object) -> str | None:
     """Return a stripped string, or None for a missing or blank value."""
     if isinstance(value, str) and value.strip():
@@ -2224,30 +2280,55 @@ def _stamp_accepting_attempt(
     row: dict[str, object],
     attempts: Iterable[ModelDelegateSkillAttemptRecord],
 ) -> None:
-    """Name the backend and host of the attempt that answered (OMN-20162).
+    """Name the backend, host and model of the rung that served the run.
 
-    The accepting attempt is the first rung whose quality gate passed and that
-    carries no failure class. A terminal with no accepted rung names neither
-    column, so the row stores NULL, never an empty backend.
+    OMN-20162: the accepting attempt is the first rung whose quality gate passed
+    and that carries no failure class. It is also the routed model and answering
+    backend the canonical terminal names as model_used and route (OMN-19448), so
+    a delegate-skill-only row stores them too.
 
-    The accepting attempt is also the routed model and answering backend the
-    canonical terminal names as model_used and route (OMN-19448), so a
-    delegate-skill-only row stores them too.
+    OMN-19448: a run with no accepted rung was still routed, called and refused
+    somewhere, and its row used to name no backend, host or routed model at all
+    (1,629 of 1,630 failed rows on the dev lane in the week to 2026-10-22). Such
+    a row now names them from its deciding rung, the last one the run reached,
+    the rung :func:`_stamp_routing_tier` already reads for its tier.
+    ``answering_backend`` stays the accepting rung's only: a refused rung did not
+    deliver the run's answer. A terminal with no rungs names none of them, so the
+    row stores NULL, never an empty backend.
+
+    When the terminal names no model (``model_name`` blank, ``delegated_to`` the
+    ``delegate-skill`` placeholder), the serving rung's model fills them, so a
+    failed run reads the model that was called rather than an unknown one.
     """
-    for attempt in attempts:
-        if not attempt.quality_gate_passed or (attempt.failure_class or "").strip():
-            continue
-        for key, value in (("backend_id", attempt.backend_id), ("host", attempt.host)):
-            text = _blank_to_none(value)
-            if text is not None:
-                row[key] = text
-        routed_model = _blank_to_none(attempt.model_id)
-        if routed_model is not None:
-            row["routed_model"] = routed_model
-        answering_backend = _blank_to_none(attempt.backend_id)
+    ladder = list(attempts)
+    accepted = next(
+        (
+            attempt
+            for attempt in ladder
+            if attempt.quality_gate_passed and not (attempt.failure_class or "").strip()
+        ),
+        None,
+    )
+    serving = accepted if accepted is not None else (ladder[-1] if ladder else None)
+    if serving is None:
+        return
+    for key, value in (("backend_id", serving.backend_id), ("host", serving.host)):
+        text = _blank_to_none(value)
+        if text is not None:
+            row[key] = text
+    routed_model = _blank_to_none(serving.model_id)
+    if routed_model is not None:
+        row["routed_model"] = routed_model
+        if _is_blank(row.get("model_name")):
+            row["model_name"] = routed_model
+        if _is_blank(row.get("delegated_to")) or row.get("delegated_to") == (
+            _DELEGATE_SKILL_PLACEHOLDER
+        ):
+            row["delegated_to"] = routed_model
+    if accepted is not None:
+        answering_backend = _blank_to_none(accepted.backend_id)
         if answering_backend is not None:
             row["answering_backend"] = answering_backend
-        return
 
 
 def _stamp_routing_tier(

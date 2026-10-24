@@ -55,14 +55,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.enums.enum_work_ledger_entity_kind import EnumWorkLedgerEntityKind
 from omnimarket.handlers.work_ledger_fold import (
-    WorkLedgerFoldError,
+    SHARED_WORK_LEDGER_FOLD_MEMO,
+    WorkLedgerFoldMemo,
     apply_ops,
     close_relationships,
-    fold_row,
     parse_stamp,
-)
-from omnimarket.models.model_work_ledger_fold_request import (
-    ModelWorkLedgerFoldRequest,
 )
 from omnimarket.models.model_work_ledger_fold_result import ModelWorkLedgerLink
 from omnimarket.nodes.contract_topics import contract_publish_topics
@@ -138,6 +135,7 @@ class HandlerContextSourceWorkState:
         reader: ProtocolLedgerRowReader | None = None,
         tenant_ids: Iterable[str] | None = None,
         work_state: ModelWorkStateBinding | None = None,
+        fold_memo: WorkLedgerFoldMemo | None = None,
     ) -> None:
         self._contract_path = contract_path or _CONTRACT_PATH
         self.terminal_event = contract_publish_topics(self._contract_path)[0]
@@ -149,6 +147,9 @@ class HandlerContextSourceWorkState:
         self._horizon = timedelta(hours=self._work_state.horizon_hours)
         self._reader = (
             reader if reader is not None else PostgresLedgerRowReader(binding)
+        )
+        self._fold_memo = (
+            fold_memo if fold_memo is not None else SHARED_WORK_LEDGER_FOLD_MEMO
         )
 
     def handle(self, request: ModelContextSourceRequest) -> ModelContextSourceResult:
@@ -207,10 +208,9 @@ class HandlerContextSourceWorkState:
         by_id: dict[str, ModelLedgerSourceRow] = {}
         state: dict[str, dict[str, object]] = {}
         links: list[ModelWorkLedgerLink] = []
-        for row in rows:
-            try:
-                result = fold_row(ModelWorkLedgerFoldRequest(raw_row=row.raw_row))
-            except WorkLedgerFoldError:
+        results = self._fold_memo.fold_rows([(row.row_id, row.raw_row) for row in rows])
+        for row, result in zip(rows, results, strict=True):
+            if result is None:
                 continue
             # The fold's own row id is what its entities name as opened_row_id.
             by_id.setdefault(result.row.row_id, row)

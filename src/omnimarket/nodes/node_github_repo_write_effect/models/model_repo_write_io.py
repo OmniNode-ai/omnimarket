@@ -10,6 +10,9 @@ or one failed result. Each operation replaces one ``gh`` verb a lane ran:
 - pr_ready replaces ``gh pr ready`` with GraphQL markPullRequestReadyForReview.
 - pr_close replaces ``gh pr close`` with PATCH /pulls/{n} state=closed.
 - pr_comment replaces ``gh pr comment`` with POST /issues/{n}/comments.
+- pr_thread_reply replaces ``gh api --method POST
+  /repos/{o}/{r}/pulls/{n}/comments/{id}/replies`` with the same POST: one reply
+  on a pull request's review-comment thread.
 - check_run_create posts a check result to /check-runs.
 - workflow_dispatch replaces ``gh workflow run`` with
   POST /actions/workflows/{w}/dispatches.
@@ -55,6 +58,7 @@ class EnumRepoWriteOperation(StrEnum):
     PR_READY = "pr_ready"
     PR_CLOSE = "pr_close"
     PR_COMMENT = "pr_comment"
+    PR_THREAD_REPLY = "pr_thread_reply"
     WORKFLOW_DISPATCH = "workflow_dispatch"
     CHECK_RUN_CREATE = "check_run_create"
 
@@ -71,6 +75,7 @@ _OPERATION_ONLY_FIELDS: Final[dict[EnumRepoWriteOperation, tuple[str, ...]]] = {
         "conclusion",
         "output",
     ),
+    EnumRepoWriteOperation.PR_THREAD_REPLY: ("thread_comment_id",),
 }
 
 
@@ -99,6 +104,7 @@ _PR_SCOPED = frozenset(
         EnumRepoWriteOperation.PR_READY,
         EnumRepoWriteOperation.PR_CLOSE,
         EnumRepoWriteOperation.PR_COMMENT,
+        EnumRepoWriteOperation.PR_THREAD_REPLY,
     }
 )
 # Operations that change a PR's state name the head they expect to act on.
@@ -240,6 +246,12 @@ class ModelRepoWriteRequest(BaseModel):
         | None
     ) = None
     output: ModelCheckRunOutput | None = None
+    thread_comment_id: int | None = Field(
+        default=None,
+        gt=0,
+        description="pr_thread_reply: the id of the review comment that starts "
+        "the thread, the first comment of the thread.",
+    )
     claims_dir: str | None = Field(
         default=None,
         min_length=1,
@@ -269,8 +281,20 @@ class ModelRepoWriteRequest(BaseModel):
                 )
                 if v is None
             ]
-        if op is EnumRepoWriteOperation.PR_COMMENT and not self.body:
+        if (
+            op
+            in (
+                EnumRepoWriteOperation.PR_COMMENT,
+                EnumRepoWriteOperation.PR_THREAD_REPLY,
+            )
+            and not self.body
+        ):
             missing.append("body")
+        if (
+            op is EnumRepoWriteOperation.PR_THREAD_REPLY
+            and self.thread_comment_id is None
+        ):
+            missing.append("thread_comment_id")
         if op is EnumRepoWriteOperation.PR_CLOSE and self.requested_by_run is None:
             missing.append("requested_by_run")
         if op is EnumRepoWriteOperation.WORKFLOW_DISPATCH:

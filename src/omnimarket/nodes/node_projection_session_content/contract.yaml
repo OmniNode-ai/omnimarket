@@ -74,5 +74,20 @@ db_io:
       role: session_content
   idempotency_key: "event_id"
 
+# OMN-21091: four content records in flight instead of one. Measured on the
+# dev lane on 2026-10-23, 13:00Z-14:25Z, broker append to projected row took
+# p50 0.806 s, p95 172.415 s, max 225.788 s. The serial writer drained only
+# about 4-5 records per second; four in flight overlaps the per-record waits.
+#
+# THE WRITER MUST NOT SHARE ITS ADAPTER. Concurrent messages would close
+# each other's pool. SessionContentProjectionWriter._message_db gives each
+# message its own single-connection adapter on the DSN the runtime bound.
+#
+# ORDERING: records may complete out of partition order. The row key event_id
+# content-addresses the record, the upsert is idempotent and touches no other
+# row, so any order folds to the same rows.
+consume_concurrency:
+  max_in_flight_records: 4
+
 metadata:
   transport_type: kafka

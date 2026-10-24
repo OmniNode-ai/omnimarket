@@ -1,0 +1,15 @@
+{
+  "decisions": [
+    {"text": "Carry citations through every report section.", "ts": "2026-10-23T18:00:00Z", "lane": "lane-a", "ticket": "OMN-21352"},
+    {"text": "Previous-day decision must be ignored.", "ts": "2026-10-22T18:00:00Z", "lane": "lane-old"},
+    {"text": "Untraceable decision must be left out.", "topic": "general"}
+  ],
+  "re_steers": [
+    {"words": "Retain the original evidence when restating a decision.", "timestamp": "2026-10-23T19:00:00Z", "row_lane": "lane-b", "topic": "evidence"}
+  ],
+  "steering": [{"text": "Steering is not a decision source."}],
+  "timeline": [{"text": "Timeline is not a decision source."}],
+  "findings": [
+    {"summary": "The existing citation validator can be reused.", "pr": "omnimarket#4332", "topic": "validation"}
+  ]
+}
