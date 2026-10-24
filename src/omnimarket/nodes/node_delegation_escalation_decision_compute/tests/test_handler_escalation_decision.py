@@ -25,7 +25,13 @@ import yaml
 from omnibase_core.enums.enum_delegation_traffic_class import (
     EnumDelegationTrafficClass,
 )
-from omnibase_core.models.delegation.wire import ModelDelegationProvenance
+from omnibase_core.models.delegation.wire import (
+    ModelDelegationFailed,
+    ModelDelegationProvenance,
+    ModelDelegationRequest,
+    ModelInferenceResponseData,
+    ModelRoutingIntent,
+)
 from pydantic import BaseModel, ValidationError
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
@@ -45,6 +51,13 @@ from omnimarket.models.delegation.wire.model_probe_ladder import (
     ModelProbeLadder,
     ModelProbeRung,
 )
+from omnimarket.models.delegation.wire.model_quality_gate import (
+    ModelQualityGateResult,
+    ModelQualityRuleEvaluation,
+)
+from omnimarket.models.delegation.wire.model_routing_decision import (
+    ModelRoutingDecision,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
 )
@@ -58,31 +71,12 @@ from omnimarket.nodes.node_delegation_escalation_decision_compute.handlers.handl
 from omnimarket.nodes.node_delegation_orchestrator.handlers import (
     handler_delegation_workflow as hw,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
-    ModelDelegationRequest,
-)
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
-    ModelDelegationFailed,
-)
-from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_response_data import (
-    ModelInferenceResponseData,
-)
-from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent import (
-    ModelRoutingIntent,
-)
-from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
-    ModelQualityGateResult,
-    ModelQualityRuleEvaluation,
-)
 from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
     handler_delegation_routing as routing,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     TaskClassTransitionsError,
     resolve_task_class_transitions,
-)
-from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
-    ModelRoutingDecision,
 )
 from omnimarket.routing.model_escalation_decision_request import (
     ModelEscalationDecisionRequest,
