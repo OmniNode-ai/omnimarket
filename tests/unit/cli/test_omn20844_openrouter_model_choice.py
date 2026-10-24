@@ -383,6 +383,8 @@ class TestRegisterTenantKey:
                 expiry_warning = None
                 # OMN-21012: and the lab host the key is bound to.
                 bound_host = None
+                # OMN-20967: and the Anthropic workspace, which an openrouter key lacks.
+                workspace_id = None
 
             return _Response()
 

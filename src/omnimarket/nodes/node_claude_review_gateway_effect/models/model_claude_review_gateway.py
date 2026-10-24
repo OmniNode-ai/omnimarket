@@ -17,6 +17,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from omnimarket.projection.credential_publisher import LAB_HOST_NAME_PATTERN
+from omnimarket.routing.byok_provider_backends import ANTHROPIC_WORKSPACE_ID_PATTERN
 
 
 class ModelReviewGatewayKey(BaseModel):
@@ -28,6 +29,11 @@ class ModelReviewGatewayKey(BaseModel):
     name: str = Field(min_length=1)
     bound_host: str = Field(pattern=LAB_HOST_NAME_PATTERN)
     expires_at: datetime | None = None
+    workspace_id: str | None = Field(
+        default=None,
+        pattern=ANTHROPIC_WORKSPACE_ID_PATTERN,
+        description="The Anthropic workspace the key belongs to (OMN-20967), if any.",
+    )
 
 
 class ModelClaudeReviewGatewayRequest(BaseModel):

@@ -156,6 +156,8 @@ projection_api:
     - "expires_at"
     # 0007 (OMN-21012): the lab host whose Claude account owns the key.
     - "bound_host"
+    # 0008 (OMN-20967): the Anthropic workspace the key belongs to.
+    - "workspace_id"
   order_by: "created_at DESC"
   freshness_column: "created_at"
   limit: 200

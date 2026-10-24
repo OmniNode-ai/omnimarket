@@ -179,6 +179,10 @@ class ModelByokLimitModel(BaseModel):
 #: route never addresses a model nobody chose.
 BYOK_MODEL_UNRESOLVED = "byok-model-unresolved"
 
+#: OMN-20967. The charset an Anthropic workspace id is held to. The id is put in
+#: a request header, so it admits no space, colon or line break.
+ANTHROPIC_WORKSPACE_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"
+
 
 class ModelByokModelPreference(BaseModel):
     """One entry of a provider row's ordered model preference (OMN-20157).
@@ -306,6 +310,12 @@ class ModelByokProviderBackend(BaseModel):
     #: (Anthropic's ``anthropic-version``). Never a credential: the key is only
     #: ever sent by ``models_auth``.
     models_headers: dict[str, str] = Field(default_factory=dict)
+    #: OMN-20967. The header that names the provider's workspace a key belongs
+    #: to (Anthropic's ``anthropic-workspace-id``); the provider answers a
+    #: workspace's key only with it. ``None`` declares the provider has no
+    #: workspaces, so a registration naming one is refused. It carries an id,
+    #: never a key.
+    workspace_header: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9-]*$")
     #: OMN-20910. The wire protocol of ``endpoint_url``. ``openai_chat`` is the
     #: OpenAI-compatible chat shape every row used before; ``anthropic_messages``
     #: is Anthropic's native Messages API, the only one that supports prompt
@@ -1215,6 +1225,7 @@ def token_limit_field_for_endpoint(endpoint_url: str | None) -> str:
 
 
 __all__: list[str] = [
+    "ANTHROPIC_WORKSPACE_ID_PATTERN",
     "BYOK_CATALOG_SCHEMA_VERSION",
     "BYOK_MODEL_UNRESOLVED",
     "CATALOG_PATH",
