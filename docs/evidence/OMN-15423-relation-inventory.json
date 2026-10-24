@@ -1080,6 +1080,7 @@
     },
     {
       "accessor_nodes": [
+        "node_capture_silence_watch_effect",
         "node_projection_claude_hook_events",
         "node_projection_freshness_alert_effect",
         "service:omnimarket_projection_migration_runner"
@@ -1093,6 +1094,7 @@
       "constraints": [],
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_capture_silence_watch_effect/contract.yaml",
         "src/omnimarket/nodes/node_projection_claude_hook_events/contract.yaml",
         "src/omnimarket/nodes/node_projection_freshness_alert_effect/contract.yaml"
       ],
@@ -3386,6 +3388,7 @@
     },
     {
       "accessor_nodes": [
+        "node_capture_silence_watch_effect",
         "node_projection_claude_hook_events",
         "node_projection_freshness_alert_effect",
         "service:omnimarket_projection_migration_runner"
@@ -3402,6 +3405,7 @@
       ],
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_capture_silence_watch_effect/contract.yaml",
         "src/omnimarket/nodes/node_projection_claude_hook_events/contract.yaml",
         "src/omnimarket/nodes/node_projection_freshness_alert_effect/contract.yaml"
       ],
@@ -3450,6 +3454,7 @@
       "partitioning": [],
       "producer": "node_projection_claude_hook_events",
       "readers": [
+        "node_capture_silence_watch_effect",
         "node_projection_claude_hook_events",
         "node_projection_freshness_alert_effect",
         "service:omnimarket_projection_migration_runner"
@@ -8984,6 +8989,7 @@
     {
       "accessor_nodes": [
         "node_branch_claim_check_effect",
+        "node_capture_silence_watch_effect",
         "node_context_source_ledger_effect",
         "node_context_source_work_state_effect",
         "node_projection_work_ledger",
@@ -9001,6 +9007,7 @@
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_branch_claim_check_effect/contract.yaml",
+        "src/omnimarket/nodes/node_capture_silence_watch_effect/contract.yaml",
         "src/omnimarket/nodes/node_context_source_ledger_effect/contract.yaml",
         "src/omnimarket/nodes/node_context_source_work_state_effect/contract.yaml",
         "src/omnimarket/nodes/node_projection_work_ledger/contract.yaml",
@@ -9044,6 +9051,7 @@
       "producer": "node_projection_work_ledger",
       "readers": [
         "node_branch_claim_check_effect",
+        "node_capture_silence_watch_effect",
         "node_context_source_ledger_effect",
         "node_context_source_work_state_effect",
         "node_lab_job_check_effect",
