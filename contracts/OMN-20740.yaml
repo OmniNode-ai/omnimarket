@@ -37,4 +37,3 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_work_ledger/parity.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c -e '^BACKFILL_SOURCES = ' -e 'state_horizon: datetime | None = None'"
-    binds_ac: ["AC1"]

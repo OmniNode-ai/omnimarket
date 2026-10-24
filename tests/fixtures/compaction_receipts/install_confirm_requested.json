@@ -1,0 +1,155 @@
+{
+  "session_id": "21336002-0000-4000-8000-000000000001",
+  "records": [
+    {
+      "uuid": "21336001-0000-4000-8000-000000000001",
+      "parent_uuid": null,
+      "logical_parent_uuid": null,
+      "record_type": "system",
+      "subtype": "compact_boundary",
+      "role": null,
+      "text": null,
+      "timestamp": "2026-10-24T00:00:10Z",
+      "is_meta": false,
+      "is_compact_summary": false,
+      "prompt_source": null,
+      "preserved_uuids": []
+    },
+    {
+      "uuid": "21336001-0000-4000-8000-000000000001-replacement",
+      "parent_uuid": "21336001-0000-4000-8000-000000000001",
+      "logical_parent_uuid": null,
+      "record_type": "user",
+      "subtype": null,
+      "role": "user",
+      "text": "Synthetic package 1\nactivation_id: 21336000-0000-4000-8000-000000000001",
+      "timestamp": "2026-10-24T00:00:10Z",
+      "is_meta": false,
+      "is_compact_summary": false,
+      "prompt_source": null,
+      "preserved_uuids": []
+    },
+    {
+      "uuid": "21336001-0000-4000-8000-000000000002",
+      "parent_uuid": null,
+      "logical_parent_uuid": "21336001-0000-4000-8000-000000000001-replacement",
+      "record_type": "system",
+      "subtype": "compact_boundary",
+      "role": null,
+      "text": null,
+      "timestamp": "2026-10-24T00:00:20Z",
+      "is_meta": false,
+      "is_compact_summary": false,
+      "prompt_source": null,
+      "preserved_uuids": []
+    },
+    {
+      "uuid": "21336001-0000-4000-8000-000000000002-replacement",
+      "parent_uuid": "21336001-0000-4000-8000-000000000002",
+      "logical_parent_uuid": null,
+      "record_type": "user",
+      "subtype": null,
+      "role": "user",
+      "text": "Changed Synthetic package 2\nactivation_id: 21336000-0000-4000-8000-000000000002",
+      "timestamp": "2026-10-24T00:00:20Z",
+      "is_meta": false,
+      "is_compact_summary": false,
+      "prompt_source": null,
+      "preserved_uuids": []
+    },
+    {
+      "uuid": "21336001-0000-4000-8000-000000000003",
+      "parent_uuid": null,
+      "logical_parent_uuid": "21336001-0000-4000-8000-000000000002-replacement",
+      "record_type": "system",
+      "subtype": "compact_boundary",
+      "role": null,
+      "text": null,
+      "timestamp": "2026-10-24T00:00:30Z",
+      "is_meta": false,
+      "is_compact_summary": false,
+      "prompt_source": null,
+      "preserved_uuids": []
+    },
+    {
+      "uuid": "21336001-0000-4000-8000-000000000003-replacement",
+      "parent_uuid": "21336001-0000-4000-8000-000000000003",
+      "logical_parent_uuid": null,
+      "record_type": "user",
+      "subtype": null,
+      "role": "user",
+      "text": "Synthetic native summary",
+      "timestamp": "2026-10-24T00:00:30Z",
+      "is_meta": false,
+      "is_compact_summary": false,
+      "prompt_source": null,
+      "preserved_uuids": []
+    },
+    {
+      "uuid": "21336001-0000-4000-8000-000000000004",
+      "parent_uuid": null,
+      "logical_parent_uuid": "21336001-0000-4000-8000-000000000003-replacement",
+      "record_type": "system",
+      "subtype": "compact_boundary",
+      "role": null,
+      "text": null,
+      "timestamp": "2026-10-24T00:00:40Z",
+      "is_meta": false,
+      "is_compact_summary": false,
+      "prompt_source": null,
+      "preserved_uuids": []
+    },
+    {
+      "uuid": "21336001-0000-4000-8000-000000000004-replacement",
+      "parent_uuid": "21336001-0000-4000-8000-000000000004",
+      "logical_parent_uuid": null,
+      "record_type": "user",
+      "subtype": null,
+      "role": "user",
+      "text": null,
+      "timestamp": "2026-10-24T00:00:40Z",
+      "is_meta": false,
+      "is_compact_summary": false,
+      "prompt_source": null,
+      "preserved_uuids": []
+    }
+  ],
+  "activations": [
+    {
+      "activation_id": "21336000-0000-4000-8000-000000000001",
+      "installed_messages_hash": "dd6f73928d3c7d4345858741fec27914c6b55187c577881c4604afb993b78a1b",
+      "published_at": "2026-10-24T00:00:09Z"
+    },
+    {
+      "activation_id": "21336000-0000-4000-8000-000000000002",
+      "installed_messages_hash": "c390eadbb70af0938b6264f8b0801fd0db2cfc0ffe531cdcea6a302c3dc75b22",
+      "published_at": "2026-10-24T00:00:19Z"
+    },
+    {
+      "activation_id": "21336000-0000-4000-8000-000000000003",
+      "installed_messages_hash": "018ac7643becec314e5c371b690cda813f31a28e7817155c038b782bbe03593f",
+      "published_at": "2026-10-24T00:00:29Z"
+    },
+    {
+      "activation_id": "21336000-0000-4000-8000-000000000004",
+      "installed_messages_hash": "fcdb91bed291460b0efc7c19205f27d3e993c4e61a1530a0c59023a9cb3553fd",
+      "published_at": "2026-10-24T00:00:39Z"
+    },
+    {
+      "activation_id": "21336000-0000-4000-8000-000000000005",
+      "installed_messages_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "published_at": "2026-10-24T00:00:41Z"
+    },
+    {
+      "activation_id": "21336000-0000-4000-8000-000000000006",
+      "installed_messages_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "published_at": "2026-10-24T00:00:51Z"
+    },
+    {
+      "activation_id": "21336000-0000-4000-8000-000000000007",
+      "installed_messages_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "published_at": "2026-10-24T00:00:08Z"
+    }
+  ],
+  "newest_captured_at": "2026-10-24T00:00:50Z"
+}
