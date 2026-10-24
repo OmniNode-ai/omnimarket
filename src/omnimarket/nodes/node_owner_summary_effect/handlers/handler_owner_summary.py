@@ -839,8 +839,8 @@ class HandlerOwnerSummary:
                     (len(uncited_changes), r"merged changes?", "merged changes")
                 )
                 class_counts: dict[str, int] = {}
-                for change in uncited_changes:
-                    cls = cov.change_classes[change]
+                for uncited in uncited_changes:
+                    cls = cov.change_classes[uncited]
                     class_counts[cls] = class_counts.get(cls, 0) + 1
                 expected.extend(
                     (count, re.escape(cls), cls) for cls, count in class_counts.items()
@@ -855,9 +855,9 @@ class HandlerOwnerSummary:
                     (count, rf"as\s+{re.escape(outcome)}", f"as {outcome}")
                     for outcome, count in omitted_lanes.items()
                 )
-            for count, pattern, label in expected:
+            for count, expression, label in expected:
                 stated = re.findall(
-                    rf"(?<![\w.,+-])(\d+)\s+{pattern}(?![\w-])",
+                    rf"(?<![\w.,+-])(\d+)\s+{expression}(?![\w-])",
                     omitted_line,
                     re.IGNORECASE,
                 )
