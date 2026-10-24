@@ -108,9 +108,35 @@ _BETA_TENANT_UUID = "91c74442-1233-4c97-b191-911a10346fdf"
 _ENVELOPE_TIMESTAMP = datetime(2026, 9, 8, 10, 2, 41, 550000, tzinfo=UTC)
 
 
-def _mock_db() -> AsyncMock:
+def _terminal_row(
+    correlation_id: str, tenant: str = _BETA_TENANT_UUID
+) -> dict[str, Any]:
+    return {
+        "correlation_id": correlation_id,
+        "tenant_id": tenant,
+        "task_type": "code-review",
+        "delegated_to": "glm-5.2",
+        "model_name": "glm-5.2",
+        "backend_id": "zai",
+        "host": "h201",
+        "quality_gate_passed": False,
+        "quality_gate_detail": "terminal refusal",
+        "actual_score": 0.4,
+        "timestamp": datetime(2026, 9, 7, tzinfo=UTC),
+        "score_source": None,
+    }
+
+
+def _mock_db(*, tenant: str = _BETA_TENANT_UUID) -> AsyncMock:
     db = AsyncMock()
-    db.execute = AsyncMock(return_value=[])
+
+    async def execute(sql: str, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+        if sql.startswith("SELECT * FROM delegation_events"):
+            assert kwargs["tenant"] == tenant
+            return [_terminal_row(args[0], tenant)]
+        return []
+
+    db.execute = AsyncMock(side_effect=execute)
     db.fetchval = AsyncMock(return_value=None)
     return db
 
@@ -181,7 +207,23 @@ def _upsert_row(mock_db: AsyncMock) -> dict[str, Any]:
         for column, slot in zip(columns, slots, strict=True)
         if slot.strip().startswith("$")
     ]
-    return dict(zip(bound, call.args[1:], strict=True))
+    row = dict(zip(bound, call.args[1:], strict=True))
+    assert set(row) == {
+        "correlation_id",
+        "tenant_id",
+        "timestamp",
+        "task_type",
+        "delegated_to",
+        "score_source",
+    }
+    assert row["score_source"] == SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE
+    update = sql.split("DO UPDATE SET", 1)[1].split(" RETURNING ", 1)[0]
+    assert {part.split("=", 1)[0].strip() for part in update.split(",")} == {
+        "score_source",
+        "writer_identity",
+        "written_at",
+    }
+    return row
 
 
 class TestEnvelopeTenantIdentity:
@@ -256,13 +298,14 @@ class TestAsyncWriterBindsOneTenantToBothHalvesOfThePolicy:
         )
 
     async def test_row_tenant_equals_the_guc_the_same_write_binds(self) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         """The whole policy comparison, asserted as one property: whatever the
         row stores for ``tenant_id`` is exactly what ``resolve_write_tenant``
         will set ``app.tenant_id`` to for that same statement. RED before
         OMN-17422 because the row had no ``tenant_id`` for the resolver to
         read."""
         runner = DelegationProjectionRunner()
-        mock_db = _mock_db()
+        mock_db = _mock_db(tenant=str(HOUSE_TENANT_UUID))
         # OMN-18139: the registry mirror answers, because the resolver CONFIRMS
         # a producer-recorded identity against it rather than trusting the wire
         # (OMN-16831). With the mirror silent the resolver correctly refuses,
@@ -292,6 +335,7 @@ class TestAsyncWriterBindsOneTenantToBothHalvesOfThePolicy:
     async def test_verdict_is_attributed_to_the_tenant_the_envelope_recorded(
         self,
     ) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         """RED before OMN-17422: the producer-recorded tenant was ignored
         outright, so a beta-tenant delegation's verdict was written under the
         house tenant -- refused by the policy when the delegation row already
@@ -316,6 +360,7 @@ class TestAsyncWriterBindsOneTenantToBothHalvesOfThePolicy:
     async def test_existing_row_probe_is_scoped_to_the_same_tenant_as_the_write(
         self,
     ) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         """An RLS-enforced writer that probes under one tenant and writes under
         another cannot see the delegation row it is annotating, and stamps a
         fresh ``created_at`` over a terminal event's own."""
@@ -334,14 +379,20 @@ class TestAsyncWriterBindsOneTenantToBothHalvesOfThePolicy:
         probes = [
             call
             for call in mock_db.execute.await_args_list
-            if str(call.args[0]).lstrip().startswith("SELECT 1 FROM delegation_events")
+            if str(call.args[0]).lstrip().startswith("SELECT * FROM delegation_events")
         ]
         assert probes, "expected the existing-row probe"
         assert probes[-1].kwargs["tenant"] == _BETA_TENANT_UUID
+        assert probes[-1].kwargs["tenant"] == _upsert_call(mock_db).kwargs["tenant"]
+        assert (
+            _upsert_row(mock_db)["score_source"]
+            == SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE
+        )
 
     async def test_existing_row_is_never_re_attributed_but_the_guc_is_still_bound(
         self,
     ) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         """Attribution belongs to whoever CREATED the row. A verdict annotating a
         delegation row a terminal event already recorded must leave ``tenant_id``
         out of the statement entirely (so ``DO UPDATE SET`` cannot rewrite it),
@@ -352,8 +403,8 @@ class TestAsyncWriterBindsOneTenantToBothHalvesOfThePolicy:
         mock_db = _mock_db()
 
         async def _execute(query: str, *_args: Any, **_kwargs: Any) -> Any:
-            if str(query).lstrip().startswith("SELECT 1 FROM delegation_events"):
-                return [{"?column?": 1}]
+            if str(query).lstrip().startswith("SELECT * FROM delegation_events"):
+                return [_terminal_row(str(_args[0]))]
             return []
 
         mock_db.execute = AsyncMock(side_effect=_execute)
@@ -367,6 +418,10 @@ class TestAsyncWriterBindsOneTenantToBothHalvesOfThePolicy:
             MessageMeta(partition=0, offset=1, fallback_id=correlation_id, topic="t"),
         )
 
+        assert (
+            _upsert_row(mock_db)["score_source"]
+            == SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE
+        )
         call = _upsert_call(mock_db)
         sql = str(call.args[0])
         insert_columns, update_clause = sql.split("ON CONFLICT", 1)
@@ -431,12 +486,15 @@ class TestSyncTwinKeepsTheSameRule:
         assert db.query(TABLE, {"correlation_id": str(correlation_id)}) == []
 
     def test_dispatch_shim_threads_the_envelope_tenant_through(self) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         db = InmemoryDatabaseAdapter()
         handler = HandlerProjectionDelegation()
         correlation_id = str(uuid4())
         payload = _quality_gate_wire_record(
             correlation_id=correlation_id, tenant_id=_BETA_TENANT_SLUG
         )
+        terminal = _terminal_row(correlation_id)
+        db.upsert(TABLE, "correlation_id", terminal)
         payload["_db"] = db
         payload["_event_type"] = "omnibase-infra.quality-gate-result"
 
@@ -445,6 +503,10 @@ class TestSyncTwinKeepsTheSameRule:
         rows = db.query(TABLE, {"correlation_id": correlation_id})
         assert rows, "expected the verdict row"
         assert rows[0]["tenant_id"] == _BETA_TENANT_UUID
+        assert {key: rows[0][key] for key in terminal} == {
+            **terminal,
+            "score_source": SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -599,8 +661,10 @@ async def _seed_beta_delegation_row(
         await admin.execute(
             "INSERT INTO delegation_events "
             "(correlation_id, tenant_id, task_type, delegated_to, model_name, "
-            " created_at) "
-            "VALUES ($1, $2::uuid, 'code-review', 'glm-5.2', 'glm-5.2', NOW())",
+            " created_at, timestamp, quality_gate_passed, quality_gate_detail, actual_score, backend_id, host) "
+            "VALUES ($1, $2::uuid, 'code-review', 'glm-5.2', 'glm-5.2', "
+            "'2026-09-07T00:00:00+00:00', '2026-09-07T00:00:00+00:00', "
+            "TRUE, 'terminal decision', 0.7, 'zai', 'h201')",
             correlation_id,
             _BETA_TENANT_UUID,
         )
@@ -667,6 +731,7 @@ class TestRealPostgresRlsRefusesTheUnboundWriteAndAcceptsTheBoundOne:
             )
 
     async def test_green_envelope_bound_tenant_lands_the_verdict(self) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         """The fixed path: the verdict binds the tenant the envelope recorded,
         the policy accepts it, the verdict columns land, and the row's own
         attribution is left exactly as the terminal event recorded it."""
@@ -689,7 +754,7 @@ class TestRealPostgresRlsRefusesTheUnboundWriteAndAcceptsTheBoundOne:
                     "SELECT set_config('app.tenant_id', $1, true)", _BETA_TENANT_UUID
                 )
                 row = await admin.fetchrow(
-                    "SELECT tenant_id, quality_gate_passed, score_source "
+                    "SELECT tenant_id, quality_gate_passed, score_source, task_type, delegated_to, model_name, quality_gate_detail, actual_score, timestamp, backend_id, host "
                     "FROM delegation_events WHERE correlation_id = $1",
                     correlation_id,
                 )
@@ -700,8 +765,17 @@ class TestRealPostgresRlsRefusesTheUnboundWriteAndAcceptsTheBoundOne:
             assert str(row["tenant_id"]) == _BETA_TENANT_UUID
             assert row["quality_gate_passed"] is True
             assert row["score_source"] == SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE
+            assert row["task_type"] == "code-review"
+            assert row["delegated_to"] == "glm-5.2"
+            assert row["model_name"] == "glm-5.2"
+            assert row["backend_id"] == "zai"
+            assert row["host"] == "h201"
+            assert row["quality_gate_detail"] == "terminal decision"
+            assert float(row["actual_score"]) == pytest.approx(0.7)
+            assert row["timestamp"] == datetime(2026, 9, 7, tzinfo=UTC)
 
     async def test_raw_wire_dispatch_lands_under_real_force_rls(self) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         """Exercise the Kafka receive/unwrap/dispatch path, not only the leaf.
 
         The tenant is recorded on the producer envelope; there is no separately
@@ -730,7 +804,7 @@ class TestRealPostgresRlsRefusesTheUnboundWriteAndAcceptsTheBoundOne:
                     _BETA_TENANT_UUID,
                 )
                 row = await admin.fetchrow(
-                    "SELECT tenant_id, quality_gate_passed, score_source "
+                    "SELECT tenant_id, quality_gate_passed, score_source, task_type, delegated_to, model_name, quality_gate_detail, actual_score, timestamp, backend_id, host "
                     "FROM delegation_events WHERE correlation_id = $1",
                     correlation_id,
                 )
@@ -738,6 +812,14 @@ class TestRealPostgresRlsRefusesTheUnboundWriteAndAcceptsTheBoundOne:
             assert str(row["tenant_id"]) == _BETA_TENANT_UUID
             assert row["quality_gate_passed"] is True
             assert row["score_source"] == SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE
+            assert row["task_type"] == "code-review"
+            assert row["delegated_to"] == "glm-5.2"
+            assert row["model_name"] == "glm-5.2"
+            assert row["backend_id"] == "zai"
+            assert row["host"] == "h201"
+            assert row["quality_gate_detail"] == "terminal decision"
+            assert float(row["actual_score"]) == pytest.approx(0.7)
+            assert row["timestamp"] == datetime(2026, 9, 7, tzinfo=UTC)
 
     async def test_green_unattributed_verdict_creates_no_row_at_all(
         self,

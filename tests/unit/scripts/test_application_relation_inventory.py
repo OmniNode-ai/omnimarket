@@ -11,6 +11,9 @@ from types import ModuleType
 
 import pytest
 import yaml
+from omnibase_infra.validation.application_database_domain_enforcement import (
+    load_application_database_ownership_identities,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = REPO_ROOT / "scripts" / "generate_application_relation_inventory.py"
@@ -67,6 +70,73 @@ def test_unterminated_literals_and_comments_mask_to_end_of_source(opener: str) -
 
 def test_checked_in_inventory_is_source_derived_and_current() -> None:
     generator = _load_generator()
+    assert generator.main(["--check"]) == 0
+
+
+def test_compaction_receipts_ownership_precedes_migration_delivery() -> None:
+    """The infra vendor can resolve both targets before the node ships SQL."""
+    generator = _load_generator()
+    manifest = yaml.safe_load(generator.SERVICE_MANIFEST.read_text())
+    tables = [
+        row
+        for row in manifest["db_io"]["db_tables"]
+        if row["name"] == "compaction_receipts"
+    ]
+    assert len(tables) == 1
+    assert tables[0] == {
+        "name": "compaction_receipts",
+        "database_ref": "application",
+        "schema": "omninode_internal",
+        "migration": (
+            "src/omnimarket/nodes/node_projection_compaction_receipts/"
+            "migrations/0000_create_compaction_receipts.sql"
+        ),
+        "access": "read_write",
+        "role": "compaction_receipts",
+    }
+    sequences = [
+        row
+        for row in manifest["database_objects"]
+        if row["name"] == "compaction_receipts_projection_cursor_seq"
+    ]
+    assert len(sequences) == 1
+    assert sequences[0] == {
+        "name": "compaction_receipts_projection_cursor_seq",
+        "kind": "sequence",
+        "database_ref": "application",
+        "schema": "omninode_internal",
+        "domain": "OMNINODE_INTERNAL",
+        "owner_declaration": generator.SERVICE_OWNER,
+        "writers": [],
+    }
+    identities = load_application_database_ownership_identities(
+        [generator.SERVICE_MANIFEST]
+    )
+    assert {
+        (row.schema, row.name, row.kind.value)
+        for row in identities
+        if row.name.startswith("compaction_receipts")
+    } == {
+        ("omninode_internal", "compaction_receipts", "table"),
+        (
+            "omninode_internal",
+            "compaction_receipts_projection_cursor_seq",
+            "sequence",
+        ),
+    }
+    migration_dir = generator.NODES_ROOT / "node_projection_compaction_receipts"
+    assert not list(migration_dir.rglob("*.sql"))
+    payload = generator.build_inventory()
+    receipts = [
+        row
+        for row in payload["relations"]
+        if row["name"] == "compaction_receipts" and row["kind"] == "table"
+    ]
+    assert len(receipts) == 1
+    assert receipts[0]["contract_sources"] == [
+        "scripts/application-relation-ownership.yaml"
+    ]
+    assert receipts[0]["authoritative_sources"] == []
     assert generator.main(["--check"]) == 0
 
 
@@ -654,7 +724,8 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +2 for OMN-20604 M2: both lab-job read models land with their CREATE = 109.
     # +3 for OMN-20802: the same tables declared beside their migration = 112.
     # +1 for OMN-19988 (local_environment) = 113.
-    assert census["source_declared_tables"] == 113
+    # OMN-21336: ownership is declared before infra vendors the migration.
+    assert census["source_declared_tables"] == 114
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then

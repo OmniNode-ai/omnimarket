@@ -44,6 +44,17 @@ ENABLE_AUTO_MERGE_MUTATION = (
     "  }"
     "}"
 )
+# One page of a pull request's review threads, each with its first comments:
+# the resolved state lives only in GraphQL.
+REVIEW_THREADS_QUERY = (
+    "query($owner: String!, $name: String!, $number: Int!, $after: String) {"
+    " repository(owner: $owner, name: $name) { pullRequest(number: $number) {"
+    " reviewThreads(first: 50, after: $after) {"
+    " totalCount pageInfo { hasNextPage endCursor }"
+    " nodes { id isResolved isOutdated path line"
+    " comments(first: 50) { totalCount nodes"
+    " { databaseId url body createdAt author { login } } } } } } } }"
+)
 # The landing effect's arm: GitHub refuses it once the head has moved past
 # expectedHeadOid (plan revision 1, R4).
 ENABLE_AUTO_MERGE_AT_HEAD_MUTATION = (
@@ -274,6 +285,27 @@ def issue_comments_request(
     )
 
 
+def review_comments_request(
+    repository: str, number: int, *, per_page: int
+) -> ModelGithubHttpRequest:
+    """GET the review comments (the inline diff comments) of a PR, oldest first."""
+    return ModelGithubHttpRequest(
+        method="GET",
+        path=f"{_repo_path(repository)}/pulls/{number}/comments?per_page={per_page}",
+    )
+
+
+def review_threads_request(
+    repository: str, number: int, *, after: str | None = None
+) -> ModelGithubHttpRequest:
+    """POST the GraphQL query for one page of a PR's review threads."""
+    owner, name = split_repository(repository)
+    return _graphql(
+        REVIEW_THREADS_QUERY,
+        {"owner": owner, "name": name, "number": number, "after": after},
+    )
+
+
 def update_branch_request(
     repository: str, pr_number: int, expected_head_sha: str
 ) -> ModelGithubHttpRequest:
@@ -409,6 +441,17 @@ def create_issue_comment_request(
     return ModelGithubHttpRequest(
         method="POST",
         path=f"{_repo_path(repository)}/issues/{number}/comments",
+        body={"body": body},
+    )
+
+
+def create_review_comment_reply_request(
+    repository: str, number: int, comment_id: int, body: str
+) -> ModelGithubHttpRequest:
+    """POST a reply on the review-comment thread that ``comment_id`` starts."""
+    return ModelGithubHttpRequest(
+        method="POST",
+        path=(f"{_repo_path(repository)}/pulls/{number}/comments/{comment_id}/replies"),
         body={"body": body},
     )
 
@@ -558,6 +601,7 @@ __all__: list[str] = [
     "MARK_READY_MUTATION",
     "MERGE_AT_HEAD_MUTATION",
     "MERGE_QUEUE_ENTRIES_QUERY",
+    "REVIEW_THREADS_QUERY",
     "GithubLandingRequestError",
     "MergeMethod",
     "artifact_archive_request",
@@ -571,6 +615,7 @@ __all__: list[str] = [
     "create_commit_request",
     "create_issue_comment_request",
     "create_pull_request_request",
+    "create_review_comment_reply_request",
     "dequeue_request",
     "disable_auto_merge_request",
     "edit_pull_request_request",
@@ -593,6 +638,8 @@ __all__: list[str] = [
     "pull_requests_request",
     "releases_request",
     "rerun_failed_jobs_request",
+    "review_comments_request",
+    "review_threads_request",
     "run_artifacts_request",
     "run_jobs_request",
     "split_repository",

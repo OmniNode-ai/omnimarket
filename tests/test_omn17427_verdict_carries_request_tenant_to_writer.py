@@ -270,6 +270,23 @@ def _insert(db: AsyncMock) -> dict[str, Any]:
     return dict(zip(bound, writes[-1].args[1:], strict=True))
 
 
+def _terminal_row(correlation_id: UUID) -> dict[str, Any]:
+    return {
+        "correlation_id": str(correlation_id),
+        "tenant_id": _TENANT_UUID,
+        "task_type": _TASK_TYPE,
+        "delegated_to": "glm-5.3-flash",
+        "model_name": "glm-5.3-flash",
+        "backend_id": "zai",
+        "host": "h201",
+        "quality_gate_passed": False,
+        "quality_gate_detail": "terminal refusal",
+        "actual_score": 0.4,
+        "timestamp": datetime(2026, 10, 1, tzinfo=UTC),
+        "score_source": None,
+    }
+
+
 class TestATenantStampedRequestYieldsAnAcceptedVerdict:
     async def test_the_verdict_envelope_carries_the_request_tenant(self) -> None:
         _cid, gate_request = await _gate_request_wire(request_tenant=_TENANT_SLUG)
@@ -283,6 +300,7 @@ class TestATenantStampedRequestYieldsAnAcceptedVerdict:
         )
 
     async def test_the_async_writer_accepts_it_and_fills_score_source(self) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         correlation_id, gate_request = await _gate_request_wire(
             request_tenant=_TENANT_SLUG
         )
@@ -291,6 +309,15 @@ class TestATenantStampedRequestYieldsAnAcceptedVerdict:
         assert data is not None
         assert envelope_tenant_identity(data) == _TENANT_SLUG
         runner, db, dead_letter = _async_runner()
+        terminal = _terminal_row(correlation_id)
+
+        async def execute(sql: str, *_args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+            if sql.startswith("SELECT * FROM delegation_events"):
+                assert kwargs["tenant"] == _TENANT_UUID
+                return [dict(terminal)]
+            return []
+
+        db.execute = AsyncMock(side_effect=execute)
 
         await runner._project_quality_gate_result(
             data,
@@ -302,10 +329,32 @@ class TestATenantStampedRequestYieldsAnAcceptedVerdict:
         assert row["correlation_id"] == str(correlation_id)
         assert row["tenant_id"] == _TENANT_UUID
         assert row["score_source"] == SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE
+        assert set(row) == {
+            "correlation_id",
+            "tenant_id",
+            "timestamp",
+            "task_type",
+            "delegated_to",
+            "score_source",
+        }
+        write = next(
+            call
+            for call in db.execute.await_args_list
+            if f"INSERT INTO {TABLE}" in str(call.args[0])
+        )
+        update = (
+            str(write.args[0]).split("DO UPDATE SET", 1)[1].split(" RETURNING ", 1)[0]
+        )
+        assert {part.split("=", 1)[0].strip() for part in update.split(",")} == {
+            "score_source",
+            "writer_identity",
+            "written_at",
+        }
 
     async def test_the_deployed_sync_writer_accepts_it_and_fills_score_source(
         self,
     ) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         correlation_id, gate_request = await _gate_request_wire(
             request_tenant=_TENANT_SLUG
         )
@@ -315,6 +364,8 @@ class TestATenantStampedRequestYieldsAnAcceptedVerdict:
             k: v for k, v in data.items() if not k.startswith("_") and k != "pass"
         }
         db = InmemoryDatabaseAdapter()
+        terminal = _terminal_row(correlation_id)
+        db.upsert(TABLE, "correlation_id", terminal)
 
         result = HandlerProjectionDelegation().project_quality_gate_result(
             ModelQualityGateResult.model_validate(payload),
@@ -327,6 +378,10 @@ class TestATenantStampedRequestYieldsAnAcceptedVerdict:
         rows = db.query(TABLE, {"correlation_id": str(correlation_id)})
         assert rows
         assert rows[0]["score_source"] == SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE
+        assert {key: rows[0][key] for key in terminal} == {
+            **terminal,
+            "score_source": SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
+        }
 
 
 class TestAnUntenantedRequestIsNotGivenATenant:

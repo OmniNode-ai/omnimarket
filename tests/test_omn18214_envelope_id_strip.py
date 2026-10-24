@@ -106,7 +106,9 @@ def _mock_db() -> AsyncMock:
     return db
 
 
-def _run_verdict(mock_db: AsyncMock, *, correlation_id: str, offset: int) -> bool:
+def _run_verdict(
+    mock_db: AsyncMock, *, correlation_id: str, offset: int
+) -> tuple[bool, list[str]]:
     published: list[str] = []
 
     async def capture(topic: str, value: bytes) -> None:
@@ -121,7 +123,7 @@ def _run_verdict(mock_db: AsyncMock, *, correlation_id: str, offset: int) -> boo
             MessageMeta(partition=0, offset=offset, fallback_id=correlation_id),
         )
     )
-    return bool(result)
+    return bool(result), published
 
 
 class TestEnvelopeIdIsStrippedNotForbidden:
@@ -139,6 +141,7 @@ class TestEnvelopeIdIsStrippedNotForbidden:
         assert "correlation_id" in stripped
 
     def test_the_writer_does_not_dlq_the_live_shaped_event(self) -> None:
+        # OMN-19448 rule 1: verdict-first writes no run row and republishes nothing.
         """RED before OMN-18214: this is the exact shape that DLQ'd on
         onex-dev staging run 34687273545 -- ``ModelQualityGateResult``
         raised ``ValidationError`` on the extra ``_envelope_id`` field and
@@ -148,7 +151,9 @@ class TestEnvelopeIdIsStrippedNotForbidden:
         mock_db = _mock_db()
         correlation_id = str(uuid4())
 
-        result = _run_verdict(mock_db, correlation_id=correlation_id, offset=1)
+        result, published = _run_verdict(
+            mock_db, correlation_id=correlation_id, offset=1
+        )
 
         assert result is True
 
@@ -168,7 +173,12 @@ class TestEnvelopeIdIsStrippedNotForbidden:
             "path -- _envelope_id is a runner-injected key, not a producer "
             "field ModelQualityGateResult should ever be asked to accept"
         )
-        assert insert_calls, "expected a delegation_events INSERT to be issued"
+        assert insert_calls == [], "a verdict-first delivery must author no run row"
+        assert [
+            t
+            for t in published
+            if t != "onex.evt.omnimarket.projection-delegation-applied.v1"
+        ] == [], "an accepted no-op must neither DLQ nor republish a row"
 
     def test_runtime_injected_keys_already_covers_envelope_id(self) -> None:
         """Positive control distinguishing the two seams: the OMN-16249

@@ -9,8 +9,12 @@ client_verdict with the hook's output shape.
 
 The adapter mints a fresh uuid4 invocation_id for every invocation (plan section 6:
 carried on the command, the package reply and any fallback). An argument whose
-source is INVOCATION_ID_SOURCE carries it on the command; every other field is
-still drawn from the hook input.
+source is INVOCATION_ID_SOURCE carries it on the command. An argument whose
+source is INPUT_MESSAGES_HASH_SOURCE carries the hash of the conversation being
+compacted, derived from the hook input's messages or transcript (OMN-21099).
+SESSION_BARRIER_SOURCE journals the session's capture high-waters before the
+command is published and carries their shared barrier id (TA.21); every other
+field is drawn from the hook input by its path.
 """
 
 from __future__ import annotations
@@ -30,12 +34,19 @@ from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_comp
     COMPACTION_VERDICT_COMPUTE,
     compute_compaction_verdict,
 )
+from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_input_messages_hash import (
+    input_messages_hash,
+)
+from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_session_barrier_journal import (
+    HandlerSessionBarrierJournal,
+)
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.models import (
     ModelHookAdapterRequest,
     ModelHookAdapterResult,
 )
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.protocols import (
     ProtocolReceiptModeClient,
+    ProtocolSessionBarrierJournal,
 )
 
 if TYPE_CHECKING:
@@ -43,6 +54,12 @@ if TYPE_CHECKING:
 
 
 INVOCATION_ID_SOURCE = "@invocation_id"
+INPUT_MESSAGES_HASH_SOURCE = "@input_messages_hash"
+SESSION_BARRIER_SOURCE = "@session_barrier"
+#: The sources a binding argument may name besides a `$.path` into the hook input.
+RESERVED_SOURCES = frozenset(
+    {INVOCATION_ID_SOURCE, INPUT_MESSAGES_HASH_SOURCE, SESSION_BARRIER_SOURCE}
+)
 
 
 def resolve_source(hook_input: dict[str, JsonValue], source: str) -> JsonValue:
@@ -60,11 +77,25 @@ def build_command_payload(
     hook_input: dict[str, JsonValue],
     *,
     invocation_id: UUID | None = None,
+    barrier_journal: ProtocolSessionBarrierJournal | None = None,
 ) -> dict[str, JsonValue]:
-    """Draw fields from hook input, with the reserved source carrying the minted id."""
+    """Draw fields from hook input, deriving reserved ids, hash and session barrier."""
+    sources = {a.source for a in binding.arguments}
+    derived: dict[str, JsonValue] = {}
+    if invocation_id is not None:
+        derived[INVOCATION_ID_SOURCE] = str(invocation_id)
+    if INPUT_MESSAGES_HASH_SOURCE in sources:
+        derived[INPUT_MESSAGES_HASH_SOURCE] = input_messages_hash(hook_input)
+    if SESSION_BARRIER_SOURCE in sources:
+        session_id = resolve_source(hook_input, "$.session_id")
+        if not isinstance(session_id, str) or not session_id:
+            raise ValueError("session barrier needs a non-empty session_id")
+        if barrier_journal is None:
+            raise ValueError("session barrier needs a barrier_journal")
+        derived[SESSION_BARRIER_SOURCE] = barrier_journal.journal(session_id)
     return {
-        a.name: str(invocation_id)
-        if a.source == INVOCATION_ID_SOURCE and invocation_id is not None
+        a.name: derived[a.source]
+        if a.source in derived
         else resolve_source(hook_input, a.source)
         for a in binding.arguments
     }
@@ -82,9 +113,15 @@ class HandlerClaudeCodeHookAdapter:
         client: ProtocolReceiptModeClient | None = None,
         *,
         invocation_ids: Callable[[], UUID] = uuid4,
+        barrier_journal: ProtocolSessionBarrierJournal | None = None,
     ) -> None:
         self._client = client
         self._invocation_ids = invocation_ids
+        self._barrier_journal = (
+            barrier_journal
+            if barrier_journal is not None
+            else HandlerSessionBarrierJournal()
+        )
 
     def handle(self, request: ModelHookAdapterRequest) -> ModelHookAdapterResult:
         if self._client is None:
@@ -95,7 +132,10 @@ class HandlerClaudeCodeHookAdapter:
             topic=binding.command_topic,
             command_type=binding.command_type,
             payload=build_command_payload(
-                binding, request.hook_input, invocation_id=invocation_id
+                binding,
+                request.hook_input,
+                invocation_id=invocation_id,
+                barrier_journal=self._barrier_journal,
             ),
             awaited_events=binding.awaited_events,
             deadline_ms=binding.deadline_ms,

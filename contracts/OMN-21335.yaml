@@ -30,6 +30,14 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_adapter_template_compact_binding.py -q --no-cov -k adapter_template_compact_binding"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn21335-ac1-selectors-name-a-file"
+    description: "AC1: every pytest check this contract binds names the existing compact-binding test file, AC2 is bound to its install tests, and the command-only deploy probe binds no criterion, so the repo evidence guards accept the contract. Fails at the merge base, where AC1 named a bare directory and AC2 named no test."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_contract_evidence_selector_names_file_omn17427.py -q -p no:randomly -k omn21335_compact_binding_checks_name_the_test_file_and_bind_tests"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
   - id: "dod-omn21335-ac2-install-readback"
     description: "AC2, hosted-runner form: install the shipped contract row through the install effect in process into a temporary mods folder, read the install record back from disk and require session.compact with the manual matcher, installed bytes equal to the render, and no auto row in the contract; then require the install of an auto row to be refused with no module written. The lab-host form is the skill run recorded in the PR body. At the merge base the contract holds no row, so the first assertion fails."
     source: "manual"

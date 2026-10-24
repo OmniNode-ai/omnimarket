@@ -91,6 +91,16 @@ def _attempt_history(value: object) -> list[object]:
     return value if isinstance(value, list) else []
 
 
+# OMN-19448: what a failed run that was never routed reads for its model; the
+# reason follows in parentheses. It names no model, so it is never evidence.
+NOT_ROUTED = "not routed"
+
+
+def names_no_model(value: object) -> bool:
+    """True for a model column that is blank or reads ``not routed`` (OMN-19448)."""
+    return _is_blank(value) or str(value).strip().startswith(NOT_ROUTED)
+
+
 def is_unevidenced_handler_failure(row: Mapping[str, object]) -> bool:
     """Recognize a handler's budget/cancellation failure with no provider evidence."""
     cause = row.get("terminal_failure_cause")
@@ -98,7 +108,7 @@ def is_unevidenced_handler_failure(row: Mapping[str, object]) -> bool:
         isinstance(cause, str)
         and cause in HANDLER_LOCAL_FAILURE_CAUSES
         and not _attempt_history(row.get("attempt_history"))
-        and _is_blank(row.get("model_name"))
+        and names_no_model(row.get("model_name"))
     )
 
 
@@ -106,7 +116,7 @@ def is_evidenced_success(row: Mapping[str, object]) -> bool:
     """Require a successful terminal, a model, and an accepted attempt."""
     return (
         _flag(row.get("terminal_ok")) is True
-        and not _is_blank(row.get("model_name"))
+        and not names_no_model(row.get("model_name"))
         and any(
             isinstance(attempt, Mapping)
             and _flag(attempt.get("quality_gate_passed")) is True
@@ -309,6 +319,35 @@ def apply_terminal_precedence(
     _state_unstated_outcome(existing, row)
 
 
+# OMN-19448: the only column a rung's quality verdict may still add to its run's
+# row. The verdict is one rung's result and the terminal carries every rung on
+# its ladder, so the run's verdict, detail and score are the terminal's.
+_RUNG_VERDICT_FILL_COLUMNS = ("score_source",)
+
+
+def rung_verdict_fill(
+    existing: Mapping[str, object] | None, verdict: Mapping[str, object]
+) -> dict[str, object]:
+    """The columns a rung's ``quality-gate-result`` may write on its run's row.
+
+    OMN-19448. The delegation workflow publishes one verdict per rung, before
+    the run's terminal. Run 0c94d119 on the dev lane passed on its second rung,
+    but its first rung's refusal arrived first and created the row with no task
+    type, model, tokens or tier and ``quality_gate_passed`` false, so the
+    dashboard showed a failed run with an unknown model until the terminal
+    landed. A verdict therefore never creates the row, and on a stored row it
+    never states the run's verdict, detail or score: it only fills a blank
+    ``score_source``. An empty result means the verdict writes nothing.
+    """
+    if not existing:
+        return {}
+    return {
+        column: verdict[column]
+        for column in _RUNG_VERDICT_FILL_COLUMNS
+        if not _is_blank(verdict.get(column)) and _is_blank(existing.get(column))
+    }
+
+
 def supersedes_handler_failure(
     existing: Mapping[str, object], row: Mapping[str, object]
 ) -> bool:
@@ -318,13 +357,16 @@ def supersedes_handler_failure(
 
 __all__ = [
     "HANDLER_LOCAL_FAILURE_CAUSES",
+    "NOT_ROUTED",
     "apply_terminal_precedence",
     "fold_terminal_ownership",
     "is_evidenced_success",
     "is_failure_terminal",
     "is_unevidenced_handler_failure",
     "keep_stored_terminal",
+    "names_no_model",
     "outcome_for_failure_cause",
+    "rung_verdict_fill",
     "stored_terminal_owns_outcome",
     "supersedes_handler_failure",
 ]

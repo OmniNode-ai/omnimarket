@@ -28,6 +28,16 @@ requirements:
       - id: "AC3"
         statement: |-
           AC3: an admission-decided event built from the derived values carries no prompt text, and the effective mode is the lesser of the client maximum and the cohort mode -- falsifier: uv run pytest tests/unit/models/delegation/wire/test_client_call_wire_omn21099.py -k "admission_decided or effective_mode"
+  - id: "req-session-barrier-producer"
+    statement: |-
+      The hook adapter journals one session barrier per capture stream before it publishes the compaction command, and the command carries that barrier's id, so the compaction orchestrator's barrier wait has a barrier to test.
+    acceptance:
+      - id: "DoD1"
+        statement: |-
+          DoD1: the adapter journals a content.captured barrier record per enabled capture stream, with the stream's producer high-water, before publishing, and the command's barrier_id equals the journalled one -- falsifier: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_session_barrier_producer_omn21099.py -k "journals or barrier_id or disabled"
+      - id: "DoD2"
+        statement: |-
+          DoD2: through the real compaction orchestrator and barrier wait, a command built without the producer falls back source_incomplete and a command built with it installs -- falsifier: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_session_barrier_producer_omn21099.py -k "requires_the_produced_barrier"
   - id: "req-pack-build-fold-once"
     statement: |-
       A compaction pack build folds each work-ledger row at most once per process: the ledger and work-state sources share one fold memo, keyed by row id and checked against the row text, that keeps only the rows of the latest read.
@@ -75,6 +85,29 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/models/delegation/wire/model_delegate_skill_client_call.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -qE '^def client_call_correlation_id\('
+  - id: "dod-omn21099-barrier-producer"
+    description: "DoD1: the adapter journals the session barrier before publishing and carries its id."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_session_barrier_producer_omn21099.py -k \"journals or barrier_id or disabled\" -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["DoD1"]
+  - id: "dod-omn21099-barrier-orchestrator"
+    description: "DoD2: source_incomplete without the barrier, install with it, through the real orchestrator."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_session_barrier_producer_omn21099.py -k \"requires_the_produced_barrier\" -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["DoD2"]
+  - id: "dod-omn21099-deploy-barrier-binding"
+    description: "Deploy probe: read the adapter contract at the checked-out commit from GitHub and require the compaction binding to draw barrier_id from the session barrier source. The base draws it from the hook input and fails this probe. The command uses GitHub and the hosted runner checkout without a lab path."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_claude_code_hook_adapter_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -qF '{name: barrier_id, source: "@session_barrier"}'
   - id: "dod-omn21099-ledger-fold-once"
     description: "AC8: the shared work-ledger fold memo and three-tier parity."
     source: "manual"

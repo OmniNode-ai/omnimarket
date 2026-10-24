@@ -62,7 +62,6 @@ from omnimarket.projection.protocol_database import (
     ProtocolProjectionAttestedWrite,
 )
 from omnimarket.projection.snapshot_publisher import ModelSnapshotDeltaMessage
-from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
 from omnimarket.projection.tenant_registry_resolution import (
     TENANT_REGISTRY_MIRROR_TABLE,
 )
@@ -130,6 +129,8 @@ def _task_delegated(tenant_id: str | None = None) -> ModelTaskDelegatedEvent:
         task_type="code_review",
         delegated_to="local",
         model_name="qwen",
+        backend_id="local-qwen",
+        host="h201",
         delegated_by="test",
         quality_gate_passed=True,
         timestamp="2026-09-11T00:00:00+00:00",
@@ -158,6 +159,7 @@ def _quality_gate_result() -> ModelQualityGateResult:
         passed=True,
         quality_score=0.91,
         actual_score=0.91,
+        score_source="deterministic_acceptance",
     )
 
 
@@ -189,12 +191,35 @@ def _drive(handler: HandlerProjectionDelegation, path: str, db: Any) -> None:
     elif path == "delegate_skill_terminal":
         handler.project_delegate_skill_terminal(_delegate_skill_terminal(tenant_id), db)
     elif path == "quality_gate_result":
-        handler.project_quality_gate_result(
+        # OMN-19448 rule 1: the verdict can only annotate a terminal-owned row.
+        if not db.query("delegation_events", {"correlation_id": CORRELATION_ID}):
+            _handler(RecordingPublisher()).project(_task_delegated(tenant_id), db)
+        before = dict(
+            db.query("delegation_events", {"correlation_id": CORRELATION_ID})[0]
+        )
+        result = handler.project_quality_gate_result(
             _quality_gate_result(),
             db,
-            tenant_identity=HOUSE_TENANT_SLUG,
+            tenant_identity=tenant_id,
             event_timestamp=datetime(2026, 9, 11, tzinfo=UTC),
         )
+        assert result.rows_upserted == 1
+        after = db.query("delegation_events", {"correlation_id": CORRELATION_ID})[0]
+        assert after["score_source"] == "deterministic_acceptance"
+        for column in (
+            "task_type",
+            "delegated_to",
+            "model_name",
+            "backend_id",
+            "host",
+            "quality_gate_passed",
+            "quality_gate_detail",
+            "actual_score",
+            "timestamp",
+            "tenant_id",
+            "created_at",
+        ):
+            assert after.get(column) == before.get(column), column
     else:  # pragma: no cover - guards a typo in a parametrize list
         raise AssertionError(f"unknown write path {path!r}")
 
@@ -226,6 +251,7 @@ class TestEveryDelegationWritePathAttestsAndRepublishes:
         ["terminal", "delegate_skill_terminal", "quality_gate_result"],
     )
     def test_the_path_publishes_exactly_one_decisions_delta(self, path: str) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         publisher = RecordingPublisher()
         handler = _handler(publisher)
         db = InmemoryDatabaseAdapter()
@@ -238,6 +264,7 @@ class TestEveryDelegationWritePathAttestsAndRepublishes:
         ["terminal", "delegate_skill_terminal", "quality_gate_result"],
     )
     def test_the_path_stamps_the_attestation_columns(self, path: str) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         db = InmemoryDatabaseAdapter()
         _drive(_handler(RecordingPublisher()), path, db)
         stored = db.query("delegation_events")[0]
@@ -383,6 +410,7 @@ class TestTheOrderingTokenSurvivesARewrite:
     """
 
     def test_a_second_write_to_the_same_key_carries_a_higher_offset(self) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         publisher = RecordingPublisher()
         handler = _handler(publisher)
         db = InmemoryDatabaseAdapter()
@@ -394,6 +422,7 @@ class TestTheOrderingTokenSurvivesARewrite:
         assert offsets[1] > offsets[0], offsets
 
     def test_both_writes_key_the_same_cache_entry(self) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         """The offsets only matter because the two deltas collide on one key."""
         publisher = RecordingPublisher()
         handler = _handler(publisher)
@@ -489,6 +518,7 @@ class TestAgainstRealPostgres:
         self,
         real_pg_adapter: Any,  # noqa: F811
     ) -> None:
+        # OMN-19448 rule 1: the verdict only fills score_source on a terminal-owned row.
         """The DO UPDATE arm restates the expressions, against a real database.
 
         This is the property a column DEFAULT cannot give and no double can

@@ -391,7 +391,8 @@ def _fetch_row(admin: Any, correlation_id: str) -> dict[str, Any] | None:
     with admin.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
             f"SELECT tenant_id, model_name, tokens_output, task_type, "
-            f"quality_gate_passed FROM {TABLE} WHERE correlation_id = %s",
+            f"quality_gate_passed, quality_gate_detail, score_source "
+            f"FROM {TABLE} WHERE correlation_id = %s",
             (correlation_id,),
         )
         record = cur.fetchone()
@@ -599,22 +600,34 @@ class TestOrderingIndependence:
         self._assert_terminal_row(lane, correlation_id)
 
     @pytest.mark.parametrize("verdict_first", [True, False])
-    def test_an_attributed_verdict_lands_in_either_order(
+    def test_an_attributed_rung_verdict_never_authors_the_run_row(
         self, lane: _Lane, verdict_first: bool
     ) -> None:
-        """The same property once the producer stamp reaches the writer.
+        """OMN-19448 replaces the "applied in either order" control.
 
-        Negative control on the refusal: a verdict that DOES carry the
-        submitting tenant must still be applied, in both orderings, or "fail
-        closed" has quietly become "drop every verdict".
+        A verdict is one rung's result. Applied first it created the row with
+        no task type, model or tokens and the rung's verdict, which the
+        dashboard read as a failed, unattributed run until the terminal landed
+        (run 0c94d119 on the dev lane, 2026-10-22, which passed on its second
+        rung). Now, against the real policy: before the terminal the verdict
+        writes nothing; after it, an attributed verdict only fills a blank
+        ``score_source`` and never changes the terminal's verdict. The
+        terminal row is whole in both orderings.
         """
         correlation_id = str(uuid4())
+        refusal = ModelQualityGateResult(
+            correlation_id=correlation_id,
+            passed=False,
+            quality_score=0.0,
+            failure_reasons=("TASK_MISMATCH: response has 122 words",),
+            score_source="deterministic_acceptance",
+        )
 
         def _write_verdict() -> int:
             return (
                 _handler()
                 .project_quality_gate_result(
-                    _verdict(correlation_id),
+                    refusal,
                     lane.adapter,
                     tenant_identity=_REAL_SLUG,
                     event_timestamp=_EVENT_TIMESTAMP,
@@ -622,34 +635,24 @@ class TestOrderingIndependence:
                 .rows_upserted
             )
 
-        def _write_terminal() -> int:
-            return (
-                _handler()
-                .project(_terminal(correlation_id), lane.adapter)
-                .rows_upserted
-            )
-
+        passed_terminal = _terminal(correlation_id).model_copy(
+            update={"quality_gate_passed": True}
+        )
         if verdict_first:
-            verdict_rows = _write_verdict()
-            _write_terminal()
+            assert _write_verdict() == 0
+            assert _row_count(lane.admin, correlation_id) == 0
+            _handler().project(passed_terminal, lane.adapter)
         else:
-            _write_terminal()
-            verdict_rows = _write_verdict()
+            _handler().project(passed_terminal, lane.adapter)
+            assert _write_verdict() == 1
 
-        # The verdict was APPLIED rather than refused, in both orderings. This
-        # is the assertion that stops "fail closed" from widening into "drop
-        # every verdict": the row's own columns cannot carry it, because the
-        # terminal is the authority on quality_gate_passed and restates it on
-        # whichever arm it takes.
-        assert verdict_rows == 1
         self._assert_terminal_row(lane, correlation_id)
-
+        row = _fetch_row(lane.admin, correlation_id)
+        assert row is not None
+        assert row["quality_gate_passed"] is True
+        assert "TASK_MISMATCH" not in str(row.get("quality_gate_detail") or "")
         if not verdict_first:
-            # Terminal first, so the verdict is the LAST writer and its own
-            # fact must be visible on the stored row.
-            row = _fetch_row(lane.admin, correlation_id)
-            assert row is not None
-            assert row["quality_gate_passed"] is True
+            assert row["score_source"] == "deterministic_acceptance"
 
 
 @pytest.mark.integration

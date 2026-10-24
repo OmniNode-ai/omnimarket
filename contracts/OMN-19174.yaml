@@ -1,0 +1,57 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-19174"
+title: "The inference worker owns its TLS client, and a non-SQLite claims store is refused"
+summary: "C16 (OMN-19174's delegation criterion) read red because the dev lane's delegate-skill claims store held a TLS 1.3 record over bytes 5..28 of its SQLite header (2026-10-07 and 2026-10-22T23:58:33Z), failing every delegation with 'file is not a database'. HandlerInferenceIntent closed its httpx client on the caller thread while an abandoned worker was still in SSL read, freeing the socket's fd number for the next file opened. The worker now owns and closes its client, and the SQLite adapter and the claim-store resolver refuse a nonempty store without the SQLite header with one CRITICAL SQLITE_STORE_NOT_A_DATABASE line."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn19174-worker-owns-client"
+    statement: |-
+      An inference call abandoned at its deadline never has its client closed by another thread while its worker is still in the call.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the abandoned worker's client is closed once, on the worker thread, after post returns -- falsifier: test_inference_client_owned_by_worker_omn19174.py, which fails at the merge base (client closed by the caller while post is in flight)
+  - id: "req-omn19174-refuse-non-sqlite-store"
+    statement: |-
+      A nonempty store without the SQLite header is refused with a typed error and one CRITICAL alarm line, at claim-store resolution and on every adapter connect.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: a store carrying the recorded corrupt header (53514c69741703030013a7d92458a8aab9519ea555ae2ab3cecf8c6aaa0415d6) raises SqliteStoreNotADatabaseError from verify_sqlite_store_header, SqliteDatabaseAdapter and resolve_delegation_claim_store, logging SQLITE_STORE_NOT_A_DATABASE once -- falsifier: test_sqlite_store_header_check_omn19174.py
+evidence_requirements:
+  - kind: "tests"
+    description: "Worker-owned client regression (AC1) and recorded-corrupt-header refusal (AC2)."
+    command: "uv run pytest tests/unit/nodes/node_llm_delegation_call_effect/test_inference_client_owned_by_worker_omn19174.py tests/unit/projection/test_sqlite_store_header_check_omn19174.py -q -n 0 --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn19174-worker-owns-client"
+    description: "The abandoned inference worker closes its own client; the caller never closes it while post is in flight. Fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_llm_delegation_call_effect/test_inference_client_owned_by_worker_omn19174.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19174-refuse-non-sqlite-store"
+    description: "A store with the recorded corrupt header is refused by the header check, the adapter and the claim-store resolver, with one CRITICAL SQLITE_STORE_NOT_A_DATABASE line; missing, empty and healthy stores pass."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/projection/test_sqlite_store_header_check_omn19174.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19174-deploy-probe"
+    description: "Published-source probe for the hosted runner: read the inference handler and the SQLite adapter from GitHub at the checked-out commit and require the worker-owned client function (AC1) and the adapter's header check on connect (AC2). Both are absent at the merge base, so an unpublished commit or a missing fix fails. This checks the published source, not a running lane deployment."
+    source: "manual"
+    execution_scope: "hosted_and_local"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          bash -o pipefail -c 'ref="$(git rev-parse HEAD)"; gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_inference_intent.py?ref=${ref}" --jq .content | base64 --decode | grep -F "def _post_owning_client() -> httpx.Response:" >/dev/null && gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/projection/sqlite_database.py?ref=${ref}" --jq .content | base64 --decode | grep -F "verify_sqlite_store_header(Path(db_path))" >/dev/null'
+        cwd: "."

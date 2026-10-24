@@ -1,0 +1,120 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21091"
+title: "T0.1 Capability probe: P14 capture lag, the session-content projection keeps four records in flight"
+summary: "P14 re-measured on the dev lane 2026-10-23 13:00Z-14:25Z by joining broker append timestamps to projected rows. The time is held between the broker and the projected row (content stream p95 172.415 s, hook stream p95 81.997 s); hook fire to broker is p95 under 11 s on both streams. The hook-event projection already keeps four records in flight; the session-content projection was serial behind a per-writer lock and opened a two-connection pool per record. Its contract now declares consume_concurrency max_in_flight_records 4, and each runtime message writes through its own single-connection adapter on the runtime-bound DSN. This contract binds only the code change this repository carries for P14."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21091-p14-content-projection-concurrency"
+    statement: |-
+      The session-content projection permits four records in flight, gives each runtime message its own single-connection adapter, and folds records delivered in any order to the same rows.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the report answers every row of section 3 (P0-P19) with supported, unsupported or untested, quoting the evidence line and the positive control's result -- falsifier: any row without a quoted transcript line, capture event id, process sample, broker config line or declaration, or a "supported" row whose control is absent.
+      - id: "AC2"
+        statement: |-
+          AC2: the report pins `claude --version` and the sha256 of the regenerated declarations -- falsifier: the two version strings disagree or the hash is absent.
+      - id: "AC3"
+        statement: |-
+          AC3: the report measures no path this plan has yet to build -- falsifier: a latency row for the compaction build, `context_pack` or client-call admission.
+evidence_requirements:
+  - kind: "tests"
+    description: "The session-content writer declares four records in flight, four messages write at once (a barrier of four times out against the serial merge-base writer), each message gets its own single-connection adapter, and reversed delivery records the same statements."
+    command: "uv run pytest tests/unit/nodes/node_projection_session_content/test_session_content_checkpoint_kind_omn18531.py tests/unit/nodes/node_projection_session_content/test_session_content_compact_kind_omn21122.py tests/unit/nodes/node_projection_session_content/test_session_content_consume_concurrency_omn21091.py tests/unit/nodes/node_projection_session_content/test_session_content_item_identity_omn21123.py tests/unit/nodes/node_projection_session_content/test_session_content_projection_omn19550.py tests/unit/nodes/test_golden_chain_session_content_omn19550.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21091-ac1-p14-capture-path"
+    description: "P14 evidence this repository carries: the projection hop that held the content stream's lag now runs four records at once on isolated adapters. The probe report row that quotes the per-hop measurement is not bound here. Fails at the merge base (no consume_concurrency key, no _message_db, the barrier of four breaks)."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_session_content/test_session_content_consume_concurrency_omn21091.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21091-ac2-existing-projection-suite"
+    description: "The version pin and declaration hash are probe report fields, not bound here. This repository's check is that the session-content projection suite, including its golden chain, still passes unchanged after the concurrency change."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_session_content/test_session_content_checkpoint_kind_omn18531.py tests/unit/nodes/node_projection_session_content/test_session_content_compact_kind_omn21122.py tests/unit/nodes/node_projection_session_content/test_session_content_consume_concurrency_omn21091.py tests/unit/nodes/node_projection_session_content/test_session_content_item_identity_omn21123.py tests/unit/nodes/node_projection_session_content/test_session_content_projection_omn19550.py tests/unit/nodes/test_golden_chain_session_content_omn19550.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21091-ac3-capture-path-only"
+    description: "The change and its measurement touch only the existing capture path (hook capture, emit drainer, bus, session-content projection). No compaction build, context_pack or client-call admission path is changed or timed. The bound file is the capture-path concurrency suite, reversed delivery included; it fails at the merge base, where the projection declares no consume_concurrency."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_session_content/test_session_content_consume_concurrency_omn21091.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21091-deploy-probe"
+    description: "Hosted-runner runtime probe: the runtime's own consume-concurrency loader reads four records in flight for both projections (the session-content assertion fails at the merge base). Dispatch two content chunks in reverse order through the in-process ONEX runtime to the node's shipped pure handler (the contract's handler block); require successful typed row receipts with distinct content-addressed identities. The durable writer requires async PostgreSQL execute; the local SQLite adapter only supports synchronous upserts, so these receipts prove runtime-hosted concurrency validation and projection folds, not database writes. The unchanged writer suite also passes. No lane services or credentials are required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+          uv run --locked python - "$probe_dir" <<'PY'
+          import sys
+          from pathlib import Path
+          import yaml
+          from omnibase_infra.runtime.auto_wiring.models.model_consume_concurrency import load_consume_concurrency
+          from omnimarket.nodes.node_projection_session_content.models.model_session_content import ModelSessionContentRecord
+          root = Path(sys.argv[1])
+          nodes = Path("src/omnimarket/nodes")
+          contract_path = nodes / "node_projection_session_content" / "contract.yaml"
+          content = load_consume_concurrency(contract_path)
+          hook = load_consume_concurrency(nodes / "node_projection_claude_hook_events" / "contract.yaml")
+          assert content.max_in_flight_records == 4, content
+          assert hook.max_in_flight_records == 4, hook
+          print({"session_content": content.max_in_flight_records, "claude_hook_events": hook.max_in_flight_records})
+          contract = yaml.safe_load(contract_path.read_text())
+          # The shipped pure handler (the handler block of the contract); the durable
+          # routed writer needs PostgreSQL, which a hosted runner probe does not have.
+          fold_contract = {key: contract[key] for key in ("name", "node_type", "contract_version", "node_version", "consume_concurrency")}
+          fold_contract["handler"] = {**contract["handler"], "input_model": contract["input_model"]}
+          (root / "fold.yaml").write_text(yaml.safe_dump(fold_contract))
+          for index in (1, 0):
+              record = ModelSessionContentRecord(session_id="omn21091-deploy-probe", content_kind="prompt", chunk_index=index, chunk_count=2, content=f"chunk-{index}", emitted_at=f"2026-10-23T00:00:0{index}Z")
+              (root / f"input-{index}.json").write_text(record.model_dump_json())
+          PY
+          for index in 1 0; do
+            env ONEX_LANE=omn21091-deploy-probe "$runtime_bin/onex" node node_projection_session_content --contract "$probe_dir/fold.yaml" --input "$probe_dir/input-$index.json" --state-root "$probe_dir/state-$index" --backend event_bus=inmemory --timeout 30 --output receipt --emit-socket "$probe_dir/no-daemon.sock" --omnibase-path "$PWD" > "$probe_dir/receipt-$index.json";
+          done;
+          uv run --locked python - "$probe_dir" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          from omnibase_core.models.dispatch.model_skill_result import ModelSkillResult
+          from omnimarket.nodes.node_projection_session_content.handlers.session_content_fold import SUBSCRIBE_TOPIC, derive_event_id
+          from omnimarket.nodes.node_projection_session_content.models.model_session_content import ModelSessionContentRecord, ModelSessionContentRow
+          root = Path(sys.argv[1])
+          event_ids = set()
+          run_ids = set()
+          for index in (1, 0):
+              receipt = ModelSkillResult[ModelSessionContentRow].model_validate_json((root / f"receipt-{index}.json").read_text())
+              assert receipt.status.value == "success" and receipt.exit_code == 0, receipt
+              assert receipt.node_name == "node_projection_session_content", receipt
+              record = ModelSessionContentRecord.model_validate_json((root / f"input-{index}.json").read_text())
+              row = receipt.result
+              assert row.event_id == derive_event_id(record, source_topic=SUBSCRIBE_TOPIC), row
+              assert row.session_id == record.session_id and row.source_topic == SUBSCRIBE_TOPIC, row
+              assert row.chunk_index == index and row.chunk_count == 2, row
+              assert row.content == f"chunk-{index}" and row.emitted_at == record.emitted_at, row
+              event_ids.add(row.event_id)
+              run_ids.add(str(receipt.run_id))
+          assert len(event_ids) == len(run_ids) == 2, (event_ids, run_ids)
+          print(json.dumps({"projection_folds": len(event_ids), "delivery_order": [1, 0], "run_ids": sorted(run_ids), "durable_writes_probed": False}))
+          PY
+          env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_projection_session_content/ -q --no-cov
+        cwd: "${OMNI_HOME}/omnimarket"

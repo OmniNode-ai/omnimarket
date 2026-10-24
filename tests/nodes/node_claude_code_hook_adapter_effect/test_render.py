@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 
 import pytest
@@ -47,13 +48,20 @@ def test_ac1_command_is_exactly_the_adapter_entry_with_the_binding_name() -> Non
     assert "['onex-claude-code-hook', '--binding', 'delegation']" in out.module_text, (
         out.module_text
     )
-    assert "stdin: JSON.stringify(e)" in out.module_text
+    # OMN-21099: the event plus the classic base fields, read from the engine.
+    assert (
+        "stdin: JSON.stringify({ ...e, session_id: await $.session.id(), "
+        "cwd: await $.session.cwd() })"
+    ) in out.module_text
 
 
 def test_ac2_required_host_maps_never_started_to_deny() -> None:
-    text = _render(make_binding(), max_mode=EnumClientMaxMode.REQUIRED).module_text
-    assert "never_started: () => ({ deny:" in text
-    assert "never_started: (next, e) => next(e)" not in text
+    binding = make_binding()
+    text = _render(binding, max_mode=EnumClientMaxMode.REQUIRED).module_text
+    assert "never_started: 'deny'" in text
+    assert "other: 'deny'" in text
+    assert f"deny: (ran, fall) => ({{ deny: {json.dumps(binding.deny_text)} }})" in text
+    assert "never_started: 'native'" not in text
 
 
 @pytest.mark.parametrize(
@@ -61,16 +69,30 @@ def test_ac2_required_host_maps_never_started_to_deny() -> None:
 )
 def test_ac2_observe_and_selective_map_never_started_to_native(mode) -> None:
     text = _render(make_binding(), max_mode=mode).module_text
-    assert "never_started: (next, e) => next(e)" in text
-    assert "never_started: () => ({ deny:" not in text
+    assert "never_started: 'native'" in text
+    assert "never_started: 'deny'" not in text
+    if mode is EnumClientMaxMode.OBSERVE:
+        assert "other: 'native'" in text
+        assert "deny: (ran, fall)" not in text
+    else:
+        assert "other: 'deny'" in text
+        assert "deny: (ran, fall)" in text
 
 
-def test_ac2_changing_the_maximum_changes_only_the_failure_table_literal() -> None:
+def test_ac2_changing_the_maximum_changes_only_fallbacks_and_deny_answer() -> None:
     req = _render(make_binding(), max_mode=EnumClientMaxMode.REQUIRED).module_text
     obs = _render(make_binding(), max_mode=EnumClientMaxMode.OBSERVE).module_text
+    req_lines = req.splitlines()
+    deny_lines = [line for line in req_lines if line.startswith("  deny:")]
+    assert len(deny_lines) == 1
+    assert "  deny:" not in obs
     changed = [
         (a, b)
-        for a, b in zip(req.splitlines(), obs.splitlines(), strict=True)
+        for a, b in zip(
+            [line for line in req_lines if line not in deny_lines],
+            obs.splitlines(),
+            strict=True,
+        )
         if a != b
     ]
     assert changed, "the maximum must change the table"
@@ -97,7 +119,7 @@ def test_ac3_changing_one_deadline_changes_only_that_literal() -> None:
     assert diff[0][0].replace("30000", "45000") == diff[0][1]
 
 
-def test_ac4_no_branching_beyond_the_two_tables() -> None:
+def test_ac4_no_branching_beyond_table_lookups() -> None:
     residue = _code_residue(_render(make_binding()).module_text)
     assert _BRANCH_TOKENS.findall(residue) == [], residue
 
@@ -145,5 +167,56 @@ def test_ac11_additive_row_renders_one_registration_with_the_exact_command(
 
 def test_catch_handler_never_throws_for_a_replacing_binding() -> None:
     text = _render(make_binding(), max_mode=EnumClientMaxMode.REQUIRED).module_text
-    assert ".catch(($, e, next) => FAILURE.other(next, e))" in text
-    assert "other: () => ({ deny:" in text
+    assert (
+        ".catch(($, e, next) => ($.ui.log(FAILED + 'hook threw'), "
+        "ANSWER[FALLBACK.other](undefined, () => next(e))))" in text
+    )
+    assert "other: 'deny'" in text
+    assert "deny: (ran, fall) => ({ deny:" in text
+
+
+@pytest.mark.parametrize("mode", list(EnumClientMaxMode))
+def test_every_failure_path_logs_one_line_before_resolving_its_answer(mode) -> None:
+    """OMN-21341 AC3 (OMN-21116 AC2): a failed /compact is never silent."""
+    text = _render(make_binding(), max_mode=mode).module_text
+    assert (
+        "false: ran => ({ ran, lines: [FAILED + 'exit ' + ran.exitCode], answer: FALLBACK.other })"
+        in text
+    )
+    assert (
+        "err => ({ ran: undefined, lines: [FAILED + String(err)], answer: FALLBACK[KIND[String(PATTERN_delegation.test(String(err)))]] })"
+        in text
+    )
+    log = "plan.lines.forEach(line => $.ui.log(line))"
+    answer = "return ANSWER[plan.answer](plan.ran, () => next(e))"
+    assert text.index(log) < text.index(answer)
+    assert text.count("$.ui.log(") == 2  # One planned line or the catch handler.
+    assert "native: (ran, fall) => fall()" in text
+    assert "output: (ran, fall) => JSON.parse(ran.stdout)" in text
+    assert (
+        "true: ran => ({ ran, lines: [], answer: OUTPUT[Math.min(ran.stdout.length, 1)] })"
+        in text
+    )
+
+
+@pytest.mark.parametrize("mode", list(EnumClientMaxMode))
+@pytest.mark.parametrize("with_additive", [False, True])
+def test_no_replacing_binding_has_only_native_fallbacks(
+    mode, with_additive, additive_binding
+) -> None:
+    bindings = (additive_binding,) if with_additive else ()
+    text = _render(*bindings, max_mode=mode).module_text
+    assert "never_started: 'native'" in text
+    assert "other: 'native'" in text
+    assert "deny: (ran, fall)" not in text
+
+
+def test_first_replacing_binding_decides_the_fixed_deny_literal(
+    additive_binding,
+) -> None:
+    first = make_binding(deny_text="first strictest binding")
+    second = make_binding(name="second", deny_text="second binding")
+    text = _render(additive_binding, first, second).module_text
+    assert f"deny: {json.dumps(first.deny_text)}" in text
+    assert second.deny_text not in text
+    assert text.count("  deny: (ran, fall)") == 1

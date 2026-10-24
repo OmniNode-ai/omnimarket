@@ -485,18 +485,31 @@ def resolve_delegation_claim_store() -> DelegationClaimPort:
     there too, and falls back to a local SQLite file of its own otherwise,
     under the runtime's declared state root (OMN-19654).
     """
+    from omnimarket.config.state_root import OnexStateRootUnconfiguredError
     from omnimarket.nodes.node_delegate_skill_orchestrator.ports.evidence_db_resolution import (
         _adapter_for_dsn,
     )
     from omnimarket.projection.runner import (
         projection_runtime_binding_from_overlay_env,
     )
-    from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
+    from omnimarket.projection.sqlite_database import (
+        SqliteDatabaseAdapter,
+        verify_sqlite_store_header,
+    )
 
     binding = projection_runtime_binding_from_overlay_env()
     if binding is None:
-        # Deferred, so the state root is resolved (and refused if absent) at
-        # the first claim rather than when the handler is built (OMN-19654).
+        # OMN-19174: refuse a corrupt claims store at handler build/startup
+        # when a state root is declared. The bus-less CLI still defers the
+        # unconfigured-root refusal to its first claim (OMN-19654).
+        try:
+            db_path = default_claim_db_path()
+        except OnexStateRootUnconfiguredError:
+            pass
+        else:
+            verify_sqlite_store_header(db_path)
+        # Database construction stays deferred, so an absent state root is
+        # refused at the first claim rather than handler build (OMN-19654).
         return DelegationClaimPort(
             resolve_database=lambda: SqliteDatabaseAdapter(default_claim_db_path())
         )

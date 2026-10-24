@@ -891,6 +891,40 @@ requirements:
     acceptance:
       - id: "AC4303"
         statement: "AC4303: all six report phases declare their own lane, ticket and tool guide; the server exposes only the phase's typed tools with no command or free-path input; watcher, ledger and artifact readbacks preserve their scope; publishing refuses a dry run; a refused TERMINAL includes the ledger's reason and records friction once; and a timed-out program leaves no running child -- falsifier: the focused morning report phase and tool guard tests fail against the merge-base implementation."
+  - id: req-owner-summary-facts
+    statement: Owner-summary facts reads the watcher merges and queue, ledger lane outcomes and M4 rows, omits watcher
+      authors, and names unreadable sources in errors.
+    acceptance:
+    - id: AC4351
+      statement: 'AC4351: Owner-summary facts reads the watcher merges and queue, ledger lane outcomes and M4 rows,
+        omits watcher authors, and names unreadable sources in errors. Falsifier: the focused golden-chain owner-summary
+        tests fail when this behavior is absent.'
+  - id: req-owner-summary-draft
+    statement: Draft check refuses missing footer, over 420 words, token-shaped secrets, home paths, fabricated ticket/PR,
+      missing M4 line, and a Friction heading when its data is unavailable.
+    acceptance:
+    - id: AC4352
+      statement: 'AC4352: Draft check refuses missing footer, over 420 words, token-shaped secrets, home paths, fabricated
+        ticket/PR, missing M4 line, and a Friction heading when its data is unavailable. Falsifier: the focused golden-chain
+        owner-summary tests fail when this behavior is absent.'
+  - id: req-owner-summary-watermark
+    statement: Watermark has 12-hour default, last sent start, 48-hour cap and facts/check/mark-sent CLI round trip.
+    acceptance:
+    - id: AC4353
+      statement: 'AC4353: Watermark has 12-hour default, last sent start, 48-hour cap and facts/check/mark-sent CLI
+        round trip. Falsifier: the focused golden-chain owner-summary tests fail when this behavior is absent.'
+  - id: req-owner-summary-coverage
+    statement: Draft check refuses a draft that leaves out the ticket of a merged change, the ticket of an M4 row, the ticket of a
+      blocked or partial lane, a count the facts hold, the headline, the unconfirmed-running statement, the friction gap or
+      the Gaps section, that uses shorthand, an overclaim or an unsupported superlative, or that cites a change away from its
+      ticket; the facts hand the drafter the same lists.
+    acceptance:
+    - id: AC4354
+      statement: 'AC4354: Draft check refuses a draft that leaves out the ticket of a merged change, the ticket of an M4 row, the
+        ticket of a blocked or partial lane, a count the facts hold, the headline, the unconfirmed-running statement, the
+        friction gap or the Gaps section, that uses shorthand, an overclaim or an unsupported superlative, or that cites a
+        change away from its ticket, and the facts hand the drafter the same lists. Falsifier: the focused golden-chain
+        owner-summary coverage tests fail when this behavior is absent.'
 evidence_requirements:
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
@@ -3855,3 +3889,55 @@ dod_evidence:
       - check_type: "command"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_morning_ground_state_orchestrator/test_morning_report_phase_tools.py -q --no-cov -p no:randomly --refuse-skips -k 'every_report_phase_has_its_own_lane_ticket_and_tool_guide or watcher_branch_head_attributes_check_runs_to_push_on_the_integration_branch or a_refused_terminal_names_the_ledgers_reason_and_writes_its_friction_once or a_timed_out_program_takes_its_children_with_it'"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-omn17427-owner-summary-facts
+    source: manual
+    binds_ac:
+    - AC4351
+    description: Exercises assertions for watcher merges and queue, lane outcomes and M4 rows, unreadable-source errors
+      and author exclusion.
+    checks:
+    - check_type: test_passes
+      check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_owner_summary_effect/test_golden_chain_owner_summary.py
+        -q --no-cov -p no:randomly --refuse-skips -k 'facts or friction or contract_declares'
+      cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn17427-owner-summary-draft
+    source: manual
+    binds_ac:
+    - AC4352
+    description: Exercises assertions for draft footer, length, secret and home-path refusal, fabricated ticket/PR
+      refusal and unavailable friction heading.
+    checks:
+    - check_type: test_passes
+      check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_owner_summary_effect/test_golden_chain_owner_summary.py
+        -q --no-cov -p no:randomly --refuse-skips -k 'draft or footer or fabricated or secret or no_m4'
+      cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn17427-owner-summary-watermark
+    source: manual
+    binds_ac:
+    - AC4353
+    description: Exercises assertions for 12-hour default and 48-hour cap, last sent watermark and CLI facts/check/mark-sent.
+    checks:
+    - check_type: test_passes
+      check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_owner_summary_effect/test_golden_chain_owner_summary.py
+        -q --no-cov -p no:randomly --refuse-skips -k 'window or cli'
+      cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn17427-owner-summary-coverage
+    source: manual
+    binds_ac:
+    - AC4354
+    description: Exercises the omission, shorthand, overclaim, friction gap and ticket placement refusals, the twelve hour
+      window, and the lists the facts command hands the drafter.
+    checks:
+    - check_type: test_passes
+      check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_owner_summary_effect/test_golden_chain_owner_summary.py
+        -q --no-cov -p no:randomly --refuse-skips -k coverage
+      cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn17427-owner-summary-deploy-probe
+    source: manual
+    description: Hosted deployment probe executes the checked-out CLI facts/check/mark-sent against temporary local
+      files; no external service or credentials, not a live deployment attestation.
+    checks:
+    - check_type: command
+      check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_owner_summary_effect/test_golden_chain_owner_summary.py
+        -q --no-cov -p no:randomly --refuse-skips -k cli_facts_check_and_mark_sent
+      cwd: ${OMNI_HOME}/omnimarket
