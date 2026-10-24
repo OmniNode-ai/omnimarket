@@ -63,6 +63,8 @@ class ModelClaudeHookEventRow(BaseModel):
     cache_creation_input_tokens: int | None = Field(default=None, ge=0)
     cache_read_input_tokens: int | None = Field(default=None, ge=0)
     assistant_message_count: int | None = Field(default=None, ge=0)
+    #: Per-session lineage sequence; absent on legacy unstamped events.
+    producer_seq: int | None = Field(default=None, ge=1, strict=True)
 
 
 class ModelClaudeAgentSpanUpdate(BaseModel):

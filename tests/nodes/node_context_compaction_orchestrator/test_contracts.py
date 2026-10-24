@@ -48,6 +48,9 @@ def test_the_contract_declares_its_command_reply_and_receipts() -> None:
     assert contract["event_bus"]["subscribe_topics"] == [COMMAND]
     assert contract["event_bus"]["publish_topics"] == [PACKAGE, *RECEIPTS]
     assert contract["runtime_dispatch"]["command_topic"] == COMMAND
+    assert contract["terminal_event"] == PACKAGE
+    assert contract["runtime_dispatch"]["terminal_events"]["success"] == PACKAGE
+    assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]
     assert contract["externally_consumed_topics"] == [PACKAGE, *RECEIPTS]
 
 

@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 import yaml
+from omnibase_infra.runtime.overlay.contract_env_ref import expand_contract_env_refs
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.handlers.work_ledger_fold import (
@@ -62,7 +63,19 @@ def load_ledger_source_binding(contract_path: Path) -> ModelLedgerSourceBinding:
     source = block.get("ledger_source") if isinstance(block, dict) else None
     if not isinstance(source, dict):
         raise ValueError("context_source_ledger.ledger_source must be a mapping")
-    return ModelLedgerSourceBinding.model_validate(source)
+    binding = ModelLedgerSourceBinding.model_validate(source)
+    # Nested pack sources read their packaged contracts directly, so they must
+    # resolve the same deploy-overlay references as top-level runtime handlers.
+    # No configured tenant remains deny-all, including an unset env reference.
+    return binding.model_copy(
+        update={
+            "tenant_ids": tuple(
+                tenant
+                for declared in binding.tenant_ids
+                if (tenant := expand_contract_env_refs(declared).strip())
+            )
+        }
+    )
 
 
 class LedgerSourceReadError(RuntimeError):

@@ -51,14 +51,25 @@ class HandlerSessionBarrierWait:
             raise ValueError("the command carries no barrier_id to wait on")
         deadline = self._monotonic() + self._deadline_s
         while True:
-            verdict = self._barrier.handle(
-                self._probe_source.read(request.session_id, request.barrier_id)
-            )
+            probe = self._probe_source.read(request.session_id, request.barrier_id)
+            if (
+                probe.session_id != request.session_id
+                or probe.barrier_id != request.barrier_id
+            ):
+                raise ValueError(
+                    "session barrier probe identity does not match request"
+                )
+            verdict = self._barrier.handle(probe)
+            now = self._monotonic()
+            # A read that overran a positive deadline is refused even when met; a
+            # zero deadline asks for one read, and that read's verdict stands.
+            if self._deadline_s > 0 and now > deadline:
+                return verdict.model_copy(update={"outcome": "deadline"})
             if verdict.outcome in ("met", "disabled"):
                 return verdict
-            if self._monotonic() >= deadline:
+            if now >= deadline:
                 return verdict
-            self._sleep(self._poll_interval_s)
+            self._sleep(min(self._poll_interval_s, deadline - now))
 
 
 __all__ = ["HandlerSessionBarrierWait"]

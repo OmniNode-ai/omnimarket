@@ -8,9 +8,11 @@ entry_points:
 capabilities:
   standalone: true
   full_runtime: false
-  requires_network: false
+  requires_network: true
 dependencies:
   - "omnibase_core>=0.47.44,<0.48.0"
+  - "omnibase-infra>=0.38.76,<0.39.0"
+  - "psycopg2-binary>=2.9"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["orchestrator", "context-pack", "compaction", "contract"]

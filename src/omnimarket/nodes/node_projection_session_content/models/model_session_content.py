@@ -87,6 +87,14 @@ class ModelSessionContentRow(BaseModel):
     hook_source: str | None
     emitted_at: datetime
     source_topic: str
+    #: Producer stamps remain nullable for records captured before TA.21.
+    content_record_id: str | None = None
+    stream: Literal["lineage", "content"] | None = None
+    producer_seq: int | None = Field(default=None, ge=1, strict=True)
+    record_type: Literal["barrier"] | None = None
+    barrier_id: str | None = None
+    high_water: int | None = Field(default=None, ge=0, strict=True)
+    content_capture: Literal["enabled", "disabled"] | None = None
 
 
 class ModelSessionContentWriteResult(BaseModel):
