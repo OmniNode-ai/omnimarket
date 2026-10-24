@@ -1,48 +1,68 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-21336"
-title: "TA.13b stage (a): declare compaction_receipts ownership ahead of migration delivery"
-summary: "Declare the compaction_receipts table and cursor sequence so infrastructure can resolve their ownership before vending their migrations. This stage carries no node package or SQL. Migration delivery and the writer follow after infrastructure vendors and releases the lineage."
+title: "TA.13b compaction receipts projection writer"
+summary: >-
+  Materialize install-confirm results as durable compaction receipts. The node
+  follows the lab-proof receipts projection's pure fold and effect-class writer
+  shape, retains the boundary identity and measured verdict, and declares the
+  exposure used by the projection read effect. The ownership declaration from
+  stage (a) is retained; the node-owned migrations now ship with the writer.
+  Infrastructure vendored the migrations and grant (omnibase_infra#5308); live
+  AC2 validation waits for deployment.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-  - id: "req-omn21336-relation-declared"
-    statement: |-
-      The ownership manifest declares omninode_internal.compaction_receipts (db_io, read_write) and its cursor sequence before migration delivery. The table declaration names the future node-owned 0000 migration; this stage adds no executable SQL or node package.
+  - id: "req-compaction-receipts-writer"
+    statement: >-
+      Consume the install-confirm compute's completed result, record one receipt
+      per captured compaction boundary, preserve measured installation verdicts,
+      refuse malformed events, and make the receipts readable after deployment.
     acceptance:
       - id: "AC1"
-        statement: |-
-          AC1: the manifest has exactly one typed table declaration and one cursor sequence declaration in omninode_internal, the inventory matches source with 104 source-created and 114 source-declared tables, and this stage adds no node SQL -- falsifier: test_compaction_receipts_ownership_precedes_migration_delivery or test_retained_live_census_gap_fails_closed fails.
+        statement: >-
+          AC1: a projection writer node in omnimarket writes one receipt row per compaction with the boundary uuid and the install verdict from the install-confirm compute -- falsifier: uv run pytest tests -q -k compaction_receipts_projection_writer
+      - id: "AC2"
+        statement: >-
+          AC2: after a /compact on a lab host the projection reads installed with the boundary uuid -- falsifier: onex node node_projection_read_effect for the compaction receipts projection returns no installed row for that session
 evidence_requirements:
   - kind: "tests"
-    description: "AC1: relation inventory census and evidence freshness."
-    command: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q --no-cov"
+    description: "AC1: recorded producer output for every verdict, SQL-bound payloads, replay and malformed-event refusal."
+    command: "uv run pytest tests -q -k compaction_receipts_projection_writer"
+  - kind: "tests"
+    description: "AC2 preparation only: the shipped read exposure returns the installed row and boundary from a local store. A live /compact read remains pending deploy."
+    command: "uv run pytest tests/test_compaction_receipts_projection_writer.py -q -k projection_read_returns_installed_with_boundary_uuid"
+  - kind: "tests"
+    description: "AC1: real PostgreSQL proof with the shipped migrations, a non-superuser role, measured verdicts, replay and uncertainty resolution."
+    command: "uv run pytest tests/test_compaction_receipts_projection_writer_real_postgres.py -q --refuse-skips"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: "dod-omn21336-relation-inventory"
-    description: "AC1: ownership increases the declared census without delivering SQL ahead of infrastructure."
+  - id: "dod-omn21336-ac1-writer"
+    description: "AC1: the recorded merged compute output is written with each verdict and boundary; malformed events perform no database I/O, redelivery converges and uncertainty cannot downgrade decided receipts."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q --no-cov -k 'retained_live_census_gap_fails_closed or checked_in_inventory_is_source_derived_and_current'"
-        cwd: "${OMNI_HOME}/omnimarket"
+        check_value: "uv run pytest tests/test_compaction_receipts_projection_writer.py -q"
     binds_ac: ["AC1"]
-  - id: "dod-omn21336-inventory-fresh"
-    description: "AC1: the table and sequence ownership rows are declared exactly once, with the expected schema, migration and access, and the checked-in inventory matches source. The merge base lacks both ownership rows, so this check fails there."
+  - id: "dod-omn21336-ac2-read-preparation"
+    description: "AC2 preparation: the contract-owned exposure is accepted by discovery and the actual projection read handler returns installed with the recorded session, activation and boundary uuid from a local SQLite store populated with the writer's returned rows. This is not the pending live /compact read."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q --no-cov -k compaction_receipts_ownership_precedes_migration_delivery"
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC1"]
-  - id: "dod-omn21336-deploy-ownership-readback"
-    description: "Hosted deployment preparation smoke: load the ownership manifest through the runtime inventory generator and require the new declarations and fresh inventory. No database, deployed lane or writer is required for this declaration-only stage."
+        check_value: "uv run pytest tests/test_compaction_receipts_projection_writer.py -q -k projection_read_returns_installed_with_boundary_uuid"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21336-deploy-writer-and-read-exposure"
+    description: "Falsifiable hosted deployment preparation smoke in an ephemeral Python 3.12 container: import the packaged writer, resolve its contract's sole runtime handler, require the install-confirm terminal as its subscription, and read installed with its boundary through the shipped exposure. These tests fail at the merge base where the node and exposure are absent. No lab route, broker or live database is required. After deployment, run /compact on a lab session and read node_projection_read_effect with topic onex.snapshot.projection.compaction-receipts.v1; require verdict installed and that session's boundary uuid. Live AC2 remains pending until that read succeeds."
     source: "manual"
     checks:
-      - check_type: "test_passes"
-        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q --no-cov -k compaction_receipts_ownership_precedes_migration_delivery"
-        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: |-
+          env docker run --rm --volume "$PWD:/workspace:ro" --workdir /workspace \
+          --env UV_PROJECT_ENVIRONMENT=/tmp/omnimarket-venv \
+          ghcr.io/astral-sh/uv:python3.12-bookworm \
+          sh -c 'uv sync --frozen --quiet && uv run --no-sync pytest tests/test_compaction_receipts_projection_writer.py -q -k "consumer_contract_and_read_exposure or projection_read_returns_installed_with_boundary_uuid"'
+    binds_ac: ["AC2"]

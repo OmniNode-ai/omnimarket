@@ -73,8 +73,8 @@ def test_checked_in_inventory_is_source_derived_and_current() -> None:
     assert generator.main(["--check"]) == 0
 
 
-def test_compaction_receipts_ownership_precedes_migration_delivery() -> None:
-    """The infra vendor can resolve both targets before the node ships SQL."""
+def test_compaction_receipts_ownership_and_migration_delivery() -> None:
+    """The predeclared ownership now resolves to the delivered writer and SQL."""
     generator = _load_generator()
     manifest = yaml.safe_load(generator.SERVICE_MANIFEST.read_text())
     tables = [
@@ -125,7 +125,10 @@ def test_compaction_receipts_ownership_precedes_migration_delivery() -> None:
         ),
     }
     migration_dir = generator.NODES_ROOT / "node_projection_compaction_receipts"
-    assert not list(migration_dir.rglob("*.sql"))
+    assert {path.name for path in migration_dir.rglob("*.sql")} == {
+        "0000_create_compaction_receipts.sql",
+        "0001_grant_omninode_runtime_compaction_receipts.sql",
+    }
     payload = generator.build_inventory()
     receipts = [
         row
@@ -134,9 +137,13 @@ def test_compaction_receipts_ownership_precedes_migration_delivery() -> None:
     ]
     assert len(receipts) == 1
     assert receipts[0]["contract_sources"] == [
-        "scripts/application-relation-ownership.yaml"
+        "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_projection_compaction_receipts/contract.yaml",
     ]
-    assert receipts[0]["authoritative_sources"] == []
+    assert receipts[0]["authoritative_sources"] == [
+        "src/omnimarket/nodes/node_projection_compaction_receipts/migrations/0000_create_compaction_receipts.sql"
+    ]
+    assert receipts[0]["owner_declaration"] == "node_projection_compaction_receipts"
     assert generator.main(["--check"]) == 0
 
 
@@ -554,7 +561,8 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # with their CREATE migration and ownership declarations together = 100.
     # +3 for OMN-20802: state, run history and alarm episode tables = 103.
     # +1 for OMN-19988's local_environment, declared and created in the same PR = 104.
-    assert census["source_created_tables"] == 104
+    # +1 for the delivered compaction_receipts CREATE; ownership was predeclared.
+    assert census["source_created_tables"] == 105
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)

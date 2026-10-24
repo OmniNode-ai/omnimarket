@@ -673,6 +673,7 @@ node_projection_runtime_error_fingerprints = "omnimarket.nodes.node_projection_r
 node_projection_lab_lane_health = "omnimarket.nodes.node_projection_lab_lane_health"
 node_projection_lab_container_memory = "omnimarket.nodes.node_projection_lab_container_memory"
 node_projection_lab_proof_receipts = "omnimarket.nodes.node_projection_lab_proof_receipts"
+node_projection_compaction_receipts = "omnimarket.nodes.node_projection_compaction_receipts"
 node_projection_work_ledger = "omnimarket.nodes.node_projection_work_ledger"
 node_work_ledger_render_effect = "omnimarket.nodes.node_work_ledger_render_effect"
 node_work_ledger_emit_effect = "omnimarket.nodes.node_work_ledger_emit_effect"
@@ -1110,11 +1111,14 @@ code_entity_repository = "omnimarket.plugins.plugin_code_entity_repository:Plugi
 omnimarket = "omnimarket.nodes"
 
 [tool.uv.sources]
-# OMN-21296: infra#5240 vendors migration 099; its dev tag also carries the
-# current error sanitizer from infra#5216. Keep the dated sanitizer replay
-# aligned with this content-addressed revision. Retains the earlier migrations
-# required by OMN-19998 and OMN-19988; drop once a release carries them all.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261022105813-9eb353242460" }
+# OMN-21336: infra#5308 vendors node_projection_compaction_receipts 0000-0001
+# and the compaction_receipts grant the in-process wiring check needs.
+# OMN-21296: retains infra#5240's migration 099 and the current error
+# sanitizer from infra#5216 (unchanged at this revision). Keep the dated
+# sanitizer replay aligned with this content-addressed revision. Retains the
+# earlier migrations required by OMN-19998 and OMN-19988; drop once a release
+# carries them all.
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261024082651-34cbe689b82f" }
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
 # their git-source overrides). The version-range overrides below already target
 # the released artifacts: core>=0.46.7,<0.47.0 and
