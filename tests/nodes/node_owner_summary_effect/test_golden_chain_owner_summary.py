@@ -889,8 +889,8 @@ def test_coverage_counts_state_every_outcome() -> None:
         .replace(
             "(via",
             "28 blocked; 9 partial; 40 handed off; 15 done; 8 skipped; 7 skipped-owned; 1 unrecorded.\n"
-            "Not listed: 103 closed work runs (26 as blocked, 8 as partial, 40 as handed-off, "
-            "14 as done, 7 as skipped, 7 as skipped-owned, 1 as unrecorded). Full list: "
+            "Not listed: 105 closed work runs (26 as blocked, 8 as partial, 40 as handed-off, "
+            "15 as done, 8 as skipped, 7 as skipped-owned, 1 as unrecorded). Full list: "
             f"{HANDLER.coverage_of(facts).full_list_link}\n(via",
         )
     )
