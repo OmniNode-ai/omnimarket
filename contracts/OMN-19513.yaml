@@ -77,7 +77,7 @@ requirements:
     statement: "A host-local effect reads agent-beacon's local runtime JSONL for Codex sessions and republishes each event as a metadata-only hook event with actor codex on the hook-event topic, carrying no prompt, tool or command content."
     acceptance:
       - id: "AC13"
-        statement: "AC13: the recorded placeholder session maps to six hook events that validate against the hook-event wire model with actor codex and the lane stamp, carry no placeholder content, and publish on the contract topic keyed by session -- falsifier: uv run pytest tests/unit/nodes/node_beacon_trace_capture_effect -q --no-cov fails with the node absent"
+        statement: "AC13: the recorded placeholder session maps to six hook events that validate against the hook-event wire model with actor codex and the lane stamp, carry no placeholder content, and publish on the contract topic keyed by session -- falsifier: uv run pytest tests/unit/nodes/node_beacon_trace_capture_effect/test_beacon_trace_capture.py -q --no-cov fails with the node absent"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 and AC2: registry passthrough and the raw-value wire model, plus the projection and emit-effect suites over the converted fixtures."
@@ -242,7 +242,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_beacon_trace_capture_effect -q --no-cov"
+        check_value: "uv run pytest tests/unit/nodes/node_beacon_trace_capture_effect/test_beacon_trace_capture.py -q --no-cov"
       - check_type: "command"
         check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_beacon_trace_capture_effect/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"name: beacon_trace_capture_effect\" > /dev/null'"
         cwd: "${OMNI_HOME}/omnimarket"
