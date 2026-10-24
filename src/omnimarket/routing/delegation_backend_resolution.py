@@ -53,6 +53,10 @@ from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
 from omnimarket.inference.delegation_config_provenance import (
     resolve_bifrost_path_binding,
 )
+from omnimarket.inference.local_byok_credential_adapter import (
+    local_byok_key_test_failed,
+    registered_local_byok_providers,
+)
 from omnimarket.inference.task_class_authority import withheld_delegation_refusal
 from omnimarket.models.delegation.model_bifrost_overlay_provenance import (
     ModelBifrostOverlayProvenance,
@@ -837,6 +841,7 @@ def refuse_undeclared_local_model(
     backend: ModelResolvedDelegationBackend,
     house_refs: frozenset[str],
     backends: list[dict[str, Any]] | None = None,
+    db_path: Path | None = None,
 ) -> None:
     """Refuse, naming the file to write, when a customer has declared no model.
 
@@ -853,9 +858,14 @@ def refuse_undeclared_local_model(
     substituted by the local BYOK route, does not), and no local-tier backend
     carries an endpoint.
 
+    OMN-21378: the credential store is read before the refusal speaks. With a
+    provider key registered, the missing model is not the problem: no route
+    reached the key. The refusal then names the registered providers and the
+    absent route, and says nothing of a local-model overlay or a missing key.
+
     Raises:
         ProtocolConfigurationError: naming the overlay path in force and a
-            minimal entry to put in it.
+            minimal entry to put in it, or the registered keys no route reached.
     """
     if not is_customer_attributed(tenant_id):
         return
@@ -874,6 +884,27 @@ def refuse_undeclared_local_model(
         if entry.get("tier") == _LOCAL_TIER
     ):
         return
+    registered = registered_local_byok_providers(db_path=db_path)
+    if registered:
+        failed = [
+            p for p in registered if local_byok_key_test_failed(p, db_path=db_path)
+        ]
+        # Worded for the consume boundary, like the message below.
+        msg = (
+            "No route reached your registered provider key "
+            f"({', '.join(registered)}): delegation resolved {backend.backend_id}, "
+            "a rung on the platform's own key, and no customer route stood in "
+            "for it. Your key is registered; the route is what is absent. "
+            + (
+                f"Delegation skips a key that failed its last test ({', '.join(failed)}); "
+                "test it again with onex models test, then retry (OMN-21378)."
+                if failed
+                else "Bind a delegation routing overlay that declares the "
+                "registered-key tier (DELEGATION_ROUTING_OVERLAY_PATH), "
+                "then retry (OMN-21378)."
+            )
+        )
+        raise ProtocolConfigurationError(msg)
     _, overlay_path = _resolve_effective_bifrost_paths(None, None)
     target = (
         str(overlay_path)

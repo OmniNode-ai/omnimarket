@@ -1,0 +1,85 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21326"
+title: >-
+  A deployed-lane delegation runs past its declared execution budget: 154 of 1440 runs budgeted 50 s executed longer,
+  and every 1 s budget ran 7.6 to 28.3 s
+summary: >
+  The delegate-skill handler waited the caller's timeout plus the task class's 60 s
+  terminal delivery margin, and the deployed downstream does not stop at the
+  budget, so a run budgeted 50 s could complete at up to 110 s. A caller who names
+  a timeout now gets it plus a declared requested_timeout_grace_seconds (15 s on
+  every task class), and a run past that ends with a typed timeout terminal naming
+  the allowance. A run whose timeout nobody named keeps the ceiling plus the margin,
+  which carries a second escalation rung.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21326-bound"
+    statement: "A requested timeout is a bound, give or take a declared grace."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: A deployed-lane delegation whose requested_timeout_seconds is N ends with a typed timeout terminal when its
+          execution exceeds N plus a declared, receipted grace, instead of completing at up to N plus the 60 s terminal
+          delivery margin
+      - id: "AC2"
+        statement: >-
+          AC2: A deployed-lane run that finishes inside N is unchanged and still returns status completed with its response
+      - id: "AC3"
+        statement: >-
+          AC3: Over a 24 h window of deployed-lane receipts after the fix is deployed, no completed run has
+          execution_duration_ms above (execution_timeout_seconds + grace) * 1000
+evidence_requirements:
+  - kind: "tests"
+    description: "Requested-timeout grace tests pass"
+    command: "uv run pytest tests/unit/delegation/test_deployed_budget_grace_omn21326.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21326-ac1-typed-timeout-at-n-plus-grace"
+    description: >-
+      Under a fake clock, a downstream answering at N + grace + 1 s ends as a typed timeout no later than N + grace,
+      and the terminal names the declared allowance. Run with the declaration check; fails at the merge base, which
+      waits N + 60 s and declares no grace.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_deployed_budget_grace_omn21326.py -q --no-cov -k 'typed_timeout or declares_a_grace'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21326-ac2-inside-budget-unchanged"
+    description: >-
+      A downstream answering at N - 1 s completes with its answer and its measured duration; run with the AC1 case so
+      the selection fails at the merge base.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_deployed_budget_grace_omn21326.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21326-ac3-no-completion-past-the-bound"
+    description: >-
+      Structural proof of the readback's premise: every task class declares a grace no wider than 15 s, and a run past
+      N + grace cannot complete, so a completed run cannot have execution_duration_ms above (N + grace) * 1000. The
+      24 h deployed-lane readback itself runs on the lab host after deploy and is recorded on the ticket.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_deployed_budget_grace_omn21326.py -q --no-cov -k 'declares_a_grace or typed_timeout'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21326-deploy-probe"
+    description: "Deploy probe: the task-class contract at the checked-out commit on GitHub declares requested_timeout_grace_seconds."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_deployed_budget_grace_omn21326.py -q --no-cov -k typed_timeout"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/task_class_contracts.v1.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"requested_timeout_grace_seconds: 15\" > /dev/null'"
+        cwd: "${OMNI_HOME}/omnimarket"

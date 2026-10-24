@@ -67,6 +67,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_intent import (
     HandlerRoutingIntent,
 )
+from tests.fixtures.task_class_transitions import with_declared_transitions
 
 pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
 
@@ -204,7 +205,7 @@ def code_gen_cloud_routable(
     contract_path = tmp_path / "bifrost_delegation.yaml"
     contract_path.write_text(_BIFROST_CODE_GEN_CLOUD_ROUTABLE)
     task_class_path = tmp_path / "task_class_contracts.v1.yaml"
-    task_class_path.write_text(_TASK_CLASS_CONTRACT_GEMINI)
+    task_class_path.write_text(with_declared_transitions(_TASK_CLASS_CONTRACT_GEMINI))
 
     monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract_path))
     monkeypatch.delenv("BIFROST_OVERLAY_PATH", raising=False)

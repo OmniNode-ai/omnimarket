@@ -176,6 +176,15 @@ from omnimarket.models.delegation.local_credential_refusal import (
 from omnimarket.models.delegation.model_earlier_model_attempt import (
     ModelEarlierModelAttempt,
 )
+from omnimarket.models.delegation.model_escalation_transitions import (
+    EnumEscalationCause,
+    EnumMoveKind,
+    EnumTransitionKind,
+)
+from omnimarket.models.delegation.model_transition_decision import (
+    ModelTransitionDecision,
+    ModelTransitionDecisionRequest,
+)
 from omnimarket.models.delegation.wire.model_answer_gate_request import (
     EnumAnswerGateKind,
     EnumIndependentJudgeVerdict,
@@ -245,6 +254,9 @@ from omnimarket.nodes.node_delegation_answer_gate_compute.handlers.judge_selecti
     render_judge_prompt,
     select_independent_judge,
 )
+from omnimarket.nodes.node_delegation_escalation_decision_compute.handlers.handler_escalation_decision import (
+    HandlerEscalationDecision,
+)
 
 # OMN-13849: the SAME required-bar authority the bus orchestrator applies
 # (``handler_delegation_workflow.handle_gate_result`` :1240-1253). The quality-gate
@@ -278,6 +290,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     resolve_task_class_max_escalations,
     resolve_task_class_response_contract,
     resolve_task_class_tier_order,
+    resolve_task_class_transitions,
     shipped_house_credential_refs,
     sibling_backend_available_in_tier,
     tier_for_backend,
@@ -343,6 +356,7 @@ from omnimarket.routing.local_byok_route import (
     next_registered_byok_route,
     registered_byok_routes,
     registered_byok_tier_name,
+    registered_local_model_routes,
     resolve_pinned_byok_route,
     substitute_any_registered_byok_route,
     substitute_local_byok_route,
@@ -410,6 +424,7 @@ _DEFAULT_MAX_ESCALATIONS = 2
 # receipt from either path keys the same way.
 _MAX_ESCALATION_ATTEMPTS_REACHED_REASON = "max_escalation_attempts_reached"
 _NO_RUNG_CAN_SATISFY_REASON = "quality_veto_no_rung_can_satisfy"
+_ESCALATION_DECIDER = HandlerEscalationDecision()
 
 # OMN-13943: failure classes that must NOT trigger an up-tier escalation retry.
 # Mirrors the bus orchestrator's ``_should_escalate_inference_error`` posture
@@ -829,6 +844,111 @@ def _routing_tier_name(backend: ModelResolvedDelegationBackend) -> str:
     for a resolved backend).
     """
     return tier_for_backend(backend.backend_id) or backend.tier
+
+
+def local_transport_cause(
+    failure_class: EnumDelegationFailureClass | None,
+    *,
+    customer_route: bool,
+    typed_refusal: bool,
+) -> EnumEscalationCause:
+    """Classify a failed provider call on the local port (OMN-21213).
+
+    A customer's own route re-asks the same backend within its declared budget
+    for any retryable failure, so every retryable class is transient there; a
+    typed account or model refusal ends it, since a customer has no house
+    fallback (INV-068). A house route names a timeout and a rate limit, and
+    moves on any other retryable class once its retry budget of zero is spent.
+    """
+    if not _is_retryable_transport_failure(failure_class) or (
+        customer_route and typed_refusal
+    ):
+        return EnumEscalationCause.NON_RETRYABLE_FAILURE
+    if customer_route:
+        return EnumEscalationCause.TRANSIENT_PROVIDER_ERROR
+    if failure_class is EnumDelegationFailureClass.TIMEOUT:
+        return EnumEscalationCause.RUNG_TIMEOUT
+    if failure_class is EnumDelegationFailureClass.RATE_LIMITED:
+        return EnumEscalationCause.RATE_LIMITED
+    return EnumEscalationCause.TRANSIENT_PROVIDER_ERROR
+
+
+def local_quality_cause(
+    *, no_rung_can_satisfy: bool, fail_category: str | None
+) -> EnumEscalationCause:
+    """Classify a refused answer on the local port (OMN-21213).
+
+    ``no_rung_can_satisfy`` includes the repeated deterministic-floor failure,
+    which the lists declare as the terminal ``quality_veto``.
+    """
+    if no_rung_can_satisfy:
+        return EnumEscalationCause.QUALITY_VETO
+    if fail_category == "rubric_failed":
+        return EnumEscalationCause.RUBRIC_FAILED
+    return EnumEscalationCause.QUALITY_GATE_REFUSED
+
+
+def _moved(
+    decision: ModelTransitionDecision, move_kind: EnumMoveKind
+) -> ModelTransitionDecision:
+    """``decision`` with the kind of move the port actually took."""
+    return decision.model_copy(update={"move_kind": move_kind})
+
+
+def _record_transition(
+    attempt: dict[str, object], decision: ModelTransitionDecision
+) -> None:
+    """Record what the run did after ``attempt``, and the cause that decided it.
+
+    ``transition`` is the typed form for the in-process result. The wire
+    attempt record a released consumer reads has no such field yet, so the same
+    fact is appended to ``acceptance_detail`` as
+    ``transition=<kind>:<cause>[:<move_kind>]``, which reaches the evidence row.
+    """
+    attempt["transition"] = {
+        "kind": decision.kind.value,
+        "cause": decision.cause.value,
+        "move_kind": (
+            decision.move_kind.value if decision.move_kind is not None else None
+        ),
+    }
+    stamp = f"transition={decision.kind.value}:{decision.cause.value}"
+    if decision.move_kind is not None:
+        stamp = f"{stamp}:{decision.move_kind.value}"
+    detail = str(attempt.get("acceptance_detail") or "")
+    attempt["acceptance_detail"] = f"{detail} {stamp}".strip()
+
+
+def _local_rung_attempt(
+    backend: ModelResolvedDelegationBackend,
+    result: ModelLlmDelegationCallResult,
+    failure_class: EnumDelegationFailureClass | None,
+    failure_message: str,
+    *,
+    configuration: object,
+    size_band: object,
+) -> dict[str, object]:
+    """The attempt record of a local model whose call failed (OMN-21211)."""
+    return {
+        "tier": _routing_tier_name(backend),
+        "backend_id": backend.backend_id,
+        "model_id": backend.model_id,
+        "substituted_from_backend_id": backend.substituted_from_backend_id,
+        "quality_gate_passed": False,
+        "quality_score": None,
+        "cost_usd": float(result.actual_cost_usd),
+        "usage_source": result.usage_source.value,
+        "failure_class": failure_class.value if failure_class is not None else None,
+        "provider_id": _attempt_provider_id(backend.endpoint_ref),
+        "host": endpoint_host(backend.endpoint_ref),
+        "configuration": configuration,
+        "size_band": size_band,
+        "http_status": result.http_status,
+        "provider_code": result.provider_code,
+        "error_message": failure_message,
+        "acceptance_decision": EnumDelegationAcceptanceDecision.CLIMB.value,
+        "acceptance_reason": EnumDelegationAcceptanceReason.PROVIDER_CALL_FAILED.value,
+    }
 
 
 def _is_retryable_transport_failure(
@@ -1881,6 +2001,30 @@ class LocalDelegationDispatchPort:
 
         backend = _with_model_choice(backend)
 
+        # OMN-21211: the customer's own local models answer first, in the order
+        # they set, then the run takes its ladder, where any key is reached. A
+        # pin, a named model and a probe ladder each decide the rung themselves.
+        ladder_entry = backend
+        local_rungs: tuple[ModelResolvedDelegationBackend, ...] = ()
+        if backend_id is None and model is None and probe_walk is None:
+            local_rungs = registered_local_model_routes(task_type)
+            if local_rungs:
+                backend = local_rungs[0]
+
+        def next_local_rung(
+            failed: ModelResolvedDelegationBackend,
+        ) -> ModelResolvedDelegationBackend | None:
+            """The local model after ``failed``, or the ladder after the last one."""
+            ids = [rung.backend_id for rung in local_rungs]
+            if failed.backend_id not in ids:
+                return None
+            later = local_rungs[ids.index(failed.backend_id) + 1 :]
+            if later:
+                return later[0]
+            if ladder_entry.backend_id in ids:
+                return None
+            return ladder_entry
+
         # Escalation budget from the task-class contract escalation_policy
         # (OMN-13849). None -> the class declares no budget; fall back to the bus
         # orchestrator's default so both paths escalate the same bounded count.
@@ -1981,6 +2125,8 @@ class LocalDelegationDispatchPort:
         # was re-substituted to the SAME BYOK backend, so one route was asked
         # again once per house rung, for minutes, whatever the failure was.
         byok_retry_counts: dict[str, int] = {}
+        # OMN-21213: the distinct deterministic floors this run's answers failed.
+        floor_rules_seen: set[tuple[str, ...]] = set()
         # OMN-17427: the handler's budget covers the whole run, not one rung,
         # and each backend's own timeout_ms (300 s for the local rungs) is
         # longer than all of it. One unanswered local try, or a few slow
@@ -2248,23 +2394,69 @@ class LocalDelegationDispatchPort:
                 typed_refusal = (
                     transport_failure_class in _TYPED_ACCOUNT_OR_MODEL_REFUSALS
                 )
-                byok_same_backend_retry = False
-                if (
-                    customer_route
-                    and not typed_refusal
-                    and _is_retryable_transport_failure(transport_failure_class)
-                ):
-                    spent = byok_retry_counts.get(backend.backend_id, 0)
+                # OMN-21213: the class's declared lists decide the transition.
+                transport_cause = local_transport_cause(
+                    transport_failure_class,
+                    customer_route=customer_route,
+                    typed_refusal=typed_refusal,
+                )
+                spent = byok_retry_counts.get(backend.backend_id, 0)
+                rung_retry_budget = 0
+                if customer_route:
                     budget = byok_backend_max_retries(backend.backend_id) or 0
                     if spent < budget and redraft_leaves_reserve():
-                        byok_retry_counts[backend.backend_id] = spent + 1
-                        byok_same_backend_retry = True
-                may_move_on = (
-                    pinned_backend_id is None
-                    and _is_retryable_transport_failure(transport_failure_class)
-                    and not byok_same_backend_retry
-                    and not (customer_route and typed_refusal)
+                        rung_retry_budget = budget
+                transport_transition = self._decide_transition(
+                    transport_cause,
+                    task_type=task_type,
+                    pinned=pinned_backend_id is not None,
+                    retries_on_rung=spent,
+                    rung_retry_budget=rung_retry_budget,
                 )
+                byok_same_backend_retry = (
+                    transport_transition.kind is EnumTransitionKind.RETRY
+                )
+                if byok_same_backend_retry:
+                    byok_retry_counts[backend.backend_id] = spent + 1
+                may_move_on = transport_transition.kind is EnumTransitionKind.MOVE
+
+                # OMN-21211: a local model the customer declared is followed by
+                # their next one, and the last by the run's ladder. Not an
+                # escalation: the run has not left the customer's own order.
+                local_next = next_local_rung(backend) if may_move_on else None
+                if local_next is not None:
+                    cumulative_cost_usd += transport_result.actual_cost_usd
+                    attempt_usage.append(
+                        _AttemptUsage.of(transport_result, model_id=backend.model_id)
+                    )
+                    attempts.append(
+                        _local_rung_attempt(
+                            backend,
+                            transport_result,
+                            transport_failure_class,
+                            transport_failure_message,
+                            configuration=_attempt_configuration(
+                                backend, max_tokens=max_tokens, temperature=temperature
+                            ),
+                            size_band=attempt_size_band,
+                        )
+                    )
+                    _record_transition(
+                        attempts[-1],
+                        _moved(transport_transition, EnumMoveKind.MODEL_MOVE),
+                    )
+                    logger.info(
+                        "LocalDelegationDispatch: local model fall-through "
+                        "task_type=%s backend=%s -> backend=%s on transport "
+                        "failure_class=%s correlation=%s",
+                        task_type,
+                        backend.backend_id,
+                        local_next.backend_id,
+                        transport_failure_class,
+                        correlation_id,
+                    )
+                    backend = local_next
+                    continue
 
                 # OMN-21059: the customer chose more than one model for this
                 # key. The next one in their order answers before any other
@@ -2305,7 +2497,13 @@ class LocalDelegationDispatchPort:
                     transport_sibling is None
                     and next_chosen_model is None
                     and may_move_on
-                    and escalation_count < max_escalations
+                    and self._decide_transition(
+                        transport_cause,
+                        task_type=task_type,
+                        escalation_count=escalation_count,
+                        max_escalations=max_escalations,
+                    ).kind
+                    is EnumTransitionKind.MOVE
                 ):
                     escalated_backend = self._resolve_next_backend(
                         current_tier=current_tier,
@@ -2387,6 +2585,28 @@ class LocalDelegationDispatchPort:
                             EnumDelegationAcceptanceReason.PROVIDER_CALL_FAILED.value
                         ),
                     }
+                )
+
+                _record_transition(
+                    attempts[-1],
+                    transport_transition
+                    if byok_same_backend_retry
+                    else _moved(transport_transition, EnumMoveKind.MODEL_MOVE)
+                    if next_chosen_model is not None
+                    else _moved(transport_transition, EnumMoveKind.SIBLING_FALLBACK)
+                    if transport_sibling is not None
+                    else _moved(transport_transition, EnumMoveKind.TIER_CLIMB)
+                    if escalated_backend is not None
+                    else _moved(transport_transition, EnumMoveKind.KEY_MOVE)
+                    if next_customer_key is not None
+                    else self._decide_transition(
+                        transport_cause,
+                        task_type=task_type,
+                        pinned=pinned_backend_id is not None,
+                        escalation_count=escalation_count,
+                        max_escalations=max_escalations,
+                        next_rung_available=False,
+                    ),
                 )
 
                 if byok_same_backend_retry:
@@ -2673,6 +2893,38 @@ class LocalDelegationDispatchPort:
             if gate_result.fail_category == "rubric_failed":
                 acceptance_reason = EnumDelegationAcceptanceReason.RUBRIC_FAILED
                 acceptance_detail = "; ".join(gate_result.failure_reasons)
+            # OMN-21213: the blocking deterministic rules this answer failed, and
+            # whether every earlier rung failed the same floor. The bus stops on
+            # that repeat (P35); the declared lists stop it here the same way.
+            floor_rules = (
+                tuple(
+                    sorted(
+                        evaluation.rule
+                        for evaluation in gate_result.rule_evaluations
+                        if not evaluation.passed
+                        and evaluation.enforcement == "blocking"
+                        and evaluation.rule in declared_deterministic
+                    )
+                )
+                if gate_result.fail_category == "fail_deterministic"
+                else ()
+            )
+            # An empty answer never reaches the bus gate (its effect refuses an
+            # empty body first), so only an answer with content can repeat a floor.
+            repeated_deterministic_floor = (
+                bool(floor_rules)
+                and bool((result.content or "").strip())
+                and not is_truncated_by_output_budget(result.finish_reason)
+                and bool(attempts)
+                and floor_rules_seen == {floor_rules}
+                and all(
+                    earlier.get("acceptance_reason")
+                    == EnumDelegationAcceptanceReason.DETERMINISTIC_FLOOR_FAILED.value
+                    and not earlier.get("truncated")
+                    for earlier in attempts
+                )
+            )
+            floor_rules_seen.add(floor_rules)
             # OMN-19205: a customer call that was throttled (or whose upstream
             # was down) on its first model and answered on a second one, both
             # on this one backend. The first call is a rejected routing attempt
@@ -2922,7 +3174,18 @@ class LocalDelegationDispatchPort:
             # refusal with the identical score. The gate is the authority for
             # this, not the port — the port stops climbing only when the gate
             # says no rung can satisfy the veto.
-            ladder_stopped_by_veto = gate_result.no_rung_can_satisfy
+            # OMN-21213: the declared lists decide, and a repeated deterministic
+            # floor is the same quality veto the bus stops on.
+            quality_cause = local_quality_cause(
+                no_rung_can_satisfy=(
+                    gate_result.no_rung_can_satisfy or repeated_deterministic_floor
+                ),
+                fail_category=gate_result.fail_category,
+            )
+            ladder_stopped_by_veto = (
+                self._decide_transition(quality_cause, task_type=task_type).kind
+                is EnumTransitionKind.TERMINATE
+            )
             if ladder_stopped_by_veto:
                 logger.info(
                     "LocalDelegationDispatch: terminal veto, ladder stops "
@@ -2946,17 +3209,24 @@ class LocalDelegationDispatchPort:
             # ``escalation_count`` or ``excluded_tiers`` (a same-tier retry is not a
             # tier escalation); the rejected draft's cost/tokens were already banked
             # and recorded above, and ``best_content`` already tracks it.
-            if (
-                not ladder_stopped_by_veto
-                and gate_result.fail_category != "rubric_failed"
+            redrafts = local_retry_counts.get(current_tier, 0)
+            redraft_budget = (
+                tier_max_retries(current_tier)
+                if not ladder_stopped_by_veto
                 and is_free_tier(current_tier)
-                and local_retry_counts.get(current_tier, 0)
-                < tier_max_retries(current_tier)
+                and redrafts < tier_max_retries(current_tier)
                 and redraft_leaves_reserve()
-            ):
-                local_retry_counts[current_tier] = (
-                    local_retry_counts.get(current_tier, 0) + 1
-                )
+                else 0
+            )
+            quality_transition = self._decide_transition(
+                quality_cause,
+                task_type=task_type,
+                retries_on_rung=redrafts,
+                rung_retry_budget=redraft_budget,
+            )
+            _record_transition(attempts[-1], quality_transition)
+            if quality_transition.kind is EnumTransitionKind.RETRY:
+                local_retry_counts[current_tier] = redrafts + 1
                 logger.info(
                     "LocalDelegationDispatch: retry-local task_type=%s tier=%s "
                     "draft %d/%d ($0 re-draft before escalating off free tier) "
@@ -2986,6 +3256,27 @@ class LocalDelegationDispatchPort:
             # OMN-21059: a customer's next chosen model on the same key is asked
             # before any other responder, like the transport branch above.
             tried_byok_models.add((backend.backend_id, backend.model_id))
+            # OMN-21211: the customer's next local model, or their ladder.
+            local_next_after_gate = (
+                None if ladder_stopped_by_veto else next_local_rung(backend)
+            )
+            if local_next_after_gate is not None:
+                _record_transition(
+                    attempts[-1],
+                    _moved(quality_transition, EnumMoveKind.MODEL_MOVE),
+                )
+                logger.info(
+                    "LocalDelegationDispatch: local model fall-through "
+                    "task_type=%s backend=%s -> backend=%s after a quality-gate "
+                    "rejection correlation=%s reason=%s",
+                    task_type,
+                    backend.backend_id,
+                    local_next_after_gate.backend_id,
+                    correlation_id,
+                    gate_failure_message,
+                )
+                backend = local_next_after_gate
+                continue
             next_chosen_model_after_gate: ModelResolvedDelegationBackend | None = None
             if (
                 not ladder_stopped_by_veto
@@ -3064,9 +3355,20 @@ class LocalDelegationDispatchPort:
             # OMN-20844: why the ladder stopped, in the bus orchestrator's
             # precedence (veto, then budget, then ladder), for the terminal.
             ladder_stop_reasons: list[str] = []
+            climb = self._decide_transition(
+                quality_cause,
+                task_type=task_type,
+                escalation_count=escalation_count,
+                max_escalations=max_escalations,
+            )
             if ladder_stopped_by_veto:
-                ladder_stop_reasons.append(_NO_RUNG_CAN_SATISFY_REASON)
-            elif escalation_count >= max_escalations:
+                ladder_stop_reasons.append(
+                    "repeated_deterministic_floor"
+                    if repeated_deterministic_floor
+                    and not gate_result.no_rung_can_satisfy
+                    else _NO_RUNG_CAN_SATISFY_REASON
+                )
+            elif climb.cause is EnumEscalationCause.ESCALATION_LIMIT:
                 ladder_stop_reasons.append(_MAX_ESCALATION_ATTEMPTS_REACHED_REASON)
             elif pinned_backend_id is None:
                 next_backend = self._resolve_next_backend(
@@ -3561,6 +3863,36 @@ class LocalDelegationDispatchPort:
                 )
                 continue
             return sibling
+
+    def _decide_transition(
+        self,
+        cause: EnumEscalationCause,
+        *,
+        task_type: str,
+        pinned: bool = False,
+        retries_on_rung: int = 0,
+        rung_retry_budget: int = 0,
+        escalation_count: int = 0,
+        max_escalations: int | None = None,
+        next_rung_available: bool | None = None,
+    ) -> ModelTransitionDecision:
+        """Ask the escalation decision node what ``cause`` does (OMN-21213).
+
+        The transition is read from ``task_type``'s declared lists, the same
+        lists the bus orchestrator's decisions are read from.
+        """
+        return _ESCALATION_DECIDER.decide_transition(
+            ModelTransitionDecisionRequest(
+                cause=cause,
+                transitions=resolve_task_class_transitions(task_type),
+                pinned=pinned,
+                retries_on_rung=retries_on_rung,
+                rung_retry_budget=rung_retry_budget,
+                escalation_count=escalation_count,
+                max_escalations=max_escalations,
+                next_rung_available=next_rung_available,
+            )
+        )
 
     def _resolve_next_backend(
         self,
@@ -4668,7 +5000,20 @@ class LocalDelegationDispatchPort:
             "quality_gates_failed": [] if quality_passed else [failure_message],
             "error_message": failure_message,
             "escalation_count": escalation_count,
-            "attempts": stamp_attempt_lineage(attempts, correlation_id=correlation_id),
+            # OMN-21213: the typed ``transition`` stays in the in-process result;
+            # the released wire record does not carry it yet, so the evidence
+            # row reads it from ``acceptance_detail``.
+            "attempts": stamp_attempt_lineage(
+                [
+                    {
+                        key: value
+                        for key, value in attempt.items()
+                        if key != "transition"
+                    }
+                    for attempt in attempts
+                ],
+                correlation_id=correlation_id,
+            ),
             # OMN-19448: the deciding inference result's stop reason.
             "finish_reason": result.finish_reason.value,
             "truncated": is_truncated_by_output_budget(result.finish_reason),

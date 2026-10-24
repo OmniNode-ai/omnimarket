@@ -802,28 +802,34 @@ delegation_output:
 # leave the last one no time. 45 s fits a four-rung ladder (180 s) inside the
 # 240 s ceiling with room for the first rung. The OMN-17427 reserve above still
 # holds for the next rung; each attempt is held to the tighter of the two.
+# OMN-21326: requested_timeout_grace_seconds bounds a run whose caller named a
+# timeout N: the handler waits N plus this grace, then ends the run with a typed
+# timeout. With only the 60 s margin, a deployed run budgeted 50 s completed at
+# up to 105.8 s, because the downstream does not stop at the budget. 15 s is a
+# delivery allowance for a terminal crossing the bus. An unrequested run keeps
+# the ceiling plus the margin, which carries a second escalation rung.
 execution_budgets:
-  code_generation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
-  refactor: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
-  documentation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
-  document: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
-  research: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
-  test: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
-  validator_generation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
-  reasoning: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
-  complex_reasoning: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
-  planning: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
-  review: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
-  code_review: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
-  summarization: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
-  agent_delegation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
-  escalation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
-  brief_drafting: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
-  extraction_proposer: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
-  tail_summary: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
-  context_selection: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
-  evidence_comment: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
-  context_compaction: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  code_generation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, requested_timeout_grace_seconds: 15, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  refactor: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, requested_timeout_grace_seconds: 15, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  documentation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, requested_timeout_grace_seconds: 15, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  document: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, requested_timeout_grace_seconds: 15, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  research: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, requested_timeout_grace_seconds: 15, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  test: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, requested_timeout_grace_seconds: 15, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  validator_generation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, requested_timeout_grace_seconds: 15, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  reasoning: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, requested_timeout_grace_seconds: 15, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  complex_reasoning: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, requested_timeout_grace_seconds: 15, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  planning: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, requested_timeout_grace_seconds: 15, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  review: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, requested_timeout_grace_seconds: 15, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  code_review: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, requested_timeout_grace_seconds: 15, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  summarization: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, requested_timeout_grace_seconds: 15, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  agent_delegation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, requested_timeout_grace_seconds: 15, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  escalation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, requested_timeout_grace_seconds: 15, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  brief_drafting: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, requested_timeout_grace_seconds: 15, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  extraction_proposer: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, requested_timeout_grace_seconds: 15, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  tail_summary: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, requested_timeout_grace_seconds: 15, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  context_selection: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, requested_timeout_grace_seconds: 15, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  evidence_comment: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, requested_timeout_grace_seconds: 15, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
+  context_compaction: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60, requested_timeout_grace_seconds: 15, next_rung_reserve_seconds: 60, rung_floor_seconds: 45}
 
 # S is value <= s_max, M is <= m_max, L is above. Every class inherits this
 # default; task_classes.<class>.size_band_thresholds may override the same shape.
@@ -954,8 +960,59 @@ facts_first_prompt:
 # may carry prose, code or a patch). Missing complexity declarations refuse the
 # trusted routing path. The benchmark's scorer maps are never consulted here.
 
+# OMN-21213: transitions are the retry, move, skip and terminate rules. Every
+# task class declares all four lists, and a class missing any of them refuses to
+# load. The lists partition the closed cause vocabulary of
+# models/delegation/model_escalation_transitions.py: a rung that fails or is
+# skipped is classified into one cause, and node_delegation_escalation_decision_
+# compute reads the transition from these lists on both delegation paths.
+#   retry_on: another attempt on the same rung, within the rung's retry budget.
+#   move_on: the run continues on a different rung.
+#   skip_on: a rung not attempted, with its typed reason.
+#   terminate_on: the run ends with no later provider call.
+# quality_gate_refused is a retry because a free rung re-drafts up to its tier's
+# max_retries before the run moves (OMN-14234); a paid rung's budget is zero, so
+# a refusal there moves at once. A customer route's budget is its declared
+# re-issue count; a house route has none for transient errors, so they move.
+# retry_budget_spent always moves; pinned_backend_failed, escalation_limit and
+# ladder_exhausted always terminate. rubric_failed moves on every class today, as
+# both paths did before the table: no class has a lab rubric measured as met, so
+# narrowing it to measured classes would stop every rubric climb at once. Moving
+# it to terminate_on for an unmeasured class is a one-line edit here.
+transitions_default: &transitions_default
+  retry_on:
+    - transient_provider_error
+    - quality_gate_refused
+  move_on:
+    - retry_budget_spent
+    - rate_limited
+    - rung_timeout
+    - rubric_failed
+  skip_on:
+    - credential_withheld
+    - credential_missing
+    - credential_revoked
+    - credential_expired
+    - credential_billing_blocked
+    - model_not_found
+    - quota_cooldown
+    - quota_window_full
+    - quota_state_unknown
+    - context_too_large
+    - budget_exhausted
+    - cost_class_not_allowed
+    - beyond_class_limit
+    - rung_not_reachable_from_runtime
+  terminate_on:
+    - pinned_backend_failed
+    - quality_veto
+    - escalation_limit
+    - ladder_exhausted
+    - non_retryable_failure
+
 task_classes:
   code_generation:
+    transitions: *transitions_default
     # OMN-17427: no measurement recorded yet, so the class keeps the lab-first default.
     lab_rubric:
       verdict: unmeasured
@@ -1185,6 +1242,7 @@ task_classes:
   # output PASS at $0 exactly like code_generation. (A minimal-diff / precision DoD
   # for surgical edits to large files is tracked separately under OMN-14214.)
   refactor:
+    transitions: *transitions_default
     # OMN-17427: no measurement recorded yet, so the class keeps the lab-first default.
     lab_rubric:
       verdict: unmeasured
@@ -1258,6 +1316,7 @@ task_classes:
         - cheap_cloud
         - claude
   documentation:
+    transitions: *transitions_default
     # OMN-17427: no measurement recorded yet, so the class keeps the lab-first default.
     lab_rubric:
       verdict: unmeasured
@@ -1363,6 +1422,7 @@ task_classes:
   # `raises:`) and score 0.000 on both tiers (live CID a604cd40). The docstring
   # DoD lives on the `documentation` task class below, which is the correct home.
   document:
+    transitions: *transitions_default
     # OMN-17427: no measurement recorded yet, so the class keeps the lab-first default.
     lab_rubric:
       verdict: unmeasured
@@ -1491,6 +1551,7 @@ task_classes:
   # verbatim: all three rungs of the experiment dropped them (a BLOCKED report
   # drafted as evidence of done). No check here can see that omission.
   evidence_comment:
+    transitions: *transitions_default
     # OMN-17427: no measurement against the lab-first bar is recorded yet, so the class keeps the lab-first default.
     lab_rubric:
       verdict: unmeasured
@@ -1533,6 +1594,7 @@ task_classes:
       tier_order:
         - local
   research:
+    transitions: *transitions_default
     # OMN-17427: no measurement recorded yet, so the class keeps the lab-first default.
     lab_rubric:
       verdict: unmeasured
@@ -1606,6 +1668,7 @@ task_classes:
         - cheap_cloud
         - claude
   test:
+    transitions: *transitions_default
     # OMN-17427: no measurement recorded yet, so the class keeps the lab-first default.
     lab_rubric:
       verdict: unmeasured
@@ -1783,6 +1846,7 @@ task_classes:
         - cheap_cloud
         - claude
   validator_generation:
+    transitions: *transitions_default
     # OMN-17427: no measurement recorded yet, so the class keeps the lab-first default.
     lab_rubric:
       verdict: unmeasured
@@ -1852,6 +1916,7 @@ task_classes:
         - cheap_cloud
         - claude
   reasoning:
+    transitions: *transitions_default
     # OMN-17427: no measurement recorded yet, so the class keeps the lab-first default.
     lab_rubric:
       verdict: unmeasured
@@ -1923,6 +1988,7 @@ task_classes:
         - cheap_frontier
         - cheap_cloud
   complex_reasoning:
+    transitions: *transitions_default
     # OMN-17427: no measurement recorded yet, so the class keeps the lab-first default.
     lab_rubric:
       verdict: unmeasured
@@ -1977,6 +2043,7 @@ task_classes:
         - local
         - claude
   planning:
+    transitions: *transitions_default
     # OMN-17427: no measurement recorded yet, so the class keeps the lab-first default.
     lab_rubric:
       verdict: unmeasured
@@ -2033,6 +2100,7 @@ task_classes:
         - local
         - cheap_cloud
   review:
+    transitions: *transitions_default
     # OMN-17427: the lab model scored 25 of 60 on this class, below the policy bar.
     # 60 merged omnimarket source diffs (2026-10-01 to 2026-10-18), one local
     # review each through the delegate with the house tenant, one blind Sonnet
@@ -2117,6 +2185,7 @@ task_classes:
   # but with code-review-specific DoD heuristics and a declared fallback ladder.
   # OMN-17427: the class stays declared; delegation is withheld below.
   code_review:
+    transitions: *transitions_default
     # OMN-17427: the lab model scored 0 of 28 on this class, below the policy bar.
     lab_rubric:
       verdict: fail
@@ -2211,6 +2280,7 @@ task_classes:
       # OMN-17427: withheld and no tier serves it, so no tier_order is declared.
       # Restore the ladder in the same change that restores use_for entries.
   summarization:
+    transitions: *transitions_default
     # OMN-17427: no measurement recorded yet, so the class keeps the lab-first default.
     lab_rubric:
       verdict: unmeasured
@@ -2360,6 +2430,7 @@ task_classes:
         - cheap_frontier
         - cheap_cloud
   agent_delegation:
+    transitions: *transitions_default
     complexity_contract: {output_kind: structured, verification: exact_match, execution_required: false}
     gateway_exposure: internal
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
@@ -2434,6 +2505,7 @@ task_classes:
       # OMN-17427: no tier serves agent_orchestration yet, so no tier_order is
       # declared; declare that ladder in the change that wires the producer.
   escalation:
+    transitions: *transitions_default
     # OMN-17427: no measurement recorded yet, so the class keeps the lab-first default.
     lab_rubric:
       verdict: unmeasured
@@ -2499,6 +2571,7 @@ task_classes:
   # acknowledgements, quoted criteria, the 3a block) are pasted by code, never written by the model.
   # Internal: the Gateway does not admit it, and no prompt selects it (empty phrases).
   brief_drafting:
+    transitions: *transitions_default
     lab_rubric:
       verdict: unmeasured
     complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
@@ -2556,6 +2629,7 @@ task_classes:
   # session_resume. These roles inherit summarization's local Qwen placement; no cloud
   # rung until a measured lab_rubric verdict says one is needed.
   extraction_proposer:
+    transitions: *transitions_default
     lab_rubric:
       verdict: unmeasured
     complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
@@ -2588,6 +2662,7 @@ task_classes:
       tier_order:
         - local
   tail_summary:
+    transitions: *transitions_default
     lab_rubric:
       verdict: unmeasured
     complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
@@ -2620,6 +2695,7 @@ task_classes:
       tier_order:
         - local
   context_selection:
+    transitions: *transitions_default
     lab_rubric:
       verdict: unmeasured
     complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}
@@ -2652,6 +2728,7 @@ task_classes:
       tier_order:
         - local
   context_compaction:
+    transitions: *transitions_default
     lab_rubric:
       verdict: unmeasured
     complexity_contract: {output_kind: prose, verification: grounding, execution_required: false}

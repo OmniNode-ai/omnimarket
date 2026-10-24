@@ -58,7 +58,7 @@ from omnibase_infra.errors import ProtocolConfigurationError
 from omnibase_infra.models.errors.model_infra_error_context import (
     ModelInfraErrorContext,
 )
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     load_bifrost_delegation_config,
@@ -97,6 +97,9 @@ from omnimarket.models.delegation.model_entry_tier_share import (
     entry_share_draw,
     entry_share_from_contract_entry,
     validate_entry_share,
+)
+from omnimarket.models.delegation.model_escalation_transitions import (
+    ModelTaskClassTransitions,
 )
 from omnimarket.models.delegation.model_grounding_budget_by_task_class import (
     ModelGroundingBudgetByTaskClass,
@@ -2419,6 +2422,42 @@ def resolve_task_class_max_escalations(task_type: str) -> int | None:
     return raw + added
 
 
+class TaskClassTransitionsError(ValueError):
+    """A declared task class carries no valid transition lists (OMN-21213)."""
+
+
+def resolve_task_class_transitions(task_type: str) -> ModelTaskClassTransitions:
+    """The retry, move, skip and terminate lists for ``task_type`` (OMN-21213).
+
+    Read from the SAME contract file both delegation paths route by. A declared
+    class must carry all four lists; one that does not refuses here, so neither
+    path decides a transition from rules the contract did not declare. A task
+    type the contract does not declare takes the contract's
+    ``transitions_default``, or the packaged contract's when the bound file has
+    none, so an undeclared class is decided by declared lists too.
+    """
+    contract = _get_task_class_contract()
+    entry = _task_class_entry(contract, task_type)
+    if entry is not None:
+        raw = entry.get("transitions")
+        if raw is None:
+            raise TaskClassTransitionsError(
+                f"task class {task_type!r} declares no transitions "
+                "(retry_on, move_on, skip_on, terminate_on); it refuses to load"
+            )
+    else:
+        raw = contract.get("transitions_default") if contract is not None else None
+        if raw is None:
+            packaged = yaml.safe_load(_DEFAULT_TASK_CLASS_CONTRACT_PATH.read_text())
+            raw = packaged.get("transitions_default")
+    try:
+        return ModelTaskClassTransitions.model_validate(raw)
+    except ValidationError as exc:
+        raise TaskClassTransitionsError(
+            f"task class {task_type!r} transitions are invalid: {exc}"
+        ) from exc
+
+
 def is_free_tier(tier_name: str) -> bool:
     """Return whether ``tier_name`` is a $0 (free_local) tier in routing_tiers.yaml.
 
@@ -3409,6 +3448,7 @@ __all__: list[str] = [
     # reducer's private models package (cross-node model reach-in guard).
     "ModelRoutingDecision",
     "ModelRoutingExclusionReport",
+    "TaskClassTransitionsError",
     "_decision_from_tenant_overlay",
     "_get_contract_model_ref",
     "_is_explicit_task_model_override",
@@ -3426,6 +3466,7 @@ __all__: list[str] = [
     "resolve_task_class_max_escalations",
     "resolve_task_class_response_contract",
     "resolve_task_class_tier_order",
+    "resolve_task_class_transitions",
     "shipped_house_credential_refs",
     "sibling_backend_available_in_tier",
     "tier_for_backend",

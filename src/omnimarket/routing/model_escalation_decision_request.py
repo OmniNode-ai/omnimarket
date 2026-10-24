@@ -20,7 +20,14 @@ escalation precedence rules to these inputs.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from omnimarket.models.delegation.model_escalation_transitions import (
+    EnumEscalationCause,
+    ModelTaskClassTransitions,
+)
 
 
 class ModelEscalationDecisionRequest(BaseModel):
@@ -94,6 +101,24 @@ class ModelEscalationDecisionRequest(BaseModel):
             "escalating. ``None`` means the run is not pinned."
         ),
     )
+    cause: EnumEscalationCause | None = Field(
+        default=None,
+        description=(
+            "What the failed attempt was classified as (OMN-21213). Given with "
+            "``transitions``, the decision is read from the task class's declared "
+            "lists instead of ``error_retryable``."
+        ),
+    )
+    transitions: ModelTaskClassTransitions | None = Field(
+        default=None,
+        description="The task class's declared transition lists (OMN-21213).",
+    )
+
+    @model_validator(mode="after")
+    def _cause_and_transitions_together(self) -> Self:
+        if (self.cause is None) != (self.transitions is None):
+            raise ValueError("cause and transitions are given together or not at all")
+        return self
 
 
 __all__ = ["ModelEscalationDecisionRequest"]

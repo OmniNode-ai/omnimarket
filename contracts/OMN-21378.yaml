@@ -1,0 +1,62 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21378"
+title: "The no-local-model refusal asserts no provider key is registered without reading the credential store, and sends a developer who has keys to write a local-model overlay"
+summary: >
+  refuse_undeclared_local_model appended "Your own provider key is missing too: no
+  provider key is registered here." as a literal, so a developer with registered
+  keys was told the key was missing and sent to write bifrost_overrides.yaml. The
+  refusal now reads the local credential store first. With a key registered it
+  names the registered providers and the absent route, and names a key that
+  failed its last test as skipped, never the local-model overlay. With no key it
+  keeps the original message.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21378-key-half-read"
+    statement: "The key half of the refusal is said only when the store holds no key."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the refusal states the key half only when no provider key is registered on the machine"
+  - id: "req-omn21378-route-remedy"
+    statement: "With a key registered, the remedy names the key and the route."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: with a key registered, the refusal's remediation names the registered key and the absent route rather than the local-model overlay file"
+evidence_requirements:
+  - kind: "tests"
+    description: "Refusal tests pass"
+    command: "uv run pytest tests/unit/routing/test_omn21378_refusal_reads_the_credential_store.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21378-ac1-registered-key-not-missing"
+    description: "One registered key; the no-local-model refusal, read through the consume-boundary sanitizer, does not say no provider key is registered. Run with the no-key control, which keeps the sentence. Fails at the merge base, where the sentence is a literal."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_omn21378_refusal_reads_the_credential_store.py -q --no-cov -k 'not_reported_missing or key_half_is_still_said'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21378-ac2-names-key-and-route"
+    description: "Two registered keys; the refusal names gemini and openai and the absent route, and does not name bifrost_overrides.yaml. A key that failed its last test is named as skipped, with onex models test. Fails at the merge base."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_omn21378_refusal_reads_the_credential_store.py -q --no-cov -k 'absent_route or failed_its_last_test'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21378-deploy-probe"
+    description: "Deploy probe. Read the routing module from GitHub at the checked-out commit and require the store-aware refusal in it, with the AC2 test. It fails at the merge base, which has no such refusal."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_omn21378_refusal_reads_the_credential_store.py -q --no-cov -k absent_route"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/routing/delegation_backend_resolution.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"No route reached your registered provider key\" > /dev/null'"
+        cwd: "${OMNI_HOME}/omnimarket"

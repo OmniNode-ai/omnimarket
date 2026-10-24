@@ -24,6 +24,9 @@ import pytest_asyncio
 import yaml
 
 from omnimarket.config.env_flags import env_flag
+from omnimarket.routing.task_class_contract_path import (
+    TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
+)
 
 # OMN-19987: the --refuse-skips option, for evidence checks that must not pass
 # when their proof skipped. Importing the hooks here loads them for every run.
@@ -138,6 +141,10 @@ def promoted_context_profile_routing(
     entry = {
         "gateway_exposure": "internal",
         "selection": {"priority": 0, "phrases": []},
+        # OMN-21213: a class without its four transition lists refuses to load.
+        "transitions": yaml.safe_load(
+            TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH.read_text(encoding="utf-8")
+        )["transitions_default"],
     }
     path.write_text(
         yaml.safe_dump(

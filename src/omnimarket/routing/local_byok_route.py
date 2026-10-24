@@ -52,6 +52,8 @@ import logging
 import re
 from pathlib import Path
 
+from omnibase_infra.errors import ProtocolConfigurationError
+
 from omnimarket.inference.local_byok_credential_adapter import (
     local_byok_key_test_failed,
     registered_local_byok_providers,
@@ -74,6 +76,8 @@ from omnimarket.routing.byok_provider_backends import (
 )
 from omnimarket.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
+    load_bifrost_backends,
+    resolve_delegation_backend,
 )
 from omnimarket.routing.routing_tiers_path import load_delegation_routing_overlay
 
@@ -337,6 +341,57 @@ def substitute_any_registered_byok_route(
     return backend
 
 
+#: The backend a local model server declared by ``onex models add local`` gets
+#: (OMN-21162); the n-th local model is ``local-url-<n>`` (OMN-21211).
+LOCAL_URL_BACKEND = "local-url"
+
+_LOCAL_URL_ID = re.compile(rf"{re.escape(LOCAL_URL_BACKEND)}(-[2-9]|-[1-9][0-9]+)?")
+
+
+def local_url_backend_id(position: int) -> str:
+    """The backend id of the local model at ``position``, counting from 1.
+
+    The id only has to be unique: the order a run tries the local models in is
+    their order in the overlay, which ``onex models reorder local`` sets.
+    """
+    return LOCAL_URL_BACKEND if position == 1 else f"{LOCAL_URL_BACKEND}-{position}"
+
+
+def is_local_url_backend(backend_id: object) -> bool:
+    """Whether ``backend_id`` names a local model ``onex models add local`` declared."""
+    return (
+        isinstance(backend_id, str) and _LOCAL_URL_ID.fullmatch(backend_id) is not None
+    )
+
+
+def registered_local_model_routes(
+    task_type: str,
+) -> tuple[ModelResolvedDelegationBackend, ...]:
+    """The customer's own local models, first tried first (OMN-21211).
+
+    Read from the same bifrost overlay the dispatch resolves every backend
+    through, in overlay order. A run on this machine tries them, in this order,
+    before its ladder, and so before any key. Empty when none is declared or
+    the overlay cannot be read; a run then starts on its ladder as before.
+    """
+    try:
+        backends = load_bifrost_backends()
+    except (OSError, ValueError, ProtocolConfigurationError):
+        return ()
+    routes: list[ModelResolvedDelegationBackend] = []
+    for backend in backends:
+        backend_id = backend.get("backend_id")
+        if not is_local_url_backend(backend_id) or not backend.get("endpoint_url"):
+            continue
+        try:
+            routes.append(
+                resolve_delegation_backend(task_type, backend_id=str(backend_id))
+            )
+        except (ValueError, ProtocolConfigurationError):
+            continue
+    return tuple(routes)
+
+
 def registered_byok_tier_name() -> str | None:
     """The customer-key tier named by this deployment's overlay, if declared."""
     policy = load_delegation_routing_overlay().registered_byok_tier
@@ -475,11 +530,15 @@ def _missing_key_message(provider: str, backend_id: str) -> str:
 
 __all__: list[str] = [
     "HOUSE_SECRET_REF_PATTERN",
+    "LOCAL_URL_BACKEND",
     "ByokKeyNotRegisteredError",
     "ByokPinNotPermittedError",
     "house_provider_slug",
+    "is_local_url_backend",
+    "local_url_backend_id",
     "next_chosen_model_byok_route",
     "next_registered_byok_route",
+    "registered_local_model_routes",
     "resolve_pinned_byok_route",
     "substitute_any_registered_byok_route",
     "substitute_local_byok_route",

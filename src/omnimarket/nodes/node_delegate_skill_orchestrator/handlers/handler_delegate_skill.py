@@ -1597,6 +1597,18 @@ class HandlerDelegateSkill:
                 execution_budget.terminal_delivery_margin_seconds
             ),
         )
+        # OMN-21326: a caller who named a timeout is answered inside it plus the
+        # declared grace. The delivery margin stays the allowance for a run
+        # whose timeout nobody named, where it also carries a second rung.
+        requested_grace_seconds: int | None = getattr(
+            execution_budget, "requested_timeout_grace_seconds", None
+        )
+        wait_allowance_seconds = (
+            requested_grace_seconds
+            if requested_timeout_seconds is not None
+            and requested_grace_seconds is not None
+            else execution_budget.terminal_delivery_margin_seconds
+        )
         progress = ModelDelegationDispatchProgress()
         progress_token = current_dispatch_progress.set(progress)
         try:
@@ -1666,10 +1678,7 @@ class HandlerDelegateSkill:
                         request, queue_wait_ms, self._dispatch_port.dispatch
                     ),
                 ),
-                timeout=float(
-                    execution_timeout_seconds
-                    + execution_budget.terminal_delivery_margin_seconds
-                ),
+                timeout=float(execution_timeout_seconds + wait_allowance_seconds),
             )
         except asyncio.CancelledError:
             progress.finalize_run_steps(
@@ -1743,7 +1752,8 @@ class HandlerDelegateSkill:
                         progress,
                         cancel_message=(
                             f"delegation exceeded the handler execution budget of "
-                            f"{execution_timeout_seconds}s and was cancelled at "
+                            f"{execution_timeout_seconds}s (plus a "
+                            f"{wait_allowance_seconds}s allowance) and was cancelled at "
                             f"stage={cancelled_stage}; "
                             "the consumer commits "
                             "this terminal instead of being evicted mid-handle "
