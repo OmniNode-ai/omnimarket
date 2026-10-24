@@ -1119,7 +1119,9 @@ omnimarket = "omnimarket.nodes"
 # admits experiment) byte-identical.
 # OMN-17427: infra#5293 vendors 0000_delegation_lab_job_execution.sql and grants
 # omninode_runtime read/write on omninode_internal.delegation_lab_job*.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261024120612-3078fa4ec02b" }
+# OMN-20967: infra#5299 vendors node_projection_tenant_credentials 0008
+# (workspace_id column) byte-identical.
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261024144528-903e73af2f49" }
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
 # their git-source overrides). The version-range overrides below already target
 # the released artifacts: core>=0.46.7,<0.47.0 and
