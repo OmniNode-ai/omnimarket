@@ -47,14 +47,11 @@ from omnimarket.enums.enum_work_ledger_entity_kind import (
     EnumWorkLedgerStateOp,
 )
 from omnimarket.handlers.work_ledger_fold import (
-    WorkLedgerFoldError,
+    SHARED_WORK_LEDGER_FOLD_MEMO,
+    WorkLedgerFoldMemo,
     apply_ops,
     close_relationships,
-    fold_row,
     parse_stamp,
-)
-from omnimarket.models.model_work_ledger_fold_request import (
-    ModelWorkLedgerFoldRequest,
 )
 from omnimarket.models.model_work_ledger_fold_result import (
     ModelWorkLedgerFoldResult,
@@ -119,6 +116,7 @@ class HandlerContextSourceLedger:
         contract_path: Path | None = None,
         reader: ProtocolLedgerRowReader | None = None,
         tenant_ids: Iterable[str] | None = None,
+        fold_memo: WorkLedgerFoldMemo | None = None,
     ) -> None:
         self._contract_path = contract_path or _CONTRACT_PATH
         self.terminal_event = contract_publish_topics(self._contract_path)[0]
@@ -128,6 +126,9 @@ class HandlerContextSourceLedger:
         )
         self._reader = (
             reader if reader is not None else PostgresLedgerRowReader(binding)
+        )
+        self._fold_memo = (
+            fold_memo if fold_memo is not None else SHARED_WORK_LEDGER_FOLD_MEMO
         )
 
     def handle(self, request: ModelContextSourceRequest) -> ModelLedgerSourceResult:
@@ -177,10 +178,9 @@ class HandlerContextSourceLedger:
         folded: dict[str, ModelWorkLedgerFoldResult] = {}
         state: dict[str, dict[str, object]] = {}
         links: list[ModelWorkLedgerLink] = []
-        for row in rows:
-            try:
-                result = fold_row(ModelWorkLedgerFoldRequest(raw_row=row.raw_row))
-            except WorkLedgerFoldError:
+        results = self._fold_memo.fold_rows([(row.row_id, row.raw_row) for row in rows])
+        for row, result in zip(rows, results, strict=True):
+            if result is None:
                 continue
             by_id.setdefault(row.row_id, row)
             folded.setdefault(row.row_id, result)

@@ -227,6 +227,8 @@ def _delegation_failed_payload(
         "tenant_id": tenant_id,
         "task_type": "code-review",
         "model_used": "glm-5.2",
+        "backend_id": "zai",
+        "host": "h201",
         "content": "",
         "quality_passed": False,
         "quality_score": 0.40,
@@ -266,32 +268,31 @@ class TestDefectAEnvelopeKeyIsNotAProducerField:
     """The runner's own ``_envelope`` key must not fail an extra="forbid" model."""
 
     def test_quality_gate_result_writes_a_row_instead_of_quarantining(self) -> None:
+        """OMN-19448 rule 1: transport keys are accepted without creating a run."""
         published, capture = _capture()
         runner = DelegationProjectionRunner(publish_fn=capture)
         db = _mock_db(mirror={MIRRORED_TENANT_SLUG: MIRRORED_TENANT_UUID})
         runner._db = db
-
         topic = runner._topic_quality_gate_result
         assert topic, "contract must declare a quality-gate-result topic"
         data = _runner_payload(
             _quality_gate_payload(correlation_id=CORRELATION_ID),
             tenant_id=str(MIRRORED_TENANT_UUID),
         )
-        meta = MessageMeta(partition=0, offset=216, fallback_id=CORRELATION_ID)
-
-        ok = asyncio.run(runner.project_event(topic, data, meta))
-
+        ok = asyncio.run(
+            runner.project_event(
+                topic,
+                data,
+                MessageMeta(partition=0, offset=216, fallback_id=CORRELATION_ID),
+            )
+        )
         assert ok is True
-        assert not [t for t, _ in published if t == DLQ_TOPIC], (
-            "the runner's own transport key is not a malformed producer payload"
-        )
-        writes = _delegation_writes(db)
-        assert len(writes) == 1, (
-            "RED before the fix: zero writes, one DLQ record, offset committed"
-        )
-        by_column = _param_by_column(writes[0].args)
-        assert by_column["correlation_id"] == CORRELATION_ID
-        assert by_column["quality_gate_passed"] is False
+        assert _delegation_writes(db) == []
+        assert [
+            t
+            for t, _ in published
+            if t != "onex.evt.omnimarket.projection-delegation-applied.v1"
+        ] == [], "verdict-first neither quarantines nor republishes a row"
 
     def test_a_real_unknown_producer_field_is_still_refused(self) -> None:
         """The strip removes exactly the transport keys, never widens the model."""
@@ -346,19 +347,26 @@ async def _judge_attribution(query: str, *_args: Any, **_kwargs: Any) -> Any:
 class TestDefectBTenantIdentityIsKeyedByItsShape:
     """A canonical UUID resolves against ``tenant_uuid``, never ``tenant_slug``."""
 
-    def test_terminal_with_uuid_tenant_writes_the_row(self) -> None:
+    @pytest.mark.parametrize("passed", [True, False])
+    def test_terminal_with_uuid_tenant_writes_the_row(self, passed: bool) -> None:
+        # OMN-19448 rule 2: passed and failed runs name their model, backend and host.
         _published, capture = _capture()
         runner = DelegationProjectionRunner(publish_fn=capture)
         db = _mock_db(mirror={MIRRORED_TENANT_SLUG: MIRRORED_TENANT_UUID})
         runner._db = db
 
-        topic = runner._topic_delegation_failed
+        topic = (
+            runner._topic_delegation_completed
+            if passed
+            else runner._topic_delegation_failed
+        )
         assert topic, "contract must declare a delegation-failed topic"
         data = _runner_payload(
             _delegation_failed_payload(
                 correlation_id=CORRELATION_ID, tenant_id=str(MIRRORED_TENANT_UUID)
             )
         )
+        data["quality_passed"] = passed
         meta = MessageMeta(partition=0, offset=63, fallback_id=CORRELATION_ID)
 
         ok = asyncio.run(runner.project_event(topic, data, meta))
@@ -371,6 +379,11 @@ class TestDefectBTenantIdentityIsKeyedByItsShape:
         by_column = _param_by_column(writes[0].args)
         assert by_column["correlation_id"] == CORRELATION_ID
         assert by_column["tenant_id"] == str(MIRRORED_TENANT_UUID)
+
+        assert by_column["quality_gate_passed"] is passed
+        assert by_column["model_name"] == "glm-5.2"
+        assert by_column["backend_id"] == "zai"
+        assert by_column["host"] == "h201"
 
     def test_the_mirror_is_read_by_the_uuid_column(self) -> None:
         """The predicate itself is the defect; assert which column was keyed."""
@@ -455,6 +468,7 @@ class TestBothDefectsMustBeFixedTogether:
     """Neither fix alone produces a row for the onex-dev delegation."""
 
     def test_a_whole_delegation_both_events_reach_the_same_row(self) -> None:
+        # OMN-19448 rule 1: verdict-first writes no run row and republishes nothing. The terminal authors it.
         published, capture = _capture()
         runner = DelegationProjectionRunner(publish_fn=capture)
         db = _mock_db(mirror={MIRRORED_TENANT_SLUG: MIRRORED_TENANT_UUID})
@@ -472,6 +486,12 @@ class TestBothDefectsMustBeFixedTogether:
                 MessageMeta(partition=0, offset=216, fallback_id=CORRELATION_ID),
             )
         )
+        assert _delegation_writes(db) == []
+        assert [
+            t
+            for t, _ in published
+            if t != "onex.evt.omnimarket.projection-delegation-applied.v1"
+        ] == [], "the preceding rung verdict must not republish a row"
         asyncio.run(
             runner.project_event(
                 runner._topic_delegation_failed,
@@ -487,7 +507,7 @@ class TestBothDefectsMustBeFixedTogether:
 
         assert not [t for t, _ in published if t == DLQ_TOPIC]
         writes = _delegation_writes(db)
-        assert len(writes) == 2, "both source events reach the write path"
+        assert len(writes) == 1, "only the run terminal authors a row"
         assert {
             str(_param_by_column(write.args)["correlation_id"]) for write in writes
         } == {CORRELATION_ID}

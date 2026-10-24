@@ -1342,8 +1342,14 @@ def _response_from_result(
             premium_counterfactual=_premium_counterfactual(
                 result, baseline_model=baseline.model
             ),
+            # OMN-19448: a result that names no latency (a budget-cancelled or
+            # timed-out run, which the port never timed) reports the duration
+            # this handler measured, never a fabricated 0 ms.
             latency_ms=_as_int(
-                result.get("delegation_latency_ms", result.get("latency_ms", 0))
+                result.get(
+                    "delegation_latency_ms",
+                    result.get("latency_ms", execution_duration_ms),
+                )
             ),
         ),
         escalation_count=_as_int(result.get("escalation_count")),

@@ -21,6 +21,9 @@ description: >
   (host = per-lane config, never a baked-in choice). A GitHub token, when the
   lane's adapter needs one, is resolved at the effect boundary from the
   contract-declared api_key_ref via the canonical secret-store resolver.
+  The nightly technical deep dive covers changes by area, causes and fixes,
+  decisions, open blockers and do-not-rediscover findings, with every claim
+  cited and uncited claims refused.
 
 input_model:
   name: ModelDeepDiveReportCommand
@@ -44,6 +47,10 @@ handler_routing:
       handler:
         name: HandlerDeepDiveReportEffect
         module: omnimarket.nodes.node_deep_dive_report_effect.handlers.handler_deep_dive_report_effect
+    - operation: technical_deep_dive
+      handler:
+        name: HandlerTechnicalDeepDive
+        module: omnimarket.nodes.node_deep_dive_report_effect.handlers.handler_technical_deep_dive
 
 descriptor:
   node_archetype: effect
@@ -96,3 +103,4 @@ metadata:
   related_tickets:
     - "OMN-13725"
     - "OMN-13722"
+    - "OMN-21352"

@@ -1,0 +1,41 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21212"
+title: "The local delegation port accepts a probe ladder only from synthetic doctor traffic"
+summary: "LocalDelegationDispatchPort.dispatch takes a typed ModelProbeLadder. It is admitted only when the request's provenance is traffic_class synthetic with source_surface doctor_escalation_check; any other request carrying one is refused before dispatch with zero provider calls and one refused_before_dispatch row. An admitted ladder replaces the routing contract for that run: its first rung is the initial backend, rungs have no siblings, and each move takes the next rung. Every rung must be on a loopback endpoint. StubProbeTransport scripts one reply per rung for tests."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21212-probe-ladder"
+    statement: "The local port accepts a per-run probe ladder only from synthetic doctor traffic, and walks its rungs in order."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: An organic request carrying a probe ladder is refused with zero provider calls, and a synthetic one runs the given rungs -- falsifier: `uv run pytest tests/unit/delegation/test_probe_ladder.py -q`, which fails today because the field does not exist."
+evidence_requirements:
+  - kind: "tests"
+    description: "The probe ladder tests pass at the head; at the merge base the probe ladder model and the port's field do not exist, so they fail to import."
+    command: "uv run pytest tests/unit/delegation/test_probe_ladder.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21212-ac1-probe-ladder-tests"
+    description: "AC1: an organic, unclassified, other-surface or provenance-less request carrying a probe ladder raises a refusal, the stub transport records no call, and the run's one delegation_events row is a refused_before_dispatch failure with no attempts. A synthetic doctor_escalation_check request whose first rung answers 429 climbs to the second rung and completes, with both rungs in the attempt history and the routing contract never consulted; one whose first rung answers stops there. Rungs off loopback and repeated backend ids are refused by the model."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_probe_ladder.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21212-probe-ladder-deploy-probe"
+    description: "Deploy probe. Read the local dispatch port from GitHub at the checked-out commit and require the dispatch signature to declare probe_ladder as a ModelProbeLadder, with the probe ladder tests passing beside it. At the merge base the port declares no such field, so the read finds nothing and the tests fail to import."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_probe_ladder.py -q --no-cov -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"probe_ladder: ModelProbeLadder | None = None\" > /dev/null'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]

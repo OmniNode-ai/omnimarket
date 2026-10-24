@@ -34,11 +34,21 @@ from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_clie
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_input_messages_hash import (
     input_messages_hash,
 )
+from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_session_barrier_journal import (
+    HandlerSessionBarrierJournal,
+)
 
 pytestmark = pytest.mark.unit
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "claude_code_hook_input"
 INVOCATION = UUID("00000000-0000-4000-8000-000000000001")
+
+
+@pytest.fixture
+def barrier_journal(tmp_path: Path) -> HandlerSessionBarrierJournal:
+    return HandlerSessionBarrierJournal(
+        environ={"ONEX_HOOK_EMIT_JOURNAL_DIR": str(tmp_path / "journal")}
+    )
 
 
 def _by_hand(pairs: list[tuple[str, str]]) -> str:
@@ -63,14 +73,19 @@ def test_contract_binding_derives_the_hash_from_the_reserved_source() -> None:
     assert sources["cwd"] == "$.cwd"
 
 
-def test_recorded_precompact_payload_builds_a_valid_command(tmp_path: Path) -> None:
+def test_recorded_precompact_payload_builds_a_valid_command(
+    tmp_path: Path, barrier_journal: HandlerSessionBarrierJournal
+) -> None:
     transcript = tmp_path / "precompact_transcript.jsonl"
     shutil.copyfile(FIXTURES / "precompact_transcript.jsonl", transcript)
     hook_input = json.loads((FIXTURES / "precompact_manual.json").read_text())
     hook_input["transcript_path"] = str(transcript)
 
     payload = build_command_payload(
-        _compaction_binding(), hook_input, invocation_id=INVOCATION
+        _compaction_binding(),
+        hook_input,
+        invocation_id=INVOCATION,
+        barrier_journal=barrier_journal,
     )
     command = ModelContextCompactionRequested.model_validate(payload)
 
@@ -88,11 +103,16 @@ def test_recorded_precompact_payload_builds_a_valid_command(tmp_path: Path) -> N
     )
 
 
-def test_recorded_mod_event_builds_a_valid_command() -> None:
+def test_recorded_mod_event_builds_a_valid_command(
+    barrier_journal: HandlerSessionBarrierJournal,
+) -> None:
     hook_input = json.loads((FIXTURES / "session_compact_mod_event.json").read_text())
 
     payload = build_command_payload(
-        _compaction_binding(), hook_input, invocation_id=INVOCATION
+        _compaction_binding(),
+        hook_input,
+        invocation_id=INVOCATION,
+        barrier_journal=barrier_journal,
     )
     command = ModelContextCompactionRequested.model_validate(payload)
 
@@ -126,12 +146,14 @@ def test_messages_win_over_the_transcript(tmp_path: Path) -> None:
 )
 def test_nothing_derivable_is_none_and_the_command_refuses(
     hook_input: dict[str, Any],
+    barrier_journal: HandlerSessionBarrierJournal,
 ) -> None:
     assert input_messages_hash(hook_input) is None
     payload = build_command_payload(
         _compaction_binding(),
         {"session_id": "s", "cwd": "/w", "trigger": "manual", **hook_input},
         invocation_id=INVOCATION,
+        barrier_journal=barrier_journal,
     )
     with pytest.raises(ValueError, match="input_messages_hash"):
         ModelContextCompactionRequested.model_validate(payload)

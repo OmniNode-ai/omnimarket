@@ -304,11 +304,13 @@ class TestTheDriftedFixtureIsFaithful:
 
 @pytest.mark.integration
 class TestTheVerdictLandsOnTheDriftedLane:
-    def test_quality_gate_verdict_writes_a_row(self) -> None:
-        """RED before OMN-17228: this raised
-        ``null value in column "task_type" of relation "delegation_events"
-        violates not-null constraint`` and the verdict went to the DLQ with its
-        offset committed."""
+    def test_quality_gate_verdict_with_no_terminal_writes_no_row(self) -> None:
+        """OMN-19448 rule 1: a rung's verdict never creates the run row.
+
+        Before OMN-17228 this verdict raised ``null value in column
+        "task_type"`` and went to the DLQ. It is now acknowledged without a
+        write on the drifted lane: the row belongs to the run's terminal.
+        """
         import asyncio
 
         async def _run() -> None:
@@ -323,19 +325,10 @@ class TestTheVerdictLandsOnTheDriftedLane:
                 assert ok is True
 
                 row = await admin_conn.fetchrow(
-                    "SELECT task_type, delegated_to, timestamp, "
-                    "quality_gate_passed, actual_score "
-                    "FROM delegation_events WHERE correlation_id = $1",
+                    "SELECT 1 FROM delegation_events WHERE correlation_id = $1",
                     correlation_id,
                 )
-                assert row is not None, (
-                    "the verdict must land a row on a lane whose DEFAULTs are "
-                    "missing -- this is the whole defect"
-                )
-                assert row["task_type"] == ""
-                assert row["delegated_to"] == ""
-                assert row["timestamp"] == _ENVELOPE_TIMESTAMP
-                assert row["quality_gate_passed"] is True
+                assert row is None, "a rung's verdict must not author the run row"
 
         asyncio.run(_run())
 
@@ -417,7 +410,7 @@ class TestTheVerdictLandsOnTheDriftedLane:
                 )
 
                 row = await admin_conn.fetchrow(
-                    "SELECT task_type, delegated_to, quality_gate_passed "
+                    "SELECT task_type, delegated_to, score_source "
                     "FROM delegation_events WHERE correlation_id = $1",
                     correlation_id,
                 )
@@ -427,9 +420,10 @@ class TestTheVerdictLandsOnTheDriftedLane:
                     "a task type a terminal event already recorded"
                 )
                 assert row["delegated_to"] == "glm-5.2"
-                assert row["quality_gate_passed"] is True, (
-                    "positive control: the verdict must still have updated the "
-                    "columns it does own, or the assertions above hold for the "
+                # OMN-19448 rule 1: the verdict owns only a blank score_source.
+                assert row["score_source"] == "deterministic_acceptance", (
+                    "positive control: the verdict must still have filled the "
+                    "column it does own, or the assertions above hold for the "
                     "trivial reason that nothing was written at all"
                 )
 

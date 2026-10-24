@@ -367,11 +367,19 @@ def resolve_state_dir(explicit: Path | None) -> Path:
 
 
 def load_projection_json(
-    path: Path,
+    path: Path, since: datetime, until: datetime
 ) -> tuple[dict[str, str], dict[str, dict[str, Any]]]:
-    """Read an export: ``{"rows": [{row_id,row_ts}], "state": [{entity_key,...}]}``."""
+    """Read exported rows in the inclusive window, and the full exported state.
+
+    Match the database loader's row filter. Parse each full timestamp before
+    filtering: an invalid export must fail rather than produce a parity receipt.
+    """
     data = json.loads(path.read_text(encoding="utf-8"))
-    rows = {str(r["row_id"]): str(r["row_ts"]) for r in data.get("rows", [])}
+    rows = {
+        str(r["row_id"]): str(r["row_ts"])
+        for r in data.get("rows", [])
+        if since <= parse_stamp(str(r["row_ts"])) <= until
+    }
     state = {str(s["entity_key"]): dict(s) for s in data.get("state", [])}
     return rows, state
 
@@ -523,7 +531,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         file_rows = _read_ledger_files(ledger, args.archive_dir)
         if args.projection_json is not None:
-            proj_rows, proj_state = load_projection_json(args.projection_json)
+            proj_rows, proj_state = load_projection_json(
+                args.projection_json, since, until
+            )
             sources = load_projection_sources_json(args.projection_json, since, until)
         else:
             dsn = os.environ[args.dsn_env]

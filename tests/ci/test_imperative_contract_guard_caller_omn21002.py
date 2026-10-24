@@ -308,7 +308,9 @@ def test_caller_uses_core_and_keeps_the_job_and_context() -> None:
             ), path
 
 
-def test_canonical_shape_hook_and_ci_use_the_exemption_commit() -> None:
+def test_canonical_shape_hook_uses_the_exemption_commit_and_ci_a_dev_merge_tag() -> (
+    None
+):
     repos = _mapping(ROOT / ".pre-commit-config.yaml")["repos"]
     assert isinstance(repos, list)
     (hook_repo,) = [
@@ -320,9 +322,15 @@ def test_canonical_shape_hook_and_ci_use_the_exemption_commit() -> None:
     assert hook_repo["rev"] == _caller_sha()
     jobs = _mapping(WORKFLOWS / "ci.yml")["jobs"]
     assert isinstance(jobs, dict)
-    assert jobs["canonical-file-shape"]["env"]["CANONICAL_FILE_SHAPE_CORE"].endswith(
-        f"@{_caller_sha()}"
-    )
+    # OMN-21331: CI reads core through a dev-merge tag, never a commit sha. The
+    # tag's commit descends from the hook's exemption commit.
+    core = jobs["canonical-file-shape"]["env"]["CANONICAL_FILE_SHAPE_CORE"]
+    assert re.fullmatch(
+        r"omnibase-core @ git\+https://github\.com/OmniNode-ai/omnibase_core"
+        r"@dev-[0-9]{14}-[0-9a-f]{12}",
+        core,
+    ), core
+    assert not re.search(r"[0-9a-f]{40}", core), core
 
 
 def test_own_allowlist_matches_the_recorded_paths() -> None:

@@ -65,9 +65,14 @@ def test_accepting_attempt_stores_routed_model_and_answering_backend(db: Any) ->
     assert row["answering_backend"] != "openrouter-x"
 
 
-def test_refused_ladder_leaves_routing_columns_null(db: Any) -> None:
+def test_refused_ladder_names_its_rung_but_not_an_answering_backend(db: Any) -> None:
+    """OMN-19448 rule 2: a failed run names the model it was refused on.
+
+    The refused rung did not deliver an answer, so ``answering_backend`` stays
+    NULL.
+    """
     row = _project(_skill_terminal(_ladder()[:1]), db)
-    assert row.get("routed_model") is None
+    assert row["routed_model"] == "m-refused"
     assert row.get("answering_backend") is None
 
 

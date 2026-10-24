@@ -30,6 +30,17 @@ requirements:
       - id: "AC5"
         statement: |-
           AC5: the delegate-skill terminal and the canonical terminal write the three columns, a measured zero is stored as zero, an unmeasured value stays NULL, and a later sparse terminal does not erase them -- falsifier: uv run pytest tests/unit/delegation/test_terminal_timing_and_requested_model_omn19448.py -q
+  - id: "req-failed-run-attribution"
+    statement: "The terminal owns the run record, including routing attribution and measured duration; a rung verdict may only fill its blank score_source."
+    acceptance:
+      - id: "AC6"
+        statement: "AC6: a rung verdict arriving before its terminal creates no run row, and a late verdict does not replace the terminal's result -- falsifier: tests/test_rung_verdict_never_authors_run_row.py and the real PostgreSQL test_a_rung_verdict_creates_no_run_row"
+      - id: "AC7"
+        statement: "AC7: a failed run names the model, backend and host of its deciding rung and preserves that attribution whichever order sparse and routed terminals arrive -- falsifier: tests/test_failed_run_attribution.py -k 'deciding_rung or whatever_order'"
+      - id: "AC8"
+        statement: "AC8: a timeout or runtime shutdown before any try stores not routed (<cause>) for the model and not routed for backend and host through the real PostgreSQL writer -- falsifier: tests/test_omn19448_failed_run_attribution_real_postgres.py -k 'before_any_try'"
+      - id: "AC9"
+        statement: "AC9: when a model call was not timed, both the producer and projection report the measured execution duration; a measured call latency is preserved -- falsifier: tests/test_failed_run_attribution.py -k 'duration or latency'"
 evidence_requirements:
   - kind: "tests"
     description: "The stop reason column tests."
@@ -183,4 +194,46 @@ dod_evidence:
     checks:
     - check_type: command
       check_value: uv run pytest tests/test_omn19448_terminal_acceptance_real_postgres.py -q -n 0 --no-cov -p no:cacheprovider --refuse-skips -k 'async and canonical and quality_gate_refused'
+      cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn19448-failed-run-attribution
+    description: 'Every run record, passed or failed, names its model, backend and host, and a rung verdict never writes or decides the run record. A failed run keeps the model, backend and host of its last rung whatever order the verdict and terminal arrive in, and a run whose model call was never timed reports its measured duration, not 0 ms.'
+    source: manual
+    binds_ac: [AC6]
+    checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/test_omn19448_failed_run_attribution_real_postgres.py -q --no-cov -p no:cacheprovider --refuse-skips -k 'rung_verdict'
+      cwd: ${OMNI_HOME}/omnimarket
+    - check_type: test_passes
+      check_value: uv run pytest tests/test_rung_verdict_never_authors_run_row.py -q --no-cov -p no:cacheprovider --refuse-skips
+      cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn19448-failed-run-deciding-rung
+    description: "A failed run names its deciding rung and keeps that attribution across either terminal order."
+    source: manual
+    binds_ac: [AC7]
+    checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/test_failed_run_attribution.py -q --no-cov -p no:cacheprovider --refuse-skips -k 'deciding_rung or whatever_order'
+      cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn19448-failed-run-before-any-try
+    description: "Real PostgreSQL readback of timeout and runtime-shutdown rows requires the explicit not-routed attribution."
+    source: manual
+    binds_ac: [AC8]
+    checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/test_omn19448_failed_run_attribution_real_postgres.py -q --no-cov -p no:cacheprovider --refuse-skips -k 'before_any_try'
+      cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn19448-failed-run-measured-duration
+    description: "Untimed calls use measured execution duration while measured call latency remains unchanged."
+    source: manual
+    binds_ac: [AC9]
+    checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/test_failed_run_attribution.py -q --no-cov -p no:cacheprovider --refuse-skips -k 'duration or latency'
+      cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn19448-failed-run-hosted-deploy-probe
+    description: "Hosted deploy probe: the checked-out producer and sync projection must retain a deciding rung and measured duration using locked dependencies without external services. This does not attest a deployment to the shared lab lane."
+    source: manual
+    checks:
+    - check_type: command
+      check_value: uv run pytest tests/test_failed_run_attribution.py -q --no-cov -p no:cacheprovider --refuse-skips -k 'deciding_rung or duration or latency'
       cwd: ${OMNI_HOME}/omnimarket

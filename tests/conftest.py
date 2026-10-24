@@ -443,6 +443,10 @@ def _isolate_unit_env(
     # Redirect node-generation-consumer replay state to an isolated tmp dir.
     monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "onex_state"))
     monkeypatch.delenv("ONEX_STATE_ROOT", raising=False)
+    # The hook adapter journals its session barrier under this override when it
+    # is set (OMN-21099); a lane shell exports the host's live journal, which
+    # the resident drainer publishes, so a test falls back to ONEX_STATE_DIR.
+    monkeypatch.delenv("ONEX_HOOK_EMIT_JOURNAL_DIR", raising=False)
 
 
 @pytest.fixture(autouse=True)

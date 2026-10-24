@@ -2,7 +2,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-21340"
 title: "A capture silence watch alarms when a principal's ledger rows or a host's hook events stop"
-summary: "Adds node_capture_silence_watch_effect. Per principal (the work_ledger_rows principal cell) and per host (claude_hook_events) it reads the newest row inside a 24-hour active window, raises one Slack command per silence episode for an actor silent past its source bound, one source alarm when a whole source is older than its bound, and publishes its own automation heartbeat every tick. It runs as a oneshot tick from a lab timer inside the dev lane's effects runtime."
+summary: "Adds node_capture_silence_watch_effect. Per principal (the work_ledger_rows principal cell) and per host (claude_hook_events) it reads the newest row inside a 24-hour active window, raises one Slack command per silence episode for an actor silent past its source bound, one source alarm when a whole source is older than its bound, and publishes its own automation heartbeat every tick. It runs as a oneshot tick from a lab timer inside the dev lane's effects runtime. Separately, the landing mirror contract lists the landing decision topic it subscribes to under consumed_events, so the topic provisioner creates it, and a test pins that every subscribe topic of the mirror is also a consumed_events topic."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -20,10 +20,18 @@ requirements:
       - id: "AC3"
         statement: |-
           AC3: every tick publishes one automation heartbeat for the watcher itself, including a tick whose reads fail -- falsifier: uv run pytest tests/test_omn19975_capture_silence_watch.py -q -k heartbeat
+  - id: req-omn21340-landing-mirror-topic-provisionable
+    statement: "Every topic the landing mirror subscribes to is declared where the topic provisioner reads it."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: every runtime_dispatch.subscribe_topics entry of node_work_ledger_landing_mirror is also a consumed_events topic of that contract, and the contract declares no event_bus or handler_routing -- falsifier: uv run pytest -q tests/unit/work_ledger_bus/test_landing_topic_declared.py fails at the merge base and passes at the head"
 evidence_requirements:
   - kind: "tests"
     description: "Hermetic unit tests over the pure classifier, the handler with a fake reader and publisher, the Postgres reader's SQL binding, the contract bounds and the CLI dry run."
     command: "uv run pytest tests/test_omn19975_capture_silence_watch.py -q --no-cov"
+  - kind: tests
+    description: "The declaration test pins the mirror's subscribed topics against its consumed_events."
+    command: "uv run pytest -q tests/unit/work_ledger_bus/test_landing_topic_declared.py"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -84,3 +92,29 @@ dod_evidence:
           print(json.dumps({"run_id": receipt["run_id"], "status": receipt["status"], "unknown_sources": len(verdicts), "heartbeat_published": result["heartbeat_published"]}))
           ' "$probe_dir/receipt.json"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-omn21340-ac4-landing-topic-declared
+    description: "The landing mirror contract lists its subscribed topic under consumed_events."
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest -q tests/unit/work_ledger_bus/test_landing_topic_declared.py"
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: ["AC4"]
+  - id: dod-omn21340-deploy-hosted-declaration
+    description: "Hosted deployment artifact readback fetches the landing mirror's runtime contract from GitHub at the checked-out revision. It requires the landing decision topic under consumed_events, covers every subscribe topic, and refuses shared-runtime auto-wiring. Missing content, invalid YAML or the merge-base declaration fails the probe. This reads published source; it does not claim a lane rollout."
+    source: manual
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: command
+        check_value: |-
+          bash -o pipefail -c 'curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_work_ledger_landing_mirror/contract.yaml" | python3 -c '\''import sys, yaml
+          contract = yaml.safe_load(sys.stdin.read())
+          assert contract["name"] == "node_work_ledger_landing_mirror"
+          topic = contract["runtime_dispatch"]["command_topic"]
+          consumed = {entry["topic"]: entry["event_type"] for entry in contract["consumed_events"]}
+          assert consumed[topic] == "ModelLandingDecision"
+          assert contract["runtime_dispatch"]["subscribe_topics"]
+          assert set(contract["runtime_dispatch"]["subscribe_topics"]) <= consumed.keys()
+          assert "event_bus" not in contract and "handler_routing" not in contract
+          print("Published landing mirror declares its landing decision subscription for provisioning")'\'''
+        cwd: ${OMNI_HOME}/omnimarket
