@@ -48,7 +48,13 @@ if TYPE_CHECKING:
 CLIENT_ENV = "ONEX_HOOK_RECEIPT_CLIENT"
 HOST_ENV = "ONEX_CLIENT_HOST"
 CONTRACT_ENV = "ONEX_CLAUDE_CODE_ADAPTER_CONTRACT"
-DEFAULT_CLIENT = "omnibase_infra.cli.receipt_mode_client:ReceiptModeClient"
+# OMN-21341: the omnibase_infra receipt-mode publish-and-await handler. Its first
+# spelling here (cli.receipt_mode_client:ReceiptModeClient) named a module that
+# omnibase_infra's canonical-location and lifecycle-class gates refuse to create.
+DEFAULT_CLIENT = (
+    "omnibase_infra.handlers.handler_receipt_mode_publish_await"
+    ":HandlerReceiptModePublishAwait"
+)
 PARENT_POLL_SECONDS = 1.0
 
 EXIT_BAD_ARGS = 2

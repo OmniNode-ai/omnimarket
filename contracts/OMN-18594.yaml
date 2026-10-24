@@ -1,0 +1,102 @@
+schema_version: "1.0.0"
+ticket_id: OMN-18594
+title: The release and pin guard refuses releases, version tags and sibling pins without a grant
+summary: RULING 2026-10-23T17:13:55Z. node_release_pin_guard_compute is the canonical home of the decision the omni plugin's PreToolUse hook runs. It refuses a release, a version tag or tag push, a release, train, cascade or pin-refresh workflow dispatch, the release-cut skill and its scripts, and a sibling version or commit-sha pin write, unless an unexpired OPERATOR-CONSENT row with approved_by=operator or cloud-owner, a grant cell naming the repo and version, and an expiry admits it.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn18594-guard-refuses
+    statement: Every guarded shape is refused without a grant and ordinary calls are admitted.
+    acceptance:
+      - id: AC18594101
+        statement: "AC18594101: each guarded Bash, Skill and file-edit shape is refused and each ordinary call admitted -- falsifier: test_release_pin_guard.py fails"
+  - id: req-omn18594-grant-admits
+    statement: An unexpired operator or cloud-owner grant admits exactly its repo and version, and an expired, unapproved, versionless or future row grants nothing.
+    acceptance:
+      - id: AC18594102
+        statement: "AC18594102: a grant admits its repo and version only, and the five non-grant rows grant nothing -- falsifier: the grant tests in test_release_pin_guard.py fail"
+      - id: AC18594103
+        statement: "AC18594103: the contract-resolved handler answers over the in-memory bus on the declared topics -- falsifier: test_golden_chain_release_pin_guard_compute.py fails"
+evidence_requirements:
+  - kind: tests
+    description: The guard's unit and golden chain tests pass.
+    command: uv run pytest tests/nodes/node_release_pin_guard_compute/test_release_pin_guard.py tests/test_golden_chain_release_pin_guard_compute.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn18594-ac1-shapes
+    description: Every guarded shape is refused and ordinary calls are admitted.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_release_pin_guard_compute/test_release_pin_guard.py -q -k "refused or admitted"
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac:
+      - AC18594101
+  - id: dod-omn18594-ac2-grants
+    description: A grant admits only its repo and version; non-grant rows grant nothing.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_release_pin_guard_compute/test_release_pin_guard.py -q -k "grant"
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac:
+      - AC18594102
+  - id: dod-omn18594-ac3-golden-chain
+    description: The contract-resolved handler round trip over the in-memory bus.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_golden_chain_release_pin_guard_compute.py -q
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac:
+      - AC18594103
+  - id: dod-omn18594-deploy-probe
+    description: "Hosted deploy smoke: dispatch the checked-out release pin guard through the in-process ONEX runtime and read its typed receipts. Require an ungranted release to be refused, an exact operator grant to admit it, and that grant to refuse another version. The merge base has no release pin guard node. No external services or GitHub content reads are needed."
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+          uv run --locked python - "$probe_dir" <<'PYTHON'
+          import json
+          import sys
+          from importlib.metadata import entry_points
+          from pathlib import Path
+          assert any(ep.name == "node_release_pin_guard_compute" for ep in entry_points(group="onex.nodes")), "release pin guard entry point is absent"
+          root = Path(sys.argv[1])
+          grant = "2026-10-23T19:30:00Z | OPERATOR-CONSENT | approved_by=operator | grant=release:omnimarket@1.2.3 | expires=2026-10-24T07:00:00Z"
+          for name, version, rows in (("refused", "1.2.3", []), ("granted", "1.2.3", [grant]), ("mismatch", "1.2.4", [grant])):
+              request = {"tool_name": "Bash", "tool_input": {"command": f"gh release create v{version} --repo OmniNode-ai/omnimarket"}, "cwd": "/work/omnimarket", "now": "2026-10-23T20:00:00", "consent_rows": rows}
+              (root / f"{name}.json").write_text(json.dumps(request))
+          PYTHON
+          for name in refused granted mismatch; do
+            env ONEX_LANE=omn18594-deploy-probe "$runtime_bin/onex" node node_release_pin_guard_compute --input "$probe_dir/$name.json" --state-root "$probe_dir/$name-state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/$name-receipt.json";
+          done;
+          uv run --locked python - "$probe_dir" <<'PYTHON'
+          import json
+          import sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          for name, refused in (("refused", True), ("granted", False), ("mismatch", True)):
+              receipt = json.loads((root / f"{name}-receipt.json").read_text())
+              assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+              assert receipt["result_model"] == "omnimarket.models.model_release_pin_guard.ModelReleasePinGuardResult", receipt
+              result = receipt["result"]
+              assert result["refuse"] is refused and result["exit_code"] == int(refused), result
+              assert result["repo"] == "omnimarket" and result["shape"] == "gh release create", result
+              if refused:
+                  assert "RULING 2026-10-23T17:13:55Z" in result["reason"], result
+                  assert result["grant"] == "", result
+              else:
+                  assert result["grant"] == "2026-10-23T19:30:00Z", result
+              print(json.dumps({"case": name, "run_id": receipt["run_id"], "refuse": result["refuse"], "grant": result["grant"]}))
+          PYTHON
+        cwd: ${OMNI_HOME}/omnimarket

@@ -1,6 +1,13 @@
 {
   "blocked_relations": [
     {
+      "authoritative_sources": [],
+      "current_database": "omnidash_analytics",
+      "kind": "table",
+      "name": "compaction_receipts",
+      "reason": "no authoritative CREATE TABLE migration found"
+    },
+    {
       "authoritative_sources": [
         "omnibase_infra/docker/migrations/forward/090_create_delegation_workflow_state.sql",
         "omnibase_infra/docker/migrations/forward/093_add_delegation_workflow_state_outbox_columns.sql"
@@ -97,7 +104,7 @@
     "extension": 1,
     "function": 15,
     "sequence": 36,
-    "table": 113,
+    "table": 114,
     "view": 10
   },
   "relations": [
@@ -1080,6 +1087,7 @@
     },
     {
       "accessor_nodes": [
+        "node_capture_silence_watch_effect",
         "node_projection_claude_hook_events",
         "node_projection_freshness_alert_effect",
         "service:omnimarket_projection_migration_runner"
@@ -1093,6 +1101,7 @@
       "constraints": [],
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_capture_silence_watch_effect/contract.yaml",
         "src/omnimarket/nodes/node_projection_claude_hook_events/contract.yaml",
         "src/omnimarket/nodes/node_projection_freshness_alert_effect/contract.yaml"
       ],
@@ -3386,6 +3395,7 @@
     },
     {
       "accessor_nodes": [
+        "node_capture_silence_watch_effect",
         "node_projection_claude_hook_events",
         "node_projection_freshness_alert_effect",
         "service:omnimarket_projection_migration_runner"
@@ -3402,6 +3412,7 @@
       ],
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_capture_silence_watch_effect/contract.yaml",
         "src/omnimarket/nodes/node_projection_claude_hook_events/contract.yaml",
         "src/omnimarket/nodes/node_projection_freshness_alert_effect/contract.yaml"
       ],
@@ -3450,6 +3461,7 @@
       "partitioning": [],
       "producer": "node_projection_claude_hook_events",
       "readers": [
+        "node_capture_silence_watch_effect",
         "node_projection_claude_hook_events",
         "node_projection_freshness_alert_effect",
         "service:omnimarket_projection_migration_runner"
@@ -3457,6 +3469,54 @@
       "target_schema": "omninode_internal",
       "writers": [
         "node_projection_claude_hook_events",
+        "service:omnimarket_projection_migration_runner"
+      ]
+    },
+    {
+      "accessor_nodes": [
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "authoritative_sources": [],
+      "blocked_reasons": [
+        "no authoritative CREATE TABLE migration found"
+      ],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "blocked",
+      "constraints": [],
+      "contract_sources": [
+        "scripts/application-relation-ownership.yaml"
+      ],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [],
+      "dependent_objects": [],
+      "domain": "OMNINODE_INTERNAL",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [],
+      "indexes": [],
+      "internal_tenant_column_transform": {
+        "key_fk_index_partition_dependencies": [],
+        "runtime_collision_scan": "not_applicable",
+        "source_occurrences": [],
+        "status": "not_applicable_no_source_tenant_id"
+      },
+      "keys": [],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": null,
+      "name": "compaction_receipts",
+      "owner_declaration": null,
+      "partitioning": [],
+      "producer": null,
+      "readers": [
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "target_schema": "omninode_internal",
+      "writers": [
         "service:omnimarket_projection_migration_runner"
       ]
     },
@@ -8984,6 +9044,7 @@
     {
       "accessor_nodes": [
         "node_branch_claim_check_effect",
+        "node_capture_silence_watch_effect",
         "node_context_source_ledger_effect",
         "node_context_source_work_state_effect",
         "node_projection_work_ledger",
@@ -9001,6 +9062,7 @@
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_branch_claim_check_effect/contract.yaml",
+        "src/omnimarket/nodes/node_capture_silence_watch_effect/contract.yaml",
         "src/omnimarket/nodes/node_context_source_ledger_effect/contract.yaml",
         "src/omnimarket/nodes/node_context_source_work_state_effect/contract.yaml",
         "src/omnimarket/nodes/node_projection_work_ledger/contract.yaml",
@@ -9044,6 +9106,7 @@
       "producer": "node_projection_work_ledger",
       "readers": [
         "node_branch_claim_check_effect",
+        "node_capture_silence_watch_effect",
         "node_context_source_ledger_effect",
         "node_context_source_work_state_effect",
         "node_lab_job_check_effect",
@@ -9627,7 +9690,7 @@
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
     "source_created_tables": 104,
-    "source_declared_tables": 113
+    "source_declared_tables": 114
   },
   "runtime_evidence": {
     "dsn_key_provenance": {

@@ -51,6 +51,7 @@ import sys
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -190,6 +191,11 @@ from omnimarket.models.delegation.wire.model_named_test_run_request import (
     ModelNamedTestRunRequest,
     ModelNamedTestRunResult,
     ModelNamedTestSpec,
+)
+from omnimarket.models.delegation.wire.model_probe_ladder import (
+    PROBE_LADDER_SOURCE_SURFACE,
+    ModelProbeLadder,
+    probe_ladder_admitted,
 )
 from omnimarket.models.delegation.wire.model_quality_gate import (
     ModelQualityGateResult,
@@ -1233,6 +1239,50 @@ def _settle_in_flight_attempt(
         progress.secret_ref = result.secret_ref
 
 
+class _ProbeLadderWalk:
+    """The rungs of an admitted probe ladder, handed out first to last (OMN-21212).
+
+    While a walk is active the port's three resolution seams read it instead of
+    the routing contract: the first rung is the initial backend, a rung has no
+    siblings, and the next backend is the next rung, until there is none.
+    """
+
+    def __init__(self, ladder: ModelProbeLadder) -> None:
+        self._rungs = tuple(
+            ModelResolvedDelegationBackend(
+                backend_id=rung.backend_id,
+                model_id=rung.model_id,
+                endpoint_ref=rung.endpoint_ref,
+                tier=rung.tier,
+                max_tokens=rung.max_tokens,
+                timeout_ms=rung.timeout_ms,
+                model_id_source="the probe ladder of this synthetic run",
+            )
+            for rung in ladder.rungs
+        )
+        self._cursor = 0
+
+    @property
+    def length(self) -> int:
+        return len(self._rungs)
+
+    def first(self) -> ModelResolvedDelegationBackend:
+        self._cursor = 0
+        return self._rungs[0]
+
+    def next(self) -> ModelResolvedDelegationBackend | None:
+        if self._cursor + 1 >= len(self._rungs):
+            return None
+        self._cursor += 1
+        return self._rungs[self._cursor]
+
+
+# OMN-21212: the probe ladder of the dispatch running in this context, if any.
+_ACTIVE_PROBE_LADDER: ContextVar[_ProbeLadderWalk | None] = ContextVar(
+    "active_probe_ladder", default=None
+)
+
+
 def resolve_delegation_backend(
     task_type: str, *, backend_id: str | None = None
 ) -> ModelResolvedDelegationBackend:
@@ -1510,6 +1560,132 @@ class LocalDelegationDispatchPort:
         named_tests: ModelNamedTestSpec | None = None,
         trace_id: UUID | None = None,
         queue_wait_ms: int | None = None,
+        probe_ladder: ModelProbeLadder | None = None,
+    ) -> dict[str, object]:
+        """Run one delegation, on the routing contract's ladder or a probe ladder.
+
+        OMN-21212: ``probe_ladder`` names the rungs this run walks instead of
+        the routing contract. It is accepted only from synthetic traffic whose
+        provenance names the doctor's escalation check. Any other request
+        carrying one is refused before dispatch, with zero provider calls: the
+        run's one row is a ``refused_before_dispatch`` failure, and the refusal
+        is raised. A probe run takes no pin and no model choice.
+        """
+        if probe_ladder is None:
+            return await self._dispatch_rungs(
+                prompt=prompt,
+                task_type=task_type,
+                correlation_id=correlation_id,
+                max_tokens=max_tokens,
+                source_file_path=source_file_path,
+                source_session_id=source_session_id,
+                wait=wait,
+                execution_timeout_seconds=execution_timeout_seconds,
+                terminal_delivery_margin_seconds=terminal_delivery_margin_seconds,
+                quality_contract_mode=quality_contract_mode,
+                acceptance_criteria=acceptance_criteria,
+                tenant_id=tenant_id,
+                provenance=provenance,
+                backend_id=backend_id,
+                response_contract=response_contract,
+                system_prompt=system_prompt,
+                temperature=temperature,
+                response_format=response_format,
+                no_escalation=no_escalation,
+                attribution=attribution,
+                model=model,
+                named_tests=named_tests,
+                trace_id=trace_id,
+                queue_wait_ms=queue_wait_ms,
+            )
+        refusal: str | None = None
+        if not probe_ladder_admitted(provenance):
+            refusal = (
+                "a probe ladder is accepted only from synthetic delegation "
+                f"traffic with source_surface {PROBE_LADDER_SOURCE_SURFACE!r}; "
+                "this request's provenance is "
+                f"{provenance.model_dump(mode='json') if provenance else None}"
+            )
+        elif backend_id is not None or model is not None:
+            refusal = (
+                "a probe ladder names its own rungs; it takes no backend pin or model"
+            )
+        if refusal is not None:
+            first_rung = probe_ladder.rungs[0]
+            self._project_refusal(
+                correlation_id=correlation_id,
+                task_type=task_type,
+                endpoint_ref=first_rung.endpoint_ref,
+                model_id=first_rung.model_id,
+                prompt=prompt,
+                source_session_id=source_session_id,
+                tenant_id=resolve_or_mint_local_deployment_tenant_id(
+                    tenant_id or (get_settings().onex_tenant_id or None)
+                ),
+                failure_message=refusal,
+                attribution=attribution,
+                trace_id=trace_id,
+                queue_wait_ms=queue_wait_ms,
+            )
+            raise ProtocolConfigurationError(refusal)
+        token = _ACTIVE_PROBE_LADDER.set(_ProbeLadderWalk(probe_ladder))
+        try:
+            return await self._dispatch_rungs(
+                prompt=prompt,
+                task_type=task_type,
+                correlation_id=correlation_id,
+                max_tokens=max_tokens,
+                source_file_path=source_file_path,
+                source_session_id=source_session_id,
+                wait=wait,
+                execution_timeout_seconds=execution_timeout_seconds,
+                terminal_delivery_margin_seconds=terminal_delivery_margin_seconds,
+                quality_contract_mode=quality_contract_mode,
+                acceptance_criteria=acceptance_criteria,
+                tenant_id=tenant_id,
+                provenance=provenance,
+                backend_id=backend_id,
+                response_contract=response_contract,
+                system_prompt=system_prompt,
+                temperature=temperature,
+                response_format=response_format,
+                no_escalation=no_escalation,
+                attribution=attribution,
+                model=model,
+                named_tests=named_tests,
+                trace_id=trace_id,
+                queue_wait_ms=queue_wait_ms,
+            )
+        finally:
+            _ACTIVE_PROBE_LADDER.reset(token)
+
+    async def _dispatch_rungs(
+        self,
+        *,
+        prompt: str,
+        task_type: str,
+        correlation_id: UUID,
+        max_tokens: int | None,
+        source_file_path: str | None,
+        source_session_id: str | None,
+        wait: bool,
+        execution_timeout_seconds: int,
+        terminal_delivery_margin_seconds: int,
+        quality_contract_mode: str,
+        acceptance_criteria: tuple[str, ...],
+        tenant_id: str | None,
+        provenance: ModelDelegationProvenance | None = None,
+        backend_id: str | None = None,
+        response_contract: dict[str, object] | None = None,
+        system_prompt: str | None = None,
+        temperature: float | None = None,
+        response_format: dict[str, object] | None = None,
+        no_escalation: bool = False,
+        attribution: Mapping[str, str] | None = None,
+        model: str | None = None,
+        named_tests: ModelNamedTestSpec | None = None,
+        trace_id: UUID | None = None,
+        queue_wait_ms: int | None = None,
     ) -> dict[str, object]:
         dispatch_started = time.monotonic()
         attempt_size_band = _request_size_band(
@@ -1631,8 +1807,9 @@ class LocalDelegationDispatchPort:
         # carrying OmniNode's key, which the terminus below refuses without
         # saying what the customer should do. Name the missing declaration
         # instead. An explicit pin is the caller's own choice and is left to
-        # the terminus.
-        if backend_id is None:
+        # the terminus. OMN-21212: so is a probe ladder's rung.
+        probe_walk = _ACTIVE_PROBE_LADDER.get()
+        if backend_id is None and probe_walk is None:
             # OMN-19442: a customer's one declared local model answers a class
             # whose own local rung they did not declare, where the terminus
             # below would otherwise refuse the platform rung the fallback chose.
@@ -1710,6 +1887,9 @@ class LocalDelegationDispatchPort:
         max_escalations = resolve_task_class_max_escalations(task_type)
         if max_escalations is None:
             max_escalations = _DEFAULT_MAX_ESCALATIONS
+        # OMN-21212: a probe ladder may climb every rung it names, and no more.
+        if probe_walk is not None:
+            max_escalations = probe_walk.length - 1
 
         # OMN-21214: rung deadlines with a reserve. The chain has the class's
         # execution budget from now. Each rung's attempts (its retries and
@@ -1726,6 +1906,8 @@ class LocalDelegationDispatchPort:
         chain_deadline = self._clock() + execution_timeout_seconds
         if pinned_backend_id is not None:
             reachable_rungs = 1
+        elif probe_walk is not None:
+            reachable_rungs = probe_walk.length
         else:
             try:
                 ladder_length = len(resolve_task_class_tier_order(task_type))
@@ -3200,6 +3382,9 @@ class LocalDelegationDispatchPort:
         routable tier_order (legacy / no-contract classes), preserving their
         behavior without opening the closed set for classes that DO declare one.
         """
+        probe_walk = _ACTIVE_PROBE_LADDER.get()
+        if probe_walk is not None:
+            return probe_walk.first()
         if backend_id is not None:
             return resolve_delegation_backend(task_type, backend_id=backend_id)
         byok_routes = registered_byok_routes(quota_state=quota_state)
@@ -3314,6 +3499,9 @@ class LocalDelegationDispatchPort:
         ``model_id`` is in the set, counting it as tried, so the quality-gate
         caller never re-draws the model it just rejected on another host.
         """
+        # OMN-21212: each probe rung is its own responder, with no siblings.
+        if _ACTIVE_PROBE_LADDER.get() is not None:
+            return None
         if current_tier == registered_byok_tier_name():
             return next(
                 (
@@ -3426,6 +3614,16 @@ class LocalDelegationDispatchPort:
         Returns None when the ladder is exhausted or the escalated backend has no
         populated endpoint in the local overlay (fail-closed, no silent hang).
         """
+        # OMN-21212: a probe run climbs to its next named rung, never a tier.
+        probe_walk = _ACTIVE_PROBE_LADDER.get()
+        if probe_walk is not None:
+            next_rung = probe_walk.next()
+            if next_rung is None and stop_reasons is not None:
+                stop_reasons.append(
+                    f"{NO_HIGHER_TIER_REASON_TOKEN}: the probe ladder has no rung "
+                    f"after {current_tier!r}"
+                )
+            return next_rung
         # OMN-20154: quota-blocked backends are skipped like failed ones.
         excluded_backend_refs = excluded_backend_refs | quota_blocked_backend_refs(
             quota_state

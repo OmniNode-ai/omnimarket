@@ -35,6 +35,7 @@ from omnimarket.github_landing.github_landing_requests import (
     pull_request_request,
     pull_requests_request,
     releases_request,
+    review_threads_request,
     run_artifacts_request,
     run_jobs_request,
     tags_request,
@@ -67,6 +68,9 @@ from omnimarket.models.model_github_gateway_io import (
     ModelPrComment,
     ModelPrHead,
     ModelPrHeadsResult,
+    ModelPrReviewThread,
+    ModelPrReviewThreadComment,
+    ModelPrReviewThreadsResult,
     ModelPrStatusResult,
     ModelPrTextResult,
     ModelRelease,
@@ -811,6 +815,110 @@ def read_merged_pr(
     )
 
 
+def read_pr_review_threads(
+    transport: GitHubReadTransportProtocol, request: ModelGithubGatewayRequest
+) -> ModelPrReviewThreadsResult:
+    """A PR's review threads with ids, path, line and resolved state."""
+    pr_number = _require(request.pr_number, "pr_number")
+    threads: list[ModelPrReviewThread] = []
+    total: int | None = None
+    after: str | None = None
+    truncated = False
+    for _page in range(_MAX_PAGES):
+        page_request = review_threads_request(request.repo, pr_number, after=after)
+        body = _checked(page_request, transport.send_sync(page_request))
+        errors = body.get("errors")
+        if errors:
+            raise GitHubTransportError(
+                f"GitHub GraphQL review threads of {request.repo}#{pr_number}: {errors}"
+            )
+        pull = _dict_at(body, "data", "repository", "pullRequest")
+        if pull is None:
+            raise GitHubTransportError(
+                f"GitHub GraphQL found no pull request {request.repo}#{pr_number}"
+            )
+        connection = pull.get("reviewThreads")
+        connection = connection if isinstance(connection, dict) else {}
+        raw_total = connection.get("totalCount")
+        if isinstance(raw_total, int):
+            total = raw_total
+        nodes = connection.get("nodes")
+        for node in nodes if isinstance(nodes, list) else []:
+            thread = _review_thread(node)
+            if thread is None:
+                continue
+            if len(threads) == request.limit:
+                truncated = True
+                break
+            threads.append(thread)
+        page_info = connection.get("pageInfo")
+        cursor = page_info.get("endCursor") if isinstance(page_info, dict) else None
+        more = isinstance(page_info, dict) and bool(page_info.get("hasNextPage"))
+        if truncated or len(threads) >= request.limit:
+            truncated = truncated or more
+            break
+        if not more or not isinstance(cursor, str):
+            break
+        after = cursor
+    else:
+        truncated = True
+    return ModelPrReviewThreadsResult(
+        repo=request.repo,
+        pr_number=pr_number,
+        total_count=total,
+        truncated=truncated,
+        threads=threads,
+    )
+
+
+def _dict_at(raw: object, *path: str) -> dict[str, object] | None:
+    node = raw
+    for key in path:
+        if not isinstance(node, dict):
+            return None
+        node = node.get(key)
+    return node if isinstance(node, dict) else None
+
+
+def _review_thread(node: object) -> ModelPrReviewThread | None:
+    """One GraphQL thread node; None for a thread with no comment left."""
+    if not isinstance(node, dict):
+        return None
+    block = node.get("comments")
+    block = block if isinstance(block, dict) else {}
+    raw_comments = block.get("nodes")
+    comments: list[ModelPrReviewThreadComment] = []
+    for raw in raw_comments if isinstance(raw_comments, list) else []:
+        if not isinstance(raw, dict) or not isinstance(raw.get("databaseId"), int):
+            continue
+        text, cut = _cut(raw.get("body"))
+        comments.append(
+            ModelPrReviewThreadComment(
+                comment_id=raw["databaseId"],
+                author=_login(raw.get("author")),
+                created_at=str(raw.get("createdAt", "")),
+                url=str(raw.get("url", "")),
+                body=text,
+                body_truncated=cut,
+            )
+        )
+    if not comments:
+        return None
+    count = block.get("totalCount")
+    line = node.get("line")
+    path = node.get("path")
+    return ModelPrReviewThread(
+        thread_id=str(node.get("id", "")),
+        is_resolved=bool(node.get("isResolved", False)),
+        is_outdated=bool(node.get("isOutdated", False)),
+        path=path if isinstance(path, str) else None,
+        line=line if isinstance(line, int) else None,
+        root_comment_id=comments[0].comment_id,
+        comment_count=count if isinstance(count, int) else len(comments),
+        comments=comments,
+    )
+
+
 def _require(value: int | None, name: str) -> int:
     if value is None:  # defensive; the request validator already enforces this
         raise ValueError(f"this operation requires {name}.")
@@ -827,6 +935,7 @@ __all__: list[str] = [
     "read_merged_pr",
     "read_open_prs_list",
     "read_pr_heads",
+    "read_pr_review_threads",
     "read_pr_status",
     "read_pr_text",
     "read_releases",
