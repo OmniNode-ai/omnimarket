@@ -944,6 +944,11 @@ requirements:
         with incorrect counts remain FINDING. The triage CLI exits nonzero for actionable findings
         and zero for only named omissions or APPROVE. Falsifier: the recorded-findings, wrong-facts,
         incorrect-count and triage CLI tests fail without these behaviors.'
+  - id: req-shard-plan-record-freshness
+    statement: The committed per-file durations record names all but a handful of the test files, so the shard planner does not weight unrecorded files at the median.
+    acceptance:
+    - id: AC4400
+      statement: 'AC4400: config/test_file_durations.json leaves fewer than 50 test files unrecorded -- falsifier: uv run pytest tests/unit/test_ci_shard_plan_record_freshness_omn17427.py -q fails at the merge base (162 unrecorded) and passes at the head (6).'
 evidence_requirements:
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
@@ -4021,4 +4026,12 @@ dod_evidence:
     checks:
     - check_type: command
       check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_owner_summary_effect/test_omitted_line_contract.py -q --no-cov -p no:randomly --refuse-skips -k triage_cli
+      cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn17427-shard-plan-record-freshness
+    source: manual
+    binds_ac: [AC4400]
+    description: The committed durations record leaves fewer than 50 test files unrecorded. The test fails at the merge base, where 162 files are unrecorded, and passes at the head, where 6 are.
+    checks:
+    - check_type: test_passes
+      check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/test_ci_shard_plan_record_freshness_omn17427.py -q --no-cov -p no:randomly --refuse-skips
       cwd: ${OMNI_HOME}/omnimarket
