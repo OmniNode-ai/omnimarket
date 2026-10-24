@@ -1,0 +1,43 @@
+schema_version: 1.0.0
+ticket_id: OMN-21211
+title: A user can register several local models in order and they are tried before any key
+summary: onex models add local places each model after the local models already declared (local-url, local-url-2, ...) instead of replacing the one local-url entry, with one or more --model per add. onex models list shows them in that order, onex models reorder local and onex models remove local --model change the list, and an unpinned run on the in-process port tries them in that order before its ladder, so before any key.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21211-ordered-local-models
+  statement: Several local models are kept in the user's order and tried in that order before any key.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: Two local models registered in order are listed by `onex models list` in that order and are tried before any key -- falsifier: `uv run pytest tests/unit/cli -q -k multiple_local_models`, which fails today because a second `models add local` replaces the first.'
+evidence_requirements:
+- kind: tests
+  description: The multiple local model tests pass at the head; at the merge base the test module does not exist and a second add replaces the first.
+  command: uv run pytest tests/unit/cli/test_multiple_local_models_omn21211.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21211-ac1-multiple-local-models-tests
+  description: 'AC1: two local models added one after the other are both declared, local-url then local-url-2, each tested by its own pinned delegation, and onex models list (text and JSON) shows them in that order; one add with two --model keeps the order given and a repeated model keeps its place; reorder and remove --model change the list; an unpinned in-process run whose ladder would start on a key route calls the first local model, then the second, then the key.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/cli/test_multiple_local_models_omn21211.py -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn21211-local-models-deploy-probe
+  description: Deploy probe. Read the local dispatch port from GitHub at the checked-out commit and require it to open the run on the registered local models, with the multiple local model tests passing beside it. At the merge base the port has no such call and the test module does not exist.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/cli/test_multiple_local_models_omn21211.py -q --no-cov -p no:randomly
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "local_rungs = registered_local_model_routes(task_type)" > /dev/null'
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1

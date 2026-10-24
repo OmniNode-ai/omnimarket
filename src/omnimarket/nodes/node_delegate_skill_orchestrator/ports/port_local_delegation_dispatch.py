@@ -356,6 +356,7 @@ from omnimarket.routing.local_byok_route import (
     next_registered_byok_route,
     registered_byok_routes,
     registered_byok_tier_name,
+    registered_local_model_routes,
     resolve_pinned_byok_route,
     substitute_any_registered_byok_route,
     substitute_local_byok_route,
@@ -916,6 +917,38 @@ def _record_transition(
         stamp = f"{stamp}:{decision.move_kind.value}"
     detail = str(attempt.get("acceptance_detail") or "")
     attempt["acceptance_detail"] = f"{detail} {stamp}".strip()
+
+
+def _local_rung_attempt(
+    backend: ModelResolvedDelegationBackend,
+    result: ModelLlmDelegationCallResult,
+    failure_class: EnumDelegationFailureClass | None,
+    failure_message: str,
+    *,
+    configuration: object,
+    size_band: object,
+) -> dict[str, object]:
+    """The attempt record of a local model whose call failed (OMN-21211)."""
+    return {
+        "tier": _routing_tier_name(backend),
+        "backend_id": backend.backend_id,
+        "model_id": backend.model_id,
+        "substituted_from_backend_id": backend.substituted_from_backend_id,
+        "quality_gate_passed": False,
+        "quality_score": None,
+        "cost_usd": float(result.actual_cost_usd),
+        "usage_source": result.usage_source.value,
+        "failure_class": failure_class.value if failure_class is not None else None,
+        "provider_id": _attempt_provider_id(backend.endpoint_ref),
+        "host": endpoint_host(backend.endpoint_ref),
+        "configuration": configuration,
+        "size_band": size_band,
+        "http_status": result.http_status,
+        "provider_code": result.provider_code,
+        "error_message": failure_message,
+        "acceptance_decision": EnumDelegationAcceptanceDecision.CLIMB.value,
+        "acceptance_reason": EnumDelegationAcceptanceReason.PROVIDER_CALL_FAILED.value,
+    }
 
 
 def _is_retryable_transport_failure(
@@ -1968,6 +2001,30 @@ class LocalDelegationDispatchPort:
 
         backend = _with_model_choice(backend)
 
+        # OMN-21211: the customer's own local models answer first, in the order
+        # they set, then the run takes its ladder, where any key is reached. A
+        # pin, a named model and a probe ladder each decide the rung themselves.
+        ladder_entry = backend
+        local_rungs: tuple[ModelResolvedDelegationBackend, ...] = ()
+        if backend_id is None and model is None and probe_walk is None:
+            local_rungs = registered_local_model_routes(task_type)
+            if local_rungs:
+                backend = local_rungs[0]
+
+        def next_local_rung(
+            failed: ModelResolvedDelegationBackend,
+        ) -> ModelResolvedDelegationBackend | None:
+            """The local model after ``failed``, or the ladder after the last one."""
+            ids = [rung.backend_id for rung in local_rungs]
+            if failed.backend_id not in ids:
+                return None
+            later = local_rungs[ids.index(failed.backend_id) + 1 :]
+            if later:
+                return later[0]
+            if ladder_entry.backend_id in ids:
+                return None
+            return ladder_entry
+
         # Escalation budget from the task-class contract escalation_policy
         # (OMN-13849). None -> the class declares no budget; fall back to the bus
         # orchestrator's default so both paths escalate the same bounded count.
@@ -2362,6 +2419,44 @@ class LocalDelegationDispatchPort:
                 if byok_same_backend_retry:
                     byok_retry_counts[backend.backend_id] = spent + 1
                 may_move_on = transport_transition.kind is EnumTransitionKind.MOVE
+
+                # OMN-21211: a local model the customer declared is followed by
+                # their next one, and the last by the run's ladder. Not an
+                # escalation: the run has not left the customer's own order.
+                local_next = next_local_rung(backend) if may_move_on else None
+                if local_next is not None:
+                    cumulative_cost_usd += transport_result.actual_cost_usd
+                    attempt_usage.append(
+                        _AttemptUsage.of(transport_result, model_id=backend.model_id)
+                    )
+                    attempts.append(
+                        _local_rung_attempt(
+                            backend,
+                            transport_result,
+                            transport_failure_class,
+                            transport_failure_message,
+                            configuration=_attempt_configuration(
+                                backend, max_tokens=max_tokens, temperature=temperature
+                            ),
+                            size_band=attempt_size_band,
+                        )
+                    )
+                    _record_transition(
+                        attempts[-1],
+                        _moved(transport_transition, EnumMoveKind.MODEL_MOVE),
+                    )
+                    logger.info(
+                        "LocalDelegationDispatch: local model fall-through "
+                        "task_type=%s backend=%s -> backend=%s on transport "
+                        "failure_class=%s correlation=%s",
+                        task_type,
+                        backend.backend_id,
+                        local_next.backend_id,
+                        transport_failure_class,
+                        correlation_id,
+                    )
+                    backend = local_next
+                    continue
 
                 # OMN-21059: the customer chose more than one model for this
                 # key. The next one in their order answers before any other
@@ -3161,6 +3256,27 @@ class LocalDelegationDispatchPort:
             # OMN-21059: a customer's next chosen model on the same key is asked
             # before any other responder, like the transport branch above.
             tried_byok_models.add((backend.backend_id, backend.model_id))
+            # OMN-21211: the customer's next local model, or their ladder.
+            local_next_after_gate = (
+                None if ladder_stopped_by_veto else next_local_rung(backend)
+            )
+            if local_next_after_gate is not None:
+                _record_transition(
+                    attempts[-1],
+                    _moved(quality_transition, EnumMoveKind.MODEL_MOVE),
+                )
+                logger.info(
+                    "LocalDelegationDispatch: local model fall-through "
+                    "task_type=%s backend=%s -> backend=%s after a quality-gate "
+                    "rejection correlation=%s reason=%s",
+                    task_type,
+                    backend.backend_id,
+                    local_next_after_gate.backend_id,
+                    correlation_id,
+                    gate_failure_message,
+                )
+                backend = local_next_after_gate
+                continue
             next_chosen_model_after_gate: ModelResolvedDelegationBackend | None = None
             if (
                 not ladder_stopped_by_veto

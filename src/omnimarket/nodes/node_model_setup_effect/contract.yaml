@@ -26,9 +26,11 @@ description: >
   under `config`, so a first run needs no private overlay. Never from code; the
   customer changes it with `onex models add openrouter --model <id>`. A local
   model server on an OpenAI-compatible URL needs no key (`add_local`): the URL
-  must answer a models or chat request, then it is declared as the `local-url`
-  backend in the local routes overlay, beside the entries already there, and
-  `remove_local` takes only that entry out.
+  must answer a models or chat request, then each model is declared after the
+  local models already there (`local-url`, `local-url-2`, ...) in the local
+  routes overlay, beside the other entries, and tested by one delegation pinned
+  to it. The local models keep the customer's order, first tried first;
+  `reorder` and `remove_model` change it, and `remove_local` takes them all out.
 
 output_model: omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result.ModelModelSetupResult
 

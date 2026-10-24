@@ -303,17 +303,21 @@ def test_model_setup_local_url_overlay_declares_the_backend_and_keeps_ollama(
     assert merged["local-coder"].endpoint_url == _OLLAMA_URL
 
 
-def test_model_setup_local_url_add_again_replaces_only_its_own_entry(
+def test_model_setup_local_url_add_again_touches_only_its_own_entries(
     server: str, delegations: _Delegations, state: Path
 ) -> None:
     _write_ollama_overlay(state)
     delegations.answer_model = _MODEL
     assert _models("add", "local", "--url", server, "--model", _MODEL).exit_code == 0
+    # The same model again keeps its one entry.
+    assert _models("add", "local", "--url", server, "--model", _MODEL).exit_code == 0
     delegations.answer_model = "other-model"
     _models("add", "local", "--url", server, "--model", "other-model")
+    # OMN-21211: another model is declared after it, not in its place.
     ids = [b["backend_id"] for b in _overlay(state)["backends"]]
-    assert ids == ["local-coder", "local-heavy-reasoning", "local-url"]
-    assert _overlay(state)["backends"][2]["model_name"] == "other-model"
+    assert ids == ["local-coder", "local-heavy-reasoning", "local-url", "local-url-2"]
+    assert _overlay(state)["backends"][2]["model_name"] == _MODEL
+    assert _overlay(state)["backends"][3]["model_name"] == "other-model"
     path = state / "bifrost_overrides.yaml"
     assert path.read_text("utf-8").startswith(_OLLAMA_OVERLAY)
 
