@@ -128,6 +128,7 @@ class HandlerProjectionClaudeHookEvents:
             cache_creation_input_tokens=event.cache_creation_input_tokens,
             cache_read_input_tokens=event.cache_read_input_tokens,
             assistant_message_count=event.assistant_message_count,
+            producer_seq=event.producer_seq,
         )
 
         span_update: ModelClaudeAgentSpanUpdate | None = None

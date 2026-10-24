@@ -13,10 +13,14 @@ it. Any failure before activation, typed or raised, replies ``native`` and
 publishes ``fallback`` with the failure class and the command's
 ``invocation_id``. No partial package is ever replied.
 Receipts carry the pack build's wall time and the model-written section's share (TA.12).
+No-argument construction binds the runtime ports from the contract (OMN-21334).
+Each native fallback logs one failure line, including the cause class when raised.
 """
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import time
 from collections.abc import Callable
 from uuid import UUID, uuid4
@@ -45,10 +49,17 @@ from omnimarket.protocols.protocol_context_compaction_barrier_wait import (
 from omnimarket.protocols.protocol_context_compaction_pack_build import (
     ProtocolContextCompactionPackBuild,
 )
+from omnimarket.protocols.protocol_session_barrier_probe_source import (
+    ProtocolSessionBarrierProbeSource,
+)
+
+from .compaction_runtime_binding import bind_compaction_ports
+
+_LOG = logging.getLogger(__name__)
 
 
 class _UnwiredPackBuild:
-    """The default until the context-pack orchestrator is wired: every build is unavailable."""
+    """Every build is unavailable when the contract tenant is unset (OMN-21334)."""
 
     def build(
         self, request: ModelContextCompactionRequested
@@ -81,7 +92,14 @@ class HandlerContextCompactionOrchestrator:
         barrier_wait: ProtocolContextCompactionBarrierWait | None = None,
         *,
         clock: Callable[[], float] | None = None,
+        barrier_probe_source: ProtocolSessionBarrierProbeSource | None = None,
     ) -> None:
+        if pack_build is None:
+            pack_build, bound_barrier_wait = bind_compaction_ports(
+                barrier_probe_source=barrier_probe_source
+            )
+            if barrier_wait is None:
+                barrier_wait = bound_barrier_wait
         self._pack_build = pack_build if pack_build is not None else _UnwiredPackBuild()
         self._barrier_wait = barrier_wait
         self._activation_ids = activation_ids
@@ -100,11 +118,12 @@ class HandlerContextCompactionOrchestrator:
                 outcome = self._pack_build.build(request)
             finally:
                 build_ms = (self._clock() - started) * 1000.0
-        except Exception:
+        except Exception as exc:
             return self._native(
                 request,
                 EnumContextCompactionFailureClass.BUILD_ERROR,
                 build_ms=build_ms,
+                cause=type(exc).__name__,
             )
         if outcome.package is None:
             return self._native(
@@ -123,18 +142,21 @@ class HandlerContextCompactionOrchestrator:
         The runtime publishes ``events`` through the contract's
         ``published_events`` map, correlated by the command's ``invocation_id``.
         """
+        result = await asyncio.to_thread(self.handle, request)
         return ModelHandlerOutput.for_orchestrator(
             input_envelope_id=uuid4(),
             correlation_id=request.invocation_id,
             handler_id="node_context_compaction_orchestrator.compaction",
-            events=self.handle(request).emissions(),
+            events=result.emissions(),
         )
 
     def _barrier_failure(
         self, request: ModelContextCompactionRequested
     ) -> EnumContextCompactionFailureClass | None:
         """The failure class when the session barrier is not met; None to build."""
-        if self._barrier_wait is None:
+        if self._barrier_wait is None or isinstance(
+            self._pack_build, _UnwiredPackBuild
+        ):
             return None
         if request.barrier_id is None:
             return EnumContextCompactionFailureClass.SOURCE_INCOMPLETE
@@ -151,11 +173,27 @@ class HandlerContextCompactionOrchestrator:
         failure_class: EnumContextCompactionFailureClass,
         *,
         build_ms: float | None = None,
+        cause: str | None = None,
     ) -> ModelContextCompactionResult:
+        message = (
+            "context compaction fell back to native: invocation_id=%s "
+            "session_id=%s failure_class=%s build_ms=%s"
+        )
+        args: tuple[object, ...] = (
+            request.invocation_id,
+            request.session_id.replace("\r", "\\r").replace("\n", "\\n"),
+            failure_class.value,
+            build_ms,
+        )
+        if cause is not None:
+            message += " cause=%s"
+            args = (*args, cause)
+        _LOG.warning(message, *args)
         return ModelContextCompactionResult(
             reply=ModelContextCompactionPackageReply(
                 invocation_id=request.invocation_id,
                 action=EnumClientVerdictAction.NATIVE,
+                status="native",
             ),
             fallback=ModelContextCompactionFallback(
                 invocation_id=request.invocation_id,
@@ -179,6 +217,8 @@ class HandlerContextCompactionOrchestrator:
             reply=ModelContextCompactionPackageReply(
                 invocation_id=request.invocation_id,
                 action=EnumClientVerdictAction.INSTALL,
+                status="built",
+                package_id=package.candidate_id,
                 messages=messages,
                 installed_messages_hash=installed_hash,
             ),
