@@ -1,0 +1,138 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21349"
+title: "The local SQLite store opens on a machine whose delegate-skill claims table predates the delivery_id column"
+summary: "A store step ordered before the pending-claims index step moves an old-shape delegate_skill_command_claims table (no delivery_id) aside under a legacy name and creates the current shape, in the step's own write transaction. No old row is dropped or given a delivery_id, because no mapping from an old row to a delivery_id is defined."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-claims-table-old-shape"
+    statement: |-
+      Opening a local store whose claims table has the older columns (correlation_id, tenant_id, claimed_at, terminal_json) no longer fails; the old rows stay in a renamed table and both claims indexes are built on the current-shape table.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: a store step ordered before the pending-claims index migrates an old-shape delegate_skill_command_claims table to the current shape inside one transaction, keeping the old rows in a renamed table -- falsifier: uv run pytest tests/unit/projection/test_omn21349_claims_table_old_shape.py -q -p no:randomly --no-cov
+      - id: "AC2"
+        statement: |-
+          AC2: opening a store that already has the current shape is unchanged and the pending-claims index still exists after the step -- falsifier: uv run pytest tests/unit/projection/test_omn21349_claims_table_old_shape.py tests/unit/projection/test_omn17427_claims_pending_index.py -q -p no:randomly --no-cov -k 'current_shape_untouched or claims_pending_index'
+      - id: "AC3"
+        statement: |-
+          AC3: the recorded old-table shape from h200 (four columns, no delivery_id) is the fixture, and the test fails on the unfixed code -- falsifier: uv run pytest tests/unit/projection/test_omn21349_claims_table_old_shape.py -q -p no:randomly --no-cov -k claims_table_old_shape_preserved_and_reopened
+evidence_requirements:
+  - kind: "tests"
+    description: "The old-shape and pending-index claims tests pass."
+    command: "uv run pytest tests/unit/projection/test_omn21349_claims_table_old_shape.py tests/unit/projection/test_omn17427_claims_pending_index.py -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21349-old-shape-migrates"
+    description: "A store built with the four old columns and one row opens, the old row is kept in the renamed legacy table, the current-shape table and both claims indexes exist, and a second open changes nothing. The same tests fail on the unfixed adapter at e00c6bc53 (four of the five), which carries the same index step as a5cc39667."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/projection/test_omn21349_claims_table_old_shape.py -q -p no:randomly --no-cov -k claims_table_old_shape"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21349-pending-index-unchanged"
+    description: "A current-shape store gains no legacy table, keeps the pending-claims index and records the store step once as a no-op; the existing pending-index tests pass unchanged. Without the step the recorded-step assertion fails."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/projection/test_omn21349_claims_table_old_shape.py tests/unit/projection/test_omn17427_claims_pending_index.py -q -p no:randomly --no-cov -k 'current_shape_untouched or claims_pending_index'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21349-incident-fixture"
+    description: "The fixture is the h200 shape: correlation_id, tenant_id, claimed_at and terminal_json with no delivery_id. The test module's first test opens it through SqliteDatabaseAdapter and fails without the step."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/projection/test_omn21349_claims_table_old_shape.py -q -p no:randomly --no-cov -k claims_table_old_shape_preserved_and_reopened"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21349-deploy-local-store-readback"
+    description: "Hosted deploy smoke for the local SQLite runtime: reconcile a temporary four-column claims store with 33 old rows twice, require the rows to survive and both current indexes to exist, then serve and read a shipped projection through the packaged dashboard HTTP application. The unfixed store reconciliation raises before the HTTP server starts. No external lane, credentials or model endpoint is needed."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          export COMPOSE_PROJECT_NAME=landing-l16159-lab;
+          probe_dir="$(mktemp -d)";
+          probe_pid='';
+          trap 'if [ -n "$probe_pid" ]; then kill "$probe_pid" 2>/dev/null || true; wait "$probe_pid" 2>/dev/null || true; fi; rm -rf "$probe_dir"' EXIT;
+          runtime_python="$(uv run --locked python -c 'import sys; print(sys.executable)')";
+          cat > "$probe_dir/server.py" <<'PY'
+          import json
+          import socket
+          import sqlite3
+          import sys
+          from contextlib import closing
+          from pathlib import Path
+          import uvicorn
+          from omnimarket.nodes.node_local_dashboard_serve_effect.handlers.handler_local_dashboard_serve import create_dashboard_app
+          from omnimarket.nodes.node_projection_read_effect.handlers.handler_projection_read import HandlerProjectionRead
+          from omnimarket.nodes.node_projection_read_effect.ports.sqlite_row_source import SqliteTableRowSource
+          from omnimarket.projection.discovery import build_projection_topic_map
+          from omnimarket.projection.sqlite_database import reconcile_existing_store
+          root = Path(sys.argv[1])
+          path = root / "claims.sqlite"
+          table = "delegate_skill_command_claims"
+          legacy = table + "_legacy_no_delivery_id"
+          old_rows = [(f"legacy-{n}", "tenant-a", "2026-10-23T12:00:00+00:00", "{}") for n in range(33)]
+          with closing(sqlite3.connect(path)) as conn:
+              conn.execute(f"CREATE TABLE {table} (correlation_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL DEFAULT '', claimed_at TEXT NOT NULL, terminal_json TEXT NOT NULL DEFAULT '')")
+              conn.executemany(f"INSERT INTO {table} VALUES (?, ?, ?, ?)", old_rows)
+              conn.commit()
+          for _ in range(2):
+              reconcile_existing_store(path)
+              with closing(sqlite3.connect(path)) as conn:
+                  assert conn.execute(f"SELECT * FROM {legacy} ORDER BY rowid").fetchall() == old_rows
+                  assert conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0
+                  columns = [row[1] for row in conn.execute(f"PRAGMA table_info({table})")]
+                  assert columns == ["delivery_id", "correlation_id", "claimed_at", "terminal_json"], columns
+                  indexes = {row[1] for row in conn.execute(f"PRAGMA index_list({table})")}
+                  assert {table + "_pending_idx", table + "_correlation_idx"} <= indexes, indexes
+                  assert conn.execute("SELECT COUNT(*) FROM omnimarket_sqlite_store_steps WHERE step = ?", ("omn21349_claims_delivery_id_shape",)).fetchone()[0] == 1
+          topic = "onex.snapshot.projection.automation-liveness.v1"
+          topics = {topic: build_projection_topic_map()[topic]}
+          source = SqliteTableRowSource(path)
+          app = create_dashboard_app(handler=HandlerProjectionRead(topic_map=topics, row_source=source), tenant=None, topic_map=topics, row_source=source)
+          with socket.socket() as listener:
+              listener.bind(("127.0.0.1", 0))
+              listener.listen()
+              (root / "port").write_text(str(listener.getsockname()[1]))
+              (root / "readback.json").write_text(json.dumps({"legacy_rows": len(old_rows), "opens": 2, "columns": columns, "indexes": sorted(indexes)}))
+              uvicorn.Server(uvicorn.Config(app, log_level="error")).run(sockets=[listener])
+          PY
+          "$runtime_python" "$probe_dir/server.py" "$probe_dir" > "$probe_dir/server.log" 2>&1 &
+          probe_pid=$!;
+          for attempt in $(seq 1 30); do
+            [ -f "$probe_dir/port" ] && break;
+            if ! kill -0 "$probe_pid" 2>/dev/null; then cat "$probe_dir/server.log"; exit 1; fi;
+            sleep 1;
+          done;
+          probe_port="$(cat "$probe_dir/port")";
+          curl --fail --silent --show-error --retry 5 --retry-connrefused --retry-delay 1 --max-time 5 "http://127.0.0.1:$probe_port/projections" > "$probe_dir/catalogue.json";
+          curl --fail --silent --show-error --max-time 5 "http://127.0.0.1:$probe_port/projection/onex.snapshot.projection.automation-liveness.v1" > "$probe_dir/page.json";
+          "$runtime_python" - "$probe_dir" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          catalogue = json.loads((root / "catalogue.json").read_text())
+          assert len(catalogue["topics"]) == 1, catalogue
+          assert catalogue["topics"][0]["status"] == "ok", catalogue
+          page = json.loads((root / "page.json").read_text())
+          assert page["rows"] == [] and page["row_count"] == 0, page
+          readback = json.loads((root / "readback.json").read_text())
+          readback["http_projection_status"] = catalogue["topics"][0]["status"]
+          readback["http_row_count"] = page["row_count"]
+          print(json.dumps(readback, sort_keys=True))
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC3"]
