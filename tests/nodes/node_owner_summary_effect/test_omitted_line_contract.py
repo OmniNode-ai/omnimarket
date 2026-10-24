@@ -168,9 +168,11 @@ def test_wrong_facts() -> None:
 @pytest.mark.parametrize(
     ("answer", "code"),
     [
-        (ANSWER.read_text(), 1),
-        ("\n".join(ANSWER.read_text().splitlines()[:5]), 0),
-        ("VERDICT: APPROVE", 0),
+        pytest.param(ANSWER.read_text(), 1, id="real-findings"),
+        pytest.param(
+            "\n".join(ANSWER.read_text().splitlines()[:5]), 0, id="named-omissions"
+        ),
+        pytest.param("VERDICT: APPROVE", 0, id="approve"),
     ],
 )
 def test_triage_cli(
