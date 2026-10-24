@@ -1,0 +1,77 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21116"
+title: "TA.15: the compaction binding install names its mod folder for Claude Code and runs the adapter it resolved"
+summary: "Claude Code reads no mods folder by itself, so the installed compaction mod never loaded and /compact never reached it. The install effect now names the installed mod folder in CLAUDE_CODE_PLUGIN_DIRS of the user settings (dropping it when no module is installed), and the render puts the adapter command resolved from the installing environment into the module's argv instead of a bare name that may not be on PATH. This PR carries AC2 and AC5 of the ticket; AC1, AC3 and AC4 are outside it."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21116-compaction-mod-loads"
+    statement: "The installed compaction mod is loaded by Claude Code, a manual /compact reaches its hook, and the auto trigger stays unbound."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: with the adapter absent or the dev lane unreachable, `/compact` completes natively and one failure line appears -- falsifier: compaction blocked past the deadline, or silent."
+      - id: "AC5"
+        statement: "AC5: the `auto` trigger is not bound -- falsifier: a `client_bindings` row or an installed registration for `auto`."
+evidence_requirements:
+  - kind: "tests"
+    description: "The install names the mod folder in the user plugin folder list and renders the resolved adapter command; none of these tests exists at the merge base."
+    command: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_install.py -q --no-cov -k \"plugin_dirs or adapter_command\""
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21116-ac2-mod-loads-and-falls-back"
+    description: "AC2: the install names the mod folder in CLAUDE_CODE_PLUGIN_DIRS of the user settings (idempotent, keeping other entries, dropped when no module is installed) and the argv is the adapter command resolved from the installing environment, so the hook runs at all; an observe host maps a never-started or failed adapter to native compaction with one logged line. The plugin-folder and adapter-command selectors match no test at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_install.py -q --no-cov -k \"plugin_dirs or adapter_command\""
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_render.py -q --no-cov -k \"observe_and_selective_map_never_started_to_native or every_failure_path_logs_one_line\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21116-ac5-auto-unbound"
+    description: "AC5: a session.compact row with the auto trigger is refused by the render and its install writes no module."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_adapter_template_compact_binding.py -q --no-cov -k \"auto_install_writes_no_module or rejects_non_manual_trigger\""
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn21116-deploy-install-plugin-dirs"
+    description: "Hosted deploy smoke: an ephemeral Python 3.13 container installs the read-only checkout from uv.lock into /tmp, reusing the verifier's uv cache and omitting dev dependencies and omnibase-infra, which this install path does not import. The shipped manual compaction row is installed into a temporary home with the real work-tree guard, then the settings must name the installed mod folder in CLAUDE_CODE_PLUGIN_DIRS, the module argv must contain the absolute adapter script of the container environment, and the installed bytes must equal the render. At the merge base the settings carry no CLAUDE_CODE_PLUGIN_DIRS, so that assertion fails. No deployed lane or external service is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          docker run --rm --user "$(id -u):$(id -g)" \
+          --label onex.deploy-probe=OMN-21116 \
+          --volume "$PWD:/workspace:ro" --workdir /workspace \
+          --volume "$(uv cache dir):/uv-cache" --env UV_CACHE_DIR=/uv-cache --env UV_LINK_MODE=copy \
+          --env UV_PROJECT_ENVIRONMENT=/tmp/omnimarket-venv \
+          --env PYTHONDONTWRITEBYTECODE=1 \
+          ghcr.io/astral-sh/uv:python3.13-bookworm-slim \
+          sh -c 'uv sync --frozen --no-dev --no-install-package omnibase-infra --quiet && uv run --no-sync python -c "$0"' '
+          import json
+          import tempfile
+          from pathlib import Path
+          from omnimarket.models.claude_code_binding import EnumClientMaxMode
+          from omnimarket.nodes.node_claude_code_binding_install_effect.handlers import handler_binding_install as hbi
+          from omnimarket.nodes.node_claude_code_binding_install_effect.models import ModelBindingInstallRequest
+          from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_client_bindings_loader import load_client_section
+          with tempfile.TemporaryDirectory() as home:
+              root = Path(home)
+              request = ModelBindingInstallRequest(bindings=load_client_section().bindings, max_mode=EnumClientMaxMode.OBSERVE, mods_dir=str(root / "mods"), settings_path=str(root / "settings.json"), supported_probe_rows=("P0", "P6", "P11a", "P13", "P14"))
+              result = hbi.HandlerClaudeCodeBindingInstall().handle(request)
+              plugin_dir = str(root / "mods" / "onex-claude-code-bindings")
+              env = json.loads((root / "settings.json").read_text())["env"]
+              assert env["CLAUDE_CODE_PLUGIN_DIRS"] == plugin_dir, env
+              command = hbi._resolve_adapter_command()
+              assert command.startswith("/") and command.endswith("/onex-claude-code-hook"), command
+              assert repr([command, "--binding", "compaction"]) in Path(result.module_path).read_text()
+              assert result.installed_sha256 == result.render_sha256, result
+              print(json.dumps({"plugin_dir": plugin_dir, "adapter_command": command, "sha256": result.installed_sha256}))'
+        cwd: "${OMNI_HOME}/omnimarket"

@@ -30,12 +30,18 @@ from omnimarket.nodes.node_claude_code_binding_install_effect.models import (
     ModelBindingInstallRequest,
 )
 from omnimarket.nodes.node_claude_code_binding_render_compute.handlers.handler_binding_render import (
+    ADAPTER_COMMAND,
     HandlerClaudeCodeBindingRender,
+)
+from omnimarket.nodes.node_claude_code_hook_adapter_effect.binding_render_error import (
+    BindingRenderError,
 )
 
 from .conftest import make_binding
 
 pytestmark = pytest.mark.unit
+
+_REAL_RESOLVE = handler_binding_install._resolve_adapter_command
 
 REPO = Path(__file__).resolve().parents[3]
 _GIT_LOCATION_ENV = (
@@ -67,6 +73,9 @@ def _work_tree_probe_ends_at_tmp_path(
 
     monkeypatch.setattr(
         handler_binding_install, "_inside_a_work_tree", inside_tmp_path_work_tree
+    )
+    monkeypatch.setattr(
+        handler_binding_install, "_resolve_adapter_command", lambda: ADAPTER_COMMAND
     )
 
 
@@ -239,3 +248,86 @@ def test_removing_every_replacing_row_removes_the_mod_folder(
     assert root.exists()
     _install(tmp_path)
     assert not root.exists()
+
+
+def _settings(tmp_path: Path) -> dict[str, object]:
+    return json.loads((tmp_path / ".claude" / "settings.json").read_text())
+
+
+def test_the_mod_folder_is_named_in_the_user_plugin_dirs(
+    tmp_path, replacing_binding
+) -> None:
+    other = str(tmp_path / "elsewhere")
+    settings_path = tmp_path / ".claude" / "settings.json"
+    settings_path.parent.mkdir()
+    settings_path.write_text(
+        json.dumps({"env": {"KEEP": "1", "CLAUDE_CODE_PLUGIN_DIRS": other}})
+    )
+    _install(tmp_path, replacing_binding)
+    _install(tmp_path, replacing_binding)
+    env = _settings(tmp_path)["env"]
+    plugin_dir = str(tmp_path / "mods" / "onex-claude-code-bindings")
+    assert env == {
+        "KEEP": "1",
+        "CLAUDE_CODE_PLUGIN_DIRS": os.pathsep.join([other, plugin_dir]),
+    }
+
+
+def test_removing_every_replacing_row_drops_the_plugin_dirs_entry(
+    tmp_path, replacing_binding
+) -> None:
+    _install(tmp_path, replacing_binding)
+    assert "env" in _settings(tmp_path)
+    _install(tmp_path)
+    assert "env" not in _settings(tmp_path)
+
+
+def test_the_module_argv_is_the_resolved_adapter_command(
+    tmp_path, replacing_binding, monkeypatch
+) -> None:
+    resolved = str(tmp_path / "venv" / "bin" / ADAPTER_COMMAND)
+    monkeypatch.setattr(
+        handler_binding_install, "_resolve_adapter_command", lambda: resolved
+    )
+    result, _ = _install(tmp_path, replacing_binding)
+    text = Path(result.module_path).read_text()
+    assert f"['{resolved}', '--binding', '{replacing_binding.name}']" in text
+    assert result.installed_sha256 == result.render_sha256
+
+
+def test_the_adapter_command_resolves_beside_the_interpreter_else_bare(
+    tmp_path, monkeypatch
+) -> None:
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    monkeypatch.setattr(
+        handler_binding_install.sysconfig, "get_path", lambda _name: str(scripts)
+    )
+    monkeypatch.setenv("PATH", str(empty))
+    assert _REAL_RESOLVE() == ADAPTER_COMMAND
+    script = scripts / ADAPTER_COMMAND
+    script.write_text("#!/bin/sh\n")
+    script.chmod(0o755)
+    assert _REAL_RESOLVE() == str(script)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "bin/onex-claude-code-hook",
+        "/opt/venv/bin/other-hook",
+        "/o'p/onex-claude-code-hook",
+    ],
+)
+def test_the_render_refuses_an_adapter_command_it_cannot_quote(
+    replacing_binding, command
+) -> None:
+    with pytest.raises(BindingRenderError, match="adapter command"):
+        HandlerClaudeCodeBindingRender().handle(
+            ModelBindingRenderRequest(
+                bindings=(replacing_binding,), max_mode=EnumClientMaxMode.REQUIRED
+            ),
+            adapter_command=command,
+        )
