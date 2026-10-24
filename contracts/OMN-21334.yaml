@@ -81,6 +81,8 @@ dod_evidence:
     source: "manual"
     binds_ac: ["AC2"]
     checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_postgres_compaction_pack_build_barrier.py -q"
       - check_type: "command"
         check_value: |-
           set -eu

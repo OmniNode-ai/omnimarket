@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: MIT
 """OMN-21334: real committed projections close the compaction session barrier.
 
-Set ONEX_TEST_SESSION_BARRIER_DSN to an isolated PostgreSQL database. Each test
-applies the projection migrations in its own schema and removes that schema.
+The DSN comes from ONEX_TEST_SESSION_BARRIER_DSN, or else from the shared
+integration PostgreSQL fixture. Each test applies the projection migrations
+in its own schema and removes that schema.
 The writer SQL and folds are production code; the probe opens its normal
 read-only connection rather than a database double.
 """
@@ -180,10 +181,13 @@ class _ProjectedSession:
 
 
 @pytest.fixture
-def projected_session() -> Iterator[_ProjectedSession]:
-    dsn = os.environ.get(_DSN_ENV)
-    if not dsn:
-        pytest.skip(f"{_DSN_ENV} is required for the real-Postgres barrier proof")
+def projected_session(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[_ProjectedSession]:
+    dsn = os.environ.get(_DSN_ENV) or request.getfixturevalue(
+        "integration_postgres_dsn"
+    )
+    monkeypatch.setenv(_DSN_ENV, dsn)
     conn = psycopg2.connect(dsn, connect_timeout=3)
     conn.autocommit = True
     pgextras.register_uuid(conn_or_curs=conn)
