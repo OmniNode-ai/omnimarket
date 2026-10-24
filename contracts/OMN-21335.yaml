@@ -16,7 +16,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "The adapter template compact binding tests pass; none exists at the merge base."
-    command: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect -q --no-cov -k adapter_template_compact_binding"
+    command: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_adapter_template_compact_binding.py -q --no-cov -k adapter_template_compact_binding"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -27,7 +27,15 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect -q --no-cov -k adapter_template_compact_binding"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_adapter_template_compact_binding.py -q --no-cov -k adapter_template_compact_binding"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21335-ac1-selectors-name-a-file"
+    description: "AC1: every pytest check this contract binds names the existing compact-binding test file, AC2 is bound to its install tests, and the command-only deploy probe binds no criterion, so the repo evidence guards accept the contract. Fails at the merge base, where AC1 named a bare directory and AC2 named no test."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_contract_evidence_selector_names_file_omn17427.py -q -p no:randomly -k omn21335_compact_binding_checks_name_the_test_file_and_bind_tests"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn21335-ac2-install-readback"
@@ -70,6 +78,9 @@ dod_evidence:
           print(json.dumps({"events": record["events"], "sha256": result.installed_sha256}))
           PY
         cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_adapter_template_compact_binding.py -q --no-cov -k install"
+        cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn21335-deploy-render-runtime"
     description: "Hosted deploy smoke: dispatch the packaged binding-render node through the in-process ONEX runtime using the shipped adapter row. Require a successful typed receipt, the manual session.compact matcher with no auto matcher, and a module hash matching its bytes. The merge-base adapter has no compact row. This runs without a deployed lane or external services; install readback is covered separately by AC2."
@@ -108,4 +119,3 @@ dod_evidence:
           print(json.dumps({"run_id": receipt["run_id"], "sha256": result["module_sha256"], "manual_compact": True}))
           ' "$probe_dir/receipt.json";
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC1"]
