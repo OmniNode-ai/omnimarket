@@ -31,7 +31,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "G1 port: the five nodes' direct tests pass in omnimarket."
-    command: "uv run pytest tests/nodes/node_host_memory_admission_compute tests/nodes/node_landing_worker_engine_compute tests/nodes/node_landing_tick_bounds_compute tests/nodes/node_landing_upstream_gate_compute tests/nodes/node_merge_sweep_same_head_compute -q"
+    command: "uv run pytest tests/nodes/node_host_memory_admission_compute/test_golden_chain_host_memory_admission_compute.py tests/nodes/node_landing_worker_engine_compute/test_golden_chain_landing_worker_engine_compute.py tests/nodes/node_landing_tick_bounds_compute/test_golden_chain_landing_tick_bounds_compute.py tests/nodes/node_landing_upstream_gate_compute/test_golden_chain_landing_upstream_gate_compute.py tests/nodes/node_merge_sweep_same_head_compute/test_golden_chain_merge_sweep_same_head_compute.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -42,7 +42,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_host_memory_admission_compute tests/nodes/node_landing_worker_engine_compute tests/nodes/node_landing_tick_bounds_compute tests/nodes/node_landing_upstream_gate_compute tests/nodes/node_merge_sweep_same_head_compute -q"
+        check_value: "uv run pytest tests/nodes/node_host_memory_admission_compute/test_golden_chain_host_memory_admission_compute.py tests/nodes/node_landing_worker_engine_compute/test_golden_chain_landing_worker_engine_compute.py tests/nodes/node_landing_tick_bounds_compute/test_golden_chain_landing_tick_bounds_compute.py tests/nodes/node_landing_upstream_gate_compute/test_golden_chain_landing_upstream_gate_compute.py tests/nodes/node_merge_sweep_same_head_compute/test_golden_chain_merge_sweep_same_head_compute.py -q"
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_g1_local_invocation.py tests/test_market_node_runtime_dogfood.py::test_market_node_runtime_dogfood_inventory_classifies_all_entry_points -q"
     binds_ac: ["AC1"]
@@ -50,13 +50,31 @@ dod_evidence:
     description: "AC2 contribution only: the five nodes are registered onex.nodes entry points, which the callers that units run can be repointed to. The per-host unit readback stays pending for the epic."
     source: "manual"
     checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_g1_local_invocation.py -q"
       - check_type: "command"
         check_value: "uv run python -c \"from importlib.metadata import entry_points; names={e.name for e in entry_points(group='onex.nodes')}; need={'node_host_memory_admission_compute','node_landing_worker_engine_compute','node_landing_tick_bounds_compute','node_landing_upstream_gate_compute','node_merge_sweep_same_head_compute'}; missing=need-names; assert not missing, missing\""
     binds_ac: ["AC2"]
   - id: "dod-omn21373-deploy-g1-import"
-    description: "Falsifiable deploy check, runnable on the hosted runner with no lab route, broker or database: load each packaged G1 local invocation contract and execute its declared handler through its typed request and result, checking the policy outcome. The same test on a lab host is the readback; it fails before the local invocation declarations are corrected."
+    description: "Hosted deploy smoke, runnable on the hosted runner with no lab route, broker or database: dispatch the packaged node_host_memory_admission_compute through the in-process ONEX runtime and require a successful typed receipt whose refusals match the policy. The packaged-contract execution of all five nodes is bound to AC2 by tests/test_g1_local_invocation.py."
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "uv run pytest tests/test_g1_local_invocation.py -q"
-    binds_ac: ["AC2"]
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+          printf '%s' '{"mem_avail_gb": 1.0, "mem_psi_avg60": null, "swap_in_kb_s": 30000.0, "swap_out_kb_s": 0.0, "min_free_gb": 4.0, "max_mem_psi": 10.0, "max_swap_kb_s": 102400.0, "max_swap_in_kb_s": 20480.0}' > "$probe_dir/input.json";
+          env ONEX_LANE=omn21373-deploy-probe "$runtime_bin/onex" node node_host_memory_admission_compute --input "$probe_dir/input.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+          uv run --locked python -c '
+          import json
+          import sys
+          from pathlib import Path
+          receipt = json.loads(Path(sys.argv[1]).read_text())
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          refusals = receipt["result"]["refusals"]
+          assert refusals == ["mem_avail 1.0G < 4G", "swap-in 30000 KB/s > 20480 KB/s (paging)"], refusals
+          print(json.dumps({"run_id": receipt["run_id"], "refusals": refusals}))
+          ' "$probe_dir/receipt.json";
