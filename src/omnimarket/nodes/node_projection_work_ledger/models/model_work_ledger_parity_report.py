@@ -95,6 +95,13 @@ class ModelWorkLedgerParityReport(BaseModel):
     )
     unemittable_types: dict[str, int] = Field(default_factory=dict)
     state_entities_compared: int
+    state_horizon: datetime | None = Field(
+        default=None, description="Latest file row folded for the state comparison."
+    )
+    state_after_horizon: tuple[str, ...] = Field(
+        default=(),
+        description="Entities whose projected value is later than state_horizon: the file cannot establish it, so it is counted apart, never a mismatch.",
+    )
     mismatches: tuple[ModelParityMismatch, ...] = ()
     projection_sources: dict[str, int] = Field(
         default_factory=dict,
