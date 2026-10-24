@@ -136,4 +136,3 @@ dod_evidence:
               print(json.dumps({"mode": mode.value, "run_id": receipt["run_id"], "sha256": digest, "failure_entries": len(entries), "runtime_readback": True}))
           PY
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC3"]
