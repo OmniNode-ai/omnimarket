@@ -706,6 +706,12 @@ _DELEGATION_SAVINGS_MEASURED_VIEW_SQL = (
 # store step, not a statement on every connect: the sequence seed is a write, so
 # a read-only store, or a reader on a busy one, must not run it.
 _LOCAL_ENVIRONMENT_STEP = "omn19988_local_environment"
+# OMN-21349: correlation-keyed claims have no delivery_id mapping. Preserve
+# them in a legacy table and create the current shape before its indexes.
+_CLAIMS_DELIVERY_ID_SHAPE_STEP = "omn21349_claims_delivery_id_shape"
+_LEGACY_DELEGATE_SKILL_CLAIMS_TABLE = (
+    "delegate_skill_command_claims_legacy_no_delivery_id"
+)
 # OMN-17427: the delegation reaper scans every 15 s for pending claims
 # (terminal_json = ''), on the runtime's event loop, and the claims table had
 # only its primary-key index, so each scan read the whole file. On a 105,322-row
@@ -1011,6 +1017,14 @@ class SqliteDatabaseAdapter:
                     "created the local environment table and its cursor",
                 )
             )
+        if not cls._store_step_recorded(conn, _CLAIMS_DELIVERY_ID_SHAPE_STEP):
+            pending.append(
+                (
+                    _CLAIMS_DELIVERY_ID_SHAPE_STEP,
+                    cls._migrate_claims_table_to_delivery_id,
+                    "moved legacy delegate-skill command claims aside for delivery ids",
+                )
+            )
         if not cls._store_step_recorded(conn, _CLAIMS_PENDING_INDEX_STEP):
             pending.append(
                 (
@@ -1189,6 +1203,37 @@ class SqliteDatabaseAdapter:
         conn.execute(_LOCAL_ENVIRONMENT_CURSOR_SEQ_SEED)
         for trigger in _LOCAL_ENVIRONMENT_CURSOR_TRIGGERS:
             conn.execute(trigger)
+
+    @classmethod
+    def _migrate_claims_table_to_delivery_id(cls, conn: sqlite3.Connection) -> None:
+        """OMN-21349: preserve old claims without inventing delivery ids."""
+        if "delivery_id" in cls._existing_columns(
+            conn, "delegate_skill_command_claims"
+        ):
+            return
+        # Index names are global and survive a rename; free the explicit names
+        # so the current table can gain its own indexes. Keep autoindexes.
+        indexes = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index' "
+            "AND tbl_name = 'delegate_skill_command_claims' AND sql IS NOT NULL"
+        ).fetchall()
+        for row in indexes:
+            name = str(row["name"]).replace('"', '""')
+            conn.execute(f'DROP INDEX "{name}"')
+        legacy_table = _LEGACY_DELEGATE_SKILL_CLAIMS_TABLE
+        suffix = 2
+        while (
+            conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE name = ?", (legacy_table,)
+            ).fetchone()
+            is not None
+        ):
+            legacy_table = f"{_LEGACY_DELEGATE_SKILL_CLAIMS_TABLE}_{suffix}"
+            suffix += 1
+        conn.execute(
+            f"ALTER TABLE delegate_skill_command_claims RENAME TO {legacy_table}"
+        )
+        conn.execute(_DELEGATE_SKILL_CLAIMS_DDL)
 
     @staticmethod
     def _create_claims_pending_index(conn: sqlite3.Connection) -> None:
