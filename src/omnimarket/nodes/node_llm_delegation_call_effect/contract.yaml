@@ -23,7 +23,15 @@ description: |
   cost telemetry derived from the pricing manifest, and typed terminal event
   emission on success, escalation, or total failure.
 
-  The standalone HandlerAgentSession transport also invokes delegated coding
+  HandlerDelegationTarget routes typed model-call and coding-session targets.
+  Model calls compose node_model_router and node_llm_inference_effect's generic
+  OpenAI-compatible handler. Claude Code, Codex and Claude Code on GLM are
+  adapter classes in that handler, not nodes or remote dispatch scripts.
+  HandlerLabJobDelegation consumes ModelLabJobSpec and durably takes the job
+  before launching a local exact-commit worktree session, publishing reducer
+  transitions through an outbox to node_projection_lab_job.
+
+  The legacy standalone HandlerAgentSession transport also invokes delegated coding
   agents for lab work units. It accepts the caller's model and brief chunks,
   joins the brief on stdin and passes agent output and exit status back to the
   unit's receipt, retaining the agent's permission checks.
@@ -135,6 +143,9 @@ service_configuration:
   requires_external_dependencies: true
 
 config_dependencies:
+  - key: "DELEGATION_ADAPTER_CONFIG_PATH"
+    required: false
+    description: "Deployment contract overlay: repository/work roots, call-site routing and generation parameters, honored provider capabilities, secret references. No credential values."
   - key: "INFERENCE_PROTOCOL_CONFIG_PATH"
     required: false
     description: "Optional override for typed provider request-shaping profiles (defaults to configs/inference_protocols.v1.yaml)."
@@ -171,6 +182,8 @@ event_bus:
     patch: 0
 
   subscribe_topics:
+    - "onex.cmd.omnimarket.delegation-target-execute.v1"
+    - "onex.cmd.omnimarket.lab-job-submitted.v1"
     - "onex.cmd.omnimarket.delegation-execute.v1"
     - "onex.cmd.omnibase-infra.delegation-inference-request.v1"
 
@@ -189,8 +202,16 @@ event_bus:
     # so a prepended failure terminal would silently become the success
     # terminal and mis-route every returned model.
     - "onex.evt.omnibase-infra.inference-response-failed.v1"
+    - "onex.evt.omnimarket.delegation-target-completed.v1"
+    - "onex.evt.omnimarket.lab-job-transitioned.v1"
 
   subscribe_topic_metadata:
+    "onex.cmd.omnimarket.delegation-target-execute.v1":
+      schema_ref: "omnimarket.models.delegation.model_delegation_target.ModelDelegationTargetRequest"
+      description: "ModelEventEnvelope v1 carrying a logical target; endpoint authority remains in caller/runtime contracts."
+    "onex.cmd.omnimarket.lab-job-submitted.v1":
+      schema_ref: "omnimarket.models.lab_job.ModelLabJobSpec"
+      description: "Matches node_lab_job_submit_effect.submit_dispatch.command_topic; ModelEventEnvelope v1, key job_id."
     "onex.cmd.omnimarket.delegation-execute.v1":
       schema_ref: "omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_request.ModelLlmDelegationCallRequest"
       description: "Command to execute a single LLM delegation call for the given model and route-supplied endpoint URL."
@@ -199,6 +220,12 @@ event_bus:
       description: "Inference intent from the delegation orchestrator. Handler resolves base_url directly."
 
   publish_topic_metadata:
+    "onex.evt.omnimarket.delegation-target-completed.v1":
+      schema_ref: "omnimarket.models.delegation.model_delegation_target.ModelDelegationTargetResult"
+      description: "Typed adapter result and session receipt reference, including failed/timed_out statuses."
+    "onex.evt.omnimarket.lab-job-transitioned.v1":
+      schema_ref: "omnimarket.models.lab_job.ModelLabJobTransitioned"
+      description: "Matches node_projection_lab_job; complete post-transition row and CAS-assigned seq, key job_id."
     "onex.evt.omnimarket.delegation-call-completed.v1":
       schema_ref: "omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_completed_event.ModelLlmDelegationCompletedEvent"
       description: "Emitted when the LLM call succeeds. Carries full cost provenance."
@@ -272,6 +299,7 @@ runtime_dispatch:
     failure: "onex.evt.omnibase-infra.inference-response-failed.v1"
 
 externally_consumed_topics:
+  - "onex.evt.omnimarket.delegation-target-completed.v1"
   # OMN-20910: the review cost record. The projection that subscribes to it is a
   # separate node (its table needs the deployment topology's grants first), so
   # until it lands the topic leaves the node graph here.
@@ -282,9 +310,29 @@ externally_consumed_topics:
   - "onex.evt.omnimarket.delegation-model-degraded.v1"
 
 # === HANDLER ROUTING ===
+externally_produced_topics:
+  - topic: "onex.cmd.omnimarket.delegation-target-execute.v1"
+    producer: "Typed runtime ingress callers carrying ModelDelegationTargetRequest in ModelEventEnvelope v1."
+
 handler_routing:
   routing_strategy: "payload_type_match"
   handlers:
+    - operation: "execute_delegation_target"
+      event_type: "omnimarket.delegation-target-execute"
+      event_model:
+        name: "ModelDelegationTargetRequest"
+        module: "omnimarket.models.delegation.model_delegation_target"
+      handler:
+        name: "HandlerDelegationTarget"
+        module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_delegation_target"
+    - operation: "execute_lab_job"
+      event_type: "omnimarket.lab-job-submitted"
+      event_model:
+        name: "ModelLabJobSpec"
+        module: "omnimarket.models.lab_job"
+      handler:
+        name: "HandlerLabJobDelegation"
+        module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_lab_job_delegation"
     - operation: "execute_delegation_call"
       event_type: "omnimarket.delegation-execute"
       event_model:
@@ -310,6 +358,9 @@ handler_routing:
 # inference-response.v1. event_type is the Model-prefix-stripped short class
 # name the applier looks up (OMN-12294).
 published_events:
+  - event_type: "DelegationTargetResult"
+    topic: "onex.evt.omnimarket.delegation-target-completed.v1"
+    description: "The terminal adapter receipt; status distinguishes completion, failure and timeout."
   - event_type: "InferenceResponseData"
     topic: "onex.evt.omnibase-infra.inference-response.v1"
     description: "Inference response emitted by HandlerInferenceIntent for the delegation orchestrator."
@@ -322,6 +373,18 @@ published_events:
 
 # === DEPENDENCIES ===
 dependencies:
+  - name: omnimarket.nodes.node_model_router
+    dependency_type: internal
+    description: Contract model selection and endpoint authority for model-call adapters.
+    required: true
+  - name: omnimarket.nodes.node_lab_job_reducer
+    dependency_type: internal
+    description: Pure lab job transitions, called through the public package boundary.
+    required: true
+  - name: omnibase_infra.nodes.node_llm_inference_effect
+    dependency_type: internal
+    description: Existing generic OpenAI-compatible inference; no provider HTTP in target adapters.
+    required: true
   - name: httpx
     dependency_type: library
     description: Async HTTP client for OpenAI-compatible API calls
@@ -350,6 +413,42 @@ tags:
   - httpx
   - cost-telemetry
   - health-probe
+
+# Runtime auto-wiring owns subscriptions and derives a group from environment,
+# package, node and contract version. Replicas of one lab runtime share it.
+# A distinct lab environment has a distinct group; the database primary key is
+# the cross-group ownership barrier. No adapter opens SSH or dispatches hosts.
+lab_job_dispatch:
+  command_topic: "onex.cmd.omnimarket.lab-job-submitted.v1"
+  transition_topic: "onex.evt.omnimarket.lab-job-transitioned.v1"
+
+# Deployment overlay supplies paths and database_secret_ref, never credentials.
+# Each call_site is a caller contract block; generation has no handler defaults.
+# supported_parameters contains only parameters measured as honored for the
+# selected model; unknown, ignored and rejected fields are refused pre-call.
+delegation_adapters:
+  allowed_owners: [OmniNode-ai]
+  call_sites:
+    lab_job:
+      targets: [codex, claude-code, claude-glm]
+      timeout_seconds: 4500
+      agents: {}
+  model_registry: {}
+
+db_io:
+  db_tables:
+    - name: delegation_lab_jobs
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_delegation_lab_job_execution.sql"
+      access: read_write
+      role: delegation_lab_jobs
+    - name: delegation_lab_job_outbox
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_delegation_lab_job_execution.sql"
+      access: read_write
+      role: delegation_lab_job_outbox
 
 metadata:
   transport_type: kafka

@@ -376,6 +376,8 @@ jobs:
         run: uv run pytest tests/ci/test_queue_run_once_omn19998.py -q -n 0 -p no:randomly --no-cov
       - name: Ruff format check
         run: uv run ruff format --check src/ tests/ benchmarks/
+      - name: Delegation target and lab-job seam gate
+        run: uv run --frozen pytest tests/unit/nodes/node_llm_delegation_call_effect/test_delegation_targets.py -q --no-cov
       # OMN-20865: SYNC with the landing-decision-scenarios pre-commit hook.
       - name: Landing decision scenarios
         run: uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py -q --no-cov
