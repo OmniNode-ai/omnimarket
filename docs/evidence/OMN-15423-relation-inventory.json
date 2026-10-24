@@ -4221,6 +4221,7 @@
         "node_database_sweep",
         "node_delegate_skill_orchestrator",
         "node_delegation_dod_verify_request_compute",
+        "node_delegation_escalation_decision_compute",
         "node_delegation_eval_orchestrator",
         "node_dod_verify",
         "node_lab_secret_store_override_effect",
@@ -7735,6 +7736,7 @@
       "producer": "node_projection_provider_quota",
       "readers": [
         "node_delegate_skill_orchestrator",
+        "node_delegation_escalation_decision_compute",
         "node_delegation_orchestrator",
         "node_delegation_quality_gate_reducer",
         "node_delegation_routing_reducer",
