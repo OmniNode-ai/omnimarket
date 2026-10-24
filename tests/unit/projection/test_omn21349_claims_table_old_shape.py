@@ -183,3 +183,11 @@ def test_claims_table_old_shape_current_shape_untouched(tmp_path: Path) -> None:
             NEW_ROW
         ]
         assert {PENDING_INDEX, CORRELATION_INDEX} <= _indexes(conn, TABLE)
+        # The step runs once as a no-op on a current-shape store.
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM omnimarket_sqlite_store_steps WHERE step = ?",
+                (STEP,),
+            ).fetchone()[0]
+            == 1
+        )

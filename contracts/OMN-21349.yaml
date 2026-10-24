@@ -38,7 +38,7 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn21349-pending-index-unchanged"
-    description: "A current-shape store gains no legacy table and keeps the pending-claims index; the existing pending-index tests pass unchanged."
+    description: "A current-shape store gains no legacy table, keeps the pending-claims index and records the store step once as a no-op; the existing pending-index tests pass unchanged. Without the step the recorded-step assertion fails."
     source: "manual"
     checks:
       - check_type: "test_passes"
