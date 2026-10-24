@@ -834,6 +834,11 @@ jobs:
         run: uv run pytest tests/unit/test_generated_llm_routing_constants.py -q
       # OMN-10821: Handler* classes in handler_*.py with zero external import references
       # cannot be wired by the DI container and are silently absent from the pipeline.
+      # OMN-21372: same owning transport hook; lint gates required CI Summary.
+      - name: Transport imports (static and dynamic)
+        run: uv run python scripts/ci/check_unimported_handlers.py --transport-imports
+      - name: Dynamic import gate regression fixtures
+        run: uv run pytest tests/ci -q -k dynamic_import_gate
       - name: Unimported-handler check
         run: uv run python scripts/ci/check_unimported_handlers.py
       # OMN-12942: node migration sets must create base tables before views.

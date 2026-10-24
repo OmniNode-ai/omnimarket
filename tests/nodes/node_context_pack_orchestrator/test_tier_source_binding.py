@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: MIT
 """The contract-declared tier source binding of node_context_pack_orchestrator (TA.8).
 
-The orchestrator resolves the source node for each tier from its contract's
-``context_tier_sources`` block, so the runtime's zero-argument construction reads every
-bound tier from its live source instead of answering every tier ``unavailable``.
+The contract maps each tier to a source port supplied by the runtime. These
+fixtures supply explicit source instances; zero-argument construction stays
+unwired rather than importing sibling handlers.
 """
 
 from __future__ import annotations
@@ -62,6 +62,15 @@ _EXPECTED: dict[EnumContextFactor, type] = {
 }
 
 
+def _resolve_fixture(node_name: str) -> ProtocolContextTierSource:
+    bindings = dict(
+        zip(_CONTRACT["context_tier_sources"].values(), _EXPECTED.values(), strict=True)
+    )
+    if node_name not in bindings:
+        raise ValueError(f"No fixture source for {node_name}")
+    return bindings[node_name]()
+
+
 def _write_contract(tmp_path: Path, block: object) -> Path:
     raw = dict(_CONTRACT)
     raw["context_tier_sources"] = block
@@ -89,13 +98,13 @@ def test_every_bound_source_node_is_a_declared_dependency() -> None:
 
 
 def test_load_tier_sources_instantiates_each_node_handler() -> None:
-    bound = load_tier_sources()
+    bound = load_tier_sources(resolve=_resolve_fixture)
     assert {f: type(s) for f, s in bound.items()} == _EXPECTED
     assert all(isinstance(s, ProtocolContextTierSource) for s in bound.values())
 
 
 def test_a_node_bound_to_several_factors_is_one_instance() -> None:
-    bound = load_tier_sources()
+    bound = load_tier_sources(resolve=_resolve_fixture)
     assert (
         bound[EnumContextFactor.OPEN_WORK]
         is bound[EnumContextFactor.ORCHESTRATION_STATE]
@@ -111,12 +120,12 @@ def test_loading_makes_no_connection_without_a_dsn(
 ) -> None:
     for name in ("OMNIBASE_INFRA_DB_URL", "OMNIMARKET_READ_DB_URL", "DATABASE_URL"):
         monkeypatch.delenv(name, raising=False)
-    assert load_tier_sources()
+    assert load_tier_sources(resolve=_resolve_fixture)
 
 
-def test_zero_argument_orchestrator_binds_the_contract_sources() -> None:
+def test_zero_argument_orchestrator_requires_runtime_sources() -> None:
     handler = HandlerContextPackOrchestrator()
-    assert {f: type(s) for f, s in handler._sources.items()} == _EXPECTED
+    assert handler._sources == {}
 
 
 def test_explicit_empty_sources_bind_nothing() -> None:
@@ -129,7 +138,7 @@ def test_compaction_required_factors_are_all_bound() -> None:
         (PROFILES_DIR / "compaction_orchestrator.yaml").read_text(encoding="utf-8")
     )
     required = {EnumContextFactor(f) for f in profile["required_factors"]}
-    assert required <= set(load_tier_sources())
+    assert required <= set(load_tier_sources(resolve=_resolve_fixture))
 
 
 def test_unknown_factor_is_refused(tmp_path: Path) -> None:
@@ -137,13 +146,13 @@ def test_unknown_factor_is_refused(tmp_path: Path) -> None:
         tmp_path, {"not_a_factor": "node_context_source_ledger_effect"}
     )
     with pytest.raises(ValueError, match="not_a_factor"):
-        load_tier_sources(path)
+        load_tier_sources(path, resolve=_resolve_fixture)
 
 
 def test_unknown_source_node_is_refused(tmp_path: Path) -> None:
     path = _write_contract(tmp_path, {"operator_rulings": "node_does_not_exist"})
     with pytest.raises(ValueError, match="node_does_not_exist"):
-        load_tier_sources(path)
+        load_tier_sources(path, resolve=_resolve_fixture)
 
 
 def test_source_node_without_the_read_is_refused(tmp_path: Path) -> None:
@@ -151,11 +160,11 @@ def test_source_node_without_the_read_is_refused(tmp_path: Path) -> None:
         tmp_path, {"operator_rulings": "node_context_pack_render_compute"}
     )
     with pytest.raises(ValueError, match="node_context_pack_render_compute"):
-        load_tier_sources(path)
+        load_tier_sources(path, resolve=_resolve_fixture)
 
 
 def test_missing_block_binds_nothing(tmp_path: Path) -> None:
     raw = {k: v for k, v in _CONTRACT.items() if k != "context_tier_sources"}
     path = tmp_path / "contract.yaml"
     path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
-    assert load_tier_sources(path) == {}
+    assert load_tier_sources(path, resolve=_resolve_fixture) == {}

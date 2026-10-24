@@ -50,6 +50,7 @@ from omnimarket.nodes.node_projection_session_content.handlers.session_content_f
 from omnimarket.nodes.node_projection_session_content.models.model_session_content import (
     ModelSessionContentRecord,
 )
+from omnimarket.projection.postgres_read_database import connect_read_only
 
 psycopg2: Any = importlib.import_module("psycopg2")
 pgextras: Any = importlib.import_module("psycopg2.extras")
@@ -213,7 +214,9 @@ def projected_session(
                 dsn_env=_DSN_ENV,
                 lineage_relation=f"{schema}.claude_hook_events",
                 content_relation=f"{schema}.session_content",
-            )
+            ),
+            connect=connect_read_only,
+            sql_composer=sql,
         )
         yield _ProjectedSession(conn, schema, str(uuid4()), source)
     finally:

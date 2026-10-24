@@ -1,0 +1,11 @@
+from typing import Protocol
+
+class PackBusPort(Protocol):
+    async def request_pack(self, command: object) -> object: ...
+
+class HandlerCompaction:
+    def __init__(self, bus: PackBusPort):
+        self.bus = bus
+
+    async def handle(self, command: object) -> object:
+        return await self.bus.request_pack(command)

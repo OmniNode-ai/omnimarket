@@ -30,7 +30,7 @@ requirements:
           AC3: The run-trace.v1 exposure passes the exposure-reader-coverage gate -- falsifier: the gate run against an omnibase_infra checkout reports the run-trace topic with code no_reader
       - id: "AC4"
         statement: |-
-          AC4: The declaration names omnidash#397 as the reader that replaces it -- falsifier: the contract test finds a consumers_reason that does not name omnidash#397
+          AC4: Once omnidash#397 merged, the exposure carries no consumers opt-out -- falsifier: the contract test finds consumers or consumers_reason on the run-trace.v1 exposure
 evidence_requirements:
   - kind: "tests"
     description: "The fold stores a recorded chain in step order when it is delivered shuffled with two equal timestamps, and never stores another tenant's step under the run."
@@ -98,4 +98,23 @@ dod_evidence:
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_run_trace/contract.yaml?ref=$(git rev-parse HEAD)"
           --jq '.content | @base64d | contains("  consumers: none\n") and contains("reader pending in omnidash#397 (OMN-19987); remove when it lands")' | grep -qx true
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19987-ac3-ac4-opt-out-retired"
+    description: "omnidash#397 merged (omnidash 89f1ad8c) and its Workflow page reads run-trace.v1, so the exposure's consumers: none opt-out is deleted. With it standing, omnibase_infra's exposure-reader-coverage gate reports run-trace.v1 as stale_opt_out against any omnidash commit from 89f1ad8c on, which keeps omnibase_infra from moving its omnidash pin to 10b49754, the commit that places the Environment panel reading local-environment.v1. The check reads the contract and fails at the merge base, where the exposure still declares both opt-out fields. This item replaces the two pending-reader items; they and their receipts stay as they were merged."
+    source: "manual"
+    evidence_artifact: "supersedes_dod_evidence:dod-omn19987-ac3-ac4-pending-reader"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19987_run_trace.py -q -k test_exposure_carries_no_opt_out_once_its_reader_landed"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3", "AC4"]
+  - id: "dod-omn19987-deploy-opt-out-retired"
+    description: "Read the run-trace node contract at the checked-out commit. The probe fails on a revision whose run-trace.v1 exposure still declares consumers or consumers_reason, as the merge base does."
+    source: "manual"
+    evidence_artifact: "supersedes_dod_evidence:dod-omn19987-deploy-pending-reader"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          git show "$(git rev-parse HEAD):src/omnimarket/nodes/node_projection_run_trace/contract.yaml"
+          | python3 -c 'import sys, yaml; p = yaml.safe_load(sys.stdin)["projection_api"]; sys.exit(0 if p["bus_backed"] is True and "consumers" not in p and "consumers_reason" not in p else 1)'
         cwd: "${OMNI_HOME}/omnimarket"

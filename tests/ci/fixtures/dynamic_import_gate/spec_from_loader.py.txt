@@ -1,0 +1,2 @@
+import importlib.util
+importlib.util.spec_from_loader(TARGET, None)
