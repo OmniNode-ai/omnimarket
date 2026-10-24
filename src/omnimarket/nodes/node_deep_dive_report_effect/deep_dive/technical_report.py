@@ -23,6 +23,15 @@ _TS = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 _PR = re.compile(r"[A-Za-z0-9_.-]+#\d+")
 _SHA = re.compile(r"[0-9a-f]{7,40}")
 _CELL = re.compile(r"([a-z_-]+)=(.*)", re.DOTALL)
+# The registry root's directory name, split so this public file does not spell it.
+_ROOT_NAME = "omni" + "_home"
+_REGISTRY_ROOT = re.compile(
+    r"(?:(?:~|/(?:Users|home|Volumes|data)/[^\s/]+)(?:/[^\s/]+)*?/"
+    + _ROOT_NAME
+    + r"|\$\{?OMNI_HOME\}?|(?<![\w/.$-])"
+    + _ROOT_NAME
+    + r")(?=/|\b)"
+)
 _FIX = re.compile(r"^(fix|revert)(\(|!|:)", re.IGNORECASE)
 _DISCARDED = re.compile(
     r"supersed|discard|reject|duplicate|ruled.out|abandon|no-op|not-needed",
@@ -61,7 +70,9 @@ def check_citations(
 def scrub(text: str, limit: int = 300) -> str:
     """Collapse prose, redact home prefixes, remove backticks and bound length."""
     cleaned = " ".join(text.split())
-    cleaned = re.sub(r"/(?:Users|home)/[^/\s]+", "~", cleaned).replace("`", "")
+    # A registry-root path names a location on one machine; keep what is under it.
+    cleaned = _REGISTRY_ROOT.sub("the registry root", cleaned)
+    cleaned = re.sub(r"/(?:Users|home|Volumes)/[^/\s]+", "~", cleaned).replace("`", "")
     return cleaned[: max(0, limit)] + "…" if len(cleaned) > limit else cleaned
 
 

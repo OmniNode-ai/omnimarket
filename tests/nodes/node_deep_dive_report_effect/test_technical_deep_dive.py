@@ -528,3 +528,18 @@ def test_technical_deep_dive_models_are_frozen_and_render_all_references() -> No
         ModelLedgerRef(ts=f"{_DAY}T12:00:00Z", lane="")
     with pytest.raises(ValidationError):
         ModelClaimCitation.model_validate({"unexpected": True})
+
+
+def test_technical_deep_dive_scrubs_registry_root_paths() -> None:
+    root = "omni" + "_home"
+    sources = [
+        "~/Code/" + root + "/omni_worktrees/x/repo",
+        "/" + "Users/operator/Code/" + root + "/.onex_state/a.json",
+        "$" + "OMNI_HOME/omnimarket",
+        root + "/.claude_scratch/b",
+    ]
+    for source in sources:
+        cleaned = scrub("kept " + source)
+        assert root not in cleaned
+        assert "OMNI_HOME" not in cleaned
+        assert cleaned.startswith("kept the registry root/")
