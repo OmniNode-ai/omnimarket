@@ -42,34 +42,36 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
   - id: "dod-omn21116-deploy-install-plugin-dirs"
-    description: "Hosted deploy smoke: install the shipped manual compaction row in process into a temporary home, then require the settings to name the installed mod folder in CLAUDE_CODE_PLUGIN_DIRS, the module argv to be the absolute adapter script of the running environment, and the installed bytes to equal the render. At the merge base the settings carry no CLAUDE_CODE_PLUGIN_DIRS, so the first assertion fails. Runs without a deployed lane or external services."
+    description: "Hosted deploy smoke: an ephemeral Python 3.13 container installs the read-only checkout from uv.lock into /tmp, reusing the verifier's uv cache and omitting dev dependencies and omnibase-infra, which this install path does not import. The shipped manual compaction row is installed into a temporary home with the real work-tree guard, then the settings must name the installed mod folder in CLAUDE_CODE_PLUGIN_DIRS, the module argv must contain the absolute adapter script of the container environment, and the installed bytes must equal the render. At the merge base the settings carry no CLAUDE_CODE_PLUGIN_DIRS, so that assertion fails. No deployed lane or external service is required."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: |
-          set -eu;
-          probe_dir="$(mktemp -d)";
-          trap 'rm -rf "$probe_dir"' EXIT;
-          export PYTHONDONTWRITEBYTECODE=1;
-          uv run --locked python - "$probe_dir" <<'PY'
+          docker run --rm --user "$(id -u):$(id -g)" \
+          --label onex.deploy-probe=OMN-21116 \
+          --volume "$PWD:/workspace:ro" --workdir /workspace \
+          --volume "$(uv cache dir):/uv-cache" --env UV_CACHE_DIR=/uv-cache --env UV_LINK_MODE=copy \
+          --env UV_PROJECT_ENVIRONMENT=/tmp/omnimarket-venv \
+          --env PYTHONDONTWRITEBYTECODE=1 \
+          ghcr.io/astral-sh/uv:python3.13-bookworm-slim \
+          sh -c 'uv sync --frozen --no-dev --no-install-package omnibase-infra --quiet && uv run --no-sync python -c "$0"' '
           import json
-          import sys
+          import tempfile
           from pathlib import Path
           from omnimarket.models.claude_code_binding import EnumClientMaxMode
           from omnimarket.nodes.node_claude_code_binding_install_effect.handlers import handler_binding_install as hbi
           from omnimarket.nodes.node_claude_code_binding_install_effect.models import ModelBindingInstallRequest
           from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_client_bindings_loader import load_client_section
-          root = Path(sys.argv[1])
-          hbi._inside_a_work_tree = lambda path: False
-          request = ModelBindingInstallRequest(bindings=load_client_section().bindings, max_mode=EnumClientMaxMode.OBSERVE, mods_dir=str(root / "mods"), settings_path=str(root / "settings.json"), supported_probe_rows=("P0", "P6", "P11a", "P13", "P14"))
-          result = hbi.HandlerClaudeCodeBindingInstall().handle(request)
-          plugin_dir = str(root / "mods" / "onex-claude-code-bindings")
-          env = json.loads((root / "settings.json").read_text())["env"]
-          assert env["CLAUDE_CODE_PLUGIN_DIRS"] == plugin_dir, env
-          command = hbi._resolve_adapter_command()
-          assert command.startswith("/") and command.endswith("/onex-claude-code-hook"), command
-          assert f"['{command}', '--binding', 'compaction']" in Path(result.module_path).read_text()
-          assert result.installed_sha256 == result.render_sha256, result
-          print(json.dumps({"plugin_dir": plugin_dir, "sha256": result.installed_sha256}))
-          PY
+          with tempfile.TemporaryDirectory() as home:
+              root = Path(home)
+              request = ModelBindingInstallRequest(bindings=load_client_section().bindings, max_mode=EnumClientMaxMode.OBSERVE, mods_dir=str(root / "mods"), settings_path=str(root / "settings.json"), supported_probe_rows=("P0", "P6", "P11a", "P13", "P14"))
+              result = hbi.HandlerClaudeCodeBindingInstall().handle(request)
+              plugin_dir = str(root / "mods" / "onex-claude-code-bindings")
+              env = json.loads((root / "settings.json").read_text())["env"]
+              assert env["CLAUDE_CODE_PLUGIN_DIRS"] == plugin_dir, env
+              command = hbi._resolve_adapter_command()
+              assert command.startswith("/") and command.endswith("/onex-claude-code-hook"), command
+              assert repr([command, "--binding", "compaction"]) in Path(result.module_path).read_text()
+              assert result.installed_sha256 == result.render_sha256, result
+              print(json.dumps({"plugin_dir": plugin_dir, "adapter_command": command, "sha256": result.installed_sha256}))'
         cwd: "${OMNI_HOME}/omnimarket"
