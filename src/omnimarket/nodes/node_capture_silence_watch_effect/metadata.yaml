@@ -1,0 +1,25 @@
+name: capture_silence_watch_effect
+version: "1.0.0"
+description: >
+  Reads source and active principal capture freshness on a timer and publishes
+  silence findings through the canonical Slack effect. Every tick publishes
+  its own automation heartbeat and terminal evaluation.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: publish_event
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+  - "pydantic>=2.0"
+  # The shared read-only Postgres boundary owns the sync driver import.
+  - "psycopg2-binary>=2.9"
+  - "aiokafka>=0.11.0"
+  - "omnibase-infra>=0.16.0"
+tags: [effect, observability, alerting, capture]
+pack: "data"
+display_name: "Effect: Capture Silence Watch"
+node_role: "effect"
