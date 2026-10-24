@@ -89,4 +89,4 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: >-
-          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/work_ledger_fold.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -qE '^class WorkLedgerFoldMemo\b'
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/work_ledger_fold.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -E '^class WorkLedgerFoldMemo\b' > /dev/null
