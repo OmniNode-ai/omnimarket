@@ -36,7 +36,7 @@ import json
 import os
 import re
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -88,6 +88,7 @@ PINNED_FACTORS = frozenset(
     {EnumContextFactor.OPERATOR_WORDS_UNRECORDED, EnumContextFactor.REPO_STATE}
 )
 _ROW_STAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+_SOURCE_STAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
 _COVERS = re.compile(r"^(\d+):(\d+)$")
 _REVIEWED = re.compile(r"^(\S+)\.\.(\S+)$")
 
@@ -387,12 +388,12 @@ class HandlerSessionContextSources:
                 EnumSessionSourceFailure.LEDGER_MISSING,
                 f"{LEDGER_PATH_ENV} is required, has no default, and must name the ledger file",
             )
-        watermark = request.revision if _ROW_STAMP.match(request.revision) else None
         until = (
-            datetime.strptime(watermark, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
-            if watermark
+            datetime.fromisoformat(request.revision)
+            if _SOURCE_STAMP.match(request.revision)
             else None
         )
+        watermark = until.strftime("%Y-%m-%dT%H:%M:%SZ") if until else None
         prompts = transcript_prompts(
             path.read_text(encoding="utf-8").splitlines(), path.name, until=until
         )

@@ -57,6 +57,9 @@ dod_evidence:
     description: "Hosted deploy smoke for the local SQLite runtime: reconcile a temporary four-column claims store with 33 old rows twice, require the rows to survive and both current indexes to exist, then serve and read a shipped projection through the packaged dashboard HTTP application. The unfixed store reconciliation raises before the HTTP server starts. No external lane, credentials or model endpoint is needed."
     source: "manual"
     checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/projection/test_omn21349_claims_table_old_shape.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
         check_value: |
           set -eu;

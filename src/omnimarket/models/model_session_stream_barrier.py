@@ -47,6 +47,10 @@ class ModelSessionStreamBarrierProbe(BaseModel):
     barrier_id: str = Field(min_length=1)
     barriers: tuple[ModelSessionStreamBarrier, ...]
     applied: dict[SessionStream, tuple[int, ...]] = Field(default_factory=dict)
+    #: The barrier's recorded source cutoff, distinct from its opaque identity.
+    source_revision: str | None = Field(
+        default=None, pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$"
+    )
 
 
 class ModelSessionStreamState(BaseModel):
@@ -76,7 +80,7 @@ class ModelSessionStreamBarrierVerdict(BaseModel):
 
     session_id: str
     barrier_id: str
-    outcome: Literal["met", "not_met", "disabled", "no_barrier"]
+    outcome: Literal["met", "not_met", "disabled", "no_barrier", "deadline"]
     streams: tuple[ModelSessionStreamState, ...]
 
 

@@ -11,9 +11,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
+from omnibase_core.enums.enum_context_factor import EnumContextFactor
 from omnibase_core.models.context.model_context_access import ModelContextAccess
 
 from omnimarket.models.context_compaction import (
@@ -53,14 +55,34 @@ class HandlerCompactionPackBuild:
         self._profile_name = profile_name
 
     def build(
-        self, request: ModelContextCompactionRequested
+        self,
+        request: ModelContextCompactionRequested,
+        *,
+        source_revision: str | None = None,
     ) -> ModelContextCompactionBuildOutcome:
+        # Ledger row revisions have second precision; transcript boundaries may
+        # have fractions and must retain every pre-barrier prompt.
+        revisions: dict[EnumContextFactor, str] = {}
+        if source_revision is not None:
+            ledger_revision = datetime.fromisoformat(source_revision).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
+            revisions = dict.fromkeys(
+                (
+                    EnumContextFactor.OPERATOR_RULINGS,
+                    EnumContextFactor.OPEN_WORK,
+                    EnumContextFactor.ORCHESTRATION_STATE,
+                ),
+                ledger_revision,
+            )
+            revisions[EnumContextFactor.OPERATOR_WORDS_UNRECORDED] = source_revision
         command = ModelContextPackCommand(
             request=ModelContextPackRequest(
                 profile_name=self._profile_name,
                 session_id=request.session_id,
                 newest_turn=request.newest_turn,
                 session_barrier=request.barrier_id,
+                tier_revisions=revisions,
             ),
             access=self._access,
         )

@@ -51,6 +51,7 @@ _MIGRATIONS = (
     _NODE_DIR / "migrations" / "0005_add_goal_id.sql",
     _NODE_DIR / "migrations" / "0006_add_lane_model_host_exit_code.sql",
     _NODE_DIR / "migrations" / "0007_add_guard_refusal_and_token_usage.sql",
+    _NODE_DIR / "migrations" / "0008_add_producer_sequence.sql",
 )
 _FIXTURES = Path(__file__).resolve().parent / "fixtures" / "claude_hook_capture"
 _SCHEMA = "omn19513_claude_hook_events_write_path_test"
@@ -139,6 +140,8 @@ async def _event_rows(conn: asyncpg.Connection) -> dict[str, dict[str, Any]]:
         record = dict(row)
         record.pop("ingested_at")
         record.pop("projection_cursor")
+        producer_seq = record.pop("producer_seq")
+        assert producer_seq is None
         # OMN-20031: no scenario event binds a goal, so both columns are NULL.
         goal_id = record.pop("goal_id")
         parent_goal_id = record.pop("parent_goal_id")
