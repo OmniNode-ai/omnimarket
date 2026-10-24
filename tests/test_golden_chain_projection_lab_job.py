@@ -153,12 +153,15 @@ def test_the_contract_subscribes_to_exactly_the_registered_topic() -> None:
     contract = _load_contract()
     assert contract["event_bus"]["subscribe_topics"] == [LAB_JOB_TRANSITIONED_TOPIC_V1]
     assert _writer().subscribe_topics == [LAB_JOB_TRANSITIONED_TOPIC_V1]
-    assert contract["externally_produced_topics"] == [
-        {
-            "topic": LAB_JOB_TRANSITIONED_TOPIC_V1,
-            "producer": "node_lab_job_orchestrator (plan step M3, not yet built), publishing each reducer transition with its CAS-assigned seq -- not yet a node contract",
-        }
-    ]
+    # The delegation effect is the declared producer, so no external producer
+    # placeholder remains on the consumer's contract.
+    assert "externally_produced_topics" not in contract
+    producer = yaml.safe_load(
+        (
+            _CONTRACT.parents[1] / "node_llm_delegation_call_effect" / "contract.yaml"
+        ).read_text()
+    )
+    assert LAB_JOB_TRANSITIONED_TOPIC_V1 in producer["event_bus"]["publish_topics"]
 
 
 def test_the_contract_declares_the_applied_and_dlq_topics() -> None:
