@@ -9,9 +9,16 @@ named by an environment variable), and reports:
 
 * rows in the file and missing from the projection,
 * rows in the projection and missing from the file,
-* state mismatches: the file's rows in the window folded with the SAME pure fold
+* state mismatches: the file's rows through the state horizon folded with the SAME pure fold
   the projection applies, compared entity by entity on ``opened_at`` and
-  ``closed_at`` (only fields the window's rows can establish).
+  ``closed_at`` (only entities touched by the window's rows).
+
+State is compared as of ``--state-horizon`` (default: the file's latest row),
+folding from the window's start through that horizon. A projected timestamp
+strictly after the horizon is excluded only with the projection's own later row:
+the row id that set the field must be stamped after the horizon at that time,
+and must not be among the file's rows folded for state. Its entity is then
+counted apart in ``state_after_horizon``, without a mismatch for that field.
 
 Exit code 0 is exact parity (no mismatch and at least one row in the window), 1
 is a mismatch or an empty window, 2 is an error. The retirement bar is exact
@@ -35,8 +42,8 @@ missing source is never read as an empty one. The exit code is unchanged.
 receipt instead of the report: one STATUS ledger row, ``lane=work-ledger-parity``,
 carrying ``file_rows``, ``projection_rows``, ``missing``, ``extra``,
 ``state_mismatches``, ``unexplained``, ``backfilled`` and ``exact`` for that day.
-``backfilled`` is 1 when any of the day's projected rows carries the emit backfill
-tool's source, ``onex-ledger-emit-backfill``; ``exact=yes`` needs every count at
+``backfilled`` is 1 when any of the day's projected rows carries the source
+``onex-ledger-emit-backfill`` or ``ledger-emit``; ``exact=yes`` needs every count at
 zero, ``backfilled=0`` and at least one row. The receipt's exit code is 0 for an
 exact day and 1 otherwise, so a caller appends the row on 0 or 1 and on nothing else.
 """
@@ -50,6 +57,7 @@ import os
 import re
 import sys
 from collections import Counter
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -80,6 +88,7 @@ QUARANTINE_DIR_NAME = "quarantine"
 LOSS_LOG_NAME = "hook_emit_journal_losses.jsonl"
 _LEDGER_EVENT_PREFIX = "work.ledger."
 BACKFILL_SOURCE = "onex-ledger-emit-backfill"
+BACKFILL_SOURCES = frozenset({"onex-ledger-emit-backfill", "ledger-emit"})
 RECEIPT_LANE = "work-ledger-parity"
 RECEIPT_ACTOR = "script:work-ledger-parity"
 
@@ -94,7 +103,11 @@ _SELECT_SOURCES = """
     WHERE row_ts >= $1 AND row_ts <= $2 GROUP BY source
 """
 _SELECT_STATE = """
-    SELECT entity_key, kind, opened_at, closed_at FROM omninode_internal.work_ledger_state
+    SELECT entity_key, kind, opened_at, closed_at, opened_row_id, closed_row_id
+    FROM omninode_internal.work_ledger_state
+"""
+_SELECT_LATER_ROWS = """
+    SELECT row_id, row_ts FROM omninode_internal.work_ledger_rows WHERE row_ts > $1
 """
 
 
@@ -118,6 +131,13 @@ def _iso(value: object) -> str | None:
     return str(value)
 
 
+def file_horizon(file_rows: list[str], until: datetime) -> datetime:
+    """The latest first-cell timestamp in the file, or ``until`` when empty. Pure."""
+    return max(
+        (parse_stamp(raw.split(" | ", 1)[0]) for raw in file_rows), default=until
+    )
+
+
 def compare(
     *,
     file_rows: list[str],
@@ -125,23 +145,36 @@ def compare(
     projection_state: dict[str, dict[str, Any]],
     since: datetime,
     until: datetime,
+    state_horizon: datetime | None = None,
+    later_projection_rows: Mapping[str, str] | None = None,
 ) -> ModelWorkLedgerParityReport:
     """Compare the file's rows in the window with the projection. Pure."""
+    stamped_rows = [(parse_stamp(raw.split(" | ", 1)[0]), raw) for raw in file_rows]
+    if state_horizon is None:
+        state_horizon = file_horizon(file_rows, until)
     in_window: dict[str, str] = {}
-    fold_results = []
+    state_row_ids: set[str] = set()
+    expected: dict[str, dict[str, object]] = {}
+    touched: set[str] = set()
     unemittable: Counter[str] = Counter()
-    for raw in file_rows:
-        stamp = parse_stamp(raw.split(" | ", 1)[0])
-        if not since <= stamp <= until:
+    for stamp, raw in stamped_rows:
+        row_in_window = since <= stamp <= until
+        row_in_state = since <= stamp <= state_horizon
+        if not (row_in_window or row_in_state):
             continue
         try:
             result = fold_row(ModelWorkLedgerFoldRequest(raw_row=raw))
         except WorkLedgerFoldError:
-            match = _TYPE_CELL.match(raw)
-            unemittable[match.group("type") if match else "?"] += 1
+            if row_in_window:
+                match = _TYPE_CELL.match(raw)
+                unemittable[match.group("type") if match else "?"] += 1
             continue
-        in_window[result.row.row_id] = raw
-        fold_results.append(result)
+        if row_in_window:
+            in_window[result.row.row_id] = raw
+            touched.update(op.entity_key for op in result.ops)
+        if row_in_state:
+            state_row_ids.add(result.row.row_id)
+            apply_ops(expected, result.ops)
 
     mismatches: list[ModelParityMismatch] = []
     for row_id in sorted(in_window.keys() - projection_rows.keys()):
@@ -161,9 +194,8 @@ def compare(
             )
         )
 
-    expected: dict[str, dict[str, object]] = {}
-    for result in fold_results:
-        apply_ops(expected, result.ops)
+    expected = {key: value for key, value in expected.items() if key in touched}
+    state_after_horizon: set[str] = set()
     for key in sorted(expected):
         want = expected[key]
         have = projection_state.get(key)
@@ -174,11 +206,37 @@ def compare(
                 )
             )
             continue
-        for field, kind in (
-            ("opened_at", EnumParityMismatchKind.STATE_OPENED_AT_DIFFERS),
-            ("closed_at", EnumParityMismatchKind.STATE_CLOSED_AT_DIFFERS),
+        for field, row_id_field, kind in (
+            (
+                "opened_at",
+                "opened_row_id",
+                EnumParityMismatchKind.STATE_OPENED_AT_DIFFERS,
+            ),
+            (
+                "closed_at",
+                "closed_row_id",
+                EnumParityMismatchKind.STATE_CLOSED_AT_DIFFERS,
+            ),
         ):
-            if want[field] is not None and _iso(want[field]) != _iso(have.get(field)):
+            if want[field] is None:
+                continue
+            projected = have.get(field)
+            if isinstance(projected, str):
+                projected = datetime.fromisoformat(projected)
+            if isinstance(projected, datetime):
+                projected = projected.astimezone(UTC)
+                projected_row_id = have.get(row_id_field)
+                if (
+                    projected > state_horizon
+                    and later_projection_rows
+                    and isinstance(projected_row_id, str)
+                    and projected_row_id in later_projection_rows
+                    and later_projection_rows[projected_row_id] == _iso(projected)
+                    and projected_row_id not in state_row_ids
+                ):
+                    state_after_horizon.add(key)
+                    continue
+            if _iso(want[field]) != _iso(projected):
                 mismatches.append(
                     ModelParityMismatch(
                         kind=kind,
@@ -194,6 +252,8 @@ def compare(
         unemittable_rows=sum(unemittable.values()),
         unemittable_types=dict(unemittable),
         state_entities_compared=len(expected),
+        state_horizon=state_horizon,
+        state_after_horizon=tuple(sorted(state_after_horizon)),
         mismatches=tuple(mismatches),
     )
 
@@ -384,6 +444,16 @@ def load_projection_json(
     return rows, state
 
 
+def load_projection_later_rows_json(path: Path, horizon: datetime) -> dict[str, str]:
+    """Read exported row evidence strictly after the state horizon, in UTC."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return {
+        str(r["row_id"]): _iso(stamp) or ""
+        for r in data.get("rows", [])
+        if (stamp := parse_stamp(str(r["row_ts"]))) > horizon
+    }
+
+
 def load_projection_sources_json(
     path: Path, since: datetime, until: datetime
 ) -> dict[str, int]:
@@ -411,9 +481,18 @@ async def _load_projection_sources_db(
         await conn.close()
 
 
+def backfilled_rows(report: ModelWorkLedgerParityReport) -> int:
+    """Count projected rows emitted through either backfill path."""
+    return sum(
+        count
+        for source, count in report.projection_sources.items()
+        if source in BACKFILL_SOURCES
+    )
+
+
 def receipt_exact(report: ModelWorkLedgerParityReport) -> bool:
     """Phase 1's bar: exact parity and no backfilled row in the window."""
-    return report.exact and not report.projection_sources.get(BACKFILL_SOURCE, 0)
+    return report.exact and backfilled_rows(report) == 0
 
 
 def receipt_row(report: ModelWorkLedgerParityReport, day: str, now: datetime) -> str:
@@ -430,7 +509,7 @@ def receipt_row(report: ModelWorkLedgerParityReport, day: str, now: datetime) ->
         )
     )
     unexplained = report.explain.unexplained if report.explain is not None else missing
-    backfilled = 1 if report.projection_sources.get(BACKFILL_SOURCE, 0) else 0
+    backfilled = 1 if backfilled_rows(report) > 0 else 0
     exact = "yes" if receipt_exact(report) else "no"
     cells = [
         f"{now:%Y-%m-%dT%H:%M:%SZ}", "STATUS", f"lane={RECEIPT_LANE}",
@@ -444,8 +523,8 @@ def receipt_row(report: ModelWorkLedgerParityReport, day: str, now: datetime) ->
 
 
 async def _load_projection_db(
-    dsn: str, since: datetime, until: datetime
-) -> tuple[dict[str, str], dict[str, dict[str, Any]]]:
+    dsn: str, since: datetime, until: datetime, horizon: datetime
+) -> tuple[dict[str, str], dict[str, dict[str, Any]], dict[str, str]]:
     import asyncpg  # lazy: only the live read needs a database driver
 
     conn = await asyncpg.connect(dsn)
@@ -455,9 +534,13 @@ async def _load_projection_db(
             for r in await conn.fetch(_SELECT_ROWS, since, until)
         }
         state = {r["entity_key"]: dict(r) for r in await conn.fetch(_SELECT_STATE)}
+        later_rows = {
+            r["row_id"]: _iso(r["row_ts"]) or ""
+            for r in await conn.fetch(_SELECT_LATER_ROWS, horizon)
+        }
     finally:
         await conn.close()
-    return rows, state
+    return rows, state, later_rows
 
 
 def _window(
@@ -496,6 +579,11 @@ def main(argv: list[str] | None = None) -> int:
         help="print the daily parity receipt row for --utc-day (implies --explain)",
     )
     parser.add_argument("--until", type=_parse_when, help="UTC; default now")
+    parser.add_argument(
+        "--state-horizon",
+        type=_parse_when,
+        help="UTC; the latest file row folded for the state comparison (default: the file's latest row)",
+    )
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--projection-json", type=Path, help="exported projection JSON")
     source.add_argument(
@@ -530,16 +618,18 @@ def main(argv: list[str] | None = None) -> int:
     ledger = args.ledger or Path(os.environ["ONEX_LEDGER_PATH"])
     try:
         file_rows = _read_ledger_files(ledger, args.archive_dir)
+        horizon = args.state_horizon or file_horizon(file_rows, until)
         if args.projection_json is not None:
             proj_rows, proj_state = load_projection_json(
                 args.projection_json, since, until
             )
+            later_rows = load_projection_later_rows_json(args.projection_json, horizon)
             sources = load_projection_sources_json(args.projection_json, since, until)
         else:
             dsn = os.environ[args.dsn_env]
             try:
-                proj_rows, proj_state = asyncio.run(
-                    _load_projection_db(dsn, since, until)
+                proj_rows, proj_state, later_rows = asyncio.run(
+                    _load_projection_db(dsn, since, until, horizon)
                 )
                 sources = asyncio.run(_load_projection_sources_db(dsn, since, until))
             except Exception as exc:
@@ -554,6 +644,8 @@ def main(argv: list[str] | None = None) -> int:
             projection_state=proj_state,
             since=since,
             until=until,
+            state_horizon=horizon,
+            later_projection_rows=later_rows,
         ).model_copy(update={"projection_sources": sources})
         if args.explain or args.receipt:
             missing = [
@@ -583,6 +675,7 @@ def main(argv: list[str] | None = None) -> int:
             f"window {report.window_since:%Y-%m-%dT%H:%M:%SZ}..{report.window_until:%Y-%m-%dT%H:%M:%SZ} "
             f"file_rows={report.file_rows} projection_rows={report.projection_rows} "
             f"unemittable={report.unemittable_rows} entities={report.state_entities_compared} "
+            f"state_after_horizon={len(report.state_after_horizon)} "
             f"mismatches={len(report.mismatches)} exact={report.exact}\n"
         )
         for m in report.mismatches[:50]:

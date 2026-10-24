@@ -196,6 +196,7 @@ class _ParityConnection:
         stage = {
             parity._SELECT_ROWS: "rows",
             parity._SELECT_STATE: "state",
+            parity._SELECT_LATER_ROWS: "later_rows",
             parity._SELECT_SOURCES: "sources",
         }[query]
         if stage == self.fail_at:
@@ -212,6 +213,14 @@ class _ParityConnection:
         if stage == "state":
             assert args == ()
             return [{"entity_key": key, **value} for key, value in self.state.items()]
+        if stage == "later_rows":
+            (horizon,) = args
+            assert isinstance(horizon, datetime)
+            return [
+                {"row_id": key, "row_ts": stamp}
+                for key, stamp in self.rows.items()
+                if datetime.fromisoformat(stamp) > horizon
+            ]
         return [{"source": "onex-ledger", "n": len(self.rows)}]
 
     async def close(self) -> None:
@@ -323,6 +332,7 @@ def test_parity_database_reads_state_live(
     assert connection.queries == [
         parity._SELECT_ROWS,
         parity._SELECT_STATE,
+        parity._SELECT_LATER_ROWS,
         parity._SELECT_SOURCES,
     ]
     assert connection.closed

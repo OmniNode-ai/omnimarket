@@ -78,6 +78,7 @@ from omnimarket.routing.byok_plan_detection import (
     detect_byok_plan,
 )
 from omnimarket.routing.byok_provider_backends import (
+    ANTHROPIC_WORKSPACE_ID_PATTERN,
     ByokCatalogError,
     byok_automatic_plans,
     byok_provider_plans,
@@ -341,6 +342,18 @@ class ModelInferenceCredentialCreateRequest(BaseModel):
         ),
     )
 
+    workspace_id: str | None = Field(
+        default=None,
+        pattern=ANTHROPIC_WORKSPACE_ID_PATTERN,
+        description=(
+            "OMN-20967. The Anthropic workspace the key belongs to. A company "
+            "Claude API key is answered only when each request names its "
+            "workspace in the anthropic-workspace-id header, so the id is "
+            "stored with the key and sent with every request made on it. Only "
+            "an anthropic key has one. None sends no workspace header, as before."
+        ),
+    )
+
     @field_validator("provider", mode="after")
     @classmethod
     def _provider_must_be_on_the_customer_catalogue(cls, provider: str) -> str:
@@ -385,6 +398,21 @@ class ModelInferenceCredentialCreateRequest(BaseModel):
                 "credential that can never be routed."
             )
         return provider
+
+    @model_validator(mode="after")
+    def _workspace_id_is_an_anthropic_fact(
+        self,
+    ) -> ModelInferenceCredentialCreateRequest:
+        """Only a provider whose catalogue row declares workspaces takes an id."""
+        if self.workspace_id is None:
+            return self
+        backend = resolve_byok_provider_backend(self.provider)
+        if backend is None or backend.workspace_header is None:
+            raise ValueError(
+                f"{self.provider!r} has no workspaces, so a workspace id cannot "
+                "be stored with its key; nothing was stored."
+            )
+        return self
 
     @model_validator(mode="after")
     def _plan_must_be_one_the_provider_declares(
@@ -436,6 +464,8 @@ class ModelInferenceCredentialResponse(BaseModel):
     expiry_warning: EnumCredentialExpiryWarning | None = None
     #: OMN-21012. The lab host the key is bound to, if any.
     bound_host: str | None = None
+    #: OMN-20967. The Anthropic workspace the key belongs to, if any.
+    workspace_id: str | None = None
     created_at: datetime
 
 
@@ -476,6 +506,11 @@ class ModelCredentialRegisteredEvent(BaseModel):
     # OMN-21012. The lab host the key is bound to; optional for the same reason,
     # and a key without one stays usable from any host.
     bound_host: str | None = Field(default=None, pattern=LAB_HOST_NAME_PATTERN)
+    # OMN-20967. The Anthropic workspace the key belongs to; optional for the
+    # same reason. An id names a workspace and is not a credential.
+    workspace_id: str | None = Field(
+        default=None, pattern=ANTHROPIC_WORKSPACE_ID_PATTERN
+    )
 
 
 class ModelCredentialRevokedEvent(BaseModel):
@@ -743,12 +778,19 @@ async def _resolve_registration_model(
             or the customer chooses the model for this provider and chose none.
     """
     backend = resolve_byok_provider_backend(request.provider, plan=plan)
+    # OMN-20967: the workspace rides only when the key has one, so a discoverer
+    # written before it is called exactly as before.
+    workspace = (
+        {"workspace_id": request.workspace_id}
+        if request.workspace_id is not None
+        else {}
+    )
     if request.model is not None:
         # OMN-20844: the customer's own choice, checked against their key's list.
         if backend is None:
             return request.model
         chosen = await model_discoverer(
-            backend, request.key_value, chosen=request.model
+            backend, request.key_value, chosen=request.model, **workspace
         )
         refusal = describe_discovery_refusal(chosen)
         if refusal is not None:
@@ -762,7 +804,7 @@ async def _resolve_registration_model(
         return known
     if backend is None:
         return None
-    discovery = await model_discoverer(backend, request.key_value)
+    discovery = await model_discoverer(backend, request.key_value, **workspace)
     refusal = describe_discovery_refusal(discovery)
     if refusal is not None:
         raise CredentialKeyRefusedError(request.provider, discovery.outcome, refusal)
@@ -874,6 +916,7 @@ async def register_inference_credential(
         },
         expires_at=request.expires_at,
         bound_host=request.bound_host,
+        workspace_id=request.workspace_id,
     )
     envelope: ModelEventEnvelope[
         ModelCredentialRegisteredEvent | ModelCredentialRevokedEvent
@@ -907,6 +950,7 @@ async def register_inference_credential(
         expires_at=request.expires_at,
         expiry_warning=credential_expiry_warning(request.expires_at),
         bound_host=request.bound_host,
+        workspace_id=request.workspace_id,
         created_at=envelope.envelope_timestamp,
     )
 

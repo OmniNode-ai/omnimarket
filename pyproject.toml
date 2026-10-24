@@ -462,6 +462,7 @@ node_delegation_ground_truth_label_compute = "omnimarket.nodes.node_delegation_g
 node_delegation_rubric_check_compute = "omnimarket.nodes.node_delegation_rubric_check_compute"
 node_contract_projection_check_compute = "omnimarket.nodes.node_contract_projection_check_compute"
 node_skill_hygiene_validate_compute = "omnimarket.nodes.node_skill_hygiene_validate_compute"
+node_standup_draft_check_compute = "omnimarket.nodes.node_standup_draft_check_compute"
 node_skill_contract_validate_compute = "omnimarket.nodes.node_skill_contract_validate_compute"
 node_skill_tree_read_effect = "omnimarket.nodes.node_skill_tree_read_effect"
 node_contract_projection_check_effect = "omnimarket.nodes.node_contract_projection_check_effect"
@@ -1117,7 +1118,12 @@ omnimarket = "omnimarket.nodes"
 # OMN-21334: infra#5307 vendors both compaction barrier projection migrations.
 # OMN-19448: infra#5326 vendors node_projection_delegation 0064 (data_source
 # admits experiment) byte-identical.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261024113111-7e969fd8c88b" }
+# OMN-17427: infra#5293 vendors 0000_delegation_lab_job_execution.sql and grants
+# omninode_runtime read/write on omninode_internal.delegation_lab_job*.
+# OMN-21015: infra#5306 vendors migration 100 (overview token directions).
+# OMN-20967: infra#5299 vendors node_projection_tenant_credentials 0008
+# (workspace_id column) byte-identical.
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261024144528-903e73af2f49" }
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
 # their git-source overrides). The version-range overrides below already target
 # the released artifacts: core>=0.46.7,<0.47.0 and

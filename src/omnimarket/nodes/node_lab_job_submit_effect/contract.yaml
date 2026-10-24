@@ -3,10 +3,10 @@
 # ONEX Node Contract - Lab Job Submit Effect (OMN-20604)
 #
 # Publishes the lab job supervisor's submitted command. The topic is declared
-# under submit_dispatch.command_topic, with NO event_bus and NO handler_routing
-# block, so runtime auto-wiring never attaches this node (the same reason as
+# under submit_dispatch.command_topic, with no subscriptions or handler_routing
+# block, so runtime auto-wiring never attaches a consumer (the same reason as
 # node_lab_work_unit_effect: a runtime must not race the intended consumer).
-# The consumer is node_lab_job_orchestrator (plan M3), which declares the
+# The consumer is node_llm_delegation_call_effect, which declares the
 # subscription. job_id is the bus key and the dedup key; the reducer drops a
 # duplicate submission.
 name: node_lab_job_submit_effect
@@ -27,6 +27,14 @@ output_model:
   module: omnimarket.nodes.node_lab_job_submit_effect.models.model_lab_job_submit_receipt
 submit_dispatch:
   command_topic: "onex.cmd.omnimarket.lab-job-submitted.v1"
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+    - "onex.cmd.omnimarket.lab-job-submitted.v1"
+  publish_topic_metadata:
+    "onex.cmd.omnimarket.lab-job-submitted.v1":
+      schema_ref: "omnimarket.models.lab_job.ModelLabJobSpec"
+      description: "ModelEventEnvelope v1, event_type omnimarket.lab-job-submitted, partition key job_id."
 descriptor:
   node_archetype: effect
   purity: impure

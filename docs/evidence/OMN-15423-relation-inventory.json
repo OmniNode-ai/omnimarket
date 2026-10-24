@@ -104,7 +104,7 @@
     "extension": 1,
     "function": 15,
     "sequence": 36,
-    "table": 114,
+    "table": 116,
     "view": 10
   },
   "relations": [
@@ -4348,6 +4348,124 @@
       "target_schema": "public",
       "writers": [
         "node_projection_delegation"
+      ]
+    },
+    {
+      "accessor_nodes": [
+        "node_llm_delegation_call_effect",
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_llm_delegation_call_effect/migrations/0000_delegation_lab_job_execution.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "classified",
+      "constraints": [],
+      "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_llm_delegation_call_effect/contract.yaml"
+      ],
+      "current_schema": [
+        "omninode_internal"
+      ],
+      "dependencies": [
+        "delegation_lab_jobs"
+      ],
+      "dependent_objects": [],
+      "domain": "OMNINODE_INTERNAL",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [
+        "FOREIGN KEY (job_id) REFERENCES delegation_lab_jobs (job_id)"
+      ],
+      "grants": [
+        "SELECT, INSERT, UPDATE TO omninode_runtime"
+      ],
+      "indexes": [],
+      "internal_tenant_column_transform": {
+        "key_fk_index_partition_dependencies": [],
+        "runtime_collision_scan": "not_applicable",
+        "source_occurrences": [],
+        "status": "not_applicable_no_source_tenant_id"
+      },
+      "keys": [
+        "PRIMARY KEY (job_id, seq)"
+      ],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_llm_delegation_call_effect",
+      "name": "delegation_lab_job_outbox",
+      "owner_declaration": "node_llm_delegation_call_effect",
+      "partitioning": [],
+      "producer": "node_llm_delegation_call_effect",
+      "readers": [
+        "node_llm_delegation_call_effect",
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "target_schema": "omninode_internal",
+      "writers": [
+        "node_llm_delegation_call_effect",
+        "service:omnimarket_projection_migration_runner"
+      ]
+    },
+    {
+      "accessor_nodes": [
+        "node_llm_delegation_call_effect",
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_llm_delegation_call_effect/migrations/0000_delegation_lab_job_execution.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "classified",
+      "constraints": [],
+      "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_llm_delegation_call_effect/contract.yaml"
+      ],
+      "current_schema": [
+        "omninode_internal"
+      ],
+      "dependencies": [],
+      "dependent_objects": [
+        "table:delegation_lab_job_outbox"
+      ],
+      "domain": "OMNINODE_INTERNAL",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [
+        "SELECT, INSERT, UPDATE TO omninode_runtime"
+      ],
+      "indexes": [],
+      "internal_tenant_column_transform": {
+        "key_fk_index_partition_dependencies": [],
+        "runtime_collision_scan": "not_applicable",
+        "source_occurrences": [],
+        "status": "not_applicable_no_source_tenant_id"
+      },
+      "keys": [
+        "PRIMARY KEY (job_id)"
+      ],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_llm_delegation_call_effect",
+      "name": "delegation_lab_jobs",
+      "owner_declaration": "node_llm_delegation_call_effect",
+      "partitioning": [],
+      "producer": "node_llm_delegation_call_effect",
+      "readers": [
+        "node_llm_delegation_call_effect",
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "target_schema": "omninode_internal",
+      "writers": [
+        "node_llm_delegation_call_effect",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
@@ -9292,7 +9410,8 @@
         "src/omnimarket/nodes/node_projection_savings/migrations/077_create_cost_savings_overview_projection_view.sql",
         "src/omnimarket/nodes/node_projection_savings/migrations/089_savings_aggregate_views_per_tenant.sql",
         "src/omnimarket/nodes/node_projection_savings/migrations/094_savings_overview_measured_provenance.sql",
-        "src/omnimarket/nodes/node_projection_savings/migrations/097_savings_overview_all_runs.sql"
+        "src/omnimarket/nodes/node_projection_savings/migrations/097_savings_overview_all_runs.sql",
+        "src/omnimarket/nodes/node_projection_savings/migrations/100_savings_overview_token_directions.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",
@@ -9700,8 +9819,8 @@
     "parity_status": "blocked",
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
-    "source_created_tables": 104,
-    "source_declared_tables": 114
+    "source_created_tables": 106,
+    "source_declared_tables": 116
   },
   "runtime_evidence": {
     "dsn_key_provenance": {
@@ -9717,7 +9836,7 @@
       "status": "blocked"
     },
     "live_catalog_parity": {
-      "reason": "repository sources contain 104 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-0-table gap require an authorized catalog read",
+      "reason": "repository sources contain 106 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-0-table gap require an authorized catalog read",
       "status": "blocked"
     }
   },

@@ -597,6 +597,9 @@ providers:
     models_auth: x_api_key
     models_headers:
       anthropic-version: "2023-06-01"
+    # OMN-20967: a company key belongs to one workspace and is answered only
+    # when the request names it in this header.
+    workspace_header: "anthropic-workspace-id"
     # OMN-21059: every key runs only models its owner chose; see "THE
     # CUSTOMER CHOOSES THE MODEL" above.
     customer_chooses_model: true

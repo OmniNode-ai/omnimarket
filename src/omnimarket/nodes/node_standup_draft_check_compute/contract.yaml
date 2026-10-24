@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_standup_draft_check_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: Deterministic narrative standup draft checks and ordered advisory warnings.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: standup_draft_check
+    handler:
+      name: HandlerStandupDraftCheck
+      module: omnimarket.nodes.node_standup_draft_check_compute.handlers.handler_standup_draft_check
+handler:
+  module: omnimarket.nodes.node_standup_draft_check_compute.handlers.handler_standup_draft_check
+  class: HandlerStandupDraftCheck
+  input_model: omnimarket.nodes.node_standup_draft_check_compute.models.model_standup_draft_check_request.ModelStandupDraftCheckRequest
+descriptor:
+  node_archetype: compute
+  purity: pure  # deterministic over the draft and facts; no I/O
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+  - main
+inputs:
+  text:
+    type: str
+    required: true
+    description: Narrative standup draft text.
+  facts:
+    type: dict
+    required: false
+    description: Optional fact sheet for milestone transition warnings.
+outputs:
+  ok:
+    type: bool
+  words:
+    type: int
+  themes:
+    type: int
+  links:
+    type: int
+  refs:
+    type: int
+  findings:
+    type: tuple
+  warnings:
+    type: tuple
+terminal_event: onex.evt.omnimarket.standup-draft-checked.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.standup-draft-check-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.standup-draft-checked.v1
+metadata:
+  transport_type: kafka
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.standup-draft-check-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.standup-draft-checked.v1

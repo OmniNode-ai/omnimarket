@@ -346,6 +346,8 @@ async def test_new_columns_append_and_invoker_rights_survive(
             "estimated_run_count",
             "unknown_run_count",
             "run_count",
+            "tokens_input_total",
+            "tokens_output_total",
         ],
         EVIDENCE: [
             "cumulative_savings_usd",
