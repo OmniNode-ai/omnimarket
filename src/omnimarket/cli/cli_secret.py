@@ -948,7 +948,8 @@ models_group = click.Group(
         "repeat it to choose several, first is tried first. You choose it for "
         "every provider: without --model a terminal is asked and a script is "
         "refused (onex models default-model names one from your key's list). "
-        "For local, the one model the server runs."
+        "For local, a model the server runs; repeat it for several, first "
+        "tried first, each after the local models already declared."
     ),
 )
 @click.option(
@@ -972,8 +973,11 @@ def add_model(
     ``onex models add-model``.
 
     ``local`` asks for no key: ``--url`` names a model server that speaks the
-    OpenAI-compatible API and ``--model`` the model it runs. The URL must answer
-    before it is declared in the local routes, beside any routes already there.
+    OpenAI-compatible API and each ``--model`` a model it runs. The URL must
+    answer before it is declared in the local routes, beside any routes already
+    there. Local models are kept in order, first tried first, and a run tries
+    them before any key; ``onex models reorder local`` and ``onex models remove
+    local --model`` change the list.
     """
     name = provider.lower()
     handler = _model_handler()
@@ -983,7 +987,7 @@ def add_model(
             "<base url> --model <name>"
         )
     if name == "local":
-        if url is None or len(model_options) != 1:
+        if url is None or not model_options:
             raise click.ClickException(_LOCAL_HOW)
         try:
             added = handler.handle(
@@ -993,10 +997,10 @@ def add_model(
             )
         except ModelSetupRefusedError as refusal:
             raise click.ClickException(str(refusal)) from None
-        # The add ran its one pinned test delegation already.
-        (result,) = added.tests
-        _show_model_test(result, as_json)
-        if result.status != "passed":
+        # The add ran one pinned test delegation per named model already.
+        for result in added.tests:
+            _show_model_test(result, as_json)
+        if any(result.status != "passed" for result in added.tests):
             sys.exit(1)
         return
     if name == "ollama":
@@ -1161,7 +1165,8 @@ def add_model_to_key(provider: str, model_options: tuple[str, ...]) -> None:
         raise click.ClickException(f"Ollama has no key to add models to. {_OLLAMA_HOW}")
     if name == "local":
         raise click.ClickException(
-            f"a local URL runs one model; to change it, add it again. {_LOCAL_HOW}"
+            "add a local model with its URL, after the ones already declared: "
+            f"{_LOCAL_HOW}"
         )
     store = LocalByokCredentialStore()
     key = asyncio.run(store.get_secret(f"llm.{name}.api_key"))

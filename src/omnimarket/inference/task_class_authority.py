@@ -402,6 +402,18 @@ class ModelTaskClassExecutionBudget(BaseModel):
 
     task_class_timeout_ceiling_seconds: int = Field(ge=1, le=240)
     terminal_delivery_margin_seconds: int = Field(ge=1)
+    requested_timeout_grace_seconds: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "OMN-21326: when the caller names a timeout, the handler's whole "
+            "wait is that timeout plus this grace, not plus the delivery margin. "
+            "The margin also carries a second escalation rung inside the "
+            "unrequested ceiling, so a caller who asked for 50 s could otherwise "
+            "be answered at 110 s. None keeps the margin for requested timeouts "
+            "too, as before."
+        ),
+    )
     # OMN-17427: the ceiling covers the whole run, not one rung. Without a
     # reserve, one unanswered local try or a few slow rejected local drafts
     # spent all of it and the run was cancelled before any later rung was
