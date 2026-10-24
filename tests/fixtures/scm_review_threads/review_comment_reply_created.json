@@ -1,0 +1,22 @@
+{
+  "url": "https://api.github.com/repos/OmniNode-ai/omnimarket/pulls/comments/2410010003",
+  "pull_request_review_id": 3300110024,
+  "id": 2410010003,
+  "node_id": "PRRC_kwDOExample0003",
+  "diff_hunk": "@@ -10,6 +10,9 @@ def run(request):\n     value = request.value\n+    cache[value] = value\n     return value",
+  "path": "src/omnimarket/example/handler.py",
+  "commit_id": "4ceedeafeb4040c987883d96c20e745ad5eed6e1",
+  "original_commit_id": "4ceedeafeb4040c987883d96c20e745ad5eed6e1",
+  "in_reply_to_id": 2410010001,
+  "user": {"login": "node-write-identity", "id": 1003, "type": "User"},
+  "body": "Fixed in the head commit.\n\n<!-- onex-idempotency-key: thread-reply-key-0001 -->",
+  "created_at": "2026-10-23T22:01:02Z",
+  "updated_at": "2026-10-23T22:01:02Z",
+  "html_url": "https://github.com/OmniNode-ai/omnimarket/pull/4000#discussion_r2410010003",
+  "pull_request_url": "https://api.github.com/repos/OmniNode-ai/omnimarket/pulls/4000",
+  "author_association": "NONE",
+  "line": 12,
+  "original_line": 12,
+  "side": "RIGHT",
+  "subject_type": "line"
+}

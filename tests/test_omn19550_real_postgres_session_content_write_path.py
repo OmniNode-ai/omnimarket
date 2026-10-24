@@ -138,7 +138,7 @@ def _record(**overrides: Any) -> dict[str, Any]:
 @pytest.mark.asyncio
 async def test_the_row_lands_with_real_column_types() -> None:
     async with _migrated_writer() as (writer, connection, schema):
-        await writer._write(TOPIC, _record())
+        await writer._write(writer.db, TOPIC, _record())
         stored = await connection.fetchrow(f"SELECT * FROM {schema}.session_content")
         assert stored is not None
         assert isinstance(stored["emitted_at"], datetime)
@@ -151,8 +151,8 @@ async def test_the_row_lands_with_real_column_types() -> None:
 @pytest.mark.asyncio
 async def test_a_replay_is_one_row() -> None:
     async with _migrated_writer() as (writer, connection, schema):
-        await writer._write(TOPIC, _record())
-        await writer._write(TOPIC, _record())
+        await writer._write(writer.db, TOPIC, _record())
+        await writer._write(writer.db, TOPIC, _record())
         count = await connection.fetchval(
             f"SELECT count(*) FROM {schema}.session_content"
         )
@@ -163,7 +163,7 @@ async def test_a_replay_is_one_row() -> None:
 @pytest.mark.asyncio
 async def test_a_nul_character_and_a_long_chunk_are_stored() -> None:
     async with _migrated_writer() as (writer, connection, schema):
-        await writer._write(TOPIC, _record(content="a\x00b" + "z" * 65000))
+        await writer._write(writer.db, TOPIC, _record(content="a\x00b" + "z" * 65000))
         stored = await connection.fetchval(
             f"SELECT content FROM {schema}.session_content"
         )
@@ -194,7 +194,7 @@ async def test_both_streams_barriers_of_one_call_land_as_two_rows() -> None:
     ]
     async with _migrated_writer() as (writer, connection, schema):
         for barrier in barriers + barriers:
-            await writer._write(TOPIC, dict(barrier))
+            await writer._write(writer.db, TOPIC, dict(barrier))
         rows = await connection.fetch(
             f"SELECT content_kind, content FROM {schema}.session_content"
         )

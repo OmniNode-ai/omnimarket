@@ -48,6 +48,7 @@ from omnimarket.nodes.node_github_repo_write_effect.handlers.handler_pr_claim_lo
 )
 from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_io import (
     EnumRepoWriteMode,
+    EnumRepoWriteOperation,
     EnumRepoWriteRefusal,
     ModelRepoWriteCompleted,
     ModelRepoWriteFailed,
@@ -277,6 +278,33 @@ _GATEWAY_RESULTS: dict[str, Callable[[ModelGithubGatewayRequest], dict[str, Any]
             }
         ],
     },
+    "pr_review_threads": lambda r: {
+        "operation": "pr_review_threads",
+        **_pr(r),
+        "total_count": 1,
+        "truncated": False,
+        "threads": [
+            {
+                "thread_id": "PRRT_kwDOExample0001",
+                "is_resolved": False,
+                "is_outdated": False,
+                "path": "src/example.py",
+                "line": 12,
+                "root_comment_id": 2410010001,
+                "comment_count": 1,
+                "comments": [
+                    {
+                        "comment_id": 2410010001,
+                        "author": "review-bot",
+                        "created_at": "2026-10-23T21:04:11Z",
+                        "url": f"https://github.com/{r.repo}/pull/77#discussion_r1",
+                        "body": "needs a bound",
+                        "body_truncated": False,
+                    }
+                ],
+            }
+        ],
+    },
     "merged_pr": lambda r: {
         "operation": "merged_pr",
         "repo": r.repo,
@@ -427,6 +455,7 @@ _READ_ARGS: dict[str, list[str]] = {
         "repo-evidence / dod-verify",
     ],
     "pr-merged": [f"{REPO}#77"],
+    "pr-threads": [f"{REPO}#77"],
 }
 _WRITE_ARGS: dict[str, list[str]] = {
     "pr-create": [
@@ -453,6 +482,7 @@ _WRITE_ARGS: dict[str, list[str]] = {
         "/tmp/claims",
     ],
     "pr-comment": [f"{REPO}#77", "--body", "hello"],
+    "pr-thread-reply": [f"{REPO}#77", "--thread", "2410010001", "--body", "hello"],
     "workflow-run": [REPO, "--workflow", "ci.yml", "--ref", "dev", "--input", "a=b"],
     "check-run-create": [
         REPO,
@@ -596,7 +626,7 @@ def test_run_view_returns_step_timestamps_without_an_additional_read(
     transport.assert_drained()
     assert transport.sent == [get(path)]
     declared = sorted(contract_operations(EnumScmNode.GATEWAY))
-    assert len(declared) == 16
+    assert len(declared) == 17
     assert declared == sorted(
         spec.operation for spec in SCM_VERBS if spec.node is EnumScmNode.GATEWAY
     )
@@ -669,7 +699,9 @@ def _contract_1_2_0_request() -> type[BaseModel]:
     return model
 
 
-@pytest.mark.parametrize("verb_name", sorted(set(_WRITE_ARGS) - {"check-run-create"}))
+@pytest.mark.parametrize(
+    "verb_name", sorted(set(_WRITE_ARGS) - {"check-run-create", "pr-thread-reply"})
+)
 def test_older_write_envelopes_validate_against_the_deployed_contract(
     monkeypatch: pytest.MonkeyPatch, verb_name: str
 ) -> None:
@@ -688,6 +720,92 @@ def test_older_write_envelopes_validate_against_the_deployed_contract(
     assert (
         ModelRepoWriteRequest.model_validate(payload).model_dump(mode="json") == payload
     )
+
+
+def test_pr_thread_reply_carries_the_thread_id_as_an_integer(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    body_file = tmp_path / "reply.md"
+    body_file.write_text("Fixed in the head commit.\n", encoding="utf-8")
+
+    result = _run(
+        [
+            "pr-thread-reply",
+            f"{REPO}#77",
+            "--thread",
+            "2410010001",
+            "--body-file",
+            str(body_file),
+            "--lane",
+            "lane-x",
+        ]
+    )
+
+    assert result.exit_code == 0, result.output
+    topic, envelope = bus.published[0]
+    assert topic == WRITE.command
+    assert envelope["payload"]["thread_comment_id"] == 2410010001
+    sent = ModelRepoWriteRequest.model_validate(envelope["payload"])
+    assert sent.operation is EnumRepoWriteOperation.PR_THREAD_REPLY
+    assert (sent.pr_number, sent.thread_comment_id) == (77, 2410010001)
+    assert sent.body == "Fixed in the head commit.\n"
+    assert sent.expected_head_sha is None
+
+
+@pytest.mark.parametrize(
+    ("extra", "message"),
+    [
+        ([], "--thread"),
+        (["--thread", "0"], "--thread"),
+        (["--thread", "abc"], "--thread"),
+        (["--thread", "5"], "body"),
+    ],
+)
+def test_pr_thread_reply_usage_errors_do_not_open_the_bus(
+    monkeypatch: pytest.MonkeyPatch, extra: list[str], message: str
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    result = _run(["pr-thread-reply", f"{REPO}#77", "--lane", "lane-x", *extra])
+    assert result.exit_code == 2, result.output
+    assert message in result.output
+    assert bus.published == []
+
+
+def test_pr_thread_reply_key_is_stable_per_thread_and_body(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    args = ["pr-thread-reply", *_WRITE_ARGS["pr-thread-reply"], "--lane", "lane-x"]
+    other_thread = ["5" if value == "2410010001" else value for value in args]
+    for command in (args, args, other_thread):
+        assert _run(command).exit_code == 0
+    keys = [envelope["payload"]["idempotency_key"] for _, envelope in bus.published]
+    assert keys[0] == keys[1]
+    assert keys[2] != keys[0]
+
+
+def test_pr_threads_sends_the_gateway_a_pr_scoped_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    result = _run(["pr-threads", f"{REPO}#77", "--limit", "5"])
+    assert result.exit_code == 0, result.output
+    topic, envelope = bus.published[0]
+    assert topic == GATEWAY.command
+    sent = ModelGithubGatewayRequest.model_validate(envelope["payload"])
+    assert (sent.operation.value, sent.pr_number, sent.limit) == (
+        "pr_review_threads",
+        77,
+        5,
+    )
+    thread = _answer(result)["result"]["threads"][0]
+    assert thread["root_comment_id"] == 2410010001
+    assert thread["is_resolved"] is False
 
 
 def test_write_idempotency_key_is_stable_across_retries(
