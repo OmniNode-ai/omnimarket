@@ -1001,7 +1001,8 @@ _MIN_RUNG_SECONDS = 1.0
 _EFFECT_PROCESS_POLL_INTERVAL_SECONDS = 0.05
 _EFFECT_PROCESS_TERMINATE_GRACE_SECONDS = 1.0
 # OMN-21214: an attempt with less usable time than this before its rung's
-# cutoff is not sent; it is recorded as a timeout and the ladder moves on.
+# cutoff is not sent. OMN-21310: the ladder checks this before the attempt and
+# names the rung under ``skipped_rungs`` rather than recording an attempt.
 _MIN_ATTEMPT_SECONDS = 1.0
 
 # OMN-14883: the effect child's INTERPRETER BOOT is bounded separately from the
@@ -1402,6 +1403,31 @@ _ACTIVE_PROBE_LADDER: ContextVar[_ProbeLadderWalk | None] = ContextVar(
     "active_probe_ladder", default=None
 )
 
+# OMN-21310: the rungs the dispatch running in this context skipped because
+# they were reached with less than their floor left. They are named on the
+# result as ``skipped_rungs``, never listed as attempts of their models.
+_RUNG_SKIPS: ContextVar[list[dict[str, object]] | None] = ContextVar(
+    "rung_skips", default=None
+)
+
+
+def _rung_call_cap_seconds(*, deadline_left_seconds: float | None) -> float | None:
+    """The wall-clock seconds one attempt's effect child may run, boot included.
+
+    OMN-21310: the effect child's endpoint timeout starts when the child
+    reports ready, so its boot (interpreter start, the ``spawn`` re-import) was
+    spent on top of the rung's cut, and a slow first rung outlasted the time
+    kept for the rungs after it. This bound is wall-clock from the attempt's
+    start: the time left to the rung's deadline less the longest a kill can
+    take (a terminate, then a kill, each given the grace), so the killed child
+    is gone by the deadline. ``None`` for a rung with no deadline of its own
+    (the last rung, a pinned run, a class with no floor): the chain deadline
+    is the handler's, as before.
+    """
+    if deadline_left_seconds is None:
+        return None
+    return max(0.0, deadline_left_seconds - 2 * _EFFECT_PROCESS_TERMINATE_GRACE_SECONDS)
+
 
 def resolve_delegation_backend(
     task_type: str, *, backend_id: str | None = None
@@ -1692,7 +1718,7 @@ class LocalDelegationDispatchPort:
         is raised. A probe run takes no pin and no model choice.
         """
         if probe_ladder is None:
-            return await self._dispatch_rungs(
+            return await self._dispatch_rungs_naming_skips(
                 prompt=prompt,
                 task_type=task_type,
                 correlation_id=correlation_id,
@@ -1750,7 +1776,7 @@ class LocalDelegationDispatchPort:
             raise ProtocolConfigurationError(refusal)
         token = _ACTIVE_PROBE_LADDER.set(_ProbeLadderWalk(probe_ladder))
         try:
-            return await self._dispatch_rungs(
+            return await self._dispatch_rungs_naming_skips(
                 prompt=prompt,
                 task_type=task_type,
                 correlation_id=correlation_id,
@@ -1778,6 +1804,18 @@ class LocalDelegationDispatchPort:
             )
         finally:
             _ACTIVE_PROBE_LADDER.reset(token)
+
+    async def _dispatch_rungs_naming_skips(self, **kwargs: Any) -> dict[str, object]:
+        """Run the ladder; name each rung it skipped on the result (OMN-21310)."""
+        skipped_rungs: list[dict[str, object]] = []
+        token = _RUNG_SKIPS.set(skipped_rungs)
+        try:
+            result = await self._dispatch_rungs(**kwargs)
+        finally:
+            _RUNG_SKIPS.reset(token)
+        if skipped_rungs and "skipped_rungs" not in result:
+            result = {**result, "skipped_rungs": skipped_rungs}
+        return result
 
     async def _dispatch_rungs(
         self,
@@ -2137,6 +2175,12 @@ class LocalDelegationDispatchPort:
         run_deadline = self._clock() + execution_timeout_seconds
         next_rung_reserve = _next_rung_reserve_seconds(task_type)
         last_attempt_seconds = 0.0
+        # OMN-21310: the escalation level of the last attempt sent, so a rung
+        # is checked against its floor when the ladder first reaches it.
+        attempted_escalation: int | None = None
+        skipped_rungs = _RUNG_SKIPS.get()
+        if skipped_rungs is None:
+            skipped_rungs = []
 
         def redraft_leaves_reserve() -> bool:
             remaining = run_deadline - self._clock()
@@ -2311,6 +2355,116 @@ class LocalDelegationDispatchPort:
             rungs_after = max(0, reachable_rungs - 1 - escalation_count)
             if rung_floor_seconds is not None and rungs_after > 0:
                 rung_deadline_at = chain_deadline - rung_floor_seconds * rungs_after
+            # OMN-21310: a rung reached with less than its floor left, or an
+            # attempt with less usable time than one needs, is not sent and is
+            # not recorded as an attempt of its model. It is named under
+            # ``skipped_rungs`` and the ladder moves on; the rung after it
+            # keeps one more floor of the chain. The first attempt of a run
+            # is never skipped for the floor: it is what the budget is for.
+            skip_now = self._clock()
+            skip_reason: str | None = None
+            if rung_floor_seconds is not None:
+                rung_left = (
+                    rung_deadline_at if rung_deadline_at is not None else chain_deadline
+                ) - skip_now
+                if (
+                    attempted_escalation is not None
+                    and attempted_escalation != escalation_count
+                    and rung_left < rung_floor_seconds
+                ):
+                    skip_reason = (
+                        f"rung skipped before dispatch: {rung_left:.1f}s left "
+                        f"for {backend.backend_id}, under the "
+                        f"{rung_floor_seconds}s rung floor"
+                    )
+                elif rung_deadline_at is not None and (
+                    rung_left
+                    - _DISPATCH_TIMEOUT_BUFFER_SECONDS
+                    - _EFFECT_PROCESS_TERMINATE_GRACE_SECONDS
+                    < _MIN_ATTEMPT_SECONDS
+                ):
+                    skip_reason = (
+                        f"rung skipped before dispatch: {rung_left:.1f}s left "
+                        f"for {backend.backend_id}, too little for one attempt "
+                        "before its rung deadline"
+                    )
+                if skip_reason is not None:
+                    current_tier = _routing_tier_name(backend)
+                    skipped_rungs.append(
+                        {
+                            "tier": current_tier,
+                            "backend_id": backend.backend_id,
+                            "model_id": backend.model_id,
+                            "seconds_left": round(max(0.0, rung_left), 1),
+                            "rung_floor_seconds": rung_floor_seconds,
+                            "reason": skip_reason,
+                        }
+                    )
+                    logger.info(
+                        "LocalDelegationDispatch: %s task_type=%s tier=%s "
+                        "correlation=%s",
+                        skip_reason,
+                        task_type,
+                        current_tier,
+                        correlation_id,
+                    )
+                    excluded_tiers.add(current_tier)
+                    excluded_backend_refs.add(backend.backend_id)
+                    skip_next: ModelResolvedDelegationBackend | None = None
+                    if pinned_backend_id is None and escalation_count < max_escalations:
+                        skip_next = self._resolve_next_backend(
+                            current_tier=current_tier,
+                            task_type=task_type,
+                            excluded_tiers=frozenset(excluded_tiers),
+                            roi_overlay=roi_overlay,
+                            excluded_backend_refs=frozenset(excluded_backend_refs),
+                            spread_key=str(correlation_id),
+                            quota_state=self._quota_snapshot(quota_observations),
+                        )
+                    if skip_next is None:
+                        # Every rung left was reached too late. The run ends
+                        # with the typed cause ``timeout``: the chain's budget
+                        # is what decided it, not any provider.
+                        _settle_final_rung_as_terminate(attempts)
+                        skipped_message = "delegation chain budget spent: " + "; ".join(
+                            str(skip["reason"]) for skip in skipped_rungs
+                        )
+                        run_steps.terminal(
+                            succeeded=False,
+                            backend_id=backend.backend_id,
+                            model_id=backend.model_id,
+                        )
+                        return {
+                            "status": "failed",
+                            "content": best_content,
+                            "delegated_to": backend.endpoint_ref,
+                            "model_name": backend.model_id,
+                            "quality_gate_passed": False,
+                            "quality_score": 0.0,
+                            "quality_gates_failed": [skipped_message],
+                            "error_message": skipped_message,
+                            "terminal_failure_cause": (
+                                EnumDelegationTerminalFailureCause.TIMEOUT.value
+                            ),
+                            "delegation_latency_ms": 0,
+                            "input_tokens": 0,
+                            "output_tokens": 0,
+                            "total_tokens": 0,
+                            "correlation_id": str(correlation_id),
+                            "escalation_count": escalation_count,
+                            "cost_usd": float(cumulative_cost_usd),
+                            "attempts": attempts,
+                            "skipped_rungs": list(skipped_rungs),
+                            "provenance": (
+                                provenance.model_dump(mode="json")
+                                if provenance is not None
+                                else None
+                            ),
+                        }
+                    escalation_count += 1
+                    backend = _with_model_choice(skip_next)
+                    continue
+            attempted_escalation = escalation_count
             attempt_started = self._clock()
             attempt_budget = run_deadline - attempt_started
             if pinned_backend_id is None and escalation_count < max_escalations:
@@ -4105,6 +4259,16 @@ class LocalDelegationDispatchPort:
         #     so the transport honors the backend's configured timeout_ms instead
         #     of a hardcoded cap (OMN-13170).
         timeout_seconds = resolve_timeout_seconds(backend_timeout_ms=backend.timeout_ms)
+        # OMN-21310: the whole call, the effect child's boot included, ends by
+        # the rung's deadline, measured from here.
+        call_cap_seconds = _rung_call_cap_seconds(
+            deadline_left_seconds=(
+                None if deadline_at is None else deadline_at - self._clock()
+            ),
+        )
+        call_cap_ends_at = (
+            None if call_cap_seconds is None else time.monotonic() + call_cap_seconds
+        )
         if deadline_at is not None:
             usable = (
                 deadline_at
@@ -4393,11 +4557,20 @@ class LocalDelegationDispatchPort:
         try:
             with dispatch_stage("inference"):
                 if self._effect_process_boundary:
-                    result = await _run_effect_handler_with_killable_timeout(
+                    effect_child = _run_effect_handler_with_killable_timeout(
                         self._effect_handler,
                         call_request,
                         timeout_seconds=dispatch_deadline_seconds,
                     )
+                    if call_cap_ends_at is None:
+                        result = await effect_child
+                    else:
+                        # OMN-21310: cancelling the child's supervisor kills
+                        # the child, wherever it is (boot or call).
+                        result = await asyncio.wait_for(
+                            effect_child,
+                            timeout=max(0.0, call_cap_ends_at - time.monotonic()),
+                        )
                 else:
                     observer_token = current_call_observer.set(
                         None if progress is None else progress.in_flight_calls.append
@@ -4407,9 +4580,14 @@ class LocalDelegationDispatchPort:
                     finally:
                         current_call_observer.reset(observer_token)
         except TimeoutError:
+            call_bound_seconds = (
+                dispatch_deadline_seconds
+                if call_cap_seconds is None
+                else min(dispatch_deadline_seconds, call_cap_seconds)
+            )
             failure_message = (
                 f"delegation call did not return within "
-                f"{dispatch_deadline_seconds:.0f}s at stage=inference "
+                f"{call_bound_seconds:.0f}s at stage=inference "
                 f"(endpoint {backend.endpoint_ref} "
                 f"unreachable or unresponsive)"
             )
