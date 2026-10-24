@@ -1,0 +1,86 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21340"
+title: "A capture silence watch alarms when a principal's ledger rows or a host's hook events stop"
+summary: "Adds node_capture_silence_watch_effect. Per principal (the work_ledger_rows principal cell) and per host (claude_hook_events) it reads the newest row inside a 24-hour active window, raises one Slack command per silence episode for an actor silent past its source bound, one source alarm when a whole source is older than its bound, and publishes its own automation heartbeat every tick. It runs as a oneshot tick from a lab timer inside the dev lane's effects runtime."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21340-capture-silence-watch"
+    statement: |-
+      A principal or host that wrote in the active window and then stops, or a whole capture source that stops, raises one alarm per episode, and the watcher's own heartbeat makes its silence visible.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: an actor that wrote inside the active window and is silent past its source bound raises exactly one Slack command whose idempotency key names the actor and its newest-row epoch, and a second tick over the same silence raises the same key -- falsifier: uv run pytest tests/test_omn19975_capture_silence_watch.py -q -k silent_actor
+      - id: "AC2"
+        statement: |-
+          AC2: a whole source older than its bound raises one source alarm and no per-actor alarm, and an unreadable source raises none and is UNKNOWN -- falsifier: uv run pytest tests/test_omn19975_capture_silence_watch.py -q -k 'stale_source or reader_failure'
+      - id: "AC3"
+        statement: |-
+          AC3: every tick publishes one automation heartbeat for the watcher itself, including a tick whose reads fail -- falsifier: uv run pytest tests/test_omn19975_capture_silence_watch.py -q -k heartbeat
+evidence_requirements:
+  - kind: "tests"
+    description: "Hermetic unit tests over the pure classifier, the handler with a fake reader and publisher, the Postgres reader's SQL binding, the contract bounds and the CLI dry run."
+    command: "uv run pytest tests/test_omn19975_capture_silence_watch.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21340-silent-actor-one-alarm"
+    description: "A silent actor raises exactly one Slack command that validates as ModelSlackPublish, keyed by actor and newest-row epoch; a later tick over the same silence repeats the key."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19975_capture_silence_watch.py -q --no-cov -k silent_actor"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21340-stale-source-and-unknown"
+    description: "A stale source raises one source alarm and no per-actor alarms; an unreadable source is UNKNOWN and raises nothing."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19975_capture_silence_watch.py -q --no-cov -k 'stale_source or reader_failure'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21340-heartbeat-every-tick"
+    description: "Every tick publishes one ModelAutomationHeartbeat for the watcher, including a tick whose reads fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19975_capture_silence_watch.py -q --no-cov -k heartbeat"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21340-deploy-probe"
+    description: "Hosted-runner deploy probe: dispatch the installed node through ONEX with its in-memory runtime bus and the database DSN absent. Require a successful typed receipt, exactly two UNKNOWN source verdicts, no alarms, and a published heartbeat. This exercises runtime bus injection without lane credentials or services; it does not claim a production rollout."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          probe_python="$(uv run --locked python -c 'import sys; print(sys.executable)')";
+          probe_bin="$(dirname "$probe_python")";
+          printf '%s\n' '{}' > "$probe_dir/input.json";
+          env -u OMNINODE_INTERNAL_DB_URL COMPOSE_PROJECT_NAME=landing-l15835-lab PYTHONDONTWRITEBYTECODE=1 "$probe_bin/onex" node node_capture_silence_watch_effect --input "$probe_dir/input.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+          "$probe_python" -c '
+          import json
+          import sys
+          from pathlib import Path
+          receipt = json.loads(Path(sys.argv[1]).read_text())
+          assert receipt["status"] == "success", receipt
+          assert receipt["exit_code"] == 0, receipt
+          result = receipt["result"]
+          verdicts = result["verdicts"]
+          assert len(verdicts) == 2, verdicts
+          assert {v["source_id"] for v in verdicts} == {"ledger_rows", "hook_events"}, verdicts
+          assert all(v["scope"] == "source" and v["state"] == "UNKNOWN" for v in verdicts), verdicts
+          assert result["deliveries"] == [], result
+          assert result["heartbeat_published"] is True, result
+          assert result["heartbeat_error"] is None, result
+          print(json.dumps({"run_id": receipt["run_id"], "status": receipt["status"], "unknown_sources": len(verdicts), "heartbeat_published": result["heartbeat_published"]}))
+          ' "$probe_dir/receipt.json"
+        cwd: "${OMNI_HOME}/omnimarket"
