@@ -29,7 +29,7 @@ from omnimarket.nodes.node_claude_code_hook_adapter_effect.binding_render_error 
     BindingRenderError,
 )
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_claude_code_hook_adapter import (
-    INVOCATION_ID_SOURCE,
+    RESERVED_SOURCES,
 )
 
 ADAPTER_COMMAND = "onex-claude-code-hook"
@@ -63,7 +63,7 @@ def validate_binding(binding: ModelClientBinding) -> None:
             f"binding name {binding.name!r} is not a lower-case identifier"
         )
     for argument in binding.arguments:
-        if argument.source != INVOCATION_ID_SOURCE and not _HOOK_INPUT_PATH.match(
+        if argument.source not in RESERVED_SOURCES and not _HOOK_INPUT_PATH.match(
             argument.source
         ):
             raise BindingRenderError(
@@ -72,24 +72,22 @@ def validate_binding(binding: ModelClientBinding) -> None:
             )
 
 
-def _failure_lines(
+def _fallback_lines(
     binding: ModelClientBinding, mode: EnumClientMaxMode
-) -> tuple[str, str]:
-    deny = _literal(binding.deny_text)
+) -> tuple[str, str, str]:
     required = mode is EnumClientMaxMode.REQUIRED
-    never_started = (
-        _fill(tpl.REQUIRED_NEVER_STARTED, deny_text=deny)
-        if required
-        else tpl.NATIVE_NEVER_STARTED
-    )
+    never_started = tpl.REQUIRED_NEVER_STARTED if required else tpl.NATIVE_NEVER_STARTED
     # Anything else (timeout, throw, reload) is {deny} unless the host maximum is observe,
     # where native execution is always safe because the server cannot dispatch.
     other = (
-        tpl.NATIVE_OTHER
-        if mode is EnumClientMaxMode.OBSERVE
-        else _fill(tpl.REQUIRED_OTHER, deny_text=deny)
+        tpl.NATIVE_OTHER if mode is EnumClientMaxMode.OBSERVE else tpl.REQUIRED_OTHER
     )
-    return never_started, other
+    deny_line = (
+        _fill(tpl.DENY_ANSWER, deny_text=_literal(binding.deny_text))
+        if mode is not EnumClientMaxMode.OBSERVE
+        else ""
+    )
+    return never_started, other, deny_line
 
 
 def registration_for(binding: ModelClientBinding) -> ModelBindingRegistration:
@@ -112,12 +110,12 @@ class HandlerClaudeCodeBindingRender:
         )
         for binding in request.bindings:
             validate_binding(binding)
-        # One failure table per module: the strictest row decides the fixed literals.
+        # One fallback table per module: the strictest row decides the fixed literals.
         table_binding = replacing[0] if replacing else None
-        never_started, other = (
-            _failure_lines(table_binding, request.max_mode)
+        never_started, other, deny_line = (
+            _fallback_lines(table_binding, request.max_mode)
             if table_binding is not None
-            else (tpl.NATIVE_NEVER_STARTED, tpl.NATIVE_OTHER)
+            else (tpl.NATIVE_NEVER_STARTED, tpl.NATIVE_OTHER, "")
         )
         parts = [
             _fill(
@@ -125,6 +123,7 @@ class HandlerClaudeCodeBindingRender:
                 max_mode=request.max_mode.value,
                 never_started_line=never_started,
                 other_line=other,
+                deny_line=deny_line,
             )
         ]
         for binding in replacing:

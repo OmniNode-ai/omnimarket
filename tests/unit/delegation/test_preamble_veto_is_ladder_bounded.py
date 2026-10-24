@@ -103,7 +103,8 @@ class TestSegmentationIsPureAndSingleShot:
             LocalDelegationDispatchPort,
         )
 
-        looping = inspect.getsource(LocalDelegationDispatchPort.dispatch)
+        # OMN-21212: the ladder's loop is the body ``dispatch`` delegates to.
+        looping = inspect.getsource(LocalDelegationDispatchPort._dispatch_rungs)
         hits = [c for c in ("while ", "retry", "attempt") if c in looping]
         assert hits, (
             "the ladder's dispatch loop matched none of the constructs the "

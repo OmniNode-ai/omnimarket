@@ -44,6 +44,7 @@ from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io im
     ModelJobLogTailResult,
     ModelMergedPrResult,
     ModelPrHeadsResult,
+    ModelPrReviewThreadsResult,
     ModelPrTextResult,
     ModelReleasesResult,
     ModelRunJobsResult,
@@ -84,6 +85,7 @@ SCM_READ_RESULT_MODELS: dict[EnumGithubGatewayOperation, type[BaseModel]] = {
     EnumGithubGatewayOperation.PR_HEADS: ModelPrHeadsResult,
     EnumGithubGatewayOperation.COMMIT_CHECK_RUNS: ModelCommitCheckRunsResult,
     EnumGithubGatewayOperation.MERGED_PR: ModelMergedPrResult,
+    EnumGithubGatewayOperation.PR_REVIEW_THREADS: ModelPrReviewThreadsResult,
 }
 
 

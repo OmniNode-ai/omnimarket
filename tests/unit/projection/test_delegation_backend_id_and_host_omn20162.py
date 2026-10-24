@@ -149,13 +149,14 @@ def test_backend_id_and_host_do_not_repurpose_answering_backend() -> None:
 
 
 @pytest.mark.unit
-def test_a_refused_ladder_names_no_backend_id_or_host() -> None:
+def test_a_refused_ladder_names_its_last_rungs_backend_id_and_host() -> None:
+    """OMN-19448 rule 2: a failed run names the backend and host it was refused on."""
     payload = _skill_terminal(
         [_attempt(backend_id="local-a", host="h201", passed=False)]
     )
     row = _project(payload, InmemoryDatabaseAdapter())
-    assert row.get("backend_id") is None
-    assert row.get("host") is None
+    assert row["backend_id"] == "local-a"
+    assert row["host"] == "h201"
 
 
 @pytest.mark.unit

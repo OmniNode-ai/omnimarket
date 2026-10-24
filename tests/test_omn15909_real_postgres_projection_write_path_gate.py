@@ -441,40 +441,76 @@ class TestRealPostgresEndToEndWritePath:
             assert row["content_verdict"] == "undetermined"
             assert row["actual_score"] is None
 
-    async def test_quality_gate_result_creates_row_with_real_created_at(
+    async def test_quality_gate_result_fills_score_source_on_the_terminal_row(
         self,
     ) -> None:
         """quality-gate-result.v1 (deterministic-scoring path, no LLM judge)
-        -> delegation_events, first-arrival stamps created_at (OMN-13171
-        pattern) via ``_project_quality_gate_result``, real Postgres.
+        -> delegation_events via ``_project_quality_gate_result``, real Postgres.
+
+        OMN-19448 rule 1: a rung's verdict never creates the run row. Before
+        its terminal it writes nothing; after it, it fills the blank
+        ``score_source`` and leaves the terminal's ``created_at`` and
+        ``timestamp`` (OMN-13171 / OMN-15583) as the terminal wrote them.
         """
         async with _provisioned_runner() as (runner, admin_conn, _schema):
             correlation_id = str(uuid4())
-            data = _real_quality_gate_result_payload(
+            verdict = _real_quality_gate_result_payload(
                 correlation_id=correlation_id, passed=True
             )
-            meta = MessageMeta(partition=0, offset=1, fallback_id=correlation_id)
 
-            ok = await runner.project_event(
-                runner._topic_quality_gate_result, data, meta
+            assert (
+                await runner.project_event(
+                    runner._topic_quality_gate_result,
+                    dict(verdict),
+                    MessageMeta(partition=0, offset=1, fallback_id=correlation_id),
+                )
+                is True
             )
+            assert (
+                await admin_conn.fetchrow(
+                    "SELECT 1 FROM delegation_events WHERE correlation_id = $1",
+                    correlation_id,
+                )
+                is None
+            ), "a rung's verdict must not author the run row"
 
-            assert ok is True
+            assert (
+                await runner.project_event(
+                    runner._topic_delegation_completed,
+                    _real_delegation_completed_payload(
+                        correlation_id=correlation_id, tenant_id="beta-business-proof"
+                    ),
+                    MessageMeta(partition=0, offset=2, fallback_id=correlation_id),
+                )
+                is True
+            )
+            terminal = await admin_conn.fetchrow(
+                "SELECT * FROM delegation_events WHERE correlation_id = $1",
+                correlation_id,
+            )
+            assert terminal is not None
+            assert terminal["score_source"] is None
+
+            assert (
+                await runner.project_event(
+                    runner._topic_quality_gate_result,
+                    dict(verdict),
+                    MessageMeta(partition=0, offset=3, fallback_id=correlation_id),
+                )
+                is True
+            )
             row = await admin_conn.fetchrow(
                 "SELECT * FROM delegation_events WHERE correlation_id = $1",
                 correlation_id,
             )
             assert row is not None
-            assert row["quality_gate_passed"] is True
             assert row["score_source"] == "deterministic_acceptance"
+            assert row["quality_gate_passed"] is terminal["quality_gate_passed"]
             assert isinstance(row["created_at"], datetime)
-            # OMN-15583, on real Postgres: ``delegation_events.timestamp`` is
-            # NOT NULL and this path used to name no time column at all. It now
-            # carries the producer's envelope time -- the event time -- not the
-            # write clock the column DEFAULT would have supplied.
+            assert row["created_at"] == terminal["created_at"]
             assert isinstance(row["timestamp"], datetime)
-            assert row["timestamp"] == _QUALITY_GATE_ENVELOPE_TIMESTAMP
-            assert row["timestamp"] < row["created_at"]
+            assert row["timestamp"] == terminal["timestamp"]
+            assert row["timestamp"] != _QUALITY_GATE_ENVELOPE_TIMESTAMP
 
     async def test_budget_state_materializes_with_real_timestamp_columns(
         self,

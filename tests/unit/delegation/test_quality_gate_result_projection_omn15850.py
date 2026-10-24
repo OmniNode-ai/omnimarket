@@ -50,6 +50,7 @@ from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
 from tests.helpers.tenant_registry import (
     PROJECTION_TENANT_SLUG,
+    PROJECTION_TENANT_UUID,
     seed_tenant_registry,
 )
 
@@ -112,6 +113,33 @@ def _deterministic_result(
     )
 
 
+class _RecordingPublisher:
+    def __init__(self) -> None:
+        self.messages: list[object] = []
+
+    def publish(self, message: object) -> bool:
+        self.messages.append(message)
+        return True
+
+
+def _terminal_row(correlation_id: UUID) -> dict[str, object]:
+    return {
+        "correlation_id": str(correlation_id),
+        "tenant_id": "820272f9-4aaf-5add-a2df-0af942852ab2",
+        "task_type": "code_generation",
+        "delegated_to": "glm-5.2",
+        "model_name": "glm-5.2",
+        "backend_id": "zai",
+        "host": "h201",
+        "quality_gate_passed": True,
+        "quality_gate_detail": "terminal accepted on the second rung",
+        "actual_score": 0.97,
+        "timestamp": "2026-01-01T00:00:00+00:00",
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "score_source": None,
+    }
+
+
 @pytest.mark.unit
 def test_contract_subscribes_to_quality_gate_result_topic() -> None:
     """The deterministic verdict topic must be a declared subscription.
@@ -128,29 +156,24 @@ def test_contract_subscribes_to_quality_gate_result_topic() -> None:
 
 @pytest.mark.unit
 def test_deterministic_quality_gate_result_projects_delegation_events_row() -> None:
-    """A deterministic-path verdict (no judge event ever published) must still
-    reach ``delegation_events`` -- the exact table/column the business-proof
-    ``quality_gate`` check reads via ``GET /v1/tenants/me/delegations``.
-    """
+    """OMN-19448 rule 1: a verdict-first event creates and republishes no row."""
     correlation_id = uuid4()
     event = _deterministic_result(correlation_id=correlation_id)
     db = InmemoryDatabaseAdapter()
+    publisher = _RecordingPublisher()
     payload = event.model_dump(mode="json")
     payload["_db"] = db
     payload["_event_type"] = _QUALITY_GATE_RESULT_TOPIC
     payload["_envelope"] = _envelope_for(correlation_id)
-
-    result = HandlerProjectionDelegation().handle(payload)
-
-    assert result == {"rows_upserted": 1, "table": TABLE}
-    row = db.query(TABLE, {"correlation_id": str(correlation_id)})[0]
-    assert row["quality_gate_passed"] is True
-    assert row["score_source"] == SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE
-    assert row["actual_score"] == pytest.approx(0.91)
+    result = HandlerProjectionDelegation(publisher=publisher).handle(payload)
+    assert result == {"rows_upserted": 0, "table": TABLE}
+    assert db.query(TABLE, {"correlation_id": str(correlation_id)}) == []
+    assert publisher.messages == []
 
 
 @pytest.mark.unit
 def test_deterministic_quality_gate_result_records_failure_detail() -> None:
+    """OMN-19448 rule 1: a failed rung cannot replace a passed terminal's detail."""
     correlation_id = uuid4()
     event = _deterministic_result(
         correlation_id=correlation_id,
@@ -160,151 +183,157 @@ def test_deterministic_quality_gate_result_records_failure_detail() -> None:
         failure_reasons=("missing required marker", "response too short"),
     )
     db = InmemoryDatabaseAdapter()
+    terminal = _terminal_row(correlation_id)
+    db.upsert(TABLE, CONFLICT_KEY, terminal)
     payload = event.model_dump(mode="json")
     payload["_db"] = db
     payload["_event_type"] = _QUALITY_GATE_RESULT_TOPIC
     payload["_envelope"] = _envelope_for(correlation_id)
-
-    HandlerProjectionDelegation().handle(payload)
-
-    row = db.query(TABLE, {"correlation_id": str(correlation_id)})[0]
-    assert row["quality_gate_passed"] is False
-    assert row["quality_gate_detail"] == "missing required marker; response too short"
+    result = HandlerProjectionDelegation(publisher=_RecordingPublisher()).handle(
+        payload
+    )
+    assert result == {"rows_upserted": 1, "table": TABLE}
+    (row,) = db.query(TABLE, {"correlation_id": str(correlation_id)})
+    assert {key: row[key] for key in terminal} == {
+        **terminal,
+        "score_source": SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
+    }
+    assert row["quality_gate_passed"] is True
+    assert row["quality_gate_detail"] == "terminal accepted on the second rung"
+    assert row["actual_score"] == pytest.approx(0.97)
 
 
 @pytest.mark.unit
-def test_quality_gate_result_does_not_clobber_existing_terminal_fields() -> None:
-    """Cross-boundary seam test: the SAME ``delegation_events`` row, the SAME
-    ``correlation_id`` conflict key, written first by the canonical terminal
-    path (``HandlerProjectionDelegation.project`` -- what a
-    delegation-completed/failed.v1 event drives) and then updated by the new
-    quality-gate-result path. Proves the two write paths share the exact
-    table + key and that the new path performs a targeted-column UPSERT
-    (matching ``PostgresSyncProjectionAdapter.upsert``'s
-    ``ON CONFLICT ... DO UPDATE SET <only the incoming columns>``), not a
-    full-row replace that would erase task_type/delegated_to/model_name
-    written by the terminal event.
+@pytest.mark.parametrize("passed", [True, False])
+def test_quality_gate_result_does_not_clobber_existing_terminal_fields(
+    passed: bool,
+) -> None:
+    """OMN-19448 rule 1: the terminal owns every run fact except a blank source.
+
+    OMN-19448 rule 2: passed and failed terminals retain model, backend and host.
     """
     correlation_id = uuid4()
     db = InmemoryDatabaseAdapter()
     seed_tenant_registry(db)
-
-    # Seed the row via the plain ModelTaskDelegatedEvent path (handle()'s
-    # default fallback for an event_type that matches none of the special-cased
-    # substrings: not judge-verdict, not node-generation, not a delegate-skill
-    # terminal, not delegation-completed/-failed). This exercises the same
-    # `project()` write path a canonical delegation-completed/failed.v1 event
-    # ultimately reaches (via `_canonical_result_to_task_delegated_payload`),
-    # against the identical `delegation_events` table + `correlation_id`
-    # conflict key, without needing to replicate that converter's payload shape.
+    publisher = _RecordingPublisher()
+    handler = HandlerProjectionDelegation(publisher=publisher)
     terminal_payload: dict[str, object] = {
         "tenant_id": PROJECTION_TENANT_SLUG,
         "correlation_id": str(correlation_id),
         "task_type": "code_generation",
         "delegated_to": "claude",
         "model_name": "glm-5.2",
-        "quality_gate_passed": False,
+        "backend_id": "zai",
+        "host": "h201",
+        "quality_gate_passed": passed,
+        "quality_gate_detail": "terminal decision",
+        "actual_score": 0.97 if passed else 0.4,
+        "timestamp": "2026-01-01T00:00:00+00:00",
         "_db": db,
         "_event_type": "onex.test.seed-terminal-row.v1",
     }
-    HandlerProjectionDelegation().handle(dict(terminal_payload))
-
-    pre_row = db.query(TABLE, {"correlation_id": str(correlation_id)})[0]
-    assert pre_row["task_type"] == "code_generation"
-    assert pre_row["delegated_to"] == "claude"
-
-    verdict_event = _deterministic_result(correlation_id=correlation_id, passed=True)
-    verdict_payload = verdict_event.model_dump(mode="json")
+    assert handler.handle(dict(terminal_payload)) == {
+        "rows_upserted": 1,
+        "table": TABLE,
+    }
+    (before,) = db.query(TABLE, {"correlation_id": str(correlation_id)})
+    assert before["task_type"] == "code_generation"
+    assert before["delegated_to"] == "claude"
+    assert before["model_name"] == "glm-5.2"
+    assert before["backend_id"] == "zai"
+    assert before["host"] == "h201"
+    assert before["tenant_id"] == str(PROJECTION_TENANT_UUID)
+    verdict_payload = _deterministic_result(
+        correlation_id=correlation_id, passed=not passed
+    ).model_dump(mode="json")
     verdict_payload["_db"] = db
     verdict_payload["_event_type"] = _QUALITY_GATE_RESULT_TOPIC
-    verdict_payload["_envelope"] = _envelope_for(correlation_id)
-
-    HandlerProjectionDelegation().handle(verdict_payload)
-
-    post_row = db.query(TABLE, {"correlation_id": str(correlation_id)})[0]
-    # Fields owned by the terminal write path are untouched.
-    assert post_row["task_type"] == "code_generation"
-    assert post_row["delegated_to"] == "claude"
-    assert post_row["model_name"] == "glm-5.2"
-    # Field owned by the quality-gate-result write path is updated.
-    assert post_row["quality_gate_passed"] is True
-    assert post_row["score_source"] == SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE
+    verdict_payload["_envelope"] = {
+        **_envelope_for(correlation_id),
+        "tenant_id": PROJECTION_TENANT_SLUG,
+    }
+    assert handler.handle(verdict_payload) == {"rows_upserted": 1, "table": TABLE}
+    (after,) = db.query(TABLE, {"correlation_id": str(correlation_id)})
+    for column in (
+        "task_type",
+        "delegated_to",
+        "model_name",
+        "backend_id",
+        "host",
+        "quality_gate_passed",
+        "quality_gate_detail",
+        "actual_score",
+        "timestamp",
+        "tenant_id",
+    ):
+        assert after[column] == before[column], column
+    assert after["quality_gate_passed"] is passed
+    assert after["score_source"] == SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE
 
 
 @pytest.mark.unit
 def test_quality_gate_result_projection_tolerates_topic_metadata_key_omn14855() -> None:
-    """OMN-14855 regression parity: the multi-topic dispatch fan-out injects an
-    envelope-only "_topic" key. ``ModelQualityGateResult`` sets
-    ``extra="forbid"``, so an unstripped "_topic" would raise
-    ``extra_forbidden`` and route the event to the malformed DLQ, exactly as
-    it did for the judge-verdict event before that fix.
-    """
+    """OMN-19448 rule 1: metadata is stripped before filling an existing row."""
     correlation_id = uuid4()
     event = _deterministic_result(correlation_id=correlation_id)
     db = InmemoryDatabaseAdapter()
+    terminal = _terminal_row(correlation_id)
+    db.upsert(TABLE, CONFLICT_KEY, terminal)
     payload = event.model_dump(mode="json")
     payload["_db"] = db
     payload["_event_type"] = _QUALITY_GATE_RESULT_TOPIC
     payload["_envelope"] = _envelope_for(correlation_id)
     payload["_topic"] = _QUALITY_GATE_RESULT_TOPIC
-
-    result = HandlerProjectionDelegation().handle(payload)
-
+    result = HandlerProjectionDelegation(publisher=_RecordingPublisher()).handle(
+        payload
+    )
     assert result == {"rows_upserted": 1, "table": TABLE}
+    (row,) = db.query(TABLE, {"correlation_id": str(correlation_id)})
+    assert {key: row[key] for key in terminal} == {
+        **terminal,
+        "score_source": SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
+    }
 
 
 @pytest.mark.unit
 def test_result_first_quality_gate_result_stamps_created_at() -> None:
-    """CodeRabbit (PR #2052): ``delegation_events.created_at`` is NOT NULL and
-    (per OMN-13171) not every backing store applies an implicit DB default on
-    INSERT. A quality-gate-result arriving before any terminal event must
-    stamp ``created_at`` explicitly on the fresh row it creates.
-    """
+    """OMN-19448 rule 1: verdict-first creates no row or created_at stamp."""
     correlation_id = uuid4()
-    event = _deterministic_result(correlation_id=correlation_id)
     db = InmemoryDatabaseAdapter()
-    payload = event.model_dump(mode="json")
+    publisher = _RecordingPublisher()
+    handler = HandlerProjectionDelegation(publisher=publisher)
+    payload = _deterministic_result(correlation_id=correlation_id).model_dump(
+        mode="json"
+    )
     payload["_db"] = db
     payload["_event_type"] = _QUALITY_GATE_RESULT_TOPIC
     payload["_envelope"] = _envelope_for(correlation_id)
-
-    HandlerProjectionDelegation().handle(payload)
-
-    row = db.query(TABLE, {"correlation_id": str(correlation_id)})[0]
-    assert row.get("created_at")
+    assert handler.handle(payload) == {"rows_upserted": 0, "table": TABLE}
+    assert db.query(TABLE) == []
+    assert publisher.messages == []
 
 
 @pytest.mark.unit
 def test_quality_gate_result_does_not_clobber_existing_created_at() -> None:
-    """A quality-gate-result arriving AFTER the terminal event must not
-    overwrite the row's original ``created_at`` -- only a genuinely fresh row
-    gets the explicit stamp.
-    """
+    """OMN-19448 rule 1: a late verdict preserves created_at and terminal facts."""
     correlation_id = uuid4()
     db = InmemoryDatabaseAdapter()
-    original_created_at = "2026-01-01T00:00:00+00:00"
-    # Seed directly through the adapter: represents a row already written by
-    # an earlier terminal-event UPSERT (project_delegate_skill_terminal /
-    # project() both stamp created_at on their own INSERT path -- OMN-13171).
-    db.upsert(
-        TABLE,
-        CONFLICT_KEY,
-        {
-            "correlation_id": str(correlation_id),
-            "task_type": "code_generation",
-            "delegated_to": "claude",
-            "created_at": original_created_at,
-        },
-    )
-
-    verdict_event = _deterministic_result(correlation_id=correlation_id, passed=True)
-    verdict_payload = verdict_event.model_dump(mode="json")
+    terminal = _terminal_row(correlation_id)
+    db.upsert(TABLE, CONFLICT_KEY, terminal)
+    verdict_payload = _deterministic_result(
+        correlation_id=correlation_id, passed=False
+    ).model_dump(mode="json")
     verdict_payload["_db"] = db
     verdict_payload["_event_type"] = _QUALITY_GATE_RESULT_TOPIC
     verdict_payload["_envelope"] = _envelope_for(correlation_id)
-
-    HandlerProjectionDelegation().handle(verdict_payload)
-
-    row = db.query(TABLE, {"correlation_id": str(correlation_id)})[0]
-    assert row["created_at"] == original_created_at
+    result = HandlerProjectionDelegation(publisher=_RecordingPublisher()).handle(
+        verdict_payload
+    )
+    assert result == {"rows_upserted": 1, "table": TABLE}
+    (row,) = db.query(TABLE, {"correlation_id": str(correlation_id)})
+    assert row["created_at"] == "2026-01-01T00:00:00+00:00"
     assert row["quality_gate_passed"] is True
+    assert {key: row[key] for key in terminal} == {
+        **terminal,
+        "score_source": SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
+    }

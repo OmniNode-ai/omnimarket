@@ -104,13 +104,15 @@ async def test_a_priced_call_and_a_free_local_call_keep_their_costs() -> None:
 
 
 @pytest.mark.integration
-async def test_a_row_the_verdict_creates_first_has_no_invented_cost() -> None:
+async def test_a_verdict_on_an_unpriced_row_invents_no_cost() -> None:
+    # OMN-19448 rule 1: the verdict never creates the row, so the only row it
+    # touches is its terminal's; it must leave that row's NULL cost NULL.
     async with _provisioned_runner() as (runner, admin_conn, _schema):
-        cid = str(uuid4())
+        cid = await _complete(runner, cost=0.0, tier=_UNREGISTERED_TIER)
         assert await runner.project_event(
             runner._topic_quality_gate_result,
             _real_quality_gate_result_payload(correlation_id=cid, passed=True),
-            MessageMeta(partition=0, offset=0, fallback_id=cid),
+            MessageMeta(partition=0, offset=1, fallback_id=cid),
         )
         row = await admin_conn.fetchrow(_SELECT, cid)
         assert row is not None

@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: owner_summary_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Gather factory activity from local sources, check a draft against the facts, require M4,
+  blocked and partial tickets and exact omission counts with the full list link, triage a
+  reviewer's findings (an item the draft counts on its Not listed line is not a finding) and
+  record the window end as sent. Check also enforces the headline, counts, plain words, footer,
+  length, supported citations, no secrets or home paths, no overclaim and the friction gap.
+
+input_model: omnimarket.nodes.node_owner_summary_effect.models.model_owner_summary_request.ModelOwnerSummaryRequest
+output_model: omnimarket.nodes.node_owner_summary_effect.models.model_owner_summary_result.ModelOwnerSummaryResult
+handler:
+  module: omnimarket.nodes.node_owner_summary_effect.handlers.handler_owner_summary
+  class: HandlerOwnerSummary
+  input_model: omnimarket.nodes.node_owner_summary_effect.models.model_owner_summary_request.ModelOwnerSummaryRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: run_owner_summary_command
+      handler:
+        name: HandlerOwnerSummary
+        module: omnimarket.nodes.node_owner_summary_effect.handlers.handler_owner_summary
+      input_model: omnimarket.nodes.node_owner_summary_effect.models.model_owner_summary_request.ModelOwnerSummaryRequest
+      output_model: omnimarket.nodes.node_owner_summary_effect.models.model_owner_summary_result.ModelOwnerSummaryResult
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  side_effects:
+    - reads of the PR watcher state file, the work ledger and the registry clones' git history, with no fetch and no GitHub call
+    - the send watermark file under the registry's state directory, written only by the mark-sent command
+  runtime_profiles: [effects]
+
+terminal_event: onex.evt.omnimarket.owner-summary-command-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.owner-summary-command-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.owner-summary-command-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.owner-summary-command-requested.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.owner-summary-command-completed.v1
+
+metadata:
+  ticket: OMN-17427
+  transport_type: kafka

@@ -44,6 +44,45 @@ from omnimarket.handlers.handler_projection_derived_write import (
 
 logger = logging.getLogger(__name__)
 
+SQLITE_STORE_NOT_A_DATABASE_LOG_TOKEN = "SQLITE_STORE_NOT_A_DATABASE"
+
+
+class SqliteStoreNotADatabaseError(sqlite3.DatabaseError):
+    """A nonempty store lacks the SQLite file header (OMN-19174)."""
+
+    def __init__(self, path: Path, header_hex: str) -> None:
+        self.path = path
+        self.header_hex = header_hex
+        super().__init__(
+            f"Store at {path} is not a SQLite database. Move the file aside "
+            "(never delete it), then restore its header on a copy or let the "
+            "runtime create a fresh store, and restart the container."
+        )
+
+
+def verify_sqlite_store_header(path: Path) -> None:
+    """Refuse an existing non-SQLite store before opening it (OMN-19174)."""
+    try:
+        size = path.stat().st_size
+    except FileNotFoundError:
+        return
+    if size == 0:
+        return
+    with path.open("rb") as store:
+        header = store.read(16)
+        if header == b"SQLite format 3\x00":
+            return
+        header_hex = (header + store.read(16)).hex()
+    logger.critical(
+        "%s path=%s size=%d header_hex=%s",
+        SQLITE_STORE_NOT_A_DATABASE_LOG_TOKEN,
+        path,
+        size,
+        header_hex,
+    )
+    raise SqliteStoreNotADatabaseError(path, header_hex)
+
+
 _DEFAULT_EVIDENCE_DB_PATH = (
     Path.home() / ".omninode" / "delegation" / "delegation.sqlite"
 )
@@ -762,6 +801,8 @@ class SqliteDatabaseAdapter:
         # freestanding call (OMN-13160). The no-contract-check tag below is the scanner's
         # sanctioned per-line boundary annotation, NOT a path-allowlist broadening.
         db_path = str(self._db_path)
+        if db_path != ":memory:" and not db_path.startswith("file:"):
+            verify_sqlite_store_header(Path(db_path))
         conn = sqlite3.connect(db_path)  # no-contract-check: projection boundary
         # A step raising after its write began would leave the connection and
         # its lock alive in the exception's traceback; on 2026-10-22 this
@@ -1578,9 +1619,12 @@ def reconcile_existing_store(db_path: Path) -> None:
 
 __all__ = [
     "SQLITE_SCHEMES",
+    "SQLITE_STORE_NOT_A_DATABASE_LOG_TOKEN",
     "SqliteDatabaseAdapter",
+    "SqliteStoreNotADatabaseError",
     "SqliteWriteTransaction",
     "default_evidence_db_path",
     "reconcile_existing_store",
     "sqlite_path_from_dsn",
+    "verify_sqlite_store_header",
 ]

@@ -38,8 +38,9 @@ kind. A hold whose ``until`` is at or before ``as_of`` reads as expired.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable, Sequence
 from datetime import UTC, datetime
+from threading import Lock
 from uuid import UUID
 
 from omnibase_core.models.events.work.model_work_ledger_line import (
@@ -273,6 +274,44 @@ def fold_row(request: ModelWorkLedgerFoldRequest) -> ModelWorkLedgerFoldResult:
     return ModelWorkLedgerFoldResult(row=record, ops=tuple(ops), links=tuple(links))
 
 
+class WorkLedgerFoldMemo:
+    """Share pure row folds across sources, retaining one read's keys (OMN-21099)."""
+
+    def __init__(
+        self,
+        fold: Callable[
+            [ModelWorkLedgerFoldRequest], ModelWorkLedgerFoldResult
+        ] = fold_row,
+    ) -> None:
+        self._fold = fold
+        self._cache: dict[str, tuple[str, ModelWorkLedgerFoldResult | None]] = {}
+        self._lock = Lock()
+
+    def fold_rows(
+        self, rows: Sequence[tuple[str, str]]
+    ) -> tuple[ModelWorkLedgerFoldResult | None, ...]:
+        """Fold changed rows in order; reuse results and refusals for unchanged rows."""
+        with self._lock:
+            retained: dict[str, tuple[str, ModelWorkLedgerFoldResult | None]] = {}
+            results: list[ModelWorkLedgerFoldResult | None] = []
+            for key, raw_row in rows:
+                cached = retained.get(key, self._cache.get(key))
+                if cached is not None and cached[0] == raw_row:
+                    result = cached[1]
+                else:
+                    try:
+                        result = self._fold(ModelWorkLedgerFoldRequest(raw_row=raw_row))
+                    except WorkLedgerFoldError:
+                        result = None
+                retained[key] = (raw_row, result)
+                results.append(result)
+            self._cache = retained
+            return tuple(results)
+
+
+SHARED_WORK_LEDGER_FOLD_MEMO = WorkLedgerFoldMemo()
+
+
 def _may_overwrite(
     current_at: object, current_row_id: object, incoming: tuple[datetime, str]
 ) -> bool:
@@ -410,7 +449,9 @@ def close_relationships(
 
 
 __all__: list[str] = [
+    "SHARED_WORK_LEDGER_FOLD_MEMO",
     "WorkLedgerFoldError",
+    "WorkLedgerFoldMemo",
     "apply_ops",
     "close_relationships",
     "fold_row",

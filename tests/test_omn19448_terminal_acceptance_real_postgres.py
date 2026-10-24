@@ -114,8 +114,9 @@ async def test_migrated_terminal_row_carries_every_column(
         ],
     }
     if failed and family == "delegate-skill":
-        # A refused ladder has no accepting backend; never invent one.
-        expected.update(routed_model=None, answering_backend=None)
+        # A refused ladder has no accepting backend; never invent one. The
+        # routed model is the deciding rung's, which was called and refused.
+        expected.update(answering_backend=None)
 
     async with _provisioned(postgres) as (connection, schema):
         await connection.execute(
