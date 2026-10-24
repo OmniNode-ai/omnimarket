@@ -18,7 +18,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "The technical deep dive tests render a recorded day, refuse a planted uncited claim, and run the CLI the tick calls; none exists at the merge base."
-    command: "uv run pytest tests/nodes/node_deep_dive_report_effect -q --no-cov -k technical_deep_dive"
+    command: "uv run pytest tests/nodes/node_deep_dive_report_effect/test_technical_deep_dive.py -q --no-cov -k technical_deep_dive"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -29,7 +29,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_deep_dive_report_effect -q --no-cov -k cli"
+        check_value: "uv run pytest tests/nodes/node_deep_dive_report_effect/test_technical_deep_dive.py -q --no-cov -k cli"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn21352-ac2-citation-refusal"
@@ -37,7 +37,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_deep_dive_report_effect -q --no-cov -k citation_check_refuses_planted_uncited_claim"
+        check_value: "uv run pytest tests/nodes/node_deep_dive_report_effect/test_technical_deep_dive.py -q --no-cov -k citation_check_refuses_planted_uncited_claim"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn21352-ac3-sections"
@@ -45,7 +45,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_deep_dive_report_effect -q --no-cov -k 'renders_every_section or fall_back'"
+        check_value: "uv run pytest tests/nodes/node_deep_dive_report_effect/test_technical_deep_dive.py -q --no-cov -k 'renders_every_section or fall_back'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-omn21352-deploy-cli-smoke"
@@ -86,4 +86,3 @@ dod_evidence:
           ! grep -q "no number" "$probe_dir/planted.md";
           grep -q "left out for lack of a citation: 1" "$probe_dir/planted.md"
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC1", "AC2"]
