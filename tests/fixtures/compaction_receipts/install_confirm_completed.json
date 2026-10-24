@@ -1,0 +1,112 @@
+{
+  "session_id": "21336002-0000-4000-8000-000000000001",
+  "boundaries": [
+    {
+      "boundary_uuid": "21336001-0000-4000-8000-000000000001",
+      "kind": "custom",
+      "activation_id": "21336000-0000-4000-8000-000000000001",
+      "observed_hash": "dd6f73928d3c7d4345858741fec27914c6b55187c577881c4604afb993b78a1b",
+      "replacement_uuids": [
+        "21336001-0000-4000-8000-000000000001-replacement"
+      ]
+    },
+    {
+      "boundary_uuid": "21336001-0000-4000-8000-000000000002",
+      "kind": "custom",
+      "activation_id": "21336000-0000-4000-8000-000000000002",
+      "observed_hash": "f0110680d197690754ddb0f88ef8eef7e45e14ac3fee5bf27173e136e6887c6f",
+      "replacement_uuids": [
+        "21336001-0000-4000-8000-000000000002-replacement"
+      ]
+    },
+    {
+      "boundary_uuid": "21336001-0000-4000-8000-000000000003",
+      "kind": "native",
+      "activation_id": null,
+      "observed_hash": "94e055f8ec8428310edeb0899a04a7c338e54a16986504d5c10dd0b7703a619b",
+      "replacement_uuids": [
+        "21336001-0000-4000-8000-000000000003-replacement"
+      ]
+    },
+    {
+      "boundary_uuid": "21336001-0000-4000-8000-000000000004",
+      "kind": "unreadable",
+      "activation_id": null,
+      "observed_hash": null,
+      "replacement_uuids": [
+        "21336001-0000-4000-8000-000000000004-replacement"
+      ]
+    }
+  ],
+  "facts": [
+    {
+      "activation_id": "21336000-0000-4000-8000-000000000001",
+      "fact": "installed",
+      "reason": null,
+      "boundary_uuid": "21336001-0000-4000-8000-000000000001",
+      "installed_messages_hash": "dd6f73928d3c7d4345858741fec27914c6b55187c577881c4604afb993b78a1b",
+      "observed_hash": "dd6f73928d3c7d4345858741fec27914c6b55187c577881c4604afb993b78a1b"
+    },
+    {
+      "activation_id": "21336000-0000-4000-8000-000000000002",
+      "fact": "install_mismatch",
+      "reason": null,
+      "boundary_uuid": "21336001-0000-4000-8000-000000000002",
+      "installed_messages_hash": "c390eadbb70af0938b6264f8b0801fd0db2cfc0ffe531cdcea6a302c3dc75b22",
+      "observed_hash": "f0110680d197690754ddb0f88ef8eef7e45e14ac3fee5bf27173e136e6887c6f"
+    },
+    {
+      "activation_id": "21336000-0000-4000-8000-000000000003",
+      "fact": "not_installed",
+      "reason": "native_compaction",
+      "boundary_uuid": "21336001-0000-4000-8000-000000000003",
+      "installed_messages_hash": "018ac7643becec314e5c371b690cda813f31a28e7817155c038b782bbe03593f",
+      "observed_hash": null
+    },
+    {
+      "activation_id": "21336000-0000-4000-8000-000000000004",
+      "fact": "uncertain",
+      "reason": "unparseable_record",
+      "boundary_uuid": "21336001-0000-4000-8000-000000000004",
+      "installed_messages_hash": "fcdb91bed291460b0efc7c19205f27d3e993c4e61a1530a0c59023a9cb3553fd",
+      "observed_hash": null
+    },
+    {
+      "activation_id": "21336000-0000-4000-8000-000000000005",
+      "fact": "uncertain",
+      "reason": "capture_gap",
+      "boundary_uuid": null,
+      "installed_messages_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "observed_hash": null
+    },
+    {
+      "activation_id": "21336000-0000-4000-8000-000000000007",
+      "fact": "not_installed",
+      "reason": "not_selected",
+      "boundary_uuid": "21336001-0000-4000-8000-000000000001",
+      "installed_messages_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "observed_hash": null
+    }
+  ],
+  "pending_activation_ids": [
+    "21336000-0000-4000-8000-000000000006"
+  ],
+  "current": {
+    "boundary_uuid": "21336001-0000-4000-8000-000000000004",
+    "kind": "unreadable",
+    "activation_id": null,
+    "chain_boundary_uuids": [
+      "21336001-0000-4000-8000-000000000001",
+      "21336001-0000-4000-8000-000000000002",
+      "21336001-0000-4000-8000-000000000003",
+      "21336001-0000-4000-8000-000000000004"
+    ],
+    "retirements": [
+      {
+        "activation_id": "21336000-0000-4000-8000-000000000001",
+        "installed_at_boundary_uuid": "21336001-0000-4000-8000-000000000001",
+        "retired_at_boundary_uuid": "21336001-0000-4000-8000-000000000002"
+      }
+    ]
+  }
+}
