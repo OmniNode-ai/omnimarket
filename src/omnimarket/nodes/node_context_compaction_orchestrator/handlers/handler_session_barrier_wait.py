@@ -61,7 +61,9 @@ class HandlerSessionBarrierWait:
                 )
             verdict = self._barrier.handle(probe)
             now = self._monotonic()
-            if now > deadline:
+            # A read that overran a positive deadline is refused even when met; a
+            # zero deadline asks for one read, and that read's verdict stands.
+            if self._deadline_s > 0 and now > deadline:
                 return verdict.model_copy(update={"outcome": "deadline"})
             if verdict.outcome in ("met", "disabled"):
                 return verdict
