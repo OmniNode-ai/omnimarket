@@ -854,8 +854,10 @@ def read_pr_review_threads(
         page_info = connection.get("pageInfo")
         cursor = page_info.get("endCursor") if isinstance(page_info, dict) else None
         more = isinstance(page_info, dict) and bool(page_info.get("hasNextPage"))
-        if truncated or not more or not isinstance(cursor, str):
+        if truncated or len(threads) >= request.limit:
             truncated = truncated or more
+            break
+        if not more or not isinstance(cursor, str):
             break
         after = cursor
     else:
