@@ -60,6 +60,9 @@ from omnimarket.models.delegation.delegation_ticket_id import TICKET_ID_PATTERN
 from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
 )
+from omnimarket.models.delegation.model_escalation_transitions import (
+    ModelAttemptTransition,
+)
 from omnimarket.models.delegation.wire.model_attempt_configuration import (
     ModelAttemptConfiguration,
 )
@@ -288,6 +291,13 @@ class ModelDelegateSkillAttemptRecord(BaseModel):
     rubric_verdict: ModelAttemptRubricVerdict | None = Field(
         default=None,
         description="Recorded class rubric verdict; decides nothing. None when no gate judged this attempt.",
+    )
+    transition: ModelAttemptTransition | None = Field(
+        default=None,
+        description=(
+            "What the run did after this attempt and the declared cause that "
+            "decided it (OMN-21213). None when the path recorded no transition."
+        ),
     )
     reasoning_preamble_rule: str | None = Field(
         default=None,

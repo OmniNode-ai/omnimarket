@@ -28,6 +28,9 @@ from omnimarket.inference.request_instruction import (
     opening_sentence,
 )
 from omnimarket.models.delegation.model_deployment_fact_marker import deployment_fact
+from omnimarket.models.delegation.model_escalation_transitions import (
+    ModelTaskClassTransitions,
+)
 from omnimarket.models.delegation.model_lab_rubric import (
     ModelLabFirstPolicy,
     ModelLabRubric,
@@ -907,6 +910,12 @@ class ModelTaskClassAuthorityEntry(BaseModel):
         ),
     )
     escalation_policy: ModelTaskClassEscalationPolicy | None = None
+    transitions: ModelTaskClassTransitions = Field(
+        description=(
+            "The class's retry_on, move_on, skip_on and terminate_on lists "
+            "(OMN-21213). Required: a class without them refuses to load."
+        ),
+    )
     external_acceptance: ModelExternalAcceptance | None = Field(
         default=None,
         description=(
@@ -952,6 +961,13 @@ class ModelTaskClassAuthority(BaseModel):
     lab_first_policy: ModelLabFirstPolicy | None = Field(
         default=None,
         description="The lab tier and the adequacy bar a class must meet there (OMN-17427).",
+    )
+    transitions_default: ModelTaskClassTransitions | None = Field(
+        default=None,
+        description=(
+            "The transition lists the shipped classes share (OMN-21213), and the "
+            "lists a task type the contract does not declare is decided by."
+        ),
     )
     quality_rules: dict[str, ModelQualityRule] = Field(default_factory=dict)
     reasoning_preamble: ModelReasoningPreamblePolicy | None = Field(

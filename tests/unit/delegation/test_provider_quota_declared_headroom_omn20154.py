@@ -57,6 +57,7 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_reque
 from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
     handler_delegation_routing as routing,
 )
+from tests.fixtures.task_class_transitions import with_declared_transitions
 
 pytestmark = pytest.mark.unit
 
@@ -503,7 +504,7 @@ def _bound(
     for name, contents in (
         ("routing_tiers.yaml", _TIERS_YAML),
         ("bifrost_delegation.yaml", _BIFROST_YAML),
-        ("task_class_contracts.v1.yaml", _CONTRACT_YAML),
+        ("task_class_contracts.v1.yaml", with_declared_transitions(_CONTRACT_YAML)),
     ):
         (tmp_path / name).write_text(contents)
     for env, filename in (

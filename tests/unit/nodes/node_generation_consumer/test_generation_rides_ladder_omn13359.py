@@ -44,6 +44,7 @@ from omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consu
 from omnimarket.nodes.node_generation_consumer.models.model_generation import (
     ModelNodeGenerationRequest,
 )
+from tests.fixtures.task_class_transitions import with_declared_transitions
 
 # ---------------------------------------------------------------------------
 # LLM-response fixtures (a contract-valid vs contract-invalid generation).
@@ -266,7 +267,7 @@ def hermetic_routing(
     tiers = tmp_path / "routing_tiers.yaml"
     tiers.write_text(_routing_tiers())
     task_classes = tmp_path / "task_class_contracts.v1.yaml"
-    task_classes.write_text(_task_class_contract())
+    task_classes.write_text(with_declared_transitions(_task_class_contract()))
 
     monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(bifrost))
     monkeypatch.setenv("BIFROST_OVERLAY_PATH", str(overlay))

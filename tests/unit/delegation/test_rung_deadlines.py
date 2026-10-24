@@ -51,6 +51,7 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
 from omnimarket.routing.delegation_backend_resolution import (
     resolve_delegation_backend as _real_resolve_delegation_backend,
 )
+from tests.fixtures.task_class_transitions import with_declared_transitions
 
 pytestmark = pytest.mark.unit
 
@@ -227,7 +228,7 @@ def _fixture_env(
     bifrost_path = tmp_path / "bifrost_delegation.yaml"
     bifrost_path.write_text(_BIFROST_YAML)
     contract_path = tmp_path / "task_class_contracts.v1.yaml"
-    contract_path.write_text(_TASK_CLASS_CONTRACT_YAML)
+    contract_path.write_text(with_declared_transitions(_TASK_CLASS_CONTRACT_YAML))
 
     monkeypatch.setenv("DELEGATION_ROUTING_TIERS_PATH", str(tiers_path))
     monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(bifrost_path))
