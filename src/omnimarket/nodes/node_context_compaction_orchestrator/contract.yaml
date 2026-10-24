@@ -5,22 +5,15 @@ node_type: orchestrator
 node_version: {major: 1, minor: 0, patch: 0}
 lifecycle: experimental
 description: >
-  Answers one compaction command from the Claude Code hook adapter. It calls the
-  context-pack build for the compaction_orchestrator profile through the
-  ProtocolContextCompactionPackBuild port. A built package is published as
-  prepared, gets a fresh activation_id on its identity trailer, and is replied
-  as install with its installed_messages_hash after the activated receipt. Any
-  failure before activation, typed or raised, replies native and publishes
-  fallback with the failure class and the command's invocation_id; no partial
-  package is replied. The runtime's no-argument construction binds
-  HandlerCompactionPackBuild over compaction_runtime.pack_build_node with the
-  tenant from compaction_runtime.tenant_id; an unset tenant keeps
-  pack_builder_unavailable. The default barrier port reads committed sequence
-  stamps from both session projections and never trusts producer journal presence.
-  The barrier's recorded timestamp supplies the ledger and session source revisions.
-  Receipt events carry ids, hashes, failure classes and build
-  timings only;
-  the package reply carries content and travels on the restricted command family.
+  Answers a compaction command by publishing a context-pack command on the bus
+  for the compaction_orchestrator profile. The command's id correlates the
+  completed or failed reply, awaited within the compaction deadline with native
+  fallback. A built package is published as prepared, receives a fresh activation_id
+  on its identity trailer, and is replied as install after the activated receipt.
+  An unset tenant or unwired transport falls back pack_builder_unavailable.
+  The existing barrier wait reads committed sequence stamps from both session
+  projections; its recorded timestamp supplies ledger and session source revisions.
+  Receipts carry identities and timings; the restricted package reply carries content.
 
 handler_routing:
   routing_strategy: payload_type_match
@@ -62,7 +55,6 @@ dependencies:
 
 # Runtime ports are bound from this contract (OMN-21334, TA.11b).
 compaction_runtime:
-  pack_build_node: node_context_pack_orchestrator
   # Tenants are overlay data, as for the context sources: the deploy overlay sets it.
   # Unset leaves the pack build unbound, so every command falls back pack_builder_unavailable.
   tenant_id: "${env.ONEX_CONTEXT_SOURCE_TENANT_ID:}"
@@ -139,10 +131,20 @@ event_bus:
   subscribe_topics:
     - onex.cmd.omniintelligence.context-compaction-requested.v1
   publish_topics:
+    - onex.cmd.omniintelligence.context-pack-requested.v1
     - onex.cmd.omniintelligence.context-compaction-package.v1
     - onex.evt.omnimarket.context-compaction-prepared.v1
     - onex.evt.omnimarket.context-compaction-activated.v1
     - onex.evt.omnimarket.context-compaction-fallback.v1
+  request_response:
+    instances:
+      - name: compaction_pack_build
+        request_topic: onex.cmd.omniintelligence.context-pack-requested.v1
+        reply_topics:
+          completed: onex.cmd.omniintelligence.context-pack-built.v1
+          failed: onex.cmd.omniintelligence.context-pack-failed.v1
+        correlation: {location: body, field: correlation_id}
+        timeout_seconds: 30
 
 # The runtime publishes each event the handler returns on the topic its row
 # names for the class (event_type is the class name minus its Model prefix):

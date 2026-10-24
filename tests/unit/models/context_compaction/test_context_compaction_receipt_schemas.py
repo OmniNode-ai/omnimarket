@@ -34,6 +34,10 @@ _ORCHESTRATOR_CONTRACT = (
     Path(__file__).resolve().parents[4]
     / "src/omnimarket/nodes/node_context_compaction_orchestrator/contract.yaml"
 )
+_CONTEXT_PACK_ORCHESTRATOR_CONTRACT = (
+    Path(__file__).resolve().parents[4]
+    / "src/omnimarket/nodes/node_context_pack_orchestrator/contract.yaml"
+)
 _RECEIPT_TOPICS = (
     topics.CONTEXT_COMPACTION_PREPARED_TOPIC_V1,
     topics.CONTEXT_COMPACTION_ACTIVATED_TOPIC_V1,
@@ -66,11 +70,15 @@ def test_six_receipts_each_on_a_topic_of_their_own() -> None:
 
 def test_topic_constants_agree_with_the_orchestrator_contract() -> None:
     contract = yaml.safe_load(_ORCHESTRATOR_CONTRACT.read_text(encoding="utf-8"))
+    context_pack_contract = yaml.safe_load(
+        _CONTEXT_PACK_ORCHESTRATOR_CONTRACT.read_text(encoding="utf-8")
+    )
     declared = {
         *contract["event_bus"]["subscribe_topics"],
         *contract["event_bus"]["publish_topics"],
     }
     assert declared == {
+        *context_pack_contract["event_bus"]["subscribe_topics"],
         topics.CONTEXT_COMPACTION_REQUESTED_TOPIC_V1,
         topics.CONTEXT_COMPACTION_PACKAGE_TOPIC_V1,
         topics.CONTEXT_COMPACTION_PREPARED_TOPIC_V1,

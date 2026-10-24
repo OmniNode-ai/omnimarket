@@ -4,11 +4,10 @@
 
 from __future__ import annotations
 
-import importlib
 import os
 from collections.abc import Callable
 from datetime import UTC
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -18,8 +17,11 @@ from omnimarket.models.model_session_stream_barrier import (
 )
 from omnimarket.projection.postgres_read_database import connect_read_only
 
-# The driver exposes no stubs; its SQL composer is an explicit dynamic boundary.
-sql: Any = importlib.import_module("psycopg2.sql")
+# The driver exposes no stubs; retain its explicit untyped SQL boundary.
+if TYPE_CHECKING:
+    sql: Any
+else:
+    from psycopg2 import sql
 
 
 class ModelSessionBarrierReadBinding(BaseModel):

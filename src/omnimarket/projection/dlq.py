@@ -27,13 +27,82 @@ pre-commit).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Final
 
 logger = logging.getLogger(__name__)
+
+# OMN-19448: the DLQ producer refuses a request over 1 MiB, and a poison event
+# it cannot publish is never acknowledged, so the partition behind it stalls.
+# Keep the published envelope under this size; the reserve covers the envelope's
+# own keys and the capped failure reason.
+DLQ_MAX_ENVELOPE_BYTES: Final[int] = 900_000
+_ENVELOPE_RESERVE_BYTES: Final[int] = 32_768
+_MAX_FAILURE_REASON_CHARS: Final[int] = 4096
+_MAX_KEPT_STRING_CHARS: Final[int] = 2048
+_KEPT_PREFIX_CHARS: Final[int] = 512
+_MAX_DROPPED_KEYS: Final[int] = 100
+_IDENTITY_KEYS: Final[tuple[str, ...]] = (
+    "correlation_id",
+    "session_id",
+    "tenant_id",
+    "task_type",
+    "status",
+)
+
+
+def _shorten_dlq_strings(value: Any) -> Any:
+    """Return a copy of a JSON tree with every long string cut to a prefix.
+
+    The cut string ends with its original length and sha256, so the evidence
+    stays checkable against the source event on the bus.
+    """
+    if isinstance(value, str) and len(value) > _MAX_KEPT_STRING_CHARS:
+        digest = hashlib.sha256(value.encode("utf-8", errors="replace")).hexdigest()
+        omitted = len(value) - _KEPT_PREFIX_CHARS
+        return (
+            value[:_KEPT_PREFIX_CHARS]
+            + f"...[truncated {omitted} chars, sha256={digest}]"
+        )
+    if isinstance(value, dict):
+        return {key: _shorten_dlq_strings(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_shorten_dlq_strings(item) for item in value]
+    return value
+
+
+def bound_dlq_original_message(
+    message: dict[str, Any], max_bytes: int = DLQ_MAX_ENVELOPE_BYTES
+) -> tuple[dict[str, Any], bool]:
+    """Fit a poison event into ``max_bytes`` without losing its identity.
+
+    A message that fits is returned as the same object. Otherwise long strings
+    are cut to a prefix with their digest; if the tree is still too large, only
+    its scalar identity keys, the names of the dropped keys, its size and the
+    sha256 of its full JSON are kept. The boolean says whether anything was cut.
+    """
+    raw = json.dumps(message, default=str).encode("utf-8")
+    if len(raw) <= max_bytes:
+        return message, False
+    reduced = _shorten_dlq_strings(message)
+    if len(json.dumps(reduced, default=str).encode("utf-8")) <= max_bytes:
+        return reduced, True
+    dropped = [str(key) for key in message if key not in _IDENTITY_KEYS]
+    minimal: dict[str, Any] = {
+        key: _shorten_dlq_strings(message[key])
+        for key in _IDENTITY_KEYS
+        if isinstance(message.get(key), str | int | float | bool)
+    }
+    minimal["dropped_keys"] = dropped[:_MAX_DROPPED_KEYS]
+    minimal["dropped_key_count"] = len(dropped)
+    minimal["original_bytes"] = len(raw)
+    minimal["sha256"] = hashlib.sha256(raw).hexdigest()
+    return minimal, True
+
 
 # Type of the async publish callable shared with the projection runners:
 # (topic, value_bytes) -> awaitable[None].
@@ -67,14 +136,23 @@ def build_dlq_envelope(
     level (in addition to riding inside ``original_message``) so the failure is
     recoverable by correlation even when the offending payload is unparseable.
     """
-    return {
-        "original_message": original_message,
-        "failure_reason": failure_reason,
+    bounded, truncated = bound_dlq_original_message(
+        original_message, max_bytes=DLQ_MAX_ENVELOPE_BYTES - _ENVELOPE_RESERVE_BYTES
+    )
+    envelope: dict[str, Any] = {
+        "original_message": bounded,
+        "failure_reason": failure_reason[:_MAX_FAILURE_REASON_CHARS],
         "correlation_id": correlation_id,
         "retry_count": retry_count,
         "failed_at": datetime.now(UTC).isoformat(),
         "handler": handler,
     }
+    if truncated:
+        envelope["original_message_truncated"] = True
+        envelope["original_message_bytes"] = len(
+            json.dumps(original_message, default=str).encode("utf-8")
+        )
+    return envelope
 
 
 async def route_to_dlq(
@@ -162,7 +240,9 @@ def correlation_id_from_payload(payload: dict[str, Any], fallback: str = "") -> 
 
 
 __all__ = [
+    "DLQ_MAX_ENVELOPE_BYTES",
     "PublishFn",
+    "bound_dlq_original_message",
     "build_dlq_envelope",
     "correlation_id_from_payload",
     "dlq_topics_from_contract",

@@ -55,6 +55,9 @@ class ModelContextPackBuilt(BaseModel):
     failure_class: EnumContextPackFailure | None = None
     render_failure_class: EnumContextPackRenderFailure | None = None
     errors: tuple[str, ...] = ()
+    # Set on every failed build: the runtime's failure-terminal guard reads it and
+    # publishes the result on the contract's declared failure terminal.
+    terminal_failure_cause: EnumContextPackFailure | None = None
 
     def model_section_ms(self) -> float | None:
         """Sum the timed reads of model-written tiers, or None when none was read."""

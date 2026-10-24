@@ -13,7 +13,7 @@ it. Any failure before activation, typed or raised, replies ``native`` and
 publishes ``fallback`` with the failure class and the command's
 ``invocation_id``. No partial package is ever replied.
 Receipts carry the pack build's wall time and the model-written section's share (TA.12).
-No-argument construction binds the runtime ports from the contract (OMN-21334).
+The runtime injects the bus transport; settings and topics come from the contract.
 Each native fallback logs one failure line, including the cause class when raised.
 """
 
@@ -23,11 +23,14 @@ import asyncio
 import logging
 import time
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from omnibase_core.enums.enum_client_verdict_action import EnumClientVerdictAction
+from omnibase_core.models.context.model_context_access import ModelContextAccess
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
+from omnimarket.handlers.session_stream_barrier import HandlerSessionStreamBarrier
 from omnimarket.models.context_compaction import (
     EnumContextCompactionFailureClass,
     ModelContextCompactionActivated,
@@ -46,27 +49,24 @@ from omnimarket.models.context_pack_render.model_context_pack_render_message imp
 from omnimarket.protocols.protocol_context_compaction_barrier_wait import (
     ProtocolContextCompactionBarrierWait,
 )
-from omnimarket.protocols.protocol_context_compaction_pack_build import (
-    ProtocolContextCompactionPackBuild,
-)
 from omnimarket.protocols.protocol_session_barrier_probe_source import (
     ProtocolSessionBarrierProbeSource,
 )
 
-from .compaction_runtime_binding import bind_compaction_ports
+from .compaction_runtime_binding import (
+    ModelCompactionRuntimeBinding,
+    bind_compaction_ports,
+    load_compaction_pack_topics,
+    load_compaction_runtime_binding,
+)
+from .handler_compaction_pack_build import HandlerCompactionPackBuildBus
+
+if TYPE_CHECKING:
+    from omnibase_infra.runtime.service_terminal_event_consumer import (
+        TerminalEventConsumer,
+    )
 
 _LOG = logging.getLogger(__name__)
-
-
-class _UnwiredPackBuild:
-    """Every build is unavailable when the contract tenant is unset (OMN-21334)."""
-
-    def build(
-        self, request: ModelContextCompactionRequested
-    ) -> ModelContextCompactionBuildOutcome:
-        return ModelContextCompactionBuildOutcome(
-            failure_class=EnumContextCompactionFailureClass.PACK_BUILDER_UNAVAILABLE
-        )
 
 
 def _with_activation_line(
@@ -87,27 +87,48 @@ class HandlerContextCompactionOrchestrator:
 
     def __init__(
         self,
-        pack_build: ProtocolContextCompactionPackBuild | None = None,
+        event_publisher: Callable[[str, bytes], None] | None = None,
+        event_consumer: TerminalEventConsumer | None = None,
+        *,
         activation_ids: Callable[[], UUID] = uuid4,
         barrier_wait: ProtocolContextCompactionBarrierWait | None = None,
-        *,
         clock: Callable[[], float] | None = None,
         barrier_probe_source: ProtocolSessionBarrierProbeSource | None = None,
+        binding: ModelCompactionRuntimeBinding | None = None,
+        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
-        if pack_build is None:
-            pack_build, bound_barrier_wait = bind_compaction_ports(
-                barrier_probe_source=barrier_probe_source
-            )
-            if barrier_wait is None:
-                barrier_wait = bound_barrier_wait
-        self._pack_build = pack_build if pack_build is not None else _UnwiredPackBuild()
+        binding = binding if binding is not None else load_compaction_runtime_binding()
+        topics = load_compaction_pack_topics()
+        self._pack_build = None
+        self._probe_source = None
         self._barrier_wait = barrier_wait
+        if (
+            event_publisher is not None
+            and event_consumer is not None
+            and binding.tenant_id is not None
+        ):
+            bound_wait, self._probe_source = bind_compaction_ports(
+                binding, barrier_probe_source=barrier_probe_source, monotonic=monotonic
+            )
+            if self._barrier_wait is None:
+                self._barrier_wait = bound_wait
+            self._pack_build = HandlerCompactionPackBuildBus(
+                event_publisher,
+                event_consumer,
+                ModelContextAccess(tenant_id=binding.tenant_id),
+                topics.request_topic,
+                topics.completed_topic,
+                topics.failed_topic,
+            )
+        self._deadline_s = binding.barrier_deadline_s
+        self._monotonic = monotonic
         self._activation_ids = activation_ids
         self._clock = clock if clock is not None else time.perf_counter
 
     def handle(
         self, request: ModelContextCompactionRequested
     ) -> ModelContextCompactionResult:
+        deadline = self._monotonic() + self._deadline_s
         build_ms: float | None = None
         try:
             barrier_failure = self._barrier_failure(request)
@@ -115,7 +136,7 @@ class HandlerContextCompactionOrchestrator:
                 return self._native(request, barrier_failure)
             started = self._clock()
             try:
-                outcome = self._pack_build.build(request)
+                outcome = self._build(request, deadline)
             finally:
                 build_ms = (self._clock() - started) * 1000.0
         except Exception as exc:
@@ -133,6 +154,35 @@ class HandlerContextCompactionOrchestrator:
                 build_ms=build_ms,
             )
         return self._install(request, outcome.package, build_ms=build_ms)
+
+    def _build(
+        self, request: ModelContextCompactionRequested, deadline: float
+    ) -> ModelContextCompactionBuildOutcome:
+        if self._pack_build is None:
+            return ModelContextCompactionBuildOutcome(
+                failure_class=EnumContextCompactionFailureClass.PACK_BUILDER_UNAVAILABLE
+            )
+        if self._probe_source is None or request.barrier_id is None:
+            return ModelContextCompactionBuildOutcome(
+                failure_class=EnumContextCompactionFailureClass.SOURCE_INCOMPLETE
+            )
+        probe = self._probe_source.read(request.session_id, request.barrier_id)
+        if HandlerSessionStreamBarrier().handle(probe).outcome != "met":
+            return ModelContextCompactionBuildOutcome(
+                failure_class=EnumContextCompactionFailureClass.SOURCE_NOT_CAUGHT_UP
+            )
+        if probe.source_revision is None:
+            return ModelContextCompactionBuildOutcome(
+                failure_class=EnumContextCompactionFailureClass.SOURCE_INCOMPLETE
+            )
+        remaining = deadline - self._monotonic()
+        if remaining <= 0:
+            return ModelContextCompactionBuildOutcome(
+                failure_class=EnumContextCompactionFailureClass.PACK_BUILDER_UNAVAILABLE
+            )
+        return self._pack_build.build(
+            request, source_revision=probe.source_revision, timeout_s=remaining
+        )
 
     async def handle_async(
         self, request: ModelContextCompactionRequested
@@ -154,9 +204,7 @@ class HandlerContextCompactionOrchestrator:
         self, request: ModelContextCompactionRequested
     ) -> EnumContextCompactionFailureClass | None:
         """The failure class when the session barrier is not met; None to build."""
-        if self._barrier_wait is None or isinstance(
-            self._pack_build, _UnwiredPackBuild
-        ):
+        if self._barrier_wait is None or self._pack_build is None:
             return None
         if request.barrier_id is None:
             return EnumContextCompactionFailureClass.SOURCE_INCOMPLETE

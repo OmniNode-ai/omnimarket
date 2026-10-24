@@ -41,6 +41,16 @@ requirements:
         statement: "AC8: a timeout or runtime shutdown before any try stores not routed (<cause>) for the model and not routed for backend and host through the real PostgreSQL writer -- falsifier: tests/test_omn19448_failed_run_attribution_real_postgres.py -k 'before_any_try'"
       - id: "AC9"
         statement: "AC9: when a model call was not timed, both the producer and projection report the measured execution duration; a measured call latency is preserved -- falsifier: tests/test_failed_run_attribution.py -k 'duration or latency'"
+  - id: "req-experiment-data-source-and-quarantine"
+    statement: |-
+      A run the caller declares synthetic through the request's own provenance is stored data_source experiment, and a poison terminal too large for the DLQ producer is still quarantined with a bounded envelope, so the delegate-skill terminals behind it reach delegation_events with their backend_id and host.
+    acceptance:
+      - id: "AC10"
+        statement: |-
+          AC10: a delegate-skill terminal whose provenance traffic_class is synthetic is written with data_source experiment by both projection writers, a terminal without it stays real, the lane name is never read, and migration 0064 admits the value -- falsifier: uv run pytest tests/unit/projection/test_delegation_data_source_experiment_omn19448.py -q
+      - id: "AC11"
+        statement: |-
+          AC11: a poison event whose serialized DLQ envelope exceeds the producer limit is published bounded with its correlation_id, the offset is committed, and the next recorded delegate-skill terminal is projected with its backend_id and host -- falsifier: uv run pytest tests/unit/projection/test_dlq_oversize_poison_omn19448.py tests/unit/projection/test_delegation_backend_host_after_quarantine_omn19448.py -q
 evidence_requirements:
   - kind: "tests"
     description: "The stop reason column tests."
@@ -237,3 +247,19 @@ dod_evidence:
     - check_type: command
       check_value: uv run pytest tests/test_failed_run_attribution.py -q --no-cov -p no:cacheprovider --refuse-skips -k 'deciding_rung or duration or latency'
       cwd: ${OMNI_HOME}/omnimarket
+  - id: "dod-omn19448-experiment-data-source"
+    description: "Both projection writers store data_source experiment for a terminal whose request provenance traffic_class is synthetic, keep real for any other terminal including one from a lane named like an eval lane, and the real PostgreSQL check admits experiment through migration 0064 while still refusing an unknown value."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/projection/test_delegation_data_source_experiment_omn19448.py tests/test_omn19448_experiment_data_source_real_postgres.py -q -n 0 --no-cov -p no:cacheprovider --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC10"]
+  - id: "dod-omn19448-oversize-poison-quarantine"
+    description: "A delegate-skill terminal of about 1.79 MB with no tenant is quarantined on the DLQ within the producer limit with its correlation_id, the offset is committed, and the next recorded terminal is projected with backend_id local-heavy-reasoning and host recorded on the terminal."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/projection/test_dlq_oversize_poison_omn19448.py tests/unit/projection/test_delegation_backend_host_after_quarantine_omn19448.py -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC11"]

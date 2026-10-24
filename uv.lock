@@ -12,7 +12,7 @@ resolution-markers = [
 overrides = [
     { name = "omnibase-compat", specifier = "==0.5.7" },
     { name = "omnibase-core", specifier = ">=0.47.53,<0.48.0" },
-    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261024101406-9bcb8af376d3" },
+    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261024113111-7e969fd8c88b" },
     { name = "omnibase-spi", specifier = ">=0.23.3,<0.24.0" },
 ]
 
@@ -3110,7 +3110,7 @@ wheels = [
 [[package]]
 name = "omnibase-infra"
 version = "0.38.77"
-source = { git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261024101406-9bcb8af376d3#9bcb8af376d37876a34846fedea74dbc22140f67" }
+source = { git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261024113111-7e969fd8c88b#7e969fd8c88ba393db4b5dcbcb680a397a785a7f" }
 dependencies = [
     { name = "a2a-sdk" },
     { name = "aiofiles" },
@@ -3259,7 +3259,7 @@ requires-dist = [
     { name = "jsonschema", specifier = ">=4.18.0" },
     { name = "omnibase-compat", specifier = "==0.5.7" },
     { name = "omnibase-core", specifier = ">=0.47.53,<0.48.0" },
-    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261024101406-9bcb8af376d3" },
+    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261024113111-7e969fd8c88b" },
     { name = "omnibase-spi", specifier = ">=0.23.3,<0.24.0" },
     { name = "omninode-memory", specifier = "==0.18.0" },
     { name = "packaging", specifier = ">=24.0" },
