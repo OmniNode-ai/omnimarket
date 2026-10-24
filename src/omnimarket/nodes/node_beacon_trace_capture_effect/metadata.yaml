@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_beacon_trace_capture_effect
+version: 1.0.0
+description: Reads host-local agent-beacon Codex runtime JSONL and publishes metadata-only hook events with actor codex; content never leaves the file.
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+pack: core
+node_role: effect
+display_name: Beacon Trace Capture Effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- omnibase_core>=0.39.0
+- pyyaml>=6.0
+- aiokafka>=0.10.0
+- omnibase-infra>=0.1.0
+- asyncpg>=0.30.0
+license: MIT
+tags:
+- effect
+- host
+- beacon
+- codex

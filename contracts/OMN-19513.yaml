@@ -73,6 +73,11 @@ requirements:
     acceptance:
       - id: "AC12"
         statement: "AC12: an event with actor claude, codex or unknown validates and writes one row, and an actor outside that set is refused -- falsifier: uv run pytest tests/test_omn19513_claude_hook_events_projection.py -q --no-cov -k 'producer_actor or actor_outside' fails with the wire model at Literal[\"claude\"]"
+  - id: "req-beacon-codex-trace-capture"
+    statement: "A host-local effect reads agent-beacon's local runtime JSONL for Codex sessions and republishes each event as a metadata-only hook event with actor codex on the hook-event topic, carrying no prompt, tool or command content."
+    acceptance:
+      - id: "AC13"
+        statement: "AC13: the recorded placeholder session maps to six hook events that validate against the hook-event wire model with actor codex and the lane stamp, carry no placeholder content, and publish on the contract topic keyed by session -- falsifier: uv run pytest tests/unit/nodes/node_beacon_trace_capture_effect -q --no-cov fails with the node absent"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 and AC2: registry passthrough and the raw-value wire model, plus the projection and emit-effect suites over the converted fixtures."
@@ -232,3 +237,13 @@ dod_evidence:
       - check_type: "command"
         check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_claude_hook_events/models/model_claude_hook_event_wire.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"actor: Literal[\\\"claude\\\", \\\"codex\\\", \\\"unknown\\\"]\" > /dev/null'"
     binds_ac: ["AC12"]
+  - id: "dod-omn19513-ac13-beacon-codex-trace-capture"
+    description: "AC13: map the recorded placeholder Beacon session, validate every event against the hook-event wire model, check that no placeholder content reaches an event, and publish through a fake on the contract topic. Deploy probe: read the node contract from GitHub at the checked-out commit and require the node's name; it fails at the merge base, where the node does not exist. The live lab readback is recorded on the pull request, not in this check."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_beacon_trace_capture_effect -q --no-cov"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_beacon_trace_capture_effect/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"name: beacon_trace_capture_effect\" > /dev/null'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC13"]
