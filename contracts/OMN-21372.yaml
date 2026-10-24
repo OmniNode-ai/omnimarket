@@ -1,0 +1,119 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21372"
+title: "Node import gates refuse dynamic sibling handlers and transport drivers"
+summary: >
+  Extend validate-no-transport-imports through the existing import gate script,
+  retaining the core static policy and checking dynamic resolution in handlers
+  of every node kind. Literal targets, constants, aliases and node namespace templates
+  are checked without executing node code. Declared effect drivers retain only
+  their existing static allowance. The original compaction sources are refused
+  fixtures; production defaults require explicit runtime adapters and fail
+  closed. Existing identifiable node-boundary violations are repaired with no new exceptions.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-dynamic-node-import-boundary"
+    statement: "Pre-commit and required CI refuse dynamic resolution across node and driver boundaries."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a node handler that resolves another node's handler or a database or transport driver through importlib.import_module, **import** or importlib.util is refused by a pre-commit hook and a required CI check -- falsifier: uv run pytest tests/ci/test_dynamic_import_gate.py -q -k dynamic_import_gate with a fixture of each form"
+      - id: "AC2"
+        statement: "AC2: the gate refuses omnimarket#4333's current compaction_runtime_binding.py and session_barrier_probe.py, and passes the bus rework -- falsifier: uv run pytest tests/ci/test_dynamic_import_gate.py -q -k dynamic_import_gate_compaction_fixture"
+      - id: "AC3"
+        statement: "AC3: orchestrator and effect nodes are covered by the same gate, not only compute and reducer nodes -- falsifier: uv run pytest tests/ci/test_dynamic_import_gate.py -q -k dynamic_import_gate_node_kinds"
+evidence_requirements:
+  - kind: "tests"
+    description: "Dynamic API fixtures, incident sources, node kinds, static parity and namespace template checks pass."
+    command: "uv run pytest tests/ci/test_dynamic_import_gate.py -q -k dynamic_import_gate"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21372-ac1-dynamic-import-refusal"
+    description: "Every named API and driver is refused for literal and constant targets. Alias, node namespace template and executable hook/CI wiring controls also pass. The existing lint job is a strict CI Summary dependency."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_dynamic_import_gate.py -q -k 'dynamic_import_gate and not dev_census'"
+  - id: "dod-omn21372-ac2-compaction-fixtures"
+    description: "Exact copies of both incident sources are refused without execution. The injected bus-port fixture passes; the repaired live files have no dynamic import violation and no baseline exemption. This is a gate regression proof, not a claim of live bus deployment."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_dynamic_import_gate.py -q -k dynamic_import_gate_compaction_fixture"
+  - id: "dod-omn21372-ac3-node-kinds"
+    description: "The same gate refuses foreign node and driver imports in compute, reducer, orchestrator, effect and legacy node handlers. Declared effect driver allowance cannot allow a sibling node."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_dynamic_import_gate.py -q -k dynamic_import_gate_node_kinds"
+  - id: "dod-omn21372-deploy-gate-cli-smoke"
+    description: "Hosted checkout smoke of the exact transport CLI used by the hook and CI: write each reported source into a temporary orchestrator handler, require exit 1 and the offending target diagnostic, then replace it with the injected bus-port fixture and require exit 0. The old CLI cannot enforce this control. No services or credentials are required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu
+          uv run python - <<'PY'
+          import subprocess
+          import sys
+          import tempfile
+          from pathlib import Path
+          fixtures = Path("tests/ci/fixtures/dynamic_import_gate")
+          command = [sys.executable, "scripts/ci/check_unimported_handlers.py", "--transport-imports"]
+          with tempfile.TemporaryDirectory() as directory:
+              handler = Path(directory) / "node_probe_orchestrator/handlers/probe.py"
+              handler.parent.mkdir(parents=True)
+              for name, diagnostic in (("compaction_runtime_binding.py.txt", "omnimarket.nodes.<dynamic>"), ("session_barrier_probe.py.txt", "psycopg2.sql")):
+                  handler.write_bytes((fixtures / name).read_bytes())
+                  result = subprocess.run([*command, str(handler)], capture_output=True, text=True)
+                  assert result.returncode == 1, (name, result.stdout, result.stderr)
+                  assert diagnostic in result.stdout, result.stdout
+              handler.write_bytes((fixtures / "bus_rework.py.txt").read_bytes())
+              result = subprocess.run([*command, str(handler)], capture_output=True, text=True)
+              assert result.returncode == 0, (result.stdout, result.stderr)
+          PY
+  - id: "dod-omn21372-deploy-injected-barrier-readback"
+    description: "Hosted PostgreSQL runtime probe: start a disposable loopback-only PostgreSQL 16 container, require the changed barrier source to refuse an unwired read even with a reachable database, then exercise explicitly injected read adapters against committed projection rows. The production probe must preserve sequence holes, session isolation and replay stamps. The pre-change source does not refuse missing runtime adapters. No lane services or credentials are required; this is a disposable runtime readback, not a production rollout."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu
+          export PYTHONDONTWRITEBYTECODE=1
+          export COMPOSE_PROJECT_NAME=landing-l16505-lab
+          barrier_probe=$(docker run --detach --rm --label onex.deploy-probe=OMN-21372 --env POSTGRES_HOST_AUTH_METHOD=trust --env POSTGRES_DB=import_boundary_proof --publish 127.0.0.1::5432 postgres:16-alpine)
+          trap 'docker rm --force "$barrier_probe" >/dev/null' EXIT
+          barrier_ready=0
+          for barrier_attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+            if docker exec "$barrier_probe" pg_isready --username postgres --dbname import_boundary_proof >/dev/null; then
+              barrier_ready=1
+              break
+            fi
+            sleep 0.5
+          done
+          test "$barrier_ready" = 1
+          barrier_port=$(docker port "$barrier_probe" 5432/tcp)
+          export ONEX_TEST_SESSION_BARRIER_DSN="postgresql://postgres@${barrier_port}/import_boundary_proof"
+          uv run --locked python - <<'PY'
+          from omnimarket.nodes.node_context_compaction_orchestrator.handlers.session_barrier_probe import ModelSessionBarrierReadBinding, PostgresSessionBarrierProbeSource
+          binding = ModelSessionBarrierReadBinding(
+              dsn_env="ONEX_TEST_SESSION_BARRIER_DSN",
+              lineage_relation="public.claude_hook_events",
+              content_relation="public.session_content",
+          )
+          try:
+              PostgresSessionBarrierProbeSource(binding).read("import-boundary-probe", "barrier")
+          except RuntimeError as exc:
+              assert str(exc) == "session barrier requires runtime-injected read adapters", str(exc)
+          else:
+              raise AssertionError("unwired source opened its own database connection")
+          print("Unwired barrier read refused: runtime-injected adapters required")
+          PY
+          uv run --locked pytest tests/nodes/node_context_compaction_orchestrator/test_postgres_compaction_pack_build_barrier.py -q --no-cov

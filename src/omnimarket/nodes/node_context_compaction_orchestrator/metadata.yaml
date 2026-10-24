@@ -12,7 +12,6 @@ capabilities:
 dependencies:
   - "omnibase_core>=0.47.44,<0.48.0"
   - "omnibase-infra>=0.38.76,<0.39.0"
-  - "psycopg2-binary>=2.9"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["orchestrator", "context-pack", "compaction", "contract"]

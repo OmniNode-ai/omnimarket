@@ -13,6 +13,8 @@ description: >
   An unset tenant or unwired transport falls back pack_builder_unavailable.
   The existing barrier wait reads committed sequence stamps from both session
   projections; its recorded timestamp supplies ledger and session source revisions.
+  The projection probe requires runtime-injected read adapters; the handler never
+  loads another node's handler or a database driver (OMN-21372).
   Receipts carry identities and timings; the restricted package reply carries content.
 
 handler_routing:
@@ -54,6 +56,7 @@ dependencies:
     optional: false
 
 # Runtime ports are bound from this contract (OMN-21334, TA.11b).
+# Barrier probe reads use explicit runtime-owned adapters (OMN-21372).
 compaction_runtime:
   # Tenants are overlay data, as for the context sources: the deploy overlay sets it.
   # Unset leaves the pack build unbound, so every command falls back pack_builder_unavailable.

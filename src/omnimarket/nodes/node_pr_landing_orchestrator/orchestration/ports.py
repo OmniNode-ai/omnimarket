@@ -10,15 +10,14 @@ feeds. Each is a protocol here so the orchestrator is tested against the real
 handler or an explicit double, and so the handler can be composed on the lab
 (wave 3) without changing this node.
 
-Each default resolves the real handler: the reducer by import when first
-used, the arm gate and the head-check classifier (:mod:`.head_checks`,
-OMN-20866) directly. A handler that is not in the tree is a typed refusal of
+The reducer requires an explicit runtime port; the node never resolves a
+sibling handler through importlib. The arm gate and head-check classifier
+(:mod:`.head_checks`, OMN-20866) retain their existing bindings. A handler that is not in the tree is a typed refusal of
 the message that needed it, never a guess.
 """
 
 from __future__ import annotations
 
-import importlib
 import inspect
 from collections.abc import Awaitable
 from datetime import datetime
@@ -41,11 +40,6 @@ from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_gate_
 from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_workflow_row import (
     ModelPrLandingWorkflowRow,
 )
-
-_REDUCER_MODULE = (
-    "omnimarket.nodes.node_pr_landing_reducer.handlers.handler_pr_landing_reducer"
-)
-_REDUCER_CLASS = "HandlerPrLandingReducer"
 
 
 class PrLandingPortUnavailableError(RuntimeError):
@@ -115,26 +109,16 @@ async def call_reducer(
 
 
 class LazyPrLandingReducer:
-    """Resolves node_pr_landing_reducer's handler on first use (T6)."""
+    """Use an explicitly injected reducer port; refuse an unwired default."""
 
-    def __init__(self) -> None:
-        self._reducer: ProtocolPrLandingReducer | None = None
+    def __init__(self, reducer: ProtocolPrLandingReducer | None = None) -> None:
+        self._reducer = reducer
 
     def _resolve(self) -> ProtocolPrLandingReducer:
         if self._reducer is None:
-            try:
-                module = importlib.import_module(_REDUCER_MODULE)
-            except ModuleNotFoundError as exc:
-                msg = (
-                    "node_pr_landing_reducer has no handler in this build; the "
-                    "landing orchestrator cannot move a row without it"
-                )
-                raise PrLandingPortUnavailableError(msg) from exc
-            handler = getattr(module, _REDUCER_CLASS)()
-            if not isinstance(handler, ProtocolPrLandingReducer):
-                msg = f"{_REDUCER_CLASS} does not implement handle()"
-                raise PrLandingPortUnavailableError(msg)
-            self._reducer = handler
+            raise PrLandingPortUnavailableError(
+                "landing reducer requires a runtime-injected port"
+            )
         return self._reducer
 
     def handle(

@@ -1,0 +1,2 @@
+import importlib.util
+importlib.util.find_spec(TARGET)

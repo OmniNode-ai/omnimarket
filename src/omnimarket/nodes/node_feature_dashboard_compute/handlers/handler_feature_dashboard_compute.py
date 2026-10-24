@@ -32,7 +32,6 @@ import os
 import re
 from importlib import metadata as importlib_metadata
 from importlib import resources as importlib_resources
-from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, Literal
 
@@ -308,25 +307,20 @@ def _node_dir(repo_root: Path | None, node_name: str) -> Path | None:
     if repo_root is not None:
         candidate = repo_root / "src" / "omnimarket" / "nodes" / node_name
         return candidate if candidate.is_dir() else None
-    try:
-        spec = find_spec(f"omnimarket.nodes.{node_name}")
-    except (ImportError, ValueError):
-        return None
-    if spec is None or spec.origin is None:
-        return None
-    return Path(spec.origin).parent
+    candidate = Path(__file__).resolve().parents[2] / node_name
+    return candidate if candidate.is_dir() else None
 
 
 def _module_resolvable(repo_root: Path | None, module: str) -> bool:
     if not module:
         return False
-    if repo_root is not None:
-        path = (repo_root / "src" / Path(*module.split("."))).with_suffix(".py")
-        return path.is_file()
-    try:
-        return find_spec(module) is not None
-    except (ImportError, ValueError):
-        return False
+    source_root = (
+        repo_root / "src"
+        if repo_root is not None
+        else Path(__file__).resolve().parents[4]
+    )
+    path = (source_root / Path(*module.split("."))).with_suffix(".py")
+    return path.is_file()
 
 
 def _declared_handler_modules(contract: dict[str, Any]) -> list[str]:
