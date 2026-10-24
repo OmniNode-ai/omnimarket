@@ -393,11 +393,16 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # local_environment, dispatched once per consumed environment report by
     # runtime auto-wiring; its pure plan, HandlerProjectionLocalEnvironment,
     # does NOT declare the capability.
+    # CompactionReceiptsProjectionWriter (OMN-21336) is the only writer of
+    # compaction_receipts, dispatched once per consumed install-confirm-completed event by
+    # runtime auto-wiring; its pure fold, HandlerProjectionCompactionReceipts,
+    # does NOT declare the capability.
     assert declared == {
         "AlertChannelLivenessProjectionWriter",
         "AutomationLivenessProjectionWriter",
         "BoardProbeResultsProjectionWriter",
         "ClaudeHookEventsProjectionWriter",
+        "CompactionReceiptsProjectionWriter",
         "MeteringSummaryProjectionWriter",
         "CiAttemptOutcomeProjectionWriter",
         "ConsumerFlowProjectionWriter",

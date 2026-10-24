@@ -426,6 +426,9 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
         # OMN-19988: local_environment declares its BIGSERIAL
         # `projection_cursor` from its first commit.
         "node_projection_local_environment::local_environment#0",
+        # OMN-21336: compaction_receipts declares its BIGSERIAL
+        # `projection_cursor` from its first commit.
+        "node_projection_compaction_receipts::compaction_receipts#0",
     }
 )
 # 65 as of OMN-18769: runner_fleet_liveness (OMN-18768) and lab_lane_health
@@ -448,7 +451,8 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
 # three automation-liveness exposures; neither grows the measured gap.
 # 76 as of OMN-19988: local_environment declares its BIGSERIAL cursor in the
 # same change as the exposure, so the measured backlog remains unchanged.
-_AC3_TOTAL_EXPOSURES = 76
+# 77 as of OMN-21336: compaction_receipts does the same.
+_AC3_TOTAL_EXPOSURES = 77
 _AC3_MEASURED_GAP = 55
 
 

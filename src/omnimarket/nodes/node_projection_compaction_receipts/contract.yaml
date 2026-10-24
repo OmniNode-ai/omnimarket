@@ -1,0 +1,105 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: projection_compaction_receipts
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_compaction_receipts.models.ModelCompactionReceiptsProjectionRequest
+description: >
+  Records the install-confirm compute's measured verdict in one durable row per
+  session and compaction boundary. Native and unreadable compactions are recorded
+  even without a published activation. Capture-gap facts without a boundary use
+  activation keys. Pending activations produce no receipt. Redelivery converges,
+  decided boundary verdicts are immutable, and a fuller capture may resolve an
+  uncertain boundary. The runtime routes only the effect-class writer, which
+  calls the pure fold in process and reports rows proven by SQL RETURNING.
+
+handler:
+  module: omnimarket.nodes.node_projection_compaction_receipts.handlers.handler_projection_compaction_receipts
+  class: HandlerProjectionCompactionReceipts
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: compaction_receipts_projection_writer
+      handler:
+        name: CompactionReceiptsProjectionWriter
+        module: omnimarket.nodes.node_projection_compaction_receipts.handlers.handler_compaction_receipts_writer
+      handler_module: omnimarket.nodes.node_projection_compaction_receipts.handlers.handler_compaction_receipts_writer
+
+terminal_event: onex.evt.omnimarket.projection-compaction-receipts-applied.v1
+
+golden_path:
+  - "The install-confirm compute publishes a completed result from captured transcript boundaries"
+  - "The writer validates the whole event, reads stored session receipts and calls the pure fold"
+  - "One row per boundary retains its uuid, selected activation and measured install verdict"
+  - "SQL refuses redelivery and downgrades even when deliveries race past the fold"
+  - "The projection read effect reads the declared compaction receipts exposure"
+
+dod_evidence:
+  - test: tests/test_compaction_receipts_projection_writer.py::test_recorded_payload_per_verdict
+    description: "Every install verdict is bound to the database with its boundary identity"
+  - test: tests/test_compaction_receipts_projection_writer.py::test_malformed_event_is_refused_before_database_io
+    description: "Malformed events cannot partially write a batch of receipts"
+  - test: tests/test_compaction_receipts_projection_writer.py::test_consumer_contract_and_read_exposure
+    description: "The deployed consumer routes only the writer and declares the readable table"
+
+  - test: tests/test_golden_chain_compaction_receipts_projection_writer.py::test_golden_chain_compaction_receipts_projection_writer_records_computed_verdicts
+    description: "Captured records pass through the merged compute and runtime-facing writer"
+  - test: tests/test_compaction_receipts_projection_writer_real_postgres.py::test_compaction_receipts_projection_writer_real_postgres_verdicts_replay_and_resolution
+    description: "Real asyncpg bindings and delivered grants preserve verdicts, replay and cursor advancement"
+
+db_io:
+  db_tables:
+    - name: compaction_receipts
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_compaction_receipts.sql"
+      access: read_write
+      role: compaction_receipts
+  dedupe_key: [session_id, receipt_key]
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.context-install-confirm-completed.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-compaction-receipts-applied.v1
+    - onex.snapshot.projection.compaction-receipts.v1 # onex-topic-allow: contract-owned projection snapshot
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-compaction-receipts-malformed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-compaction-receipts-applied.v1
+  - onex.snapshot.projection.compaction-receipts.v1 # onex-topic-allow: projection read exposure
+
+projection_api:
+  expose: true
+  exposures:
+    - topic: onex.snapshot.projection.compaction-receipts.v1 # onex-topic-allow: contract-owned projection snapshot
+      key_grain: "mutable"
+      bus_backed: true
+      key_columns: [session_id, receipt_key]
+      table: compaction_receipts
+      # The discovery parser accepts the database label and resolves the
+      # physical schema from db_io, as for other internal projections.
+      schema: omnidash_analytics
+      columns:
+        - session_id
+        - receipt_key
+        - boundary_uuid
+        - boundary_kind
+        - activation_id
+        - verdict
+        - reason
+        - installed_messages_hash
+        - observed_hash
+        - source_topic
+        - projection_cursor
+        - projected_at
+      order_by: projection_cursor
+      cursor_column: projection_cursor
+      freshness_column: projected_at
+      limit: 100
+
+metadata:
+  transport_type: kafka
