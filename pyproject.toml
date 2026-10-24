@@ -1115,6 +1115,8 @@ omnimarket = "omnimarket.nodes"
 # aligned with this content-addressed revision. Retains the earlier migrations
 # required by OMN-19998 and OMN-19988; drop once a release carries them all.
 # OMN-21334: infra#5307 vendors both compaction barrier projection migrations.
+# OMN-19448: infra#5326 vendors node_projection_delegation 0064 (data_source
+# admits experiment) byte-identical.
 # OMN-17427: infra#5293 vendors 0000_delegation_lab_job_execution.sql and grants
 # omninode_runtime read/write on omninode_internal.delegation_lab_job*.
 omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261024120612-3078fa4ec02b" }

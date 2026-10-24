@@ -51,6 +51,9 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_cal
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_cohort_key_fold import (
     HandlerDelegationCohortKeyFold,
 )
+from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_data_source_fold import (
+    HandlerDelegationDataSourceFold,
+)
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_lineage_fold import (
     HandlerDelegationLineageFold,
 )
@@ -1920,6 +1923,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         evidence), tenant stamping (OMN-14898), and sticky-evidence
         preservation (OMN-13596) were previously async-path-only absent.
         """
+        # OMN-19448: the argument is envelope attribution, folded with provenance.
+        data_source = HandlerDelegationDataSourceFold().handle(event, data_source)
         quality_gates_checked = list(row_model.quality_gates_checked)
         quality_gates_failed = list(row_model.quality_gates_failed)
         # OMN-15905: row_model.timestamp is already an AwareDatetime

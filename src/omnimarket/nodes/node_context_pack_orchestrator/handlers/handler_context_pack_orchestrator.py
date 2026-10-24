@@ -235,6 +235,7 @@ def _failed(
         tier_statuses=tiers,
         failure_class=failure_class,
         errors=errors,
+        terminal_failure_cause=failure_class,
     )
 
 

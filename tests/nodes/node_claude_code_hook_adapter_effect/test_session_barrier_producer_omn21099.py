@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import importlib
 import json
 import re
@@ -22,12 +21,7 @@ import omnimarket.nodes
 from omnimarket.models.claude_code_binding import ModelClientBinding
 from omnimarket.models.context_compaction import (
     EnumContextCompactionFailureClass,
-    ModelContextCompactionBuildOutcome,
-    ModelContextCompactionBuiltPackage,
     ModelContextCompactionRequested,
-)
-from omnimarket.models.context_pack_render.model_context_pack_render_message import (
-    ModelContextPackRenderMessage,
 )
 from omnimarket.models.model_session_stream_barrier import (
     ModelSessionStreamBarrier,
@@ -48,9 +42,6 @@ from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_sess
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.models import (
     ModelHookAdapterRequest,
     ModelReceiptEvent,
-)
-from omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_context_compaction_orchestrator import (
-    HandlerContextCompactionOrchestrator,
 )
 from omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_session_barrier_wait import (
     HandlerSessionBarrierWait,
@@ -231,6 +222,7 @@ class _ProjectedJournal:
             session_id=session_id,
             barrier_id=barrier_id,
             barriers=barriers,
+            source_revision="2026-10-23T12:00:00Z",
             applied={b.stream: tuple(range(1, b.high_water + 1)) for b in barriers},
         )
 
@@ -239,34 +231,20 @@ class _Build:
     def __init__(self) -> None:
         self.calls = 0
 
-    def build(
-        self, request: ModelContextCompactionRequested
-    ) -> ModelContextCompactionBuildOutcome:
-        self.calls += 1
-        digest = hashlib.sha256(b"built-package").hexdigest()
-        return ModelContextCompactionBuildOutcome(
-            package=ModelContextCompactionBuiltPackage(
-                candidate_id=BARRIER,
-                assembly_hash=digest,
-                model_outputs_hash=digest,
-                final_pack_hash=digest,
-                body_hash=digest,
-                version_vector_hash=digest,
-                profile_name="compaction_orchestrator",
-                profile_content_hash=digest,
-                messages=(
-                    ModelContextPackRenderMessage(role="user", text="legend"),
-                    ModelContextPackRenderMessage(role="user", text="identity trailer"),
-                ),
-            )
+    def handle(self, command):
+        from tests.nodes.node_context_compaction_orchestrator.test_compaction_pack_build import (
+            _ok_built,
         )
+
+        self.calls += 1
+        return _ok_built()
 
 
 @pytest.mark.parametrize(
     "with_producer", [False, True], ids=["before-fix", "with-producer"]
 )
 def test_real_orchestrator_requires_the_produced_barrier(
-    tmp_path: Path, with_producer: bool
+    tmp_path: Path, with_producer: bool, compaction_bus
 ) -> None:
     journal_dir = tmp_path / "journal"
     _seed_counters(journal_dir)
@@ -294,16 +272,17 @@ def test_real_orchestrator_requires_the_produced_barrier(
     )
     source = _ProjectedJournal(journal_dir)
     build = _Build()
-    orchestrator = HandlerContextCompactionOrchestrator(
-        build,
+    orchestrator = compaction_bus(build).handler(
         barrier_wait=HandlerSessionBarrierWait(source, deadline_s=0, poll_interval_s=0),
+        barrier_probe_source=source,
     )
     result = orchestrator.handle(command)
     if with_producer:
         assert command.barrier_id is not None
         assert result.reply.action == EnumClientVerdictAction.INSTALL
         assert result.fallback is None
-        assert build.calls == source.reads == 1
+        assert build.calls == 1
+        assert source.reads == 2
         assert [e["payload"]["high_water"] for e in _events(journal_dir)] == [3, 2]
     else:
         assert command.barrier_id is None

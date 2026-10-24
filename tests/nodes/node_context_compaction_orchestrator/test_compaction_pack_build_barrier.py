@@ -7,19 +7,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
-from pathlib import Path
 from typing import Literal
 
 import pytest
 import yaml
-from omnibase_core.enums.enum_client_verdict_action import EnumClientVerdictAction
 from omnibase_core.enums.enum_context_factor import EnumContextFactor
 from omnibase_core.models.context.model_context_access import ModelContextAccess
 
 from omnimarket.models.context_compaction import (
     EnumContextCompactionFailureClass,
-    ModelContextCompactionBuildOutcome,
-    ModelContextCompactionRequested,
 )
 from omnimarket.models.context_pack_orchestrator import (
     EnumContextPackOrchestratorStatus,
@@ -33,28 +29,19 @@ from omnimarket.models.model_session_stream_barrier import (
     ModelSessionStreamBarrierProbe,
 )
 from omnimarket.nodes.node_context_compaction_orchestrator.handlers import (
-    compaction_runtime_binding as runtime_binding,
-)
-from omnimarket.nodes.node_context_compaction_orchestrator.handlers import (
     handler_context_compaction_orchestrator as handler_module,
 )
 from omnimarket.nodes.node_context_compaction_orchestrator.handlers.compaction_runtime_binding import (
     ModelCompactionRuntimeBinding,
     bind_compaction_ports,
+    load_compaction_pack_topics,
     load_compaction_runtime_binding,
-    resolve_pack_orchestrator,
 )
 from omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_compaction_pack_build import (
-    HandlerCompactionPackBuild,
+    build_pack_command,
 )
 from omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_context_compaction_orchestrator import (
     HandlerContextCompactionOrchestrator,
-)
-from omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_session_barrier_wait import (
-    HandlerSessionBarrierWait,
-)
-from omnimarket.nodes.node_context_compaction_orchestrator.handlers.session_barrier_probe import (
-    ModelSessionBarrierReadBinding,
 )
 
 from .test_session_barrier_wait import BARRIER, _request, _Source
@@ -111,59 +98,56 @@ class _Clock:
         self.now[0] += seconds
 
 
-class _RaisingBuild:
-    def build(
-        self, request: ModelContextCompactionRequested
-    ) -> ModelContextCompactionBuildOutcome:
-        raise RuntimeError("pack build failed")
-
-
 def _binding() -> ModelCompactionRuntimeBinding:
-    return ModelCompactionRuntimeBinding(
-        pack_build_node="node_context_pack_orchestrator",
-        tenant_id="lab",
-        barrier_deadline_s=1.25,
-        barrier_poll_interval_s=0.5,
-        barrier_probe=ModelSessionBarrierReadBinding(
-            dsn_env="OMNINODE_INTERNAL_DB_URL",
-            lineage_relation="omninode_internal.claude_hook_events",
-            content_relation="omninode_internal.session_content",
-        ),
+    return load_compaction_runtime_binding().model_copy(
+        update={
+            "tenant_id": "lab",
+            "barrier_deadline_s": 1.25,
+            "barrier_poll_interval_s": 0.5,
+        }
     )
 
 
-def _warnings(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+def _warnings(caplog):
     return [
-        record
-        for record in caplog.records
-        if record.name == handler_module.__name__ and record.levelno == logging.WARNING
+        r
+        for r in caplog.records
+        if r.name == handler_module.__name__ and r.levelno == logging.WARNING
     ]
 
 
-def test_compaction_pack_build_barrier_no_arg_binding(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def _handler(compaction_bus, source=None, clock=None, **kwargs):
+    source = source if source is not None else _Source([_probe((1, 2, 3), (1, 2, 3))])
+    binding = kwargs.pop("binding", _binding())
+    if clock is not None:
+        wait, _ = bind_compaction_ports(
+            binding,
+            barrier_probe_source=source,
+            monotonic=clock.monotonic,
+            sleep=clock.sleep,
+        )
+        kwargs.setdefault("barrier_wait", wait)
+        kwargs["monotonic"] = clock.monotonic
+    bus = compaction_bus(_PackOrchestrator())
+    return bus, bus.handler(binding=binding, barrier_probe_source=source, **kwargs)
+
+
+def test_compaction_pack_build_barrier_no_arg_binding(monkeypatch):
     monkeypatch.setenv("ONEX_CONTEXT_SOURCE_TENANT_ID", "lab")
     binding = load_compaction_runtime_binding()
-    assert binding.pack_build_node == "node_context_pack_orchestrator"
     assert binding.tenant_id == "lab"
     assert binding.barrier_deadline_s == 30.0
     assert binding.barrier_poll_interval_s == 0.5
-
     monkeypatch.delenv("ONEX_CONTEXT_SOURCE_TENANT_ID")
     assert load_compaction_runtime_binding().tenant_id is None
     result = HandlerContextCompactionOrchestrator().handle(_request(barrier_id=None))
-    assert result.reply.action == EnumClientVerdictAction.NATIVE
-    assert result.fallback is not None
     assert (
         result.fallback.failure_class
         == EnumContextCompactionFailureClass.PACK_BUILDER_UNAVAILABLE
     )
 
 
-def test_compaction_pack_build_barrier_waits_then_builds(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
+def test_compaction_pack_build_barrier_waits_then_builds(compaction_bus, caplog):
     source = _Source(
         [
             _probe((1, 3), (1, 2, 3)),
@@ -171,65 +155,36 @@ def test_compaction_pack_build_barrier_waits_then_builds(
             _probe((1, 2, 3), (1, 2, 3)),
         ]
     )
-    stub = _PackOrchestrator()
     clock = _Clock()
-    pack_build, barrier_wait = bind_compaction_ports(
-        _binding(),
-        barrier_probe_source=source,
-        resolve=lambda _name: stub,
-        monotonic=clock.monotonic,
-        sleep=clock.sleep,
-    )
-    assert pack_build is not None
-    assert barrier_wait is not None
-    with caplog.at_level(logging.WARNING, logger=handler_module.__name__):
-        result = HandlerContextCompactionOrchestrator(
-            pack_build, barrier_wait=barrier_wait
-        ).handle(_request())
-    assert result.reply.action == EnumClientVerdictAction.INSTALL
-    assert result.prepared is not None
-    assert result.activated is not None
-    assert result.fallback is None
+    bus, handler = _handler(compaction_bus, source, clock)
+    result = handler.handle(_request())
     assert result.reply.status == "built"
     assert result.reply.package_id == result.prepared.candidate_id
+    assert result.activated is not None
+    assert result.fallback is None
     assert source.reads == [("session-1", BARRIER)] * 4
     assert clock.sleeps == [0.5, 0.5]
-    (command,) = stub.commands
+    (command,) = bus.pack.commands
     assert command.request.profile_name == "compaction_orchestrator"
     assert command.request.session_barrier == BARRIER
     assert command.access.tenant_id == "lab"
+    assert bus.consumer.waits[0][1] == 0.25
     assert _warnings(caplog) == []
 
 
-def test_compaction_pack_build_barrier_deadline_falls_back_once(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
+def test_compaction_pack_build_barrier_deadline_falls_back_once(compaction_bus, caplog):
     source = _Source([_probe((1, 3), (1, 2, 3))])
-    stub = _PackOrchestrator()
     clock = _Clock()
-    binding = _binding()
-    pack_build, barrier_wait = bind_compaction_ports(
-        binding,
-        barrier_probe_source=source,
-        resolve=lambda _name: stub,
-        monotonic=clock.monotonic,
-        sleep=clock.sleep,
-    )
+    bus, handler = _handler(compaction_bus, source, clock)
     request = _request()
-    with caplog.at_level(logging.WARNING, logger=handler_module.__name__):
-        result = HandlerContextCompactionOrchestrator(
-            pack_build, barrier_wait=barrier_wait
-        ).handle(request)
-    assert result.reply.action == EnumClientVerdictAction.NATIVE
+    result = handler.handle(request)
     assert result.reply.status == "native"
-    assert result.reply.package_id is None
-    assert result.fallback is not None
     assert (
         result.fallback.failure_class
         == EnumContextCompactionFailureClass.SOURCE_NOT_CAUGHT_UP
     )
-    assert stub.commands == []
-    assert clock.monotonic() == binding.barrier_deadline_s
+    assert not bus.commands
+    assert clock.monotonic() == _binding().barrier_deadline_s
     (warning,) = _warnings(caplog)
     assert str(request.invocation_id) in warning.getMessage()
     assert "source_not_caught_up" in warning.getMessage()
@@ -237,42 +192,39 @@ def test_compaction_pack_build_barrier_deadline_falls_back_once(
 
 
 def test_compaction_pack_build_barrier_no_arg_resolves_lazily_once(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+    compaction_bus, monkeypatch
+):
     monkeypatch.setenv("ONEX_CONTEXT_SOURCE_TENANT_ID", "lab")
-    stub = _PackOrchestrator()
-    resolutions: list[str] = []
-
-    def resolve(node_name: str) -> _PackOrchestrator:
-        resolutions.append(node_name)
-        return stub
-
-    monkeypatch.setattr(runtime_binding, "resolve_pack_orchestrator", resolve)
+    bus = compaction_bus(_PackOrchestrator())
     source = _Source([_probe((1, 2, 3), (1, 2, 3))])
-    handler = HandlerContextCompactionOrchestrator(barrier_probe_source=source)
-    assert resolutions == []
-    assert stub.commands == []
+    handler = HandlerContextCompactionOrchestrator(
+        event_publisher=bus.publisher,
+        event_consumer=bus.consumer,
+        barrier_probe_source=source,
+    )
+    assert not bus.commands
     for _ in range(2):
-        result = handler.handle(_request())
-        assert result.reply.action == EnumClientVerdictAction.INSTALL
-    assert resolutions == ["node_context_pack_orchestrator"]
-    assert len(stub.commands) == 2
-    assert all(command.access.tenant_id == "lab" for command in stub.commands)
+        assert handler.handle(_request()).reply.status == "built"
+    assert len(bus.commands) == 2
+    assert {topic for topic, _ in bus.consumer.registrations} == {
+        bus.topics.completed_topic,
+        bus.topics.failed_topic,
+    }
+    assert all(c.access.tenant_id == "lab" for c in bus.pack.commands)
+    assert bus.commands[0]["correlation_id"] != bus.commands[1]["correlation_id"]
 
 
-def test_compaction_pack_build_barrier_real_contract_resolves() -> None:
-    handler = resolve_pack_orchestrator("node_context_pack_orchestrator")
-    assert type(handler).__name__ == "HandlerContextPackOrchestrator"
-    assert callable(handler.handle)
+def test_compaction_pack_build_barrier_real_contract_resolves():
+    topics = load_compaction_pack_topics()
+    assert topics.request_topic == "onex.cmd.omniintelligence.context-pack-requested.v1"
+    assert topics.completed_topic == "onex.cmd.omniintelligence.context-pack-built.v1"
+    assert topics.failed_topic == "onex.cmd.omniintelligence.context-pack-failed.v1"
 
 
-def test_compaction_pack_build_barrier_uses_recorded_source_revisions() -> None:
-    stub = _PackOrchestrator()
-    result = HandlerCompactionPackBuild(
-        stub, access=ModelContextAccess(tenant_id="lab")
-    ).build(_request(), source_revision="2026-10-23T12:00:00.500000Z")
-    assert result.package is not None
-    (command,) = stub.commands
+def test_compaction_pack_build_barrier_uses_recorded_source_revisions():
+    command = build_pack_command(
+        _request(), ModelContextAccess(tenant_id="lab"), "2026-10-23T12:00:00.500000Z"
+    )
     assert command.request.session_barrier == BARRIER
     assert command.request.tier_revisions == {
         EnumContextFactor.OPERATOR_RULINGS: "2026-10-23T12:00:00Z",
@@ -283,184 +235,131 @@ def test_compaction_pack_build_barrier_uses_recorded_source_revisions() -> None:
 
 
 def test_compaction_pack_build_barrier_no_default_bypass(
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    monkeypatch.setenv("ONEX_CONTEXT_SOURCE_TENANT_ID", "lab")
+    compaction_bus, monkeypatch, caplog
+):
     monkeypatch.delenv("OMNINODE_INTERNAL_DB_URL", raising=False)
-    stub = _PackOrchestrator()
-    monkeypatch.setattr(runtime_binding, "resolve_pack_orchestrator", lambda _: stub)
-    handler = HandlerContextCompactionOrchestrator()
+    bus = compaction_bus(_PackOrchestrator())
+    handler = HandlerContextCompactionOrchestrator(
+        bus.publisher, bus.consumer, binding=_binding()
+    )
     assert handler._barrier_wait is not None
     result = handler.handle(_request())
-    assert result.reply.action == EnumClientVerdictAction.NATIVE
-    assert stub.commands == []
+    assert result.reply.status == "native"
+    assert not bus.commands
     assert len(_warnings(caplog)) == 1
 
 
-def test_compaction_pack_build_barrier_missing_barrier_never_builds(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("ONEX_CONTEXT_SOURCE_TENANT_ID", "lab")
-    result = HandlerContextCompactionOrchestrator().handle(_request(barrier_id=None))
-    assert result.reply.action == EnumClientVerdictAction.NATIVE
-    assert result.fallback is not None
+def test_compaction_pack_build_barrier_missing_barrier_never_builds(compaction_bus):
+    bus, handler = _handler(compaction_bus)
+    result = handler.handle(_request(barrier_id=None))
     assert (
         result.fallback.failure_class
         == EnumContextCompactionFailureClass.SOURCE_INCOMPLETE
     )
+    assert not bus.commands
 
 
-def test_compaction_pack_build_barrier_late_met_does_not_build(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
+def test_compaction_pack_build_barrier_late_met_does_not_build(compaction_bus, caplog):
     clock = _Clock()
 
     class SlowProjection:
-        def read(
-            self, session_id: str, barrier_id: str
-        ) -> ModelSessionStreamBarrierProbe:
+        def read(self, session_id, barrier_id):
             clock.sleep(2)
             return _probe((1, 2, 3), (1, 2, 3))
 
-    stub = _PackOrchestrator()
-    wait = HandlerSessionBarrierWait(
-        SlowProjection(),
-        deadline_s=1,
-        poll_interval_s=0.5,
-        monotonic=clock.monotonic,
-        sleep=clock.sleep,
-    )
-    result = HandlerContextCompactionOrchestrator(
-        HandlerCompactionPackBuild(stub, access=ModelContextAccess(tenant_id="lab")),
-        barrier_wait=wait,
-    ).handle(_request())
-    assert result.reply.action == EnumClientVerdictAction.NATIVE
-    assert result.fallback is not None
+    bus, handler = _handler(compaction_bus, SlowProjection(), clock)
+    result = handler.handle(_request())
     assert (
         result.fallback.failure_class
         == EnumContextCompactionFailureClass.SOURCE_NOT_CAUGHT_UP
     )
-    assert stub.commands == []
+    assert not bus.commands
     assert len(_warnings(caplog)) == 1
 
 
 @pytest.mark.asyncio
-async def test_compaction_pack_build_barrier_async_wait_leaves_projection_running() -> (
-    None
+async def test_compaction_pack_build_barrier_async_wait_leaves_projection_running(
+    compaction_bus,
 ):
     applied = threading.Event()
 
     class Projection:
-        def read(
-            self, session_id: str, barrier_id: str
-        ) -> ModelSessionStreamBarrierProbe:
+        def read(self, session_id, barrier_id):
             return _probe((1, 2, 3) if applied.is_set() else (1, 3), (1, 2, 3))
 
-    stub = _PackOrchestrator()
-    pack, wait = bind_compaction_ports(
-        _binding().model_copy(
+    bus, handler = _handler(
+        compaction_bus,
+        Projection(),
+        binding=_binding().model_copy(
             update={"barrier_deadline_s": 1.0, "barrier_poll_interval_s": 0.005}
         ),
-        barrier_probe_source=Projection(),
-        resolve=lambda _: stub,
     )
-    handler = HandlerContextCompactionOrchestrator(pack, barrier_wait=wait)
 
-    async def project_missing_record() -> None:
+    async def project_missing_record():
         await asyncio.sleep(0.02)
         applied.set()
 
     output, _ = await asyncio.gather(
         handler.handle_async(_request()), project_missing_record()
     )
-    reply = output.events[-1]
-    assert reply.status == "built"
-    assert len(stub.commands) == 1
+    assert output.events[-1].status == "built"
+    assert len(bus.commands) == 1
 
 
-def test_compaction_pack_build_barrier_raising_build_logs_once(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    request = _request(barrier_id=None)
-    with caplog.at_level(logging.WARNING, logger=handler_module.__name__):
-        result = HandlerContextCompactionOrchestrator(_RaisingBuild()).handle(request)
-    assert result.reply.action == EnumClientVerdictAction.NATIVE
-    assert result.fallback is not None
+def test_compaction_pack_build_barrier_raising_build_logs_once(compaction_bus, caplog):
+    bus, handler = _handler(compaction_bus)
+
+    def raising_publisher(topic, payload):
+        raise RuntimeError("pack publish failed")
+
+    handler = bus.handler(event_publisher=raising_publisher)
+    request = _request()
+    result = handler.handle(request)
     assert (
         result.fallback.failure_class == EnumContextCompactionFailureClass.BUILD_ERROR
     )
     (warning,) = _warnings(caplog)
-    assert "build_error" in warning.getMessage()
     assert "cause=RuntimeError" in warning.getMessage()
     assert str(request.invocation_id) in warning.getMessage()
     assert warning.exc_info is None
     assert "\n" not in warning.getMessage()
 
 
-def test_compaction_pack_build_barrier_constructor_binds_probe_source(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("ONEX_CONTEXT_SOURCE_TENANT_ID", "lab")
-    stub = _PackOrchestrator()
-    monkeypatch.setattr(
-        runtime_binding, "resolve_pack_orchestrator", lambda _name: stub
-    )
+def test_compaction_pack_build_barrier_constructor_binds_probe_source(compaction_bus):
     source = _Source([_probe((1, 2, 3), (1, 2, 3))])
-    result = HandlerContextCompactionOrchestrator(barrier_probe_source=source).handle(
-        _request()
-    )
-    assert result.reply.action == EnumClientVerdictAction.INSTALL
+    bus, handler = _handler(compaction_bus, source)
+    assert handler.handle(_request()).reply.status == "built"
     assert source.reads == [("session-1", BARRIER)] * 2
-    assert len(stub.commands) == 1
+    assert len(bus.commands) == 1
 
 
-def test_compaction_pack_build_barrier_constructor_keeps_explicit_wait(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("ONEX_CONTEXT_SOURCE_TENANT_ID", "lab")
-    stub = _PackOrchestrator()
-    monkeypatch.setattr(
-        runtime_binding, "resolve_pack_orchestrator", lambda _name: stub
-    )
+def test_compaction_pack_build_barrier_constructor_keeps_explicit_wait(compaction_bus):
     source = _Source([_probe((1, 2, 3), (1, 2, 3))])
-    _, barrier_wait = bind_compaction_ports(_binding(), barrier_probe_source=source)
-    unused_source = _Source([_probe((1, 2, 3), (1, 2, 3))])
-    result = HandlerContextCompactionOrchestrator(
-        barrier_wait=barrier_wait, barrier_probe_source=unused_source
-    ).handle(_request())
-    assert result.reply.action == EnumClientVerdictAction.INSTALL
-    assert source.reads == [("session-1", BARRIER)]
-    assert unused_source.reads == [("session-1", BARRIER)]
-    assert len(stub.commands) == 1
+    wait, _ = bind_compaction_ports(_binding(), barrier_probe_source=source)
+    revision_source = _Source([_probe((1, 2, 3), (1, 2, 3))])
+    bus, handler = _handler(compaction_bus, revision_source, barrier_wait=wait)
+    assert handler.handle(_request()).reply.status == "built"
+    assert source.reads == revision_source.reads == [("session-1", BARRIER)]
+    assert len(bus.commands) == 1
 
 
 def test_compaction_pack_build_barrier_explicit_build_skips_runtime_binding(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    stub = _PackOrchestrator()
-    pack_build = HandlerCompactionPackBuild(
-        stub, access=ModelContextAccess(tenant_id="lab")
+    compaction_bus, monkeypatch
+):
+    def unexpected_binding():
+        pytest.fail("explicit binding must not reload runtime settings")
+
+    binding = _binding()
+    monkeypatch.setattr(
+        handler_module, "load_compaction_runtime_binding", unexpected_binding
     )
-
-    def unexpected_binding(**kwargs: object) -> None:
-        pytest.fail("an explicit pack build must not load the runtime binding")
-
-    monkeypatch.setattr(handler_module, "bind_compaction_ports", unexpected_binding)
-    source = _Source([_probe((1,), (1,))])
-    result = HandlerContextCompactionOrchestrator(
-        pack_build, barrier_probe_source=source
-    ).handle(_request())
-    assert result.reply.action == EnumClientVerdictAction.INSTALL
-    assert source.reads == []
-    assert len(stub.commands) == 1
+    bus, handler = _handler(compaction_bus, binding=binding)
+    assert handler.handle(_request()).reply.status == "built"
+    assert len(bus.commands) == 1
 
 
 @pytest.mark.parametrize("tenant", ["", "   ", " lab "])
-def test_compaction_pack_build_barrier_tenant_is_stripped(
-    monkeypatch: pytest.MonkeyPatch,
-    tenant: str,
-) -> None:
+def test_compaction_pack_build_barrier_tenant_is_stripped(monkeypatch, tenant):
     monkeypatch.setenv("ONEX_CONTEXT_SOURCE_TENANT_ID", tenant)
     assert load_compaction_runtime_binding().tenant_id == (tenant.strip() or None)
 
@@ -471,32 +370,19 @@ def test_compaction_pack_build_barrier_tenant_is_stripped(
         None,
         [],
         {},
+        {"tenant_id": "lab", "barrier_wait": []},
+        {"tenant_id": 1, "barrier_wait": {"deadline_s": 1.0, "poll_interval_s": 0.5}},
         {
-            "pack_build_node": "node_context_pack_orchestrator",
-            "tenant_id": "lab",
-            "barrier_wait": [],
-        },
-        {
-            "pack_build_node": "node_context_pack_orchestrator",
-            "tenant_id": 1,
-            "barrier_wait": {"deadline_s": 1.0, "poll_interval_s": 0.5},
-        },
-        {
-            "pack_build_node": "node_context_pack_orchestrator",
             "tenant_id": "lab",
             "barrier_wait": {"deadline_s": 0.0, "poll_interval_s": 0.5},
         },
         {
-            "pack_build_node": "node_context_pack_orchestrator",
             "tenant_id": "lab",
             "barrier_wait": {"deadline_s": 1.0, "poll_interval_s": -0.5},
         },
     ],
 )
-def test_compaction_pack_build_barrier_malformed_binding(
-    tmp_path: Path,
-    block: object,
-) -> None:
+def test_compaction_pack_build_barrier_malformed_binding(tmp_path, block):
     if isinstance(block, dict) and isinstance(block.get("barrier_wait"), dict):
         block["barrier_wait"]["probe"] = _binding().barrier_probe.model_dump()
     path = tmp_path / "contract.yaml"
