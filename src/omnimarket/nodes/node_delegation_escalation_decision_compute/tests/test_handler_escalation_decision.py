@@ -14,7 +14,6 @@ from __future__ import annotations
 import asyncio
 import json
 import sqlite3
-from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -93,7 +92,6 @@ from omnimarket.routing.model_escalation_decision_result import (
 )
 from omnimarket.routing.task_class_contract_path import (
     TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
-    TASK_CLASS_CONTRACT_PATH_ENV_KEY,
 )
 
 
@@ -344,18 +342,16 @@ def test_transition_table_each_declared_cause_yields_its_transition(
         assert decision.move_kind is None
 
 
-@pytest.fixture
-def contract_cache_cleared() -> Iterator[None]:
-    """The routing authority caches the contract it read; read the copy instead."""
-    routing._get_task_class_contract.cache_clear()  # noqa: SLF001
-    try:
-        yield
-    finally:
-        routing._get_task_class_contract.cache_clear()  # noqa: SLF001
+def _bind_contract(monkeypatch: pytest.MonkeyPatch, copy: Path) -> None:
+    """Have the routing authority read ``copy`` instead of its cached contract."""
+    monkeypatch.setattr(
+        routing,
+        "_get_task_class_contract",
+        lambda: yaml.safe_load(copy.read_text(encoding="utf-8")),
+    )
 
 
 @pytest.mark.unit
-@pytest.mark.usefixtures("contract_cache_cleared")
 @pytest.mark.parametrize("list_name", list(_LISTS))
 def test_missing_lists_refuse_to_load(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, list_name: str
@@ -372,13 +368,12 @@ def test_missing_lists_refuse_to_load(
 
     with pytest.raises(ValueError, match=list_name):
         load_task_class_authority(copy)
-    monkeypatch.setenv(TASK_CLASS_CONTRACT_PATH_ENV_KEY, str(copy))
+    _bind_contract(monkeypatch, copy)
     with pytest.raises(TaskClassTransitionsError, match=list_name):
         resolve_task_class_transitions("research")
 
 
 @pytest.mark.unit
-@pytest.mark.usefixtures("contract_cache_cleared")
 def test_missing_lists_refuse_when_the_whole_block_is_deleted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -389,7 +384,7 @@ def test_missing_lists_refuse_when_the_whole_block_is_deleted(
 
     with pytest.raises(ValueError, match="transitions"):
         load_task_class_authority(copy)
-    monkeypatch.setenv(TASK_CLASS_CONTRACT_PATH_ENV_KEY, str(copy))
+    _bind_contract(monkeypatch, copy)
     with pytest.raises(TaskClassTransitionsError, match="refuses to load"):
         resolve_task_class_transitions("research")
 
