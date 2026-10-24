@@ -41,7 +41,7 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-omn21310-ac1-hanging-first-rung-cut"
-    description: "The first rung runs through the real effect child process with a provider stub that boots slowly and then hangs, on the real clock. Its call, boot included, ends before the chain has only the second rung's floor left, and the second rung is sent and answers. Fails at the merge base, where the child's boot is spent on top of the cut."
+    description: "The first rung runs through a real (forked) effect child process whose boot is held for 2 s and whose provider stub then hangs, on the real clock. Its call, boot included, ends before the chain has only the second rung's floor left, and the second rung is sent and answers. Fails at the merge base, where the child's boot is spent on top of the cut."
     source: "manual"
     binds_ac: ["AC1"]
     checks:
@@ -57,7 +57,7 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_rung_call_timeout_capped.py -q --no-cov -p no:randomly -k skipped_rung"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21310-ac3-second-rung-real-call"
-    description: "The reported shape through real effect child processes: the first rung's child boots for 20 s and then hangs, the second rung's provider answers HTTP 503, the third answers. Attempt 2 carries the provider's 503, not a rung-deadline refusal. Fails at the merge base, where attempt 2 is a rung-deadline refusal with negative time left."
+    description: "The reported shape through real effect child processes: the first rung's child boots for 5 s and then hangs, the second rung's provider answers HTTP 503, the third answers. Attempt 2 carries the provider's 503, not a rung-deadline refusal. Fails at the merge base, where attempt 2 is a rung-deadline refusal with negative time left."
     source: "manual"
     binds_ac: ["AC3"]
     checks:

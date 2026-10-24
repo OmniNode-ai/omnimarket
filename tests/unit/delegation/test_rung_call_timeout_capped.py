@@ -25,6 +25,7 @@ skipped, the run ends ``failed`` with the typed cause ``timeout``.
 from __future__ import annotations
 
 import asyncio
+import multiprocessing
 import time
 from decimal import Decimal
 from typing import Any
@@ -61,9 +62,12 @@ _GOOD_ANSWER = (
     "approach carries in practice."
 )
 
-# The effect child sleeps this long while it unpickles the provider, before it
-# reports ready: a slow interpreter boot, made deterministic.
+# The first effect child sleeps this long before it reports ready: a slow
+# interpreter boot, made deterministic.
 _CHILD_BOOT_DELAY_SECONDS = 2.0
+# The dispatch buffer is cut from 10 s so the real-clock tests run in seconds;
+# every bound in the port scales with it.
+_TEST_DISPATCH_BUFFER_SECONDS = 1.0
 
 
 def _backend(tier: str) -> ModelResolvedDelegationBackend:
@@ -131,23 +135,16 @@ def _dispatch(port: LocalDelegationDispatchPort, *, budget: int) -> dict[str, An
     return result
 
 
-class _SlowBootHangingProvider:
-    """A provider stub for the real effect child.
+class _HangingProvider:
+    """A provider stub run in the real effect child.
 
-    Unpickling it in the child takes ``boot_delay`` seconds, so the child
-    reports ready that much later. The ``hang_tier`` rung's call then hangs
-    until the dispatch kills the child; a ``fail_tier`` rung answers with a
-    provider 503; any other rung answers at once.
+    The ``hang_tier`` rung's call hangs until the dispatch kills the child; a
+    ``fail_tier`` rung answers with a provider 503; any other rung answers.
     """
 
     def __init__(self, hang_tier: str, fail_tier: str | None = None) -> None:
         self.hang_tier = hang_tier
         self.fail_tier = fail_tier
-        self.boot_delay = 0.0
-
-    def __setstate__(self, state: dict[str, Any]) -> None:
-        time.sleep(float(state["boot_delay"]))
-        self.__dict__.update(state)
 
     def __call__(
         self, request: ModelLlmDelegationCallRequest
@@ -178,18 +175,38 @@ def _run_through_real_children(
     tmp_path: Any,
     monkeypatch: pytest.MonkeyPatch,
     *,
-    provider: _SlowBootHangingProvider,
+    provider: _HangingProvider,
     tiers: tuple[str, ...],
     budget: int,
     floor: int,
     first_boot_delay: float,
 ) -> tuple[dict[str, Any], list[tuple[str, float]], list[float], float]:
-    """Dispatch through the real effect children; the first child boots slowly.
+    """Dispatch through real effect child processes on the real clock.
 
-    Returns the result, each call's tier and start, each call's end, and when
-    the dispatch started, all on ``time.monotonic``.
+    The first child sleeps ``first_boot_delay`` before it reports ready, as a
+    cold interpreter boot does. Children are forked so the test's own boot
+    delay reaches them and the run takes seconds. Returns the result, each
+    call's tier and start, each call's end, and when the dispatch started, all
+    on ``time.monotonic``.
     """
     _install_ladder(monkeypatch, tiers=tiers, floor_seconds=floor)
+    monkeypatch.setattr(
+        port_mod, "_DISPATCH_TIMEOUT_BUFFER_SECONDS", _TEST_DISPATCH_BUFFER_SECONDS
+    )
+    monkeypatch.setattr(
+        port_mod,
+        "_resolve_effect_process_context",
+        lambda: multiprocessing.get_context("fork"),
+    )
+    boot = {"delay": 0.0}
+    real_worker = port_mod._effect_handler_worker
+
+    def slow_boot_worker(handler: Any, request: Any, result_queue: Any) -> None:
+        time.sleep(boot["delay"])
+        real_worker(handler, request, result_queue)
+
+    monkeypatch.setattr(port_mod, "_effect_handler_worker", slow_boot_worker)
+
     starts: list[tuple[str, float]] = []
     ends: list[float] = []
     real_child = port_mod._run_effect_handler_with_killable_timeout
@@ -197,7 +214,7 @@ def _run_through_real_children(
     async def recording_child(
         handler: Any, request: ModelLlmDelegationCallRequest, **kwargs: Any
     ) -> ModelLlmDelegationCallResult:
-        handler.boot_delay = first_boot_delay if not starts else 0.0
+        boot["delay"] = first_boot_delay if not starts else 0.0
         starts.append((request.model_tier, time.monotonic()))
         try:
             return await real_child(handler, request, **kwargs)
@@ -220,12 +237,16 @@ def _run_through_real_children(
 def test_a_hanging_first_rung_is_cut_in_time_for_the_next_rung(
     tmp_path: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """AC1: the real call path, a real hang, a real clock."""
-    budget, floor = 60, 25
+    """AC1: the real call path, a real hang, a real clock.
+
+    A 14 s chain over two rungs at a 6 s floor: the first rung must be over
+    by 8 s. Its child boots for 2 s and then hangs.
+    """
+    budget, floor = 14, 6
     result, starts, ends, started = _run_through_real_children(
         tmp_path,
         monkeypatch,
-        provider=_SlowBootHangingProvider(hang_tier="local"),
+        provider=_HangingProvider(hang_tier="local"),
         tiers=("local", "cheap_cloud"),
         budget=budget,
         floor=floor,
@@ -254,19 +275,19 @@ def test_the_second_rung_makes_a_real_provider_call_after_a_slow_first_rung(
 ) -> None:
     """AC3, the reported shape: a slow-booting, hanging first rung, then two more.
 
-    The first child spends 20 s booting, as the effect child did on the
-    reported run, then hangs. The second rung's provider answers HTTP 503 and
-    the third answers. Attempt 2 must carry the provider's status, not a
-    rung-deadline refusal.
+    An 18 s chain over three rungs at a 6 s floor. The first child boots for
+    5 s, then hangs. The second rung's provider answers HTTP 503 and the third
+    answers. Attempt 2 must carry the provider's status, not a rung-deadline
+    refusal.
     """
     result, starts, _, _ = _run_through_real_children(
         tmp_path,
         monkeypatch,
-        provider=_SlowBootHangingProvider(hang_tier="local", fail_tier="cheap_cloud"),
+        provider=_HangingProvider(hang_tier="local", fail_tier="cheap_cloud"),
         tiers=_LADDER,
-        budget=90,
-        floor=25,
-        first_boot_delay=20.0,
+        budget=18,
+        floor=6,
+        first_boot_delay=5.0,
     )
 
     assert [tier for tier, _ in starts] == list(_LADDER), starts
