@@ -16,7 +16,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "The adapter template compact binding tests pass; none exists at the merge base."
-    command: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect -q --no-cov -k adapter_template_compact_binding"
+    command: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_adapter_template_compact_binding.py -q --no-cov -k adapter_template_compact_binding"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -27,7 +27,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect -q --no-cov -k adapter_template_compact_binding"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_adapter_template_compact_binding.py -q --no-cov -k adapter_template_compact_binding"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn21335-ac2-install-readback"
@@ -70,6 +70,9 @@ dod_evidence:
           print(json.dumps({"events": record["events"], "sha256": result.installed_sha256}))
           PY
         cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_adapter_template_compact_binding.py -q --no-cov -k install"
+        cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn21335-deploy-render-runtime"
     description: "Hosted deploy smoke: dispatch the packaged binding-render node through the in-process ONEX runtime using the shipped adapter row. Require a successful typed receipt, the manual session.compact matcher with no auto matcher, and a module hash matching its bytes. The merge-base adapter has no compact row. This runs without a deployed lane or external services; install readback is covered separately by AC2."
@@ -108,4 +111,3 @@ dod_evidence:
           print(json.dumps({"run_id": receipt["run_id"], "sha256": result["module_sha256"], "manual_compact": True}))
           ' "$probe_dir/receipt.json";
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC1"]

@@ -1,0 +1,146 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: capture_silence_watch_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_capture_silence_watch_effect.models.model_capture_watch_trigger.ModelCaptureWatchTrigger
+description: >
+  OMN-21340. Checks capture silence per active principal and source on a timer,
+  alerting through the canonical Slack publisher once per silence episode.
+  Every tick publishes its own automation heartbeat and terminal evaluation.
+  Unreadable sources produce UNKNOWN findings on the terminal event and ERROR logs.
+
+handler:
+  module: omnimarket.nodes.node_capture_silence_watch_effect.handlers.handler_capture_silence_watch
+  class: HandlerCaptureSilenceWatch
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: capture_silence_watch
+      handler:
+        name: HandlerCaptureSilenceWatch
+        module: omnimarket.nodes.node_capture_silence_watch_effect.handlers.handler_capture_silence_watch
+      handler_module: omnimarket.nodes.node_capture_silence_watch_effect.handlers.handler_capture_silence_watch
+
+terminal_event: onex.evt.omnimarket.capture-silence-watch-evaluated.v1
+
+golden_path:
+  - "The timer invokes one tick without a bus subscription"
+  - "The read-only effect reads source max timestamp and active principals' newest rows"
+  - "Pure classification derives FRESH, SILENT, STALE or UNKNOWN from contract bounds"
+  - "A stale source emits one source alarm; otherwise silent principals emit episode-keyed Slack commands"
+  - "Every tick publishes automation progress and the terminal capture-silence-watch evaluation"
+
+capture_watch_policy:
+  active_window_seconds: 86400
+  renotify_after_seconds: 21600
+  heartbeat_process_id: capture-silence-watch
+
+reads_source:
+  binding_ref: omninode_runtime_service
+  dsn_env: OMNINODE_INTERNAL_DB_URL
+
+capture_sources:
+  - source_id: ledger_rows
+    relation: omninode_internal.work_ledger_rows
+    timestamp_column: row_ts
+    actor_column: raw_row
+    actor_pattern: '\| principal=([^ |]+)'
+    actor_silence_seconds: 14400
+    source_stale_seconds: 1800
+  - source_id: hook_events
+    relation: omninode_internal.claude_hook_events
+    timestamp_column: emitted_at
+    actor_column: host
+    actor_pattern: null
+    actor_silence_seconds: 14400
+    source_stale_seconds: 900
+
+db_io:
+  db_tables:
+    - name: work_ledger_rows
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_work_ledger.sql"
+      access: read
+      role: work_ledger_rows
+    - name: claude_hook_events
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_claude_hook_events.sql"
+      access: read
+      role: claude_hook_events
+
+secrets:
+  SLACK_CHANNEL_ID:
+    description: >
+      Slack destination resolved at the effect boundary through the canonical
+      secret store using this contract's ref; no channel literal or direct env read.
+    required: true
+
+event_bus:
+  # The lab timer runs a oneshot tick in process; the command topic lets a
+  # runtime or an operator request the same tick over the bus.
+  subscribe_topics:
+    - onex.cmd.omnimarket.capture-silence-watch-requested.v1
+  publish_topics:
+    - onex.cmd.omnimarket.slack-publish.v1
+    - onex.evt.omnimarket.automation-heartbeat.v1
+    - onex.evt.omnimarket.capture-silence-watch-evaluated.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.capture-silence-watch-requested.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.capture-silence-watch-evaluated.v1
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+    - effects
+
+dod_evidence:
+  - test: tests/test_omn19975_capture_silence_watch.py::test_classifier_states
+    description: "Exact limits and future rows are fresh; silent actors, stale sources and read failures remain distinct"
+  - test: tests/test_omn19975_capture_silence_watch.py::test_silent_actor_raises_one_alarm_with_episode_key
+    description: "A silent principal emits a canonical Slack command with a stable timestamp episode key"
+  - test: tests/test_omn19975_capture_silence_watch.py::test_stale_source_raises_one_source_alarm_not_per_actor
+    description: "A stale source suppresses individual actor alarms for the tick"
+  - test: tests/test_omn19975_capture_silence_watch.py::test_actor_outside_active_window_is_not_read
+    description: "The reader receives the contract's active window cutoff"
+  - test: tests/test_omn19975_capture_silence_watch.py::test_heartbeat_published_every_tick
+    description: "Fresh ticks still publish automation progress and the terminal evaluation"
+  - test: tests/test_omn19975_capture_silence_watch.py::test_reader_failure_is_unknown_never_alarms
+    description: "Unreadable sources are UNKNOWN and logged at ERROR while the heartbeat still publishes"
+  - test: tests/test_omn19975_capture_silence_watch.py::test_publish_failure_is_recorded_not_raised
+    description: "Publication failures are recorded on deliveries and heartbeat without escaping"
+  - test: tests/test_omn19975_capture_silence_watch.py::test_contract_bounds_change_behaviour
+    description: "Changing a source bound in a contract copy changes classification"
+  - test: tests/test_omn19975_capture_silence_watch.py::test_no_threshold_literal_lives_in_python
+    description: "No Python literal substitutes for a contract bound"
+  - test: tests/test_omn19975_capture_silence_watch.py::test_reader_sql_binds_actor_pattern
+    description: "The reader binds patterns and cutoff values, validates identifiers and closes failed connections"
+  - test: tests/test_omn19975_capture_silence_watch.py::test_cli_dry_run_prints_evaluation
+    description: "The dry-run CLI prints the evaluation and topic-addressed events without Kafka"
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+    - "pyyaml>=6.0"
+    - "pydantic>=2.0"
+    - "psycopg2-binary>=2.9"
+    - "aiokafka>=0.11.0"
+    - "omnibase-infra>=0.16.0"
+
+metadata:
+  transport_type: kafka
+  description: "Timer-driven capture silence watch effect"
+  author: "OmniNode Platform Team"
+  tags: [effect, observability, alerting, capture]
+  related_tickets: ["OMN-21340", "OMN-19975"]
