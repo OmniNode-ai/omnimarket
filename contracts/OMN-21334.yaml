@@ -3,18 +3,16 @@ schema_version: "1.0.0"
 ticket_id: "OMN-21334"
 title: "TA.11b wire compaction package building and its session barrier"
 summary: >-
-  The runtime's no-argument compaction handler binds the contract-declared pack
-  builder and a read-only probe of committed session projection sequences. Both
-  projections retain the stamps the probe needs. The command declares its package
-  terminal, and a built reply carries status and package_id alongside the existing
-  install action. Barrier waits yield the event loop; deadlines return native with
-  one failure line. Nested source tenant bindings use explicit environment overlay
-  data. Fixture runtime and real PostgreSQL evidence are recorded below. AC1's
-  live dev-bus built-package readback still requires deployment, source mounts,
-  tenant configuration and a matching adapter package. The existing profile's
-  routing authority is unchanged and resolves successfully on the lab runtime.
-  Landing also requires both node migrations to be vendored in the pinned
-  omnibase_infra release for the repository's migration parity gate.
+  The compaction orchestrator builds its package over the event bus: it publishes
+  the context-pack command that node_context_pack_orchestrator's contract
+  consumes and awaits the completed or failed reply, correlated by the command's
+  id, inside the compaction deadline, with native fallback and one failure line.
+  It no longer resolves or calls another node's handler. The pack contract
+  declares its failure terminal so the runtime routes a failed build there. The
+  barrier still reads committed sequence stamps from both session projections
+  through the orchestrator's read-only probe: no node yet serves that read on the
+  bus. AC1's live dev-bus built-package readback still requires deployment,
+  source mounts, tenant configuration and a matching adapter package.
 is_seam_ticket: false
 interface_change: true
 interfaces_touched: ["public_api"]
@@ -57,6 +55,22 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_runtime_compaction_pack_build_barrier.py tests/nodes/node_context_compaction_orchestrator/test_contracts.py -q"
+  - id: "dod-omn21334-ac1-pack-build-over-bus"
+    description: >-
+      AC1 transport evidence: over an in-memory bus, one compaction request
+      publishes exactly one context-pack command whose envelope correlation_id is
+      the id the orchestrator awaits; the pack node, dispatched through the
+      runtime's consume boundary and result applier, answers on the completed
+      topic and the orchestrator replies built with the package id. A failed or
+      raising build lands on the failure topic and replies native
+      pack_build_failed; a silent pack node falls back native at the deadline with
+      one failure line. No source file of the orchestrator imports the pack
+      node's package or calls importlib.import_module.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build_bus.py -q"
   - id: "dod-omn21334-ac2-barrier"
     description: >-
       AC2: a delayed stream blocks package construction until its missing sequence

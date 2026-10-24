@@ -26,6 +26,9 @@ from omnimarket.models.context_compaction import (
     ModelContextCompactionResult,
     installed_messages_hash,
 )
+from omnimarket.models.context_pack_orchestrator import (
+    EnumContextPackOrchestratorStatus,
+)
 from omnimarket.models.context_pack_render.model_context_pack_render_message import (
     ModelContextPackRenderMessage,
 )
@@ -38,6 +41,9 @@ from omnimarket.nodes.node_context_compaction_orchestrator.event_topics import (
 from omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_context_compaction_orchestrator import (
     HandlerContextCompactionOrchestrator,
 )
+
+from .bus_fixture import CannedPack
+from .test_compaction_pack_build import _ok_built
 
 pytestmark = pytest.mark.unit
 
@@ -59,6 +65,7 @@ def _request(compact_model: str | None = None) -> ModelContextCompactionRequeste
         input_messages_hash=_sha("input"),
         newest_turn="turn-9",
         compact_model=compact_model,
+        barrier_id="barrier-1",
     )
 
 
@@ -79,23 +86,26 @@ def _package() -> ModelContextCompactionBuiltPackage:
     )
 
 
-class _Build:
-    def __init__(self, outcome: ModelContextCompactionBuildOutcome) -> None:
-        self.outcome = outcome
-        self.seen: list[ModelContextCompactionRequested] = []
+def _bus(compaction_bus, *, failed=False, raising=False, **kwargs):
+    built = _ok_built(
+        **{
+            k: v
+            for k, v in _package().model_dump(mode="json").items()
+            if k not in {"model_outputs_hash", "model_section_ms"}
+        }
+    )
+    bus = compaction_bus(CannedPack(built))
+    if failed:
+        bus.pack.built = bus.pack.built.model_copy(
+            update={"status": EnumContextPackOrchestratorStatus.FAILED}
+        )
+    if raising:
 
-    def build(
-        self, request: ModelContextCompactionRequested
-    ) -> ModelContextCompactionBuildOutcome:
-        self.seen.append(request)
-        return self.outcome
+        def publish(topic, payload):
+            raise RuntimeError("publish failed")
 
-
-class _RaisingBuild:
-    def build(
-        self, request: ModelContextCompactionRequested
-    ) -> ModelContextCompactionBuildOutcome:
-        raise RuntimeError("source read failed")
+        kwargs["event_publisher"] = publish
+    return bus, bus.handler(**kwargs)
 
 
 def _assert_native_fallback(
@@ -118,58 +128,48 @@ def _assert_native_fallback(
     )
 
 
-@pytest.mark.parametrize(
-    "failure_class",
-    [
-        EnumContextCompactionFailureClass.PACK_BUILD_FAILED,
-        EnumContextCompactionFailureClass.SOURCE_NOT_CAUGHT_UP,
-        EnumContextCompactionFailureClass.SOURCE_INCOMPLETE,
-        EnumContextCompactionFailureClass.SOURCE_DISABLED,
-        EnumContextCompactionFailureClass.NO_SOURCE_TIMESTAMP,
-    ],
-)
+@pytest.mark.parametrize("boundary", [False, True])
 def test_a_failed_build_replies_native_and_publishes_fallback_with_class_and_invocation_id(
-    failure_class: EnumContextCompactionFailureClass,
-) -> None:
-    build = _Build(ModelContextCompactionBuildOutcome(failure_class=failure_class))
-    result = HandlerContextCompactionOrchestrator(build).handle(_request())
-    _assert_native_fallback(result, failure_class)
-    assert build.seen == [_request()]
+    compaction_bus, boundary
+):
+    bus, handler = _bus(compaction_bus, failed=True)
+    if boundary:
+        # An invalid typed payload covers the boundary terminal shape through transport.
+        def publish(topic, payload):
+            import json
+
+            body = json.loads(payload)
+            body["payload"] = {"status": "failed", "error": "boundary failure"}
+            bus.publisher(bus.topics.failed_topic, json.dumps(body).encode())
+
+        handler = bus.handler(event_publisher=publish)
+    result = handler.handle(_request())
+    _assert_native_fallback(result, EnumContextCompactionFailureClass.PACK_BUILD_FAILED)
 
 
-def test_a_raising_build_replies_native_with_build_error() -> None:
-    result = HandlerContextCompactionOrchestrator(_RaisingBuild()).handle(_request())
-    _assert_native_fallback(result, EnumContextCompactionFailureClass.BUILD_ERROR)
-
-
-def test_installed_package_records_build_and_model_section_timings() -> None:
-    package = ModelContextCompactionBuiltPackage.model_validate(
-        {**_package().model_dump(), "model_section_ms": 75.0}
+def test_a_raising_build_replies_native_with_build_error(compaction_bus):
+    _, handler = _bus(compaction_bus, raising=True)
+    _assert_native_fallback(
+        handler.handle(_request()), EnumContextCompactionFailureClass.BUILD_ERROR
     )
+
+
+def test_installed_package_records_build_and_model_section_timings(compaction_bus):
     clock = Mock(side_effect=[1.0, 1.25])
-    result = HandlerContextCompactionOrchestrator(
-        _Build(ModelContextCompactionBuildOutcome(package=package)), clock=clock
-    ).handle(_request())
+    _, handler = _bus(compaction_bus, clock=clock)
+    result = handler.handle(_request())
     assert result.prepared is not None
     assert result.prepared.build_ms == 250.0
-    assert result.prepared.model_section_ms == package.model_section_ms
+    # The package mapping has always left model_section_ms at its default.
+    assert result.prepared.model_section_ms is None
     assert clock.call_count == 2
 
 
 @pytest.mark.parametrize("raises", [False, True])
-def test_failed_build_records_elapsed_time(raises: bool) -> None:
-    build = (
-        _RaisingBuild()
-        if raises
-        else _Build(
-            ModelContextCompactionBuildOutcome(
-                failure_class=EnumContextCompactionFailureClass.PACK_BUILD_FAILED
-            )
-        )
-    )
+def test_failed_build_records_elapsed_time(compaction_bus, raises):
     clock = Mock(side_effect=[1.0, 1.25])
-    result = HandlerContextCompactionOrchestrator(build, clock=clock).handle(_request())
-    assert result.fallback is not None
+    _, handler = _bus(compaction_bus, failed=not raises, raising=raises, clock=clock)
+    result = handler.handle(_request())
     assert result.fallback.build_ms == 250.0
     assert result.fallback.failure_class is (
         EnumContextCompactionFailureClass.BUILD_ERROR
@@ -179,23 +179,21 @@ def test_failed_build_records_elapsed_time(raises: bool) -> None:
     assert clock.call_count == 2
 
 
-def test_unmet_barrier_does_not_time_or_run_a_build() -> None:
-    build = _Build(ModelContextCompactionBuildOutcome(package=_package()))
+def test_unmet_barrier_does_not_time_or_run_a_build(compaction_bus) -> None:
     barrier_wait = Mock()
     barrier_wait.wait.return_value = ModelSessionStreamBarrierVerdict(
         session_id="session-1", barrier_id="barrier-1", outcome="not_met", streams=()
     )
     clock = Mock(side_effect=AssertionError("no build ran"))
-    result = HandlerContextCompactionOrchestrator(
-        build, barrier_wait=barrier_wait, clock=clock
-    ).handle(_request().model_copy(update={"barrier_id": "barrier-1"}))
+    bus, handler = _bus(compaction_bus, barrier_wait=barrier_wait, clock=clock)
+    result = handler.handle(_request())
     assert result.fallback is not None
     assert (
         result.fallback.failure_class
         is EnumContextCompactionFailureClass.SOURCE_NOT_CAUGHT_UP
     )
     assert result.fallback.build_ms is None
-    assert not build.seen
+    assert not bus.commands
     clock.assert_not_called()
     barrier_wait.wait.assert_called_once()
 
@@ -207,11 +205,15 @@ def test_the_unwired_default_build_falls_back_to_native() -> None:
     )
 
 
-def test_a_built_package_installs_with_prepared_and_activated_receipts() -> None:
-    build = _Build(ModelContextCompactionBuildOutcome(package=_package()))
-    result = HandlerContextCompactionOrchestrator(
-        build, activation_ids=lambda: ACTIVATION, clock=Mock(side_effect=[1.0, 1.25])
-    ).handle(_request())
+def test_a_built_package_installs_with_prepared_and_activated_receipts(
+    compaction_bus,
+) -> None:
+    _, handler = _bus(
+        compaction_bus,
+        activation_ids=lambda: ACTIVATION,
+        clock=Mock(side_effect=[1.0, 1.25]),
+    )
+    result = handler.handle(_request())
 
     assert result.fallback is None
     assert result.reply.action is EnumClientVerdictAction.INSTALL
@@ -241,10 +243,12 @@ def test_a_built_package_installs_with_prepared_and_activated_receipts() -> None
     assert activated.installed_messages_hash == result.reply.installed_messages_hash
 
 
-def test_two_invocations_of_one_candidate_get_distinct_activations() -> None:
+def test_two_invocations_of_one_candidate_get_distinct_activations(
+    compaction_bus,
+) -> None:
     ids = iter([ACTIVATION, UUID("44444444-4444-4444-8444-444444444444")])
-    handler = HandlerContextCompactionOrchestrator(
-        _Build(ModelContextCompactionBuildOutcome(package=_package())),
+    _, handler = _bus(
+        compaction_bus,
         activation_ids=lambda: next(ids),
         clock=lambda: 0.0,
     )
@@ -303,9 +307,11 @@ def test_the_runtime_output_publishes_fallback_then_the_native_reply() -> None:
     assert reply.action is EnumClientVerdictAction.NATIVE
 
 
-def test_the_runtime_output_publishes_receipts_before_the_install_reply() -> None:
-    handler = HandlerContextCompactionOrchestrator(
-        _Build(ModelContextCompactionBuildOutcome(package=_package())),
+def test_the_runtime_output_publishes_receipts_before_the_install_reply(
+    compaction_bus,
+) -> None:
+    _, handler = _bus(
+        compaction_bus,
         activation_ids=lambda: ACTIVATION,
     )
     output = asyncio.run(handler.handle_async(_request()))

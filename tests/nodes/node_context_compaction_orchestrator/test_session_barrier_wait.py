@@ -14,20 +14,12 @@ from omnibase_core.enums.enum_client_verdict_action import EnumClientVerdictActi
 from omnimarket.models.context_compaction import (
     EnumContextCompactionFailureClass,
     EnumContextCompactionTrigger,
-    ModelContextCompactionBuildOutcome,
-    ModelContextCompactionBuiltPackage,
     ModelContextCompactionRequested,
     ModelContextCompactionResult,
-)
-from omnimarket.models.context_pack_render.model_context_pack_render_message import (
-    ModelContextPackRenderMessage,
 )
 from omnimarket.models.model_session_stream_barrier import (
     ModelSessionStreamBarrier,
     ModelSessionStreamBarrierProbe,
-)
-from omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_context_compaction_orchestrator import (
-    HandlerContextCompactionOrchestrator,
 )
 from omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_session_barrier_wait import (
     HandlerSessionBarrierWait,
@@ -64,6 +56,7 @@ def _probe(
     return ModelSessionStreamBarrierProbe(
         session_id="session-1",
         barrier_id=BARRIER,
+        source_revision="2026-10-23T12:00:00Z",
         barriers=(
             ModelSessionStreamBarrier(
                 stream="lineage",
@@ -110,29 +103,14 @@ class _RaisingSource:
 
 
 class _Build:
-    def __init__(self) -> None:
+    def __init__(self):
         self.calls = 0
 
-    def build(
-        self, request: ModelContextCompactionRequested
-    ) -> ModelContextCompactionBuildOutcome:
+    def handle(self, command):
+        from .test_compaction_pack_build import _ok_built
+
         self.calls += 1
-        return ModelContextCompactionBuildOutcome(
-            package=ModelContextCompactionBuiltPackage(
-                candidate_id=UUID("22222222-2222-5222-8222-222222222222"),
-                assembly_hash=_sha("assembly"),
-                model_outputs_hash=_sha("model-outputs"),
-                final_pack_hash=_sha("final"),
-                body_hash=_sha("body"),
-                version_vector_hash=_sha("vector"),
-                profile_name="compaction_orchestrator",
-                profile_content_hash=_sha("profile"),
-                messages=(
-                    ModelContextPackRenderMessage(role="user", text="legend"),
-                    ModelContextPackRenderMessage(role="user", text="trailer"),
-                ),
-            )
-        )
+        return _ok_built()
 
 
 def _wait(
@@ -148,13 +126,14 @@ def _wait(
 
 
 def _orchestrate(
+    compaction_bus,
     probes: list[ModelSessionStreamBarrierProbe],
     request: ModelContextCompactionRequested,
 ) -> tuple[ModelContextCompactionResult, _Build, _Source]:
     source = _Source(probes)
     build = _Build()
-    handler = HandlerContextCompactionOrchestrator(
-        build, barrier_wait=_wait(source, _Clock())
+    handler = compaction_bus(build).handler(
+        barrier_wait=_wait(source, _Clock()), barrier_probe_source=source
     )
     return handler.handle(request), build, source
 
@@ -171,16 +150,20 @@ def _fell_back(
     return result.fallback.failure_class
 
 
-def test_a_barrier_not_met_at_the_end_of_the_wait_replies_native_source_not_caught_up() -> (
-    None
-):
-    result, build, source = _orchestrate([_probe((1, 2), (1, 2, 3))], _request())
+def test_a_barrier_not_met_at_the_end_of_the_wait_replies_native_source_not_caught_up(
+    compaction_bus,
+) -> None:
+    result, build, source = _orchestrate(
+        compaction_bus, [_probe((1, 2), (1, 2, 3))], _request()
+    )
     assert _fell_back(result) == EnumContextCompactionFailureClass.SOURCE_NOT_CAUGHT_UP
     assert build.calls == 0
     assert len(source.reads) > 1
 
 
-def test_a_delayed_tool_result_is_not_built_until_it_is_projected() -> None:
+def test_a_delayed_tool_result_is_not_built_until_it_is_projected(
+    compaction_bus,
+) -> None:
     # The newest prompt (3) is projected while an earlier tool result (2) is
     # journalled but not projected: the build runs only on the read that closes
     # the gap.
@@ -189,58 +172,70 @@ def test_a_delayed_tool_result_is_not_built_until_it_is_projected() -> None:
         _probe((1, 3), (1, 2, 3)),
         _probe((1, 2, 3), (1, 2, 3)),
     ]
-    result, build, source = _orchestrate(probes, _request())
+    result, build, source = _orchestrate(compaction_bus, probes, _request())
     assert result.reply.action == EnumClientVerdictAction.INSTALL
     assert build.calls == 1
-    assert len(source.reads) == 3
+    assert len(source.reads) == 4
 
 
-def test_records_in_reverse_order_and_a_duplicate_do_not_delay_the_build() -> None:
+def test_records_in_reverse_order_and_a_duplicate_do_not_delay_the_build(
+    compaction_bus,
+) -> None:
     result, build, source = _orchestrate(
-        [_probe((3, 2, 1, 2), (3, 3, 1, 2))], _request()
+        compaction_bus, [_probe((3, 2, 1, 2), (3, 3, 1, 2))], _request()
     )
     assert result.reply.action == EnumClientVerdictAction.INSTALL
     assert build.calls == 1
-    assert len(source.reads) == 1
+    assert len(source.reads) == 2
 
 
-def test_no_package_is_built_while_any_stream_is_below_its_high_water() -> None:
-    result, build, _ = _orchestrate([_probe((1, 2, 3), (1, 2))], _request())
+def test_no_package_is_built_while_any_stream_is_below_its_high_water(
+    compaction_bus,
+) -> None:
+    result, build, _ = _orchestrate(
+        compaction_bus, [_probe((1, 2, 3), (1, 2))], _request()
+    )
     assert _fell_back(result) == EnumContextCompactionFailureClass.SOURCE_NOT_CAUGHT_UP
     assert build.calls == 0
 
 
-def test_a_barrier_not_yet_projected_replies_native_source_not_caught_up() -> None:
+def test_a_barrier_not_yet_projected_replies_native_source_not_caught_up(
+    compaction_bus,
+) -> None:
     unprojected = ModelSessionStreamBarrierProbe(
         session_id="session-1",
         barrier_id=BARRIER,
         barriers=(),
         applied={"lineage": (1, 2, 3), "content": (1, 2, 3)},
     )
-    result, build, _ = _orchestrate([unprojected], _request())
+    result, build, _ = _orchestrate(compaction_bus, [unprojected], _request())
     assert _fell_back(result) == EnumContextCompactionFailureClass.SOURCE_NOT_CAUGHT_UP
     assert build.calls == 0
 
 
-def test_a_session_with_content_capture_off_replies_native_source_disabled() -> None:
+def test_a_session_with_content_capture_off_replies_native_source_disabled(
+    compaction_bus,
+) -> None:
     result, build, _ = _orchestrate(
-        [_probe((1, 2, 3), (), content_capture="disabled")], _request()
+        compaction_bus, [_probe((1, 2, 3), (), content_capture="disabled")], _request()
     )
     assert _fell_back(result) == EnumContextCompactionFailureClass.SOURCE_DISABLED
     assert build.calls == 0
 
 
-def test_a_command_with_no_barrier_cannot_prove_completeness() -> None:
-    result, build, source = _orchestrate([_probe((1, 2, 3), (1, 2, 3))], _request(None))
+def test_a_command_with_no_barrier_cannot_prove_completeness(compaction_bus) -> None:
+    result, build, source = _orchestrate(
+        compaction_bus, [_probe((1, 2, 3), (1, 2, 3))], _request(None)
+    )
     assert _fell_back(result) == EnumContextCompactionFailureClass.SOURCE_INCOMPLETE
     assert build.calls == 0
     assert source.reads == []
 
 
-def test_a_failing_barrier_read_replies_native_build_error() -> None:
+def test_a_failing_barrier_read_replies_native_build_error(compaction_bus) -> None:
     build = _Build()
-    handler = HandlerContextCompactionOrchestrator(
-        build, barrier_wait=_wait(_RaisingSource(), _Clock())
+    handler = compaction_bus(build).handler(
+        barrier_wait=_wait(_RaisingSource(), _Clock())
     )
     assert (
         _fell_back(handler.handle(_request()))
@@ -249,9 +244,9 @@ def test_a_failing_barrier_read_replies_native_build_error() -> None:
     assert build.calls == 0
 
 
-def test_without_a_barrier_wait_the_build_runs_as_before() -> None:
+def test_without_a_barrier_wait_the_build_runs_as_before(compaction_bus) -> None:
     build = _Build()
-    result = HandlerContextCompactionOrchestrator(build).handle(_request(None))
+    result = compaction_bus(build).handler().handle(_request())
     assert result.reply.action == EnumClientVerdictAction.INSTALL
     assert build.calls == 1
 

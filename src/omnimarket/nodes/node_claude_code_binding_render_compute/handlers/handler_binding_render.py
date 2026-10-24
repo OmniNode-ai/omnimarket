@@ -5,7 +5,8 @@
 Pure. Deterministic: the same rows and maximum mode render byte-identical text. A row
 whose argument is not drawn from the hook input, or whose name could carry code, fails
 the render. Every contract value enters the text as a quoted literal; the module has no
-branching beyond table lookups.
+branching beyond table lookups. The argv names the bare adapter command unless the install
+passes the absolute path it resolved from its own environment.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from pathlib import PurePosixPath
 
 from omnimarket.models.claude_code_binding import (
     EnumBindingKind,
@@ -37,6 +39,7 @@ COMPACT_EVENT = "session.compact"
 COMPACT_MANUAL_TRIGGER = "manual"
 _NAME = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 _HOOK_INPUT_PATH = re.compile(r"^\$(\.[A-Za-z_][A-Za-z0-9_]*)+$")
+_UNQUOTABLE = frozenset("'\"\\\n\r")
 
 
 def _fill(template: str, **tokens: str) -> str:
@@ -72,6 +75,21 @@ def validate_binding(binding: ModelClientBinding) -> None:
             )
 
 
+def validate_adapter_command(command: str) -> None:
+    if command == ADAPTER_COMMAND:
+        return
+    path = PurePosixPath(command)
+    if (
+        not path.is_absolute()
+        or path.name != ADAPTER_COMMAND
+        or _UNQUOTABLE & set(command)
+    ):
+        raise BindingRenderError(
+            f"adapter command {command!r} is neither {ADAPTER_COMMAND!r} nor an "
+            "absolute path to it that a quoted literal can hold"
+        )
+
+
 def _fallback_lines(
     binding: ModelClientBinding, mode: EnumClientMaxMode
 ) -> tuple[str, str, str]:
@@ -101,7 +119,13 @@ def registration_for(binding: ModelClientBinding) -> ModelBindingRegistration:
 class HandlerClaudeCodeBindingRender:
     """handle(request) -> result."""
 
-    def handle(self, request: ModelBindingRenderRequest) -> ModelBindingRenderResult:
+    def handle(
+        self,
+        request: ModelBindingRenderRequest,
+        *,
+        adapter_command: str = ADAPTER_COMMAND,
+    ) -> ModelBindingRenderResult:
+        validate_adapter_command(adapter_command)
         replacing = tuple(
             b for b in request.bindings if b.kind is EnumBindingKind.REPLACING
         )
@@ -127,7 +151,7 @@ class HandlerClaudeCodeBindingRender:
             )
         ]
         for binding in replacing:
-            argv = f"['{ADAPTER_COMMAND}', '--binding', '{binding.name}']"
+            argv = f"['{adapter_command}', '--binding', '{binding.name}']"
             parts.append(
                 _fill(
                     tpl.BINDING_CONSTANTS,
