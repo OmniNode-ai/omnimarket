@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Self
+from typing import Any, Literal, Self
 from uuid import UUID
 
 from omnibase_core.enums.enum_client_verdict_action import EnumClientVerdictAction
@@ -45,8 +45,21 @@ class ModelContextCompactionPackageReply(BaseModel):
 
     invocation_id: UUID
     action: EnumClientVerdictAction
+    status: Literal["built", "native"]
+    package_id: UUID | None = None
     messages: tuple[ModelContextPackRenderMessage, ...] = ()
     installed_messages_hash: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_action_status(cls, value: Any) -> Any:
+        """Older adapters send action only; retain that input shape."""
+        if isinstance(value, dict) and "status" not in value:
+            return {
+                **value,
+                "status": "built" if value.get("action") == "install" else "native",
+            }
+        return value
 
     @model_validator(mode="after")
     def _install_carries_a_package(self) -> Self:
@@ -55,6 +68,10 @@ class ModelContextCompactionPackageReply(BaseModel):
                 f"a compaction reply is install or native, not {self.action}"
             )
         installs = self.action is EnumClientVerdictAction.INSTALL
+        if installs != (self.status == "built"):
+            raise ValueError("compaction status must agree with its action")
+        if not installs and self.package_id is not None:
+            raise ValueError("native compaction carries no package id")
         if installs != bool(self.messages) or installs != (
             self.installed_messages_hash is not None
         ):

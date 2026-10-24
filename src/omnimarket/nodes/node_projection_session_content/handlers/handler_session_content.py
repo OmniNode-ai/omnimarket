@@ -65,6 +65,13 @@ _COLUMNS = (
     "hook_source",
     "emitted_at",
     "source_topic",
+    "content_record_id",
+    "stream",
+    "producer_seq",
+    "record_type",
+    "barrier_id",
+    "high_water",
+    "content_capture",
 )
 _JSONB = frozenset({"command", "producer_redaction"})
 
@@ -74,14 +81,21 @@ _PLACEHOLDERS = ", ".join(
 )
 
 # The content is immutable for a key (the key content-addresses it), so the
-# conflict arm only restamps redaction_state. It exists so a replay reports
-# one row to the runtime's write-path guard instead of zero, which that guard
-# would log as a failed write.
+# conflict arm restamps redaction_state and fills producer stamps that the
+# pre-OMN-21334 fold discarded. Populated stamps never change on replay. A
+# replay reports one row to the runtime's write-path guard rather than zero.
 _UPSERT = f"""
-    INSERT INTO {TABLE} ({", ".join(_COLUMNS)})
+    INSERT INTO {TABLE} AS existing ({", ".join(_COLUMNS)})
     VALUES ({_PLACEHOLDERS})
     ON CONFLICT (event_id) DO UPDATE SET
-        redaction_state = EXCLUDED.redaction_state
+        redaction_state = EXCLUDED.redaction_state,
+        content_record_id = COALESCE(existing.content_record_id, EXCLUDED.content_record_id),
+        stream = COALESCE(existing.stream, EXCLUDED.stream),
+        producer_seq = COALESCE(existing.producer_seq, EXCLUDED.producer_seq),
+        record_type = COALESCE(existing.record_type, EXCLUDED.record_type),
+        barrier_id = COALESCE(existing.barrier_id, EXCLUDED.barrier_id),
+        high_water = COALESCE(existing.high_water, EXCLUDED.high_water),
+        content_capture = COALESCE(existing.content_capture, EXCLUDED.content_capture)
 """
 
 _T = TypeVar("_T")

@@ -1088,6 +1088,7 @@
     {
       "accessor_nodes": [
         "node_capture_silence_watch_effect",
+        "node_context_compaction_orchestrator",
         "node_projection_claude_hook_events",
         "node_projection_freshness_alert_effect",
         "service:omnimarket_projection_migration_runner"
@@ -1102,6 +1103,7 @@
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_capture_silence_watch_effect/contract.yaml",
+        "src/omnimarket/nodes/node_context_compaction_orchestrator/contract.yaml",
         "src/omnimarket/nodes/node_projection_claude_hook_events/contract.yaml",
         "src/omnimarket/nodes/node_projection_freshness_alert_effect/contract.yaml"
       ],
@@ -3396,6 +3398,7 @@
     {
       "accessor_nodes": [
         "node_capture_silence_watch_effect",
+        "node_context_compaction_orchestrator",
         "node_projection_claude_hook_events",
         "node_projection_freshness_alert_effect",
         "service:omnimarket_projection_migration_runner"
@@ -3413,6 +3416,7 @@
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_capture_silence_watch_effect/contract.yaml",
+        "src/omnimarket/nodes/node_context_compaction_orchestrator/contract.yaml",
         "src/omnimarket/nodes/node_projection_claude_hook_events/contract.yaml",
         "src/omnimarket/nodes/node_projection_freshness_alert_effect/contract.yaml"
       ],
@@ -3441,7 +3445,8 @@
         "idx_claude_hook_events_projection_cursor",
         "idx_claude_hook_events_refusal_call",
         "idx_claude_hook_events_session_agent_emitted",
-        "idx_claude_hook_events_session_emitted"
+        "idx_claude_hook_events_session_emitted",
+        "idx_claude_hook_events_session_sequence"
       ],
       "internal_tenant_column_transform": {
         "key_fk_index_partition_dependencies": [],
@@ -3462,6 +3467,7 @@
       "producer": "node_projection_claude_hook_events",
       "readers": [
         "node_capture_silence_watch_effect",
+        "node_context_compaction_orchestrator",
         "node_projection_claude_hook_events",
         "node_projection_freshness_alert_effect",
         "service:omnimarket_projection_migration_runner"
@@ -8199,6 +8205,7 @@
     },
     {
       "accessor_nodes": [
+        "node_context_compaction_orchestrator",
         "node_projection_session_content",
         "service:omnimarket_projection_migration_runner"
       ],
@@ -8211,6 +8218,7 @@
       "constraints": [],
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_context_compaction_orchestrator/contract.yaml",
         "src/omnimarket/nodes/node_projection_session_content/contract.yaml"
       ],
       "current_schema": [
@@ -8229,6 +8237,8 @@
       "indexes": [
         "idx_session_content_emitted_at",
         "idx_session_content_session",
+        "idx_session_content_session_barrier",
+        "idx_session_content_session_stream_sequence",
         "idx_session_content_tool_use",
         "idx_session_content_turn"
       ],
@@ -8249,6 +8259,7 @@
       "partitioning": [],
       "producer": "node_projection_session_content",
       "readers": [
+        "node_context_compaction_orchestrator",
         "node_transcript_read_effect"
       ],
       "target_schema": "omninode_internal",

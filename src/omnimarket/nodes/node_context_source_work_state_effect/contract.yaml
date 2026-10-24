@@ -54,9 +54,8 @@ context_source_ledger:
     relation: omninode_internal.work_ledger_rows
     binding_ref: omninode_runtime_service
     dsn_env: OMNINODE_INTERNAL_DB_URL
-    # Tenants are overlay data: the deploy overlay lists the one lab tenant.
-    # An empty list denies every request.
-    tenant_ids: []
+    # The deploy overlay binds the source tenant; unset remains deny-all.
+    tenant_ids: ["${env.ONEX_CONTEXT_SOURCE_TENANT_ID:}"]
 context_source_work_state:
   # A message or claim opened longer ago than this before the watermark is
   # not current work; it is counted as stale and left out.
