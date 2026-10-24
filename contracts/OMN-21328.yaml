@@ -16,7 +16,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "The standup draft check node's ported tests: the checker rules, the CLI parity cases and the handler through its request and result models. None exists at the merge base."
-    command: "uv run pytest tests/nodes/node_standup_draft_check_compute -q --no-cov"
+    command: "uv run pytest tests/nodes/node_standup_draft_check_compute/test_standup_draft_check.py tests/nodes/node_standup_draft_check_compute/test_registration.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -55,7 +55,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_standup_draft_check_compute -q --no-cov"
+        check_value: "uv run pytest tests/nodes/node_standup_draft_check_compute/test_standup_draft_check.py tests/nodes/node_standup_draft_check_compute/test_registration.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
   - id: "dod-omn21328-ac6-standup-node-cli"

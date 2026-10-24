@@ -678,7 +678,8 @@ def test_facts_json_warnings(
     data = json.loads(output)
     assert code == 0
     assert not error
-    assert data.pop("warnings") == [MILESTONE_WARNING]
+    warnings = data.pop("warnings")
+    assert warnings == [MILESTONE_WARNING]
     assert data == asdict(check(draft()))
 
 
