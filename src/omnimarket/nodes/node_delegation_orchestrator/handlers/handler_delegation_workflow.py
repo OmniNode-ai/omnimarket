@@ -159,6 +159,13 @@ from omnimarket.models.delegation.delegation_attempt_lineage import endpoint_hos
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
     ModelLlmDelegationEscalationTriggeredEvent,
 )
+from omnimarket.models.delegation.model_escalation_transitions import (
+    EnumEscalationCause,
+    EnumTransitionKind,
+)
+from omnimarket.models.delegation.model_transition_decision import (
+    ModelTransitionDecisionRequest,
+)
 from omnimarket.models.delegation.quality_bar_evidence import (
     format_quality_bar_labels,
 )
@@ -240,6 +247,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     quota_blocked_backend_refs,
     resolve_task_class_max_escalations,
     resolve_task_class_response_contract,
+    resolve_task_class_transitions,
     sibling_backend_available_in_tier,
     tier_max_retries,
     tiers_declaring_backend,
@@ -752,6 +760,38 @@ def _stale_response_rejection(
         current_selected_model=decision.selected_model,
         rejected_at=datetime.now(UTC),
     )
+
+
+def inference_error_cause(
+    failure_class: EnumDelegationFailureClass | None, *, error_retryable: bool
+) -> EnumEscalationCause:
+    """Classify a failed provider call on the bus path (OMN-21213).
+
+    The bus has no same-rung retry at this point, so a transient error spends a
+    retry budget of zero and the declared lists decide its move.
+    """
+    if not error_retryable:
+        return EnumEscalationCause.NON_RETRYABLE_FAILURE
+    if failure_class is EnumDelegationFailureClass.TIMEOUT:
+        return EnumEscalationCause.RUNG_TIMEOUT
+    if failure_class is EnumDelegationFailureClass.RATE_LIMITED:
+        return EnumEscalationCause.RATE_LIMITED
+    return EnumEscalationCause.TRANSIENT_PROVIDER_ERROR
+
+
+def quality_result_cause(
+    *, no_rung_can_satisfy: bool, fail_category: str | None
+) -> EnumEscalationCause:
+    """Classify a refused answer on the bus path (OMN-21213).
+
+    ``no_rung_can_satisfy`` includes the repeated deterministic-floor failure,
+    which the lists declare as the terminal ``quality_veto``.
+    """
+    if no_rung_can_satisfy:
+        return EnumEscalationCause.QUALITY_VETO
+    if fail_category == "rubric_failed":
+        return EnumEscalationCause.RUBRIC_FAILED
+    return EnumEscalationCause.QUALITY_GATE_REFUSED
 
 
 def _should_escalate_inference_error(error_message: str) -> bool:
@@ -2572,8 +2612,13 @@ class HandlerDelegationWorkflow:
         non_retryable_reason: str,
         task_type: str | None,
         excluded_backend_refs: frozenset[str] = frozenset(),
+        cause: EnumEscalationCause | None = None,
     ) -> ModelEscalationDecisionResult:
         """Delegate the escalate-or-terminate verdict to the COMPUTE (OMN-13476).
+
+        OMN-21213: with a ``cause`` and a known ``task_type`` the COMPUTE reads
+        the verdict from the class's declared transition lists, the same lists
+        the local port's moves are decided by.
 
         The config-dependent inputs are resolved here — the orchestrator owns the
         routing-contract I/O. ``next_eligible_tier`` /
@@ -2594,6 +2639,19 @@ class HandlerDelegationWorkflow:
         # OMN-20844: a caller pin holds for the whole run. The COMPUTE refuses
         # to escalate a pinned run, so no next tier is resolved for one.
         pinned_backend_ref = _pinned_backend_ref(workflow)
+        transitions = (
+            resolve_task_class_transitions(task_type)
+            if cause is not None and task_type is not None
+            else None
+        )
+        if transitions is not None:
+            assert cause is not None
+            error_retryable = (
+                self._escalation_decider.decide_transition(
+                    ModelTransitionDecisionRequest(cause=cause, transitions=transitions)
+                ).kind
+                is EnumTransitionKind.MOVE
+            )
 
         # Only resolve a next tier when the cheap pure preconditions allow it; the
         # COMPUTE re-checks them, but resolving the tier here would be wasted I/O
@@ -2637,6 +2695,8 @@ class HandlerDelegationWorkflow:
                 non_retryable_reason=non_retryable_reason,
                 no_higher_tier_reason=no_higher_tier_reason,
                 pinned_backend_ref=pinned_backend_ref,
+                cause=cause if transitions is not None else None,
+                transitions=transitions,
             )
         )
 
@@ -3517,6 +3577,9 @@ class HandlerDelegationWorkflow:
                 non_retryable_reason="non_retryable_inference_response",
                 task_type=error_task_type,
                 excluded_backend_refs=_escalation_excluded_refs(workflow),
+                cause=inference_error_cause(
+                    failure_class, error_retryable=error_retryable
+                ),
             )
             terminal_failure_reason = decision.terminal_failure_reason
             next_tier = decision.next_tier_name
@@ -4049,10 +4112,23 @@ class HandlerDelegationWorkflow:
         # entirely rather than spending the budget on three more copies of the
         # same answer — measured on ``f037b9be``, where the three free re-draws
         # returned byte-identical text, score and refusal.
+        # OMN-21213: whether a refusal re-drafts is read from the class's
+        # declared lists: a veto terminates and a rubric failure moves, so
+        # neither re-drafts.
+        refusal_cause = quality_result_cause(
+            no_rung_can_satisfy=no_rung_can_satisfy,
+            fail_category=result.fail_category,
+        )
         retry_local_intents = (
-            None
-            if no_rung_can_satisfy or result.fail_category == "rubric_failed"
-            else self._maybe_retry_local(workflow, rejected_attempt_cost_usd)
+            self._maybe_retry_local(
+                workflow, rejected_attempt_cost_usd, cause=refusal_cause
+            )
+            if workflow.request is None
+            or resolve_task_class_transitions(workflow.request.task_type).kind_of(
+                refusal_cause
+            )
+            is EnumTransitionKind.RETRY
+            else None
         )
         if retry_local_intents is not None:
             return retry_local_intents
@@ -4089,6 +4165,10 @@ class HandlerDelegationWorkflow:
             task_type=workflow.request.task_type,
             excluded_backend_refs=_escalation_excluded_refs(
                 workflow, rejected_ref=rejected_backend_ref
+            ),
+            cause=quality_result_cause(
+                no_rung_can_satisfy=no_rung_can_satisfy,
+                fail_category=result.fail_category,
             ),
         )
         terminal_failure_reason = decision.terminal_failure_reason
@@ -4402,8 +4482,14 @@ class HandlerDelegationWorkflow:
         self,
         workflow: DelegationWorkflowState,
         attempt_cost_usd: float,
+        *,
+        cause: EnumEscalationCause = EnumEscalationCause.QUALITY_GATE_REFUSED,
     ) -> list[BaseModel] | None:
         """Retry the SAME free tier before escalating off it (OMN-14234, best-of-N).
+
+        OMN-21213: the escalation decision node reads whether ``cause`` retries
+        from the class's declared lists, with the free tier's ``max_retries`` as
+        the rung's retry budget.
 
         The local coder is non-deterministic: a single trivial refactor scored
         0.8 / 0.64 / 1.0 across three runs at the 0.85 bar (OMN-14234 live
@@ -4432,7 +4518,24 @@ class HandlerDelegationWorkflow:
         if workflow.local_retry_tier != tier:
             workflow.local_retry_tier = tier
             workflow.local_retry_count = 0
-        if workflow.local_retry_count >= tier_max_retries(tier):
+        task_type = workflow.request.task_type if workflow.request is not None else None
+        if task_type is None:
+            if (
+                cause is not EnumEscalationCause.QUALITY_GATE_REFUSED
+                or workflow.local_retry_count >= tier_max_retries(tier)
+            ):
+                return None
+        elif (
+            self._escalation_decider.decide_transition(
+                ModelTransitionDecisionRequest(
+                    cause=cause,
+                    transitions=resolve_task_class_transitions(task_type),
+                    retries_on_rung=workflow.local_retry_count,
+                    rung_retry_budget=tier_max_retries(tier),
+                )
+            ).kind
+            is not EnumTransitionKind.RETRY
+        ):
             return None
         workflow.local_retry_count += 1
 

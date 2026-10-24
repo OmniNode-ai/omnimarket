@@ -21,6 +21,7 @@ from omnimarket.inference.task_class_authority import (
     ModelTaskClassAuthority,
     load_task_class_authority,
 )
+from tests.fixtures.task_class_transitions import with_declared_transitions
 
 pytestmark = pytest.mark.unit
 
@@ -29,23 +30,25 @@ def _stand_in_authority(tmp_path: Path) -> ModelTaskClassAuthority:
     """An authority whose class names exist nowhere in production."""
     path = tmp_path / "task_class_contracts.yaml"
     path.write_text(
-        yaml.safe_dump(
-            {
-                "task_classes": {
-                    "alpha_probe": {
-                        "gateway_exposure": "public",
-                        "selection": {"priority": 1, "phrases": []},
-                    },
-                    "beta_probe": {
-                        "gateway_exposure": "public",
-                        "selection": {"priority": 1, "phrases": []},
-                    },
-                    "gamma_internal_probe": {
-                        "gateway_exposure": "internal",
-                        "selection": {"priority": 0, "phrases": []},
-                    },
+        with_declared_transitions(
+            yaml.safe_dump(
+                {
+                    "task_classes": {
+                        "alpha_probe": {
+                            "gateway_exposure": "public",
+                            "selection": {"priority": 1, "phrases": []},
+                        },
+                        "beta_probe": {
+                            "gateway_exposure": "public",
+                            "selection": {"priority": 1, "phrases": []},
+                        },
+                        "gamma_internal_probe": {
+                            "gateway_exposure": "internal",
+                            "selection": {"priority": 0, "phrases": []},
+                        },
+                    }
                 }
-            }
+            )
         ),
         encoding="utf-8",
     )

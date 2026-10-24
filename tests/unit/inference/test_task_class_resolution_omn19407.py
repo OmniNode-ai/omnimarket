@@ -30,6 +30,9 @@ from omnimarket.inference.task_class_authority import (
     TaskClassSelectionError,
     load_task_class_authority,
 )
+from omnimarket.routing.task_class_contract_path import (
+    TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -40,6 +43,16 @@ def _live() -> ModelTaskClassAuthority:
 
 
 def _authority(tmp_path: Path, document: dict[str, object]) -> ModelTaskClassAuthority:
+    # OMN-21213: every class declares its transition lists; these tests are about
+    # selection, so each fixture class carries the packaged default lists.
+    transitions = yaml.safe_load(
+        TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH.read_text(encoding="utf-8")
+    )["transitions_default"]
+    classes = document.get("task_classes")
+    if isinstance(classes, dict):
+        for entry in classes.values():
+            if isinstance(entry, dict):
+                entry.setdefault("transitions", transitions)
     path = tmp_path / "task_class_contracts.yaml"
     path.write_text(yaml.safe_dump(document), encoding="utf-8")
     return load_task_class_authority(path)

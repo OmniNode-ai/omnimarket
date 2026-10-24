@@ -105,6 +105,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_result import (
     ModelLlmDelegationCallResult,
 )
+from tests.fixtures.task_class_transitions import with_declared_transitions
 
 pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("stub_provider_quota_reader")]
 
@@ -809,7 +810,9 @@ task_classes:
 @pytest.fixture
 def _research_escalation_budget(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
     contract_path = tmp_path / "task_class_contracts.v1.yaml"
-    contract_path.write_text(_RESEARCH_TASK_CLASS_CONTRACT, encoding="utf-8")
+    contract_path.write_text(
+        with_declared_transitions(_RESEARCH_TASK_CLASS_CONTRACT), encoding="utf-8"
+    )
     monkeypatch.setenv("TASK_CLASS_CONTRACT_PATH", str(contract_path))
     monkeypatch.setenv("ONEX_BOUNDARY_DLQ_ENABLED", "true")
     with _task_class_contract_cache_cleared():

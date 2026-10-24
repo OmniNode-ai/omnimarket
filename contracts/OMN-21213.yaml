@@ -1,0 +1,52 @@
+schema_version: 1.0.0
+ticket_id: OMN-21213
+title: Retry, move, skip and terminate rules are declared per task class and one decision node applies them on both delegation paths
+summary: Every task class in task_class_contracts.v1.yaml declares retry_on, move_on, skip_on and terminate_on, which partition one closed cause vocabulary; a class missing any list refuses to load. HandlerEscalationDecision.decide_transition reads a classified cause's transition from those lists. The bus orchestrator's escalate, terminate and re-draft decisions and the local port's transport and quality decisions all go through it, and the local port now stops a repeated deterministic-floor failure as quality_veto the way the bus does.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21213-transition-table
+  statement: Transitions are declared per task class and one decision node applies them on both delegation paths.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: For each member of each list, a stub rung that produces it yields exactly the declared transition: a retry on the same rung, a move recorded with its kind and cause, a skip with no attempt, or a terminal with no later provider call; a repeated deterministic-floor failure stops with `quality_veto` and no further call; and a class whose lists are deleted from a copy of the contract refuses to load -- falsifier: `uv run pytest src/omnimarket/nodes/node_delegation_escalation_decision_compute/tests/test_handler_escalation_decision.py -q -k "transition_table or floor_veto or missing_lists_refuse"`, run once against the bus path and once against the local port.'
+evidence_requirements:
+- kind: tests
+  description: The transition table tests pass at the head; at the merge base the transition models, the declared lists and the decision method do not exist, so the test module fails to import.
+  command: uv run pytest src/omnimarket/nodes/node_delegation_escalation_decision_compute/tests/test_handler_escalation_decision.py -q --no-cov -k "transition_table or floor_veto or missing_lists_refuse"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21213-ac1-transition-table-tests
+  description: 'AC1: for every class and every cause in each declared list, a stub rung producing it yields that list''s transition from the node; on the bus path and on the local port a 429, a timeout, a spent transient error and a non-retryable failure each take the declared move or terminal, a refused answer re-drafts the free rung, a move is recorded with its kind and cause, an exhausted ladder terminates with no later call, and a repeated deterministic-floor failure stops with quality_veto and no further call; a copy of the contract with any list deleted from a class refuses to load in the authority loader and in the routing resolver both paths read.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_delegation_escalation_decision_compute/tests/test_handler_escalation_decision.py -q --no-cov -n 4 -k "each_declared_cause or missing_lists_refuse"
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_delegation_escalation_decision_compute/tests/test_handler_escalation_decision.py -q --no-cov -n 4 -k "(transition_table or floor_veto) and bus"
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_delegation_escalation_decision_compute/tests/test_handler_escalation_decision.py -q --no-cov -n 4 -k "transition_table and local and failed_call"
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_delegation_escalation_decision_compute/tests/test_handler_escalation_decision.py -q --no-cov -n 4 -k "(transition_table or floor_veto) and local and not failed_call"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn21213-transition-table-deploy-probe
+  description: Deploy probe. Read the local dispatch port and the bus workflow handler from GitHub at the checked-out commit and require both to decide transitions through the node, with the transition table tests passing beside them. At the merge base neither carries the call, so the reads find nothing and the tests fail to import.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_delegation_escalation_decision_compute/tests/test_handler_escalation_decision.py -q --no-cov -n 4 -k "each_declared_cause"
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "_ESCALATION_DECIDER.decide_transition(" > /dev/null && gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_orchestrator/handlers/handler_delegation_workflow.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "cause=quality_result_cause(" > /dev/null'
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1

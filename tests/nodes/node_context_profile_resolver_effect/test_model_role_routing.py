@@ -17,6 +17,9 @@ from omnimarket.models.context_profile_resolve.model_context_profile_resolve_res
 from omnimarket.nodes.node_context_profile_resolver_effect.handlers.handler_context_profile_resolver import (
     HandlerContextProfileResolver,
 )
+from omnimarket.routing.task_class_contract_path import (
+    TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
+)
 
 ROLE_FIELDS = (
     "extraction_task_class",
@@ -29,6 +32,10 @@ def _entry() -> dict[str, object]:
     return {
         "gateway_exposure": "internal",
         "selection": {"priority": 0, "phrases": []},
+        # OMN-21213: a class without its four transition lists refuses to load.
+        "transitions": yaml.safe_load(
+            TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH.read_text(encoding="utf-8")
+        )["transitions_default"],
     }
 
 
