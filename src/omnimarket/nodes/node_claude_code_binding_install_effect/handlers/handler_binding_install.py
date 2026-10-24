@@ -7,14 +7,19 @@ install refuses a target inside any git work tree. Its sha256 is recorded, and t
 read back from disk must equal the render's. Additive rows are written into the user's
 settings.json only; every registration this effect wrote earlier is dropped first, so a row
 removed from the contract is removed from the settings on the next install. Only rows whose
-probe rows the capability report marks supported are installed.
+probe rows the capability report marks supported are installed. Claude Code reads no mods
+folder by itself, so the installed mod folder is named in CLAUDE_CODE_PLUGIN_DIRS of the
+same user settings and dropped from it when no module is installed; the module's argv is the
+adapter command resolved from the environment that runs the install.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
+import sysconfig
 from pathlib import Path
 
 from omnimarket.models.claude_code_binding import (
@@ -37,6 +42,32 @@ from omnimarket.nodes.node_claude_code_binding_render_compute.handlers.handler_b
 
 _OWN_COMMAND_PREFIX = f"{ADAPTER_COMMAND} --binding "
 RECORD_NAME = "install_record.json"
+PLUGIN_DIRS_ENV = "CLAUDE_CODE_PLUGIN_DIRS"
+
+
+def _resolve_adapter_command() -> str:
+    """The adapter script beside this interpreter, else on PATH, else its bare name."""
+    beside = Path(sysconfig.get_path("scripts")) / ADAPTER_COMMAND
+    if beside.is_file() and os.access(beside, os.X_OK):
+        return str(beside)
+    on_path = shutil.which(ADAPTER_COMMAND)
+    return str(Path(on_path).absolute()) if on_path else ADAPTER_COMMAND
+
+
+def _plugin_dirs(env: dict[str, object], plugin_dir: str, installed: bool) -> None:
+    """Name plugin_dir in env's plugin folder list once, or drop it; keep every other entry."""
+    current = env.get(PLUGIN_DIRS_ENV)
+    entries = [
+        e
+        for e in (current.split(os.pathsep) if isinstance(current, str) else [])
+        if e and (installed or e != plugin_dir)
+    ]
+    if installed and plugin_dir not in entries:
+        entries.append(plugin_dir)
+    if entries:
+        env[PLUGIN_DIRS_ENV] = os.pathsep.join(entries)
+    else:
+        env.pop(PLUGIN_DIRS_ENV, None)
 
 
 def _inside_a_work_tree(path: Path) -> bool:
@@ -94,7 +125,8 @@ class HandlerClaudeCodeBindingInstall:
             b.name for b in request.bindings if not _is_installed(b, supported)
         )
         rendered = HandlerClaudeCodeBindingRender().handle(
-            ModelBindingRenderRequest(bindings=eligible, max_mode=request.max_mode)
+            ModelBindingRenderRequest(bindings=eligible, max_mode=request.max_mode),
+            adapter_command=_resolve_adapter_command(),
         )
         replacing = [b for b in eligible if b.kind is EnumBindingKind.REPLACING]
 
@@ -143,7 +175,9 @@ class HandlerClaudeCodeBindingInstall:
         elif plugin_dir.exists():
             shutil.rmtree(plugin_dir)
 
-        removed, registered = self._write_settings(settings_path, rendered)
+        removed, registered = self._write_settings(
+            settings_path, rendered, str(plugin_dir.absolute()), bool(replacing)
+        )
         return ModelBindingInstallResult(
             module_path=str(module_path) if module_path else None,
             render_sha256=render_sha,
@@ -156,7 +190,10 @@ class HandlerClaudeCodeBindingInstall:
 
     @staticmethod
     def _write_settings(
-        settings_path: Path, rendered: ModelBindingRenderResult
+        settings_path: Path,
+        rendered: ModelBindingRenderResult,
+        plugin_dir: str,
+        module_installed: bool,
     ) -> tuple[tuple[str, ...], tuple[str, ...]]:
         settings: dict[str, object] = (
             json.loads(settings_path.read_text(encoding="utf-8"))
@@ -190,7 +227,14 @@ class HandlerClaudeCodeBindingInstall:
             settings["hooks"] = hooks
         else:
             settings.pop("hooks", None)
-        if hooks or removed or settings_path.exists():
+        env = settings.get("env")
+        env = dict(env) if isinstance(env, dict) else {}
+        _plugin_dirs(env, plugin_dir, module_installed)
+        if env:
+            settings["env"] = env
+        else:
+            settings.pop("env", None)
+        if hooks or removed or module_installed or settings_path.exists():
             _atomic_write(
                 settings_path,
                 (json.dumps(settings, indent=2, sort_keys=True) + "\n").encode(),
