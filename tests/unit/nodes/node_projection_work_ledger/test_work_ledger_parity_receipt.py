@@ -13,13 +13,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from omnimarket.nodes.node_projection_work_ledger.parity import (
     BACKFILL_SOURCE,
+    compare,
     main,
+    receipt_exact,
+    receipt_row,
 )
 
 pytestmark = pytest.mark.unit
@@ -180,3 +184,35 @@ def test_utc_day_malformed_day_is_refused_with_exit_2(
     )
     assert rc == 2
     assert "--utc-day must be YYYY-MM-DD" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("projection_sources", "backfilled", "exact"),
+    [
+        ({"onex-ledger": 3, "ledger-emit": 1}, "1", False),
+        ({"onex-ledger": 3}, "0", True),
+    ],
+)
+def test_receipt_counts_ledger_emit_as_backfill(
+    projection_sources: dict[str, int], backfilled: str, exact: bool
+) -> None:
+    report = compare(
+        file_rows=ROWS,
+        projection_rows={_rid(raw): raw[:20] for raw in ROWS[1:4]},
+        projection_state={},
+        since=datetime(2026, 10, 3, tzinfo=UTC),
+        until=datetime(2026, 10, 3, 23, 59, 59, tzinfo=UTC),
+    ).model_copy(update={"projection_sources": projection_sources})
+
+    assert report.exact
+    assert receipt_exact(report) is exact
+    cells = _cells(receipt_row(report, DAY, datetime(2026, 10, 4, tzinfo=UTC)))
+    assert (cells["missing"], cells["extra"], cells["state_mismatches"]) == (
+        "0",
+        "0",
+        "0",
+    )
+    assert (cells["backfilled"], cells["exact"]) == (
+        backfilled,
+        "yes" if exact else "no",
+    )

@@ -1,0 +1,11 @@
+-- OMN-20967: a credential row names the Anthropic workspace its key belongs to.
+--
+-- A company Claude API key is answered only when each request carries its
+-- workspace in the anthropic-workspace-id header, so the id is catalogued with
+-- the key and the review gateway sends it on every call made with that key. The
+-- id names a workspace and is not a credential.
+--
+-- Nullable with no default and no backfill: a row registered before this
+-- migration, or with no workspace given, sends no workspace header, exactly as
+-- before.
+ALTER TABLE tenant_inference_credentials ADD COLUMN IF NOT EXISTS workspace_id TEXT;

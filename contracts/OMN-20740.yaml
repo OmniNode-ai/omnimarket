@@ -1,0 +1,40 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20740"
+title: "Work-ledger parity compares state as of the file's horizon and counts both backfill sources"
+summary: "The parity check folded only the window's rows and compared them with the projection's current state, so a later row that advanced an entity read as a state mismatch. State is now folded from the window's start through the file's latest row, for the entities the window's rows touch; a projected value later than that horizon is counted apart in state_after_horizon and is never a mismatch. The receipt's backfilled cell counts the ledger-emit source as well as onex-ledger-emit-backfill. This is the parity slice of the S8 flip; the flip itself and its claim-token test are not in this change."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-parity-state-as-of-horizon"
+    statement: |-
+      The daily parity receipt must compare the file and the projection at the same point in time, so a day reads exact only when the projection matches the file, and every backfilled row in the day is counted.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the daily parity receipt reads exact=yes for 7 consecutive UTC days before the flip -- falsifier: the lane=work-ledger-parity STATUS receipts
+evidence_requirements:
+  - kind: "tests"
+    description: "State-horizon and backfill-source tests for the parity check."
+    command: "uv run pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity_state_horizon.py tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity_receipt.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20740-ac1-parity-state-horizon"
+    description: "The state-horizon tests are absent at the merge base, so the bound command fails there and passes at the head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity_state_horizon.py tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity_receipt.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20740-deploy-probe"
+    description: "Deploy probe: the parity module read from GitHub at the checked-out commit defines the state horizon and both backfill sources. A head without them fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_work_ledger/parity.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c -e '^BACKFILL_SOURCES = ' -e 'state_horizon: datetime | None = None'"
+    binds_ac: ["AC1"]

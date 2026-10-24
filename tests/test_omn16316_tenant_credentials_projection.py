@@ -128,6 +128,8 @@ class TestCredentialRegistered:
             None,
             # OMN-21012: bound_host; an event without one binds no host.
             None,
+            # OMN-20967: workspace_id; an event without one names no workspace.
+            None,
         )
 
     @pytest.mark.asyncio
@@ -341,6 +343,8 @@ class TestHandleDefBEntrypoint:
             None,
             # OMN-21012: bound_host; an event without one binds no host.
             None,
+            # OMN-20967: workspace_id; an event without one names no workspace.
+            None,
         )
 
     def test_handle_defaults_topic_to_the_first_subscribed_topic(
@@ -394,7 +398,7 @@ class TestExpiresAt:
         assert "expires_at" in sql
         # COALESCE: a re-delivery without the field never erases a stored date.
         assert "COALESCE(EXCLUDED.expires_at" in sql
-        assert args[-2] == datetime(2027, 1, 1, tzinfo=UTC)
+        assert args[-3] == datetime(2027, 1, 1, tzinfo=UTC)
 
     def test_expires_at_migration_adds_one_nullable_column_and_nothing_else(
         self,
@@ -460,7 +464,7 @@ class TestBoundHost:
         assert "bound_host" in sql
         # COALESCE: a re-delivery without the field never unbinds the key.
         assert "COALESCE(EXCLUDED.bound_host" in sql
-        assert args[-1] == "h201"
+        assert args[-2] == "h201"
 
     def test_tenant_credentials_bound_host_migration_adds_one_nullable_column(
         self,
@@ -516,3 +520,87 @@ class TestBoundHost:
         )
         [row] = db.query(CREDENTIALS_TABLE, {"api_key_ref": ref})
         assert row["bound_host"] is None
+
+
+# ---------------------------------------------------------------------------
+# OMN-20967: the Anthropic workspace a key belongs to reaches the catalog and the exposure.
+# ---------------------------------------------------------------------------
+
+_WORKSPACE_MIGRATION = _NODE_DIR / "migrations/0008_tenant_credentials_workspace_id.sql"
+
+
+class TestWorkspaceId:
+    @pytest.mark.asyncio
+    async def test_tenant_credentials_workspace_id_is_written_and_kept(
+        self, runner: HandlerTenantCredentialsProjectionRunner, mock_db: AsyncMock
+    ) -> None:
+        data = {
+            "tenant_id": "omninode",
+            "provider": "anthropic",
+            "name": "company-key",
+            "api_key_ref": "cred_omninode_anthropic_" + "a" * 32,
+            "metadata": {},
+            "workspace_id": "wrkspc_01SyntheticWorkspaceId",
+        }
+        assert await runner.project_event(TOPIC_REGISTERED, data, _make_meta())
+        args = _credential_call(mock_db)
+        sql = str(args[0])
+        assert "workspace_id" in sql
+        # COALESCE: a re-delivery without the field never drops the workspace.
+        assert "COALESCE(EXCLUDED.workspace_id" in sql
+        assert args[-1] == "wrkspc_01SyntheticWorkspaceId"
+
+    def test_tenant_credentials_workspace_id_migration_adds_one_nullable_column(
+        self,
+    ) -> None:
+        body = "\n".join(
+            line
+            for line in _WORKSPACE_MIGRATION.read_text().splitlines()
+            if not line.lstrip().startswith("--")
+        )
+        statements = [
+            re.sub(r"\s+", " ", s).strip().upper() for s in body.split(";") if s.strip()
+        ]
+        assert statements == [
+            "ALTER TABLE TENANT_INFERENCE_CREDENTIALS ADD COLUMN IF NOT EXISTS WORKSPACE_ID TEXT"
+        ]
+
+    def test_tenant_credentials_workspace_id_is_on_the_snapshot_exposure(self) -> None:
+        contract = yaml.safe_load((_NODE_DIR / "contract.yaml").read_text())
+        assert "workspace_id" in contract["projection_api"]["columns"]
+
+    def test_tenant_credentials_workspace_id_sqlite_store_writes_and_keeps_it(
+        self, tmp_path: Path
+    ) -> None:
+        db = SqliteDatabaseAdapter(tmp_path / "store.sqlite")
+        ref = "cred_omninode_anthropic_" + "b" * 32
+        event = {
+            "tenant_id": "omninode",
+            "provider": "anthropic",
+            "name": "company-key",
+            "api_key_ref": ref,
+            "workspace_id": "wrkspc_01SyntheticWorkspaceId",
+        }
+        apply_credential_registered(event, db)
+        [row] = db.query(CREDENTIALS_TABLE, {"api_key_ref": ref})
+        assert row["workspace_id"] == "wrkspc_01SyntheticWorkspaceId"
+        apply_credential_registered({**event, "workspace_id": None}, db)
+        [row] = db.query(CREDENTIALS_TABLE, {"api_key_ref": ref})
+        assert row["workspace_id"] == "wrkspc_01SyntheticWorkspaceId"
+
+    def test_tenant_credentials_workspace_id_unset_projects_null(
+        self, tmp_path: Path
+    ) -> None:
+        db = SqliteDatabaseAdapter(tmp_path / "store.sqlite")
+        ref = "cred_omninode_anthropic_" + "c" * 32
+        apply_credential_registered(
+            {
+                "tenant_id": "omninode",
+                "provider": "anthropic",
+                "name": "no-workspace",
+                "api_key_ref": ref,
+            },
+            db,
+        )
+        [row] = db.query(CREDENTIALS_TABLE, {"api_key_ref": ref})
+        assert row["workspace_id"] is None

@@ -1,0 +1,75 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21328"
+title: "Retire the private plugin repository: skills move to omnimarket and omniclaude, private config to overlays, default plugin shows only delegation, repo archived"
+summary: "Epic contract. The epic's four original criteria are disposition entries pending at the local Done gate; AC5 and AC6 are this slice's. The first move slice rebuilds the standup skill's draft checker script as node_standup_draft_check_compute in omnimarket: contract, node shell, handler, typed models and a python -m entry point that reads the draft on stdin and the fact sheet as --facts-json text and keeps the script's output lines and exit codes, with the script's tests ported. No caller switches in this pull request; the thin standup skill switches in a later group."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21328-first-move-slice"
+    statement: "The first move slice of the retirement plan rebuilds the standup skill's draft checker script as a pure omnimarket compute node with the script's tests ported, and switches no caller."
+    acceptance:
+      - id: "AC5"
+        statement: "AC5: node_standup_draft_check_compute applies the script's rules, constants, findings and warnings to a draft, through its handler and its typed request and result models -- falsifier: uv run pytest tests/nodes/node_standup_draft_check_compute/test_standup_draft_check.py -q fails"
+      - id: "AC6"
+        statement: "AC6: python -m omnimarket.nodes.node_standup_draft_check_compute reads the draft on stdin and the fact sheet as --facts-json text and prints the script's output lines with exit codes 0, 1 and 2 -- falsifier: uv run pytest tests/nodes/node_standup_draft_check_compute/test_standup_draft_check.py -q -k cli fails"
+evidence_requirements:
+  - kind: "tests"
+    description: "The standup draft check node's ported tests: the checker rules, the CLI parity cases and the handler through its request and result models. None exists at the merge base."
+    command: "uv run pytest tests/nodes/node_standup_draft_check_compute/test_standup_draft_check.py tests/nodes/node_standup_draft_check_compute/test_registration.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21328-ac1"
+    description: "Epic criterion AC1: a Codex-reviewed plan with a disposition table for every review finding is merged in the private plans repository. Pending: the plan PR in the private plans repository carries the Codex review disposition table and is not merged by this pull request. A disposition is required at the local Done gate."
+    source: "manual"
+    checks:
+      - check_type: "disposition"
+        check_value: "dod-omn21328-ac1"
+    execution_scope: "local_done_gate"
+  - id: "dod-omn21328-ac2"
+    description: "Epic criterion AC2: every skill, hook, script, node and package in the private plugin repository has one recorded destination in the plan's inventory. Pending: the inventory is in the plan, outside this repository. This pull request moves one inventoried file, the standup draft checker, to its recorded destination node. A disposition is required at the local Done gate."
+    source: "manual"
+    checks:
+      - check_type: "disposition"
+        check_value: "dod-omn21328-ac2"
+    execution_scope: "local_done_gate"
+  - id: "dod-omn21328-ac3"
+    description: "Epic criterion AC3: a fresh Claude Code profile that installs from the public marketplace shows only delegation by default. Pending: the default plugin surface is locked by a later task in omniclaude. This pull request adds no plugin or skill. A disposition is required at the local Done gate."
+    source: "manual"
+    checks:
+      - check_type: "disposition"
+        check_value: "dod-omn21328-ac3"
+    execution_scope: "local_done_gate"
+  - id: "dod-omn21328-ac4"
+    description: "Epic criterion AC4: the private plugin repository is archived read-only with no lab host, launchd unit or installer reading from it. Pending: the archive is the plan's last step. This pull request changes no host table, installer or launchd unit. A disposition is required at the local Done gate."
+    source: "manual"
+    checks:
+      - check_type: "disposition"
+        check_value: "dod-omn21328-ac4"
+    execution_scope: "local_done_gate"
+  - id: "dod-omn21328-ac5-standup-node-tests"
+    description: "AC5: the standup draft check node's tests pass, covering every checker test of the source script that does not read the skill's SKILL.md, plus the handler through its typed models and the node's registration."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_standup_draft_check_compute/test_standup_draft_check.py tests/nodes/node_standup_draft_check_compute/test_registration.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn21328-ac6-standup-node-cli"
+    description: "AC6: the CLI tests pass: stdin input, --facts-json, --json output, invalid UTF-8 and invalid JSON exit 2, usage errors exit 2."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_standup_draft_check_compute/test_standup_draft_check.py -q --no-cov -k cli"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn21328-standup-node-deploy-probe"
+    description: "Deploy probe. GitHub serves the standup draft check handler at the checked-out HEAD with its handler class and its check, milestone and M4 warning functions. It fails at the merge base, which has no such node, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_standup_draft_check_compute/handlers/handler_standup_draft_check.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("class HandlerStandupDraftCheck", "def check(", "def milestone_warnings(", "def m4_delegation_warnings(")); print("standup draft check deploy probe: PASS")'

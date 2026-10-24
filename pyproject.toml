@@ -462,6 +462,7 @@ node_delegation_ground_truth_label_compute = "omnimarket.nodes.node_delegation_g
 node_delegation_rubric_check_compute = "omnimarket.nodes.node_delegation_rubric_check_compute"
 node_contract_projection_check_compute = "omnimarket.nodes.node_contract_projection_check_compute"
 node_skill_hygiene_validate_compute = "omnimarket.nodes.node_skill_hygiene_validate_compute"
+node_standup_draft_check_compute = "omnimarket.nodes.node_standup_draft_check_compute"
 node_skill_contract_validate_compute = "omnimarket.nodes.node_skill_contract_validate_compute"
 node_skill_tree_read_effect = "omnimarket.nodes.node_skill_tree_read_effect"
 node_contract_projection_check_effect = "omnimarket.nodes.node_contract_projection_check_effect"
@@ -1122,7 +1123,9 @@ omnimarket = "omnimarket.nodes"
 # omninode_runtime read/write on omninode_internal.delegation_lab_job*.
 # OMN-21336: infra#5308 vendors node_projection_compaction_receipts 0000-0001
 # and the compaction_receipts grant the in-process wiring check needs.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261024120612-3078fa4ec02b" }
+# OMN-20967: infra#5299 vendors node_projection_tenant_credentials 0008
+# (workspace_id column) byte-identical.
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261024144528-903e73af2f49" }
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
 # their git-source overrides). The version-range overrides below already target
 # the released artifacts: core>=0.46.7,<0.47.0 and
