@@ -251,6 +251,10 @@ def test_the_migration_creates_the_table_the_writer_names_and_grants_no_delete()
     assert "CREATE TABLE IF NOT EXISTS omninode_internal.session_content" in sql
     assert "GRANT SELECT, INSERT, UPDATE ON omninode_internal.session_content" in sql
     assert "DELETE" not in sql.split("GRANT", 1)[1].split(";", 1)[0]
+    sql = "\n".join(
+        migration.read_text(encoding="utf-8")
+        for migration in sorted((NODE_DIR / "migrations").glob("*.sql"))
+    )
     row_columns = set(ModelSessionContentRow.model_fields)
     for column in row_columns:
         assert f"ADD COLUMN IF NOT EXISTS {column} " in sql, column

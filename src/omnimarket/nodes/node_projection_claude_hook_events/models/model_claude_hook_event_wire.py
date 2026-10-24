@@ -260,8 +260,8 @@ class ModelClaudeHookEventWire(BaseModel):
     #: OMN-18531: the capture hook's item-identity stamp on a lineage event. This
     #: topic carries the lineage stream only (the content stream travels on the
     #: restricted content family), so any other stream value is refused. The
-    #: sequence is per session and per stream, starting at 1. Neither is stored:
-    #: the fold keys rows on ``event_id``.
+    #: sequence is per session and per stream, starting at 1. The row retains
+    #: it for the session barrier; its identity remains ``event_id``.
     stream: Literal["lineage"] | None = None
     producer_seq: int | None = Field(default=None, ge=1, strict=True)
     lineage: ModelClaudeHookLineageWire

@@ -1114,7 +1114,8 @@ omnimarket = "omnimarket.nodes"
 # current error sanitizer from infra#5216. Keep the dated sanitizer replay
 # aligned with this content-addressed revision. Retains the earlier migrations
 # required by OMN-19998 and OMN-19988; drop once a release carries them all.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261022105813-9eb353242460" }
+# OMN-21334: infra#5307 vendors both compaction barrier projection migrations.
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261024101406-9bcb8af376d3" }
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
 # their git-source overrides). The version-range overrides below already target
 # the released artifacts: core>=0.46.7,<0.47.0 and

@@ -553,6 +553,22 @@ def read_live(
     )
 
 
+def test_compaction_pack_build_barrier_keeps_fractional_prompt_cutoff(
+    tmp_path: Path,
+) -> None:
+    env = write_live(tmp_path)
+    path = Path(env[TRANSCRIPT_ROOT_ENV]) / f"{LIVE_SESSION}.jsonl"
+    before = _user("before-barrier", "08:00:00", "keep the last prompt")
+    after = _user("after-barrier", "08:00:00", "next invocation only")
+    with path.open("a", encoding="utf-8") as transcript:
+        transcript.write(before.replace("08:00:00.000Z", "08:00:00.400Z") + "\n")
+        transcript.write(after.replace("08:00:00.000Z", "08:00:00.600Z") + "\n")
+    result = read_live(env, revision="2026-10-19T08:00:00.500000Z")
+    texts = [entry.text for entry in result.entries]
+    assert "keep the last prompt" in texts
+    assert "next invocation only" not in texts
+
+
 RULING_ROW = (
     "2026-10-19T07:30:00Z | RULING | lane=orch | ticket=OMN-1 | kind=decision"
     f' | "{LIVE_RULED}" | recorded'
