@@ -25,7 +25,16 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest src/omnimarket/nodes/node_delegation_escalation_decision_compute/tests/test_handler_escalation_decision.py -q --no-cov -k "transition_table or floor_veto or missing_lists_refuse"
+    check_value: uv run pytest src/omnimarket/nodes/node_delegation_escalation_decision_compute/tests/test_handler_escalation_decision.py -q --no-cov -n 4 -k "each_declared_cause or missing_lists_refuse"
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_delegation_escalation_decision_compute/tests/test_handler_escalation_decision.py -q --no-cov -n 4 -k "(transition_table or floor_veto) and bus"
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_delegation_escalation_decision_compute/tests/test_handler_escalation_decision.py -q --no-cov -n 4 -k "transition_table and local and failed_call"
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_delegation_escalation_decision_compute/tests/test_handler_escalation_decision.py -q --no-cov -n 4 -k "(transition_table or floor_veto) and local and not failed_call"
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC1
@@ -34,7 +43,7 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest src/omnimarket/nodes/node_delegation_escalation_decision_compute/tests/test_handler_escalation_decision.py -q --no-cov -p no:randomly -k "transition_table or floor_veto or missing_lists_refuse"
+    check_value: uv run pytest src/omnimarket/nodes/node_delegation_escalation_decision_compute/tests/test_handler_escalation_decision.py -q --no-cov -n 4 -k "each_declared_cause"
     cwd: ${OMNI_HOME}/omnimarket
   - check_type: command
     check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "_ESCALATION_DECIDER.decide_transition(" > /dev/null && gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_orchestrator/handlers/handler_delegation_workflow.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "cause=quality_result_cause(" > /dev/null'
