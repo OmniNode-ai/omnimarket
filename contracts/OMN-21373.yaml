@@ -1,0 +1,60 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21373"
+title: "Move all code out of the private data repository to omnimarket and omniclaude, leaving it data only"
+summary: >-
+  Epic carrier for the internal-repos code migration. This repository's part,
+  port group G1 of section 18 of the migration plan, adds five pure compute
+  nodes in omnimarket's canonical shape (contract, metadata, handler, models,
+  entry point) with their direct tests: node_host_memory_admission_compute,
+  node_landing_worker_engine_compute, node_landing_tick_bounds_compute,
+  node_landing_upstream_gate_compute and node_merge_sweep_same_head_compute.
+  The plugin callers are not repointed here; that is the plugin release of the
+  slice that moves each caller. The epic's two acceptance criteria are read on
+  the private data repository and on the lab hosts and stay pending for the epic.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21373-g1-port"
+    statement: >-
+      The five G1 nodes exist in omnimarket with their tests, under module paths
+      in the omnimarket namespace, with no private repository name, lab host
+      name or address in their files.
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: the private data repository holds no code file outside its data checks, and its CI refuses any added code file -- falsifier: uv run pytest tests/test_src_freeze_omn19998.py -q fails, or git ls-files on main lists a .py under src/
+      - id: "AC2"
+        statement: >-
+          AC2: every launchd and systemd unit that ran the private data repository code runs the omnimarket or omniclaude copy -- falsifier: the plan's section 4 unit list read back on each host names an the private data repository path
+evidence_requirements:
+  - kind: "tests"
+    description: "G1 port: the five nodes' direct tests pass in omnimarket."
+    command: "uv run pytest tests/nodes/node_host_memory_admission_compute tests/nodes/node_landing_worker_engine_compute tests/nodes/node_landing_tick_bounds_compute tests/nodes/node_landing_upstream_gate_compute tests/nodes/node_merge_sweep_same_head_compute -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21373-ac1-g1-nodes-in-omnimarket"
+    description: "AC1 contribution only: the five G1 nodes have a public home in omnimarket, so their copies can leave the internal repositories. The AC1 read on the private data repository itself stays pending for the epic."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_host_memory_admission_compute tests/nodes/node_landing_worker_engine_compute tests/nodes/node_landing_tick_bounds_compute tests/nodes/node_landing_upstream_gate_compute tests/nodes/node_merge_sweep_same_head_compute -q"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21373-ac2-g1-entry-points"
+    description: "AC2 contribution only: the five nodes are registered onex.nodes entry points, which the callers that units run can be repointed to. The per-host unit readback stays pending for the epic."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python -c \"from importlib.metadata import entry_points; names={e.name for e in entry_points(group='onex.nodes')}; need={'node_host_memory_admission_compute','node_landing_worker_engine_compute','node_landing_tick_bounds_compute','node_landing_upstream_gate_compute','node_merge_sweep_same_head_compute'}; missing=need-names; assert not missing, missing\""
+    binds_ac: ["AC2"]
+  - id: "dod-omn21373-deploy-g1-import"
+    description: "Falsifiable deploy check, runnable on the hosted runner with no lab route, broker or database: each of the five packaged nodes imports and its handler answers one request. It fails at the merge base, where the five packages are absent. After deployment, the same import of each omnimarket.nodes.<node> under the dispatch interpreter on a lab host is the readback."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python -c \"from omnimarket.nodes.node_host_memory_admission_compute import HandlerHostMemoryAdmission; from omnimarket.nodes.node_host_memory_admission_compute.models import ModelHostMemoryAdmissionRequest as R; v=HandlerHostMemoryAdmission().handle(R(mem_avail_gb=1.0, mem_psi_avg60=None, swap_in_kb_s=30000.0, swap_out_kb_s=0.0, min_free_gb=4.0, max_mem_psi=10.0, max_swap_kb_s=102400.0, max_swap_in_kb_s=20480.0)); assert len(v.refusals)==2, v; import omnimarket.nodes.node_landing_worker_engine_compute, omnimarket.nodes.node_landing_tick_bounds_compute, omnimarket.nodes.node_landing_upstream_gate_compute, omnimarket.nodes.node_merge_sweep_same_head_compute\""
+    binds_ac: ["AC2"]
