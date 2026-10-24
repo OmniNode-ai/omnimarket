@@ -64,8 +64,9 @@ def _assert_whole_failure(row: dict[str, Any], cause: str, outcome: str) -> None
     assert row["operational_outcome"] == outcome
     assert row["content_verdict"] == "not_applicable"
     assert row["quality_gate_passed"] is False
-    assert not row.get("model_name")
-    assert row["delegated_to"] == "delegate-skill"
+    # OMN-19448: a failed run that was never routed names its cause, not a model.
+    assert row["model_name"] == f"not routed ({cause})"
+    assert row["delegated_to"] == row["model_name"]
     assert not row.get("actual_score")
     assert row["attempt_history"] == []
 

@@ -1588,6 +1588,11 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             "finish_reason",
             "requested_model",
         ):
+            # OMN-17427: a failure over a stored completion owns the model
+            # columns, so it inherits no routed model from the event it
+            # replaces and both arrival orders read the same failure.
+            if key == "routed_model" and not carry_score:
+                continue
             if _is_blank(row.get(key)) and not _is_blank(existing.get(key)):
                 row[key] = existing[key]
                 if key == "finish_reason" and row.get("truncated") is None:
