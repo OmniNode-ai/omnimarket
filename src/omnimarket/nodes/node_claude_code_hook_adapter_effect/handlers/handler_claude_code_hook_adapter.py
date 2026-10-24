@@ -9,8 +9,10 @@ client_verdict with the hook's output shape.
 
 The adapter mints a fresh uuid4 invocation_id for every invocation (plan section 6:
 carried on the command, the package reply and any fallback). An argument whose
-source is INVOCATION_ID_SOURCE carries it on the command; every other field is
-still drawn from the hook input.
+source is INVOCATION_ID_SOURCE carries it on the command. An argument whose
+source is INPUT_MESSAGES_HASH_SOURCE carries the hash of the conversation being
+compacted, derived from the hook input's messages or transcript (OMN-21099);
+every other field is still drawn from the hook input by its path.
 """
 
 from __future__ import annotations
@@ -30,6 +32,9 @@ from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_comp
     COMPACTION_VERDICT_COMPUTE,
     compute_compaction_verdict,
 )
+from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_input_messages_hash import (
+    input_messages_hash,
+)
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.models import (
     ModelHookAdapterRequest,
     ModelHookAdapterResult,
@@ -43,6 +48,9 @@ if TYPE_CHECKING:
 
 
 INVOCATION_ID_SOURCE = "@invocation_id"
+INPUT_MESSAGES_HASH_SOURCE = "@input_messages_hash"
+#: The sources a binding argument may name besides a `$.path` into the hook input.
+RESERVED_SOURCES = frozenset({INVOCATION_ID_SOURCE, INPUT_MESSAGES_HASH_SOURCE})
 
 
 def resolve_source(hook_input: dict[str, JsonValue], source: str) -> JsonValue:
@@ -61,10 +69,16 @@ def build_command_payload(
     *,
     invocation_id: UUID | None = None,
 ) -> dict[str, JsonValue]:
-    """Draw fields from hook input, with the reserved source carrying the minted id."""
+    """Draw fields from hook input; the reserved sources carry the minted id and the hash."""
+    sources = {a.source for a in binding.arguments}
+    derived: dict[str, JsonValue] = {}
+    if invocation_id is not None:
+        derived[INVOCATION_ID_SOURCE] = str(invocation_id)
+    if INPUT_MESSAGES_HASH_SOURCE in sources:
+        derived[INPUT_MESSAGES_HASH_SOURCE] = input_messages_hash(hook_input)
     return {
-        a.name: str(invocation_id)
-        if a.source == INVOCATION_ID_SOURCE and invocation_id is not None
+        a.name: derived[a.source]
+        if a.source in derived
         else resolve_source(hook_input, a.source)
         for a in binding.arguments
     }

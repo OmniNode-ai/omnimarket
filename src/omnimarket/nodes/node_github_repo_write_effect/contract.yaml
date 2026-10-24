@@ -4,14 +4,14 @@
 # ONEX Node Contract - GitHub repo write effect (OMN-20912, slice 1 of OMN-20768)
 #
 # The PR authoring writes lanes ran with gh: pr_create, pr_edit, pr_ready,
-# pr_close, pr_comment and workflow_dispatch. A separate node from
+# pr_close, pr_comment, pr_thread_reply and workflow_dispatch. A separate node from
 # node_github_repo_gateway_effect because that node declares itself read-only
 # (metadata side_effect_class read_only, descriptor idempotent true); a write
 # needs a mode, a quota floor and guards a read never does.
 name: node_github_repo_write_effect
-contract_version: {major: 1, minor: 3, patch: 0}
+contract_version: {major: 1, minor: 4, patch: 0}
 node_type: EFFECT_GENERIC
-node_version: {major: 1, minor: 2, patch: 0}
+node_version: {major: 1, minor: 3, patch: 0}
 
 description: >
   EFFECT: the PR authoring writes a lane makes. One ModelRepoWriteRequest on
@@ -39,6 +39,12 @@ description: >
   conclusion and typed output (title and summary) through the same transport.
   completed requires conclusion; queued and in_progress omit it. Its replay
   record is in-process only, so a retry after restart can create another run.
+  pr_thread_reply posts one reply on the review-comment thread that
+  thread_comment_id starts, under the node's own write identity. It checks the
+  PR's head when given an expected one, and a review comment carrying the
+  idempotency key returns the first reply replayed. A thread that is not on
+  that pull request is refused not_found; GitHub refuses a reply to a reply
+  with github_refused.
 
 input_model:
   name: ModelRepoWriteRequest
@@ -65,6 +71,9 @@ operations:
     transport: rest
   - name: pr_comment
     description: "Request ModelRepoWriteRequest, result ModelRepoWriteCompleted or ModelRepoWriteFailed; replaces gh pr comment. Scan comments for the idempotency marker, POST /repos/{o}/{r}/issues/{n}/comments."
+    transport: rest
+  - name: pr_thread_reply
+    description: "Request ModelRepoWriteRequest with pr_number, thread_comment_id and body, result ModelRepoWriteCompleted (comment_id, html_url) or ModelRepoWriteFailed; replaces gh api --method POST /repos/{o}/{r}/pulls/{n}/comments/{id}/replies. Scan the PR's review comments for the idempotency marker, POST the reply."
     transport: rest
   - name: workflow_dispatch
     description: "Request ModelRepoWriteRequest, result ModelRepoWriteCompleted or ModelRepoWriteFailed; replaces gh workflow run. POST /repos/{o}/{r}/actions/workflows/{w}/dispatches."

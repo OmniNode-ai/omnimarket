@@ -1,0 +1,48 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21336"
+title: "TA.13b stage (a): declare compaction_receipts ownership ahead of migration delivery"
+summary: "Declare the compaction_receipts table and cursor sequence so infrastructure can resolve their ownership before vending their migrations. This stage carries no node package or SQL. Migration delivery and the writer follow after infrastructure vendors and releases the lineage."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21336-relation-declared"
+    statement: |-
+      The ownership manifest declares omninode_internal.compaction_receipts (db_io, read_write) and its cursor sequence before migration delivery. The table declaration names the future node-owned 0000 migration; this stage adds no executable SQL or node package.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the manifest has exactly one typed table declaration and one cursor sequence declaration in omninode_internal, the inventory matches source with 104 source-created and 114 source-declared tables, and this stage adds no node SQL -- falsifier: test_compaction_receipts_ownership_precedes_migration_delivery or test_retained_live_census_gap_fails_closed fails.
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1: relation inventory census and evidence freshness."
+    command: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21336-relation-inventory"
+    description: "AC1: ownership increases the declared census without delivering SQL ahead of infrastructure."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q --no-cov -k 'retained_live_census_gap_fails_closed or checked_in_inventory_is_source_derived_and_current'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21336-inventory-fresh"
+    description: "AC1: the table and sequence ownership rows are declared exactly once, with the expected schema, migration and access, and the checked-in inventory matches source. The merge base lacks both ownership rows, so this check fails there."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q --no-cov -k compaction_receipts_ownership_precedes_migration_delivery"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21336-deploy-ownership-readback"
+    description: "Hosted deployment preparation smoke: load the ownership manifest through the runtime inventory generator and require the new declarations and fresh inventory. No database, deployed lane or writer is required for this declaration-only stage."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q --no-cov -k compaction_receipts_ownership_precedes_migration_delivery"
+        cwd: "${OMNI_HOME}/omnimarket"

@@ -1122,73 +1122,78 @@ class HandlerInferenceIntent:
         # body by the same absolute deadline so the next rung can run.
         deadline = started + timeout
         hook = _deadline_response_hook(deadline=deadline)
-        with httpx.Client(
-            timeout=timeout, params=params, event_hooks={"response": [hook]}
-        ) as client:
-            # OMN-12815: intent.base_url carries the COMPLETE endpoint URL
-            # resolved by the routing authority; post it VERBATIM — no path
-            # append, no construction.
-            # The hook above fires only when a chunk arrives, so a silent
-            # upstream could still hold the call for another per-phase
-            # ``timeout`` past the deadline. Wait on the call for the time left
-            # and abandon it there; leaving the ``with`` closes the client, and
-            # the hook ends the abandoned worker at its next chunk.
-            executor = ThreadPoolExecutor(
-                max_workers=1, thread_name_prefix="inference-call"
-            )
-            try:
-                response = executor.submit(
-                    client.post,
+
+        def _post_owning_client() -> httpx.Response:
+            with httpx.Client(
+                timeout=timeout, params=params, event_hooks={"response": [hook]}
+            ) as client:
+                # OMN-12815: intent.base_url carries the COMPLETE endpoint URL
+                # resolved by the routing authority; post it VERBATIM — no path
+                # append, no construction.
+                return client.post(
                     intent.base_url,
                     json=payload,
                     headers=headers or None,
                     timeout=timeout,
-                ).result(timeout=max(deadline - time.monotonic(), 0.0))
-            except FutureTimeoutError as exc:
-                raise _inference_timeout_error(
-                    intent,
-                    httpx.ReadTimeout("Inference call exceeded its total deadline"),
-                    elapsed_seconds=time.monotonic() - started,
-                    resolved_timeout=timeout,
-                ) from exc
-            except httpx.TimeoutException as exc:
-                raise _inference_timeout_error(
-                    intent,
-                    exc,
-                    elapsed_seconds=time.monotonic() - started,
-                    resolved_timeout=timeout,
-                ) from exc
-            finally:
-                executor.shutdown(wait=False)
-            response_contract_evidence = _response_contract_evidence_from_sent_payload(
-                intent, payload
-            )
-            latency_ms = int((time.monotonic() - started) * 1000)
-            try:
-                response.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                refusal = failure_class_for_status(
-                    exc.response.status_code, exc.response.text
                 )
-                if refusal is EnumDelegationFailureClass.RATE_LIMITED:
-                    raise ProviderThrottledError(
-                        _provider_http_error_message(exc)
-                    ) from exc
-                if refusal in (
-                    EnumDelegationFailureClass.PROVIDER_BILLING,
-                    EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND,
-                ):
-                    raise ProviderRefusalError(
+
+        # The hook above fires only when a chunk arrives, so a silent upstream
+        # can outlive the deadline. The worker must own and close its client:
+        # closing it on the caller thread while the abandoned worker is still
+        # in SSL read frees the socket's fd number. The next file opened (the
+        # SQLite claims store) takes that number, and the worker's TLS read and
+        # alert land in the file (OMN-19174, 2026-10-07 and 2026-10-22).
+        # Wait only for the time left; the hook ends the worker at its next chunk.
+        executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="inference-call"
+        )
+        try:
+            response = executor.submit(_post_owning_client).result(
+                timeout=max(deadline - time.monotonic(), 0.0)
+            )
+        except FutureTimeoutError as exc:
+            raise _inference_timeout_error(
+                intent,
+                httpx.ReadTimeout("Inference call exceeded its total deadline"),
+                elapsed_seconds=time.monotonic() - started,
+                resolved_timeout=timeout,
+            ) from exc
+        except httpx.TimeoutException as exc:
+            raise _inference_timeout_error(
+                intent,
+                exc,
+                elapsed_seconds=time.monotonic() - started,
+                resolved_timeout=timeout,
+            ) from exc
+        finally:
+            executor.shutdown(wait=False)
+        response_contract_evidence = _response_contract_evidence_from_sent_payload(
+            intent, payload
+        )
+        latency_ms = int((time.monotonic() - started) * 1000)
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            refusal = failure_class_for_status(
+                exc.response.status_code, exc.response.text
+            )
+            if refusal is EnumDelegationFailureClass.RATE_LIMITED:
+                raise ProviderThrottledError(_provider_http_error_message(exc)) from exc
+            if refusal in (
+                EnumDelegationFailureClass.PROVIDER_BILLING,
+                EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND,
+            ):
+                raise ProviderRefusalError(
+                    refusal,
+                    describe_provider_refusal(
                         refusal,
-                        describe_provider_refusal(
-                            refusal,
-                            status_code=exc.response.status_code,
-                            provider_text=exc.response.text,
-                            model_id=intent.model,
-                        ),
-                    ) from exc
-                raise RuntimeError(_provider_http_error_message(exc)) from exc
-            data: dict[str, Any] = response.json()
+                        status_code=exc.response.status_code,
+                        provider_text=exc.response.text,
+                        model_id=intent.model,
+                    ),
+                ) from exc
+            raise RuntimeError(_provider_http_error_message(exc)) from exc
+        data: dict[str, Any] = response.json()
 
         # OMN-13408: parse the provider's served ``usage`` block FIRST, before any
         # truncation / empty-content / empty-choices raise. The OpenAI-compatible

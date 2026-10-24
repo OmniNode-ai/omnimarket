@@ -90,6 +90,13 @@ requirements:
         statement: "AC7: the clone step resolves the newest dev-<UTC>-<sha12> tag with git ls-remote, logs it, clones at it, and refuses a branch tip or a remote with no dev tag -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_dev_tag_key_omn20910.py -q -n 0 --no-cov -k 'dev_tag or branch_tip or resolver or sha_literal' fails over the merge base's workflow, which clones at a sha literal"
       - id: "AC8"
         statement: "AC8: no step of the hostile-review job carries ANTHROPIC_API_KEY and no workflow references a provider key secret, so the Claude key reaches a voter only through the tenant route (OMN-20974) -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_hostile_reviewer_dev_tag_key_omn20910.py tests/unit/test_no_provider_key_in_workflows_omn20974.py -q -n 0 --no-cov -k 'claude_api_key or key_on_the_review_step or provider_key' fails when the review step exports the key from an Actions secret"
+  - id: "req-scm-pr-thread-reply"
+    statement: "A lane replies to a pull request's review thread through onex scm, under the write node's own identity, and lists the threads it can reply to."
+    acceptance:
+      - id: "AC36"
+        statement: "AC36: node_github_repo_write_effect answers a pr_thread_reply with a POST to the thread's replies endpoint carrying the idempotency marker, replays a reply whose key a review comment already carries, refuses a moved head, a missing thread and a quota under the floor with the typed reasons pr_comment has, and plans the same requests in dry_run; onex scm pr-thread-reply publishes it -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_pr_thread_reply.py tests/unit/handlers/scm/test_onex_scm_command.py -q -n 0 --no-cov fails at the merge base"
+      - id: "AC37"
+        statement: "AC37: node_github_repo_gateway_effect answers a pr_review_threads read over a recorded GraphQL payload with each thread's id, path, line, resolved state and root comment id, pages and cuts at the request limit, and raises on a GraphQL error; onex scm pr-threads publishes it -- falsifier: env -u PYTHONPATH uv run pytest tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_review_threads.py -q -n 0 --no-cov fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "The workflow reads the overlay at every roster site."
@@ -301,3 +308,19 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_hostile_reviewer_dev_tag_key_omn20910.py tests/unit/test_no_provider_key_in_workflows_omn20974.py -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC8"]
+  - id: "dod-omn20910-ac36-pr-thread-reply"
+    description: "The write node posts a reply on a review-comment thread with its idempotency marker, replays, and refuses with the typed reasons; the operation tables and the gh shim coverage table name the verb."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_pr_thread_reply.py tests/unit/handlers/scm/test_onex_scm_command.py tests/ci/test_scm_operation_table_omn20912.py tests/ci/test_gh_shim_coverage_table_omn20914.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC36"]
+  - id: "dod-omn20910-ac37-pr-review-threads"
+    description: "The gateway lists a pull request's review threads with ids, path, line and resolved state from a recorded GraphQL payload."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_review_threads.py tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_protocols.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC37"]

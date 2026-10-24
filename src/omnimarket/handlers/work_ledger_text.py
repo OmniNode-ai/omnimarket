@@ -11,16 +11,97 @@ cannot disagree about what a row is. A row's identity is
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import UTC, datetime
+from pathlib import PurePosixPath
 
 _ROW_START = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z \| ")
 
 
+_ARCHIVE_PREFIX = "<!-- ledger-roll-archive "
+_ARCHIVE_FIELDS = {
+    "source",
+    "section_heading",
+    "rolled_at",
+    "entries",
+    "first_rolled_heading",
+    "last_rolled_heading",
+}
+
+
+def _archive_header_starts(lines: list[str]) -> set[int]:
+    """Recognize complete generated roll headers; leave ambiguous text intact.
+
+    The writer emits metadata, its matching banner and an empty line, followed
+    by the declared rows. Check the batch evidence as well as the header so a
+    quoted or damaged lookalike cannot silently remove row continuation text.
+    Only canonical stamp-row batches are recognized here.
+    """
+    candidates = [i for i, line in enumerate(lines) if line.startswith(_ARCHIVE_PREFIX)]
+    boundaries: set[int] = set()
+    for position, start in enumerate(candidates):
+        end = candidates[position + 1] if position + 1 < len(candidates) else len(lines)
+        marker = lines[start]
+        if not marker.endswith(" -->") or start + 3 >= end:
+            continue
+        try:
+            payload = marker[len(_ARCHIVE_PREFIX) : -4]
+            if not payload.startswith("{") or not payload.endswith("}"):
+                continue
+            pairs = json.loads(payload, object_pairs_hook=list)
+            if not isinstance(pairs, list):
+                continue
+            metadata = dict(pairs)
+            if len(pairs) != len(metadata) or set(metadata) != _ARCHIVE_FIELDS:
+                continue
+            count = metadata["entries"]
+            if type(count) is not int or count <= 0:
+                continue
+            if any(
+                not isinstance(metadata[key], str)
+                for key in _ARCHIVE_FIELDS - {"entries"}
+            ):
+                continue
+            source = PurePosixPath(metadata["source"])
+            if source.is_absolute() or ".." in source.parts or not source.name:
+                continue
+            stamp = metadata["rolled_at"]
+            parsed_stamp = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ")
+            if parsed_stamp.strftime("%Y-%m-%dT%H:%M:%SZ") != stamp:
+                continue
+            if len(metadata["section_heading"].splitlines()) != 1 or not metadata[
+                "section_heading"
+            ].startswith("## "):
+                continue
+            banner = f"## Rolled from {source.name} at {stamp} -- {count} rows"
+            if lines[start + 1] != banner or lines[start + 2] != "":
+                continue
+            headings = [
+                line for line in lines[start + 3 : end] if _ROW_START.match(line)
+            ]
+            if (
+                len(headings) != count
+                or lines[start + 3] != metadata["first_rolled_heading"]
+                or headings[0] != metadata["first_rolled_heading"]
+                or headings[-1] != metadata["last_rolled_heading"]
+            ):
+                continue
+        except (ValueError, TypeError, RecursionError):
+            continue
+        boundaries.add(start)
+    return boundaries
+
+
 def split_ledger_rows(text: str) -> list[str]:
-    """Group a ledger's lines into rows: a stamp line plus its continuation lines."""
+    """Group stamp rows and continuations, excluding validated roll headers."""
     rows: list[list[str]] = []
-    for line in text.splitlines():
+    lines = text.splitlines()
+    boundaries = _archive_header_starts(lines)
+    header_lines = {i + offset for i in boundaries for offset in range(3)}
+    for index, line in enumerate(lines):
+        if index in header_lines:
+            continue
         if _ROW_START.match(line):
             rows.append([line])
         elif rows and line.strip():
