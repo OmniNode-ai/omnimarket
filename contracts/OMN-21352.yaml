@@ -49,7 +49,7 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-omn21352-deploy-cli-smoke"
-    description: "Hosted deploy smoke: run the packaged node's technical CLI over the recorded day's fixtures into a temporary directory, require exit 0, the five section headings and a citation on every bullet; then plant a facts file whose merged change has no number and require the change to be left out, not rendered. At the merge base the technical subcommand does not exist."
+    description: "Hosted deploy smoke: dispatch the packaged report node through ONEX over an in-memory bus in dry-run mode and require a successful typed receipt with the requested date and quiet-day result. Then run its technical CLI over the recorded day's fixtures into a temporary directory, require exit 0, the five section headings and a citation on every bullet; plant a facts file whose merged change has no number and require the change to be left out, not rendered. At the merge base the technical subcommand does not exist. This probes the installed package without lane services or credentials; the nightly host tick remains pending."
     source: "manual"
     checks:
       - check_type: "command"
@@ -57,6 +57,26 @@ dod_evidence:
           set -eu;
           probe_dir="$(mktemp -d)";
           trap 'rm -rf "$probe_dir"' EXIT;
+          export PYTHONDONTWRITEBYTECODE=1;
+          probe_python="$(uv run --locked python -c 'import sys; print(sys.executable)')";
+          probe_bin="$(dirname "$probe_python")";
+          printf '%s\n' '{"root":".","date":"2026-10-23","dry_run":true}' > "$probe_dir/input.json";
+          "$probe_bin/onex" node node_deep_dive_report_effect --input "$probe_dir/input.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+          "$probe_python" -c '
+          import json
+          import sys
+          from pathlib import Path
+          receipt = json.loads(Path(sys.argv[1]).read_text())
+          assert receipt["status"] == "success", receipt
+          assert receipt["exit_code"] == 0, receipt
+          assert receipt["result_model"] == "omnimarket.nodes.node_deep_dive_report_effect.models.model_deep_dive_report_io.ModelDeepDiveReportResultEvent", receipt
+          result = receipt["result"]
+          assert result["report_date"] == "2026-10-23", result
+          assert result["quiet_day"] is True, result
+          assert result["metrics"]["total_prs"] == 0, result
+          assert "dry_run: no workspace reads performed" in result["report_markdown"], result
+          print(json.dumps({"run_id": receipt["run_id"], "status": receipt["status"], "report_date": result["report_date"], "quiet_day": result["quiet_day"]}))
+          ' "$probe_dir/receipt.json";
           fixtures=tests/nodes/node_deep_dive_report_effect/fixtures;
           uv run --locked python -m omnimarket.nodes.node_deep_dive_report_effect technical --date 2026-10-23 --facts "$fixtures/recorded_day_facts.json" --dropped-decisions "$fixtures/recorded_day_dropped_decisions.json" --ledger "$fixtures/recorded_day_ledger.md" --out "$probe_dir/report.md";
           for heading in "## What changed, by area" "## Causes found and their fixes" "## Decisions made and restated" "## Open blockers" "## Do not rediscover"; do grep -qxF "$heading" "$probe_dir/report.md"; done;
