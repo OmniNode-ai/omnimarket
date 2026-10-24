@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Facts, shape check and send watermark for the twice-daily owner summary.
 
-Three commands, none of which reads GitHub:
+Four commands, none of which reads GitHub:
 
 * ``facts``     what the factory did in a window. Merges come from the PR watcher's local
                 state, with the canonical clones' first-parent history as a cross-check and
@@ -12,6 +12,7 @@ Three commands, none of which reads GitHub:
                 home path, and every ticket id and ``repo#number`` the draft cites must be in
                 the facts. A cited id the facts do not hold is a fabricated one.
 * ``mark-sent`` records the window end as sent, so the next window starts where this one ended.
+* ``triage``    separates named omissions from actionable reviewer findings.
 
 Authors are dropped from the facts on purpose: the summary refers to people by role, and a name
 that is not in the facts cannot reach the draft.
@@ -73,7 +74,21 @@ SECRET_PATTERN = re.compile(
 HOME_PATH_PATTERN = re.compile(r"/(?:Users|home|Volumes)/[A-Za-z]")
 DEPENDENCY_TITLE = re.compile(r"^\s*(?:chore|build)\(deps(?:-dev)?\)", re.IGNORECASE)
 TICKET_COVERAGE_LIMIT = 30
-CHANGE_COVERAGE_LIMIT = 24
+CHANGE_CLASS_PLAIN: dict[str, str] = {
+    "feat": "new capabilities",
+    "fix": "fixes",
+    "docs": "documentation changes",
+    "test": "test changes",
+    "ci": "check and build setup changes",
+    "chore": "upkeep changes",
+    "refactor": "cleanups",
+    "perf": "speed changes",
+    "build": "build changes",
+    "style": "formatting changes",
+    "revert": "reverts",
+    "other": "other changes",
+}
+OMITTED_LINE = re.compile(r"(?im)^\W*not listed\b.*$")
 HEADLINE_PATTERN = re.compile(
     r"(\d+) changes? merged across (\d+) repositor(?:y|ies)", re.IGNORECASE
 )
@@ -146,8 +161,10 @@ CLASS_PLAIN: dict[str, str] = {
     "unread": "not yet looked at",
 }
 DRAFT_RULES: tuple[str, ...] = (
-    "After the greeting and the window, state the coverage headline, then give each non-dependency merged change as repo#number with its ticket; the dependency bumps get one clause with their count and no ids; check refuses a merged change left out.",
-    "Cite every ticket in coverage.tickets and state every number in coverage.counts (the queue figures are as of generated_at); check refuses a draft that leaves one out. A ticket costs one word, so group them. Name a ticket's kind as ticket_kinds gives it (a partial ticket is not blocked).",
+    "After the greeting and the window, state the coverage headline. Rank items by what the owner must act on first: blocked or partial work, M4 rows, then changes that matter most to users or reliability. Cite what fits in 420 words, giving cited merged changes as repo#number with their ticket; dependency bumps get one clause with their count and no ids.",
+    "Cite the M4, blocked and partial tickets in coverage.tickets and state every number in coverage.counts (the queue figures are as of generated_at). Name a ticket's kind as ticket_kinds gives it (a partial ticket is not blocked).",
+    'End just above the footer with one line starting "Not listed:" that counts omitted merged changes by class, merged-only tickets and closed work runs by outcome, with coverage.full_list_link. Example: Not listed: 11 merged changes (6 fixes, 3 new capabilities, 2 documentation changes), 4 tickets, and the reports of 38 closed work runs (30 as done, 8 as handed-off). Full list: <coverage.full_list_link>',
+    "The counts on the Not listed: line are what check recomputes from the facts; do not guess them.",
     "Put a lane's report under that lane's own ticket (lanes_closed ticket); when two reports of the same subject disagree, give both with their tickets.",
     "Say a merge as its title does (a configuration or code change); a merge is not a running service, so say what is unconfirmed.",
     "Scope every figure to its row: the snapshot time, the batch, the hosts checked; never write all or every unless one row says so.",
@@ -155,7 +172,15 @@ DRAFT_RULES: tuple[str, ...] = (
     "Cite a merged change inside the same parentheses or semicolon group as its ticket; call blocked work blocked and partial work partial on the line that cites its ticket; name the friction gap in one clause; do not write first, only, fully or entire.",
     "When a review answers REVISE, write the next review prompt with the earlier answers under the heading === EARLIER FINDINGS === and, after each finding, the line applied or not applied: <the fact that contradicts it>; the rubric and the facts do not change between rounds.",
 )
-COVERAGE_SCOPE = f"The check requires every ticket in tickets, every number in counts and the first {CHANGE_COVERAGE_LIMIT} merged changes in changes. Lanes that handed off, were skipped or have no recorded outcome are counted in counts and not listed in lanes_closed; the other closed lanes are listed, blocked and partial first."
+COVERAGE_SCOPE = 'The check requires the M4, blocked and partial tickets and every number in counts. Merged changes, merged-only tickets and closed-lane reports that do not fit the 420 words are counted on the "Not listed:" line by class with the full list link. Lanes that handed off, were skipped or have no recorded outcome are counted in counts and not listed in lanes_closed; the other closed lanes are listed, blocked and partial first.'
+
+
+def _change_class(title: str) -> str:
+    """Return the plain class of a conventional-commit title."""
+    match = re.match(r"^\s*(\w+)(?:\([^)]*\))?!?:", title)
+    return CHANGE_CLASS_PLAIN.get(
+        match.group(1).lower() if match else "other", CHANGE_CLASS_PLAIN["other"]
+    )
 
 
 def _iso(value: datetime) -> str:
@@ -173,6 +198,10 @@ def _tickets(text: str) -> tuple[str, ...]:
     return tuple(
         sorted(set(TICKET_PATTERN.findall(text)), key=lambda t: int(t.split("-")[1]))
     )
+
+
+def _draft_body(text: str) -> str:
+    return OMITTED_LINE.sub("", text)
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -207,6 +236,8 @@ class HandlerOwnerSummary:
             return self._facts(request)
         if request.command == "check":
             return self._check(request)
+        if request.command == "triage":
+            return self._triage(request)
         return self._mark_sent(request)
 
     # -- window and watermark -------------------------------------------------
@@ -587,6 +618,7 @@ class HandlerOwnerSummary:
             window_since=_iso(start),
             window_until=_iso(end),
             window_source=source,
+            full_list_link=request.full_list_link,
             merged_changes=tuple(merged),
             clone_only_commits=clone_only,
             merged_by_repo=dict(sorted(by_repo.items(), key=lambda kv: -kv[1])),
@@ -689,10 +721,12 @@ class HandlerOwnerSummary:
         return ModelDraftCoverage(
             scope=COVERAGE_SCOPE,
             headline=headline,
-            changes=tuple(
-                f"{change.repo}#{change.number}"
-                for change in changes[:CHANGE_COVERAGE_LIMIT]
-            ),
+            changes=tuple(f"{change.repo}#{change.number}" for change in changes),
+            change_classes={
+                f"{change.repo}#{change.number}": _change_class(change.title)
+                for change in changes
+            },
+            full_list_link=facts.full_list_link,
             merged_tickets=merged_tickets,
             untracked_changes=untracked_changes,
             dependency_changes=n - len(changes),
@@ -752,23 +786,87 @@ class HandlerOwnerSummary:
                 actual_counts = (int(headline.group(1)), int(headline.group(2)))
             if actual_counts != expected_counts:
                 problems.append(f'the opening must say "{cov.headline}"')
-        missing_changes = [
+        omitted_lines = list(OMITTED_LINE.finditer(text))
+        coverage_body = _draft_body(text)
+        if omitted_lines:
+            if len(omitted_lines) != 1:
+                problems.append('use one line starting "Not listed:"')
+            lines = [line for line in text.rstrip().splitlines() if line.strip()]
+            if len(lines) < 2 or not OMITTED_LINE.fullmatch(lines[-2]):
+                problems.append('the "Not listed:" line must be just above the footer')
+            if not omitted_lines[0].group().lstrip().startswith("Not listed:"):
+                problems.append('the omitted line must start with "Not listed:"')
+        uncited_changes = [
             change
             for change in cov.changes
-            if not re.search(rf"(?<![\w.-]){re.escape(change)}(?![\w.-])", text)
-        ]
-        if missing_changes:
-            problems.append(f"merged changes not cited: {', '.join(missing_changes)}")
-        missing_untracked = [
-            change
-            for change in cov.untracked_changes
-            if change not in missing_changes
-            and not re.search(rf"(?<![\w.-]){re.escape(change)}(?![\w.-])", text)
-        ]
-        if missing_untracked:
-            problems.append(
-                f"merged changes with no ticket not cited: {', '.join(missing_untracked)}"
+            if not re.search(
+                rf"(?<![\w.-]){re.escape(change)}(?![\w.-])", coverage_body
             )
+        ]
+        body_tickets = {
+            ticket
+            for ticket in cov.tickets
+            if re.search(rf"(?<!\w){re.escape(ticket)}(?!\d)", coverage_body)
+        }
+        uncited_tickets = [
+            ticket
+            for ticket in cov.tickets
+            if cov.ticket_kinds[ticket] == "merged" and ticket not in body_tickets
+        ]
+        omitted_lanes = facts.lanes_closed_by_outcome.copy()
+        for lane in facts.lanes_closed:
+            if lane.ticket and re.search(
+                rf"(?<!\w){re.escape(lane.ticket)}(?!\d)", coverage_body
+            ):
+                outcome = lane.outcome or "unrecorded"
+                omitted_lanes[outcome] = max(0, omitted_lanes.get(outcome, 0) - 1)
+        omitted_lanes = {
+            outcome: count for outcome, count in omitted_lanes.items() if count > 0
+        }
+        omitted_lane_total = sum(omitted_lanes.values())
+        omitted_total = len(uncited_changes) + len(uncited_tickets) + omitted_lane_total
+        if omitted_total and not omitted_lines:
+            problems.append(
+                f"{omitted_total} uncited rows are not named; end the draft with one line "
+                'starting "Not listed:" that counts them by class (merged changes by '
+                "class, tickets, closed work runs by outcome) and gives the full list link"
+            )
+        elif omitted_total:
+            omitted_line = omitted_lines[0].group()
+            expected: list[tuple[int, str, str]] = []
+            if uncited_changes:
+                expected.append(
+                    (len(uncited_changes), r"merged changes?", "merged changes")
+                )
+                class_counts: dict[str, int] = {}
+                for change in uncited_changes:
+                    cls = cov.change_classes[change]
+                    class_counts[cls] = class_counts.get(cls, 0) + 1
+                expected.extend(
+                    (count, re.escape(cls), cls) for cls, count in class_counts.items()
+                )
+            if uncited_tickets:
+                expected.append((len(uncited_tickets), r"tickets?", "tickets"))
+            if omitted_lane_total:
+                expected.append(
+                    (omitted_lane_total, r"closed work runs?", "closed work runs")
+                )
+                expected.extend(
+                    (count, rf"as\s+{re.escape(outcome)}", f"as {outcome}")
+                    for outcome, count in omitted_lanes.items()
+                )
+            for count, pattern, label in expected:
+                stated = re.findall(
+                    rf"(?<![\w.,+-])(\d+)\s+{pattern}(?![\w-])",
+                    omitted_line,
+                    re.IGNORECASE,
+                )
+                if [int(value) for value in stated] != [count]:
+                    problems.append(f"unnamed omission: facts give {count} {label}")
+            if cov.full_list_link and cov.full_list_link not in omitted_line:
+                problems.append(
+                    f"unnamed omission: full list link must be {cov.full_list_link}"
+                )
         if cov.dependency_changes and not DEPENDENCY_WORD.search(text):
             problems.append(
                 f"{cov.dependency_changes} dependency bumps merged; say so in one clause"
@@ -776,11 +874,14 @@ class HandlerOwnerSummary:
         missing_tickets = [
             ticket
             for ticket in cov.tickets
-            if not re.search(rf"(?<!\w){re.escape(ticket)}(?!\d)", text)
+            if {"m4", "blocked", "partial"}.intersection(
+                cov.ticket_kinds[ticket].split(",")
+            )
+            and ticket not in body_tickets
         ]
         if missing_tickets:
             problems.append(
-                "tickets not cited (M4 rows, merged changes, blocked or partial lanes): "
+                "tickets not cited (M4 rows, blocked or partial lanes): "
                 + ", ".join(missing_tickets)
             )
         missing_kinds: list[str] = []
@@ -872,6 +973,96 @@ class HandlerOwnerSummary:
                 f'"{claim}" asserts what no fact row says; drop it or cite the row'
             )
         return problems
+
+    @staticmethod
+    def triage_findings(
+        answer: str, draft: str, facts: ModelOwnerSummaryFacts
+    ) -> list[tuple[str, str]]:
+        """Separate accounted-for omissions from actionable reviewer findings."""
+        sound = not any(
+            "unnamed omission" in problem or "uncited rows are not named" in problem
+            for problem in HandlerOwnerSummary.check_draft(draft, facts)
+        )
+        body = _draft_body(draft)
+        coverage = HandlerOwnerSummary.coverage_of(facts)
+        body_changes = {
+            f"{repo}#{number}" for repo, number in REPO_PR_PATTERN.findall(body)
+        }
+        body_tickets = set(TICKET_PATTERN.findall(body))
+        named_changes = set(coverage.changes) - body_changes
+        named_tickets = {
+            ticket
+            for change in facts.merged_changes
+            for ticket in change.tickets
+            if not {"m4", "blocked", "partial"}.intersection(
+                coverage.ticket_kinds.get(ticket, "").split(",")
+            )
+            and ticket not in body_tickets
+        }
+        named_lanes = {
+            lane.lane
+            for lane in facts.lanes_closed
+            if lane.outcome not in {"blocked", "partial"}
+            and (not lane.ticket or lane.ticket not in body_tickets)
+        }
+        by_number = {
+            change.number: f"{change.repo}#{change.number}"
+            for change in facts.merged_changes
+        }
+        results: list[tuple[str, str]] = []
+        after_verdict = False
+        for line in answer.splitlines():
+            if not after_verdict:
+                after_verdict = line.startswith("VERDICT:")
+                continue
+            if not line.strip():
+                continue
+            changes = [
+                f"{repo}#{number}" for repo, number in REPO_PR_PATTERN.findall(line)
+            ] + [
+                by_number.get(int(number), f"merged_changes#{number}")
+                for number in re.findall(r"merged_changes\[number=(\d+)\]", line)
+            ]
+            tickets = TICKET_PATTERN.findall(line)
+            lanes = [
+                a or b for a, b in re.findall(r'\blane=(?:"([^"]+)"|([^\s,;)]+))', line)
+            ]
+            named = (
+                sound
+                and (changes or tickets or lanes)
+                and all(change in named_changes for change in changes)
+                and all(ticket in named_tickets for ticket in tickets)
+                and all(lane in named_lanes for lane in lanes)
+            )
+            results.append(("NAMED-OMISSION" if named else "FINDING", line))
+        return results
+
+    def _triage(self, request: ModelOwnerSummaryRequest) -> ModelOwnerSummaryResult:
+        if (
+            request.draft is None
+            or request.facts_file is None
+            or request.findings is None
+        ):
+            return ModelOwnerSummaryResult(
+                exit_code=2, message="--draft, --facts and --findings are required"
+            )
+        try:
+            facts = ModelOwnerSummaryFacts.model_validate_json(
+                request.facts_file.read_text(encoding="utf-8")
+            )
+            results = self.triage_findings(
+                request.findings.read_text(encoding="utf-8"),
+                request.draft.read_text(encoding="utf-8"),
+                facts,
+            )
+        except (OSError, ValueError) as exc:
+            return ModelOwnerSummaryResult(exit_code=2, message=str(exc))
+        findings = sum(label == "FINDING" for label, _ in results)
+        return ModelOwnerSummaryResult(
+            exit_code=int(findings > 0),
+            message=f"triage: {findings} finding(s), {len(results) - findings} named omission(s)",
+            problems=tuple(f"{label}: {line}" for label, line in results),
+        )
 
     def _check(self, request: ModelOwnerSummaryRequest) -> ModelOwnerSummaryResult:
         if request.draft is None or request.facts_file is None:

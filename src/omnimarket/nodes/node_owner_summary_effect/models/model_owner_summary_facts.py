@@ -35,6 +35,7 @@ class ModelOwnerSummaryFacts(BaseModel):
     window_since: str
     window_until: str
     window_source: str
+    full_list_link: str = ""
     merged_changes: tuple[ModelMergedChange, ...] = ()
     clone_only_commits: tuple[ModelCloneCommit, ...] = ()
     merged_by_repo: dict[str, int] = {}

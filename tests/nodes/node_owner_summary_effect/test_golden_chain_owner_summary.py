@@ -14,7 +14,6 @@ import yaml
 from omnimarket.nodes.node_owner_summary_effect.__main__ import main
 from omnimarket.nodes.node_owner_summary_effect.handlers import HandlerOwnerSummary
 from omnimarket.nodes.node_owner_summary_effect.handlers.handler_owner_summary import (
-    CHANGE_COVERAGE_LIMIT,
     CLASS_PLAIN,
     COVERAGE_SCOPE,
     DRAFT_RULES,
@@ -627,9 +626,9 @@ def test_coverage_ticket_must_sit_beside_the_change(separator: str) -> None:
         "merged changes cited without their ticket in the same group: omnibase_core#1028 (OMN-17427)"
     ]
     absent = _full_draft().replace("omnibase_core#1028", "the change")
-    assert HANDLER.check_draft(absent, facts) == [
-        "merged changes not cited: omnibase_core#1028"
-    ]
+    assert any(
+        "uncited rows are not named" in p for p in HANDLER.check_draft(absent, facts)
+    )
 
 
 def test_coverage_friction_gap_is_named() -> None:
@@ -674,12 +673,14 @@ def test_coverage_headline_must_match_the_facts() -> None:
 
 
 def test_coverage_every_merged_ticket_is_cited() -> None:
-    assert HANDLER.check_draft(
+    problems = HANDLER.check_draft(
         _full_draft().replace("OMN-17427", ""), _coverage_facts()
-    ) == [
-        "tickets not cited (M4 rows, merged changes, blocked or partial lanes): OMN-17427",
-        "merged changes cited without their ticket in the same group: omnibase_core#1028 (OMN-17427)",
-    ]
+    )
+    assert any("uncited rows are not named" in p for p in problems)
+    assert (
+        "merged changes cited without their ticket in the same group: omnibase_core#1028 (OMN-17427)"
+        in problems
+    )
     facts = _coverage_facts()
     untracked = facts.merged_changes[0].model_copy(update={"tickets": ()})
     facts = facts.model_copy(
@@ -694,7 +695,7 @@ def test_coverage_every_merged_ticket_is_cited() -> None:
         problems = HANDLER.check_draft(
             _full_draft().replace("omnibase_core#1028", replacement), facts
         )
-        assert "merged changes not cited: omnibase_core#1028" in problems
+        assert any("uncited rows are not named" in p for p in problems)
         assert not any("with no ticket not cited" in problem for problem in problems)
     assert HANDLER.coverage_of(_coverage_facts()).merged_tickets == (
         "OMN-17427",
@@ -711,18 +712,14 @@ def test_coverage_dependency_bumps_are_said_once() -> None:
 def test_coverage_m4_ticket_is_cited() -> None:
     assert HANDLER.check_draft(
         _full_draft().replace("OMN-17292", ""), _coverage_facts()
-    ) == [
-        "tickets not cited (M4 rows, merged changes, blocked or partial lanes): OMN-17292"
-    ]
+    ) == ["tickets not cited (M4 rows, blocked or partial lanes): OMN-17292"]
 
 
 def test_coverage_blocked_and_partial_tickets_are_cited() -> None:
     facts = _coverage_facts()
     assert HANDLER.check_draft(
         _full_draft().replace("OMN-20174", "").replace("OMN-21099", ""), facts
-    ) == [
-        "tickets not cited (M4 rows, merged changes, blocked or partial lanes): OMN-20174, OMN-21099"
-    ]
+    ) == ["tickets not cited (M4 rows, blocked or partial lanes): OMN-20174, OMN-21099"]
     assert not {"OMN-19998", "OMN-21350", "OMN-16228"}.intersection(
         HANDLER.coverage_of(facts).tickets
     )
@@ -796,10 +793,10 @@ def test_coverage_receipts_are_shorthand(term: str) -> None:
 def test_coverage_scope_states_what_the_check_requires() -> None:
     for field in ("tickets", "counts", "changes"):
         assert field in COVERAGE_SCOPE
-    assert "420" not in COVERAGE_SCOPE
+    assert "420" in COVERAGE_SCOPE
 
 
-def test_coverage_merged_changes_are_cited_up_to_the_limit() -> None:
+def test_coverage_all_merged_changes_are_cited_or_counted() -> None:
     facts = _facts().model_copy(
         update={
             "merged_changes": tuple(
@@ -816,8 +813,7 @@ def test_coverage_merged_changes_are_cited_up_to_the_limit() -> None:
         }
     )
     coverage = HANDLER.coverage_of(facts)
-    assert CHANGE_COVERAGE_LIMIT == 24
-    assert coverage.changes == tuple(f"omnimarket#{i + 1}" for i in range(24))
+    assert coverage.changes == tuple(f"omnimarket#{i + 1}" for i in range(30))
     draft = (
         "30 changes merged across 1 repository. "
         + "; ".join(f"{change} OMN-100" for change in coverage.changes)
@@ -826,25 +822,25 @@ def test_coverage_merged_changes_are_cited_up_to_the_limit() -> None:
     )
     assert HANDLER.check_draft(draft, facts) == []
     missing = draft.replace("omnimarket#24 OMN-100", "OMN-100")
-    assert HANDLER.check_draft(missing, facts) == [
-        "merged changes not cited: omnimarket#24"
-    ]
-    # An untracked change beyond the bound still needs its own citation.
+    assert any("not named" in p for p in HANDLER.check_draft(missing, facts))
+    named = missing.replace(
+        "(via",
+        f"Not listed: 1 merged change (1 other changes). Full list: {coverage.full_list_link}\n(via",
+    )
+    assert HANDLER.check_draft(named, facts) == []
+    # Untracked changes use the same omission accounting.
     untracked = facts.merged_changes[-1].model_copy(update={"tickets": ()})
     beyond = facts.model_copy(
         update={"merged_changes": (*facts.merged_changes[:-1], untracked)}
     )
-    assert HANDLER.check_draft(missing, beyond) == [
-        "merged changes not cited: omnimarket#24",
-        "merged changes with no ticket not cited: omnimarket#30",
-    ]
+    assert HANDLER.check_draft(named, beyond) == []
 
 
 def test_coverage_feeds_earlier_findings_forward(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rule = "When a review answers REVISE, write the next review prompt with the earlier answers under the heading === EARLIER FINDINGS === and, after each finding, the line applied or not applied: <the fact that contradicts it>; the rubric and the facts do not change between rounds."
-    assert DRAFT_RULES[7] == DRAFT_RULES[-1] == rule
+    assert DRAFT_RULES[-1] == rule
     root, ledger = _write_world(tmp_path)
     assert (
         main(
@@ -887,21 +883,21 @@ def test_coverage_counts_state_every_outcome() -> None:
     facts = _coverage_facts().model_copy(
         update={"lanes_closed_count": 108, "lanes_closed_by_outcome": outcomes}
     )
-    draft = (
+    complete = (
         _full_draft()
         .replace("6 work runs", "108 work runs")
-        .replace("(via", "28 blocked.\n(via")
-    )
-    assert HANDLER.check_draft(draft, facts) == [
-        "numbers not stated: lanes closed as partial 9; lanes closed as handed-off 40; "
-        "lanes closed as done 15; lanes closed as skipped 8; "
-        "lanes closed as skipped-owned 7; lanes closed as unrecorded 1"
-    ]
-    complete = draft.replace(
-        "28 blocked.",
-        "28 blocked; 9 partial; 40 handed off; 15 done; 8 skipped; 7 skipped-owned; 1 unrecorded.",
+        .replace(
+            "(via",
+            "28 blocked; 9 partial; 40 handed off; 15 done; 8 skipped; 7 skipped-owned; 1 unrecorded.\n"
+            "Not listed: 103 closed work runs (26 as blocked, 8 as partial, 40 as handed-off, "
+            "14 as done, 7 as skipped, 7 as skipped-owned, 1 as unrecorded). Full list: "
+            f"{HANDLER.coverage_of(facts).full_list_link}\n(via",
+        )
     )
     assert HANDLER.check_draft(complete, facts) == []
+    assert HANDLER.check_draft(complete.replace("9 partial;", "partial;"), facts) == [
+        "numbers not stated: lanes closed as partial 9"
+    ]
     coverage = HANDLER.coverage_of(facts)
     assert list(coverage.counts)[-7:] == [
         f"lanes closed as {outcome}" for outcome in outcomes if outcome != "unused"
@@ -1069,7 +1065,7 @@ def test_coverage_is_derived_from_the_facts_not_the_stored_copy() -> None:
     )
     empty = facts.model_copy(update={"coverage": ModelDraftCoverage()})
     assert HANDLER.check_draft(_full_draft().replace("OMN-17292", ""), empty) == [
-        "tickets not cited (M4 rows, merged changes, blocked or partial lanes): OMN-17292"
+        "tickets not cited (M4 rows, blocked or partial lanes): OMN-17292"
     ]
 
 
@@ -1103,13 +1099,12 @@ def test_coverage_facts_command_hands_the_drafter_its_lists(tmp_path: Path) -> N
     assert facts.open_by_class_plain == {"red": "failing checks"}
     assert "ledger" in facts.plain_words
     assert facts.draft_rules == DRAFT_RULES
-    assert len(DRAFT_RULES) == 8
-    assert DRAFT_RULES[6] == (
+    assert len(DRAFT_RULES) == 10
+    assert DRAFT_RULES[8] == (
         "Cite a merged change inside the same parentheses or semicolon group as its ticket; call blocked work blocked and partial work partial on the line that cites its ticket; name the friction gap in one clause; do not write first, only, fully or entire."
     )
-    assert DRAFT_RULES[0] == (
-        "After the greeting and the window, state the coverage headline, then give each non-dependency merged change as repo#number with its ticket; the dependency bumps get one clause with their count and no ids; check refuses a merged change left out."
-    )
+    assert "420 words" in DRAFT_RULES[0]
+    assert "Not listed:" in DRAFT_RULES[2]
 
 
 def test_coverage_scope_describes_the_check(tmp_path: Path) -> None:
@@ -1221,13 +1216,14 @@ def test_coverage_scales_to_a_twelve_hour_window() -> None:
     assert coverage.dependency_changes == 3
     draft = (
         "63 changes merged across 1 repository. 3 dependency bumps. "
-        + "; ".join(f"omnimarket#{i + 1} {tickets[i % 12]}" for i in range(60))
+        + "; ".join(f"omnimarket#{i + 1} {tickets[i % 12]}" for i in range(2))
         + " M4 board (milestones). Merges are unconfirmed as running. Friction data is unavailable. "
     )
     footer = "(via Owner's agent)"
     draft += " ".join(["update"] * (400 - len(draft.split()) - len(footer.split())))
-    draft += "\n" + footer
-    assert len(draft.split()) == 400
+    omitted = f"Not listed: 58 merged changes (58 other changes), 10 tickets. Full list: {coverage.full_list_link}"
+    draft += "\n" + omitted + "\n" + footer
+    assert len(draft.split()) <= 420
     assert HANDLER.check_draft(draft, facts) == []
 
 

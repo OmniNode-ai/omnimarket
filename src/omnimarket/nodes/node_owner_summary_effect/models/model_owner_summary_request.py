@@ -11,11 +11,11 @@ from pydantic import BaseModel, ConfigDict
 
 
 class ModelOwnerSummaryRequest(BaseModel):
-    """Which command to run (facts, check or mark-sent) and the paths and instants it reads."""
+    """Which command to run and the paths and instants it reads."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    command: Literal["facts", "check", "mark-sent"]
+    command: Literal["facts", "check", "triage", "mark-sent"]
     root: Path
     ledger: Path | None = None
     watcher_state: Path | None = None
@@ -25,4 +25,6 @@ class ModelOwnerSummaryRequest(BaseModel):
     friction_data: Path | None = None
     draft: Path | None = None
     facts_file: Path | None = None
+    findings: Path | None = None
     now: str = ""
+    full_list_link: str = ""

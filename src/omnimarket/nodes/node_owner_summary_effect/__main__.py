@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Run one owner-summary command: facts, check or mark-sent."""
+"""Run one owner-summary command: facts, check, triage or mark-sent."""
 
 from __future__ import annotations
 
@@ -30,6 +30,11 @@ def _parser() -> argparse.ArgumentParser:
             command.add_argument("--until", default="")
             command.add_argument("--friction-data")
             command.add_argument(
+                "--full-list-link",
+                default="",
+                help="where the full list of what the summary leaves out is published",
+            )
+            command.add_argument(
                 "--now", default="", help="UTC instant used instead of the clock"
             )
         else:
@@ -37,6 +42,10 @@ def _parser() -> argparse.ArgumentParser:
     check = sub.add_parser("check")
     check.add_argument("--draft", required=True)
     check.add_argument("--facts", dest="facts_file", required=True)
+    triage = sub.add_parser("triage")
+    triage.add_argument("--draft", required=True)
+    triage.add_argument("--facts", dest="facts_file", required=True)
+    triage.add_argument("--findings", required=True)
     return parser
 
 
@@ -48,7 +57,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
     root = getattr(args, "root", None)
-    if args.command != "check" and not root:
+    if args.command not in {"check", "triage"} and not root:
         parser.error("--omni-home is required when OMNI_HOME is not set")
     request = ModelOwnerSummaryRequest(
         command=args.command,
@@ -61,13 +70,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         friction_data=_path(getattr(args, "friction_data", None)),
         draft=_path(getattr(args, "draft", None)),
         facts_file=_path(getattr(args, "facts_file", None)),
+        findings=_path(getattr(args, "findings", None)),
         now=getattr(args, "now", ""),
+        full_list_link=getattr(args, "full_list_link", ""),
     )
     result = HandlerOwnerSummary().handle(request)
     if result.facts is not None:
         sys.stdout.write(result.facts.model_dump_json(indent=1) + "\n")
     for problem in result.problems:
-        sys.stdout.write(f"FAIL {problem}\n")
+        sys.stdout.write(
+            f"{problem}\n" if args.command == "triage" else f"FAIL {problem}\n"
+        )
     if result.facts is None:
         sys.stdout.write(f"{result.message}\n")
     return result.exit_code
