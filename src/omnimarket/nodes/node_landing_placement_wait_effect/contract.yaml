@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_landing_placement_wait_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Classify a killed worker at its lease deadline as placement-wait when
+  it never obtained a host or had less than half its lease window left at placement.
+  Read lease and placement records; stamp missing-result gates from the failure journal
+  and expire them after two hours. Gate settlement returns records to its caller.
+input_model:
+  name: ModelLandingPlacementWaitRequest
+  module: omnimarket.nodes.node_landing_placement_wait_effect.models.model_landing_placement_wait
+output_model:
+  name: ModelLandingPlacementWaitResult
+  module: omnimarket.nodes.node_landing_placement_wait_effect.models.model_landing_placement_wait
+handler:
+  module: omnimarket.nodes.node_landing_placement_wait_effect.handlers.handler_landing_placement_wait
+  class: HandlerLandingPlacementWait
+  input_model: omnimarket.nodes.node_landing_placement_wait_effect.models.model_landing_placement_wait.ModelLandingPlacementWaitRequest
+  output_model: omnimarket.nodes.node_landing_placement_wait_effect.models.model_landing_placement_wait.ModelLandingPlacementWaitResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_landing_placement_wait_effect.handlers.handler_landing_placement_wait:HandlerLandingPlacementWait
+  handlers:
+  - operation: cause
+    handler:
+      name: HandlerLandingPlacementWait
+      module: omnimarket.nodes.node_landing_placement_wait_effect.handlers.handler_landing_placement_wait
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the landing controller.
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 30000
+metadata:
+  transport_type: local
+  created: '2026-10-24'
+  tags:
+  - effect
+  - landing-placement-wait
+  related_tickets:
+  - OMN-21373

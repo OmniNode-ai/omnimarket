@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_landing_not_started_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Write one marker and journal row for each refused dispatch that never
+  started a worker. Preserve the first refusal, and refund the refused PR dispatch
+  stamps and head counts in the supplied sidecar. Successful dispatches and cause
+  dispatch budgets are unchanged.
+input_model:
+  name: ModelLandingNotStartedRequest
+  module: omnimarket.nodes.node_landing_not_started_effect.models.model_landing_not_started
+output_model:
+  name: ModelLandingNotStartedResult
+  module: omnimarket.nodes.node_landing_not_started_effect.models.model_landing_not_started
+handler:
+  module: omnimarket.nodes.node_landing_not_started_effect.handlers.handler_landing_not_started
+  class: HandlerLandingNotStarted
+  input_model: omnimarket.nodes.node_landing_not_started_effect.models.model_landing_not_started.ModelLandingNotStartedRequest
+  output_model: omnimarket.nodes.node_landing_not_started_effect.models.model_landing_not_started.ModelLandingNotStartedResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_landing_not_started_effect.handlers.handler_landing_not_started:HandlerLandingNotStarted
+  handlers:
+  - operation: record
+    handler:
+      name: HandlerLandingNotStarted
+      module: omnimarket.nodes.node_landing_not_started_effect.handlers.handler_landing_not_started
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the landing controller.
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 30000
+metadata:
+  transport_type: local
+  created: '2026-10-24'
+  tags:
+  - effect
+  - landing-not-started
+  related_tickets:
+  - OMN-21373
