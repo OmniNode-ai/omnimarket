@@ -361,7 +361,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # with no handler_routing: 21 -> 22.
     # node_work_ledger_landing_mirror is hosted by the same ledger serve
     # process and has no handler_routing either: 22 -> 23.
-    assert summary["skipped"] == 23
+    # node_beacon_trace_capture_effect reads host-local beacon JSONL and is run
+    # by `python -m` on the lab host, not by a runtime, so it is experimental
+    # with no handler_routing: 23 -> 24.
+    assert summary["skipped"] == 24
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
