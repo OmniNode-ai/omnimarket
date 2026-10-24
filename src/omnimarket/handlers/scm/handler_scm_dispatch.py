@@ -143,6 +143,12 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         replaces="gh pr view --json state,mergedAt,mergeCommit,headRefOid",
     ),
     ModelScmVerb(
+        verb="pr-threads",
+        node=_G,
+        operation="pr_review_threads",
+        replaces="gh api graphql (pullRequest reviewThreads)",
+    ),
+    ModelScmVerb(
         verb="pr-create", node=_W, operation="pr_create", replaces="gh pr create"
     ),
     ModelScmVerb(verb="pr-edit", node=_W, operation="pr_edit", replaces="gh pr edit"),
@@ -154,6 +160,12 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
     ),
     ModelScmVerb(
         verb="pr-comment", node=_W, operation="pr_comment", replaces="gh pr comment"
+    ),
+    ModelScmVerb(
+        verb="pr-thread-reply",
+        node=_W,
+        operation="pr_thread_reply",
+        replaces="gh api --method POST /repos/{o}/{r}/pulls/{n}/comments/{id}/replies",
     ),
     ModelScmVerb(
         verb="workflow-run",

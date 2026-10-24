@@ -22,11 +22,13 @@ Rules this handler enforces:
 - **Expected head.** pr_edit, pr_ready and pr_close read the PR first and
   refuse with ``head_moved`` when its head is not the expected one; pr_create
   and workflow_dispatch check the branch tip when given an expected head, and
-  pr_comment checks the PR's head when given one. No mutation follows.
+  pr_comment and pr_thread_reply check the PR's head when given one. No
+  mutation follows.
 - **Idempotency.** A retried command with the same idempotency key returns the
   first result marked ``replayed`` and sends nothing. Across restarts GitHub
   itself is the record: pr_create finds an open PR for the head, pr_comment
-  finds a comment carrying the key, pr_ready and pr_close find the PR already
+  finds a comment carrying the key, pr_thread_reply finds a review comment
+  carrying the key, pr_ready and pr_close find the PR already
   in the asked-for state. workflow_dispatch has no GitHub-side record, so only
   the in-process record guards a retry. check_run_create likewise only has
   the in-process record; a restart can create another check run.
@@ -58,6 +60,7 @@ from omnimarket.github_landing.github_landing_requests import (
     convert_to_draft_request,
     create_issue_comment_request,
     create_pull_request_request,
+    create_review_comment_reply_request,
     edit_pull_request_request,
     git_ref_request,
     issue_comments_request,
@@ -65,6 +68,7 @@ from omnimarket.github_landing.github_landing_requests import (
     next_page_request,
     open_pulls_for_head_request,
     pull_request_request,
+    review_comments_request,
     workflow_dispatch_request,
 )
 from omnimarket.github_landing.github_landing_transport import (
@@ -109,7 +113,8 @@ _SECRET_NAME = "GITHUB_TOKEN"
 _CLAIMS_DIR_ENV = "ONEX_PR_CLAIMS_DIR"
 # How many completed writes the in-process idempotency record keeps.
 _IDEMPOTENCY_RECORD_SIZE = 4096
-# Comment pages scanned for an idempotency marker (300 comments).
+# Comment pages scanned for an idempotency marker (300 comments), for the
+# conversation comments of pr_comment and the review comments of pr_thread_reply.
 _MARKER_SCAN_PAGES = 3
 # A planned node id in dry_run: the real one is read from the PR first.
 _PLANNED_NODE_ID = "<node id read from the pull request>"
@@ -467,6 +472,8 @@ class HandlerGithubRepoWriteEffect:
             return await _pr_close(run)
         if op is EnumRepoWriteOperation.PR_COMMENT:
             return await _pr_comment(run)
+        if op is EnumRepoWriteOperation.PR_THREAD_REPLY:
+            return await _pr_thread_reply(run)
         if op is EnumRepoWriteOperation.CHECK_RUN_CREATE:
             return await _check_run_create(run)
         return await _workflow_dispatch(run)
@@ -663,6 +670,44 @@ async def _pr_comment(run: _Run) -> ModelRepoWriteCompleted:
     )
 
 
+async def _pr_thread_reply(run: _Run) -> ModelRepoWriteCompleted:
+    c = run.command
+    number = c.pr_number or 0
+    head_sha: str | None = None
+    if c.expected_head_sha is not None:
+        head_sha = _str_at(await run.expect_pr_head(), "head", "sha")
+    marker = idempotency_marker(c.idempotency_key)
+    request: ModelGithubHttpRequest | None = review_comments_request(
+        c.repo, number, per_page=LIST_PAGE_SIZE
+    )
+    for _page in range(_MARKER_SCAN_PAGES):
+        if request is None:
+            break
+        response = await run.send(request)
+        page = (response.body or {}).get("value")
+        for comment in page if isinstance(page, list) else []:
+            if isinstance(comment, dict) and marker in str(comment.get("body", "")):
+                return run.completed(
+                    replayed=True,
+                    comment_id=_int_at(comment, "id"),
+                    html_url=_str_at(comment, "html_url"),
+                    head_sha=head_sha,
+                )
+        request = next_page_request(response)
+    created = (
+        await run.send(
+            create_review_comment_reply_request(
+                c.repo, number, c.thread_comment_id or 0, f"{c.body}\n\n{marker}"
+            )
+        )
+    ).body
+    return run.completed(
+        comment_id=_int_at(created, "id"),
+        html_url=_str_at(created, "html_url"),
+        head_sha=head_sha,
+    )
+
+
 def _check_run_create_request(c: ModelRepoWriteRequest) -> ModelGithubHttpRequest:
     body: dict[str, object] = {
         "name": c.name,
@@ -746,6 +791,18 @@ def planned_requests(
             issue_comments_request(c.repo, n, per_page=LIST_PAGE_SIZE),
             create_issue_comment_request(
                 c.repo, n, f"{c.body}\n\n{idempotency_marker(c.idempotency_key)}"
+            ),
+        )
+    if op is EnumRepoWriteOperation.PR_THREAD_REPLY:
+        read = [pull_request_request(c.repo, n)] if c.expected_head_sha else []
+        return (
+            *read,
+            review_comments_request(c.repo, n, per_page=LIST_PAGE_SIZE),
+            create_review_comment_reply_request(
+                c.repo,
+                n,
+                c.thread_comment_id or 0,
+                f"{c.body}\n\n{idempotency_marker(c.idempotency_key)}",
             ),
         )
     read_pr = pull_request_request(c.repo, n)

@@ -1,0 +1,9 @@
+{
+  "session_id": "7f3c2a1e-5b6d-4e8f-9a0b-1c2d3e4f5a6b",
+  "transcript_path": "precompact_transcript.jsonl",
+  "cwd": "/w",
+  "permission_mode": "default",
+  "hook_event_name": "PreCompact",
+  "trigger": "manual",
+  "custom_instructions": ""
+}
