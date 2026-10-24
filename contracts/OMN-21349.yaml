@@ -135,4 +135,3 @@ dod_evidence:
           print(json.dumps(readback, sort_keys=True))
           PY
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC1", "AC3"]
