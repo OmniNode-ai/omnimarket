@@ -34,9 +34,6 @@ from omnimarket.nodes.node_context_compaction_orchestrator.handlers import (
 from omnimarket.nodes.node_context_compaction_orchestrator.handlers import (
     handler_context_compaction_orchestrator as handler_module,
 )
-from omnimarket.nodes.node_context_pack_orchestrator.handlers.handler_context_pack_orchestrator import (
-    HandlerContextPackOrchestrator,
-)
 
 from .test_compaction_pack_build import _pack_orchestrator, _sources
 from .test_session_barrier_wait import _probe, _request, _Source
@@ -63,6 +60,7 @@ async def test_runtime_compaction_pack_build_barrier_dispatch_and_publish(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
     barrier_met: bool,
+    compaction_bus,
 ) -> None:
     """Real discovery, typed callback, pack construction, and result publication.
 
@@ -78,18 +76,12 @@ async def test_runtime_compaction_pack_build_barrier_dispatch_and_publish(
     )
     source_factors = _sources()
     pack = _pack_orchestrator(source_factors)
-    resolved_nodes: list[str] = []
-
-    def resolve_pack(node_name: str) -> HandlerContextPackOrchestrator:
-        resolved_nodes.append(node_name)
-        return pack
-
-    monkeypatch.setattr(binding_module, "resolve_pack_orchestrator", resolve_pack)
+    bus_harness = compaction_bus(pack)
     binding = binding_module.load_compaction_runtime_binding().model_copy(
-        update={"barrier_deadline_s": 0.005, "barrier_poll_interval_s": 0.001}
-    )
-    monkeypatch.setattr(
-        binding_module, "load_compaction_runtime_binding", lambda: binding
+        update={
+            "barrier_deadline_s": 1.0 if barrier_met else 0.005,
+            "barrier_poll_interval_s": 0.001,
+        }
     )
     manifest = discover_contracts_from_paths([_CONTRACT])
     assert manifest.errors == ()
@@ -106,7 +98,12 @@ async def test_runtime_compaction_pack_build_barrier_dispatch_and_publish(
     handler_class = getattr(
         importlib.import_module(route.handler.module), route.handler.name
     )
-    handler = handler_class()
+    handler = handler_class(
+        event_publisher=bus_harness.publisher,
+        event_consumer=bus_harness.consumer,
+        binding=binding,
+        barrier_probe_source=source,
+    )
     assert isinstance(handler, handler_module.HandlerContextCompactionOrchestrator)
     # A generated UUID on the domain result must never replace transport correlation.
     assert request.invocation_id != _TRANSPORT_CORRELATION
@@ -144,7 +141,12 @@ async def test_runtime_compaction_pack_build_barrier_dispatch_and_publish(
         assert reply.package_id == events[0].candidate_id
         assert reply.messages
         assert reply.installed_messages_hash
-        assert resolved_nodes == ["node_context_pack_orchestrator"]
+        assert len(bus_harness.commands) == 1
+        command_cid = bus_harness.commands[0]["correlation_id"]
+        assert bus_harness.consumer.waits[0][0] == command_cid
+        assert all(
+            body["correlation_id"] == command_cid for _, body in bus_harness.records
+        )
         assert all(factor.requests for factor in source_factors.values())
         assert warnings == []
     else:
@@ -154,7 +156,7 @@ async def test_runtime_compaction_pack_build_barrier_dispatch_and_publish(
         assert len(events) == 2
         assert isinstance(events[0], ModelContextCompactionFallback)
         assert events[0].failure_class.value == "source_not_caught_up"
-        assert resolved_nodes == []
+        assert not bus_harness.commands
         assert not any(factor.requests for factor in source_factors.values())
         (warning,) = warnings
         assert "source_not_caught_up" in warning.getMessage()

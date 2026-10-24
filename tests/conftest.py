@@ -1250,3 +1250,20 @@ def lane_intake_gate(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     monkeypatch.setattr(LaneIntakeGate, "policy", _policy)
     monkeypatch.setattr(LaneIntakeGate, "admit", _admit)
     return admitted
+
+
+@pytest.fixture
+def compaction_bus():
+    """Close every in-memory compaction transport and its worker loop."""
+    from tests.nodes.node_context_compaction_orchestrator.bus_fixture import BusHarness
+
+    harnesses = []
+
+    def factory(pack=None, **kwargs):
+        harness = BusHarness(pack, **kwargs)
+        harnesses.append(harness)
+        return harness
+
+    yield factory
+    for harness in reversed(harnesses):
+        harness.close()

@@ -1,12 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The compaction pack build over the context-pack orchestrator (OMN-17427, TA.11 calls TA.8).
-
-``HandlerCompactionPackBuild`` is the live ``ProtocolContextCompactionPackBuild``: it asks
-the context-pack orchestrator for the ``compaction_orchestrator`` profile at the command's
-session barrier and turns the built package, or its failure, into the build outcome the
-compaction orchestrator installs or falls back on.
-"""
+"""Pure package mapping and compaction builds over the runtime bus."""
 
 from __future__ import annotations
 
@@ -48,10 +42,8 @@ from omnimarket.models.context_pack_render.model_context_pack_render_message imp
 )
 from omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_compaction_pack_build import (
     COMPACTION_PROFILE,
-    HandlerCompactionPackBuild,
-)
-from omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_context_compaction_orchestrator import (
-    HandlerContextCompactionOrchestrator,
+    build_pack_command,
+    map_pack_built,
 )
 from omnimarket.nodes.node_context_pack_orchestrator.handlers.handler_context_pack_orchestrator import (
     HandlerContextPackOrchestrator,
@@ -157,18 +149,6 @@ def _request(
     )
 
 
-class _CannedPackOrchestrator:
-    """Answers one fixed built result and records the command it was given."""
-
-    def __init__(self, built: ModelContextPackBuilt) -> None:
-        self.built = built
-        self.commands: list[ModelContextPackCommand] = []
-
-    def handle(self, command: ModelContextPackCommand) -> ModelContextPackBuilt:
-        self.commands.append(command)
-        return self.built
-
-
 def _ok_built(**fields: object) -> ModelContextPackBuilt:
     payload: dict[str, object] = {
         "status": EnumContextPackOrchestratorStatus.OK,
@@ -190,9 +170,7 @@ def test_profile_is_compaction_orchestrator() -> None:
 
 
 def test_command_names_profile_session_barrier_and_access() -> None:
-    canned = _CannedPackOrchestrator(_ok_built())
-    HandlerCompactionPackBuild(canned, access=_access()).build(_request())
-    (command,) = canned.commands
+    command = build_pack_command(_request(), _access(), None)
     assert command.request.profile_name == COMPACTION_PROFILE
     assert command.request.session_id == "session-1"
     assert command.request.newest_turn == "turn-9"
@@ -215,9 +193,7 @@ def test_built_package_carries_the_pack_identities() -> None:
         )
     )
     assert built.status is EnumContextPackOrchestratorStatus.OK
-    outcome = HandlerCompactionPackBuild(
-        _pack_orchestrator(_sources()), access=_access()
-    ).build(_request())
+    outcome = map_pack_built(built)
     package = outcome.package
     assert package is not None
     assert outcome.failure_class is None
@@ -233,9 +209,7 @@ def test_built_package_carries_the_pack_identities() -> None:
 
 def test_model_outputs_hash_is_over_the_canonical_model_outputs() -> None:
     outputs = ("summary one", "summary two")
-    outcome = HandlerCompactionPackBuild(
-        _CannedPackOrchestrator(_ok_built(model_outputs=outputs)), access=_access()
-    ).build(_request())
+    outcome = map_pack_built(_ok_built(model_outputs=outputs))
     assert outcome.package is not None
     expected = _sha(json.dumps(list(outputs), separators=(",", ":")))
     assert outcome.package.model_outputs_hash == expected
@@ -243,9 +217,7 @@ def test_model_outputs_hash_is_over_the_canonical_model_outputs() -> None:
 
 def test_sources_read_at_the_barrier_for_the_access_tenant() -> None:
     sources = _sources()
-    HandlerCompactionPackBuild(_pack_orchestrator(sources), access=_access()).build(
-        _request()
-    )
+    _pack_orchestrator(sources).handle(build_pack_command(_request(), _access(), None))
     for source in sources.values():
         (read,) = source.requests
         assert read.revision == "barrier-7"
@@ -254,9 +226,11 @@ def test_sources_read_at_the_barrier_for_the_access_tenant() -> None:
 
 def test_required_tier_missing_is_a_pack_build_failure() -> None:
     sources = _sources(open_work=EnumContextSourceStatus.UNAVAILABLE)
-    outcome = HandlerCompactionPackBuild(
-        _pack_orchestrator(sources), access=_access()
-    ).build(_request())
+    outcome = map_pack_built(
+        _pack_orchestrator(sources).handle(
+            build_pack_command(_request(), _access(), None)
+        )
+    )
     assert outcome.package is None
     assert outcome.failure_class is EnumContextCompactionFailureClass.PACK_BUILD_FAILED
 
@@ -273,17 +247,13 @@ def test_required_tier_missing_is_a_pack_build_failure() -> None:
     ],
 )
 def test_ok_build_missing_an_identity_is_a_pack_build_failure(missing: str) -> None:
-    outcome = HandlerCompactionPackBuild(
-        _CannedPackOrchestrator(_ok_built(**{missing: None})), access=_access()
-    ).build(_request())
+    outcome = map_pack_built(_ok_built(**{missing: None}))
     assert outcome.package is None
     assert outcome.failure_class is EnumContextCompactionFailureClass.PACK_BUILD_FAILED
 
 
 def test_ok_build_with_no_messages_is_a_pack_build_failure() -> None:
-    outcome = HandlerCompactionPackBuild(
-        _CannedPackOrchestrator(_ok_built(messages=())), access=_access()
-    ).build(_request())
+    outcome = map_pack_built(_ok_built(messages=()))
     assert outcome.failure_class is EnumContextCompactionFailureClass.PACK_BUILD_FAILED
 
 
@@ -293,18 +263,12 @@ def test_failed_build_is_a_pack_build_failure() -> None:
         profile_name=COMPACTION_PROFILE,
         failure_class=EnumContextPackFailure.PROFILE_NOT_FOUND,
     )
-    outcome = HandlerCompactionPackBuild(
-        _CannedPackOrchestrator(failed), access=_access()
-    ).build(_request())
+    outcome = map_pack_built(failed)
     assert outcome.failure_class is EnumContextCompactionFailureClass.PACK_BUILD_FAILED
 
 
-def test_compaction_installs_the_pack_built_through_the_adapter() -> None:
-    handler = HandlerContextCompactionOrchestrator(
-        pack_build=HandlerCompactionPackBuild(
-            _pack_orchestrator(_sources()), access=_access()
-        )
-    )
+def test_compaction_installs_the_pack_built_through_the_adapter(compaction_bus) -> None:
+    handler = compaction_bus(_pack_orchestrator(_sources())).handler()
     result = handler.handle(_request())
     assert result.reply.action is EnumClientVerdictAction.INSTALL
     assert result.fallback is None
@@ -316,15 +280,14 @@ def test_compaction_installs_the_pack_built_through_the_adapter() -> None:
     )
 
 
-def test_compaction_falls_back_native_when_a_required_tier_is_missing() -> None:
-    handler = HandlerContextCompactionOrchestrator(
-        pack_build=HandlerCompactionPackBuild(
-            _pack_orchestrator(
-                _sources(operator_rulings=EnumContextSourceStatus.UNAVAILABLE)
-            ),
-            access=_access(),
+def test_compaction_falls_back_native_when_a_required_tier_is_missing(
+    compaction_bus,
+) -> None:
+    handler = compaction_bus(
+        _pack_orchestrator(
+            _sources(operator_rulings=EnumContextSourceStatus.UNAVAILABLE)
         )
-    )
+    ).handler()
     result = handler.handle(_request())
     assert result.reply.action is EnumClientVerdictAction.NATIVE
     assert result.reply.messages == ()
@@ -336,13 +299,9 @@ def test_compaction_falls_back_native_when_a_required_tier_is_missing() -> None:
     assert result.fallback.invocation_id == INVOCATION
 
 
-def test_two_invocations_on_the_same_inputs_share_one_candidate() -> None:
+def test_two_invocations_on_the_same_inputs_share_one_candidate(compaction_bus) -> None:
     """TA.11: same candidate_id and assembly_hash, different activation_ids."""
-    handler = HandlerContextCompactionOrchestrator(
-        pack_build=HandlerCompactionPackBuild(
-            _pack_orchestrator(_sources()), access=_access()
-        )
-    )
+    handler = compaction_bus(_pack_orchestrator(_sources())).handler()
     first = handler.handle(_request(INVOCATION))
     second = handler.handle(_request(OTHER_INVOCATION))
     assert first.prepared is not None
