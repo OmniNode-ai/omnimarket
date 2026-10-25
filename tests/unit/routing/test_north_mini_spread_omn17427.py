@@ -44,7 +44,6 @@ pytestmark = pytest.mark.unit
 
 _CONFIGS = Path(__file__).resolve().parents[3] / "src" / "omnimarket" / "configs"
 _RUNG = "openrouter-nemotron-ultra"
-_SUPER = "openrouter-nemotron-super"
 _PEER = "openrouter-north-mini-code"
 _KEYS = tuple(uuid5(NAMESPACE_DNS, f"omn-17427-north-mini-{i}") for i in range(1000))
 
@@ -103,15 +102,15 @@ def _first_choices(
     return refs
 
 
-def test_the_peer_is_mirrored_after_both_existing_models(
+def test_the_peer_is_mirrored_after_the_remaining_model(
     committed: _CommittedConfig,
 ) -> None:
     config, placed, _ = committed
-    assert [model.backend_ref for model in _free_tier(config).models] == [_RUNG, _SUPER]
+    assert [model.backend_ref for model in _free_tier(config).models] == [_RUNG]
     models = _free_tier(apply_backend_placements(config, placed)).models
-    assert [model.backend_ref for model in models] == [_RUNG, _SUPER, _PEER]
-    assert models[2].use_for == models[0].use_for
-    assert models[2].max_context_tokens == 256000
+    assert [model.backend_ref for model in models] == [_RUNG, _PEER]
+    assert models[1].use_for == models[0].use_for
+    assert models[1].max_context_tokens == 256000
 
 
 def test_the_placement_declares_an_equally_weighted_spread_peer(

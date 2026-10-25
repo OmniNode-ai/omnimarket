@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """OMN-19198: the reviewer leg binds with only what the machine has.
 
-The shipped judge (``openrouter-nemotron-super``) is a metered provider behind a
+The shipped judge (``openrouter-nemotron-ultra``) is a free provider behind a
 credential reference. On a customer machine that holds no such credential the
 reviewer leg used to resolve to that endpoint anyway: a customer with no key had
 a reviewer that could never authenticate, and C14 row 4 ("the reviewer leg is
@@ -93,7 +93,7 @@ def test_the_declared_judge_is_kept_where_its_credential_resolves(
 
     backend = RoutingResolvedJudgeInferenceAdapter()._resolve_backend()
 
-    assert backend.backend_id == "openrouter-nemotron-super"
+    assert backend.backend_id == "openrouter-nemotron-ultra"
 
 
 def test_a_machine_with_neither_has_no_reviewer_bound(

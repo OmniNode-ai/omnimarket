@@ -85,15 +85,12 @@ def _bifrost_backends() -> dict[str, Any]:
     return {b["backend_id"]: b for b in loaded["backends"]}
 
 
-def test_the_second_free_model_follows_the_first_inside_the_free_tier() -> None:
+def test_the_withdrawn_sibling_is_absent_from_the_free_tier() -> None:
     """A refused call on the ultra rung retries its sibling before any metered tier."""
     refs = [m["backend_id"] for m in _tiers()["cheap_frontier"]["models"]]
-    assert refs == [_FREE_RUNG, _SIBLING]
-
-
-def test_the_sibling_serves_the_classes_the_rung_serves() -> None:
-    models = {m["backend_id"]: m for m in _tiers()["cheap_frontier"]["models"]}
-    assert set(models[_SIBLING]["use_for"]) == set(models[_FREE_RUNG]["use_for"])
+    assert refs == [_FREE_RUNG]
+    assert _bifrost_backends()[_SIBLING]["endpoint_url"] is None
+    assert _bifrost_backends()[_SIBLING]["explicit_pin_only"] is True
 
 
 def test_the_third_free_model_leaves_out_the_class_it_measured_weak_on() -> None:
@@ -124,8 +121,6 @@ def test_only_free_slugs_are_named_on_the_free_tier() -> None:
         assert backend["secret_ref"] == "llm.openrouter.api_key"
 
 
-def test_the_sibling_is_a_declared_backend_with_no_placement() -> None:
-    """A placement into cheap_frontier refuses at load on a ladder without that tier."""
-    backend = _bifrost_backends()[_SIBLING]
-    assert backend["tier"] == "cheap_frontier"
-    assert "placement" not in backend
+def test_the_remaining_free_rung_can_judge_adequacy() -> None:
+    backend = _bifrost_backends()[_FREE_RUNG]
+    assert "judge_adequacy" in backend["capabilities"]

@@ -1020,6 +1020,8 @@ node_brief_compact_compute = "omnimarket.nodes.node_brief_compact_compute"
 node_standup_retrospective_compute = "omnimarket.nodes.node_standup_retrospective_compute"
 node_lane_host_discovery_compute = "omnimarket.nodes.node_lane_host_discovery_compute"
 node_umbrella_ticket_compute = "omnimarket.nodes.node_umbrella_ticket_compute"
+node_provider_model_catalogue_effect = "omnimarket.nodes.node_provider_model_catalogue_effect"
+node_plugin_walk_evidence_effect = "omnimarket.nodes.node_plugin_walk_evidence_effect"
 
 [project.scripts]
 onex-hourly-tick = "omnimarket.nodes.node_hourly_tick_effect.handlers.handler_hourly_tick_cli:main"

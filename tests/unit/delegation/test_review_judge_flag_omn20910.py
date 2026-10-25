@@ -339,7 +339,7 @@ def test_review_with_the_flag_on_is_refused_when_the_judge_rejects(
     built = _install(
         monkeypatch,
         reply="Step 1. UNSUPPORTED\nVERDICT: REJECT",
-        resolved="nvidia/nemotron-3-super-120b-a12b:free",
+        resolved="nvidia/nemotron-3-ultra-550b-a55b:free",
     )
     result = _dispatch_review(tmp_path, monkeypatch, None)
     assert result["quality_gate_passed"] is False
@@ -356,7 +356,7 @@ def test_review_with_the_flag_on_is_accepted_when_the_judge_accepts(
     _install(
         monkeypatch,
         reply="Step 1. SUPPORTED\nStep 2. NONE\nVERDICT: ACCEPT",
-        resolved="nvidia/nemotron-3-super-120b-a12b:free",
+        resolved="nvidia/nemotron-3-ultra-550b-a55b:free",
     )
     result = _dispatch_review(tmp_path, monkeypatch, None)
     assert result["quality_gate_passed"] is True
