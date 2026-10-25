@@ -313,6 +313,7 @@ def test_the_completion_entry_declares_the_completion_model() -> None:
         _PUBLISH_COMMAND_TOPIC,
         TOPIC_REBUILD_COMPLETED,
         TOPIC_REBUILD_REJECTED,
+        "onex.evt.deploy.dev-deploy-health.v1",
     }
 
     completion = by_topic[TOPIC_REBUILD_COMPLETED]
@@ -500,9 +501,11 @@ def test_handler_branch_names_parse_to_the_live_branch_set() -> None:
     Pinned both ways — an empty parse fails the guard loudly, but a SUPERSET would silence
     it, so the exact set is asserted.
     """
-    assert _handler_branch_event_names() == {"rebuild-completed", "rebuild-rejected"}, (
-        f"handler branch set drifted: {sorted(_handler_branch_event_names())}"
-    )
+    assert _handler_branch_event_names() == {
+        "rebuild-completed",
+        "rebuild-rejected",
+        "dev-deploy-health",
+    }, f"handler branch set drifted: {sorted(_handler_branch_event_names())}"
 
 
 @pytest.mark.unit
@@ -731,6 +734,7 @@ def test_the_operation_guard_fires_on_the_collapsed_pre_image() -> None:
                 # operation would declare, and a control that ignored the newest arm
                 # would go quiet on exactly the next one added.
                 "ModelDeployRebuildRejected",
+                "ModelDevDeployHealth",
             ),
         ),
     ), f"guard did not report the collapsed pre-image: {conflicts}"

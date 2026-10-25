@@ -426,6 +426,7 @@ class HandlerRedeployOrchestrator:
         )
 
         publish_command = ModelDeployPublishCommand(
+            dev_deploy_protocol=start.dev_deploy_protocol,
             correlation_id=correlation_id,
             scope=start.scope,
             git_ref=start.git_ref,
@@ -532,6 +533,7 @@ class HandlerRedeployOrchestrator:
 def _deploy_context(start: ModelRedeployStartCommand) -> ModelRedeployDeployContext:
     """The deploy request, in the shape that survives the gate hop."""
     return ModelRedeployDeployContext(
+        dev_deploy_protocol=start.dev_deploy_protocol,
         scope=start.scope,
         git_ref=start.git_ref,
         runtime_lane=start.runtime_lane,
@@ -577,6 +579,7 @@ def _start_from_context(
     """
     return ModelRedeployStartCommand(
         correlation_id=correlation_id,
+        dev_deploy_protocol=context.dev_deploy_protocol,
         scope=context.scope,
         git_ref=context.git_ref,
         runtime_lane=context.runtime_lane,
