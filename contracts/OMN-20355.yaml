@@ -1,0 +1,73 @@
+schema_version: "1.0.0"
+ticket_id: OMN-20355
+title: "Lane writes to Linear and GitHub carry a declared non-person actor and are refused under a person"
+summary: >-
+  Adds the lane write identity check to node_create_ticket (create, comment and
+  transition) and to the live token of node_github_repo_write_effect. The actor
+  id and the principals to refuse come from the environment of the writing
+  process; with no actor configured nothing changes. This PR does not register
+  the actor, so no write goes out under a bot until a person has registered the
+  OAuth application and the GitHub App credential and issued their secrets.
+  The ticket's own criteria (comment actor line in the skills, and the hourly
+  sweep's classification) live in other repositories and are not claimed here.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn20355-lane-write-identity
+    statement: >-
+      Once a lane actor is configured, a Linear write whose credential resolves
+      to an operator principal or to anything but the declared actor, and a
+      GitHub write whose token is not an App installation token, are refused
+      before any request is sent.
+    acceptance:
+      - id: AC1
+        statement: >-
+          With the actor configured, node_create_ticket refuses a create, a
+          comment and a transition whose credential resolves to an operator
+          principal, and sends nothing; it lets the declared actor through.
+      - id: AC2
+        statement: >-
+          With the actor configured, the live GitHub write refuses a personal
+          token before any request; with no actor configured, behaviour is
+          unchanged.
+evidence_requirements:
+  - kind: tests
+    description: Identity module, node_create_ticket wiring and the GitHub live-token guard.
+    command: "uv run pytest tests/unit/test_lane_write_identity.py tests/nodes/node_create_ticket/test_lane_write_identity.py tests/unit/nodes/node_github_repo_write_effect/test_lane_write_identity.py -q --no-cov --refuse-skips"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn20355-ac1-linear-refusal
+    description: Create, comment and transition under the operator principal are refused with no Linear write.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/nodes/node_create_ticket/test_lane_write_identity.py -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-omn20355-ac2-github-refusal
+    description: A personal GitHub token is refused once the actor is configured, and used as before when it is not.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_lane_write_identity.py -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-omn20355-identity-module-shipped
+    description: >-
+      Hosted-runner-accessible source deployment check at the pushed commit:
+      GitHub serves the identity module. Proves source availability only, not
+      that any lane has an actor configured.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/unit/test_lane_write_identity.py -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: command
+        check_value: >-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/handler_lane_write_identity.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c "import sys; s=sys.stdin.read(); assert \"assert_linear_principal_is_actor\" in s"'
+        cwd: "${OMNI_HOME}/omnimarket"

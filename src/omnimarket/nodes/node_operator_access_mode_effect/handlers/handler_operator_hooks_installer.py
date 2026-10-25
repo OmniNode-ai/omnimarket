@@ -8,7 +8,8 @@ one command per event, each ``PYTHONPATH=<copy> <python> -B -m <entry module> <e
 
 * SessionStart (startup, resume, clear, compact): ``session-start``;
 * UserPromptSubmit: ``prompt``;
-* PreToolUse on Bash, WebFetch, WebSearch, PushNotification and SendUserMessage: ``pre-tool``;
+* PreToolUse on Bash, WebFetch, WebSearch, PushNotification, SendUserMessage, Workflow and Agent:
+  ``pre-tool``;
 * Stop: ``stop``.
 
 The Bash rules include the shape rules of the host's untracked ``foreground-bash-shape-guard.py``,
@@ -39,7 +40,7 @@ REGISTRATIONS: tuple[tuple[str, str | None, str, str], ...] = (
     ("UserPromptSubmit", None, "prompt", "Recording operator prompt..."),
     (
         "PreToolUse",
-        "^(Bash|WebFetch|WebSearch|PushNotification|SendUserMessage)$",
+        "^(Bash|WebFetch|WebSearch|PushNotification|SendUserMessage|Workflow|Agent)$",
         "pre-tool",
         "Checking operator supervision rules...",
     ),

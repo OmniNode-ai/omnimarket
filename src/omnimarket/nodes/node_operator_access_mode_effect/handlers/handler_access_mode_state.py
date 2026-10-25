@@ -6,6 +6,7 @@ One directory, default ``~/.claude/state/access-mode`` (``OMNI_ACCESS_MODE_STATE
 
 * ``override`` holds one word, ``local`` or ``remote``, set by ``onex-access-mode set``; absent
   means detection decides. It applies to every operator-facing session, never to a headless one.
+* ``silent`` holds ``on`` while global silent mode is enabled; absent means off.
 * ``session-<id>.json`` holds one session's detected mode, its prompt-command override and the
   time of the operator's last prompt, which the push gate reads for the 30-minute idle rule.
 
@@ -27,6 +28,7 @@ from typing import Any
 STATE_DIR_ENV = "OMNI_ACCESS_MODE_STATE_DIR"
 OVERRIDE_ENV = "OMNI_ACCESS_MODE"
 OVERRIDE_FILE = "override"
+SILENT_FILE = "silent"
 SETTABLE_MODES = ("local", "remote")
 STALE_SESSION_SECONDS = 14 * 24 * 3600
 
@@ -102,6 +104,21 @@ def write_global_override(directory: Path, word: str | None) -> None:
     if word not in SETTABLE_MODES:
         raise ValueError(f"access mode must be one of {SETTABLE_MODES}, not {word!r}")
     _replace(target, word + "\n")
+
+
+def read_global_silent(directory: Path) -> bool:
+    try:
+        return (directory / SILENT_FILE).read_text("utf-8").strip().lower() == "on"
+    except OSError:
+        return False
+
+
+def write_global_silent(directory: Path, enabled: bool) -> None:
+    target = directory / SILENT_FILE
+    if enabled:
+        _replace(target, "on\n")
+    else:
+        target.unlink(missing_ok=True)
 
 
 def prune_stale_sessions(directory: Path, now: float | None = None) -> int:
