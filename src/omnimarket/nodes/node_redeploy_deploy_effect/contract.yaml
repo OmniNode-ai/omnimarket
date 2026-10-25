@@ -56,6 +56,17 @@ description: >
 handler_routing:
   routing_strategy: topic_match
   handlers:
+    - operation: "redeploy.deploy.dev_health_observe"
+      topic: onex.evt.deploy.dev-deploy-health.v1
+      message_category: event
+      handler:
+        name: HandlerDeployPublishMonitor
+        module: omnimarket.nodes.node_redeploy_deploy_effect.handlers.handler_deploy_publish_monitor
+      description: "Persist a deploy-and-verify capability heartbeat for live dev routing."
+      input_model:
+        name: ModelDevDeployHealth
+        module: omnimarket.models.model_dev_deploy_route
+        description: "An instance's live deploy acceptance and proof readiness."
     - operation: "redeploy.deploy.publish_monitor"
       topic: onex.cmd.omnimarket.redeploy-deploy-publish.v1
       message_category: command
@@ -127,6 +138,7 @@ terminal_event: onex.evt.omnimarket.redeploy-rolled-back.v1
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.redeploy-deploy-publish.v1
+    - onex.evt.deploy.dev-deploy-health.v1
     # Cross-service subscribe: deploy agent completion event.
     - onex.evt.deploy.rebuild-completed.v1
     # OMN-18816. Cross-service subscribe: deploy agent REJECTION event — the terminal
@@ -162,6 +174,10 @@ event_bus:
 # does" that the deleted baseline used to launder, which is why a bare topic string is
 # refused here and a producer string is required.
 externally_produced_topics:
+  - topic: onex.evt.deploy.dev-deploy-health.v1
+    producer: >-
+      Deploy-agent capability heartbeat adapter. Requires a compatible agent
+      producer and selected-route consumer before this protocol can be activated.
   - topic: onex.evt.deploy.rebuild-rejected.v1
     producer: >-
       omnibase_infra scripts/deploy-agent (deploy_agent.agent._publish_rejection_event,

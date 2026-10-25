@@ -40,6 +40,10 @@ from omnibase_compat.contracts.evidence_pipeline.wire.types import ReadinessStat
 from omnibase_core.models.runtime_deployment.wire import EnumRuntimeLane
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.model_dev_deploy_route import (
+    ModelDevDeployRoute,
+)
+
 
 class RuntimeLaneLike(Protocol):
     """Runtime lane enum shape shared across deployment-proof consumers."""
@@ -1033,6 +1037,11 @@ class ModelRedeployDeployContext(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    dev_deploy_protocol: Literal["health-v1"] | None = Field(
+        default=None,
+        description="Explicit capability negotiation with health-route-aware agents and CI.",
+    )
+
     scope: EnumRedeployScope = Field(
         default=EnumRedeployScope.FULL, description="Rebuild scope."
     )
@@ -1479,6 +1488,11 @@ class ModelDeployRebuildCommand(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    dev_deploy_route: ModelDevDeployRoute | None = Field(
+        default=None,
+        description="Producer-selected dev instance and its matching proof surface.",
+    )
+
     correlation_id: str = Field(..., description="UUID correlation ID for tracking.")
     requested_by: str = Field(
         default="node_redeploy_orchestrator",
@@ -1525,6 +1539,11 @@ class ModelDeployRebuildCommand(BaseModel):
     @model_validator(mode="after")
     def validate_prod_digest(self) -> ModelDeployRebuildCommand:
         """Production deploy-agent commands must pin the proven artifact."""
+        if (
+            self.dev_deploy_route is not None
+            and self.runtime_lane is not EnumRuntimeLane.DEV
+        ):
+            raise ValueError("dev_deploy_route is only valid for a dev command")
         if self.runtime_lane is EnumRuntimeLane.PROD and not self.image_digest:
             raise ValueError(
                 "prod runtime_lane requires image_digest: production deploys the "
@@ -1926,6 +1945,11 @@ class ModelDeployPublishCommand(BaseModel):
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
+
+    dev_deploy_protocol: Literal["health-v1"] | None = Field(
+        default=None,
+        description="Explicit capability negotiation with health-route-aware agents and CI.",
+    )
 
     correlation_id: UUID = Field(..., description="Redeploy run correlation ID.")
     scope: EnumRedeployScope = Field(

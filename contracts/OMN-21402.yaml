@@ -1,0 +1,92 @@
+schema_version: "1.0.0"
+ticket_id: OMN-21402
+title: "Select dev deployment targets from live host health"
+summary: >-
+  Add the omnimarket health-v1 producer protocol: a fresh eligible host is selected
+  once per dev command, persisted before publication, and signed with its matching
+  verification surface. Activation requires compatible infrastructure consumers
+  and an authorized capability heartbeat producer. The existing fixed route is
+  not removed by this producer-only PR. Live acceptance remains unverified.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched: [events, topics, protocols]
+requirements:
+  - id: req-omn21402-live-dev-routing
+    statement: >-
+      Operator direction extends the supplied ticket from a manual availability
+      switch to automatic host-health selection. Public criterion wording uses
+      role names; the original ticket criteria remain unchanged.
+    acceptance:
+      - id: AC1
+        statement: >-
+          A dev rebuild selects the surviving eligible instance when the preferred
+          instance is unavailable, restores preference on recovery, and carries
+          one accepting instance and its matching CI verification surface.
+      - id: AC2
+        statement: >-
+          A non-boolean availability/readiness value refuses; a pool with no
+          eligible instance refuses rather than selecting an unavailable default.
+      - id: AC3
+        statement: >-
+          After integration and merge, an omnimarket-requested command must be
+          accepted by its selected agent and that runtime must contain the
+          required omnimarket revision. This PR establishes the producer-side
+          prerequisite only; live agent acceptance and revision ancestry are
+          outstanding and must not be reported as proven by these tests.
+evidence_requirements:
+  - kind: tests
+    description: Real deploy publisher failover, strict refusals, and immutable retry identity.
+    command: "uv run pytest tests/nodes/node_redeploy_deploy_effect/test_live_dev_deploy_route_omn21402.py -q --no-cov --refuse-skips"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn21402-ac1-producer-failover
+    description: >-
+      Producer-side AC1 evidence. Remove the preferred heartbeat and the next
+      real deploy-effect publication selects the other instance; recovery and
+      one-acceptor route semantics are exercised. Actual infrastructure adapters
+      are required before claiming agent/CI end-to-end acceptance.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/nodes/node_redeploy_deploy_effect/test_live_dev_deploy_route_omn21402.py -q --no-cov --refuse-skips -k 'departed_host or recovered_preferred or retains_one_acceptor'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-omn21402-ac2-refusals
+    description: Strict flags and an empty or entirely stale pool refuse before publishing any command.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/nodes/node_redeploy_deploy_effect/test_live_dev_deploy_route_omn21402.py -q --no-cov --refuse-skips -k refuses"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-omn21402-ac3-producer-prerequisite
+    description: >-
+      AC3 prerequisite only: the protocol survives the orchestrator gate and the
+      selected route is bound by the deploy signature. This is not live job-store
+      or runtime-ancestry evidence. Those readbacks remain outstanding on the
+      integration companion and the ticket must remain open.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/nodes/node_redeploy_deploy_effect/test_live_dev_deploy_route_omn21402.py -q --no-cov --refuse-skips -k 'gate_hop or signed_command'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-omn21402-deploy-producer-shipped
+    description: >-
+      Hosted-runner-accessible source deployment check at the pushed commit.
+      GitHub must serve the producer implementation that persists and embeds a
+      selected route. Fails at the merge base; proves source availability only,
+      not activation of the protocol on a lab agent.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/nodes/node_redeploy_deploy_effect/test_live_dev_deploy_route_omn21402.py -q --no-cov --refuse-skips -k departed_host"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: command
+        check_value: >-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_redeploy_deploy_effect/handlers/handler_deploy_publish_monitor.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c "import sys; s=sys.stdin.read(); assert \"self._dev_routes.choose(\" in s"'
+        cwd: "${OMNI_HOME}/omnimarket"
