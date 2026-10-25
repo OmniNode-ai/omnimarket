@@ -1018,6 +1018,15 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-21289: SYNC with the ci.yml step 'Harness invocation gate'.
+      - id: harness-invocation-check
+        name: no harness invoked outside the delegation effect node (OMN-21289)
+        language: system
+        entry: uv run python -m omnimarket.nodes.node_harness_invocation_check_effect
+        files: \.(py|sh)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-18774: a relation whose owning contract declares it
       # omninode_internal or platform_catalog is written through an operation
       # class that REFUSES a tenant_id key and binds no app.tenant_id, so a

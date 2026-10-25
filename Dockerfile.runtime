@@ -1,0 +1,41 @@
+# Market depends on infra, never the reverse. The base is built at the
+# release-train-moved infra tag from uv.lock, never a sha; see
+# the "Resolve the infra runtime ref from uv.lock" step in
+# .github/workflows/runtime-boot-composed.yml.
+ARG INFRA_RUNTIME_IMAGE
+FROM ${INFRA_RUNTIME_IMAGE}
+
+RUN echo "Building the omnimarket layer on the supplied infra runtime image"
+
+ARG OMNIMARKET_VCS_REF=unknown
+USER root
+COPY --chown=omniinfra:omniinfra pyproject.toml README.md /opt/omnimarket/
+COPY --chown=omniinfra:omniinfra src/ /opt/omnimarket/src/
+# pyproject's wheel force-include packages this lane file.
+COPY --chown=omniinfra:omniinfra config/ci_bus_lanes.yaml /opt/omnimarket/config/ci_bus_lanes.yaml
+
+# Replace market even while older infra base images still carry a copy.
+RUN uv pip uninstall --python /app/.venv/bin/python omnimarket || true
+RUN ( cd / && VIRTUAL_ENV=/app/.venv uv pip install --python /app/.venv/bin/python --no-deps --no-sources --no-cache --reinstall-package omnimarket "omnimarket @ file:///opt/omnimarket" )
+RUN /app/.venv/bin/python -m omnibase_infra.runtime.strip_runtime_entry_points
+
+COPY --chown=omniinfra:omniinfra src/omnimarket/configs/routing_tiers.yaml /app/config/delegation/routing_tiers.yaml
+COPY --chown=omniinfra:omniinfra src/omnimarket/configs/bifrost_delegation.yaml /app/config/delegation/bifrost_delegation.base.yaml
+ENV BIFROST_BASE_CONTRACT_PATH=/app/config/delegation/bifrost_delegation.base.yaml
+
+RUN /app/.venv/bin/python - <<'PY'
+import importlib
+import importlib.metadata
+import os
+from pathlib import Path
+
+import omnimarket
+from omnimarket.nodes.node_llm_delegation_call_effect import HandlerLlmDelegationCall
+
+importlib.import_module("omnimarket.nodes.node_delegate_skill_orchestrator")
+assert Path(os.environ["BIFROST_BASE_CONTRACT_PATH"]).is_file()
+print("omnimarket", importlib.metadata.version("omnimarket"))
+PY
+
+LABEL com.omninode.omnimarket_vcs_ref=${OMNIMARKET_VCS_REF}
+USER root

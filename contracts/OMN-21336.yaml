@@ -39,6 +39,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC1: real PostgreSQL proof with the shipped migrations, a non-superuser role, measured verdicts, replay and uncertainty resolution."
     command: "uv run pytest tests/test_compaction_receipts_projection_writer_real_postgres.py -q --refuse-skips"
+  - kind: "tests"
+    description: "AC2 preparation: captured compact chunks and published activations assemble into the install-confirm request, and the chained test reads installed with the captured boundary uuid through the writer's fold. The effect that reads session_content, stores activations and publishes the command, and the live /compact read, remain pending."
+    command: "uv run pytest tests/nodes/node_context_install_confirm_request_compute/test_handler_context_install_confirm_request.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -75,3 +78,10 @@ dod_evidence:
         check_value: "uv run pytest tests/test_compaction_receipts_projection_writer.py -q -k reasoned_reader_opt_out"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn21336-ac2-install-confirm-request-assembly"
+    description: "AC2 preparation: captured compact chunks and published activations assemble into the install-confirm request, and the chained test reads installed with the captured boundary uuid through the writer's fold. The effect that reads session_content, stores activations and publishes the command, and the live /compact read, remain pending."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_install_confirm_request_compute/test_handler_context_install_confirm_request.py -q"
+    binds_ac: ["AC2"]
