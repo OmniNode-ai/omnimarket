@@ -2,6 +2,10 @@
 name: projection_delegation_capability_map
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: reducer
+# OMN-17556 / OMN-19998: writes a TENANT-domain table through the
+# tenant_projection binding, whose credential only the tenant-projection
+# writer holds, so this contract stays off main.
+runtime_profiles: [tenant-projection]
 node_version: {major: 1, minor: 0, patch: 0}
 input_model: omnimarket.models.delegation_capability_map.model_capability_map_run_recorded.ModelCapabilityMapRunRecorded
 description: >

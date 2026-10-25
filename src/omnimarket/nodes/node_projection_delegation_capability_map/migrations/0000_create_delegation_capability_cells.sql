@@ -78,6 +78,54 @@ BEGIN
                          task_class, size_band);
     END IF;
 END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_constraint
+        WHERE conrelid = 'public.delegation_capability_cells'::regclass
+          AND contype = 'c' AND conname = 'delegation_capability_cells_size_band_check'
+    ) THEN
+        ALTER TABLE public.delegation_capability_cells
+            ADD CONSTRAINT delegation_capability_cells_size_band_check CHECK (size_band IN ('S', 'M', 'L'));
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_constraint
+        WHERE conrelid = 'public.delegation_capability_cells'::regclass
+          AND contype = 'c' AND conname = 'delegation_capability_cells_n_check'
+    ) THEN
+        ALTER TABLE public.delegation_capability_cells
+            ADD CONSTRAINT delegation_capability_cells_n_check CHECK (n >= 1);
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_constraint
+        WHERE conrelid = 'public.delegation_capability_cells'::regclass
+          AND contype = 'c' AND conname = 'delegation_capability_cells_passes_check'
+    ) THEN
+        ALTER TABLE public.delegation_capability_cells
+            ADD CONSTRAINT delegation_capability_cells_passes_check CHECK (passes >= 0 AND passes <= n);
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_constraint
+        WHERE conrelid = 'public.delegation_capability_cells'::regclass
+          AND contype = 'c' AND conname = 'delegation_capability_cells_verdict_check'
+    ) THEN
+        ALTER TABLE public.delegation_capability_cells
+            ADD CONSTRAINT delegation_capability_cells_verdict_check CHECK (verdict IN ('MET', 'MISSED', 'REFUSED'));
+    END IF;
+END$$;
 -- ---- END OMN-15376 shape reconciliation: delegation_capability_cells ----
 
 ALTER TABLE public.delegation_capability_cells ENABLE ROW LEVEL SECURITY;
