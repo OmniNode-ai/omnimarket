@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -217,6 +218,23 @@ def test_dockerfile_binds_packaged_configs(dockerfile: str) -> None:
     ) in dockerfile
     assert (ROOT / "src/omnimarket/configs/bifrost_delegation.yaml").is_file()
     assert 'Path(os.environ["BIFROST_BASE_CONTRACT_PATH"]).is_file()' in dockerfile
+
+
+@pytest.mark.unit
+def test_dockerfile_copies_every_wheel_force_include(dockerfile: str) -> None:
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    wheel = pyproject["tool"]["hatch"]["build"]["targets"]["wheel"]
+    copied = {
+        src
+        for line in dockerfile.splitlines()
+        if line.startswith("COPY ") and line.split()[-1].startswith("/opt/omnimarket/")
+        for src in line.split()[1:-1]
+        if not src.startswith("--")
+    }
+    for source in wheel["force-include"]:
+        assert source in copied or (
+            f"{source} /opt/omnimarket/{source}" in dockerfile
+        ), source
 
 
 @pytest.mark.unit

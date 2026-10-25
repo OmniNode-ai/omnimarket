@@ -60,14 +60,14 @@ dod_evidence:
       kernel, and the unchanged 900-second/zero-restart dev-lane gate. Live boot
       evidence is job composed-runtime-boot (display name composed-runtime-boot
       (omnimarket on infra)) in .github/workflows/runtime-boot-composed.yml on
-      the PR head, building market from this checkout rather than a release.
+      the PR head, building market from this checkout rather than a release;
+      it reports as its own check, so this item does not read its conclusion.
     source: generated
     checks:
       - check_type: test_passes
         check_value: uv run pytest tests/unit/docker/test_composed_runtime_image_omn21279.py -q
-      - check_type: command
-        check_value: |-
-          gh api "repos/OmniNode-ai/omnimarket/commits/$(git rev-parse HEAD)/check-runs?per_page=100" --jq '[.check_runs[] | select(.name == "composed-runtime-boot (omnimarket on infra)")] | sort_by(.started_at) | last | .conclusion == "success"' | grep -qx true
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/docker/test_composed_runtime_boot_delegate_probe_omn21279.py -q
     binds_ac:
       - "AC2"
   - id: dod-omn-21279-ac2-deploy-probe-composed-dockerfile

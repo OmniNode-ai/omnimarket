@@ -11,6 +11,8 @@ ARG OMNIMARKET_VCS_REF=unknown
 USER root
 COPY --chown=omniinfra:omniinfra pyproject.toml README.md /opt/omnimarket/
 COPY --chown=omniinfra:omniinfra src/ /opt/omnimarket/src/
+# pyproject's wheel force-include packages this lane file.
+COPY --chown=omniinfra:omniinfra config/ci_bus_lanes.yaml /opt/omnimarket/config/ci_bus_lanes.yaml
 
 # Replace market even while older infra base images still carry a copy.
 RUN uv pip uninstall --python /app/.venv/bin/python omnimarket || true
