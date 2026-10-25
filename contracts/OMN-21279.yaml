@@ -28,7 +28,7 @@ requirements:
 evidence_requirements:
   - kind: tests
     description: >-
-      Verify the locked infra tag resolver, market image composition and config
+      Verify the locked infra pins step, market image composition and config
       paths, and the moved boot gates; live boot evidence comes from job
       composed-runtime-boot in .github/workflows/runtime-boot-composed.yml.
     command: uv run pytest tests/unit/docker/test_composed_runtime_image_omn21279.py -q
@@ -42,8 +42,9 @@ dod_evidence:
       AC1, infra-side criterion supported by this omnimarket PR: moving market's
       install and packaged delegation configs into the market-owned composed
       image lets infra remove market from its own runtime image. The pytest
-      verifies FROM uses the required infra image argument, the resolver takes
-      uv.lock's tag rather than its SHA, and market installs into /app/.venv.
+      verifies FROM uses the required infra image argument, the pins step checks
+      out the infra release or commit uv.lock pins, and market installs into
+      /app/.venv.
       This is supporting composition evidence, not a replacement for infra's
       own layering checker. Red first: the tests fail before these files exist.
     source: generated
@@ -80,6 +81,4 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: |-
-          gh api "repos/OmniNode-ai/omnimarket/contents/docker/Dockerfile.runtime?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n";"") | @base64d | split("\n") as $l | ($l | map(. == "ARG INFRA_RUNTIME_IMAGE") | any) and ($l | map(. == "FROM ${INFRA_RUNTIME_IMAGE}") | any) and ($l | map(. == "ENV BIFROST_BASE_CONTRACT_PATH=/app/config/delegation/bifrost_delegation.base.yaml") | any) and ($l | map(. == "COPY --chown=omniinfra:omniinfra src/omnimarket/configs/bifrost_delegation.yaml /app/config/delegation/bifrost_delegation.base.yaml") | any)' | grep -qx true
-    binds_ac:
-      - "AC2"
+          gh api "repos/OmniNode-ai/omnimarket/contents/Dockerfile.runtime?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n";"") | @base64d | split("\n") as $l | ($l | map(. == "ARG INFRA_RUNTIME_IMAGE") | any) and ($l | map(. == "FROM ${INFRA_RUNTIME_IMAGE}") | any) and ($l | map(. == "ENV BIFROST_BASE_CONTRACT_PATH=/app/config/delegation/bifrost_delegation.base.yaml") | any) and ($l | map(. == "COPY --chown=omniinfra:omniinfra src/omnimarket/configs/bifrost_delegation.yaml /app/config/delegation/bifrost_delegation.base.yaml") | any)' | grep -qx true

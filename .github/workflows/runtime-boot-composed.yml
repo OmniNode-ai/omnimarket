@@ -6,7 +6,7 @@
 # Each moved step is at least as strict: the probe/health/crash budgets are
 # unchanged, all three market projections must render with health checks, and
 # both kernels must print a market version equal to this PR head's pyproject.
-# Infra is checked out at uv.lock's release-train tag, never its locked SHA.
+# Infra is checked out at the release or commit uv.lock pins (steps.pins).
 name: Composed Runtime Boot (OMN-21279)
 
 on:
@@ -39,75 +39,53 @@ jobs:
           python-version: "3.12"
           enable-cache: false
 
-      - name: Resolve the infra runtime ref from uv.lock
-        env:
-          UV_LOCK_PATH: market/uv.lock
+      - id: pins
+        name: Read the sibling release pins from this head's uv.lock
+        shell: bash
+        working-directory: market
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import os
           import re
           import tomllib
-          from pathlib import Path
-          from urllib.parse import parse_qs, urlsplit
 
-
-          def resolve_infra_runtime_ref(lock_text: str) -> str:
-              """Return a git tag or registry version tag; never use a locked commit SHA."""
-              packages = tomllib.loads(lock_text).get("package", [])
-              if not isinstance(packages, list):
-                  raise ValueError("uv.lock package entries must be an array")
-              matches = [
-                  package
-                  for package in packages
-                  if isinstance(package, dict) and package.get("name") == "omnibase-infra"
-              ]
-              if len(matches) != 1:
-                  raise ValueError("uv.lock must contain exactly one omnibase-infra package")
-              package = matches[0]
-              source = package.get("source")
-              if not isinstance(source, dict):
-                  raise ValueError("omnibase-infra must have a git tag or registry source")
-              if set(source) == {"git"} and isinstance(source["git"], str):
-                  query = parse_qs(urlsplit(source["git"]).query, keep_blank_values=True)
-                  tags = query.get("tag", [])
-                  if set(query) != {"tag"} or len(tags) != 1 or not tags[0].strip():
-                      raise ValueError(
-                          "omnibase-infra git source must select a non-empty ?tag= ref"
-                      )
-                  tag = tags[0]
-                  if re.fullmatch(r"[0-9a-fA-F]{40}", tag):
-                      raise ValueError("omnibase-infra tag must not be a 40-hex commit SHA")
-                  if tag != tag.strip() or "\n" in tag or "\r" in tag:
-                      raise ValueError(
-                          "omnibase-infra tag must not contain surrounding whitespace or newlines"
-                      )
-                  return tag
-              if set(source) == {"registry"} and isinstance(source["registry"], str):
-                  version = package.get("version")
-                  if isinstance(version, str) and version.strip():
-                      return f"v{version}"
-                  raise ValueError("omnibase-infra registry source requires a version")
-              raise ValueError("omnibase-infra must have a git tag or registry source")
-
-
-          try:
-              ref = resolve_infra_runtime_ref(
-                  Path(os.environ["UV_LOCK_PATH"]).read_text(encoding="utf-8")
-              )
-              with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
-                  env.write(f"INFRA_RUNTIME_REF={ref}\n")
-          except (OSError, ValueError) as exc:
-              print(f"::error::{exc}")
-              raise SystemExit(2)
-          print(ref)
+          with open("uv.lock", "rb") as lock_file:
+              packages = tomllib.load(lock_file).get("package", [])
+          pins = {}
+          failed = False
+          for name, output in (("omnibase-infra", "infra_version"), ("omnibase-core", "core_version")):
+              entries = [package for package in packages if package.get("name") == name]
+              sources = [package.get("source") for package in entries]
+              source = sources[0] if len(entries) == 1 else None
+              ref = None
+              if source == {"registry": "https://pypi.org/simple"}:
+                  ref = f"v{entries[0]['version']}"
+              # OMN-19998: a git source locked to one commit is a pin, checked out at that commit.
+              elif isinstance(source, dict) and set(source) == {"git"} and isinstance(source["git"], str):
+                  repository, _, commit = source["git"].partition("#")
+                  expected = f"https://github.com/OmniNode-ai/{name.replace('-', '_')}.git"
+                  if repository.split("?", 1)[0] == expected and re.fullmatch(r"[0-9a-f]{40}", commit):
+                      ref = commit
+              if ref is None:
+                  print(f"::error::{name}: source={sources!r}, entries={len(entries)}; a released or commit-pinned source is required (a sibling's moving dev branch is never an integration target).")
+                  failed = True
+                  continue
+              pins[output] = entries[0]["version"]
+              pins[output.replace("_version", "_ref")] = ref
+          if failed:
+              raise SystemExit(1)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output_file:
+              for key, version in pins.items():
+                  line = f"{key}={version}"
+                  print(line)
+                  print(line, file=output_file)
           PY
-
-      - name: Checkout omnibase_infra at the locked release tag
+      - name: Checkout omnibase_infra at the locked release
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: OmniNode-ai/omnibase_infra
-          ref: ${{ env.INFRA_RUNTIME_REF }}
+          ref: ${{ steps.pins.outputs.infra_ref }}
           path: infra
 
       - name: Require Docker Compose (fail, never skip)
@@ -137,7 +115,7 @@ jobs:
       - name: Build the composed omnimarket runtime image
         run: |
           set -euo pipefail
-          docker build -f market/docker/Dockerfile.runtime \
+          docker build -f market/Dockerfile.runtime \
             --build-arg INFRA_RUNTIME_IMAGE=omnibase-infra-local-runtime:latest \
             --build-arg OMNIMARKET_VCS_REF=${{ github.sha }} \
             -t omnibase-infra-local-omnimarket-runtime:latest market

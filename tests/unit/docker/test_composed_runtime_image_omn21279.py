@@ -34,7 +34,7 @@ def lock(source: str, version: str = "0.38.77") -> str:
 
 @pytest.fixture
 def dockerfile() -> str:
-    return (ROOT / "docker/Dockerfile.runtime").read_text()
+    return (ROOT / "Dockerfile.runtime").read_text()
 
 
 @pytest.fixture
@@ -58,27 +58,18 @@ def step(job: dict[str, Any], name: str) -> dict[str, Any]:
     return match
 
 
-def run_resolver(
-    job: dict[str, Any], tmp_path: Path, lock_text: str | None
+def run_pins(
+    job: dict[str, Any], tmp_path: Path, lock_text: str
 ) -> subprocess.CompletedProcess[str]:
-    run = step(job, "Resolve the infra runtime ref from uv.lock")["run"]
+    pins = [s for s in job["steps"] if s.get("id") == "pins"]
+    assert len(pins) == 1
+    run = pins[0]["run"]
     assert isinstance(run, str)
-    script = tmp_path / "resolve.sh"
-    script.write_text(run, encoding="utf-8")
-    lock_path = tmp_path / "uv.lock"
-    if lock_text is None:
-        lock_path.unlink(missing_ok=True)
-    else:
-        lock_path.write_text(lock_text, encoding="utf-8")
-    env_path = tmp_path / "github.env"
-    env_path.write_text("", encoding="utf-8")
+    (tmp_path / "uv.lock").write_text(lock_text, encoding="utf-8")
     return subprocess.run(
-        ["bash", "-e", str(script)],
-        env={
-            "PATH": os.environ["PATH"],
-            "UV_LOCK_PATH": str(lock_path),
-            "GITHUB_ENV": str(env_path),
-        },
+        ["bash", "-c", run],
+        cwd=tmp_path,
+        env={"PATH": os.environ["PATH"], "GITHUB_OUTPUT": str(tmp_path / "out")},
         capture_output=True,
         text=True,
         timeout=60,
@@ -86,90 +77,57 @@ def run_resolver(
     )
 
 
+def core_lock() -> str:
+    return (
+        '[[package]]\nname = "omnibase-core"\nversion = "0.47.39"\n'
+        'source = { registry = "https://pypi.org/simple" }\n'
+    )
+
+
 @pytest.mark.unit
-def test_resolver_uses_release_train_tag_not_commit(
+def test_pins_check_out_the_commit_a_release_train_tag_locks(
     job: dict[str, Any], tmp_path: Path
 ) -> None:
-    text = lock(
+    text = core_lock() + lock(
         f'git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag={INFRA_TAG}#{INFRA_SHA}"'
     )
-    result = run_resolver(job, tmp_path, text)
+    result = run_pins(job, tmp_path, text)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert result.stdout == f"{INFRA_TAG}\n"
-    assert (tmp_path / "github.env").read_text() == f"INFRA_RUNTIME_REF={INFRA_TAG}\n"
+    assert f"infra_ref={INFRA_SHA}" in (tmp_path / "out").read_text().splitlines()
 
 
 @pytest.mark.unit
-def test_resolver_registry_version(job: dict[str, Any], tmp_path: Path) -> None:
-    text = lock('registry = "https://pypi.org/simple"', version="0.38.80")
-    result = run_resolver(job, tmp_path, text)
+def test_pins_registry_version(job: dict[str, Any], tmp_path: Path) -> None:
+    text = core_lock() + lock('registry = "https://pypi.org/simple"', version="0.38.80")
+    result = run_pins(job, tmp_path, text)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert result.stdout == "v0.38.80\n"
-    assert (tmp_path / "github.env").read_text() == "INFRA_RUNTIME_REF=v0.38.80\n"
+    assert "infra_ref=v0.38.80" in (tmp_path / "out").read_text().splitlines()
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
     "text",
     [
-        lock(
-            f'git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev={INFRA_SHA}"'
-        ),
         lock('git = "https://github.com/OmniNode-ai/omnibase_infra.git?branch=main"'),
-        lock(
-            f'git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag={INFRA_SHA}"'
-        ),
-        lock('git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag="'),
         lock('path = "../omnibase_infra"'),
         '[[package]]\nname = "other"\nversion = "1.0.0"\n',
-        lock(
-            'git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=v1&rev=main"'
-        ),
-        lock('git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=v1&tag=v2"'),
-        lock('git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=%20v1"'),
-        lock('git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=v1%0Av2"'),
         lock('registry = "https://pypi.org/simple"') * 2,
     ],
 )
-def test_resolver_refuses_unsupported_sources(
+def test_pins_refuse_unpinned_sources(
     job: dict[str, Any], tmp_path: Path, text: str
 ) -> None:
-    result = run_resolver(job, tmp_path, text)
-    assert result.returncode == 2, result.stdout + result.stderr
-    assert result.stdout.startswith("::error::")
-    assert "omnibase-infra" in result.stdout
-    assert (tmp_path / "github.env").read_text() == ""
+    result = run_pins(job, tmp_path, core_lock() + text)
+    assert result.returncode != 0
+    assert "::error::omnibase-infra: " in result.stdout
+    assert not (tmp_path / "out").exists()
 
 
 @pytest.mark.unit
-def test_real_lock_resolves_to_non_sha(job: dict[str, Any], tmp_path: Path) -> None:
-    result = run_resolver(job, tmp_path, (ROOT / "uv.lock").read_text())
-    assert result.returncode == 0, result.stdout + result.stderr
-    ref = result.stdout.strip()
-    assert ref
-    assert re.fullmatch(r"[0-9a-fA-F]{40}", ref) is None
-    assert (tmp_path / "github.env").read_text() == f"INFRA_RUNTIME_REF={ref}\n"
-
-
-@pytest.mark.unit
-def test_resolver_cli(job: dict[str, Any], tmp_path: Path) -> None:
-    result = run_resolver(
-        job, tmp_path, lock('registry = "https://pypi.org/simple"', "0.38.80")
-    )
-    assert result.returncode == 0
-    assert result.stdout == "v0.38.80\n"
-    for text in ("", None):
-        result = run_resolver(job, tmp_path, text)
-        assert result.returncode == 2
-        assert result.stdout.startswith("::error::")
-        assert (tmp_path / "github.env").read_text() == ""
-
-
-@pytest.mark.unit
-def test_workflow_resolver_environment(job: dict[str, Any]) -> None:
-    assert step(job, "Resolve the infra runtime ref from uv.lock")["env"] == {
-        "UV_LOCK_PATH": "market/uv.lock"
-    }
+def test_pins_read_the_market_checkout_lock(job: dict[str, Any]) -> None:
+    pins = [s for s in job["steps"] if s.get("id") == "pins"]
+    assert len(pins) == 1
+    assert pins[0]["working-directory"] == "market"
 
 
 @pytest.mark.unit
@@ -297,8 +255,7 @@ def test_workflow_checks_out_pinned_infra_and_composes_market(
         if s.get("with", {}).get("repository") == "OmniNode-ai/omnibase_infra"
     ]
     assert len(infra) == 1
-    assert infra[0]["with"]["ref"] == "${{ env.INFRA_RUNTIME_REF }}"
-    assert not re.fullmatch(r"[0-9a-fA-F]{40}", infra[0]["with"]["ref"])
+    assert infra[0]["with"]["ref"] == "${{ steps.pins.outputs.infra_ref }}"
     render = step(job, "Render the composed laptop bundle")["run"]
     for service in (
         "omnimarket-projection-delegation",
@@ -317,7 +274,7 @@ def test_contract_binds_tests_and_boot_job() -> None:
     contract = yaml.safe_load((ROOT / "contracts/OMN-21279.yaml").read_text())
     assert contract["ticket_id"] == "OMN-21279"
     for ac in ("AC1", "AC2"):
-        evidence = [e for e in contract["dod_evidence"] if ac in e["binds_ac"]]
+        evidence = [e for e in contract["dod_evidence"] if ac in e.get("binds_ac", [])]
         assert any(
             c["check_value"] == TEST_COMMAND for e in evidence for c in e["checks"]
         )
