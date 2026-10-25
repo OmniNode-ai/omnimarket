@@ -186,6 +186,11 @@ requirements:
     acceptance:
       - id: "AC34"
         statement: "AC34: a controller item whose install record carries a branch_until ahead of now yields state OK with one note naming the source and expiry and no finding; the same item at or after branch_until, with an unparseable branch_until, or with no recorded hold yields MISSING; a hold on the controller never excuses another surface -- falsifier: uv run pytest tests/nodes/node_silent_failure_alarm_compute/test_running_vs_merged_branch_hold.py -q fails at the merge base"
+  - id: "req-tenant-projection-writers-off-main"
+    statement: "Every in-process writer whose tables resolve to the tenant_projection binding under the checked-in topology is owned by tenant-projection or a projection-writer-* profile, never by main, effects or workers, so a lab runtime-main, which has no tenant_projection credential, does not wire it at boot."
+    acceptance:
+      - id: "AC35"
+        statement: "AC35: projection_delegation_disposition, projection_delegation_eval, projection_metering_summary, projection_provider_quota and projection_routing_feedback declare runtime_profiles [tenant-projection], and the derived check over every node contract finds no in-process tenant_projection writer owned by a shared runtime -- falsifier: uv run pytest tests/unit/runtime/test_omn19998_tenant_projection_writers_leave_main.py -q fails at the merge base, naming those five"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -202,6 +207,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The lane queue start decision tests, built from the 2026-10-23 recorded queue."
     command: "uv run pytest tests/nodes/node_lane_queue_start_decision_compute -q"
+  - kind: "tests"
+    description: "In-process tenant_projection writers stay off the shared runtimes."
+    command: "uv run pytest tests/unit/runtime/test_omn19998_tenant_projection_writers_leave_main.py tests/unit/runtime/test_omn17556_tenant_projection_profile_is_permanent.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -803,3 +811,19 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           uv run python -c 'from datetime import datetime, timezone; from omnimarket.nodes.node_silent_failure_alarm_compute.handlers.handler_running_vs_merged_alarm import HandlerRunningVsMergedAlarm, request_from_fleet; item={"key": "controller:landing-controller", "kind": "controller", "observed": "behind", "verdict": "DRIFT", "first_seen_at": "2026-10-25T01:00:00Z", "install_record": {"branch_until": "2026-10-25T08:24:49Z", "branch_source": "probe"}}; fleet={"folded_at": "2026-10-25T08:24:48Z", "hosts": [{"host": "probe", "open": [item]}]}; h=HandlerRunningVsMergedAlarm(); live=h.handle(request_from_fleet(fleet, datetime(2026, 10, 25, 8, 24, 48, tzinfo=timezone.utc))); expired=h.handle(request_from_fleet(fleet, datetime(2026, 10, 25, 8, 24, 49, tzinfo=timezone.utc))); assert live.state == "OK" and not live.findings and live.acknowledged[0].level == "note"; assert expired.state == "MISSING" and expired.findings and not expired.acknowledged'
+  - id: "dod-omn19998-tenant-projection-writers-off-main"
+    description: "The derived check finds every in-process tenant_projection writer and requires a credential-holding profile; at the merge base it fails naming the five contracts owned by main."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/runtime/test_omn19998_tenant_projection_writers_leave_main.py tests/unit/runtime/test_omn17556_tenant_projection_profile_is_permanent.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC35"]
+  - id: "dod-omn19998-tenant-writers-deploy-probe"
+    description: "Hosted-runner readback loads the five installed contracts and requires runtime_profiles [tenant-projection] on each; the previous package declares main or nothing and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run python -c 'from importlib.resources import files; import yaml; names=["delegation_disposition", "delegation_eval", "metering_summary", "provider_quota", "routing_feedback"]; got={n: yaml.safe_load((files("omnimarket.nodes.node_projection_" + n) / "contract.yaml").read_text()).get("runtime_profiles") for n in names}; assert all(v == ["tenant-projection"] for v in got.values()), got'
+        cwd: "${OMNI_HOME}/omnimarket"
