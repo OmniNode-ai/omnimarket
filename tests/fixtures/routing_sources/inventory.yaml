@@ -135,6 +135,8 @@ not_routing_resolution_sites:
     reason: whether a deployment enables the lab SLI pack; an on or off switch for four nodes, not a route for delegated work
   - site: "src/omnimarket/nodes/node_host_capability_compute/handlers/handler_host_capability.py:find_node_overlay('lab_hosts')"
     reason: names the overlay file in an error message when the host registry root is not configured; it locates the host registry the capability reader reads and selects no route for delegated work
+  - site: "src/omnimarket/nodes/node_codex_sandbox_probe_compute/handlers/handler_codex_sandbox_probe.py:find_node_overlay('repos')"
+    reason: names the overlay file in an error message when repos.private_data is not configured; the clone name supplies sandbox writable roots and selects no route for delegated work
   - site: "src/omnimarket/nodes/node_landing_lease_claim_close_effect/handlers/handler_landing_lease_claim_close.py:resolve_setting(LANDING_CONTROLLER_OVERLAY)"
     reason: the ticket ids the landing controller writes into its CLAIM and TERMINAL ledger rows; a ledger cell, not a route for delegated work
   - site: "src/omnimarket/nodes/node_install_superset_guard_effect/handlers/handler_install_superset_cli.py:resolve_setting(PLUGIN_INSTALL_OVERLAY)"

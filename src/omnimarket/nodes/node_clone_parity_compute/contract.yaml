@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_clone_parity_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Render registry clone parity diagnostics and repairs, and name a stray core.worktree failure.
+input_model:
+  name: ModelCloneParityRequest
+  module: omnimarket.nodes.node_clone_parity_compute.models.model_clone_parity
+output_model:
+  name: ModelCloneParityResult
+  module: omnimarket.nodes.node_clone_parity_compute.models.model_clone_parity
+handler:
+  module: omnimarket.nodes.node_clone_parity_compute.handlers.handler_clone_parity
+  class: HandlerCloneParity
+  input_model: omnimarket.nodes.node_clone_parity_compute.models.model_clone_parity.ModelCloneParityRequest
+  output_model: omnimarket.nodes.node_clone_parity_compute.models.model_clone_parity.ModelCloneParityResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_clone_parity_compute.handlers.handler_clone_parity:HandlerCloneParity
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerCloneParity
+      module: omnimarket.nodes.node_clone_parity_compute.handlers.handler_clone_parity
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation with a typed request.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local
+  description: Render registry clone parity diagnostics and repairs, and name a stray core.worktree failure.
+  author: OmniNode Team
+  created: '2026-10-25'
+  tags:
+  - compute
+  - clone-parity-compute
+  - OMN-21328
+  related_tickets:
+  - OMN-21328

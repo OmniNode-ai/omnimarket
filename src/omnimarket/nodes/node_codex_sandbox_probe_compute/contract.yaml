@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_codex_sandbox_probe_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Render the shared Codex sandbox roots and write probe for the remote lane runner and placement pool.
+input_model:
+  name: ModelCodexSandboxProbeRequest
+  module: omnimarket.nodes.node_codex_sandbox_probe_compute.models.model_codex_sandbox_probe
+output_model:
+  name: ModelCodexSandboxProbeResult
+  module: omnimarket.nodes.node_codex_sandbox_probe_compute.models.model_codex_sandbox_probe
+handler:
+  module: omnimarket.nodes.node_codex_sandbox_probe_compute.handlers.handler_codex_sandbox_probe
+  class: HandlerCodexSandboxProbe
+  input_model: omnimarket.nodes.node_codex_sandbox_probe_compute.models.model_codex_sandbox_probe.ModelCodexSandboxProbeRequest
+  output_model: omnimarket.nodes.node_codex_sandbox_probe_compute.models.model_codex_sandbox_probe.ModelCodexSandboxProbeResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_codex_sandbox_probe_compute.handlers.handler_codex_sandbox_probe:HandlerCodexSandboxProbe
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerCodexSandboxProbe
+      module: omnimarket.nodes.node_codex_sandbox_probe_compute.handlers.handler_codex_sandbox_probe
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation with a typed request.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local
+  description: Render the shared Codex sandbox roots and write probe for the remote lane runner and placement pool.
+  author: OmniNode Team
+  created: '2026-10-25'
+  tags:
+  - compute
+  - codex-sandbox-probe-compute
+  - OMN-21328
+  related_tickets:
+  - OMN-21328
