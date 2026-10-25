@@ -54,6 +54,22 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn21396-merge-attribution-producers"
+    description: >
+      Deploy check: actual executor identity stamps result and TERMINAL cells
+      together, overriding model-authored identity; missing or malformed executor
+      facts refuse. The historical reader recognizes configured per-host accounts as host only,
+      joins a successful worker result to cost engine and host, excludes failed
+      or future workers, resolves the closing attempt rather than a reused lane's
+      first model, and distinguishes automation and person provenance from engine
+      evidence. Hermetic hosted-runner check against the checked-out package; no
+      broker, host credentials or production access. Fails before this change.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_execution_attribution_compute tests/nodes/node_merge_attribution_compute tests/nodes/node_landing_lease_claim_close_effect -q --no-cov --refuse-skips"
+        cwd: "."
   - id: "dod-omn21396-disabled-added-backend"
     description: >
       Deploy check: a complete added backend explicitly disabled by endpoint_url:
