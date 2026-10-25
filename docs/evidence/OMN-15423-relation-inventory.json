@@ -97,7 +97,7 @@
     "extension": 1,
     "function": 15,
     "sequence": 37,
-    "table": 116,
+    "table": 117,
     "view": 10
   },
   "relations": [
@@ -3979,6 +3979,63 @@
     },
     {
       "accessor_nodes": [
+        "node_projection_delegation_capability_map",
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_delegation_capability_map/migrations/0000_create_delegation_capability_cells.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "classified",
+      "constraints": [
+        "delegation_capability_cells_n_check",
+        "delegation_capability_cells_passes_check",
+        "delegation_capability_cells_size_band_check",
+        "delegation_capability_cells_verdict_check"
+      ],
+      "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_projection_delegation_capability_map/contract.yaml"
+      ],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [],
+      "dependent_objects": [],
+      "domain": "TENANT",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [
+        "SELECT TO app_dashboard",
+        "SELECT, INSERT, UPDATE TO tenant_projection_writer"
+      ],
+      "indexes": [],
+      "internal_tenant_column_transform": null,
+      "keys": [
+        "PRIMARY KEY (tenant_id, map_run_id, model_key, backend_id, configuration_id, task_class, size_band)"
+      ],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_projection_delegation_capability_map",
+      "name": "delegation_capability_cells",
+      "owner_declaration": "node_projection_delegation_capability_map",
+      "partitioning": [],
+      "producer": "node_projection_delegation_capability_map",
+      "readers": [
+        "node_projection_delegation_capability_map",
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "target_schema": "public",
+      "writers": [
+        "node_projection_delegation_capability_map",
+        "service:omnimarket_projection_migration_runner"
+      ]
+    },
+    {
+      "accessor_nodes": [
         "node_projection_delegation_disposition",
         "service:omnimarket_projection_migration_runner"
       ],
@@ -4137,6 +4194,7 @@
       "readers": [
         "node_delegation_eval_orchestrator",
         "node_delegation_eval_run_orchestrator",
+        "node_projection_delegation_capability_map",
         "node_projection_delegation_eval",
         "service:omnimarket_projection_migration_runner"
       ],
@@ -4286,6 +4344,7 @@
         "node_projection_baselines",
         "node_projection_cost_by_repo",
         "node_projection_delegation",
+        "node_projection_delegation_capability_map",
         "node_projection_delegation_disposition",
         "node_projection_dod_verdict",
         "node_projection_live_events",
@@ -9883,8 +9942,8 @@
     "parity_status": "blocked",
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
-    "source_created_tables": 107,
-    "source_declared_tables": 116
+    "source_created_tables": 108,
+    "source_declared_tables": 117
   },
   "runtime_evidence": {
     "dsn_key_provenance": {
@@ -9900,7 +9959,7 @@
       "status": "blocked"
     },
     "live_catalog_parity": {
-      "reason": "repository sources contain 107 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-0-table gap require an authorized catalog read",
+      "reason": "repository sources contain 108 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-0-table gap require an authorized catalog read",
       "status": "blocked"
     }
   },
