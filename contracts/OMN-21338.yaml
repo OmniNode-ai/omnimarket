@@ -46,7 +46,7 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn21338-ac3-deploy-probe"
-    description: "Read-only lab proof is recorded in the PR Lab line: the projection's own database parity read for 2026-10-18 through 2026-10-24 reports only 2026-10-24 exact, with 10,614 matching rows and no backfill. Other days remain failures. A recorded database-only fixture row reproduces the spool-only escape in six failing cases before this change. These checks prevent new fixture contamination; a future post-deploy day receipt is still required, and no historical mismatch is removed or ignored. The command check runs without network on the hosted runner and fails unless the checked-out guard refuses a test's shared-broker target before spooling."
+    description: "Read-only lab proof is recorded in the PR Lab line: the projection's own database parity read for 2026-10-18 through 2026-10-24 reports only 2026-10-24 exact, with 10,614 matching rows and no backfill. Other days remain failures. A recorded database-only fixture row reproduces the spool-only escape in six failing cases before this change. These checks prevent new fixture contamination; a future post-deploy day receipt is still required, and no historical mismatch is removed or ignored. The hosted deploy probe runs the checked-out stdlib-only guard in an ephemeral Python 3.12 container with its source mounted read-only and networking disabled. Both test signals must refuse a shared-broker target with exit 79 for every spool-only spelling; ordinary runtime and loopback controls must still exit 0. The probe requires no package installation, credentials, shared container or lab route, and fails against the guard before the spool-only exemption was removed."
     source: "manual"
     checks:
       - check_type: "test_passes"
@@ -54,19 +54,36 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
         check_value: |
-          uv run python - <<'PY'
+          docker run --rm -i --network none --read-only \
+            --label com.docker.compose.project=landing-l16944-lab \
+            --mount "type=bind,src=$PWD/src/omnimarket/nodes/node_work_ledger_emit_effect/handlers/handler_work_ledger_emit_guard.py,dst=/probe/guard.py,readonly" \
+            --env PYTHONDONTWRITEBYTECODE=1 \
+            python:3.12-slim@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704 \
+            python - <<'PY'
           import os
           import subprocess
           import sys
 
-          env = dict(os.environ, ONEX_TEST_CONTEXT="1", KAFKA_BOOTSTRAP_SERVERS="broker.lab.internal:9092", ONEX_EMIT_EFFECT_SPOOL_ONLY="true")
-          result = subprocess.run(
-              [sys.executable, "-m", "omnimarket.nodes.node_work_ledger_emit_effect.handlers.handler_work_ledger_emit_guard"],
-              env=env, capture_output=True, text=True,
-          )
-          assert result.returncode == 79, (result.returncode, result.stdout, result.stderr)
-          assert "ledger-test-write-guard" in result.stderr
-          print("PASS: shared-broker test refused before spooling, including spool-only mode")
+          def probe(signal, broker, spool_only, expected):
+              env = dict(os.environ, KAFKA_BOOTSTRAP_SERVERS=broker, ONEX_EMIT_EFFECT_SPOOL_ONLY=spool_only)
+              env.pop("PYTEST_CURRENT_TEST", None)
+              env.pop("ONEX_TEST_CONTEXT", None)
+              if signal:
+                  env[signal] = "1"
+              result = subprocess.run(
+                  [sys.executable, "/probe/guard.py"],
+                  env=env, capture_output=True, text=True, timeout=5,
+              )
+              assert result.returncode == expected, (signal, broker, spool_only, result.returncode, result.stdout, result.stderr)
+              if expected == 79:
+                  assert "ledger-test-write-guard" in result.stderr
+
+          for spool_only in ("1", "true", "yes", "on", " TRUE "):
+              for signal in ("ONEX_TEST_CONTEXT", "PYTEST_CURRENT_TEST"):
+                  probe(signal, "broker.lab.internal:9092", spool_only, 79)
+                  probe(signal, "127.0.0.1:9092", spool_only, 0)
+              probe(None, "broker.lab.internal:9092", spool_only, 0)
+          print("PASS: 10 shared-broker test refusals; 10 loopback and 5 runtime controls allowed")
           PY
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
