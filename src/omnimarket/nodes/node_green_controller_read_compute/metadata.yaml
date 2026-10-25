@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_green_controller_read_compute
+version: 1.0.0
+description: "Read which green heads the landing controller's newest facts say are not green-landable."
+pack: operator_tooling
+node_role: compute
+display_name: Green Controller Read Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_green_controller_read_compute: omnimarket.nodes.node_green_controller_read_compute
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- green-controller-read-compute
+- OMN-21411

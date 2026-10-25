@@ -1,0 +1,45 @@
+name: node_script_node_src_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >
+  Which node source a plugin script runs against. Reads the script's own node imports (from-imports, imports, and
+  importlib.import_module of a literal with its attribute reads) and answers the first candidate source that defines
+  every module and name it takes, or the names each candidate lacks. The same reading is the plugin validator's check
+  that a script's node imports resolve against the commit it ships in (OMN-17427). Pure: it reads source files and
+  imports nothing from them.
+input_model:
+  name: ModelScriptNodeSrcRequest
+  module: omnimarket.nodes.node_script_node_src_compute.models
+output_model:
+  name: ModelScriptNodeSrcResult
+  module: omnimarket.nodes.node_script_node_src_compute.models
+handler:
+  module: omnimarket.nodes.node_script_node_src_compute.handler
+  class: HandlerScriptNodeSrc
+  input_model: omnimarket.nodes.node_script_node_src_compute.models.ModelScriptNodeSrcRequest
+  output_model: omnimarket.nodes.node_script_node_src_compute.models.ModelScriptNodeSrcResult
+entrypoint:
+  name: NodeScriptNodeSrcCompute
+  module: omnimarket.nodes.node_script_node_src_compute.node
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_script_node_src_compute.handler:HandlerScriptNodeSrc
+  handlers:
+    - operation: resolve
+      topic: onex.cmd.omnimarket.script-node-src-requested.v1
+      handler:
+        name: HandlerScriptNodeSrc
+        module: omnimarket.nodes.node_script_node_src_compute.handler
+terminal_event: onex.evt.omnimarket.script-node-src-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.script-node-src-requested.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.script-node-src-requested.v1]
+  publish_topics: [onex.evt.omnimarket.script-node-src-completed.v1]
+metadata:
+  transport_type: inmemory
+  related_tickets: [OMN-17427]
+externally_consumed_topics:
+- onex.evt.omnimarket.script-node-src-completed.v1
