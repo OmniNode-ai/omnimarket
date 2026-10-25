@@ -1,0 +1,72 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20894"
+title: "Operator reply check, silent-turn guard and lab-only agent dispatch gate"
+summary: >-
+  The operator reply check (local path in remote mode, bare ticket id) is pinned by the ticket's own
+  falsifiers in tests/test_remote_reply_check.py. The same node now also refuses assistant text in a
+  silent turn (a turn whose prompt starts "Silence tick", or a silent mode the operator set) unless it
+  is one line starting with DECISION, APPROVAL, CREDENTIAL, RESTORE FAILED, M4 RED or LAB DOWN, and
+  refuses a Workflow or Agent call whose ROUTE line says dest=mac while the lab pool reports a free
+  slot, naming the remote-lane runner command. The logic lives in the operator access mode node; the
+  user-level hook installer registers the new PreToolUse matchers and no plugin file changes.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-operator-reply-check"
+    statement: "A reply to the operator with a local path or a bare ticket id is refused in remote mode, a path passes at the terminal, and a named id passes."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: in remote mode a reply with a local path or a bare ticket id is refused -- falsifier: uv run pytest tests/test_remote_reply_check.py -k refuses_in_remote"
+      - id: "AC2"
+        statement: "AC2: in terminal mode the same reply passes -- falsifier: uv run pytest tests/test_remote_reply_check.py -k allows_at_terminal"
+      - id: "AC3"
+        statement: "AC3: a ticket id with its plain name beside it passes in remote mode -- falsifier: uv run pytest tests/test_remote_reply_check.py -k named_id_passes"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC3: the reply check pinned by the ticket's falsifiers."
+    command: "uv run pytest tests/test_remote_reply_check.py -q -p no:randomly --no-cov"
+  - kind: "tests"
+    description: "Silent-turn guard and lab dispatch gate, written failing-first: both test files fail at the merge base on the missing modules."
+    command: "uv run pytest tests/nodes/node_operator_access_mode_effect/test_silence_guard.py tests/nodes/node_operator_access_mode_effect/test_lab_dispatch_gate.py -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20894-ac1-refuses-in-remote"
+    description: "AC1: in remote mode a local path and a bare ticket id are each refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_remote_reply_check.py -q -p no:randomly --no-cov -k refuses_in_remote"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20894-ac2-allows-at-terminal"
+    description: "AC2: at the terminal the same local-path reply passes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_remote_reply_check.py -q -p no:randomly --no-cov -k allows_at_terminal"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20894-ac3-named-id-passes"
+    description: "AC3: a ticket id with its plain name beside it passes in remote mode."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_remote_reply_check.py -q -p no:randomly --no-cov -k named_id_passes"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20894-silence-and-lab-dispatch"
+    description: "The silent-turn guard and the lab dispatch gate: both test files import modules absent at the merge base, so they fail there and pass at the head. Hosted deploy probe: the installer at the checked-out commit registers the Workflow and Agent matchers; the grep exits nonzero at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_operator_access_mode_effect/test_silence_guard.py tests/nodes/node_operator_access_mode_effect/test_lab_dispatch_gate.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "grep -c 'SendUserMessage|Workflow|Agent' src/omnimarket/nodes/node_operator_access_mode_effect/handlers/handler_operator_hooks_installer.py"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
