@@ -1,17 +1,17 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-17427: north-mini takes first-choice traffic alongside the ultra rung.
+"""OMN-17427: north-mini retains its spread placement beside the parked Ultra.
 
 RULING 2026-09-30T15:09:11Z: no model is a fallback-only rung. The committed
 contracts place north-mini as an equally weighted spread peer after it received
 zero attempts in seven days as the last declared cheap_frontier model. Read
-those contracts through the production parsers and exercise the reducer's pick;
-the same correlation keys without placement must all land on ultra.
+those contracts through the production parsers and exercise the reducer's pick.
+OMN-20376 parks Ultra as explicit-pin-only, so every ordinary first choice lands
+on north-mini; without placement, the tier has no ordinary rung.
 """
 
 from __future__ import annotations
 
-from collections import Counter
 from collections.abc import Generator
 from pathlib import Path
 from uuid import NAMESPACE_DNS, uuid5
@@ -36,7 +36,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
 from omnimarket.routing.backend_placement import (
     apply_backend_placements,
     spread_groups,
-    spread_pick,
     spread_weights,
 )
 
@@ -134,14 +133,23 @@ def test_code_generation_first_choices_split_evenly_with_placement(
 ) -> None:
     config, placed, backends = committed
     refs = _first_choices(apply_backend_placements(config, placed), placed, backends)
-    assert refs == [(_RUNG, _PEER)[spread_pick(str(key), [1.0, 1.0])] for key in _KEYS]
-    counts = Counter(refs)
-    assert set(counts) == {_RUNG, _PEER}
-    assert 0.4 <= counts[_PEER] / len(_KEYS) <= 0.6, counts
-    # Positive control: the same keys without placement all choose ultra.
-    assert _first_choices(apply_backend_placements(config, ()), (), backends) == [
-        _RUNG
-    ] * len(_KEYS)
+    assert refs == [_PEER] * len(_KEYS)
+    # Without placement, only pin-only Ultra remains: even with credentials
+    # relaxed, the same keys cannot select an ordinary first choice.
+    assert backends[_RUNG].explicit_pin_only is True
+    models = _free_tier(apply_backend_placements(config, ())).models
+    for key in _KEYS:
+        assert (
+            routing._select_model_for_task(
+                models,
+                "code_generation",
+                100,
+                backends,
+                require_credential=False,
+                spread_key=str(key),
+            )
+            is None
+        )
 
 
 def test_the_mirrored_peer_does_not_offer_code_review(

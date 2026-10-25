@@ -524,6 +524,11 @@ backends:
     # Zero cost is paid for in availability, not dollars.
     model_name: "nvidia/nemotron-3-ultra-550b-a55b:free"
     secret_ref: llm.openrouter.api_key
+    # Parked 2026-10-25: 6 of 10 accepted on the cheap_frontier smoke, under the
+    # bar of 7 (tests/fixtures/cheap_frontier_smokes_2026_10_25.json). The
+    # endpoint stays so an explicit pin, the default judge, can still reach it;
+    # the ordinary ladder cannot.
+    explicit_pin_only: true
     # OMN-17372: this backend's `api_key_env: OPENROUTER_API_KEY` was deleted
     # along with every other one in this file. A customer reaches OpenRouter on
     # THEIR key, resolved per-tenant from the managed store; the house env var
