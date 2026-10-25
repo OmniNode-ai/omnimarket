@@ -1,0 +1,77 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21310"
+title: "A slow first rung's provider call outlasts the chain budget, so every later rung is recorded with negative time and never sent"
+summary: >
+  The effect child's endpoint timeout started when the child reported ready,
+  so its boot was spent on top of the rung's cut and a slow first rung used
+  the time kept for the rungs after it; every later rung was then recorded as
+  an attempt with negative time left and never sent. Each call on a rung with
+  a deadline is now bounded on the wall clock, boot included, by that
+  deadline less the kill grace. A rung reached with less than
+  rung_floor_seconds left is not sent and not recorded as an attempt; the
+  result names it under skipped_rungs, and a run with no rung left ends
+  failed with the typed cause timeout.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21310-call-capped"
+    statement: "A provider call ends by its rung's deadline, boot included."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: each provider call's timeout is capped at the chain's remaining time minus the reserve kept for the rungs after it, so a hanging first rung is cancelled in time for the next rung"
+  - id: "req-omn21310-skip-not-attempt"
+    statement: "A rung reached under its floor is skipped, named, and not recorded as an attempt."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: a rung that is reached with less than rung_floor_seconds left is not recorded as an attempt of that model; the receipt names the skip instead of listing a rejected attempt"
+  - id: "req-omn21310-second-rung-real-call"
+    statement: "After a timed-out first rung, the second rung makes a real provider call."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: the same 3,200-word code_generation prompt rerun with OpenRouter first, then Gemini and OpenAI, reaches a real call on the second rung when the first times out"
+evidence_requirements:
+  - kind: "tests"
+    description: "Rung call cap and skipped-rung tests pass"
+    command: "uv run pytest tests/unit/delegation/test_rung_call_timeout_capped.py -q --no-cov -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21310-ac1-hanging-first-rung-cut"
+    description: "The first rung runs through a real (forked) effect child process whose boot is held for 2 s and whose provider stub then hangs, on the real clock. Its call, boot included, ends before the chain has only the second rung's floor left, and the second rung is sent and answers. Fails at the merge base, where the child's boot is spent on top of the cut."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_rung_call_timeout_capped.py -q --no-cov -p no:randomly -k hanging_first_rung"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21310-ac2-skipped-rung-named"
+    description: "A rung reached with 5 s of its 45 s floor left is not sent and has no attempt entry; the result names it under skipped_rungs and the next rung answers. With no rung left, the run fails with terminal_failure_cause timeout and no negative-time attempt. Fails at the merge base, which records a rung-deadline refusal as an attempt."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_rung_call_timeout_capped.py -q --no-cov -p no:randomly -k skipped_rung"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21310-ac3-second-rung-real-call"
+    description: "The reported shape through real effect child processes: the first rung's child boots for 5 s and then hangs, the second rung's provider answers HTTP 503, the third answers. Attempt 2 carries the provider's 503, not a rung-deadline refusal. Fails at the merge base, where attempt 2 is a rung-deadline refusal with negative time left."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_rung_call_timeout_capped.py -q --no-cov -p no:randomly -k real_provider_call"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21310-deploy-probe"
+    description: "Deploy probe. Read the dispatch port from GitHub at the checked-out commit and require the wall-clock call cap in it, with the AC1 test. It fails at the merge base, which has no such cap."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_rung_call_timeout_capped.py -q --no-cov -p no:randomly -k hanging_first_rung"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"def _rung_call_cap_seconds\" > /dev/null'"
+        cwd: "${OMNI_HOME}/omnimarket"
