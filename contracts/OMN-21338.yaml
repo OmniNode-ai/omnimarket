@@ -30,7 +30,7 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-omn21338-ac1-json-window"
-    description: "A JSON export row is counted only inside the inclusive UTC window: both outside boundaries are dropped, both endpoints kept, an in-window extra and an in-window backfill still block an exact receipt, and a malformed timestamp exits 2 with no report or receipt. The original JSON-window patch recorded 12 failures before that fix; these controls already pass at this lane's base."
+    description: "A JSON export row is counted only inside the inclusive UTC window: both outside boundaries are dropped, both endpoints kept, an in-window extra and an in-window backfill still block an exact receipt, and a malformed timestamp exits 2 with no report or receipt. 12 of the 14 cases fail at the merge base."
     source: "manual"
     checks:
       - check_type: "test_passes"
@@ -38,7 +38,7 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn21338-ac2-roll-boundary"
-    description: "A generated archive-roll header never joins the row before it: repeated batches keep exact rows and hashes, continuation text around a boundary keeps its bytes, and every inconsistent or lookalike header stays visible as row content. The original roll-boundary patch recorded 3 failures before that fix; these controls already pass at this lane's base; the projection parity, branch-claim handler and resolution tests and the branch-claim and work-ledger-query golden chains still pass."
+    description: "A generated archive-roll header never joins the row before it: repeated batches keep exact rows and hashes, continuation text around a boundary keeps its bytes, and every inconsistent or lookalike header stays visible as row content. 3 of the 25 cases fail at the merge base; the projection parity, branch-claim handler and resolution tests and the branch-claim and work-ledger-query golden chains still pass."
     source: "manual"
     checks:
       - check_type: "test_passes"
