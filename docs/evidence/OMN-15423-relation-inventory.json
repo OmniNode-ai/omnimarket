@@ -4341,6 +4341,7 @@
         "node_llm_delegation_call_effect",
         "node_measured_model_selection_compute",
         "node_metering_summary_compute",
+        "node_plugin_walk_evidence_effect",
         "node_projection_baselines",
         "node_projection_cost_by_repo",
         "node_projection_delegation",
@@ -6094,6 +6095,7 @@
       "producer": "node_projection_llm_cost",
       "readers": [
         "node_generation_consumer",
+        "node_plugin_walk_evidence_effect",
         "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",

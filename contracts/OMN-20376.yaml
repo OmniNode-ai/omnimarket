@@ -80,7 +80,6 @@ dod_evidence:
       captures with the criterion falsifiers.
     source: "manual"
     execution_scope: "local_done_gate"
-    binds_ac: []
     checks:
       - check_type: "command"
         check_value: >-
