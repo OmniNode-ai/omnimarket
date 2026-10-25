@@ -61,6 +61,11 @@ requirements:
     acceptance:
       - id: "AC12"
         statement: "AC12: omnimarket's plan_ticket_backlog admits an open unassigned ticket in project Sprint 2026-10-26 → 2026-11-01 with an unchecked AC1 criterion on 2026-10-25 as sprint-next, keeps the closed, other-owner, out-of-scope (RULING 2026-10-17T20:42:15Z), dashboard (RULING 2026-10-01T10:53:36Z), open-pr and claimed exclusions, and records one drop reason for every ticket it does not admit -- falsifier: uv run pytest tests/unit/handlers/test_rules_lab_fill_tickets_omn20864.py fails at the merge base, which has no rules_lab_fill_tickets module"
+  - id: "req-session-source-relation-inventory"
+    statement: "The generated application-relation inventory reflects the live session source's declared readers."
+    acceptance:
+      - id: "AC13"
+        statement: "AC13: the source-derived inventory lists node_session_context_sources_effect as an accessor and reader of session_content and work_ledger_rows, including its contract source, and the checked-in inventory matches the generator."
 evidence_requirements:
   - kind: "tests"
     description: "AC1, AC3, AC-M1 and AC-M8: lab-fill selection and the dispatch plan."
@@ -193,3 +198,18 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/handlers/test_rules_lab_fill_tickets_omn20864.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC12"]
+  - id: "dod-omn20864-ac13-relation-inventory"
+    description: "AC13: the generated inventory matches the repository's ownership declarations and source readers, with the existing ownership and migration controls retained."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC13"]
+  - id: "dod-omn20864-deploy-relation-inventory"
+    description: "Pre-merge deploy check: rebuilding the application-relation inventory from the head's packaged node contracts and Python sources must match the checked-in artifact. No database or credentials are required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/generate_application_relation_inventory.py --check"
+        cwd: "."
