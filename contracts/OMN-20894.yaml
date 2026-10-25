@@ -1,13 +1,15 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-20894"
-title: "Operator reply check pinned by the ticket falsifiers"
+title: "Operator reply check, silent-turn guard and lab-only agent dispatch gate"
 summary: >-
-  The operator reply check refuses a reply to the operator that holds a local path or a bare ticket
-  id when the access mode is remote, and does nothing at the terminal. The check was merged before
-  this change, so this change adds no product code: tests/test_remote_reply_check.py pins it with the
-  ticket's own falsifiers, and the three criteria bind to those tests. The diff holds only a test
-  file and this contract, so the merge-base control has no earlier product behaviour to run against.
+  The operator reply check (local path in remote mode, bare ticket id) is pinned by the ticket's own
+  falsifiers in tests/test_remote_reply_check.py. The same node now also refuses assistant text in a
+  silent turn (a turn whose prompt starts "Silence tick", or a silent mode the operator set) unless it
+  is one line starting with DECISION, APPROVAL, CREDENTIAL, RESTORE FAILED, M4 RED or LAB DOWN, and
+  refuses a Workflow or Agent call whose ROUTE line says dest=mac while the lab pool reports a free
+  slot, naming the remote-lane runner command. The logic lives in the operator access mode node; the
+  user-level hook installer registers the new PreToolUse matchers and no plugin file changes.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -25,32 +27,46 @@ evidence_requirements:
   - kind: "tests"
     description: "AC1 to AC3: the reply check pinned by the ticket's falsifiers."
     command: "uv run pytest tests/test_remote_reply_check.py -q -p no:randomly --no-cov"
+  - kind: "tests"
+    description: "Silent-turn guard and lab dispatch gate, written failing-first: both test files fail at the merge base on the missing modules."
+    command: "uv run pytest tests/nodes/node_operator_access_mode_effect/test_silence_guard.py tests/nodes/node_operator_access_mode_effect/test_lab_dispatch_gate.py -q -p no:randomly --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-omn20894-ac1-refuses-in-remote"
-    description: "AC1: in remote mode a local path and a bare ticket id are each refused."
+    description: "AC1: in remote mode a local path and a bare ticket id are each refused, also through the stop hook after an allowed silent-turn verdict (absent at the merge base, so the run fails there)."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_remote_reply_check.py -q -p no:randomly --no-cov -k refuses_in_remote"
+        check_value: "uv run pytest tests/test_remote_reply_check.py tests/nodes/node_operator_access_mode_effect/test_silence_guard.py -q -p no:randomly --no-cov -k refuses_in_remote"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn20894-ac2-allows-at-terminal"
-    description: "AC2: at the terminal the same local-path reply passes."
+    description: "AC2: at the terminal the same local-path reply passes, also through the stop hook after an allowed silent-turn verdict (absent at the merge base, so the run fails there)."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_remote_reply_check.py -q -p no:randomly --no-cov -k allows_at_terminal"
+        check_value: "uv run pytest tests/test_remote_reply_check.py tests/nodes/node_operator_access_mode_effect/test_silence_guard.py -q -p no:randomly --no-cov -k allows_at_terminal"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn20894-ac3-named-id-passes"
-    description: "AC3: a ticket id with its plain name beside it passes in remote mode."
+    description: "AC3: a ticket id with its plain name beside it passes in remote mode, also through the stop hook after an allowed silent-turn verdict (absent at the merge base, so the run fails there)."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_remote_reply_check.py -q -p no:randomly --no-cov -k named_id_passes"
+        check_value: "uv run pytest tests/test_remote_reply_check.py tests/nodes/node_operator_access_mode_effect/test_silence_guard.py -q -p no:randomly --no-cov -k named_id_passes"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn20894-silence-and-lab-dispatch"
+    description: "The silent-turn guard and the lab dispatch gate: both test files import modules absent at the merge base, so they fail there and pass at the head. Hosted deploy probe: gh api reads the hook installer at the checked-out commit and finds the PreToolUse matcher with Workflow and Agent; at the merge base the matcher ends at SendUserMessage, so the read finds nothing and the check exits nonzero."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_operator_access_mode_effect/test_silence_guard.py tests/nodes/node_operator_access_mode_effect/test_lab_dispatch_gate.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_operator_access_mode_effect/handlers/handler_operator_hooks_installer.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"SendUserMessage|Workflow|Agent)\" > /dev/null'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
