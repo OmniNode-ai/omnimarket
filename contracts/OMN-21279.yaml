@@ -11,6 +11,9 @@ summary: >-
   must report the market version in this checkout's pyproject.toml. Infra's own
   removal and layering check remain infra-side obligations; this contract binds
   the market-owned composition that lets infra stop installing market.
+  The SCM CLI additionally hosts its selected market contract through the
+  canonical dispatcher when explicitly using the in-memory bus. This path
+  needs neither an infra runtime image nor Bifrost bootstrap configuration.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -37,6 +40,21 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn-21279-deploy-inprocess-scm-terminal
+    description: >-
+      Hosted deploy-scope smoke for the in-process SCM entrypoint: run the real
+      CLI, contract discovery, handler resolver, dispatch engine and in-memory
+      transport. A PR-create dry run returns its completed terminal without
+      Bifrost runtime configuration; a close without a claim is still refused
+      on the failure terminal. The gateway returns recorded paginated threads
+      and reports boundary failures as failed. This fails at the merge base
+      with no_terminal. This supplements the image/layering evidence below;
+      the ticket's infra-side acceptance criteria remain unchanged.
+    source: generated
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/handlers/scm/test_onex_scm_inprocess.py -q -n 0 --refuse-skips
   - id: dod-omn-21279-ac1-market-owns-composed-image
     description: >-
       AC1, infra-side criterion supported by this omnimarket PR: moving market's
