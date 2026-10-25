@@ -1,0 +1,75 @@
+---
+name: projection_delegation_capability_map
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+# OMN-17556 / OMN-19998: writes a TENANT-domain table through the
+# tenant_projection binding, whose credential only the tenant-projection
+# writer holds, so this contract stays off main.
+runtime_profiles: [tenant-projection]
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.models.delegation_capability_map.model_capability_map_run_recorded.ModelCapabilityMapRunRecorded
+description: >
+  OMN-20169 (plan task RS.5). Rule-7a projection of the delegation capability
+  map, one row per tenant, map run, model, backend, configuration, task class
+  and size band. A content-free map-run event (verdict rows and the serving
+  assignments they are admitted under) is folded in process by the pure
+  HandlerDelegationCapabilityMap (definition B: no clock, database, broker or
+  model call); a row is admissible only when its six-field identity matches
+  the serving assignment of its model, backend and configuration (OMN-18537),
+  and a row with no configuration is not. Each cell carries n, passes, the
+  Wilson 95 percent interval, the range evaluator's decision bound, the class
+  floor, the required n and its MET, MISSED or REFUSED verdict. Map runs never
+  pool, and a redelivered run writes no row. The best and next-best
+  configuration per model, backend, class and band is a deterministic read of
+  MET cells; the offline grid (at most eight configurations) runs only from the
+  lab command, never on a live request. Routing reads this table (RS.6);
+  no dashboard widget is in scope.
+handler:
+  module: omnimarket.nodes.node_projection_delegation_capability_map.handlers.handler_projection_delegation_capability_map
+  class: HandlerProjectionDelegationCapabilityMap
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    # Only the effect writer is routed; it calls the pure fold in process (rule 7a).
+    - operation: delegation_capability_map_projection_writer
+      handler:
+        name: HandlerDelegationCapabilityMapWriter
+        module: omnimarket.nodes.node_projection_delegation_capability_map.handlers.handler_delegation_capability_map_writer
+      handler_module: omnimarket.nodes.node_projection_delegation_capability_map.handlers.handler_delegation_capability_map_writer
+terminal_event: onex.evt.omnimarket.projection-delegation-capability-map-applied.v1
+golden_path:
+  - "Validate the content-free, producer-timed map-run event"
+  - "Fold its verdict rows into cells without I/O or a clock"
+  - "Upsert each cell under the run's tenant only when its observed_at is newer"
+  - "Count persisted and refused rows as handled"
+dod_evidence:
+  - test: tests/test_golden_chain_projection_delegation_capability_map.py::test_the_writer_declares_in_process_dispatch
+    description: "The runtime dispatches the effect writer"
+  - test: tests/test_golden_chain_projection_delegation_capability_map.py::test_a_map_run_writes_one_row_per_cell
+    description: "A map run writes one row per cell under its tenant"
+  - test: tests/test_golden_chain_projection_delegation_capability_map.py::test_a_redelivered_run_writes_no_row_and_still_counts_as_handled
+    description: "A redelivered run writes no row and never reports zero rows handled"
+db_io:
+  db_tables:
+    - name: delegation_capability_cells
+      database_ref: application
+      schema: public
+      migration: "0000_create_delegation_capability_cells.sql"
+      access: read_write
+      role: delegation_capability_cells
+  dedupe_key: [tenant_id, map_run_id, model_key, backend_id, configuration_id, task_class, size_band]
+  ordering_key: observed_at
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.delegation-capability-map-run-recorded.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-delegation-capability-map-applied.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-delegation-capability-map-malformed.v1
+externally_produced_topics:
+  - topic: onex.evt.omnimarket.delegation-capability-map-run-recorded.v1
+    producer: "the offline map run, python -m omnimarket.nodes.node_projection_delegation_capability_map.lab_run, not a node contract"
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-delegation-capability-map-applied.v1
+metadata:
+  transport_type: kafka
