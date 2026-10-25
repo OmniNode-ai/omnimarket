@@ -68,7 +68,7 @@ dod_evidence:
     binds_ac: ["AC3"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_execution_attribution_compute tests/nodes/node_merge_attribution_compute tests/nodes/node_landing_lease_claim_close_effect -q --no-cov --refuse-skips"
+        check_value: "uv run pytest tests/nodes/node_execution_attribution_compute/test_execution_attribution.py tests/nodes/node_merge_attribution_compute/test_merge_attribution.py tests/nodes/node_landing_lease_claim_close_effect/test_golden_chain_landing_lease_claim_close.py -q --no-cov --refuse-skips"
         cwd: "."
   - id: "dod-omn21396-disabled-added-backend"
     description: >
