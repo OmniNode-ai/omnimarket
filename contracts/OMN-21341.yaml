@@ -155,7 +155,7 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn21341-deploy-hook-deadline-runtime"
-    description: "Hosted deploy smoke: run the installed onex-claude-code-hook console entry for the shipped compaction binding under a process timeout equal to the binding deadline_ms, as the rendered module does, with a receipt-mode client that answers nothing and returns only when its deadline passes. Require exit 0, empty stdout (the native fallback) and the max_mode line on stderr. Before the change the client waited the full deadline after startup and the timeout killed the process. No lane services, credentials, or production install are required."
+    description: "Hosted deploy smoke: copy the shipped adapter contract, changing only the compaction binding deadline_ms to 5000 through the existing CLI contract override, and run the installed onex-claude-code-hook console entry under the matching 5-second process timeout. The receipt-mode client answers nothing and returns only when its deadline passes. Require exit 0, empty stdout (the native fallback) and the max_mode line on stderr. The shorter deadline lets both the head and the merge-base timeout reach a verdict inside the verifier 30-second budget. Before the change the client waited the full deadline after startup and the timeout killed the process. No lane services, credentials, or production install are required."
     source: "manual"
     checks:
       - check_type: "command"
@@ -172,9 +172,20 @@ dod_evidence:
                   return ()
           PY
           runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
-          deadline_s="$(uv run --locked python -c 'from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_client_bindings_loader import load_client_section; (b,) = [b for b in load_client_section().bindings if b.name == "compaction"]; print(b.deadline_ms // 1000)')";
+          "$runtime_bin/python" - "$probe_dir/contract.yaml" <<'PY'
+          import sys
+          from pathlib import Path
+          import yaml
+          from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_client_bindings_loader import CONTRACT_PATH
+          contract = yaml.safe_load(CONTRACT_PATH.read_text())
+          (binding,) = [b for b in contract["client_bindings"]["claude_code"]["bindings"] if b["name"] == "compaction"]
+          print(f"shipped_deadline_ms={binding['deadline_ms']} probe_deadline_ms=5000")
+          binding["deadline_ms"] = 5000
+          Path(sys.argv[1]).write_text(yaml.safe_dump(contract))
+          PY
+          deadline_s=5;
           rc=0;
-          echo '{"session_id":"s","cwd":"/tmp","trigger":"manual"}' | env PYTHONPATH="$probe_dir" ONEX_HOOK_RECEIPT_CLIENT=silent_receipt_client:SilentClient timeout "$deadline_s" "$runtime_bin/onex-claude-code-hook" --binding compaction > "$probe_dir/out" 2> "$probe_dir/err" || rc=$?;
+          echo '{"session_id":"s","cwd":"/tmp","trigger":"manual"}' | env PYTHONPATH="$probe_dir" ONEX_CLAUDE_CODE_ADAPTER_CONTRACT="$probe_dir/contract.yaml" ONEX_HOOK_RECEIPT_CLIENT=silent_receipt_client:SilentClient timeout "$deadline_s" "$runtime_bin/onex-claude-code-hook" --binding compaction > "$probe_dir/out" 2> "$probe_dir/err" || rc=$?;
           echo "exit=$rc deadline_s=$deadline_s stdout_bytes=$(wc -c < "$probe_dir/out")";
           cat "$probe_dir/err";
           test "$rc" -eq 0;
