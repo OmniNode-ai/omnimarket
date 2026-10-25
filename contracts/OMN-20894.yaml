@@ -36,27 +36,27 @@ emergency_bypass:
   follow_up_ticket_id: ""
 dod_evidence:
   - id: "dod-omn20894-ac1-refuses-in-remote"
-    description: "AC1: in remote mode a local path and a bare ticket id are each refused."
+    description: "AC1: in remote mode a local path and a bare ticket id are each refused, also through the stop hook after an allowed silent-turn verdict (absent at the merge base, so the run fails there)."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_remote_reply_check.py -q -p no:randomly --no-cov -k refuses_in_remote"
+        check_value: "uv run pytest tests/test_remote_reply_check.py tests/nodes/node_operator_access_mode_effect/test_silence_guard.py -q -p no:randomly --no-cov -k refuses_in_remote"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn20894-ac2-allows-at-terminal"
-    description: "AC2: at the terminal the same local-path reply passes."
+    description: "AC2: at the terminal the same local-path reply passes, also through the stop hook after an allowed silent-turn verdict (absent at the merge base, so the run fails there)."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_remote_reply_check.py -q -p no:randomly --no-cov -k allows_at_terminal"
+        check_value: "uv run pytest tests/test_remote_reply_check.py tests/nodes/node_operator_access_mode_effect/test_silence_guard.py -q -p no:randomly --no-cov -k allows_at_terminal"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn20894-ac3-named-id-passes"
-    description: "AC3: a ticket id with its plain name beside it passes in remote mode."
+    description: "AC3: a ticket id with its plain name beside it passes in remote mode, also through the stop hook after an allowed silent-turn verdict (absent at the merge base, so the run fails there)."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_remote_reply_check.py -q -p no:randomly --no-cov -k named_id_passes"
+        check_value: "uv run pytest tests/test_remote_reply_check.py tests/nodes/node_operator_access_mode_effect/test_silence_guard.py -q -p no:randomly --no-cov -k named_id_passes"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-omn20894-silence-and-lab-dispatch"

@@ -531,3 +531,27 @@ def test_allowed_silence_verdict_still_runs_existing_reply_check(
     assert "paste" in body["reason"].lower()
     first = _stop(payload, "Done. See /tmp/report.md", environ)
     _assert_blocked(first)
+
+
+def test_silent_turn_reply_with_local_path_refuses_in_remote(tmp_path: Path) -> None:
+    environ = _environ("remote_bridge", tmp_path)
+    _, payload = _sample("remote_bridge")
+    _prompt(payload, "Silence tick", environ)
+    body = json.loads(_stop(payload, "DECISION: see /tmp/report.md", environ).stdout)
+    assert body["decision"] == "block"
+    assert "part that matters" in body["reason"].lower()
+
+
+def test_silent_turn_reply_with_local_path_allows_at_terminal(tmp_path: Path) -> None:
+    environ = _environ("local_cli", tmp_path)
+    _, payload = _sample("local_cli")
+    _prompt(payload, "Silence tick", environ)
+    assert _stop(payload, "DECISION: see /tmp/report.md", environ).stdout == ""
+
+
+def test_silent_turn_named_id_passes_in_remote(tmp_path: Path) -> None:
+    environ = _environ("remote_bridge", tmp_path)
+    _, payload = _sample("remote_bridge")
+    _prompt(payload, "Silence tick", environ)
+    reply = "DECISION: merge the operator reply check (OMN-20894)"
+    assert _stop(payload, reply, environ).stdout == ""
