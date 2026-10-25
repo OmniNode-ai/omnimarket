@@ -1,0 +1,75 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21409"
+title: "S4b: node_idle_slot_fill_effect moves to omnimarket with its private lists in the overlay"
+summary: >-
+  Slice S4b of the scripts migration moves node_idle_slot_fill_effect into
+  omnimarket in its canonical node shape (contract, metadata, handlers, models,
+  node.py, cloud_backlog.py) with its tests under tests/nodes/. The packaged
+  cloud_backlog.json and experiments.json are not carried over: the repository
+  names, the cloud backlog declaration and the experiment designs are read from
+  the idle_slot_fill overlay (and the repos overlay for repository roles), and
+  a key that no overlay supplies refuses naming the key. The four command and
+  event topics are declared in the omnimarket namespace. The plugin callers are
+  repointed and the plugin copy is deleted in the later plugin release of this
+  slice (S4c).
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn21409-node-shape"
+    statement: >-
+      The omnimarket node holds contract, handler, models, node and
+      cloud_backlog.py and neither packaged JSON file.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the omnimarket node holds contract, handler, models, node and cloud_backlog.py and neither JSON file -- falsifier: git ls-tree -r --name-only lists cloud_backlog.json or experiments.json"
+  - id: "req-omn21409-topics"
+    statement: "No file in this repository names a topic of the internal plugin namespace."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: no file in the four repositories names an onex.cmd or onex.evt topic of the internal plugin repository -- falsifier: git grep -l on the topic prefix of that repository prints a file"
+  - id: "req-omn21409-overlay"
+    statement: "Each idle_slot_fill key refuses naming the key when no overlay supplies it, and the moved tests pass."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: with the overlay root empty each idle_slot_fill key raises naming the key, and the moved tests test_idle_slot_fill_node, test_idle_turn_guard and test_cloud_backlog_fill pass -- falsifier: uv run pytest tests -q -k idle_slot_fill fails"
+evidence_requirements:
+  - kind: "tests"
+    description: "S4b: the moved idle-slot-fill tests and the overlay refusal tests pass in omnimarket."
+    command: "uv run pytest tests -q -k idle_slot_fill"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21409-ac1-node-shape"
+    description: "The node directory lists its contract, handler, models, node and cloud_backlog.py, and the tree lists neither cloud_backlog.json nor experiments.json. Fails at the merge base, which has no such node directory."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "command"
+        check_value: "test -f src/omnimarket/nodes/node_idle_slot_fill_effect/contract.yaml -a -f src/omnimarket/nodes/node_idle_slot_fill_effect/handlers/handler_idle_slot_fill.py -a -f src/omnimarket/nodes/node_idle_slot_fill_effect/models/model_idle_slot_fill.py -a -f src/omnimarket/nodes/node_idle_slot_fill_effect/node.py -a -f src/omnimarket/nodes/node_idle_slot_fill_effect/cloud_backlog.py"
+      - check_type: "command"
+        check_value: "test -z \"$(git ls-tree -r --name-only HEAD | grep -E '(cloud_backlog|experiments)[.]json$')\""
+  - id: "dod-omn21409-ac2-topics"
+    description: "No tracked file in this repository names an onex.cmd or onex.evt topic of the internal plugin namespace. The pattern is written with a bracket so this contract does not match itself."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "command"
+        check_value: "test -z \"$(git grep -l -E 'onex[.](cmd|evt)[.]omniclaude-in[t]ernal')\""
+  - id: "dod-omn21409-ac3-overlay-refusals"
+    description: "Every idle_slot_fill key refuses naming itself with the overlay root empty, and the moved test_idle_slot_fill_node, test_idle_turn_guard and test_cloud_backlog_fill pass. Fails at the merge base, which has none of these tests."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests -q -k idle_slot_fill"
+  - id: "dod-omn21409-deploy-import"
+    description: "Hosted deploy check, runnable on the hosted runner with no lab route, broker or database: the node package imports from the installed omnimarket and resolves its onex.nodes entry point. Fails at the merge base, where the package and entry point are absent."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run --locked python -c \"from importlib.metadata import entry_points; eps={e.name: e for e in entry_points(group='onex.nodes')}; eps['node_idle_slot_fill_effect'].load()\""
