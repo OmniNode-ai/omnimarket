@@ -28,6 +28,18 @@ requirements:
         statement: 'AC1: the layering check refuses omnimarket named in Dockerfile.runtime, any CI install step or any test fixture of omnibase_infra -- falsifier: pytest of the layering check over fixture Dockerfile and workflow lines'
       - id: AC2
         statement: 'AC2: Dockerfile.runtime installs no omnimarket and the runtime still boots -- falsifier: the runtime-boot-smoke job on the PR head, plus the layering pytest over the real file'
+  - id: req-inprocess-scm-terminal
+    statement: >-
+      The SCM CLI hosts its selected contract on the in-memory bus before
+      publishing a command, without external runtime bootstrap configuration.
+    acceptance:
+      - id: AC3
+        statement: >-
+          AC3: in-memory SCM commands return real terminal envelopes: PR-create
+          dry runs complete without Bifrost configuration, closing without a
+          claim fails, gateway reads return paginated threads, and gateway
+          boundary failures fail -- falsifier: uv run pytest
+          tests/unit/handlers/scm/test_onex_scm_inprocess.py -q -n 0 --refuse-skips --maxfail=1
 evidence_requirements:
   - kind: tests
     description: >-
@@ -54,7 +66,10 @@ dod_evidence:
     execution_scope: hosted_and_local
     checks:
       - check_type: test_passes
-        check_value: uv run pytest tests/unit/handlers/scm/test_onex_scm_inprocess.py -q -n 0 --refuse-skips
+        check_value: uv run pytest tests/unit/handlers/scm/test_onex_scm_inprocess.py -q -n 0 --refuse-skips --maxfail=1
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac:
+      - "AC3"
   - id: dod-omn-21279-ac1-market-owns-composed-image
     description: >-
       AC1, infra-side criterion supported by this omnimarket PR: moving market's
