@@ -297,7 +297,7 @@ def test_history_rejects_ambiguous_ranges(changes: dict[str, object]) -> None:
 def test_ingest_migration_does_not_backfill_historical_authority() -> None:
     path = (
         Path(__file__).parents[1]
-        / "src/omnimarket/nodes/node_projection_work_ledger/migrations/0005_work_ledger_ingested_at.sql"
+        / "src/omnimarket/nodes/node_projection_work_ledger/migrations/0006_work_ledger_ingested_at.sql"
     )
     sql = path.read_text().lower()
     assert "add column if not exists ingested_at timestamptz" in sql

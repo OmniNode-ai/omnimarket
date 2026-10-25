@@ -42,14 +42,24 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/test_work_ledger_history_query.py -q
+- id: dod-history-ac2-hosted-suite
+  description: 'AC2 hosted leg: the history query tests and the existing work-ledger query regressions
+    this pull request changes pass at its head and fail at the merge base, where the history API is absent.
+    The exact-head green read is the local_done_gate item dod-history-ac2-exact-head-ci.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_work_ledger_history_query.py tests/test_golden_chain_work_ledger_query.py
+      tests/test_work_ledger_query_inmemory_bus.py -q
 - id: dod-history-ac2-exact-head-ci
   description: 'AC2 release proof: a fresh authoritative watcher snapshot must report every required check
     green at this worktree head for ONEX_PR_NUMBER. This runs after CI finishes; it cannot truthfully
-    certify its own in-progress hosted job. Missing or stale evidence fails.'
+    certify its own in-progress hosted job. Missing or stale evidence fails. It binds no criterion because
+    the hosted must-fail control never runs a local_done_gate item; AC2 is bound by dod-history-ac2-hosted-suite.'
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC2
   checks:
   - check_type: command
     check_value: 'python - <<''PYCI''

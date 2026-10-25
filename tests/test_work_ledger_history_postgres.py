@@ -73,7 +73,7 @@ def database() -> Iterator[tuple[Any, str]]:
 def migrate(conn: Any, schema: str) -> None:
     with conn.cursor() as cursor:
         cursor.execute(
-            (MIGRATIONS / "0005_work_ledger_ingested_at.sql")
+            (MIGRATIONS / "0006_work_ledger_ingested_at.sql")
             .read_text()
             .replace("omninode_internal.", f"{schema}.")
         )
