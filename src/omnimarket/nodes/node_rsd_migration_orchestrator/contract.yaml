@@ -26,8 +26,8 @@ node_version: "0.1.0"
 description: >
   Runs one RSD migration: resolves the code_generation task class from the
   task_class_authority registry entry, runs one delegated code edit loop that
-  writes the new node and its tests, registers the node's onex.nodes entry point
-  when the loop is accepted, checks the canonical node shape, and writes
+  writes the new node and its tests, registers the node's ONEX nodes entry
+  point when the loop is accepted, checks the canonical node shape, and writes
   <state root>/runs/<correlation id>/rsd_migration_receipt.json.
 input_model:
   name: "ModelRsdMigrationTask"

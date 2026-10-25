@@ -11,6 +11,10 @@ import pytest
 from omnimarket.nodes.node_tlc_result_summary_effect.handlers import (
     handler_tlc_result_summary as mod,
 )
+from omnimarket.nodes.node_tlc_result_summary_effect.models import (
+    ModelTlcResultSummaryRequest,
+    ModelTlcResultSummaryResult,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -46,3 +50,15 @@ def test_main_cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert code == 0
     out = capsys.readouterr().out
     assert "m |  | Invariant Inv1 is violated" in out
+
+
+def test_handler_returns_typed_result(tmp_path: Path) -> None:
+    results = tmp_path / "results"
+    results.mkdir()
+    (results / "m.out").write_text("Invariant Inv1 is violated\n")
+    result = mod.HandlerTlcResultSummary().handle(
+        ModelTlcResultSummaryRequest(run_dir=tmp_path)
+    )
+    assert isinstance(result, ModelTlcResultSummaryResult)
+    assert result.rows == tuple(mod.summarize_run_directory(tmp_path))
+    assert len(result.rows) == 1

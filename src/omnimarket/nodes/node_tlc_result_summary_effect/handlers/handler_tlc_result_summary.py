@@ -12,6 +12,11 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from omnimarket.nodes.node_tlc_result_summary_effect.models.model_tlc_result_summary import (
+    ModelTlcResultSummaryRequest,
+    ModelTlcResultSummaryResult,
+)
+
 
 def summarize_run_directory(run_dir: Path) -> list[str]:
     """Build one summary line per results/*.out file in *run_dir*."""
@@ -49,8 +54,12 @@ def summarize_run_directory(run_dir: Path) -> list[str]:
 class HandlerTlcResultSummary:
     """Handler that summarizes TLC model checker results."""
 
-    def handle(self, run_dir: Path) -> list[str]:
-        return summarize_run_directory(run_dir)
+    def handle(
+        self, request: ModelTlcResultSummaryRequest
+    ) -> ModelTlcResultSummaryResult:
+        return ModelTlcResultSummaryResult(
+            rows=tuple(summarize_run_directory(request.run_dir))
+        )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
