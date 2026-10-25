@@ -1,0 +1,60 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_execution_attribution_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Stamp actual executor engine, model, host and PR on results and TERMINAL
+  cells without I/O.
+input_model:
+  name: ModelExecutionAttributionRequest
+  module: omnimarket.nodes.node_execution_attribution_compute.models.model_execution_attribution
+  description: Typed supplied executor facts.
+output_model:
+  name: ModelExecutionAttributionResult
+  module: omnimarket.nodes.node_execution_attribution_compute.models.model_execution_attribution
+  description: Result and TERMINAL cells stamped from actual placement.
+handler:
+  module: omnimarket.nodes.node_execution_attribution_compute.handlers.handler_execution_attribution
+  class: HandlerExecutionAttribution
+  input_model: omnimarket.nodes.node_execution_attribution_compute.models.model_execution_attribution.ModelExecutionAttributionRequest
+  output_model: omnimarket.nodes.node_execution_attribution_compute.models.model_execution_attribution.ModelExecutionAttributionResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_execution_attribution_compute.handlers.handler_execution_attribution:HandlerExecutionAttribution
+  handlers:
+  - operation: stamp_execution_attribution
+    handler:
+      name: HandlerExecutionAttribution
+      module: omnimarket.nodes.node_execution_attribution_compute.handlers.handler_execution_attribution
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation with supplied evidence; no I/O.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local
+  description: Stamp actual executor engine, model, host and PR on results and TERMINAL
+    cells without I/O.
+  author: OmniNode Team
+  created: '2026-10-25'
+  tags:
+  - compute
+  - execution-attribution
+  related_tickets:
+  - OMN-21396
