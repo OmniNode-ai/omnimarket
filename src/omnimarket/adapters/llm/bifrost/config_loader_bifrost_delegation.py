@@ -113,8 +113,8 @@ class OverlayBackendIncompleteError(ValueError):
             "An overlay entry that ADDS a backend must validate on its own as a "
             "complete backend declaration and state every field the routing "
             "authority would otherwise default — "
-            f"{', '.join(OVERLAY_ADDED_BACKEND_REQUIRED_FIELDS)} (secret_ref as "
-            "a ref string, or null for an explicit none). Complete the entry in "
+            f"{', '.join(OVERLAY_ADDED_BACKEND_REQUIRED_FIELDS)} (endpoint_url as "
+            "a complete URL, or null to disable; secret_ref as a ref string, or null). Complete the entry in "
             f"{overlay_source}, remove it, or declare the backend in "
             f"{_COMMITTED_CONTRACT_RELPATH} (OMN-17099)."
         )
@@ -123,7 +123,8 @@ class OverlayBackendIncompleteError(ValueError):
 #: Fields an overlay entry must state explicitly to ADD a backend (OMN-17099).
 #: Every one is a field the routing authority either cannot route without or
 #: would otherwise fill from a model default; an added backend is never
-#: defaulted. ``secret_ref`` is required as a KEY — null is an explicit none.
+#: defaulted. ``endpoint_url`` and ``secret_ref`` are required as KEYS: null
+#: explicitly disables the endpoint or declares no credential, respectively.
 OVERLAY_ADDED_BACKEND_REQUIRED_FIELDS: tuple[str, ...] = (
     "provider",
     "endpoint_url",
@@ -165,6 +166,10 @@ def _incomplete_fields(entry: Mapping[str, Any]) -> list[str]:
             problems.append(field_name)
             continue
         value = entry[field_name]
+        # Lane and host-drift renderers use null for serving: false. Keep the
+        # declaration, but let routing exclude it as it excludes a dark base rung.
+        if field_name == "endpoint_url" and value is None:
+            continue
         if field_name in _REQUIRED_NON_BLANK_STRINGS:
             if not isinstance(value, str) or not value.strip():
                 problems.append(field_name)
@@ -203,9 +208,10 @@ def validate_overlay_added_backends(
     accepted only when it validates on its own as a complete
     :class:`ModelDelegationBackendConfig` and explicitly states every field in
     :data:`OVERLAY_ADDED_BACKEND_REQUIRED_FIELDS` — a non-empty ``provider``,
-    ``model_name`` and ``tier``, a COMPLETE ``endpoint_url``, ``timeout_ms``,
-    ``max_tokens``, and the ``secret_ref`` key (a ref, or null for an explicit
-    none).
+    ``model_name`` and ``tier``, an explicit ``endpoint_url`` (a COMPLETE URL,
+    or null for a disabled backend), ``timeout_ms``, ``max_tokens``, and the
+    ``secret_ref`` key (a ref, or null for an explicit none). A missing endpoint
+    key is still refused; a disabled backend still validates every other field.
 
     The OMN-16903 hazard this keeps closed: a hand-written partial row used to
     be appended and then fail whole-config validation with a pydantic

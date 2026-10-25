@@ -54,6 +54,21 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn21396-disabled-added-backend"
+    description: >
+      Deploy check: a complete added backend explicitly disabled by endpoint_url:
+      null loads through file, payload and store readers and is excluded from
+      in-process placement. A healthy local rung remains selectable for document
+      and code_generation tasks. Missing fields and invalid values still refuse.
+      This fails before the fix: disabling a peer refuses the whole ladder.
+      Runs entirely against the checked-out code and temporary fixture files on
+      the hosted runner; no lab endpoint, broker or credential is required.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_disabled_added_backend_omn21396.py tests/unit/routing/test_bifrost_overlay_added_backend_validation_omn17099.py -q --no-cov --refuse-skips"
+        cwd: "."
   - id: "dod-omn21396-ac1-cheapest-rung"
     description: "A small-fix lane with a free local slot is placed on code-edit; the same lane with no local slot is placed on GLM. Fails at the merge base, which has no ladder."
     source: "manual"
@@ -135,6 +150,23 @@ dod_evidence:
           print(json.dumps({"probe": "scm-bus-open-retry", "observed_bus_failures": len(errors), "pending_before_cleanup": pending}, sort_keys=True))
           '
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21396-code-edit-timeout-retries-in-process"
+    description: >
+      Deploy check: a delegated code edit turn sent over the deployed lane that
+      times out or ends with no terminal is retried once on the in-process route,
+      with the same prompt, pin, lane and ticket; a refusal or an in-process
+      timeout is not retried. Measured case: deployed-lane retries after a timeout
+      succeeded 0/32 and in-process retries 17/28; after no terminal 0/12 and 10/10
+      (fill-exp-retry-by-failure-kind-r0437Z). Fails before the change, which
+      returns the first failed reply. Runs against the checked-out code and
+      temporary fixture files on the hosted runner; no lab endpoint, broker or
+      credential is required.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q --no-cov -k 'retried_once_in_process or refusal_is_not_retried or in_process_timeout_is_not_retried or names_both_causes or retry_checks_the_backend_pin'"
+        cwd: "."
   - id: "dod-omn21396-ac6-codex-sandbox-causes"
     description: "Failing-first tests (7 failed at the merge base): the roots lines create and grant $HOME/.local/share/uv by its real path and no parent; each of the four ungrantable capabilities skips the Codex rung with reason sandbox-capability; no capability or docker still places on Codex."
     source: "manual"
