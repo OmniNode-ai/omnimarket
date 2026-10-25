@@ -181,6 +181,11 @@ requirements:
     acceptance:
       - id: "AC33"
         statement: "AC33: node_lane_queue_start_decision_compute, on the queue the ledger recorded on 2026-10-23 (nine lanes, 8 free slots over three hosts, one host full), starts eight lanes urgent class first and holds the ninth for no free slot; holds a lane pinned to the full host as pinned-host-full while 8 slots are free elsewhere; starts an other-class lane on the pool's last free slot when the queued process-fix lane cannot use it; and reopens a relaunch window after 300 s or when the relaunch ended no-host again -- falsifier: uv run pytest tests/nodes/node_lane_queue_start_decision_compute -q fails at the merge base, where the node does not exist"
+  - id: "req-running-vs-merged-honors-controller-branch-hold"
+    statement: "The running-vs-merged decision reads a live recorded controller branch hold (install.sh --branch-hours writes branch_until and branch_source into landing_install.json) as an expected difference: a note naming the hold and its expiry, no MISSING finding and no repair lane, and MISSING again once branch_until has passed."
+    acceptance:
+      - id: "AC34"
+        statement: "AC34: a controller item whose install record carries a branch_until ahead of now yields state OK with one note naming the source and expiry and no finding; the same item at or after branch_until, with an unparseable branch_until, or with no recorded hold yields MISSING; a hold on the controller never excuses another surface -- falsifier: uv run pytest tests/nodes/node_silent_failure_alarm_compute/test_running_vs_merged_branch_hold.py -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -783,3 +788,18 @@ dod_evidence:
         check_value: >-
           uv run python -c 'from importlib.metadata import entry_points; from omnimarket.nodes.node_lane_queue_start_decision_compute.models.model_lane_queue_start_decision import ModelLaneQueueStartRequest as R; e=next(e for e in entry_points(group="onex.nodes") if e.name == "node_lane_queue_start_decision_compute"); e.load(); from omnimarket.nodes.node_lane_queue_start_decision_compute.handlers.handler_lane_queue_start_decision import HandlerLaneQueueStartDecision as H; r=H().handle(R.model_validate({"now": "2026-10-23T14:13:00Z", "priority_classes": ["process-fix", "other"], "entries": [{"lane": "pinned", "model": "sonnet", "priority_class": "other", "enqueued_at": "2026-10-23T11:55:00Z", "updated_at": "2026-10-23T11:55:00Z", "pin": "h200", "pin_strict": True}], "hosts": [{"name": "h200"}, {"name": "h201", "claude_slots": 4}, {"name": "h202", "claude_slots": 4}]})); assert not r.starts and r.held[0].reason_code == "pinned-host-full"'
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19998-running-vs-merged-branch-hold"
+    description: "A live recorded controller branch hold is a note with its expiry and no MISSING line; the same difference is MISSING once branch_until has passed, when it does not parse, or when no hold is recorded."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_silent_failure_alarm_compute/test_running_vs_merged_branch_hold.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC34"]
+  - id: "dod-omn19998-branch-hold-deploy-probe"
+    description: "Hosted-runner probe executes the controller alarm with a live hold and the same hold at expiry; the previous handler reports the live hold as MISSING and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run python -c 'from datetime import datetime, timezone; from omnimarket.nodes.node_silent_failure_alarm_compute.handlers.handler_running_vs_merged_alarm import HandlerRunningVsMergedAlarm, request_from_fleet; item={"key": "controller:landing-controller", "kind": "controller", "observed": "behind", "verdict": "DRIFT", "first_seen_at": "2026-10-25T01:00:00Z", "install_record": {"branch_until": "2026-10-25T08:24:49Z", "branch_source": "probe"}}; fleet={"folded_at": "2026-10-25T08:24:48Z", "hosts": [{"host": "probe", "open": [item]}]}; h=HandlerRunningVsMergedAlarm(); live=h.handle(request_from_fleet(fleet, datetime(2026, 10, 25, 8, 24, 48, tzinfo=timezone.utc))); expired=h.handle(request_from_fleet(fleet, datetime(2026, 10, 25, 8, 24, 49, tzinfo=timezone.utc))); assert live.state == "OK" and not live.findings and live.acknowledged[0].level == "note"; assert expired.state == "MISSING" and expired.findings and not expired.acknowledged'

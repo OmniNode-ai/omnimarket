@@ -16,6 +16,12 @@ units and plist content are host drift too, but not merged code a deploy carries
 own alerts own them. A launchd-plist item counts only when it names installed files that differ
 from the checkout; a diff of the plist's own content is configuration.
 
+A controller that runs a recorded branch install on purpose (install.sh --branch-hours writes
+``branch_until`` and ``branch_source`` into landing_install.json) differs from main as expected: while
+``branch_until`` is ahead of ``now`` the item is a note naming the hold and its expiry, with no
+MISSING finding and no repair. From ``branch_until`` on it is MISSING again. A ``branch_until`` that
+does not parse as YYYY-MM-DDTHH:MM:SSZ holds nothing.
+
 A fold that cannot be read, or one older than ``fleet_max_age_minutes`` (45, three missed
 fifteen-minute checks), is UNKNOWN, never OK: the alarm that checks deploys must not pass because
 the reader that sees them stopped.
@@ -23,8 +29,9 @@ the reader that sees them stopped.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from pydantic import ValidationError
 
@@ -39,6 +46,9 @@ LOOP = "running-vs-merged"
 # The installed files of a launchd lib differ from the canonical checkout; anything else on a
 # launchd-plist item (a "@@" diff) is the plist's own content.
 LIB_MARKERS = ("differs: ", "missing from installed: ", "only in installed: ")
+STAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+# The host-drift fold's own words for a live hold, used when the item carries no install record.
+FOLD_HOLD = re.compile(r"branch-held until (\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ)")
 ADOPT = (
     'python3 "$(ls -d ~/.claude/plugins/cache/omninode-internal/omni/*/skills/adopt-merged'
     ' | sort -V | tail -1)/scripts/adopt_merged.py"'
@@ -67,6 +77,26 @@ def _age(delta: timedelta) -> str:
 
 def _stamp(value: datetime) -> str:
     return value.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _parse_stamp(value: object) -> datetime | None:
+    try:
+        return datetime.strptime(str(value), STAMP_FORMAT).replace(tzinfo=UTC)
+    except ValueError:
+        return None
+
+
+def _hold_from_item(
+    item: Mapping[str, object],
+) -> tuple[datetime | None, str]:
+    """The recorded branch hold of one fold item: its install record, else the fold's own text."""
+    record = item.get("install_record")
+    if isinstance(record, Mapping):
+        return _parse_stamp(record.get("branch_until")), str(
+            record.get("branch_source") or ""
+        )
+    found = FOLD_HOLD.search(str(item.get("observed") or ""))
+    return (_parse_stamp(found.group(1)) if found else None), ""
 
 
 def _surface(item: ModelRunningSurface) -> tuple[str, str] | None:
@@ -136,6 +166,7 @@ class HandlerRunningVsMergedAlarm:
             )
         bound = timedelta(minutes=request.bound_minutes)
         findings: dict[str, ModelRunningVsMergedFinding] = {}
+        held: dict[str, ModelRunningVsMergedFinding] = {}
         for item in request.items:
             age = request.now - item.first_seen_at
             if age <= bound:
@@ -149,16 +180,36 @@ class HandlerRunningVsMergedAlarm:
                 f"{item.host} {item.key} differs from merged main for {_age(age)} "
                 f"(since {_stamp(item.first_seen_at)}): {item.verdict} {item.observed}"
             )
+            if (
+                item.kind == "controller"
+                and item.branch_until is not None
+                and request.now < item.branch_until
+            ):
+                source = f" of {item.branch_source}" if item.branch_source else ""
+                held[loop] = ModelRunningVsMergedFinding(
+                    level="note",
+                    loop=loop,
+                    why=(
+                        f"{item.host} {item.key} runs a recorded branch install{source} until "
+                        f"{_stamp(item.branch_until)} (landing_install.json branch_until); "
+                        f"expected difference, no repair: {why}"
+                    ),
+                    fix="",
+                )
+                continue
             findings.setdefault(
                 loop,
                 ModelRunningVsMergedFinding(
                     level="missing", loop=loop, why=why, fix=fix
                 ),
             )
+        notes = tuple(held[loop] for loop in sorted(held) if loop not in findings)
         if not findings:
-            return ModelRunningVsMergedResult(state="OK")
+            return ModelRunningVsMergedResult(state="OK", acknowledged=notes)
         return ModelRunningVsMergedResult(
-            state="MISSING", findings=tuple(findings[loop] for loop in sorted(findings))
+            state="MISSING",
+            findings=tuple(findings[loop] for loop in sorted(findings)),
+            acknowledged=notes,
         )
 
     @staticmethod
@@ -190,6 +241,7 @@ def request_from_fleet(
             for item in host.get("open") or ():
                 if not isinstance(item, Mapping):
                     raise TypeError("an open item is not an object")
+                until, source = _hold_from_item(item)
                 items.append(
                     ModelRunningSurface(
                         host=str(host["host"]),
@@ -198,6 +250,8 @@ def request_from_fleet(
                         observed=str(item.get("observed") or ""),
                         first_seen_at=item["first_seen_at"],
                         verdict=str(item.get("verdict") or "DRIFT"),
+                        branch_until=until,
+                        branch_source=source,
                     )
                 )
         return ModelRunningVsMergedRequest.model_validate(

@@ -21,6 +21,10 @@ class ModelRunningSurface(BaseModel):
     observed: str = ""
     first_seen_at: AwareDatetime
     verdict: str = "DRIFT"
+    # A recorded branch install on purpose (install.sh --branch-hours writes branch_until and
+    # branch_source into landing_install.json); None when the item carries no readable hold.
+    branch_until: AwareDatetime | None = None
+    branch_source: str = ""
 
 
 class ModelRunningVsMergedRequest(BaseModel):
@@ -40,7 +44,7 @@ class ModelRunningVsMergedRequest(BaseModel):
 class ModelRunningVsMergedFinding(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    level: Literal["missing", "unknown"]
+    level: Literal["missing", "unknown", "note"]
     # The tick's loop name: running-vs-merged:<surface>.
     loop: str
     why: str
@@ -52,3 +56,5 @@ class ModelRunningVsMergedResult(BaseModel):
 
     state: Literal["OK", "MISSING", "UNKNOWN"]
     findings: tuple[ModelRunningVsMergedFinding, ...] = ()
+    # Note-level findings: differences that are expected, such as a live recorded branch hold.
+    acknowledged: tuple[ModelRunningVsMergedFinding, ...] = ()
