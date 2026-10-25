@@ -42,6 +42,14 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_routing_refusal_publishes_a_terminal_omn19919.py -q --no-cov -k zero_attempt"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn21305-ac1-publishes-one-terminal"
+    description: "AC1, the publish half: the refused run publishes exactly one delegate_skill.failed terminal on the node's declared failure topic for its correlation id, whose payload validates as a terminal with cause refused_before_dispatch, beside its one failed row. Shown on the lab host to fail when the refusal path's publish call is removed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_routing_refusal_publishes_a_terminal_omn19919.py -q -n 0 --no-cov -k test_ac1"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
   - id: "dod-omn21305-deploy-probe"
     description: "Hosted-runner deploy readback: dispatch the installed event emitter through the in-process ONEX runtime in its declared spool-only mode, require a successful typed receipt and exactly one persisted event for its session. The regression probe also checks refusal rows, safe YAML parsing and the terminal cleanup deadline. No lane services or credentials are required."
     source: "manual"
