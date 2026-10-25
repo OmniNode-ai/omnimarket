@@ -33,7 +33,7 @@ context_window_tokens: 200000
 reserved_output_tokens: 32000
 reserved_system_tokens: 76738
 latency_budget_ms: 3000
-# Shapes and exemplars load only for a node archetype the caller names.
+# Shapes and exemplars load for a node archetype or lane kind the caller names.
 task_kind_rules:
   - rule_id: archetype_compute
     task_kind: node_compute
@@ -54,4 +54,14 @@ task_kind_rules:
     task_kind: node_orchestrator
     conditions:
       - {scope_field: node_archetype, operator: equals, value: orchestrator}
+    factors: [canonical_shapes, exemplar]
+  # A named lane kind loads shapes and its own kind's exemplar (OMN-21090 A/B: every pack was identical without it).
+  - rule_id: lane_kind_named
+    task_kind: lane_work
+    condition_logic: any
+    conditions:
+      - {scope_field: lane_kind, operator: equals, value: design-build}
+      - {scope_field: lane_kind, operator: equals, value: red-test-fix}
+      - {scope_field: lane_kind, operator: equals, value: review}
+      - {scope_field: lane_kind, operator: equals, value: pr-land}
     factors: [canonical_shapes, exemplar]

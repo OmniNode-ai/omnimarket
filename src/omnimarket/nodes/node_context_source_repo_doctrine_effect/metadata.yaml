@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: context_source_repo_doctrine_effect
+version: "1.0.0"
+description: "Repository doctrine context source: invariants, canonical shapes and lane exemplars."
+omnibase_core_compat: ">=0.47.44,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_secrets: false
+  side_effect_class: filesystem_read
+dependencies:
+  - "omnibase_core>=0.47.44"
+  - "pyyaml>=6.0"
+tags: [effect, context-pack, context-source, repo-doctrine]
+pack: "pipeline"
+display_name: "Effect: Context Source Repo Doctrine"
+node_role: "effect"

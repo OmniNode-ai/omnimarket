@@ -1,0 +1,93 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: context_source_repo_doctrine_effect
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+runtime_profiles: [effects]
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles: [effects]
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.context-source-repo-doctrine-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.context-source-repo-doctrine-completed.v1
+input_model: omnibase_core.models.context.model_context_source_request.ModelContextSourceRequest
+output_model: omnibase_core.models.context.model_context_source_result.ModelContextSourceResult
+description: >
+  Repository doctrine context source. Returns invariant guidance sections,
+  architectural registry principles and applicable ledger rulings for invariants,
+  named guidance sections for canonical shapes, and a merged PR of the caller's
+  lane kind for exemplar. Paths and selection data are declared below.
+handler:
+  module: omnimarket.nodes.node_context_source_repo_doctrine_effect.handlers.handler_context_source_repo_doctrine
+  class: HandlerContextSourceRepoDoctrine
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    - operation: context_source_repo_doctrine_requested
+      topic: onex.cmd.omnimarket.context-source-repo-doctrine-requested.v1
+      message_category: command
+      event_model: omnibase_core.models.context.model_context_source_request.ModelContextSourceRequest
+      handler_module: omnimarket.nodes.node_context_source_repo_doctrine_effect.handlers.handler_context_source_repo_doctrine
+      handler:
+        name: HandlerContextSourceRepoDoctrine
+        module: omnimarket.nodes.node_context_source_repo_doctrine_effect.handlers.handler_context_source_repo_doctrine
+terminal_event: onex.evt.omnimarket.context-source-repo-doctrine-completed.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.context-source-repo-doctrine-requested.v1]
+  publish_topics: [onex.evt.omnimarket.context-source-repo-doctrine-completed.v1]
+  dlq_topics: [onex.dlq.omnimarket.context-source-repo-doctrine-malformed.v1]
+context_source_repo_doctrine:
+  root_env: OMNI_HOME
+  repository_path: "{repository}"
+  documents:
+    - factor: invariants
+      path: "{repository}/CLAUDE.md"
+      headings: ["Repo Invariants", "Repository Invariants"]
+    - factor: canonical_shapes
+      path: "{repository}/CLAUDE.md"
+      headings:
+        - "Adding A Node"
+        - "Development Rules"
+        - "Architecture: Four-Node Pattern"
+        - "Declarative Nodes"
+        - "Handler No-Publish Constraint"
+        - "Pydantic Model Standards"
+  registry_glob: "{repository}/src/{repository}/nodes/node_architectural_invariant_loop/invariants/ARCH-*.yaml"
+  ledger_env: ONEX_LEDGER_PATH
+  ledger_archive_glob: "archive/*.md"
+  max_rulings: 3
+  exemplar:
+    ref: origin/dev
+    fallback_ref: origin/main
+    scan_limit: 200
+    max_files: 25
+    lane_kind_commit_types:
+      design-build: [feat]
+      red-test-fix: [fix, test]
+      review: [fix, refactor, docs]
+      pr-land: [fix, feat]
+golden_path:
+  - "Command arrives with factor, caller scope and revision"
+  - "Resolve contract paths inside the configured root"
+  - "Read invariant sections, registry and applicable rulings, named shapes, or a lane exemplar"
+  - "Return whole entries and provenance on terminal_event"
+dod_evidence:
+  - test: tests/unit/nodes/node_context_source_repo_doctrine_effect/test_context_source_repo_doctrine.py::test_invariants_carry_repo_invariant_sections_whole
+    description: "Repository invariant guidance sections are returned whole"
+  - test: tests/unit/nodes/node_context_source_repo_doctrine_effect/test_context_source_repo_doctrine.py::test_invariants_carry_the_architectural_registry
+    description: "Registry principles are rendered in filename order"
+  - test: tests/unit/nodes/node_context_source_repo_doctrine_effect/test_context_source_repo_doctrine.py::test_invariants_carry_rulings_that_name_the_repository
+    description: "Only applicable rulings are returned, newest first with a cap"
+  - test: tests/unit/nodes/node_context_source_repo_doctrine_effect/test_context_source_repo_doctrine.py::test_canonical_shapes_are_the_named_shape_sections
+    description: "Named canonical shape sections are returned whole"
+  - test: tests/unit/nodes/node_context_source_repo_doctrine_effect/test_context_source_repo_doctrine.py::test_exemplar_is_the_newest_merged_pr_of_the_lane_kind
+    description: "Exemplars match the caller's repository and lane kind"
+metadata:
+  transport_type: kafka
+  related_tickets: [OMN-21090]

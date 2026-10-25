@@ -30,6 +30,9 @@ from omnimarket.nodes.node_context_source_guidance_effect.handlers.handler_conte
 from omnimarket.nodes.node_context_source_ledger_effect.handlers.handler_context_source_ledger import (
     HandlerContextSourceLedger,
 )
+from omnimarket.nodes.node_context_source_repo_doctrine_effect.handlers.handler_context_source_repo_doctrine import (
+    HandlerContextSourceRepoDoctrine,
+)
 from omnimarket.nodes.node_context_source_work_state_effect.handlers.handler_context_source_work_state import (
     HandlerContextSourceWorkState,
 )
@@ -59,6 +62,9 @@ _EXPECTED: dict[EnumContextFactor, type] = {
     EnumContextFactor.REPO_STATE: HandlerSessionContextSources,
     EnumContextFactor.LANE_RULES: HandlerContextSourceGuidance,
     EnumContextFactor.ARCHITECTURE_PATTERNS: HandlerContextSourceGuidance,
+    EnumContextFactor.INVARIANTS: HandlerContextSourceRepoDoctrine,
+    EnumContextFactor.CANONICAL_SHAPES: HandlerContextSourceRepoDoctrine,
+    EnumContextFactor.EXEMPLAR: HandlerContextSourceRepoDoctrine,
 }
 
 
@@ -89,6 +95,9 @@ def test_contract_binds_each_served_factor_to_its_source_node() -> None:
         "repo_state": "node_session_context_sources_effect",
         "lane_rules": "node_context_source_guidance_effect",
         "architecture_patterns": "node_context_source_guidance_effect",
+        "invariants": "node_context_source_repo_doctrine_effect",
+        "canonical_shapes": "node_context_source_repo_doctrine_effect",
+        "exemplar": "node_context_source_repo_doctrine_effect",
     }
 
 
@@ -112,6 +121,11 @@ def test_a_node_bound_to_several_factors_is_one_instance() -> None:
     assert (
         bound[EnumContextFactor.LANE_RULES]
         is bound[EnumContextFactor.ARCHITECTURE_PATTERNS]
+    )
+    assert (
+        bound[EnumContextFactor.INVARIANTS]
+        is bound[EnumContextFactor.CANONICAL_SHAPES]
+        is bound[EnumContextFactor.EXEMPLAR]
     )
 
 

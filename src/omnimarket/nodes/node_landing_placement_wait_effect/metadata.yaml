@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_landing_placement_wait_effect
+version: 1.0.0
+description: Classify deadline kills using placement time and bound missing-result
+  gates.
+pack: pr_lifecycle
+node_role: effect
+display_name: Landing Placement Wait Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_landing_placement_wait_effect: omnimarket.nodes.node_landing_placement_wait_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem_write
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- landing-placement-wait

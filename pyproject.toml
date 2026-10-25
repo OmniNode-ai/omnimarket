@@ -500,6 +500,7 @@ node_context_selection_policy_compute = "omnimarket.nodes.node_context_selection
 node_context_source_ledger_effect = "omnimarket.nodes.node_context_source_ledger_effect"
 node_context_source_work_state_effect = "omnimarket.nodes.node_context_source_work_state_effect"
 node_context_source_guidance_effect = "omnimarket.nodes.node_context_source_guidance_effect"
+node_context_source_repo_doctrine_effect = "omnimarket.nodes.node_context_source_repo_doctrine_effect"
 node_design_plan_context_compute = "omnimarket.nodes.node_design_plan_context_compute"
 node_golden_chain_generator_compute = "omnimarket.nodes.node_golden_chain_generator_compute"
 node_delivery_replay_projection_compute = "omnimarket.nodes.node_delivery_replay_projection_compute"
@@ -995,9 +996,14 @@ node_operator_access_mode_effect = "omnimarket.nodes.node_operator_access_mode_e
 node_silent_failure_alarm_compute = "omnimarket.nodes.node_silent_failure_alarm_compute"
 node_runtime_deploy_effect = "omnimarket.nodes.node_runtime_deploy_effect"
 node_host_memory_admission_compute = "omnimarket.nodes.node_host_memory_admission_compute"
-node_landing_worker_engine_compute = "omnimarket.nodes.node_landing_worker_engine_compute"
+node_install_superset_guard_effect = "omnimarket.nodes.node_install_superset_guard_effect"
+node_landing_lease_claim_close_effect = "omnimarket.nodes.node_landing_lease_claim_close_effect"
+node_landing_not_started_effect = "omnimarket.nodes.node_landing_not_started_effect"
+node_landing_placement_wait_effect = "omnimarket.nodes.node_landing_placement_wait_effect"
 node_landing_tick_bounds_compute = "omnimarket.nodes.node_landing_tick_bounds_compute"
+node_landing_tick_speed_effect = "omnimarket.nodes.node_landing_tick_speed_effect"
 node_landing_upstream_gate_compute = "omnimarket.nodes.node_landing_upstream_gate_compute"
+node_landing_worker_engine_compute = "omnimarket.nodes.node_landing_worker_engine_compute"
 node_merge_sweep_same_head_compute = "omnimarket.nodes.node_merge_sweep_same_head_compute"
 
 [project.scripts]

@@ -47,16 +47,16 @@ output_model:
   module: omnimarket.models.context_pack_orchestrator
 
 handler:
-  module: omnimarket.nodes.node_context_pack_orchestrator.handlers.handler_context_pack_orchestrator
-  class: HandlerContextPackOrchestrator
+  module: omnimarket.nodes.node_context_pack_orchestrator.handlers.handler_context_pack_orchestrator_runtime
+  class: HandlerContextPackOrchestratorRuntime
   input_model: omnimarket.models.context_pack_orchestrator.ModelContextPackCommand
 
 handler_routing:
   routing_strategy: payload_type_match
   handlers:
     - handler:
-        name: HandlerContextPackOrchestrator
-        module: omnimarket.nodes.node_context_pack_orchestrator.handlers.handler_context_pack_orchestrator
+        name: HandlerContextPackOrchestratorRuntime
+        module: omnimarket.nodes.node_context_pack_orchestrator.handlers.handler_context_pack_orchestrator_runtime
       event_model:
         name: ModelContextPackCommand
         module: omnimarket.models.context_pack_orchestrator
@@ -90,6 +90,9 @@ dependencies:
   - name: node_context_source_guidance_effect
     type: node
     optional: false
+  - name: node_context_source_repo_doctrine_effect
+    type: node
+    optional: false
 
 # Binds each factor to the node whose handler serves it; read by tier_source_binding.load_tier_sources.
 context_tier_sources:
@@ -100,6 +103,9 @@ context_tier_sources:
   repo_state: node_session_context_sources_effect
   lane_rules: node_context_source_guidance_effect
   architecture_patterns: node_context_source_guidance_effect
+  invariants: node_context_source_repo_doctrine_effect
+  canonical_shapes: node_context_source_repo_doctrine_effect
+  exemplar: node_context_source_repo_doctrine_effect
 
 capabilities:
   - name: context.pack.build

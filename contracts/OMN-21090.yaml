@@ -1,0 +1,111 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21090"
+title: "Claude Code context service and delegation adapter (compaction mod)"
+summary: "This repository change binds real sources to the agent_spawn context pack tiers that had none: invariants (the repository CLAUDE.md invariant sections, the architectural invariant registry and the newest ledger RULING rows that name the repository), canonical_shapes (the repository CLAUDE.md shape sections) and exemplar (the newest merged pull request whose conventional type the caller lane kind maps to). One new effect node serves the three factors and the orchestrator binds it through its contract context_tier_sources block. The agent_spawn profile admits shapes and the exemplar for a named lane kind; its budget values are unchanged. The epic criteria are read through the Linear API on child tickets and are not bound by this contract."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21090-agent-spawn-tier-sources"
+    statement: |-
+      The agent_spawn context pack carries resolved invariants, canonical_shapes and exemplar tiers read from sources bound in the orchestrator contract, within the unchanged token budget.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: every Track T0 ticket under this epic is Done with its own criteria met -- falsifier: a child ticket of this epic in track Shared not in state Done, read through the Linear API
+      - id: "AC2"
+        statement: |-
+          AC2: every Track A ticket under this epic is Done with its own criteria met -- falsifier: a child ticket of this epic in track A not in state Done, read through the Linear API
+      - id: "AC3"
+        statement: |-
+          AC3: every Track B ticket under this epic is Done with its own criteria met -- falsifier: a child ticket of this epic in track B not in state Done, read through the Linear API
+      - id: "AC4"
+        statement: |-
+          AC4: every Track C ticket under this epic is Done with its own criteria met -- falsifier: a child ticket of this epic in track C not in state Done, read through the Linear API
+      - id: "AC5"
+        statement: |-
+          AC5: every Track E ticket under this epic is Done with its own criteria met -- falsifier: a child ticket of this epic in track E not in state Done, read through the Linear API
+evidence_requirements:
+  - kind: "tests"
+    description: "The repository doctrine source, the orchestrator tier binding and the agent_spawn lane-kind rule tests pass."
+    command: "uv run pytest tests/unit/nodes/node_context_source_repo_doctrine_effect/test_context_source_repo_doctrine.py -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21090-ac1-doctrine-source"
+    description: "This repository's part: the new repository doctrine source answers invariants, canonical_shapes and exemplar from contract-declared data. The test module fails at the merge base, where the node does not exist. The child-ticket state this criterion names is read through the Linear API and is not bound here."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_context_source_repo_doctrine_effect/test_context_source_repo_doctrine.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21090-ac2-tier-binding"
+    description: "This repository's part: the orchestrator contract binds the three factors to the doctrine source node, loaded through the same contract binding as every other tier. Fails at the merge base, where the three factors have no binding. The child-ticket state this criterion names is read through the Linear API and is not bound here."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_tier_source_binding.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21090-ac3-lane-kind-rule"
+    description: "This repository's part: agent_spawn admits canonical_shapes and exemplar for a named lane kind; with no archetype and no lane kind they stay withheld. Fails at the merge base, where no lane-kind rule exists. The child-ticket state this criterion names is read through the Linear API and is not bound here."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_task_kind_rules_compute/test_task_kind_rules.py -q -p no:randomly --no-cov -k agent_spawn"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21090-ac4-track-c-pack"
+    description: "Track C context service: an agent_spawn pack built for a lane carries the bound tiers. The source tests cover each tier, including rulings deduplicated across overlapping ledger archive splits. The child-ticket state this criterion names is read through the Linear API and is not bound here."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_context_source_repo_doctrine_effect/test_context_source_repo_doctrine.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21090-ac5-binding-suite"
+    description: "The orchestrator tier binding suite passes with the three new bindings and shared instances. The child-ticket state this criterion names is read through the Linear API and is not bound here."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_tier_source_binding.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn21090-deploy-pack-probe"
+    description: "Hosted-runner probe: build an agent_spawn pack through the packaged node_context_pack_orchestrator over an in-memory bus, against a temporary registry root holding a copy of this checkout's CLAUDE.md and invariant registry, a one-commit git repository for the exemplar and a one-row ledger. Require status ok, lane_rules, invariants, canonical_shapes and exemplar resolved and included, nothing excluded by budget and at most 4000 tokens. At the merge base the invariants tier is unavailable and the probe fails. No lane services or credentials are required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu
+          export PYTHONDONTWRITEBYTECODE=1
+          probe="$(mktemp -d)"
+          trap 'rm -rf "$probe"' EXIT
+          mkdir -p "$probe/omnimarket/src/omnimarket/nodes/node_architectural_invariant_loop"
+          cp CLAUDE.md "$probe/omnimarket/CLAUDE.md"
+          cp -R src/omnimarket/nodes/node_architectural_invariant_loop/invariants "$probe/omnimarket/src/omnimarket/nodes/node_architectural_invariant_loop/invariants"
+          printf '# Guide\n\n## Operating Rules\n\n### 9. Per-ticket work uses worktrees\n\nWork in a worktree.\n\n### 10. Local gates are mechanically enforced\n\nNever bypass a gate.\n\n### 17. Never override core.hooksPath\n\nLeave hooksPath alone.\n' > "$probe/CLAUDE.md"
+          printf '2026-10-20T00:00:00Z | RULING | lane=probe | omnimarket nodes keep topics in contract.yaml\n' > "$probe/ledger.md"
+          git -C "$probe/omnimarket" init -q
+          git -C "$probe/omnimarket" -c user.name=probe -c user.email=probe@example.invalid commit -q --allow-empty -m "feat(OMN-21090): probe exemplar (#1)"
+          git -C "$probe/omnimarket" update-ref refs/remotes/origin/dev HEAD
+          printf '{"request":{"profile_name":"agent_spawn","caller_scope":{"repository":"omnimarket","lane_kind":"design-build"}},"access":{"tenant_id":"lab"}}' > "$probe/request.json";
+          export PATH="$(uv run --locked python -c 'import sysconfig; print(sysconfig.get_path("scripts"))'):$PATH";
+          OMNI_HOME="$probe" ONEX_LEDGER_PATH="$probe/ledger.md" onex node node_context_pack_orchestrator --input "$probe/request.json" --backend event_bus=inmemory --output receipt > "$probe/receipt.json";
+          uv run --locked python - "$probe/receipt.json" <<'PY'
+          import json
+          import sys
+          result = json.load(open(sys.argv[1]))["result"]
+          tiers = {t["factor"]: t for t in result["tier_statuses"]}
+          assert result["status"] == "ok", result["status"]
+          assert result["excluded_by_budget"] == [], result["excluded_by_budget"]
+          for factor in ("lane_rules", "invariants", "canonical_shapes", "exemplar"):
+              assert tiers[factor]["status"] == "resolved" and tiers[factor]["included"], tiers[factor]
+          assert sum(result["factor_token_estimates"].values()) <= 4000
+          print(result["task_kind"], result["factor_token_estimates"])
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"

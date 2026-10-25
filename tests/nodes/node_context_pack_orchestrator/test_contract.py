@@ -12,6 +12,9 @@ import yaml
 from omnimarket.nodes.node_context_pack_orchestrator.handlers.handler_context_pack_orchestrator import (
     HandlerContextPackOrchestrator,
 )
+from omnimarket.nodes.node_context_pack_orchestrator.handlers.handler_context_pack_orchestrator_runtime import (
+    HandlerContextPackOrchestratorRuntime,
+)
 
 from .conftest import SENTINEL, command, orchestrator
 
@@ -60,5 +63,8 @@ def test_no_evt_topic_carries_package_text() -> None:
 
 def test_contract_names_the_handler_class() -> None:
     handler = _CONTRACT["handler"]
-    assert handler["class"] == HandlerContextPackOrchestrator.__name__
-    assert handler["module"] == HandlerContextPackOrchestrator.__module__
+    assert handler["class"] == HandlerContextPackOrchestratorRuntime.__name__
+    assert handler["module"] == HandlerContextPackOrchestratorRuntime.__module__
+    assert issubclass(
+        HandlerContextPackOrchestratorRuntime, HandlerContextPackOrchestrator
+    )
