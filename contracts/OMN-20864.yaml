@@ -56,6 +56,11 @@ requirements:
       - id: "AC11"
         statement: |-
           AC11: given the caller's live admission facts, a host placement refuses (0.9% or 7.3% idle CPU, swap traffic, a shared admission bar) reports free Claude slots 0 and free Codex slots 0 as a NOTE with no FIX, a Claude or Codex limit refuses only its engine, an unreadable probe is UNKNOWN, and shared slots are never counted twice for the pr-land fallback -- falsifier: pytest tests/nodes/node_throughput_tick_decision_compute/test_live_admission_throughput_tick_decision_compute.py fails at the merge base, where the facts model rejects the live admission schema
+  - id: "req-lab-fill-sprint-tickets"
+    statement: "Lab-fill's ticket backlog admits open current or next sprint tickets that no live CLAIM or other assignee owns and that carry parseable criteria, and names the gate that drops every other ticket."
+    acceptance:
+      - id: "AC12"
+        statement: "AC12: omnimarket's plan_ticket_backlog admits an open unassigned ticket in project Sprint 2026-10-26 → 2026-11-01 with an unchecked AC1 criterion on 2026-10-25 as sprint-next, keeps the closed, other-owner, out-of-scope (RULING 2026-10-17T20:42:15Z), dashboard (RULING 2026-10-01T10:53:36Z), open-pr and claimed exclusions, and records one drop reason for every ticket it does not admit -- falsifier: uv run pytest tests/unit/handlers/test_rules_lab_fill_tickets_omn20864.py fails at the merge base, which has no rules_lab_fill_tickets module"
 evidence_requirements:
   - kind: "tests"
     description: "AC1, AC3, AC-M1 and AC-M8: lab-fill selection and the dispatch plan."
@@ -66,6 +71,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC11: the throughput tick's live admission headroom."
     command: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_live_admission_throughput_tick_decision_compute.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC12: the lab-fill sprint ticket rule."
+    command: "uv run pytest tests/unit/handlers/test_rules_lab_fill_tickets_omn20864.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -177,3 +185,11 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_live_admission_throughput_tick_decision_compute.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC11"]
+  - id: "dod-omn20864-ac12-sprint-tickets"
+    description: "AC12: an open unassigned next-sprint ticket with an unchecked criterion is admitted; each kept exclusion drops with its reason and no ticket is dropped silently. Fails at the merge base, which has no rules_lab_fill_tickets module."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/test_rules_lab_fill_tickets_omn20864.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC12"]
