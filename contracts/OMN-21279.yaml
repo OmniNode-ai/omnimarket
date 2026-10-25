@@ -39,7 +39,7 @@ requirements:
           dry runs complete without Bifrost configuration, closing without a
           claim fails, gateway reads return paginated threads, and gateway
           boundary failures fail -- falsifier: uv run pytest
-          tests/unit/handlers/scm/test_onex_scm_inprocess.py -q -n 0 --refuse-skips --maxfail=1
+          tests/unit/handlers/scm/test_onex_scm_command.py -k "real_terminal or without_a_claim or uses_the_gateway_handler or boundary_failure_is_reported" -q -n 0 --refuse-skips --maxfail=1
 evidence_requirements:
   - kind: tests
     description: >-
@@ -66,7 +66,7 @@ dod_evidence:
     execution_scope: hosted_and_local
     checks:
       - check_type: test_passes
-        check_value: uv run pytest tests/unit/handlers/scm/test_onex_scm_inprocess.py -q -n 0 --refuse-skips --maxfail=1
+        check_value: uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py -k "real_terminal or without_a_claim or uses_the_gateway_handler or boundary_failure_is_reported" -q -n 0 --refuse-skips --maxfail=1
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac:
       - "AC3"
