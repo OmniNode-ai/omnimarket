@@ -17,6 +17,7 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
 )
 
 from omnimarket.delegated_code_edit.loop_ports import (
+    IN_PROCESS_DELEGATE_FLAGS,
     DelegatedCodeEditPorts,
     check_fingerprint,
     deployed_lane_delegate_flags,
@@ -24,11 +25,13 @@ from omnimarket.delegated_code_edit.loop_ports import (
 )
 from omnimarket.nodes.node_delegated_code_edit_orchestrator import (
     RESPONSE_CONTRACT,
+    DelegatePinViolationError,
     EnumCodeEditStatus,
     HandlerDelegatedCodeEditOrchestrator,
     LoopReceiptExistsError,
     ModelDeclaredCheck,
     ModelDelegatedCodeEditRequest,
+    ModelDelegatePin,
     ResumeRefusedError,
     WorkspacePathError,
 )
@@ -90,11 +93,16 @@ def _request(root: Path, **kw: object) -> ModelDelegatedCodeEditRequest:
     return ModelDelegatedCodeEditRequest.model_validate(fields)
 
 
-def _ports(tmp_path: Path, runner: object = None) -> DelegatedCodeEditPorts:
+def _ports(
+    tmp_path: Path,
+    runner: object = None,
+    *,
+    delegate_flags: tuple[str, ...] = deployed_lane_delegate_flags("dev"),
+) -> DelegatedCodeEditPorts:
     return DelegatedCodeEditPorts(
         onex=Path("/bin/onex"),
         state_root=tmp_path / "state",
-        delegate_flags=deployed_lane_delegate_flags("dev"),
+        delegate_flags=delegate_flags,
         run_delegate=runner,  # type: ignore[arg-type]
     )
 
@@ -361,6 +369,231 @@ def test_delegate_passes_the_prompt_by_file_and_carries_the_contract_lane_ticket
     assert reply.actions[0].path == "src/m.py"
 
 
+@pytest.mark.parametrize("pinned", [False, True])
+def test_a_deployed_lane_timeout_is_retried_once_in_process(
+    tree: Path, tmp_path: Path, pinned: bool
+) -> None:
+    seen: list[list[str]] = []
+    run_id = str(uuid.uuid4())
+    flags = deployed_lane_delegate_flags("dev")
+    pin = (
+        ModelDelegatePin(
+            backend_id="pinned",
+            host="model.example",
+            endpoint_url="https://model.example",
+        )
+        if pinned
+        else None
+    )
+
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        seen.append(argv)
+        assert Path(argv[argv.index("--prompt-file") + 1]).read_text() == "PROMPT"
+        if len(seen) == 1:
+            raise subprocess.TimeoutExpired(argv, 900)
+        assert "--bus inmemory --locus in-process" in " ".join(argv)
+        assert "deployed-lane" not in argv
+        start = seen[0].index("--bus")
+        assert argv == [
+            *seen[0][:start],
+            *IN_PROCESS_DELEGATE_FLAGS,
+            *seen[0][start + len(flags) :],
+        ]
+        run_dir = tmp_path / "state" / "runs" / run_id
+        run_dir.mkdir(parents=True)
+        (run_dir / "receipt.json").write_text(
+            json.dumps({"status": "success", "backend_id": "pinned"})
+        )
+        (run_dir / "result.txt").write_text('{"actions": [{"tool": "ls"}]}')
+        return subprocess.CompletedProcess(argv, 0, json.dumps({"run_id": run_id}), "")
+
+    ports = DelegatedCodeEditPorts(
+        onex=Path("/bin/onex"),
+        state_root=tmp_path / "state",
+        delegate_flags=flags,
+        run_delegate=runner,
+        max_tokens=1234,
+        pin=pin,
+    )
+    reply = ports.delegate(_request(tree), "PROMPT", RESPONSE_CONTRACT, 1)
+    assert reply.ok
+    assert reply.run_id == run_id
+    assert len(seen) == 2
+    assert seen[1][seen[1].index("--max-tokens") + 1] == "1234"
+    if pinned:
+        assert seen[1][seen[1].index("--backend-id") + 1] == "pinned"
+
+
+@pytest.mark.parametrize("returncode", [0, 1])
+@pytest.mark.parametrize(
+    "failure",
+    [
+        {"terminal_failure_cause": "no_terminal"},
+        {"terminal_failure_cause": "timeout"},
+        {"status": "timeout"},
+        {"receipt": {"result": {"terminal_payload": None}}},
+    ],
+)
+def test_a_deployed_lane_no_terminal_receipt_is_retried_once_in_process(
+    tree: Path, tmp_path: Path, returncode: int, failure: dict[str, object]
+) -> None:
+    seen: list[list[str]] = []
+    ids = [str(uuid.uuid4()), str(uuid.uuid4())]
+
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        seen.append(argv)
+        run_id = ids[len(seen) - 1]
+        run_dir = tmp_path / "state" / "runs" / run_id
+        run_dir.mkdir(parents=True)
+        if len(seen) == 1:
+            (run_dir / "receipt.json").write_text(json.dumps(failure))
+            return subprocess.CompletedProcess(
+                argv, returncode, json.dumps({"run_id": run_id}), "no result"
+            )
+        assert "--bus inmemory --locus in-process" in " ".join(argv)
+        assert "deployed-lane" not in argv
+        (run_dir / "receipt.json").write_text(json.dumps({"status": "success"}))
+        (run_dir / "result.txt").write_text('{"actions": [{"tool": "ls"}]}')
+        return subprocess.CompletedProcess(argv, 0, json.dumps({"run_id": run_id}), "")
+
+    reply = _ports(tmp_path, runner).delegate(_request(tree), "P", RESPONSE_CONTRACT, 1)
+    assert reply.ok
+    assert reply.run_id == ids[1]
+    assert len(seen) == 2
+
+
+def test_a_deployed_lane_refusal_is_not_retried(tree: Path, tmp_path: Path) -> None:
+    seen: list[list[str]] = []
+    run_id = str(uuid.uuid4())
+
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        seen.append(argv)
+        run_dir = tmp_path / "state" / "runs" / run_id
+        run_dir.mkdir(parents=True)
+        (run_dir / "receipt.json").write_text(json.dumps({"status": "refused"}))
+        return subprocess.CompletedProcess(argv, 1, json.dumps({"run_id": run_id}), "")
+
+    reply = _ports(tmp_path, runner).delegate(_request(tree), "P", RESPONSE_CONTRACT, 1)
+    assert len(seen) == 1
+    assert not reply.ok
+    assert reply.invalid_reason == "onex delegate exited 1:  | receipt: refused"
+
+
+def test_an_in_process_timeout_is_not_retried(tree: Path, tmp_path: Path) -> None:
+    seen: list[list[str]] = []
+
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        seen.append(argv)
+        raise subprocess.TimeoutExpired(argv, 900)
+
+    ports = _ports(tmp_path, runner, delegate_flags=IN_PROCESS_DELEGATE_FLAGS)
+    reply = ports.delegate(_request(tree), "P", RESPONSE_CONTRACT, 1)
+    assert len(seen) == 1
+    assert not reply.ok
+    assert reply.invalid_reason == "onex delegate ran past 900 s"
+
+
+@pytest.mark.parametrize("first_failure", [None, "timeout", "no_terminal"])
+@pytest.mark.parametrize("retry_timeout", [False, True])
+def test_a_failed_in_process_retry_names_both_causes(
+    tree: Path, tmp_path: Path, retry_timeout: bool, first_failure: str | None
+) -> None:
+    seen: list[list[str]] = []
+    run_id = str(uuid.uuid4())
+    first_run_id = str(uuid.uuid4())
+
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        seen.append(argv)
+        if len(seen) == 1:
+            if first_failure is None:
+                raise subprocess.TimeoutExpired(argv, 900)
+            run_dir = tmp_path / "state" / "runs" / first_run_id
+            run_dir.mkdir(parents=True)
+            (run_dir / "receipt.json").write_text(
+                json.dumps({"terminal_failure_cause": first_failure})
+            )
+            return subprocess.CompletedProcess(
+                argv, 1, json.dumps({"run_id": first_run_id}), ""
+            )
+        if retry_timeout:
+            raise subprocess.TimeoutExpired(argv, 900)
+        return subprocess.CompletedProcess(
+            argv,
+            1,
+            json.dumps({"run_id": run_id}),
+            "HEADMARK" + "x" * 5000 + "TAILMARK",
+        )
+
+    reply = _ports(tmp_path, runner).delegate(_request(tree), "P", RESPONSE_CONTRACT, 1)
+    assert len(seen) == 2
+    assert not reply.ok
+    cause = "had no terminal" if first_failure == "no_terminal" else "timed out"
+    assert reply.invalid_reason.startswith(
+        f"deployed-lane {cause} (run {first_run_id if first_failure else '?'}); "
+        "in-process retry: "
+    )
+    assert len(reply.invalid_reason) <= 4096
+    if retry_timeout:
+        assert reply.invalid_reason.endswith("onex delegate ran past 900 s")
+    else:
+        assert reply.run_id == run_id
+        assert "HEADMARK" in reply.invalid_reason
+        assert reply.invalid_reason.endswith("TAILMARK")
+
+
+def test_an_in_process_retry_checks_the_backend_pin(tree: Path, tmp_path: Path) -> None:
+    seen: list[list[str]] = []
+    run_id = str(uuid.uuid4())
+
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        seen.append(argv)
+        if len(seen) == 1:
+            raise subprocess.TimeoutExpired(argv, 900)
+        assert argv[argv.index("--backend-id") + 1] == "pinned"
+        run_dir = tmp_path / "state" / "runs" / run_id
+        run_dir.mkdir(parents=True)
+        (run_dir / "receipt.json").write_text(json.dumps({"backend_id": "wrong"}))
+        (run_dir / "result.txt").write_text('{"actions": [{"tool": "ls"}]}')
+        return subprocess.CompletedProcess(argv, 0, json.dumps({"run_id": run_id}), "")
+
+    ports = DelegatedCodeEditPorts(
+        onex=Path("/bin/onex"),
+        state_root=tmp_path / "state",
+        delegate_flags=deployed_lane_delegate_flags("dev"),
+        run_delegate=runner,
+        pin=ModelDelegatePin(
+            backend_id="pinned",
+            host="model.example",
+            endpoint_url="https://model.example",
+        ),
+    )
+    with pytest.raises(DelegatePinViolationError, match="backend 'wrong'"):
+        ports.delegate(_request(tree), "P", RESPONSE_CONTRACT, 1)
+    assert len(seen) == 2
+
+
+@pytest.mark.parametrize("text", ['{"actions": [{"tool": "ls"}]}', "invalid reply"])
+def test_a_deployed_lane_result_text_is_not_retried_even_with_a_timeout_receipt(
+    tree: Path, tmp_path: Path, text: str
+) -> None:
+    seen: list[list[str]] = []
+    run_id = str(uuid.uuid4())
+
+    def runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        seen.append(argv)
+        run_dir = tmp_path / "state" / "runs" / run_id
+        run_dir.mkdir(parents=True)
+        (run_dir / "receipt.json").write_text(json.dumps({"status": "timeout"}))
+        (run_dir / "result.txt").write_text(text)
+        return subprocess.CompletedProcess(argv, 1, json.dumps({"run_id": run_id}), "")
+
+    reply = _ports(tmp_path, runner).delegate(_request(tree), "P", RESPONSE_CONTRACT, 1)
+    assert len(seen) == 1
+    assert reply.run_id == run_id
+    assert reply.raw_text == text
+    assert reply.ok is (text != "invalid reply")
+
+
 def test_a_prompt_over_one_argv_word_reaches_delegate_by_file_intact(
     tree: Path, tmp_path: Path
 ) -> None:
@@ -461,7 +694,9 @@ def test_a_null_terminal_payload_is_a_failed_reply_not_an_exception(
             argv, 1, json.dumps({"run_id": run_id}) + "\n", "delegate failed"
         )
 
-    reply = _ports(tmp_path, runner).delegate(_request(tree), "P", RESPONSE_CONTRACT, 1)
+    reply = _ports(tmp_path, runner, delegate_flags=IN_PROCESS_DELEGATE_FLAGS).delegate(
+        _request(tree), "P", RESPONSE_CONTRACT, 1
+    )
     assert not reply.ok
     assert reply.raw_text == ""
     assert reply.run_id == run_id
@@ -506,7 +741,9 @@ def test_malformed_receipts_return_failed_replies(
             argv, returncode, json.dumps({"run_id": run_id}), "stderr\n" + "x" * 310
         )
 
-    reply = _ports(tmp_path, runner).delegate(_request(tree), "P", RESPONSE_CONTRACT, 1)
+    reply = _ports(tmp_path, runner, delegate_flags=IN_PROCESS_DELEGATE_FLAGS).delegate(
+        _request(tree), "P", RESPONSE_CONTRACT, 1
+    )
     assert not reply.ok
     assert reply.raw_text == ""
     assert reply.run_id == run_id
@@ -604,7 +841,9 @@ def test_delegate_failure_details_are_combined_on_one_line(
         )
         return subprocess.CompletedProcess(argv, 0, json.dumps({"run_id": run_id}), "")
 
-    reply = _ports(tmp_path, runner).delegate(_request(tree), "P", RESPONSE_CONTRACT, 1)
+    reply = _ports(tmp_path, runner, delegate_flags=IN_PROCESS_DELEGATE_FLAGS).delegate(
+        _request(tree), "P", RESPONSE_CONTRACT, 1
+    )
     assert not reply.ok
     assert reply.invalid_reason == (
         f"onex delegate run {run_id} returned no result text"
@@ -671,7 +910,7 @@ def test_a_loop_whose_delegate_receipts_are_null_ends_delegate_failed_with_a_rec
         (run_dir / "receipt.json").write_text(json.dumps(_failed_receipt(run_id)))
         return subprocess.CompletedProcess(argv, 1, json.dumps({"run_id": run_id}), "")
 
-    ports = _ports(tmp_path, runner)
+    ports = _ports(tmp_path, runner, delegate_flags=IN_PROCESS_DELEGATE_FLAGS)
     request = _request(tree)
     result = HandlerDelegatedCodeEditOrchestrator(ports).run(request)
     assert result.status == EnumCodeEditStatus.DELEGATE_FAILED

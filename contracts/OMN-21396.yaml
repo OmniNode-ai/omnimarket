@@ -87,3 +87,20 @@ dod_evidence:
       - check_type: "command"
         check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_remote_lane_compute/handlers/handler_remote_lane_placement.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"above-route-ceiling\" > /dev/null'"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21396-code-edit-timeout-retries-in-process"
+    description: >
+      Deploy check: a delegated code edit turn sent over the deployed lane that
+      times out or ends with no terminal is retried once on the in-process route,
+      with the same prompt, pin, lane and ticket; a refusal or an in-process
+      timeout is not retried. Measured case: deployed-lane retries after a timeout
+      succeeded 0/32 and in-process retries 17/28; after no terminal 0/12 and 10/10
+      (fill-exp-retry-by-failure-kind-r0437Z). Fails before the change, which
+      returns the first failed reply. Runs against the checked-out code and
+      temporary fixture files on the hosted runner; no lab endpoint, broker or
+      credential is required.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q --no-cov -k 'retried_once_in_process or refusal_is_not_retried or in_process_timeout_is_not_retried or names_both_causes or retry_checks_the_backend_pin'"
+        cwd: "."
