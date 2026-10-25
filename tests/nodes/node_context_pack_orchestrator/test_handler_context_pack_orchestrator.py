@@ -602,6 +602,18 @@ def test_a_live_build_sends_the_session_scope_and_no_case_scope() -> None:
     assert not [s for s in scopes if s.startswith(("case:", "manifest_case:"))]
 
 
+class _NoProjectionRows:
+    """A live session source reader over empty projections."""
+
+    def read_prompt_rows(
+        self, *, session_id: str, until: datetime | None
+    ) -> tuple[dict[str, object], ...]:
+        return ()
+
+    def read_raw_rows(self, *, until: datetime | None) -> tuple[str, ...]:
+        return ()
+
+
 @pytest.mark.parametrize(
     ("fields", "mode_scope"),
     [
@@ -615,7 +627,12 @@ def test_the_session_source_accepts_the_scopes_the_orchestrator_sends(
 ) -> None:
     scopes = _scopes_sent(**fields)
     assert mode_scope in scopes
-    result = HandlerSessionContextSources(env={}).handle(
+    result = HandlerSessionContextSources(
+        env={},
+        tenant_ids=(command().access.tenant_id,),
+        content_reader=_NoProjectionRows(),
+        ledger_reader=_NoProjectionRows(),
+    ).handle(
         ModelContextSourceRequest(
             factor=EnumContextFactor.OPERATOR_WORDS_UNRECORDED,
             scopes=scopes,
@@ -623,8 +640,8 @@ def test_the_session_source_accepts_the_scopes_the_orchestrator_sends(
             revision="r",
         )
     )
-    assert result.error_message is not None
-    assert not result.error_message.startswith(
+    assert result.status is not EnumContextSourceStatus.DENIED
+    assert not (result.error_message or "").startswith(
         EnumSessionSourceFailure.SCOPE_INVALID.value
     ), result.error_message
 
