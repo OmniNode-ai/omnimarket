@@ -1,14 +1,10 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-# Session context sources (OMN-21108, plan task TA.6), pinned mode first.
-# A context source in the TC.1 shape: one read per factor,
-# handle(ModelContextSourceRequest) -> ModelContextSourceResult.
-# The scope names the mode: `case:<case_id>` reads a pinned replay case from the bundle under
-# ONEX_CONTEXT_REPLAY_ROOT (required, no default) and its revision must be the case's
-# transcript-chain sha256; `session:<session_id>` is live mode (OMN-21111): OPERATOR_WORDS_UNRECORDED
-# reads the session transcript under ONEX_SESSION_TRANSCRIPT_ROOT and the ledger at ONEX_LEDGER_PATH
-# (both required, no default), every other live factor but REPO_STATE is refused with a typed error,
-# and REPO_STATE is `unavailable` (never filled from a cwd).
+# Session context sources (OMN-21108, plan task TA.6).
+# case:<case_id> reads a pinned replay bundle verified against its manifest.
+# session:<session_id> reads omninode_internal.session_content and
+# omninode_internal.work_ledger_rows for explicitly bound tenants.
+# REPO_STATE remains unavailable; unsupported factors are refused.
 name: node_session_context_sources_effect
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: effect
@@ -19,8 +15,8 @@ description: >
   hashes. OPERATOR_WORDS_UNRECORDED carries each operator prompt of the session up to the case's
   last boundary verbatim and whole, unless a ledger row covers all of it but whitespace or an
   operator review row names it; compaction summary text is never carried. REPO_STATE is
-  unavailable where the case excludes it. Live mode reads the session's transcript and the
-  markdown ledger up to the revision watermark and applies the same carry rule, where a RULING or
+  unavailable where the case excludes it. Live mode reads omninode_internal.session_content and
+  omninode_internal.work_ledger_rows.raw_row up to the revision watermark and applies the same carry rule, where a RULING or
   OPERATOR-CONSENT row also records the words it quotes verbatim. Failures are typed error
   results, never an empty resolved read.
 
@@ -94,3 +90,26 @@ metadata:
 
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.session-context-sources-read-requested.v1
+
+session_context_sources:
+  live_source:
+    content_relation: omninode_internal.session_content
+    ledger_relation: omninode_internal.work_ledger_rows
+    binding_ref: omninode_runtime_service
+    dsn_env: OMNINODE_INTERNAL_DB_URL
+    # The deploy overlay binds the source tenant; unset remains deny-all.
+    tenant_ids: ["${env.ONEX_CONTEXT_SOURCE_TENANT_ID:}"]
+db_io:
+  db_tables:
+    - name: session_content
+      database_ref: application
+      schema: omninode_internal
+      migration: "0001_create_session_content.sql"
+      access: read
+      role: session_content
+    - name: work_ledger_rows
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_work_ledger.sql"
+      access: read
+      role: work_ledger_rows

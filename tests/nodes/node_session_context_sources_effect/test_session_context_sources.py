@@ -9,7 +9,6 @@ builder writes. Every session, prompt and ledger row below is synthetic.
 from __future__ import annotations
 
 import hashlib
-import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -47,9 +46,7 @@ from omnimarket.nodes.node_session_context_sources_effect.handlers.carry_rule im
     carry,
 )
 from omnimarket.nodes.node_session_context_sources_effect.handlers.handler_session_context_sources import (
-    LEDGER_PATH_ENV,
     REPLAY_ROOT_ENV,
-    TRANSCRIPT_ROOT_ENV,
     HandlerSessionContextSources,
 )
 from omnimarket.nodes.node_session_context_sources_effect.models import (
@@ -481,7 +478,7 @@ def test_live_repo_state_is_unavailable_and_never_read_from_a_cwd() -> None:
 
 
 # ---------------------------------------------------------------------------------------------
-# Live mode (OMN-21111): the session transcript and the markdown ledger
+# Live mode: bus-captured session content and whole projected ledger rows
 
 LIVE_SESSION = "0d1e2f30-live"
 LIVE_UNRECORDED = "keep the canary lane on the lab pool until Friday"
@@ -489,61 +486,117 @@ LIVE_RULED = "Let's make sure to test the context packs"
 LIVE_ENCODED = "use one lab reviewer"
 
 
-def _user(uuid: str, clock: str, content: Any, **extra: Any) -> str:
-    return json.dumps(
-        {
-            "type": "user",
-            "uuid": uuid,
-            "promptId": f"p-{uuid}",
-            "timestamp": f"2026-10-19T{clock}.000Z",
-            "sessionId": LIVE_SESSION,
-            "message": {"role": "user", "content": content},
-            **extra,
-        }
-    )
+def live_row(
+    event_id: str,
+    kind: str,
+    clock: str,
+    content: str,
+    chunk_index: int = 0,
+    session: str = LIVE_SESSION,
+) -> dict[str, Any]:
+    return {
+        "event_id": event_id,
+        "kind": kind,
+        "chunk_index": chunk_index,
+        "emitted_at": datetime.fromisoformat(f"2026-10-19T{clock}Z"),
+        "content": content,
+        "session_id": session,
+    }
 
 
-def write_live(tmp_path: Path, ledger_rows: tuple[str, ...] = ()) -> dict[str, str]:
-    transcripts = tmp_path / "transcripts"
-    transcripts.mkdir()
-    lines = [
-        _user("u1", "07:00:00", LIVE_UNRECORDED),
-        json.dumps(
-            {
-                "type": "assistant",
-                "timestamp": "2026-10-19T07:00:05.000Z",
-                "message": {"role": "assistant", "content": "ok"},
-            }
+class FakeProjection:
+    """Projection readers with the production session, kind and watermark filters."""
+
+    def __init__(
+        self, rows: tuple[dict[str, Any], ...] = (), raw_rows: tuple[str, ...] = ()
+    ) -> None:
+        self.rows = rows
+        self.raw_rows = raw_rows
+        self.sessions: list[str] = []
+        self.content_until: list[datetime | None] = []
+        self.ledger_until: list[datetime | None] = []
+
+    def read_prompt_rows(
+        self, *, session_id: str, until: datetime | None
+    ) -> tuple[dict[str, Any], ...]:
+        self.sessions.append(session_id)
+        self.content_until.append(until)
+        return tuple(
+            sorted(
+                (
+                    dict(row)
+                    for row in self.rows
+                    if row["session_id"] == session_id
+                    and row["kind"] in {"prompt", "operator_prompt"}
+                    and (until is None or row["emitted_at"] <= until)
+                ),
+                key=lambda row: (
+                    row["emitted_at"],
+                    row["event_id"],
+                    row["chunk_index"],
+                ),
+            )
+        )
+
+    def read_raw_rows(self, *, until: datetime | None) -> tuple[str, ...]:
+        self.ledger_until.append(until)
+        return tuple(
+            sorted(
+                row
+                for row in self.raw_rows
+                if until is None or datetime.fromisoformat(row.split(" | ")[0]) <= until
+            )
+        )
+
+
+def live_projection(raw_rows: tuple[str, ...] = ()) -> FakeProjection:
+    rows = [
+        live_row("p-u1", "prompt", "07:00:00", LIVE_UNRECORDED),
+        live_row("u1", "operator_prompt", "07:00:01", LIVE_UNRECORDED),
+        live_row("tool", "tool_input", "07:00:05", "tool output"),
+        live_row("assistant", "assistant_reply", "07:00:06", "assistant words"),
+        live_row("brief", "prompt", "07:00:07", "lane brief classified away"),
+        live_row(
+            "p-u3", "prompt", "07:02:00", f"{LIVE_RULED}, this should transfer, right?"
         ),
-        _user("u2", "07:01:00", [{"type": "tool_result", "content": "tool output"}]),
-        _user("u3", "07:02:00", f"{LIVE_RULED}, this should transfer, right?"),
-        _user("u4", "07:03:00", "meta words", isMeta=True),
-        _user(
-            "u5",
-            "07:04:00",
-            "Summary of the earlier conversation",
-            isCompactSummary=True,
+        live_row(
+            "u3",
+            "operator_prompt",
+            "07:02:01",
+            f"{LIVE_RULED}, this should transfer, right?",
         ),
-        _user("u6", "07:05:00", "subagent prompt", isSidechain=True),
-        _user("u7", "07:06:00", "<local-command-stdout>done</local-command-stdout>"),
-        _user("u8", "07:07:00", [{"type": "text", "text": LIVE_ENCODED}]),
-        _user("u9", "07:08:00", "cited by a covers row"),
-        _user("u10", "09:00:00", "after the watermark"),
+        live_row("p-u8", "prompt", "07:07:00", LIVE_ENCODED),
+        live_row("u8", "operator_prompt", "07:07:01", LIVE_ENCODED),
+        live_row("p-u9", "prompt", "07:08:00", "cited by a covers row"),
+        live_row("u9", "operator_prompt", "07:08:01", "cited by a covers row"),
+        live_row("late", "prompt", "09:00:00", "after the watermark"),
+        live_row(
+            "other-session",
+            "operator_prompt",
+            "07:09:00",
+            "other session",
+            session="other",
+        ),
     ]
-    (transcripts / f"{LIVE_SESSION}.jsonl").write_text("\n".join(lines) + "\n", "utf-8")
-    ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
-    ledger.write_text("# ledger\n\n" + "\n".join(ledger_rows) + "\n", "utf-8")
-    return {TRANSCRIPT_ROOT_ENV: str(transcripts), LEDGER_PATH_ENV: str(ledger)}
+    # Both captures are chunked and arrive out of chunk order.
+    for event_id, clock in (("p-u1", "07:00:00"), ("u1", "07:00:01")):
+        row = next(row for row in rows if row["event_id"] == event_id)
+        row["content"] = LIVE_UNRECORDED[:20]
+        rows.insert(0, live_row(event_id, row["kind"], clock, LIVE_UNRECORDED[20:], 1))
+    return FakeProjection(tuple(rows), raw_rows)
 
 
 def read_live(
-    env: dict[str, str],
+    projection: FakeProjection,
     *,
     revision: str = "2026-10-19T08:00:00Z",
     session: str = LIVE_SESSION,
     factor: EnumContextFactor = OWU,
+    tenant_ids: tuple[str, ...] = ("tenant-a",),
 ) -> ModelContextSourceResult:
-    return HandlerSessionContextSources(env=env).handle(
+    return HandlerSessionContextSources(
+        content_reader=projection, ledger_reader=projection, tenant_ids=tenant_ids
+    ).handle(
         ModelContextSourceRequest(
             factor=factor,
             scopes=(f"session:{session}",),
@@ -551,22 +604,6 @@ def read_live(
             revision=revision,
         )
     )
-
-
-def test_compaction_pack_build_barrier_keeps_fractional_prompt_cutoff(
-    tmp_path: Path,
-) -> None:
-    env = write_live(tmp_path)
-    path = Path(env[TRANSCRIPT_ROOT_ENV]) / f"{LIVE_SESSION}.jsonl"
-    before = _user("before-barrier", "08:00:00", "keep the last prompt")
-    after = _user("after-barrier", "08:00:00", "next invocation only")
-    with path.open("a", encoding="utf-8") as transcript:
-        transcript.write(before.replace("08:00:00.000Z", "08:00:00.400Z") + "\n")
-        transcript.write(after.replace("08:00:00.000Z", "08:00:00.600Z") + "\n")
-    result = read_live(env, revision="2026-10-19T08:00:00.500000Z")
-    texts = [entry.text for entry in result.entries]
-    assert "keep the last prompt" in texts
-    assert "next invocation only" not in texts
 
 
 RULING_ROW = (
@@ -578,7 +615,7 @@ ENCODED_ROW = (
     f" | verbatim=encoded | %22{LIVE_ENCODED}%22 | recorded"
 )
 COVERS_ROW = (
-    "2026-10-19T07:32:00Z | STATUS | lane=orch | ticket=OMN-1 | prompt_id=p-u9"
+    "2026-10-19T07:32:00Z | STATUS | lane=orch | ticket=OMN-1 | prompt_id=u9"
     " | covers=0:21 | recorded by citation"
 )
 LATE_RULING = (
@@ -587,29 +624,30 @@ LATE_RULING = (
 )
 
 
-def test_live_operator_words_carry_every_unrecorded_typed_prompt(
-    tmp_path: Path,
-) -> None:
-    result = read_live(write_live(tmp_path))
+def test_live_operator_words_carry_every_unrecorded_typed_prompt() -> None:
+    projection = live_projection()
+    result = read_live(projection)
     assert result.status is EnumContextSourceStatus.RESOLVED
-    # Tool results, meta, compaction summaries, sidechains and command echoes are never
-    # operator prompts; a prompt after the watermark is not read.
     assert texts(result) == [
         LIVE_UNRECORDED,
         f"{LIVE_RULED}, this should transfer, right?",
         LIVE_ENCODED,
         "cited by a covers row",
     ]
-    assert result.entries[0].source_ref == f"{LIVE_SESSION}.jsonl#u1"
-    assert result.entries[0].as_of == datetime(2026, 10, 19, 7, 0, 0, tzinfo=UTC)
+    assert result.entries[0].source_ref == "session_content#u1"
+    assert result.entries[0].as_of == datetime(2026, 10, 19, 7, 0, tzinfo=UTC)
+    assert projection.sessions == [LIVE_SESSION]
+    assert (
+        projection.content_until
+        == projection.ledger_until
+        == [datetime(2026, 10, 19, 8, tzinfo=UTC)]
+    )
 
 
-def test_live_ruling_quotes_and_covers_rows_record_the_words(tmp_path: Path) -> None:
-    env = write_live(tmp_path, (RULING_ROW, ENCODED_ROW, COVERS_ROW, LATE_RULING))
-    result = read_live(env)
-    # The ruling quotes part of u3, so the rest of u3 still carries whole; the %22-encoded
-    # ruling and the covers row record u8 and u9 entirely; the late ruling is past the
-    # watermark and records nothing.
+def test_live_ruling_quotes_and_covers_rows_record_the_words() -> None:
+    result = read_live(
+        live_projection((RULING_ROW, ENCODED_ROW, COVERS_ROW, LATE_RULING))
+    )
     assert texts(result) == [
         LIVE_UNRECORDED,
         f"{LIVE_RULED}, this should transfer, right?",
@@ -618,39 +656,74 @@ def test_live_ruling_quotes_and_covers_rows_record_the_words(tmp_path: Path) -> 
     assert result.entry_counts["carried"] == 2
 
 
-def test_live_a_ruling_quoting_a_whole_prompt_drops_it(tmp_path: Path) -> None:
-    row = (
-        "2026-10-19T07:40:00Z | RULING | lane=orch | ticket=OMN-1 | kind=decision"
-        f' | "{LIVE_UNRECORDED}" | recorded'
+def test_live_a_ruling_quoting_a_whole_prompt_drops_it() -> None:
+    row = f'2026-10-19T07:40:00Z | RULING | lane=orch | "{LIVE_UNRECORDED}" | recorded'
+    assert LIVE_UNRECORDED not in texts(read_live(live_projection((row,))))
+
+
+def test_live_a_late_ruling_is_ignored() -> None:
+    assert LIVE_UNRECORDED in texts(read_live(live_projection((LATE_RULING,))))
+
+
+def test_compaction_pack_build_barrier_keeps_fractional_prompt_cutoff() -> None:
+    projection = live_projection()
+    projection.rows += (
+        live_row("before", "prompt", "08:00:00.400", "keep the last prompt"),
+        live_row("after", "prompt", "08:00:00.600", "next invocation only"),
     )
-    result = read_live(write_live(tmp_path, (row,)))
-    assert LIVE_UNRECORDED not in texts(result)
+    result = read_live(projection, revision="2026-10-19T08:00:00.500000Z")
+    assert "keep the last prompt" in texts(result)
+    assert "next invocation only" not in texts(result)
 
 
-def test_live_without_a_transcript_root_is_refused() -> None:
-    assert (
-        failure_of(read(None, "watermark-1", scopes=("session:s-1",)))
-        == EnumSessionSourceFailure.TRANSCRIPT_ROOT_MISSING
+def test_live_unbound_tenant_is_denied_without_reading() -> None:
+    projection = live_projection()
+    result = read_live(projection, tenant_ids=())
+    assert result.status is EnumContextSourceStatus.DENIED
+    assert result.entries == ()
+    assert projection.sessions == projection.ledger_until == []
+
+
+@pytest.mark.parametrize("leg", ["content", "ledger"])
+def test_live_reader_failure_is_unavailable(leg: str) -> None:
+    class BrokenProjection(FakeProjection):
+        def read_prompt_rows(
+            self, *, session_id: str, until: datetime | None
+        ) -> tuple[dict[str, Any], ...]:
+            if leg == "content":
+                raise RuntimeError("projection read failed")
+            return super().read_prompt_rows(session_id=session_id, until=until)
+
+        def read_raw_rows(self, *, until: datetime | None) -> tuple[str, ...]:
+            raise RuntimeError("projection read failed")
+
+    result = read_live(BrokenProjection())
+    assert result.status is EnumContextSourceStatus.UNAVAILABLE
+    assert result.entries == ()
+    assert result.error_message
+    assert "projection read failed" in result.error_message
+
+
+def test_default_construction_does_not_require_database(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("OMNINODE_INTERNAL_DB_URL", raising=False)
+    assert HandlerSessionContextSources() is not None
+
+
+def test_live_sources_have_no_developer_file_environment_paths() -> None:
+    node = (
+        Path(__file__).resolve().parents[3]
+        / "src/omnimarket/nodes/node_session_context_sources_effect"
     )
+    for path in [*node.rglob("*.py"), node / "contract.yaml"]:
+        text = path.read_text(encoding="utf-8")
+        assert "ONEX_SESSION_TRANSCRIPT_ROOT" not in text, path
+        assert "ONEX_LEDGER_PATH" not in text, path
 
 
-def test_live_an_unknown_or_unsafe_session_id_is_refused(tmp_path: Path) -> None:
-    env = write_live(tmp_path)
-    for session in ("missing", "../transcripts/x"):
-        assert (
-            failure_of(read_live(env, session=session))
-            == EnumSessionSourceFailure.TRANSCRIPT_NOT_FOUND
-        )
-
-
-def test_live_without_a_ledger_is_refused(tmp_path: Path) -> None:
-    env = write_live(tmp_path)
-    env[LEDGER_PATH_ENV] = str(tmp_path / "absent.md")
-    assert failure_of(read_live(env)) == EnumSessionSourceFailure.LEDGER_MISSING
-
-
-def test_live_a_factor_it_does_not_serve_is_refused(tmp_path: Path) -> None:
-    result = read_live(write_live(tmp_path), factor=EnumContextFactor.OPEN_WORK)
+def test_live_a_factor_it_does_not_serve_is_refused() -> None:
+    result = read_live(live_projection(), factor=EnumContextFactor.OPEN_WORK)
     assert failure_of(result) == EnumSessionSourceFailure.FACTOR_NOT_SERVED
 
 
@@ -684,3 +757,148 @@ def test_a_session_with_no_operator_words_is_unresolved_not_empty_resolved(
     assert result.status is EnumContextSourceStatus.UNRESOLVED
     assert result.entries == ()
     assert result.entry_counts["reviewed"] == 5
+
+
+@pytest.mark.parametrize("tenant", [None, "", "tenant-a"])
+def test_contract_binding_expands_tenant_and_declares_read_relations(
+    monkeypatch: pytest.MonkeyPatch, tenant: str | None
+) -> None:
+    from omnimarket.nodes.node_session_context_sources_effect.handlers.live_session_reader import (
+        load_session_live_binding,
+    )
+
+    if tenant is None:
+        monkeypatch.delenv("ONEX_CONTEXT_SOURCE_TENANT_ID", raising=False)
+    else:
+        monkeypatch.setenv("ONEX_CONTEXT_SOURCE_TENANT_ID", tenant)
+    path = (
+        Path(__file__).resolve().parents[3]
+        / "src/omnimarket/nodes/node_session_context_sources_effect/contract.yaml"
+    )
+    binding = load_session_live_binding(path)
+    assert binding.tenant_ids == ((tenant,) if tenant else ())
+    assert binding.content_relation == "omninode_internal.session_content"
+    assert binding.ledger_relation == "omninode_internal.work_ledger_rows"
+    assert binding.binding_ref == "omninode_runtime_service"
+    assert binding.dsn_env == "OMNINODE_INTERNAL_DB_URL"
+    contract = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert contract["db_io"]["db_tables"] == [
+        {
+            "name": name,
+            "database_ref": "application",
+            "schema": "omninode_internal",
+            "migration": migration,
+            "access": "read",
+            "role": name,
+        }
+        for name, migration in (
+            ("session_content", "0001_create_session_content.sql"),
+            ("work_ledger_rows", "0000_create_work_ledger.sql"),
+        )
+    ]
+
+
+@pytest.mark.parametrize("until", [None, datetime(2026, 10, 19, 8, tzinfo=UTC)])
+def test_postgres_reader_uses_lazy_shared_read_only_connection_and_bound_queries(
+    monkeypatch: pytest.MonkeyPatch, until: datetime | None
+) -> None:
+    from unittest.mock import MagicMock
+
+    from omnimarket.nodes.node_session_context_sources_effect.handlers.live_session_reader import (
+        ModelSessionLiveBinding,
+        PostgresSessionProjectionReader,
+    )
+    from omnimarket.projection import postgres_read_database
+
+    binding = ModelSessionLiveBinding(
+        content_relation="custom.content",
+        ledger_relation="custom.ledger",
+        binding_ref="runtime",
+        dsn_env="TEST_SESSION_DSN",
+    )
+    connection = MagicMock()
+    connection.closed = False
+    cursor = connection.cursor.return_value.__enter__.return_value
+    cursor.fetchall.side_effect = [
+        [("event-1", "prompt", 0, at("07:00:00"), "operator words")],
+        [("whole ledger row",)],
+    ]
+    connect = MagicMock(return_value=connection)
+    monkeypatch.setattr(postgres_read_database, "connect_read_only", connect)
+    monkeypatch.setenv("TEST_SESSION_DSN", "test-dsn")
+    reader = PostgresSessionProjectionReader(binding)
+    connect.assert_not_called()
+    rows = reader.read_prompt_rows(session_id="session-'parameter", until=until)
+    assert rows == (
+        {
+            "event_id": "event-1",
+            "kind": "prompt",
+            "chunk_index": 0,
+            "emitted_at": at("07:00:00"),
+            "content": "operator words",
+        },
+    )
+    assert reader.read_raw_rows(until=until) == ("whole ledger row",)
+    connect.assert_called_once_with("test-dsn")
+    content_call, ledger_call = cursor.execute.call_args_list
+    query, params = content_call.args
+    assert 'FROM "custom"."content"' in query
+    assert "content_kind IN ('prompt', 'operator_prompt')" in query
+    assert "ORDER BY emitted_at, event_id, chunk_index" in query
+    assert ("emitted_at <= %s" in query) == (until is not None)
+    assert params == (
+        ("session-'parameter", until) if until is not None else ("session-'parameter",)
+    )
+    query, params = ledger_call.args
+    assert 'FROM "custom"."ledger"' in query
+    assert "SELECT raw_row" in query
+    assert "ORDER BY row_ts, row_id" in query
+    assert ("row_ts <= %s" in query) == (until is not None)
+    assert params == ((until,) if until is not None else ())
+    reader.close()
+    connection.close.assert_called_once()
+
+
+@pytest.mark.parametrize("dsn", [None, "postgresql://operator:secret@db/internal"])
+@pytest.mark.parametrize("leg", ["content", "ledger"])
+def test_postgres_reader_redacts_failures_and_names_missing_dsn(
+    monkeypatch: pytest.MonkeyPatch, dsn: str | None, leg: str
+) -> None:
+    from unittest.mock import MagicMock
+
+    from omnimarket.nodes.node_session_context_sources_effect.handlers.live_session_reader import (
+        ModelSessionLiveBinding,
+        PostgresSessionProjectionReader,
+        SessionSourceReadError,
+    )
+    from omnimarket.projection import postgres_read_database
+
+    binding = ModelSessionLiveBinding(
+        content_relation="custom.content",
+        ledger_relation="custom.ledger",
+        binding_ref="runtime",
+        dsn_env="TEST_SESSION_DSN",
+    )
+    if dsn is None:
+        monkeypatch.delenv("TEST_SESSION_DSN", raising=False)
+    else:
+        monkeypatch.setenv("TEST_SESSION_DSN", dsn)
+    connect = MagicMock(side_effect=RuntimeError(f"connection failed: {dsn}"))
+    monkeypatch.setattr(postgres_read_database, "connect_read_only", connect)
+    reader = PostgresSessionProjectionReader(binding)
+
+    def read_projection() -> None:
+        if leg == "content":
+            reader.read_prompt_rows(session_id=LIVE_SESSION, until=None)
+        else:
+            reader.read_raw_rows(until=None)
+
+    with pytest.raises(SessionSourceReadError) as failure:
+        read_projection()
+    if dsn is None:
+        assert "TEST_SESSION_DSN is unset" in str(failure.value)
+        connect.assert_not_called()
+    else:
+        assert dsn not in str(failure.value)
+        assert "secret" not in str(failure.value)
+        assert "[redacted]" in str(failure.value)
