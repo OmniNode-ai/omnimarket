@@ -1,0 +1,106 @@
+schema_version: 1.0.0
+ticket_id: OMN-20169
+title: 'Delegation capability map: a projection folds rubric verdicts into pass rates with bounds per model, configuration, backend, class and size band'
+summary: 'node_projection_delegation_capability_map: a pure fold turns capability verdict rows into one cell per tenant, map run, model, backend, configuration, task class and size band with n, passes, the Wilson 95 percent interval, the range evaluator decision bound and a MET, MISSED or REFUSED verdict against the class line. A row is admissible only when its six OMN-18537 identity fields match the serving assignment of its model, backend and configuration, and a row with no configuration folds nowhere. The offline configuration grid (at most eight configurations) writes one verdict row per item, model and configuration; the best and next-best configuration is a deterministic read of MET cells. A rule-7a writer declares in-process dispatch and upserts the cells into delegation_capability_cells; a committed lab command seeds a map run from the labelled items.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn20169-capability-map
+  statement: Routing has a measured map of which model and configuration is good enough for which class at which size band.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a pure fold turns verdict rows into one cell per model, backend, class and band with n, passes, the Wilson 95% interval and the range evaluator''s decision bound -- falsifier: uv run pytest tests/nodes/node_delegation_capability_map_compute -v in omnimarket'
+  - id: AC2
+    statement: 'AC2: a cell below its required sample reads REFUSED, and a band with no rows is absent, never zero -- falsifier: uv run pytest tests/nodes/node_delegation_capability_map_compute -k "underpowered_refused or absent_band_not_zero" -v in omnimarket'
+  - id: AC3
+    statement: 'AC3: a verdict whose identity differs from the serving assignment on any of the six [OMN-18537](https://linear.app/omninode/issue/OMN-18537) fields is refused as inadmissible for that cell -- falsifier: uv run pytest tests/nodes/node_delegation_capability_map_compute -k identity_mismatch_inadmissible -v in omnimarket'
+  - id: AC4
+    statement: 'AC4: the writer declares in-process dispatch and writes cells on the dev lane from the labelled items -- falsifier: uv run pytest tests/test_golden_chain_projection_delegation_capability_map.py -v in omnimarket, and a dev-lane count of delegation_capability_cells with a positive control on delegation_eval_items'
+  - id: AC5
+    statement: 'AC5: a verdict row carries its configuration identity and folds only into the cell of that configuration; a row with no configuration is inadmissible -- falsifier: uv run pytest tests/nodes/node_delegation_capability_map_compute -k configuration_in_cell_key -v in omnimarket'
+  - id: AC6
+    statement: 'AC6: an offline grid run over the labelled sets writes one verdict row per (item, model, configuration), and the best and next-best configuration per (model, class, band) is a deterministic read of MET cells ordered by lower bound, absent when none is MET -- falsifier: uv run pytest tests/nodes/node_delegation_capability_map_compute -k "best_configuration_deterministic or no_met_no_best" -v in omnimarket'
+  - id: AC7
+    statement: 'AC7: no configuration is chosen or tuned on a live request; routing reads only the stored map -- falsifier: uv run pytest tests/unit/delegation -k no_live_configuration_search -v in omnimarket'
+evidence_requirements:
+- kind: tests
+  description: The capability map fold, writer and offline-grid guard tests pass at the head; at the merge base none of the modules exist.
+  command: uv run pytest tests/nodes/node_delegation_capability_map_compute tests/test_golden_chain_projection_delegation_capability_map.py tests/unit/delegation/test_capability_map_no_live_configuration_search_omn20169.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn20169-ac1-fold-cells
+  description: 'AC1: verdict rows fold into one cell per model, backend, configuration, class and band with n, passes, the Wilson 95 percent interval and the decision bound of omnimarket.ranges; the fold is order and redelivery independent and makes no model call.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_capability_map_compute/test_capability_map_fold.py -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn20169-ac2-refused-and-absent
+  description: 'AC2: a cell below the line required n reads REFUSED and a band with no rows has no cell.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_capability_map_compute/test_capability_map_fold.py -k "underpowered_refused or absent_band_not_zero" -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2
+- id: dod-omn20169-ac3-identity
+  description: 'AC3: a row differing from its serving assignment on any of the six identity fields is refused as identity_mismatch; a missing field or an unassigned configuration folds nowhere.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_capability_map_compute/test_capability_map_fold.py -k identity_mismatch_inadmissible -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC3
+- id: dod-omn20169-ac4-writer
+  description: 'AC4: the writer is a BaseProjectionRunner with in-process dispatch, the only routed handler, writes one delegation_capability_cells row per cell under the run tenant, and a redelivered run writes no row while still counting as handled; the labelled-item seed refuses items with no recorded backend.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_projection_delegation_capability_map.py -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC4
+- id: dod-omn20169-ac5-configuration
+  description: 'AC5: the configuration id is part of the cell key, two configurations fold into two cells, and a row with no configuration is refused as no_configuration.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_capability_map_compute/test_capability_map_fold.py -k configuration_in_cell_key -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC5
+- id: dod-omn20169-ac6-grid-best
+  description: 'AC6: an offline grid run writes one verdict row per item, model and configuration, and the best and next-best configuration is the MET cells ordered by decision lower bound, ties by configuration id, absent when none is MET.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_capability_map_compute/test_capability_map_fold.py -k "best_configuration_deterministic or no_met_no_best" -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC6
+- id: dod-omn20169-ac7-no-live-search
+  description: 'AC7: nothing outside the capability map handlers imports the configuration grid, and the best configuration is a read of stored cells alone.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_capability_map_no_live_configuration_search_omn20169.py -k no_live_configuration_search -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC7
+- id: dod-omn20169-deploy-writer-preparation
+  description: 'Falsifiable hosted deployment preparation smoke: construct the packaged capability-map writer, require in-process dispatch, resolve the contract to its sole writer handler, and require the declared cells table and tenant-keyed migration. The focused tests fail when the writer is absent or its runtime contract no longer routes it. No broker or database is required for this preparation check. Live deployment readback remains pending; the real-PostgreSQL regression tests separately exercise the shipped migrations, restricted writer, cell readback, redelivery, ordering and tenant isolation.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_projection_delegation_capability_map.py -k 'writer_declares_in_process_dispatch or contract_declares_the_topics_and_the_cells_table' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC4

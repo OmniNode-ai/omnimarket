@@ -666,6 +666,7 @@ node_projection_ci_attempt_outcome = "omnimarket.nodes.node_projection_ci_attemp
 node_projection_delegation_eval = "omnimarket.nodes.node_projection_delegation_eval"
 node_projection_delegation_judged_acceptance = "omnimarket.nodes.node_projection_delegation_judged_acceptance"
 node_projection_delegation_disposition = "omnimarket.nodes.node_projection_delegation_disposition"
+node_projection_delegation_capability_map = "omnimarket.nodes.node_projection_delegation_capability_map"
 node_projection_routing_feedback = "omnimarket.nodes.node_projection_routing_feedback"
 node_projection_provider_quota = "omnimarket.nodes.node_projection_provider_quota"
 node_delegation_eval_orchestrator = "omnimarket.nodes.node_delegation_eval_orchestrator"
@@ -1154,7 +1155,9 @@ omnimarket = "omnimarket.nodes"
 # OMN-21015: infra#5306 vendors migration 100 (overview token directions).
 # OMN-20967: infra#5299 vendors node_projection_tenant_credentials 0008
 # (workspace_id column) byte-identical.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261024144528-903e73af2f49" }
+# OMN-20169: infra#5347 vendors node_projection_delegation_capability_map
+# 0000-0002 and grants tenant_projection_writer on delegation_capability_cells.
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261025152318-03ea9377f87c" }
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
 # their git-source overrides). The version-range overrides below already target
 # the released artifacts: core>=0.46.7,<0.47.0 and
