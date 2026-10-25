@@ -1006,6 +1006,7 @@ node_landing_upstream_gate_compute = "omnimarket.nodes.node_landing_upstream_gat
 node_host_capability_compute = "omnimarket.nodes.node_host_capability_compute"
 node_lane_guard_admission_compute = "omnimarket.nodes.node_lane_guard_admission_compute"
 node_lane_placement_recovery_effect = "omnimarket.nodes.node_lane_placement_recovery_effect"
+node_lane_stack_orphan_compute = "omnimarket.nodes.node_lane_stack_orphan_compute"
 node_link_gate_compute = "omnimarket.nodes.node_link_gate_compute"
 node_link_history_effect = "omnimarket.nodes.node_link_history_effect"
 node_clone_parity_compute = "omnimarket.nodes.node_clone_parity_compute"

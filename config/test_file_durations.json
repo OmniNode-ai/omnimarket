@@ -776,6 +776,7 @@
   "tests/nodes/node_lane_placement_recovery_effect/test_golden_chain_lane_placement_recovery_effect.py": 0.02,
   "tests/nodes/node_lane_queue_start_decision_compute/test_golden_chain_lane_queue_start_decision.py": 0.04,
   "tests/nodes/node_lane_queue_start_decision_compute/test_lane_queue_start_decision.py": 0.07,
+  "tests/nodes/node_lane_stack_orphan_compute/test_lane_stack_orphans.py": 0.02,
   "tests/nodes/node_ledger_reconcile_compute/test_claim_digest_parity.py": 0.12,
   "tests/nodes/node_ledger_reconcile_compute/test_error_chain_ledger_reconcile_compute.py": 0.15,
   "tests/nodes/node_ledger_reconcile_compute/test_golden_chain_ledger_reconcile_compute.py": 0.11,

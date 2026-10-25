@@ -27,10 +27,25 @@ requirements:
     acceptance:
       - id: "DoD2"
         statement: "DoD2: archives older than the retention period are removed only when their own manifest and final receipt say so and their lane is not live"
+  - id: "req-omn21288-lane-stack-orphan-node"
+    statement: >-
+      The node exists in omnimarket with its tests, is registered as an
+      onex.nodes entry point, and judges a container inventory by the rules in
+      its handler.
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: a running container labelled with a finished lane is named for stopping with a restore command, and a container of a live lane is kept even when that lane also reads finished -- falsifier: uv run pytest tests/nodes/node_lane_stack_orphan_compute/test_lane_stack_orphans.py -q fails
+      - id: "AC2"
+        statement: >-
+          AC2: a lane label never claims a protected container, and an unlabelled container is reported unowned and never named for stopping -- falsifier: the same pytest run fails
 evidence_requirements:
   - kind: "tests"
     description: "Retention tests pass"
     command: "uv run pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov"
+  - kind: "tests"
+    description: "The node's tests pass."
+    command: "uv run pytest tests/nodes/node_lane_stack_orphan_compute/test_lane_stack_orphans.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -63,3 +78,43 @@ dod_evidence:
       - check_type: "command"
         check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_remote_lane_effect/run_retention.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"def retain_run\" > /dev/null'"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21288-ac1-finished-lane-stop"
+    description: "This pull request's share only: the stop and keep verdicts for finished and live lanes. It fails at the merge base, which has no such node. It does not show that any lane labels its containers or that anything stops one."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lane_stack_orphan_compute/test_lane_stack_orphans.py -q --no-cov -k 'finished_lane or live_lane or exited or order'"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21288-ac2-protected-and-unowned"
+    description: "This pull request's share only: protected containers and unlabelled containers are never named for stopping. It fails at the merge base, which has no such node."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lane_stack_orphan_compute/test_lane_stack_orphans.py -q --no-cov -k 'protected or unowned or unknown_lane'"
+      - check_type: "command"
+        check_value: "uv run python -c \"from importlib.metadata import entry_points; names={e.name for e in entry_points(group='onex.nodes')}; assert 'node_lane_stack_orphan_compute' in names\""
+    binds_ac: ["AC2"]
+  - id: "dod-omn21288-orphan-deploy-probe"
+    description: "Hosted deploy smoke, runnable on the hosted runner with no lab route, broker or database: dispatch the packaged node_lane_stack_orphan_compute through the in-process ONEX runtime with one container of a finished lane and one protected container, and require a successful typed receipt that names only the first for stopping. It fails at the merge base, where the node does not exist."
+    source: "manual"
+    binds_ac: ["AC1", "AC2"]
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+          printf '%s' '{"containers": [{"name": "probe-pg", "state": "running", "lane": "probe-done"}, {"name": "omninode-runtime", "state": "running", "lane": "probe-done"}], "live_lanes": [], "finished_lanes": ["probe-done"]}' > "$probe_dir/input.json";
+          env ONEX_LANE=omn21288-deploy-probe "$runtime_bin/onex" node node_lane_stack_orphan_compute --input "$probe_dir/input.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+          uv run --locked python -c '
+          import json
+          import sys
+          from pathlib import Path
+          receipt = json.loads(Path(sys.argv[1]).read_text())
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          result = receipt["result"]
+          assert result["stop_names"] == ["probe-pg"], result
+          print(json.dumps({"run_id": receipt["run_id"], "stop_names": result["stop_names"]}))
+          ' "$probe_dir/receipt.json";

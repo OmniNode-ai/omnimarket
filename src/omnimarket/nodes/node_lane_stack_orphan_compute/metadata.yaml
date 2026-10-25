@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_stack_orphan_compute
+version: 1.0.0
+description: Judge a host's container inventory against the lanes that are live and the lanes that are finished,
+  and name the running containers that a finished lane left behind, each with its stop and restore command.
+  Containers a lane label does not claim, protected dev-runtime, bus, runner and mirror containers, and containers
+  of a live or unknown lane are never named for stopping.
+pack: distributed_validation
+node_role: compute
+display_name: Lane Stack Orphan Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_lane_stack_orphan_compute: omnimarket.nodes.node_lane_stack_orphan_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- lane-stack-orphan-compute
+- OMN-21288
