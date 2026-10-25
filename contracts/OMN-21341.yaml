@@ -192,4 +192,3 @@ dod_evidence:
           test ! -s "$probe_dir/out";
           head -1 "$probe_dir/err" | grep -q '^onex-claude-code-hook max_mode='
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC2"]
