@@ -2,7 +2,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-21341"
 title: "TA.15c omnimarket half: the rendered mod module writes one failure line on every failure path"
-summary: "The rendered Claude Code mod module's fixed failure table fell back natively (or denied) with no line at all, so a /compact whose adapter was absent, exited non-zero or threw was silent. Each failure plan now carries exactly one transcript line, naming the exit code or the error text, that the hook writes through $.ui.log before it falls back or denies as before. This is the one failure line OMN-21116 AC2 asks for. The adapter default receipt-mode client spec moves to omnibase_infra.handlers.handler_receipt_mode_publish_await:HandlerReceiptModePublishAwait, the omnibase_infra half of OMN-21341 (AC1); AC2 (no exit 4) is proven on h200 once a dev-merge tag of omnibase_infra carrying it is installed."
+summary: "The rendered Claude Code mod module's fixed failure table fell back natively (or denied) with no line at all, so a /compact whose adapter was absent, exited non-zero or threw was silent. Each failure plan now carries exactly one transcript line, naming the exit code or the error text, that the hook writes through $.ui.log before it falls back or denies as before. This is the one failure line OMN-21116 AC2 asks for. The adapter default receipt-mode client spec moves to omnibase_infra.handlers.handler_receipt_mode_publish_await:HandlerReceiptModePublishAwait, the omnibase_infra half of OMN-21341 (AC1); AC2 (no exit 4) is proven on h200 once a dev-merge tag of omnibase_infra carrying it is installed. The console entry now spends only the process deadline left after its own startup, less a fixed exit reserve, on the client wait: the binding deadline_ms is the adapter process deadline and the rendered module kills the process at it, so a full-deadline wait after startup was killed before it could exit 0 with the native fallback."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -14,7 +14,17 @@ requirements:
       - id: "AC3"
         statement: |-
           AC3: the rendered mod module's fixed failure table writes exactly one transcript line through $.ui.log on every failure path (adapter absent, non-zero exit, thrown hook) before it falls back natively or denies -- falsifier: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_render.py -q fails.
+  - id: "req-omn21341-hook-deadline"
+    statement: |-
+      The console entry answers within the binding's process deadline: the client wait is deadline_ms less the time spent since main started and EXIT_RESERVE_MS, never below 1 ms, so a compaction with no runtime answer exits 0 with empty stdout (the native fallback) before the rendered module's process timeout.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: with omnibase_infra carrying the client, the compaction binding of onex-claude-code-hook exits 0 and writes the native fallback when no runtime answers within the deadline, instead of exiting 4 -- falsifier: the Probe command prints exit=4 or receipt-mode client unavailable.
 evidence_requirements:
+  - kind: "tests"
+    description: "AC2: the console entry tests, including the deadline-left-after-startup and startup-spent-the-deadline tests."
+    command: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_adapter.py -q"
   - kind: "tests"
     description: "AC3: the render tests, including the one-line-per-failure-entry test at every max mode and the no-branching residue check."
     command: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_render.py -q"
@@ -136,3 +146,39 @@ dod_evidence:
               print(json.dumps({"mode": mode.value, "run_id": receipt["run_id"], "sha256": digest, "failure_entries": len(entries), "runtime_readback": True}))
           PY
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21341-hook-deadline"
+    description: "AC2: the console entry passes the client only the deadline left after startup and the exit reserve."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_adapter.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21341-deploy-hook-deadline-runtime"
+    description: "Hosted deploy smoke: run the installed onex-claude-code-hook console entry for the shipped compaction binding under a process timeout equal to the binding deadline_ms, as the rendered module does, with a receipt-mode client that answers nothing and returns only when its deadline passes. Require exit 0, empty stdout (the native fallback) and the max_mode line on stderr. Before the change the client waited the full deadline after startup and the timeout killed the process. No lane services, credentials, or production install are required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          cat > "$probe_dir/silent_receipt_client.py" <<'PY'
+          import threading
+          class SilentClient:
+              def publish_and_await(self, *, topic, command_type, payload, awaited_events, deadline_ms):
+                  threading.Event().wait(deadline_ms / 1000)
+                  return ()
+          PY
+          runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+          deadline_s="$(uv run --locked python -c 'from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_client_bindings_loader import load_client_section; (b,) = [b for b in load_client_section().bindings if b.name == "compaction"]; print(b.deadline_ms // 1000)')";
+          rc=0;
+          echo '{"session_id":"s","cwd":"/tmp","trigger":"manual"}' | env PYTHONPATH="$probe_dir" ONEX_HOOK_RECEIPT_CLIENT=silent_receipt_client:SilentClient timeout "$deadline_s" "$runtime_bin/onex-claude-code-hook" --binding compaction > "$probe_dir/out" 2> "$probe_dir/err" || rc=$?;
+          echo "exit=$rc deadline_s=$deadline_s stdout_bytes=$(wc -c < "$probe_dir/out")";
+          cat "$probe_dir/err";
+          test "$rc" -eq 0;
+          test ! -s "$probe_dir/out";
+          head -1 "$probe_dir/err" | grep -q '^onex-claude-code-hook max_mode='
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
