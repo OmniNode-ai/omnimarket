@@ -46,6 +46,7 @@ def _write_json(path: Path, data: Any) -> None:
         tmp.write_text(json.dumps(data, sort_keys=True), encoding="utf-8")
         os.replace(tmp, path)
     except OSError:
+        # Cache persistence is optional; the next tick can read the diff again.
         pass
 
 
@@ -201,6 +202,7 @@ def load_ledger_index(
             IndexError,
             AttributeError,
         ):
+            # Invalid indexes are discarded below so the ledger is parsed afresh.
             pass
         path.unlink(missing_ok=True)
     return loaded

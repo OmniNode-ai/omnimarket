@@ -29,7 +29,7 @@ lf = SimpleNamespace(
     repo_of=lambda _key: "example/repo",
     LANDING_BRANCH="main",
     retired_judge_disarm_of=lambda old: old.get("disarm_event"),
-    judge_paths_text=lambda paths: str(paths),
+    judge_paths_text=str,
 )
 
 
@@ -242,13 +242,14 @@ def test_unreadable_and_stale_indexes_are_dropped(tmp_path: Path) -> None:
 
 def test_ledger_without_cache_or_directory_calls_reader(tmp_path: Path) -> None:
     calls = []
-    assert (
-        speed.ledger_indexed(None, tmp_path, lambda: calls.append(1) or "answer")
-        == "answer"
+    without_cache = speed.ledger_indexed(
+        None, tmp_path, lambda: calls.append(1) or "answer"
     )
-    assert (
-        speed.ledger_indexed({}, None, lambda: calls.append(2) or "answer") == "answer"
+    assert without_cache == "answer"
+    without_directory = speed.ledger_indexed(
+        {}, None, lambda: calls.append(2) or "answer"
     )
+    assert without_directory == "answer"
     assert calls == [1, 2]
     assert not list(tmp_path.iterdir())
     req = speed_models.ModelLandingTickSpeedRequest(
