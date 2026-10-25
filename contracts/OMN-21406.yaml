@@ -37,7 +37,7 @@ requirements:
 evidence_requirements:
   - kind: tests
     description: The 21-key reader, the six overlay models and the key tests.
-    command: "uv run pytest tests -q -k overlay_keys --no-cov --refuse-skips"
+    command: "uv run pytest tests/unit/handlers/test_overlay_keys.py -q -k overlay_keys --no-cov --refuse-skips"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -62,7 +62,7 @@ dod_evidence:
     binds_ac: [AC2]
     checks:
       - check_type: test_passes
-        check_value: "uv run pytest tests -q --no-cov --refuse-skips -k overlay_keys"
+        check_value: "uv run pytest tests/unit/handlers/test_overlay_keys.py -q --no-cov --refuse-skips -k overlay_keys"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: dod-omn21406-ac3-prerequisite
     description: >-
