@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_link_gate_compute
+version: 1.0.0
+description: Judge one lab host's ssh link for one unit from the placing host's ping loss. A host is benched only
+  on sustained loss (this read and the one before it, both over 20 percent of 50 pings), is degraded (ranked after
+  cleaner hosts, still admitted) over 5 percent, and is never judged for a unit delivered over the event bus or
+  for the launching host. Also owns the ping argv and the ping summary parse.
+pack: distributed_validation
+node_role: compute
+display_name: Link Gate Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_link_gate_compute: omnimarket.nodes.node_link_gate_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- link-gate-compute
+- OMN-21373

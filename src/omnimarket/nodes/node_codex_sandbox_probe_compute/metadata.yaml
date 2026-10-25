@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_codex_sandbox_probe_compute
+version: 1.0.0
+description: Render the shared Codex sandbox roots and write probe for the remote lane runner and placement pool.
+pack: distributed_validation
+node_role: compute
+display_name: Codex Sandbox Probe Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_codex_sandbox_probe_compute: omnimarket.nodes.node_codex_sandbox_probe_compute
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- codex-sandbox-probe-compute
+- OMN-21328

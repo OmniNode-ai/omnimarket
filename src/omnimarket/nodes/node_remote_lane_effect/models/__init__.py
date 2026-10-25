@@ -7,5 +7,15 @@ from .model_remote_lane_effect import (
     ModelRemoteLaneRefRequest,
     ModelRemoteLaneRefResult,
 )
+from .model_remote_lane_retention import (
+    ModelRemoteLaneRetentionRequest,
+    ModelRemoteLaneRetentionResult,
+)
 
-__all__ = ["SHA_RE", "ModelRemoteLaneRefRequest", "ModelRemoteLaneRefResult"]
+__all__ = [
+    "SHA_RE",
+    "ModelRemoteLaneRefRequest",
+    "ModelRemoteLaneRefResult",
+    "ModelRemoteLaneRetentionRequest",
+    "ModelRemoteLaneRetentionResult",
+]

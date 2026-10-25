@@ -1,0 +1,61 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21399"
+title: "Migration slice 3: move the five placement nodes to omnimarket"
+summary: >-
+  Slice 3 of the internal-repos code migration moves five placement nodes into
+  omnimarket in its canonical node shape (contract, metadata, handlers, models,
+  node.py) with their tests under tests/nodes/: node_host_capability_compute,
+  node_lane_guard_admission_compute, node_lane_placement_recovery_effect,
+  node_link_gate_compute and node_link_history_effect. The host registry root
+  candidates are read from the lab_hosts overlay through
+  load_structured_overlay in node_overlay_reader. Each node is registered as an
+  onex.nodes entry point. The plugin callers are repointed in a later slice.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn21399-placement-nodes"
+    statement: >-
+      The five placement nodes exist in omnimarket with their tests, and the
+      private registry-root literals are read from the lab_hosts overlay.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the five placement nodes and their tests live in omnimarket and pass"
+  - id: "req-omn21399-entry-points"
+    statement: "The five placement nodes are registered onex.nodes entry points."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: node_host_capability_compute, node_lane_guard_admission_compute, node_lane_placement_recovery_effect, node_link_gate_compute and node_link_history_effect are onex.nodes entry points"
+evidence_requirements:
+  - kind: "tests"
+    description: "Slice 3: the five placement nodes' tests pass in omnimarket."
+    command: "uv run pytest tests/nodes/node_host_capability_compute/test_golden_chain_host_capability_compute.py tests/nodes/node_host_capability_compute/test_host_capability_parity.py tests/nodes/node_host_capability_compute/test_registry_roots.py tests/nodes/node_lane_guard_admission_compute/test_golden_chain_lane_guard_admission_compute.py tests/nodes/node_lane_placement_recovery_effect/test_golden_chain_lane_placement_recovery_effect.py tests/nodes/node_link_gate_compute/test_golden_chain_link_gate_compute.py tests/nodes/node_link_gate_compute/test_landing_link_loss.py tests/nodes/node_link_history_effect/test_golden_chain_link_history_effect.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21399-ac1-placement-nodes"
+    description: "The five placement nodes' golden-chain and focused tests pass, including the registry roots read from the lab_hosts overlay and the structured overlay reader. Fails at the merge base, which has none of these nodes."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_host_capability_compute/test_golden_chain_host_capability_compute.py tests/nodes/node_host_capability_compute/test_host_capability_parity.py tests/nodes/node_host_capability_compute/test_registry_roots.py tests/nodes/node_lane_guard_admission_compute/test_golden_chain_lane_guard_admission_compute.py tests/nodes/node_lane_placement_recovery_effect/test_golden_chain_lane_placement_recovery_effect.py tests/nodes/node_link_gate_compute/test_golden_chain_link_gate_compute.py tests/nodes/node_link_gate_compute/test_landing_link_loss.py tests/nodes/node_link_history_effect/test_golden_chain_link_history_effect.py -q"
+  - id: "dod-omn21399-ac2-entry-points"
+    description: "The five placement nodes are registered onex.nodes entry points and the runtime dogfood inventory classifies every entry point."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_market_node_runtime_dogfood.py::test_market_node_runtime_dogfood_inventory_classifies_all_entry_points -q"
+      - check_type: "command"
+        check_value: "uv run python -c \"from importlib.metadata import entry_points; names={e.name for e in entry_points(group='onex.nodes')}; need={'node_host_capability_compute','node_lane_guard_admission_compute','node_lane_placement_recovery_effect','node_link_gate_compute','node_link_history_effect'}; missing=need-names; assert not missing, missing\""
+  - id: "dod-omn21399-deploy-import"
+    description: "Hosted deploy check, runnable on the hosted runner with no lab route, broker or database: the five placement node packages import from the installed omnimarket and each resolves its onex.nodes entry point. Fails at the merge base, where the packages and entry points are absent."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run --locked python -c \"from importlib.metadata import entry_points; eps={e.name: e for e in entry_points(group='onex.nodes')}; [eps[n].load() for n in ('node_host_capability_compute','node_lane_guard_admission_compute','node_lane_placement_recovery_effect','node_link_gate_compute','node_link_history_effect')]\""

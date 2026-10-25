@@ -61,7 +61,7 @@ def _contract() -> dict[str, Any]:
     )
 
 
-def test_contract_declares_dispatch_and_one_bound_operation() -> None:
+def test_contract_declares_dispatch_and_bound_operations() -> None:
     contract = _contract()
     assert contract["name"] == NAME
     assert "event_bus" not in contract
@@ -71,7 +71,11 @@ def test_contract_declares_dispatch_and_one_bound_operation() -> None:
         == "onex.cmd.omnimarket.remote-lane-effect-requested.v1"
     )
     assert set(dispatch["terminal_events"]) == {"success", "failure"}
-    (entry,) = contract["handler_routing"]["handlers"]
+    entries = {
+        entry["operation"]: entry for entry in contract["handler_routing"]["handlers"]
+    }
+    assert set(entries) == {"resolve_remote_lane_ref", "retain_finished_remote_run"}
+    entry = entries["resolve_remote_lane_ref"]
     assert entry["operation"] == "resolve_remote_lane_ref"
     handler = getattr(
         importlib.import_module(entry["handler"]["module"]), entry["handler"]["name"]

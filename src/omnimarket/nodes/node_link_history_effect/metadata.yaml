@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_link_history_effect
+version: 1.0.0
+description: Keep each lab host's recent ping-loss reads in one JSON file of the placement directory, and return
+  the earlier reads the link gate counts beside the current one. Reads under a minute apart are one observation,
+  a read older than 30 minutes is forgotten, and a missing or damaged file reads as no history.
+pack: distributed_validation
+node_role: effect
+display_name: Link History Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_link_history_effect: omnimarket.nodes.node_link_history_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- link-history-effect
+- OMN-21373
