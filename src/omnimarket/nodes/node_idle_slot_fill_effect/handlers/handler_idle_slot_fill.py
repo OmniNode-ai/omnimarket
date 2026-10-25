@@ -71,6 +71,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.rules_lab_fill_tickets import plan_ticket_backlog
 from omnimarket.models.lab_fill import ModelLabFillTicketFacts
 from omnimarket.nodes.node_idle_slot_fill_effect import overlay
@@ -1240,7 +1241,11 @@ def read_generated(
         try:
             return load(path)
         except (Exception, SystemExit) as exc:
-            unread.append(f"{name} unread: {' '.join(str(exc).splitlines())[:160]}")
+            detail = " ".join(str(exc).splitlines())
+            # Overlay errors name required keys and how to supply them; keep both.
+            if not isinstance(exc, NodeOverlayError):
+                detail = detail[:160]
+            unread.append(f"{name} unread: {detail}")
             return default
 
     snapshot_path = sources.linear_snapshot
