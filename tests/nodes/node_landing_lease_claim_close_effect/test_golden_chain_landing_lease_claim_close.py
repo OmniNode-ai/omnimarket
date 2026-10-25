@@ -351,3 +351,43 @@ def test_signal_helpers_restore_handlers_and_parser_is_standalone() -> None:
     args = close.backfill_parser().parse_args(["--dry-run", "--limit", "2"])
     assert args.dry_run
     assert args.limit == 2
+
+
+def test_released_lease_terminal_retains_stamped_executor(tmp_path: Path) -> None:
+    directory = release(tmp_path)
+    (directory / "result.json").write_text(
+        json.dumps({"kind": "merged", "engine": "codex_high", "host": "h101"})
+    )
+    row = close.HandlerLandingLeaseClaimClose().handle(request(tmp_path)).rows[0]
+    assert {"engine=codex_high", "model=codex", "host=h101", "pr=example#1"} <= set(
+        row.split(" | ")
+    )
+
+
+def test_cause_terminal_retains_actual_executor_after_fallback(
+    tmp_path: Path, overlay: Path
+) -> None:
+    close.cause_claim(
+        tmp_path,
+        {"lease_id": 1, "subject": "cause:example/repo:group"},
+        "",
+        lambda _row: (True, ""),
+        lambda: CLAIMED,
+    )
+    (tmp_path / "result.json").write_text(
+        json.dumps(
+            {
+                "kind": "cause_fix_submitted",
+                "engine": "codex_high",
+                "host": "h101",
+                "pr": "example#2",
+            }
+        )
+    )
+    written: list[str] = []
+    close.cause_terminal(
+        tmp_path, lambda row: (written.append(row) is None, ""), lambda: RELEASED
+    )
+    assert {"engine=codex_high", "model=codex", "host=h101", "pr=example#2"} <= set(
+        written[0].split(" | ")
+    )
