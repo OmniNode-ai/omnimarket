@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Producers beat at least every 30 seconds. Three missed beats remove eligibility.
+heartbeat_max_age_seconds: 90
+max_health_rows: 256
+max_decisions: 4096

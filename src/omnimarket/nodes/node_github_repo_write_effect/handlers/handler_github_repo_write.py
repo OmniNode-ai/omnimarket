@@ -80,6 +80,10 @@ from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubHttpRequest,
     ModelGithubHttpResponse,
 )
+from omnimarket.handlers.handler_lane_write_identity import (
+    ModelLaneWriteIdentity,
+    assert_github_token_is_actor,
+)
 from omnimarket.inference.secret_store_resolver import resolve_api_key_async
 from omnimarket.models.model_github_quota_floor import ModelGithubQuotaFloor
 from omnimarket.nodes.contract_topics import contract_secret_ref
@@ -458,6 +462,11 @@ class HandlerGithubRepoWriteEffect:
             raise RuntimeError(
                 f"api_key_ref {ref!r} resolved to None; set it in the secret store"
             )
+        # OMN-20355: once an actor is configured, a person's token is refused.
+        assert_github_token_is_actor(
+            ModelLaneWriteIdentity.from_env(os.environ),
+            token=secret.get_secret_value(),
+        )
         return UrllibGithubLandingTransport(secret)
 
     async def _run(self, run: _Run) -> ModelRepoWriteCompleted:

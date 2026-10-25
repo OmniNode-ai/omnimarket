@@ -59,12 +59,18 @@ from omnimarket.events.runtime_deployment import (
     ModelRedeployRolledBackEvent,
     verify_prod_deploy_grant_binding,
 )
+from omnimarket.models.model_dev_deploy_route import (
+    ModelDevDeployHealth,
+)
 from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
     contract_subscribe_topics,
 )
 from omnimarket.nodes.node_redeploy_deploy_effect.handlers.deploy_publish_record import (
     DeployPublishRecord,
+)
+from omnimarket.nodes.node_redeploy_deploy_effect.handlers.dev_deploy_routing_store import (
+    DevDeployRoutingStore,
 )
 from omnimarket.nodes.node_redeploy_deploy_effect.models.model_deploy_publish_command import (
     ModelDeployPublishCommand,
@@ -103,6 +109,9 @@ TOPIC_REBUILD_COMPLETED = _topic_with_suffix(
 # and the contract-driven provisioner creates only topics it finds in a contract.
 TOPIC_REBUILD_REJECTED = _topic_with_suffix(
     _SUBSCRIBE, "deploy.rebuild-rejected.v1", "subscribe_topics"
+)
+TOPIC_DEV_DEPLOY_HEALTH = _topic_with_suffix(
+    _SUBSCRIBE, "deploy.dev-deploy-health.v1", "subscribe_topics"
 )
 TOPIC_ROLLED_BACK = _topic_with_suffix(
     _PUBLISH, "redeploy-rolled-back.v1", "publish_topics"
@@ -147,6 +156,10 @@ if _event_name(TOPIC_REBUILD_REJECTED) != EVENT_REBUILD_REJECTED:
         f"contract's subscribe topic {TOPIC_REBUILD_REJECTED!r} reduces to "
         f"({_event_name(TOPIC_REBUILD_REJECTED)!r}); the event arm would be dead"
     )
+
+EVENT_DEV_DEPLOY_HEALTH = "dev-deploy-health"
+if _event_name(TOPIC_DEV_DEPLOY_HEALTH) != EVENT_DEV_DEPLOY_HEALTH:
+    raise ValueError("dev deploy health branch differs from its contract topic")
 
 
 def _normalize_completion_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -279,6 +292,9 @@ class HandlerDeployPublishMonitor:
         # runtime builds a fresh instance per routing entry, and the completion that
         # settles a command reaches a different instance, often in a new container.
         self._published = publish_record or DeployPublishRecord.from_env()
+        self._dev_routes = DevDeployRoutingStore(
+            self._published.path.parent / "dev_deploy_routing.json"
+        )
 
     @property
     def bus(self) -> Any:
@@ -306,6 +322,20 @@ class HandlerDeployPublishMonitor:
         is byte-for-byte unchanged.
         """
         event_name = _event_name(envelope.event_type or "")
+
+        if event_name == EVENT_DEV_DEPLOY_HEALTH:
+            raw = envelope.payload
+            reading = ModelDevDeployHealth.model_validate(
+                raw.model_dump() if hasattr(raw, "model_dump") else raw
+            )
+            self._dev_routes.record(reading)
+            return ModelHandlerOutput.for_effect(
+                input_envelope_id=envelope.envelope_id,
+                correlation_id=envelope.correlation_id or uuid4(),
+                handler_id=HANDLER_ID,
+                events=(),
+                metrics={"dev_deploy_health_observed": 1.0},
+            )
 
         if event_name == EVENT_REBUILD_COMPLETED:
             return self._observe_rebuild_completed(envelope)
@@ -696,7 +726,26 @@ class HandlerDeployPublishMonitor:
         """
         corr_id = str(command.correlation_id)
 
+        # A single durable decision precedes signing and publishing. Independent
+        # agents/CI must use this decision, not each re-evaluate changing health.
+        # Only dev CI rebuilds migrate here; other deployment lifecycles retain
+        # their existing gates and wire shape.
+        dev_route = None
+        requester = re.fullmatch(r"gha/([a-z][a-z0-9_]*)/.+", command.requested_by)
+        if command.dev_deploy_protocol is not None:
+            if command.runtime_lane is not EnumRuntimeLane.DEV or requester is None:
+                raise ValueError("health routing requires a dev CI requester")
+            dev_route = self._dev_routes.choose(
+                command.correlation_id,
+                request_fingerprint=hashlib.sha256(
+                    command.model_dump_json().encode()
+                ).hexdigest(),
+                repository=requester.group(1),
+                now=datetime.now(UTC),
+            )
+
         rebuild_command = ModelDeployRebuildCommand(
+            dev_deploy_route=dev_route,
             correlation_id=corr_id,
             requested_by=command.requested_by,
             scope=command.scope,
@@ -717,6 +766,8 @@ class HandlerDeployPublishMonitor:
         # ref this side invented is what reset the shared deploy clone onto the
         # release branch five times.
         rebuild_payload = rebuild_command.model_dump(mode="json")
+        if rebuild_payload.get("dev_deploy_route") is None:
+            rebuild_payload.pop("dev_deploy_route", None)
         if rebuild_payload.get("git_ref") is None:
             rebuild_payload.pop("git_ref", None)
         # OMN-19270: likewise an unknown request time is omitted, so the agent
