@@ -429,6 +429,9 @@ jobs:
       # SYNC with pre-commit hook 'projection-cursor-declared'.
       - name: Projection cursor-declared gate
         run: uv run python -m omnimarket.nodes.node_contract_projection_check_effect.runtime_projection_contract_check --rule cursor
+      # OMN-21289: no harness is invoked outside the delegation effect node's handlers (shrink-only baseline). SYNC with pre-commit hook 'harness-invocation-check'.
+      - name: Harness invocation gate
+        run: uv run python -m omnimarket.nodes.node_harness_invocation_check_effect
       # OMN-17446: a REGISTRY-shaped projection (its relation is resolved
       # against by another node's `ALTER COLUMN ... TYPE ... USING` conversion,
       # or by a shared write-path module another node imports) must not be fed
