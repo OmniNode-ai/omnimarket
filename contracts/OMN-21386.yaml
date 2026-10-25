@@ -113,10 +113,10 @@ dod_evidence:
       \ user=postgres dbname=postgres\" uv run pytest tests/test_work_ledger_history_postgres.py -q --refuse-skips"
 - id: dod-history-ci-database-inputs
   description: The PostgreSQL proof consumes the suite's ephemeral integration service inputs,
-    prefers an explicit probe DSN, and never falls through to the runtime DSN.
+    prefers an explicit probe DSN, and never falls through to the runtime DSN. It binds no criterion
+    because these tests exercise only the test module's own DSN resolution, so they also pass at the
+    merge base and cannot serve as a must-fail control; AC2 is bound by dod-history-ac2-hosted-suite.
   source: manual
-  binds_ac:
-  - AC2
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/test_work_ledger_history_postgres.py -q -k 'environment or ambient' --refuse-skips
