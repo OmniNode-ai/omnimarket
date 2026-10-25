@@ -14,6 +14,7 @@ _REPO_ROOT = Path(__file__).parent.parent
 _NODES_DIR = _REPO_ROOT / "src" / "omnimarket" / "nodes"
 _REMOTE_LANE_NODES = (
     "node_remote_lane_close_compute",
+    "node_remote_lane_handoff_compute",
     "node_remote_lane_compute",
     "node_remote_lane_effect",
 )

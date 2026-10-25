@@ -16,6 +16,10 @@ from omnimarket.nodes.node_context_compaction_orchestrator.handlers.session_barr
     ModelSessionBarrierReadBinding,
     PostgresSessionBarrierProbeSource,
 )
+from omnimarket.projection.postgres_read_database import (
+    connect_read_only,
+    read_sql_composer,
+)
 from omnimarket.protocols.protocol_context_compaction_barrier_wait import (
     ProtocolContextCompactionBarrierWait,
 )
@@ -124,7 +128,11 @@ def bind_compaction_ports(
     source = (
         barrier_probe_source
         if barrier_probe_source is not None
-        else PostgresSessionBarrierProbeSource(binding.barrier_probe)
+        else PostgresSessionBarrierProbeSource(
+            binding.barrier_probe,
+            connect=connect_read_only,
+            sql_composer=read_sql_composer,
+        )
     )
     return HandlerSessionBarrierWait(
         source,

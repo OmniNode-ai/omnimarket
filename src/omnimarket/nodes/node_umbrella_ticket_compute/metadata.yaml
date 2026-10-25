@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_umbrella_ticket_compute
+version: 1.0.0
+description: 'Refuse a PR-opening lane, or a PR create, whose only ticket is an umbrella ticket unless
+  its text carries an `Umbrella evidence: <reason>` line (OMN-21301). The repo evidence gate needs contracts/<id>.yaml
+  with dod_evidence of its own for every id a PR title cites, and an umbrella-titled PR shares that one
+  contract with every other umbrella PR. The one definition of the umbrella ticket set and of the evidence
+  line, read by lane-brief''s check, the remote-lane runner''s pre-placement step and landing_text.py
+  guard-create.'
+pack: pr_lifecycle
+node_role: compute
+display_name: Umbrella Ticket Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_umbrella_ticket_compute: omnimarket.nodes.node_umbrella_ticket_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- umbrella-ticket-compute

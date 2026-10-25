@@ -66,6 +66,13 @@ requirements:
     acceptance:
       - id: "AC13"
         statement: "AC13: the source-derived inventory lists node_session_context_sources_effect as an accessor and reader of session_content and work_ledger_rows, including its contract source, and the checked-in inventory matches the generator."
+  - id: "req-remote-lane-claim-reaches-lane-copy"
+    statement: "A remote lane starts only with its stamped CLAIM available to mirror, and no-claim handoffs retry while that CLAIM is still reaching the live ledger."
+    acceptance:
+      - id: "AC14"
+        statement: "AC14: a CLAIM the bus queued in the host bus outbox is found for the lane's copy, and a lane whose CLAIM is found nowhere is not started."
+      - id: "AC15"
+        statement: "AC15: a handoff refused no-claim while the lane's CLAIM has not reached the live ledger is retried, and a no-claim refusal with the CLAIM on the ledger is final."
 evidence_requirements:
   - kind: "tests"
     description: "AC1, AC3, AC-M1 and AC-M8: lab-fill selection and the dispatch plan."
@@ -84,6 +91,22 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn20864-nc1"
+    description: "AC14: the queued CLAIM incident replay, ledger precedence, request identity and missing-CLAIM controls."
+    source: "manual"
+    binds_ac: ["AC14"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_remote_lane_handoff_compute/test_remote_lane_handoff.py -q -n 0 -p no:randomly -k claim_mirror"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20864-nc2"
+    description: "AC15: retry delayed no-claim handoffs, refuse when the CLAIM is live or the window is over, and classify all other exits."
+    source: "manual"
+    binds_ac: ["AC15"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_remote_lane_handoff_compute/test_remote_lane_handoff.py -q -n 0 -p no:randomly -k handoff_retry"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20864-contractgate-push"
     description: "AC7: missing contracts are refused and the outgoing SHA supplies the contract blob; CI and pre-push call the same module. A direct lab control also refuses an uncommitted repair at the real head."
     source: "manual"

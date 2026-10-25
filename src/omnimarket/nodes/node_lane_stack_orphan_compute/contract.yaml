@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_stack_orphan_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Judge a host's container inventory against the lanes that are live and the lanes that are finished,
+  and name the running containers that a finished lane left behind, each with its stop and restore command.
+  Containers a lane label does not claim, protected dev-runtime, bus, runner and mirror containers, and containers
+  of a live or unknown lane are never named for stopping.
+input_model:
+  name: ModelLaneStackOrphanRequest
+  module: omnimarket.nodes.node_lane_stack_orphan_compute.models.model_lane_stack_orphan
+output_model:
+  name: ModelLaneStackOrphanVerdict
+  module: omnimarket.nodes.node_lane_stack_orphan_compute.models.model_lane_stack_orphan
+handler:
+  module: omnimarket.nodes.node_lane_stack_orphan_compute.handlers.handler_lane_stack_orphan
+  class: HandlerLaneStackOrphan
+  input_model: omnimarket.nodes.node_lane_stack_orphan_compute.models.model_lane_stack_orphan.ModelLaneStackOrphanRequest
+  output_model: omnimarket.nodes.node_lane_stack_orphan_compute.models.model_lane_stack_orphan.ModelLaneStackOrphanVerdict
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_lane_stack_orphan_compute.handlers.handler_lane_stack_orphan:HandlerLaneStackOrphan
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerLaneStackOrphan
+      module: omnimarket.nodes.node_lane_stack_orphan_compute.handlers.handler_lane_stack_orphan
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation with supplied host readings.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local
+  description: Judge a host's container inventory against the lanes that are live and the lanes that are finished,
+    and name the running containers that a finished lane left behind, each with its stop and restore command.
+    Containers a lane label does not claim, protected dev-runtime, bus, runner and mirror containers, and containers
+    of a live or unknown lane are never named for stopping.
+  author: OmniNode Team
+  created: '2026-10-25'
+  tags:
+  - compute
+  - lane-stack-orphan-compute
+  - OMN-21288
+  related_tickets:
+  - OMN-21288

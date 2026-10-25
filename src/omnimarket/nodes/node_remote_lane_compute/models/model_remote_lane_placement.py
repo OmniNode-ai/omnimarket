@@ -90,6 +90,8 @@ class ModelRemoteLaneLadder(BaseModel):
     ticket: str | None = None
     lane_kind: str | None = None
     risk_class: str | None = None
+    # The lane's declared Required capabilities: values.
+    required_capabilities: tuple[str, ...] = ()
     ceiling: str
     claude_required: bool = False
     pinned: bool = False

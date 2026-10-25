@@ -1,7 +1,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-21114"
 title: "TA.12 compaction build latency qualification (omnimarket tabulation node slice)"
-summary: "A pure compute node, node_context_compaction_latency_compute, tabulates recorded compaction round trips into p50, p95 and max (nearest rank) per session size, host and temperature for the deterministic build, the model-written section and their per-round-trip total, and proposes the context_compaction class ceiling (worst total p95 plus margin) and the precompute deadline (worst total p95 plus slack, default 5 s). A missing size, a missing host, a cell under 20 round trips, or a candidate deadline below the measured p95 is listed as a falsifier and a missing size, host or cell withholds both proposals. This slice does not measure anything: the round trips through the adapter on the three session sizes from the launching Mac and a lab host are not recorded, because the compaction build the orchestrator calls is not wired on the dev lane. The ticket's AC1 is therefore not claimed by this contract."
+summary: "A pure compute node, node_context_compaction_latency_compute, tabulates recorded compaction round trips into p50, p95 and max (nearest rank) per session size, host and temperature for the deterministic build, the model-written section and their per-round-trip total, and proposes the context_compaction class ceiling (worst total p95 plus margin) and the precompute deadline (worst total p95 plus slack, default 5 s). A missing size, a missing host, a cell under 20 round trips, or a candidate deadline below the measured p95 is listed as a falsifier and a missing size, host or cell withholds both proposals. This slice does not measure anything: the round trips through the adapter on the three session sizes from the launching Mac and a lab host are not recorded, because the compaction build the orchestrator calls is not wired on the dev lane. The ticket's AC1 is therefore not claimed by this contract. A second slice makes the live pack build carry the model-written section time (read_ms of the TAIL_SUMMARY tier) into the built package, so a prepared receipt carries both phase timings the qualification needs; it still measures nothing."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -17,6 +17,11 @@ requirements:
         statement: "DoD3: a missing size, a missing host, a cell short of 20 round trips, or a caller candidate deadline below the measured p95 is listed as a falsifier, and a duplicate round_trip_id or a negative or non-finite duration is refused -- falsifier: an incomplete or padded table accepted."
       - id: "DoD4"
         statement: "DoD4: the contract subscribes the restricted onex.cmd.omniintelligence request topic, publishes one onex.evt.omnimarket result topic, resolves its handler and models, and the node is an onex.nodes entry point -- falsifier: a contract test failure."
+  - id: "req-live-build-model-section-time"
+    statement: "The live pack build (map_pack_built) carries the model-written section time into the built package, so the prepared receipt's model_section_ms is filled and the TA.12 runner no longer refuses every trip for a missing phase split."
+    acceptance:
+      - id: "DoD5"
+        statement: "DoD5: map_pack_built sets the built package's model_section_ms to the sum of the model-written tiers' read_ms, and None when no model-written tier was read -- falsifier: a package with model_section_ms None from a build whose TAIL_SUMMARY tier recorded a read_ms, or a number from a build with none."
 evidence_requirements:
   - kind: "tests"
     description: "DoD1 to DoD4 in the node tests and the golden chain."
@@ -54,6 +59,30 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_golden_chain_context_compaction_latency_compute.py -q -p no:randomly --no-cov"
+  - id: "dod-omn21114-n5"
+    description: "DoD5: the live pack build carries the model-written section time into the built package."
+    binds_ac: ["DoD5"]
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build.py -q -p no:randomly --no-cov -k 'model_written_section_time or model_section_time_is_none'"
+  - id: "dod-omn21114-deploy-hosted-build-phase"
+    description: "Hosted deploy probe. The hosted runner builds a ModelContextPackBuilt whose TAIL_SUMMARY tier read took 1234.5 ms through the product map_pack_built and asserts the built package's model_section_ms is 1234.5. It fails at the merge base, where map_pack_built leaves the field None. The hosted runner can run it; no lab route is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run --frozen --no-dev python -c '
+          from omnibase_core.enums.enum_context_factor import EnumContextFactor as F
+          from omnibase_core.enums.enum_context_source_status import EnumContextSourceStatus as S
+          from omnimarket.models.context_pack_orchestrator import ModelContextPackBuilt as B, ModelContextPackTierStatus as T
+          from omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_compaction_pack_build import map_pack_built
+          h = "a" * 64
+          t = T(factor=F.TAIL_SUMMARY, required=False, status=S.RESOLVED, included=True, read_ms=1234.5)
+          b = B.model_validate({"status": "ok", "profile_name": "compaction_orchestrator", "profile_content_hash": h, "candidate_id": "22222222-2222-5222-8222-222222222222", "assembly_hash": h, "final_pack_hash": h, "body_hash": h, "version_vector_hash": h, "messages": [{"role": "user", "text": "pack"}], "tier_statuses": [t]})
+          p = map_pack_built(b).package
+          assert p is not None and p.model_section_ms == 1234.5, p
+          print(p.model_section_ms)'
   - id: "dod-omn21114-deploy-hosted-qualify"
     description: "Hosted deploy probe. The hosted runner runs uv run --frozen --no-dev in the checkout and sends one table of 20 cold and 20 warm round trips for three sizes on two hosts through the product handler, asserting the table is complete with 12 cells and the proposed ceiling and deadline are the worst total p95 plus 2000 and 5000, then removes one size and asserts both proposals are withheld with the size listed. It fails at the merge base, which has no such handler. The hosted runner can run it; no lab route is required."
     source: "manual"

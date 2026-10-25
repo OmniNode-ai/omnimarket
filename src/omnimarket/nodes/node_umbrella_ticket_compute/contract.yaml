@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_umbrella_ticket_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: 'Refuse a PR-opening lane, or a PR create, whose only ticket is an umbrella ticket unless
+  its text carries an `Umbrella evidence: <reason>` line (OMN-21301). The repo evidence gate needs contracts/<id>.yaml
+  with dod_evidence of its own for every id a PR title cites, and an umbrella-titled PR shares that one
+  contract with every other umbrella PR. The one definition of the umbrella ticket set and of the evidence
+  line, read by lane-brief''s check, the remote-lane runner''s pre-placement step and landing_text.py
+  guard-create.'
+input_model:
+  name: ModelUmbrellaTicketRequest
+  module: omnimarket.nodes.node_umbrella_ticket_compute.models.model_umbrella_ticket
+  description: Typed input for umbrella ticket compute.
+output_model:
+  name: ModelUmbrellaTicketResult
+  module: omnimarket.nodes.node_umbrella_ticket_compute.models.model_umbrella_ticket
+  description: Typed output for umbrella ticket compute.
+handler:
+  module: omnimarket.nodes.node_umbrella_ticket_compute.handlers.handler_umbrella_ticket
+  class: HandlerUmbrellaTicket
+  input_model: omnimarket.nodes.node_umbrella_ticket_compute.models.model_umbrella_ticket.ModelUmbrellaTicketRequest
+  output_model: omnimarket.nodes.node_umbrella_ticket_compute.models.model_umbrella_ticket.ModelUmbrellaTicketResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_umbrella_ticket_compute.handlers.handler_umbrella_ticket:HandlerUmbrellaTicket
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerUmbrellaTicket
+      module: omnimarket.nodes.node_umbrella_ticket_compute.handlers.handler_umbrella_ticket
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation of HandlerUmbrellaTicket.handle with its typed request.
+descriptor:
+  node_archetype: compute
+  purity: impure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: false
+metadata:
+  transport_type: local
+  description: Umbrella Ticket Compute through local Python invocation.
+  author: OmniNode Team
+  created: '2026-10-24'
+  tags:
+  - compute
+  - umbrella-ticket-compute
+  related_tickets: []

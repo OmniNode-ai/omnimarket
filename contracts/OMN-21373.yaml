@@ -4,11 +4,17 @@ ticket_id: "OMN-21373"
 title: "Move all code out of the private data repository to omnimarket and omniclaude, leaving it data only"
 summary: >-
   Epic carrier for the internal-repos code migration. This repository's part,
-  port group G1 of section 18 of the migration plan, adds five pure compute
-  nodes in omnimarket's canonical shape (contract, metadata, handler, models,
-  entry point) with their direct tests: node_host_memory_admission_compute,
-  node_landing_worker_engine_compute, node_landing_tick_bounds_compute,
-  node_landing_upstream_gate_compute and node_merge_sweep_same_head_compute.
+  port groups G1 and G2 of section 18 of the migration plan, adds nodes in
+  omnimarket's canonical shape (contract, metadata, handler, models, entry
+  point) with their direct tests. G1 adds five pure compute nodes:
+  node_host_memory_admission_compute, node_landing_worker_engine_compute,
+  node_landing_tick_bounds_compute, node_landing_upstream_gate_compute and
+  node_merge_sweep_same_head_compute. G2 adds node_pool_read_share_effect,
+  node_brief_compact_compute, node_standup_retrospective_compute,
+  node_lane_host_discovery_compute and node_umbrella_ticket_compute; the
+  knowledge-base repository name, the variable that holds its clone path and
+  the umbrella ticket set are read from the environment or the node overlay,
+  and a node refuses with the setting named when neither supplies it.
   The plugin callers are not repointed here; that is the plugin release of the
   slice that moves each caller. The epic's two acceptance criteria are read on
   the private data repository and on the lab hosts and stay pending for the epic.
@@ -55,6 +61,20 @@ requirements:
       - id: "AC2"
         statement: >-
           AC2: every launchd and systemd unit that ran the private data repository code runs the omnimarket or omniclaude copy -- falsifier: the plan's section 4 unit list read back on each host names an the private data repository path
+  - id: "req-omn21373-g2-port"
+    statement: >-
+      The five G2 nodes exist in omnimarket with their tests, under module paths
+      in the omnimarket namespace, with no private repository name, lab host
+      name or address in their files; each overlay-reading node refuses with the
+      setting named when neither its environment variable nor its overlay
+      supplies it, and resolves it from an overlay fixture.
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: the private data repository holds no code file outside its data checks, and its CI refuses any added code file -- falsifier: uv run pytest tests/test_src_freeze_omn19998.py -q fails, or git ls-files on main lists a .py under src/
+      - id: "AC2"
+        statement: >-
+          AC2: every launchd and systemd unit that ran the private data repository code runs the omnimarket or omniclaude copy -- falsifier: the plan's section 4 unit list read back on each host names an the private data repository path
 evidence_requirements:
   - kind: "tests"
     description: "G1 port: the five nodes' direct tests pass in omnimarket."
@@ -65,6 +85,9 @@ evidence_requirements:
   - kind: "tests"
     description: "G3 port: the five nodes' direct tests pass in omnimarket."
     command: "uv run pytest tests/nodes/node_landing_placement_wait_effect/test_golden_chain_landing_placement_wait.py tests/nodes/node_landing_not_started_effect/test_golden_chain_landing_not_started.py tests/nodes/node_landing_lease_claim_close_effect/test_golden_chain_landing_lease_claim_close.py tests/nodes/node_install_superset_guard_effect/test_golden_chain_install_superset_guard.py tests/nodes/node_landing_tick_speed_effect/test_golden_chain_landing_tick_speed.py -q"
+  - kind: "tests"
+    description: "G2 port: the five nodes' direct tests pass in omnimarket."
+    command: "uv run pytest tests/nodes/node_pool_read_share_effect/test_golden_chain_pool_read_share_effect.py tests/nodes/node_brief_compact_compute/test_golden_chain_brief_compact_compute.py tests/nodes/node_standup_retrospective_compute/test_golden_chain_standup_retrospective_compute.py tests/nodes/node_lane_host_discovery_compute/test_golden_chain_lane_host_discovery_compute.py tests/nodes/node_umbrella_ticket_compute/test_golden_chain_umbrella_ticket_compute.py -q"
   - kind: "tests"
     description: "Slice 3: the five placement nodes' tests pass in omnimarket."
     command: "uv run pytest tests/nodes/node_host_capability_compute/test_golden_chain_host_capability_compute.py tests/nodes/node_host_capability_compute/test_host_capability_parity.py tests/nodes/node_host_capability_compute/test_registry_roots.py tests/nodes/node_lane_guard_admission_compute/test_golden_chain_lane_guard_admission_compute.py tests/nodes/node_lane_placement_recovery_effect/test_golden_chain_lane_placement_recovery_effect.py tests/nodes/node_link_gate_compute/test_golden_chain_link_gate_compute.py tests/nodes/node_link_gate_compute/test_landing_link_loss.py tests/nodes/node_link_history_effect/test_golden_chain_link_history_effect.py -q"
@@ -237,4 +260,43 @@ dod_evidence:
           assert result["error"] is None and result["text"] == expected, result
           subprocess.run(["bash", "-n"], input=result["text"], text=True, check=True)
           print(json.dumps({"run_id": receipt["run_id"], "status": receipt["status"], "renderer": cloud_start_script.__module__}))
+          ' "$probe_dir/receipt.json";
+  - id: "dod-omn21373-ac1-g2-nodes-in-omnimarket"
+    description: "AC1 contribution only: the five G2 nodes have a public home in omnimarket, so their copies can leave the internal repositories. The AC1 read on the private data repository itself stays pending for the epic."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_pool_read_share_effect/test_golden_chain_pool_read_share_effect.py tests/nodes/node_brief_compact_compute/test_golden_chain_brief_compact_compute.py tests/nodes/node_standup_retrospective_compute/test_golden_chain_standup_retrospective_compute.py tests/nodes/node_lane_host_discovery_compute/test_golden_chain_lane_host_discovery_compute.py tests/nodes/node_umbrella_ticket_compute/test_golden_chain_umbrella_ticket_compute.py -q"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21373-ac2-g2-entry-points"
+    description: "AC2 contribution only: the five G2 nodes are registered onex.nodes entry points, which the callers that units run can be repointed to. The per-host unit readback stays pending for the epic."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_g2_local_invocation.py -q"
+      - check_type: "command"
+        check_value: "uv run python -c \"from importlib.metadata import entry_points; names={e.name for e in entry_points(group='onex.nodes')}; need={'node_pool_read_share_effect','node_brief_compact_compute','node_standup_retrospective_compute','node_lane_host_discovery_compute','node_umbrella_ticket_compute'}; missing=need-names; assert not missing, missing\""
+    binds_ac: ["AC2"]
+  - id: "dod-omn21373-deploy-g2-umbrella"
+    description: "Hosted deploy smoke, runnable on the hosted runner with no lab route, broker or database: dispatch the packaged node_umbrella_ticket_compute through the in-process ONEX runtime with an explicit umbrella ticket set and require a successful typed receipt carrying the one PR refusal. The packaged-contract execution of all five G2 nodes is bound to AC2 by tests/test_g2_local_invocation.py."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+          printf '%s' '{"tickets": ["OMN-1"], "text": "no evidence line", "opens_pr": true, "umbrella_tickets": ["OMN-1"], "surface": "pr"}' > "$probe_dir/input.json";
+          env ONEX_LANE=omn21373-g2-deploy-probe "$runtime_bin/onex" node node_umbrella_ticket_compute --input "$probe_dir/input.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+          uv run --locked python -c '
+          import json
+          import sys
+          from pathlib import Path
+          receipt = json.loads(Path(sys.argv[1]).read_text())
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          refusals = receipt["result"]["refusals"]
+          assert len(refusals) == 1 and refusals[0].startswith("the title\x27s only ticket OMN-1 is an umbrella ticket: "), refusals
+          print(json.dumps({"run_id": receipt["run_id"], "refusals": len(refusals)}))
           ' "$probe_dir/receipt.json";

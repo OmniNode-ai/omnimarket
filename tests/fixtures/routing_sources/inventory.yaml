@@ -141,6 +141,12 @@ not_routing_resolution_sites:
     reason: the ticket ids the landing controller writes into its CLAIM and TERMINAL ledger rows; a ledger cell, not a route for delegated work
   - site: "src/omnimarket/nodes/node_install_superset_guard_effect/handlers/handler_install_superset_cli.py:resolve_setting(PLUGIN_INSTALL_OVERLAY)"
     reason: the ticket id the installer's superset check writes into each intentional-drop ledger row; a ledger cell, not a route for delegated work
+  - site: "src/omnimarket/nodes/node_brief_compact_compute/handlers/handler_brief_compact.py:resolve_setting('node_brief_compact_compute')"
+    reason: the knowledge-base repository name a rendered lane brief names; brief text, not a route for delegated work
+  - site: "src/omnimarket/nodes/node_lane_host_discovery_compute/handlers/handler_lane_host_discovery.py:resolve_setting('node_lane_host_discovery_compute')"
+    reason: the knowledge-base clone name and the variable that holds its path, rendered into a lane's shell lines; a host-local input, not a route for delegated work
+  - site: "src/omnimarket/nodes/node_umbrella_ticket_compute/handlers/handler_umbrella_ticket.py:resolve_setting('node_umbrella_ticket_compute')"
+    reason: the umbrella ticket set a PR-opening lane is refused on; a ticket list, not a route for delegated work
 not_routing_configs:
   - path: src/omnimarket/configs/adk_invoke.yaml
     reason: one fixed provider invocation with no choice among routes

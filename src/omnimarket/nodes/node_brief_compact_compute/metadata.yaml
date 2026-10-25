@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_brief_compact_compute
+version: 1.0.0
+description: Replace a lane brief's fixed lab-lane renderings (the pasted rules block, 3a.3's fixed steps,
+  the 3a.9 and 3a.10 bodies) by sha256-checked references and expand them back exactly, so a brief fits
+  the remote-lane runner's cloud prompt cap, which refuses an oversize prompt and never cuts it.
+pack: pr_lifecycle
+node_role: compute
+display_name: Brief Compact Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_brief_compact_compute: omnimarket.nodes.node_brief_compact_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- brief-compact-compute

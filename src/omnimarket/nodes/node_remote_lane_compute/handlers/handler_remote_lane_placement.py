@@ -26,12 +26,14 @@ and places as before.
 
 OMN-21396: supplied ladder facts choose the cheapest eligible engine up to the route
 ceiling, escalating past failed attempts and returning one experiment row for the last.
+A lane declaring a capability the Codex sandbox cannot grant skips the Codex rung.
 """
 
 from __future__ import annotations
 
 from omnimarket.models.model_engine_experiment import (
     CLAUDE_RUNGS,
+    CODEX_UNGRANTABLE_CAPABILITIES,
     ENGINE_LADDER,
     ESCALATING_OUTCOMES,
     LOW_RISK_CLASSES,
@@ -176,6 +178,9 @@ def _rung_reason(ladder: ModelRemoteLaneLadder, rung: str) -> str | None:
         "risk-class": (ladder.risk_class or ladder.lane_kind) not in LOW_RISK_CLASSES,
         "no-writable-or-check": not ladder.code_edit_ready,
         "no-local-slot": ladder.local_model_slots == 0,
+        "sandbox-capability": bool(
+            set(ladder.required_capabilities) & set(CODEX_UNGRANTABLE_CAPABILITIES)
+        ),
     }
     return next((gate for gate in RUNG_GATES[rung] if failing[gate]), None)
 

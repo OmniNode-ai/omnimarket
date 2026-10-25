@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_standup_retrospective_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Build the Friday stand-up retrospective (OMN-21286, RULING 2026-10-20T13:51:27Z, held at
+  the end of the Friday stand-up by RULING 2026-10-20T13:58:45Z). When the window ends on a Friday (UTC)
+  it reads the text of a JSON list of role, product use, one idea or friction and one process change, emits one row
+  per person and one unfiled Backlog ticket draft per contributed idea or friction, credited by role.
+  Only those fields are read, so a name an entry carries never reaches the sheet. Also owns the text rendering
+  of the section.
+input_model:
+  name: ModelStandupRetrospectiveRequest
+  module: omnimarket.nodes.node_standup_retrospective_compute.models.model_standup_retrospective
+  description: Typed input for standup retrospective compute.
+output_model:
+  name: ModelStandupRetrospectiveResult
+  module: omnimarket.nodes.node_standup_retrospective_compute.models.model_standup_retrospective
+  description: Typed output for standup retrospective compute.
+handler:
+  module: omnimarket.nodes.node_standup_retrospective_compute.handlers.handler_standup_retrospective
+  class: HandlerStandupRetrospective
+  input_model: omnimarket.nodes.node_standup_retrospective_compute.models.model_standup_retrospective.ModelStandupRetrospectiveRequest
+  output_model: omnimarket.nodes.node_standup_retrospective_compute.models.model_standup_retrospective.ModelStandupRetrospectiveResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_standup_retrospective_compute.handlers.handler_standup_retrospective:HandlerStandupRetrospective
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerStandupRetrospective
+      module: omnimarket.nodes.node_standup_retrospective_compute.handlers.handler_standup_retrospective
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation of HandlerStandupRetrospective.handle with its typed request.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local
+  description: Standup Retrospective Compute through local Python invocation.
+  author: OmniNode Team
+  created: '2026-10-24'
+  tags:
+  - compute
+  - standup-retrospective-compute
+  related_tickets: []

@@ -52,6 +52,13 @@ requirements:
       - id: "AC9"
         statement: |-
           AC9: with ONEX_SESSION_TRANSCRIPT_ROOT and ONEX_LEDGER_PATH unset, the compaction pack built through the context pack orchestrator carries an operator prompt read from session_content rows, a ruling read from work_ledger_rows records the words it quotes, an unbound tenant is denied and a failed projection read is unavailable -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator/test_session_source_projection_pack.py tests/nodes/node_session_context_sources_effect/test_session_context_sources.py -k "projection or live or contract_binding or postgres_reader"
+  - id: "req-compaction-barrier-read-adapters"
+    statement: |-
+      The compaction orchestrator's production binding reads the session barrier through explicit read adapters from the package's projection read boundary, so a compaction on the dev runtime reaches the pack build instead of falling back build_error.
+    acceptance:
+      - id: "DoD3"
+        statement: |-
+          DoD3: bind_compaction_ports with no injected probe source reads a projected barrier through connect_read_only and the boundary's SQL composer and the barrier wait ends met -- falsifier: uv run pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_runtime_binding.py
 evidence_requirements:
   - kind: "tests"
     description: "AC1 to AC3: the client-call identity derivation tests and the step-1 wire tests."
@@ -145,3 +152,18 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_session_context_sources_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -qF 'content_relation: omninode_internal.session_content'
+  - id: "dod-omn21099-barrier-read-adapters"
+    description: "DoD3: the default compaction binding wires the barrier probe's read adapters; the base raises 'session barrier requires runtime-injected read adapters'."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_runtime_binding.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["DoD3"]
+  - id: "dod-omn21099-deploy-barrier-read-adapters"
+    description: "Deploy probe: read the compaction runtime binding at the checked-out commit from GitHub and require the default probe source to pass connect_read_only. The base passes no adapters and fails this probe. The command uses GitHub and the hosted runner checkout without a lab path."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_context_compaction_orchestrator/handlers/compaction_runtime_binding.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -qF 'connect=connect_read_only,'

@@ -109,6 +109,7 @@ def map_pack_built(built: ModelContextPackBuilt) -> ModelContextCompactionBuildO
             profile_name=built.profile_name,
             profile_content_hash=built.profile_content_hash,
             messages=built.messages,
+            model_section_ms=built.model_section_ms(),
         )
     )
 

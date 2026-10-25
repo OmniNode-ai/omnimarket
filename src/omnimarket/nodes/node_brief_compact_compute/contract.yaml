@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_brief_compact_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Replace a lane brief's fixed lab-lane renderings (the pasted rules block, 3a.3's fixed steps,
+  the 3a.9 and 3a.10 bodies) by sha256-checked references and expand them back exactly, so a brief fits
+  the remote-lane runner's cloud prompt cap, which refuses an oversize prompt and never cuts it.
+input_model:
+  name: ModelBriefCompactRequest
+  module: omnimarket.nodes.node_brief_compact_compute.models.model_brief_compact
+  description: Typed input for brief compact compute.
+output_model:
+  name: ModelBriefCompactResult
+  module: omnimarket.nodes.node_brief_compact_compute.models.model_brief_compact
+  description: Typed output for brief compact compute.
+handler:
+  module: omnimarket.nodes.node_brief_compact_compute.handlers.handler_brief_compact
+  class: HandlerBriefCompact
+  input_model: omnimarket.nodes.node_brief_compact_compute.models.model_brief_compact.ModelBriefCompactRequest
+  output_model: omnimarket.nodes.node_brief_compact_compute.models.model_brief_compact.ModelBriefCompactResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_brief_compact_compute.handlers.handler_brief_compact:HandlerBriefCompact
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerBriefCompact
+      module: omnimarket.nodes.node_brief_compact_compute.handlers.handler_brief_compact
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation of HandlerBriefCompact.handle with its typed request.
+descriptor:
+  node_archetype: compute
+  purity: impure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: false
+metadata:
+  transport_type: local
+  description: Brief Compact Compute through local Python invocation.
+  author: OmniNode Team
+  created: '2026-10-24'
+  tags:
+  - compute
+  - brief-compact-compute
+  related_tickets: []

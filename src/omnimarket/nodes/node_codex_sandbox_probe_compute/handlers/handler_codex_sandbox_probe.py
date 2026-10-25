@@ -143,6 +143,8 @@ CODEX_ROOTS_FIT_SPARE = 20
 # do not keeps whole clones in order: the lane's own clone and the sibling internal clone, the lane's repository
 # (``CODEX_ROOTS_PRIORITY``), then the rest by path. It names the dropped repositories on stderr.
 # The fit leaves CODEX_ROOTS_FIT_SPARE spare roots of margin, not the pool probe's 8.
+# The fit runs on Linux only, and a sandbox that does not answer within the timeout counts as fitting
+# (OMN-21396, h200: the fit's 30 s timeout crashed the roots program on macOS).
 # A worktree probe lane: worktree add -b failed 255 "cannot lock ref" in the ungranted clone
 # (OMN-17427, 2026-10-07).
 CODEX_GIT_ROOTS_PROGRAM = r"""import json,os,pathlib,shutil,subprocess,sys,tempfile
@@ -205,8 +207,9 @@ def fits(candidate):
                        '-c','sandbox_workspace_write.writable_roots='+json.dumps(base+candidate+extra),'--','true'],
                       stdin=subprocess.DEVNULL,capture_output=True,text=True,check=False,timeout=30)
   return 'Argument list too long' not in done.stdout+done.stderr
+ except subprocess.TimeoutExpired: return True
  finally: shutil.rmtree(pad,ignore_errors=True)
-if cx and base and not fits(all_roots):
+if cx and base and sys.platform.startswith('linux') and not fits(all_roots):
  low,high=len(keep),len(units)
  while low<high:
   mid=(low+high+1)//2
@@ -268,7 +271,9 @@ def codex_roots_lines(
     name = _private_data_name(private_data, environ)
     return [
         *([f"export CODEX_ROOTS_PRIORITY={shlex.quote(repo)}"] if repo else []),
-        'mkdir -p "$HOME/.cache" "$ONEX_STATE_DIR" || exit 98',
+        # OMN-21396: uv's managed Pythons and tool envs need this data directory (h101:
+        # mkdir under ~/.local/share/uv returned "Operation not permitted"); grant no parent.
+        'mkdir -p "$HOME/.cache" "$HOME/.local/share/uv" "$ONEX_STATE_DIR" || exit 98',
         # A scratch lane creates registry worktrees here. Materialize its directory before resolving
         # roots, including on one lab host's symlinked registry, without granting the whole registry or peers.
         'mkdir -p "$ONEX_WORKTREES_ROOT/$ONEX_LANE" || exit 98',
@@ -282,7 +287,7 @@ def codex_roots_lines(
         # opens its lock file there: only that directory, never its parent state directory (OMN-17427, one lab host, 2026-10-21: a Codex lane
         # ended blocked on "Read-only file system" at lane-locks/omnibase-infra.lock).
         'mkdir -p "$HOME/.omnibase/state/lane-locks" || exit 98',
-        'CXR="[\\"$W\\",\\"$C\\",\\"$HOME/.cache\\",\\"$ONEX_STATE_DIR\\",'
+        'CXR="[\\"$W\\",\\"$C\\",\\"$HOME/.cache\\",\\"$HOME/.local/share/uv\\",\\"$ONEX_STATE_DIR\\",'
         f'\\"$ONEX_WORKTREES_ROOT/$ONEX_LANE\\",\\"${registry_root_var}/.claude_scratch/delegation-receipts\\",'
         '\\"$HOME/.omninode/delegation\\",\\"$HOME/.omnibase/state/lane-locks\\"${GC:+,\\"$GC\\"}"',
         # The host's own tool caches (TOOL_CACHE_VARS).
