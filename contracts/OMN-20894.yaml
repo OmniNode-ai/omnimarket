@@ -60,13 +60,13 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-omn20894-silence-and-lab-dispatch"
-    description: "The silent-turn guard and the lab dispatch gate: both test files import modules absent at the merge base, so they fail there and pass at the head. Hosted deploy probe: the installer at the checked-out commit registers the Workflow and Agent matchers; the grep exits nonzero at the merge base."
+    description: "The silent-turn guard and the lab dispatch gate: both test files import modules absent at the merge base, so they fail there and pass at the head. Hosted deploy probe: gh api reads the hook installer at the checked-out commit and finds the PreToolUse matcher with Workflow and Agent; at the merge base the matcher ends at SendUserMessage, so the read finds nothing and the check exits nonzero."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_operator_access_mode_effect/test_silence_guard.py tests/nodes/node_operator_access_mode_effect/test_lab_dispatch_gate.py -q -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
-        check_value: "grep -c 'SendUserMessage|Workflow|Agent' src/omnimarket/nodes/node_operator_access_mode_effect/handlers/handler_operator_hooks_installer.py"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_operator_access_mode_effect/handlers/handler_operator_hooks_installer.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"SendUserMessage|Workflow|Agent)\" > /dev/null'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
