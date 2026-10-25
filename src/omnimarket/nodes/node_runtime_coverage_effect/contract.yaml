@@ -44,4 +44,6 @@ runtime_dispatch:
 externally_consumed_topics:
 - onex.evt.omnimarket.runtime-coverage-effect-completed.v1
 metadata:
-  transport_type: kafka
+  transport_type: http
+  additional_transports:
+  - kafka
