@@ -1029,6 +1029,7 @@ node_lane_host_discovery_compute = "omnimarket.nodes.node_lane_host_discovery_co
 node_umbrella_ticket_compute = "omnimarket.nodes.node_umbrella_ticket_compute"
 node_provider_model_catalogue_effect = "omnimarket.nodes.node_provider_model_catalogue_effect"
 node_plugin_walk_evidence_effect = "omnimarket.nodes.node_plugin_walk_evidence_effect"
+node_tlc_result_summary_effect = "omnimarket.nodes.node_tlc_result_summary_effect"
 
 [project.scripts]
 onex-hourly-tick = "omnimarket.nodes.node_hourly_tick_effect.handlers.handler_hourly_tick_cli:main"

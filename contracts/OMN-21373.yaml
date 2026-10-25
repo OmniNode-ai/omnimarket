@@ -300,3 +300,26 @@ dod_evidence:
           assert len(refusals) == 1 and refusals[0].startswith("the title\x27s only ticket OMN-1 is an umbrella ticket: "), refusals
           print(json.dumps({"run_id": receipt["run_id"], "refusals": len(refusals)}))
           ' "$probe_dir/receipt.json";
+  - id: "dod-omn21373-ac1-rsd-migration-orchestrator"
+    description: "AC1 contribution only: RSD can move one private-repository script into an omnimarket node. node_rsd_migration_orchestrator reads the code_generation task class from the task_class_authority registry entry before any model turn, refuses with no model turn when the entry is missing, runs one delegated code edit loop confined to the new node and its tests, registers the node's entry point and checks the canonical shape. The AC1 read on the private data repository itself stays pending for the epic."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_rsd_migration_orchestrator/test_handler_rsd_migration_orchestrator.py -q"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21373-ac2-rsd-migration-entry-point"
+    description: "AC2 contribution only: node_rsd_migration_orchestrator is a registered onex.nodes entry point in canonical shape, so migrated callers can be produced by it. The per-host unit readback stays pending for the epic."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python -m omnimarket.nodes.node_rsd_migration_orchestrator check-shape --worktree . --node node_rsd_migration_orchestrator --require-entry-point"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21373-ac1-rsd-migrated-tlc-summary"
+    description: "AC1 contribution only: one RSD migration run moved a private-repository TLC result summary script into node_tlc_result_summary_effect in canonical shape, with tests pinning its output. The script's removal from the private data repository and the AC1 read there stay pending for the epic."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_tlc_result_summary_effect/test_tlc_result_summary.py -q"
+      - check_type: "command"
+        check_value: "uv run python -m omnimarket.nodes.node_rsd_migration_orchestrator check-shape --worktree . --node node_tlc_result_summary_effect --require-entry-point"
+    binds_ac: ["AC1"]

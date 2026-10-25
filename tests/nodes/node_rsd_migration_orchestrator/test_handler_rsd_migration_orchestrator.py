@@ -25,6 +25,7 @@ from omnimarket.nodes.node_rsd_migration_orchestrator.handlers.handler_rsd_migra
     RECEIPT_NAME,
     HandlerRsdMigrationOrchestrator,
     RsdDispatchRefusedError,
+    build_code_edit_request,
     canonical_shape_problems,
     register_node_entry_point,
     resolve_dispatch_authority,
@@ -229,3 +230,21 @@ def test_handle_dispatches_through_the_bound_runner(tmp_path: Path) -> None:
     receipt = asyncio.run(handler.handle(_task(tmp_path)))
     assert receipt.status == "not_migrated"
     assert len(runner.requests) == 1
+
+
+def test_node_type_follows_the_node_name_suffix(tmp_path: Path) -> None:
+    authority = resolve_dispatch_authority(entry_points=lambda: [_authority_entry()])
+    effect = _task(tmp_path).model_copy(update={"node_name": "node_sample_effect"})
+    compute = _task(tmp_path)
+    assert (
+        "`node_type: effect`"
+        in build_code_edit_request(
+            effect, authority, correlation_id="00000000-0000-4000-8000-000000000002"
+        ).task
+    )
+    assert (
+        "`node_type: compute`"
+        in build_code_edit_request(
+            compute, authority, correlation_id="00000000-0000-4000-8000-000000000003"
+        ).task
+    )

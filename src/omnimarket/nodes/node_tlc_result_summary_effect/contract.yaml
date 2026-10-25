@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_tlc_result_summary_effect
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Summarize TLC model checker results: one line per results/*.out file in a run directory,
+  naming its config's invariants, the verdict, distinct states, search depth and trace length.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: summarize
+      handler:
+        name: HandlerTlcResultSummary
+        module: omnimarket.nodes.node_tlc_result_summary_effect.handlers.handler_tlc_result_summary
+
+metadata:
+  ticket: OMN-21373
+  transport_type: cli
+lifecycle: experimental

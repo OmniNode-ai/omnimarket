@@ -127,13 +127,16 @@ def build_code_edit_request(
 ) -> ModelDelegatedCodeEditRequest:
     """The delegated code edit request that performs the migration."""
     node_dir, test_dir = node_paths(task.node_name)
+    # The node-purity gate refuses file, network and environment I/O in a
+    # compute node, so a script that does I/O becomes an effect node.
+    node_type = "effect" if task.node_name.endswith("_effect") else "compute"
     text = (
         f"Move the script below into a new omnimarket node `{task.node_name}` in "
         f"canonical shape. Purpose: {task.purpose}\n\n"
         f"Create exactly these files:\n"
         f"- {node_dir}/__init__.py (SPDX header, one-line docstring)\n"
         f"- {node_dir}/contract.yaml with `name: {task.node_name}`, `node_type: "
-        f"compute`, contract_version and node_version, a description, and a "
+        f"{node_type}`, contract_version and node_version, a description, and a "
         f"handler_routing block naming the handler module\n"
         f"- {node_dir}/metadata.yaml with name, version, description, "
         f"`entry_points: {{onex.nodes: {{{task.node_name}: "
