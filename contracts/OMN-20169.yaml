@@ -95,3 +95,12 @@ dod_evidence:
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC7
+- id: dod-omn20169-deploy-writer-preparation
+  description: 'Falsifiable hosted deployment preparation smoke: construct the packaged capability-map writer, require in-process dispatch, resolve the contract to its sole writer handler, and require the declared cells table and tenant-keyed migration. The focused tests fail when the writer is absent or its runtime contract no longer routes it. No broker or database is required for this preparation check. Live deployment readback remains pending; the real-PostgreSQL regression tests separately exercise the shipped migrations, restricted writer, cell readback, redelivery, ordering and tenant isolation.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_projection_delegation_capability_map.py -k 'writer_declares_in_process_dispatch or contract_declares_the_topics_and_the_cells_table' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC4
