@@ -178,7 +178,6 @@ dod_evidence:
   - id: "dod-omn21396-ac6-deploy-probe"
     description: "Hosted-runner deploy probe: the installed package's placement node, given a nested-sandbox lane and a host with Codex and sonnet slots, answers rung sonnet and refuses codex with sandbox-capability. It fails at the merge base, whose ladder model forbids required_capabilities. No credentials or services."
     source: "manual"
-    binds_ac: ["AC6"]
     checks:
       - check_type: "command"
         check_value: "uv run --locked python -c 'from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_placement import HandlerRemoteLanePlacement as H; from omnimarket.nodes.node_remote_lane_compute.models import ModelRemoteLanePlacementRequest as R; r=H().handle(R.model_validate({\"engine\":\"codex\",\"readings\":[{\"name\":\"h201\",\"engines\":[\"codex\",\"claude_sonnet\"],\"lane_slots\":2,\"lane_cap\":4,\"rank_free\":10.0}],\"ladder\":{\"lane\":\"probe\",\"ceiling\":\"sonnet\",\"risk_class\":\"feature\",\"required_capabilities\":[\"nested-sandbox\"]}})); assert r.rung==\"sonnet\", r; assert [v.reason for v in r.rungs if v.engine==\"codex\"]==[\"sandbox-capability\"], r.rungs; print(\"ac6-probe ok\")'"
