@@ -1,0 +1,56 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20894"
+title: "Operator reply check pinned by the ticket falsifiers"
+summary: >-
+  The operator reply check refuses a reply to the operator that holds a local path or a bare ticket
+  id when the access mode is remote, and does nothing at the terminal. The check was merged before
+  this change, so this change adds no product code: tests/test_remote_reply_check.py pins it with the
+  ticket's own falsifiers, and the three criteria bind to those tests. The diff holds only a test
+  file and this contract, so the merge-base control has no earlier product behaviour to run against.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-operator-reply-check"
+    statement: "A reply to the operator with a local path or a bare ticket id is refused in remote mode, a path passes at the terminal, and a named id passes."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: in remote mode a reply with a local path or a bare ticket id is refused -- falsifier: uv run pytest tests/test_remote_reply_check.py -k refuses_in_remote"
+      - id: "AC2"
+        statement: "AC2: in terminal mode the same reply passes -- falsifier: uv run pytest tests/test_remote_reply_check.py -k allows_at_terminal"
+      - id: "AC3"
+        statement: "AC3: a ticket id with its plain name beside it passes in remote mode -- falsifier: uv run pytest tests/test_remote_reply_check.py -k named_id_passes"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 to AC3: the reply check pinned by the ticket's falsifiers."
+    command: "uv run pytest tests/test_remote_reply_check.py -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20894-ac1-refuses-in-remote"
+    description: "AC1: in remote mode a local path and a bare ticket id are each refused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_remote_reply_check.py -q -p no:randomly --no-cov -k refuses_in_remote"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20894-ac2-allows-at-terminal"
+    description: "AC2: at the terminal the same local-path reply passes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_remote_reply_check.py -q -p no:randomly --no-cov -k allows_at_terminal"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20894-ac3-named-id-passes"
+    description: "AC3: a ticket id with its plain name beside it passes in remote mode."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_remote_reply_check.py -q -p no:randomly --no-cov -k named_id_passes"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
