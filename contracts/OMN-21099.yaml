@@ -45,6 +45,13 @@ requirements:
       - id: "AC8"
         statement: |-
           AC8: unchanged rows are folded once across passes, a changed row is folded again, rows absent from the latest pass are dropped, a fold refusal is memoized, and the operator_rulings, open_work and orchestration_state tiers answer exactly as with separate memos while the shared memo folds each row once -- falsifier: uv run pytest tests/unit/nodes/node_context_source_ledger_effect/test_ledger_fold_memo_omn21099.py
+  - id: "req-session-source-projections"
+    statement: |-
+      Live mode of the session context source reads the bus-resident projections the plan names (omninode_internal.session_content and omninode_internal.work_ledger_rows), not a transcript file or a markdown ledger file, so the compaction pack builder on the dev runtime has operator words to carry.
+    acceptance:
+      - id: "AC9"
+        statement: |-
+          AC9: with ONEX_SESSION_TRANSCRIPT_ROOT and ONEX_LEDGER_PATH unset, the compaction pack built through the context pack orchestrator carries an operator prompt read from session_content rows, a ruling read from work_ledger_rows records the words it quotes, an unbound tenant is denied and a failed projection read is unavailable -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator/test_session_source_projection_pack.py tests/nodes/node_session_context_sources_effect/test_session_context_sources.py -k "projection or live or contract_binding or postgres_reader"
 evidence_requirements:
   - kind: "tests"
     description: "AC1 to AC3: the client-call identity derivation tests and the step-1 wire tests."
@@ -123,3 +130,18 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/work_ledger_fold.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -E '^class WorkLedgerFoldMemo\b' > /dev/null
+  - id: "dod-omn21099-session-source-projections"
+    description: "AC9: the session source's live mode reads session_content and work_ledger_rows, and the compaction pack is built from them with no transcript or ledger file."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_session_source_projection_pack.py tests/nodes/node_session_context_sources_effect/test_session_context_sources.py -k \"projection or live or contract_binding or postgres_reader\" -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC9"]
+  - id: "dod-omn21099-deploy-session-source-projections"
+    description: "Deploy probe: read the session context source contract at the checked-out commit from GitHub and require its live source to name the session_content projection. The base names a transcript root instead and fails this probe. The command uses GitHub and the hosted runner checkout without a lab path."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_session_context_sources_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -qF 'content_relation: omninode_internal.session_content'

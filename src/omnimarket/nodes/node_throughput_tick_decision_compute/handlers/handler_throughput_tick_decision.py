@@ -48,6 +48,8 @@ watcher state, state.json and tick lines already in the request (merging normall
 red, merge queue ejecting, shared red unowned, parked or escalated). An unowned shared red or an ejecting
 queue is a MISSING `repo-status:<repo>` line whose FIX names one cause lane or the controller; every other
 verdict is a NOTE. A verdict event is due only when no unit is open for the repository or its verdict changed.
+
+OMN-21396: ledger experiment STATUS rows yield per-engine attempts, successes and escalations over a configurable 24h window.
 """
 
 from __future__ import annotations
@@ -61,6 +63,11 @@ from omnibase_core.types import JsonType
 
 from omnimarket.handlers.rules_lab_fill_pr_land import plan_pr_land_fallback
 from omnimarket.models.lab_fill import ModelLabFillPrLandFacts, ModelLabFillPrLandPlan
+from omnimarket.models.model_engine_experiment import (
+    ENGINE_LADDER,
+    NO_ENGINE,
+    SUCCESS_OUTCOME,
+)
 from omnimarket.nodes.node_throughput_tick_decision_compute.models.model_throughput_tick_decision import (
     ModelCodexHeadroom,
     ModelLabAdmission,
@@ -1299,6 +1306,28 @@ def check_deploy_drift(
             rep.note(f"{loop} | {why}")
 
 
+def check_engine_experiments(
+    rep: Report, request: ModelThroughputTickRequest, now: datetime
+) -> None:
+    """Count finished attempts per rung from the ledger window (OMN-21396)."""
+    rep.checked.append("engine-experiments")
+    hours = request.engine_experiment_window_hours
+    window = timedelta(hours=hours)
+    rows = [
+        row
+        for row in request.engine_experiments or []
+        if row.at is None or now - parse_stamp(row.at) <= window
+    ]
+    for engine in ENGINE_LADDER:
+        attempts = [row for row in rows if row.engine == engine]
+        successes = sum(row.outcome == SUCCESS_OUTCOME for row in attempts)
+        escalations = sum(row.next_engine != NO_ENGINE for row in attempts)
+        rep.note(
+            f"engine-experiments:{engine} | {hours}h attempts={len(attempts)} "
+            f"successes={successes} escalations={escalations}"
+        )
+
+
 def _pr_short(text: object) -> str:
     """`Owner/repo#n` or `repo#n` to `repo#n`."""
     return str(text).rsplit("/", 1)[-1]
@@ -1571,6 +1600,8 @@ class HandlerThroughputTickDecision:
             check_venv_divergence(rep, request, now)
         if request.deploy_drifts is not None:
             check_deploy_drift(rep, request, now)
+        if request.engine_experiments is not None:
+            check_engine_experiments(rep, request, now)
         repo_status = (
             check_repo_status(rep, request, request.repo_status, covers, ticks, now)
             if request.repo_status is not None

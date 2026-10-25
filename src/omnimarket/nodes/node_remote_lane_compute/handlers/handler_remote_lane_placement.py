@@ -23,9 +23,24 @@ lane (a usage mark, the admission bar, the pin or a full host is a different rea
 hash that was not supplied on a drift-judged request is VENV_UNKNOWN, never a pass. A
 request carrying no hash and not marked ``dispatch_venv_required`` is an old producer's
 and places as before.
+
+OMN-21396: supplied ladder facts choose the cheapest eligible engine up to the route
+ceiling, escalating past failed attempts and returning one experiment row for the last.
 """
 
 from __future__ import annotations
+
+from omnimarket.models.model_engine_experiment import (
+    CLAUDE_RUNGS,
+    ENGINE_LADDER,
+    ESCALATING_OUTCOMES,
+    LOW_RISK_CLASSES,
+    NO_ENGINE,
+    QUOTA_FREE_RUNGS,
+    RUNG_GATES,
+    RUNG_HOST_ENGINE,
+    ModelEngineExperimentRow,
+)
 
 from ..models import (
     CODEX_ENGINE,
@@ -33,9 +48,11 @@ from ..models import (
     ModelRemoteLaneHostReading,
     ModelRemoteLaneHostVenv,
     ModelRemoteLaneHostVerdict,
+    ModelRemoteLaneLadder,
     ModelRemoteLanePlacementRequest,
     ModelRemoteLanePlacementResult,
     ModelRemoteLaneReconcileIntent,
+    ModelRemoteLaneRungVerdict,
     ModelRemoteLaneVenvDrift,
 )
 
@@ -145,10 +162,107 @@ def _select(
     return pick, reasons
 
 
+def _rung_reason(ladder: ModelRemoteLaneLadder, rung: str) -> str | None:
+    """The first route or readiness rule that refuses a rung."""
+    if ENGINE_LADDER.index(rung) > ENGINE_LADDER.index(ladder.ceiling):
+        return "above-route-ceiling"
+    if ladder.pinned and rung != ladder.ceiling:
+        return "pinned-to-route"
+    if ladder.claude_required and rung not in CLAUDE_RUNGS:
+        return "claude-required"
+    failing = {
+        "landing-worker": ladder.landing_worker,
+        # A lane that declares no risk class is judged by its kind (a small-fix lane).
+        "risk-class": (ladder.risk_class or ladder.lane_kind) not in LOW_RISK_CLASSES,
+        "no-writable-or-check": not ladder.code_edit_ready,
+        "no-local-slot": ladder.local_model_slots == 0,
+    }
+    return next((gate for gate in RUNG_GATES[rung] if failing[gate]), None)
+
+
+def _experiment(
+    ladder: ModelRemoteLaneLadder, rung: str | None
+) -> ModelEngineExperimentRow | None:
+    """Describe the last finished attempt and the placement's next engine."""
+    if not ladder.attempts:
+        return None
+    last = ladder.attempts[-1]
+    return ModelEngineExperimentRow(
+        lane=ladder.lane,
+        ticket=ladder.ticket,
+        attempt=len(ladder.attempts),
+        engine=last.engine,
+        model=last.model,
+        outcome=last.outcome,
+        failure_cause=last.failure_cause,
+        duration_s=last.duration_s,
+        next_engine=rung or NO_ENGINE,
+    )
+
+
 class HandlerRemoteLanePlacement:
     """Choose the host for one remote lane from the pool's evaluated readings."""
 
     def handle(
+        self, request: ModelRemoteLanePlacementRequest
+    ) -> ModelRemoteLanePlacementResult:
+        ladder = request.ladder
+        if ladder is None:
+            return self._place(request)
+        last_result = ModelRemoteLanePlacementResult(host=None, engine=request.engine)
+        start = 0
+        if ladder.attempts:
+            last = ladder.attempts[-1]
+            if last.outcome not in ESCALATING_OUTCOMES:
+                return last_result.model_copy(
+                    update={"experiment": _experiment(ladder, None)}
+                )
+            start = ENGINE_LADDER.index(last.engine) + 1
+        rungs: list[ModelRemoteLaneRungVerdict] = []
+        for rung in ENGINE_LADDER[start:]:
+            reason = _rung_reason(ladder, rung)
+            if reason is not None:
+                rungs.append(ModelRemoteLaneRungVerdict(engine=rung, reason=reason))
+                continue
+            placement_request = request.model_copy(
+                update={
+                    "engine": RUNG_HOST_ENGINE[rung],
+                    "ladder": None,
+                    **(
+                        {"limited_hosts": (), "auth_expired_hosts": ()}
+                        if rung in QUOTA_FREE_RUNGS
+                        else {}
+                    ),
+                }
+            )
+            result = self._place(placement_request)
+            if result.outcome == EnumRemoteLaneOutcome.ADMITTED:
+                rungs.append(ModelRemoteLaneRungVerdict(engine=rung, reason="chosen"))
+                return result.model_copy(
+                    update={
+                        "rung": rung,
+                        "engine": RUNG_HOST_ENGINE[rung],
+                        "rungs": tuple(rungs),
+                        "experiment": _experiment(ladder, rung),
+                    }
+                )
+            rungs.append(
+                ModelRemoteLaneRungVerdict(
+                    engine=rung, reason=f"no-capacity: {result.outcome.value}"
+                )
+            )
+            last_result = result
+        return last_result.model_copy(
+            update={
+                "host": None,
+                "rung": None,
+                "engine": request.engine,
+                "rungs": tuple(rungs),
+                "experiment": _experiment(ladder, None),
+            }
+        )
+
+    def _place(
         self, request: ModelRemoteLanePlacementRequest
     ) -> ModelRemoteLanePlacementResult:
         pick, reasons = _select(request, {})

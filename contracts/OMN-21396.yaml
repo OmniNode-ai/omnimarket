@@ -1,0 +1,89 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21396"
+title: "Lanes start on the cheapest engine that can do them and escalate up the chain, each attempt a ledger row"
+summary: >
+  node_remote_lane_compute takes optional engine-ladder facts on its placement
+  request. It picks the first engine in the order code-edit, GLM, Codex, Claude
+  sonnet, Claude opus that the lane's risk class (or kind), the ROUTE ceiling and
+  the pins allow and that has capacity, retries a failed, blocked-own-work or
+  checks-red attempt on the next engine up, and returns one kind=experiment row
+  for the last attempt. The throughput tick prints one line per engine over 24
+  hours from those rows. A request without ladder facts places as before.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn21396-start-cheap"
+    statement: "A lane starts on the cheapest allowed engine with capacity."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the remote lane placement node (omnimarket node_remote_lane_compute) picks the first engine in the order local code-edit, GLM, Codex, Claude sonnet, Claude opus that the lane's kind, risk class and ROUTE ceiling allow and that has capacity"
+  - id: "req-omn21396-escalate"
+    statement: "A failed attempt is retried on the next engine up, within the ceiling and the pins."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: an attempt that ends failed, blocked on its own work, or with its declared checks red is retried on the next engine up, never above the ROUTE ceiling, and a lane declaring Required engine: claude never starts below Claude"
+  - id: "req-omn21396-experiment-rows"
+    statement: "Every attempt yields one kind=experiment STATUS row."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: every attempt writes one ledger STATUS row with kind=experiment carrying lane, engine, model, outcome, failure cause, duration and next engine"
+  - id: "req-omn21396-tick-line"
+    statement: "The throughput tick prints one line per engine over 24 hours."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: the throughput tick prints one line per engine over 24 hours with attempts, successes and escalations"
+evidence_requirements:
+  - kind: "tests"
+    description: "Engine ladder, experiment row and tick line tests pass"
+    command: "uv run pytest tests/nodes/node_remote_lane_compute/test_engine_ladder_remote_lane_compute.py tests/nodes/node_remote_lane_compute/test_engine_experiment_rows.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21396-ac1-cheapest-rung"
+    description: "A small-fix lane with a free local slot is placed on code-edit; the same lane with no local slot is placed on GLM. Fails at the merge base, which has no ladder."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_remote_lane_compute/test_engine_ladder_remote_lane_compute.py -q --no-cov -k 'ac1_cheapest_ready_rung or lane_kind_stands_in'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21396-ac2-escalate-and-pin"
+    description: "A failed code-edit attempt is retried on GLM; the ceiling stops escalation; a Required engine: claude lane starts on sonnet; a pinned ROUTE only uses its ceiling."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_remote_lane_compute/test_engine_ladder_remote_lane_compute.py -q --no-cov -k 'ac2_failed_attempt or route_ceiling or claude_required or pinned_route'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21396-ac3-two-rows"
+    description: "A two-attempt escalation (code-edit failed, GLM done) appended to a ledger with unrelated rows reads back exactly two kind=experiment rows carrying lane, engine, model, outcome, failure cause, duration and next engine."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_remote_lane_compute/test_engine_experiment_rows.py -q --no-cov -k 'ac3_ac4_two_attempt_ledger_replay'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21396-ac4-tick-line"
+    description: "Replaying the AC3 rows into the throughput tick prints engine-experiments:code-edit attempts=1 escalations=1 and engine-experiments:glm attempts=1 successes=1, one line per engine."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_remote_lane_compute/test_engine_experiment_rows.py -q --no-cov -k 'ac3_ac4_two_attempt_ledger_replay or tick_window_boundary'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21396-deploy-probe"
+    description: "Deploy probe. Read the placement handler from GitHub at the checked-out commit and require the ladder rule in it, with the AC1 test. It fails at the merge base, which has no ladder."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_remote_lane_compute/test_engine_ladder_remote_lane_compute.py -q --no-cov -k ac1_cheapest_ready_rung"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_remote_lane_compute/handlers/handler_remote_lane_placement.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"above-route-ceiling\" > /dev/null'"
+        cwd: "${OMNI_HOME}/omnimarket"
