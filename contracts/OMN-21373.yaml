@@ -184,12 +184,12 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
 
   - id: "dod-omn21373-cloud-harness-boundary"
-    description: "Cloud placement renders interactive startup through the public delegation effect boundary. The harness scan over the placement node's handler files admits no direct harness invocation (it exits 1 on the pre-move cloud_session.py), and the scan's own refusal tests pass. The full-repository scan runs in the Golden Chain suite."
+    description: "The harness scan over the placement node's handler files admits no direct harness invocation and refuses a planted one, in a test that exists only with this change. The full-repository scan runs in the Golden Chain suite."
     source: "manual"
     binds_ac: ["AC1", "AC2"]
     checks:
       - check_type: "test_passes"
-        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_harness_invocation_check_effect/test_golden_chain_harness_invocation_check_effect.py -q --no-cov -k 'not test_repository_admits_no_harness_invocation_outside_the_baseline'"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_cloud_session_placement_effect/test_harness_boundary.py -q --no-cov"
       - check_type: "command"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run python -m omnimarket.nodes.node_harness_invocation_check_effect --repo-root . src/omnimarket/nodes/node_cloud_session_placement_effect/handlers/__init__.py src/omnimarket/nodes/node_cloud_session_placement_effect/handlers/cloud_accounts.py src/omnimarket/nodes/node_cloud_session_placement_effect/handlers/cloud_routing.py src/omnimarket/nodes/node_cloud_session_placement_effect/handlers/cloud_session.py src/omnimarket/nodes/node_cloud_session_placement_effect/handlers/handler_cloud_session_placement.py"
   - id: "dod-omn21373-deploy-cloud-start-runtime"
