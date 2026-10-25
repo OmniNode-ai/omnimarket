@@ -397,6 +397,10 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # compaction_receipts, dispatched once per consumed install-confirm-completed event by
     # runtime auto-wiring; its pure fold, HandlerProjectionCompactionReceipts,
     # does NOT declare the capability.
+    # HandlerDelegationCapabilityMapWriter (OMN-20169) is the only writer of
+    # delegation_capability_cells, dispatched once per consumed map-run event
+    # by runtime auto-wiring; its pure fold, HandlerDelegationCapabilityMap,
+    # and the offline HandlerCapabilityGridRun do NOT declare the capability.
     assert declared == {
         "AlertChannelLivenessProjectionWriter",
         "AutomationLivenessProjectionWriter",
@@ -409,6 +413,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "LocalEnvironmentProjectionWriter",
         "DelegationEvalProjectionWriter",
         "HandlerDelegationDispositionWriter",
+        "HandlerDelegationCapabilityMapWriter",
         "ProviderQuotaProjectionWriter",
         "DodVerdictProjectionWriter",
         "FleetLivenessProjectionWriter",

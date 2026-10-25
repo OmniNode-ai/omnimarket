@@ -16,7 +16,9 @@ description: >
   shape and wait guard (always on), the foreground fetch guard (operator-facing sessions),
   the operator reply check (bare ticket and PR ids always,
   local paths in remote mode), the attention-only push gate, and the remote setup check at
-  session start. Installed as user-level Claude Code hooks by onex-user-hooks-install.
+  session start. Silent turns allow only single-line attention items across all assistant text blocks.
+  Agent and Workflow Mac routes are refused while the lab has free slots.
+  Installed as user-level Claude Code hooks by onex-user-hooks-install.
 
 handler:
   module: omnimarket.handlers
@@ -45,6 +47,18 @@ handler_routing:
         module: omnimarket.nodes.node_operator_access_mode_effect.handlers.handler_operator_reply_check
       input_model: omnimarket.nodes.node_operator_access_mode_effect.models.model_operator_reply_request.ModelOperatorReplyRequest
       output_model: omnimarket.nodes.node_operator_access_mode_effect.models.model_hook_verdict.ModelHookVerdict
+    - operation: check_silence
+      handler:
+        name: HandlerSilenceGuard
+        module: omnimarket.nodes.node_operator_access_mode_effect.handlers.handler_silence_guard
+      input_model: omnimarket.nodes.node_operator_access_mode_effect.models.model_silence_request.ModelSilenceRequest
+      output_model: omnimarket.nodes.node_operator_access_mode_effect.models.model_hook_verdict.ModelHookVerdict
+    - operation: gate_lab_dispatch
+      handler:
+        name: HandlerLabDispatchGate
+        module: omnimarket.nodes.node_operator_access_mode_effect.handlers.handler_lab_dispatch_gate
+      input_model: omnimarket.nodes.node_operator_access_mode_effect.models.model_lab_dispatch_request.ModelLabDispatchRequest
+      output_model: omnimarket.nodes.node_operator_access_mode_effect.models.model_hook_verdict.ModelHookVerdict
     - operation: gate_push_notification
       handler:
         name: HandlerAttentionPushGate
@@ -63,7 +77,7 @@ descriptor:
   purity: effectful
   idempotent: true
   side_effects:
-    - writes one state file per session and an optional override file under the access-mode state directory
+    - writes one state file per session and optional override and silent files under the access-mode state directory
     - refuses a tool call (exit 2) or a turn end (Stop decision block) that breaks a supervision rule
   runtime_profiles: []
 
