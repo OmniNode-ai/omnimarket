@@ -291,6 +291,71 @@ def test_the_roots_grant_the_lane_lock_directory_and_nothing_above_it(
         assert wider not in roots
 
 
+def test_the_roots_grant_the_uv_data_directory_and_nothing_above_it(
+    tmp_path: Path,
+) -> None:
+    """OMN-21396: uv's data directory is created and granted by its real path alone."""
+    real_home = tmp_path / "real-home"
+    real_home.mkdir()
+    home = tmp_path / "home"
+    home.symlink_to(real_home, target_is_directory=True)
+    omni = registry(tmp_path, 1)
+    work, ctx = tmp_path / "w", tmp_path / "c"
+    work.mkdir()
+    ctx.mkdir()
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    # codex_roots_lines reads cache variables with bash -lc; keep the host's profile out of the test.
+    bash = bin_dir / "bash"
+    bash.write_text(
+        '#!/bin/sh\nif [ "$1" = -lc ]; then shift; set -- -c "$@"; fi\nexec /bin/bash --noprofile --norc "$@"\n',
+        encoding="utf-8",
+    )
+    bash.chmod(bash.stat().st_mode | stat.S_IXUSR)
+    values = {
+        "W": work,
+        "C": ctx,
+        "GC": "",
+        "ONEX_REGISTRY_ROOT": omni,
+        "ONEX_STATE_DIR": omni / ".onex_state",
+        "ONEX_WORKTREES_ROOT": omni / "omni_worktrees",
+        "ONEX_LANE": "uv-data-probe",
+    }
+    script = "\n".join(
+        [
+            *(f"{k}={shlex.quote(str(v))}" for k, v in values.items()),
+            *probe.codex_roots_lines(private_data="repo-private-data"),
+            'printf "%s\\n" "$CXR"',
+        ]
+    )
+    done = subprocess.run(
+        ["/bin/bash", "-c", script],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+        env={
+            "HOME": str(home),
+            "PATH": f"{bin_dir}:{Path(sys.executable).parent}:/usr/bin:/bin",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+        },
+    )
+    assert done.returncode == 0, (done.stdout, done.stderr)
+    roots = [Path(root) for root in json.loads(done.stdout)]
+    uv_data = real_home / ".local" / "share" / "uv"
+    assert uv_data.is_dir(), (
+        "the roots lines create the uv data directory before Codex resolves its permissions"
+    )
+    assert uv_data in roots
+    for wider in (
+        real_home / ".local" / "share",
+        real_home / ".local",
+        home / ".local" / "share" / "uv",
+    ):
+        assert wider not in roots
+
+
 def run_probe_line(
     tmp_path: Path, roots: list[Path]
 ) -> subprocess.CompletedProcess[str]:

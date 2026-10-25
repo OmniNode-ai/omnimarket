@@ -268,7 +268,9 @@ def codex_roots_lines(
     name = _private_data_name(private_data, environ)
     return [
         *([f"export CODEX_ROOTS_PRIORITY={shlex.quote(repo)}"] if repo else []),
-        'mkdir -p "$HOME/.cache" "$ONEX_STATE_DIR" || exit 98',
+        # OMN-21396: uv's managed Pythons and tool envs need this data directory (h101:
+        # mkdir under ~/.local/share/uv returned "Operation not permitted"); grant no parent.
+        'mkdir -p "$HOME/.cache" "$HOME/.local/share/uv" "$ONEX_STATE_DIR" || exit 98',
         # A scratch lane creates registry worktrees here. Materialize its directory before resolving
         # roots, including on one lab host's symlinked registry, without granting the whole registry or peers.
         'mkdir -p "$ONEX_WORKTREES_ROOT/$ONEX_LANE" || exit 98',
@@ -282,7 +284,7 @@ def codex_roots_lines(
         # opens its lock file there: only that directory, never its parent state directory (OMN-17427, one lab host, 2026-10-21: a Codex lane
         # ended blocked on "Read-only file system" at lane-locks/omnibase-infra.lock).
         'mkdir -p "$HOME/.omnibase/state/lane-locks" || exit 98',
-        'CXR="[\\"$W\\",\\"$C\\",\\"$HOME/.cache\\",\\"$ONEX_STATE_DIR\\",'
+        'CXR="[\\"$W\\",\\"$C\\",\\"$HOME/.cache\\",\\"$HOME/.local/share/uv\\",\\"$ONEX_STATE_DIR\\",'
         f'\\"$ONEX_WORKTREES_ROOT/$ONEX_LANE\\",\\"${registry_root_var}/.claude_scratch/delegation-receipts\\",'
         '\\"$HOME/.omninode/delegation\\",\\"$HOME/.omnibase/state/lane-locks\\"${GC:+,\\"$GC\\"}"',
         # The host's own tool caches (TOOL_CACHE_VARS).

@@ -16,6 +16,15 @@ ESCALATING_OUTCOMES = ("failed", "blocked-own-work", "checks-red")
 SUCCESS_OUTCOME = "done"
 EXPERIMENT_KIND = "experiment"
 NO_ENGINE = "none"
+# OMN-21396: measured refusals cover writes outside lane roots, denied ps/sysctl (or
+# a Linux PID namespace), the runner's never-approval Linear policy, and nested
+# sandbox-exec/bwrap denied by sandbox_apply or namespace creation, regardless of roots.
+CODEX_UNGRANTABLE_CAPABILITIES: tuple[str, ...] = (
+    "host-paths-write",
+    "host-process-read",
+    "linear-write",
+    "nested-sandbox",
+)
 # The readiness gates each rung must pass beyond the ROUTE rules, in the order they are judged.
 RUNG_GATES: dict[str, tuple[str, ...]] = {
     "code-edit": (
@@ -25,7 +34,7 @@ RUNG_GATES: dict[str, tuple[str, ...]] = {
         "no-local-slot",
     ),
     "glm": ("landing-worker", "risk-class"),
-    "codex": (),
+    "codex": ("sandbox-capability",),
     "sonnet": (),
     "opus": (),
 }

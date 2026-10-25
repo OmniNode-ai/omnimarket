@@ -40,6 +40,11 @@ requirements:
     acceptance:
       - id: "AC5"
         statement: "AC5: gateway reads retry an unavailable bus or absent terminal for at most three attempts, pause 20 seconds between attempts, use fresh correlation IDs and report the JSON attempts count; exhausted reads retain exit 69 or 75, and failed terminals and writes are not retried."
+  - id: "req-omn21396-codex-sandbox-causes"
+    statement: "A Codex lane gets the uv data directory, and a lane needing what the Codex sandbox cannot grant is kept off the Codex rung."
+    acceptance:
+      - id: "AC6"
+        statement: "AC6: the Codex lane's writable roots include $HOME/.local/share/uv and no parent of it, and a lane declaring host-paths-write, host-process-read, linear-write or nested-sandbox skips the Codex rung with reason sandbox-capability while a lane declaring none of them is still placed on Codex."
 evidence_requirements:
   - kind: "tests"
     description: "Engine ladder, experiment row and tick line tests pass"
@@ -129,4 +134,20 @@ dod_evidence:
           assert not stdout.strip(), stdout
           print(json.dumps({"probe": "scm-bus-open-retry", "observed_bus_failures": len(errors), "pending_before_cleanup": pending}, sort_keys=True))
           '
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21396-ac6-codex-sandbox-causes"
+    description: "Failing-first tests (7 failed at the merge base): the roots lines create and grant $HOME/.local/share/uv by its real path and no parent; each of the four ungrantable capabilities skips the Codex rung with reason sandbox-capability; no capability or docker still places on Codex."
+    source: "manual"
+    binds_ac: ["AC6"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_codex_sandbox_probe_compute/test_codex_sandbox_probe.py tests/nodes/node_remote_lane_compute/test_engine_ladder_remote_lane_compute.py -q --no-cov -n 0 -k 'uv_data or capabilit'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21396-ac6-deploy-probe"
+    description: "Hosted-runner deploy probe: the installed package's placement node, given a nested-sandbox lane and a host with Codex and sonnet slots, answers rung sonnet and refuses codex with sandbox-capability. It fails at the merge base, whose ladder model forbids required_capabilities. No credentials or services."
+    source: "manual"
+    binds_ac: ["AC6"]
+    checks:
+      - check_type: "command"
+        check_value: "uv run --locked python -c 'from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_placement import HandlerRemoteLanePlacement as H; from omnimarket.nodes.node_remote_lane_compute.models import ModelRemoteLanePlacementRequest as R; r=H().handle(R.model_validate({\"engine\":\"codex\",\"readings\":[{\"name\":\"h201\",\"engines\":[\"codex\",\"claude_sonnet\"],\"lane_slots\":2,\"lane_cap\":4,\"rank_free\":10.0}],\"ladder\":{\"lane\":\"probe\",\"ceiling\":\"sonnet\",\"risk_class\":\"feature\",\"required_capabilities\":[\"nested-sandbox\"]}})); assert r.rung==\"sonnet\", r; assert [v.reason for v in r.rungs if v.engine==\"codex\"]==[\"sandbox-capability\"], r.rungs; print(\"ac6-probe ok\")'"
         cwd: "${OMNI_HOME}/omnimarket"

@@ -141,6 +141,58 @@ def test_claude_required_skips_non_claude_rungs() -> None:
     assert [v.reason for v in result.rungs[:-1]] == ["claude-required"] * 3
 
 
+@pytest.mark.parametrize(
+    "cap",
+    ["host-paths-write", "host-process-read", "linear-write", "nested-sandbox"],
+)
+def test_codex_skips_capabilities_its_sandbox_cannot_grant(cap: str) -> None:
+    result = place(
+        ladder={
+            "ceiling": "sonnet",
+            "risk_class": "feature",
+            "required_capabilities": (cap,),
+        },
+        readings=[
+            {
+                "name": "h201",
+                "engines": ["codex", "claude_sonnet"],
+                "codex_refusal": None,
+                "lane_slots": 2,
+                "lane_cap": 4,
+                "rank_free": 10.0,
+            }
+        ],
+    )
+    assert result.rung == "sonnet"
+    assert next(v.reason for v in result.rungs if v.engine == "codex") == (
+        "sandbox-capability"
+    )
+
+
+@pytest.mark.parametrize("required_capabilities", [(), ("docker",)])
+def test_codex_accepts_other_declared_capabilities(
+    required_capabilities: tuple[str, ...],
+) -> None:
+    result = place(
+        ladder={
+            "ceiling": "sonnet",
+            "risk_class": "feature",
+            "required_capabilities": required_capabilities,
+        },
+        readings=[
+            {
+                "name": "h201",
+                "engines": ["codex", "claude_sonnet"],
+                "codex_refusal": None,
+                "lane_slots": 2,
+                "lane_cap": 4,
+                "rank_free": 10.0,
+            }
+        ],
+    )
+    assert result.rung == "codex"
+
+
 def test_claude_failure_escalates_to_opus() -> None:
     result = place(
         ladder={
