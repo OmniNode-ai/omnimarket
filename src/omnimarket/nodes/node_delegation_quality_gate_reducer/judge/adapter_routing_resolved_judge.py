@@ -67,7 +67,7 @@ logger = logging.getLogger(__name__)
 # judging uses the existing free OpenRouter reasoning rung, declared by the
 # routing contract with the judge_adequacy capability. Local reviewer fallback
 # below remains available when that provider's key is unbound.
-_DEFAULT_JUDGE_BACKEND_ID = "openrouter-nemotron-super"
+_DEFAULT_JUDGE_BACKEND_ID = "openrouter-nemotron-ultra"
 
 # OMN-19198: the reviewer a machine can bind with nothing but its own model.
 # The declared judge above names a metered provider and a credential reference;

@@ -66,13 +66,17 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
   - id: dod-omn21406-ac3-prerequisite
     description: >-
-      AC3 prerequisite only, and a deploy check the hosted runner can run: GitHub
-      serves the key reader at the pushed commit. The per-host plugin readback is
+      AC3 prerequisite only: the six overlay documents resolve all 21 keys in
+      the runtime reader. A deploy check the hosted runner can run verifies that
+      GitHub serves the key reader at the pushed commit. The per-host plugin readback is
       outstanding until the onex-overlays release is cut and must not be reported
       as proven by this check.
     source: manual
     binds_ac: [AC3]
     checks:
+      - check_type: test_passes
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/handlers/test_overlay_keys.py -q --no-cov --refuse-skips -k resolve_from_fixture"
+        cwd: "${OMNI_HOME}/omnimarket"
       - check_type: command
         check_value: >-
           bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/overlay_keys.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c "def resolve_overlay_key"'

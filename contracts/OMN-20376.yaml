@@ -1,0 +1,109 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20376"
+title: "Withdraw the dead Nemotron Super rung and verify the published delegate plugin walk"
+summary: >-
+  The authenticated OpenRouter catalogue still advertises Nemotron Super, but
+  its chat endpoint returns HTTP 404 because the upstream Nvidia function is
+  missing. No rename was established. Park it endpoint-less with explicit_pin_only, remove its tier entry
+  and onboarding default; keep Ultra and the north-mini spread peer
+  ahead of the existing metered tiers. Move the default adequacy judge to Ultra
+  so withdrawing the backend leaves no active caller. A live CI catalogue
+  check refuses missing served model ids and defaults, including placement
+  peers, without treating catalogue presence as proof of inference health.
+  The ticket's supplied C30 criteria are preserved below and were also walked
+  with published plugin onex 0.3.2 on h101. Hosted checks replay reduced actual
+  captures; the local Done check reads the original streams and SQLite store.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-published-plugin-walk"
+    statement: >-
+      The published plugin exposes the delegate skill and its tool-result
+      correlation id joins to a successful, nonzero-token local receipt;
+      removing the plugin's skills removes the skill and correlation id.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: On a lab host, the published onex plugin in a scratch Claude Code profile runs /onex:delegate on a key registered through onex secret set on stdin, and the correlation id in the onex delegate JSON has exactly one delegation_events row and one llm_call_metrics row in the scratch HOME's delegation.sqlite, with terminal_ok 1 and nonzero tokens -- falsifier: the [c30walk.sh](<http://c30walk.sh>) store readback showing no row for the correlation id, terminal_ok 0, or zero tokens
+      - id: "AC2"
+        statement: |-
+          AC2: The same walk with a plugin directory that has no skills folder lists no onex:delegate skill and yields no correlation id -- falsifier: the negative arm's stream-json init event listing onex:delegate, or an onex delegate correlation id in its tool results
+evidence_requirements:
+  - kind: "tests"
+    description: "Hosted replay of real plugin captures, criterion falsifiers, and withdrawn-rung/catalogue controls."
+    command: "uv run pytest tests/validators/test_c30_plugin_walk.py tests/validators/test_provider_model_catalogue.py -q --refuse-skips"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20376-ac1-published-plugin-receipt"
+    description: >-
+      Actual h101 published-plugin walk: marketplace onex@omninode-tools 0.3.2,
+      scratch Claude profile, OpenRouter key supplied to onex secret set on
+      stdin, GLM driver with no copied subscription login. The Bash tool-result
+      JSON carries run f76c64b2-652e-4ad4-b2ce-4b3476b558a3 and correlation
+      b4ba8b70-1d57-418d-b788-fc1918483fef, answered by Nemotron Ultra with
+      321 tokens. Read-only store queries found exactly one row in each table
+      and terminal_ok 1. Hosted tests replay reduced actual events and selected
+      store columns with the same grader as the local readback. They also
+      refuse missing or duplicate rows, terminal_ok 0, zero tokens, and a
+      correlation id appearing only in model prose; hosted replay does not
+      claim to install a plugin or call a live provider.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validators/test_c30_plugin_walk.py -q -k 'not negative and not no_skills' --refuse-skips"
+  - id: "dod-omn20376-ac2-no-skills-negative-arm"
+    description: >-
+      Actual h101 negative walk used a copy of the published onex 0.3.2 plugin
+      with skills omitted, in a separate scratch Claude profile. Its init
+      event lists no onex:delegate and its tool results carry no delegate
+      correlation id, despite Claude reporting subtype success. Hosted replay
+      checks that capture and refuses mutations that expose the skill or emit
+      a delegate correlation id. Both raw stream SHA256 digests accompany the
+      reduced capture fixture.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validators/test_c30_plugin_walk.py -q -k 'negative or no_skills' --refuse-skips"
+  - id: "dod-omn20376-local-original-stream-store-readback"
+    description: >-
+      Local Done gate on h101: grade the original stream-json captures and
+      query the original scratch SQLite database read-only. No evidence rows
+      are inserted or repaired by this check. Binds no hosted criterion; the
+      two hosted items above exercise this grader and the actual recorded
+      captures with the criterion falsifiers.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run python -m omnimarket.nodes.node_plugin_walk_evidence_effect
+          --positive ${ONEX_C30_WALK_ROOT:?set the lab capture root}/plugin-positive.jsonl
+          --negative ${ONEX_C30_WALK_ROOT:?set the lab capture root}/plugin-negative.jsonl
+          --database ${ONEX_C30_WALK_ROOT:?set the lab capture root}/scratch-home/.omninode/delegation/delegation.sqlite
+  - id: "dod-omn20376-deploy-withdrawn-rung"
+    description: >-
+      Falsifiable hosted deploy smoke for the packaged routing configuration:
+      read the declared backends, ordinary rules, defaults and tier entries;
+      require Super to have no endpoint and to be pin-only, exclude it from tier
+      selection and onboarding defaults, refuse a pin naming it, and require the
+      remaining free rung to carry judge_adequacy. Super is parked the way
+      cloud-glm is: an inert endpoint_url_env name satisfies the routing-authority
+      shape audit, which refuses a non-local backend with neither field, and no
+      lane binds it. The withdrawn-rung test fails on the merge-base config, which
+      serves Super. The command probe reads the packaged routing contract from
+      GitHub at the checked-out commit and requires the withdrawal note; the merge
+      base carries none. No lab credentials, broker or model server are required
+      on the hosted runner.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validators/test_provider_model_catalogue.py tests/unit/delegation/test_openrouter_review_reasoning_omn19432.py -q --refuse-skips"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/bifrost_delegation.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"Super is withdrawn\" > /dev/null'"

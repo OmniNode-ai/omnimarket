@@ -163,12 +163,11 @@ def resolve_overlay_key(
         if pinned:
             return _validate_explicit(spec, (pinned,))
     document = load_structured_overlay(
-        spec.overlay_id, OVERLAY_DOCUMENT_MODELS[spec.overlay_id], env
+        spec.overlay_id,
+        OVERLAY_DOCUMENT_MODELS[spec.overlay_id],
+        env,
+        missing_message=not_configured_message(spec.overlay_id, key, spec.env_vars),
     )
-    if document is None:
-        raise NodeOverlayError(
-            not_configured_message(spec.overlay_id, key, spec.env_vars)
-        )
     return getattr(document, spec.field)
 
 
