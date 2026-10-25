@@ -25,13 +25,13 @@ Rules this handler enforces:
   pr_comment and pr_thread_reply check the PR's head when given one. No
   mutation follows.
 - **Idempotency.** A retried command with the same idempotency key returns the
-  first result marked ``replayed`` and sends nothing. Across restarts GitHub
-  itself is the record: pr_create finds an open PR for the head, pr_comment
-  finds a comment carrying the key, pr_thread_reply finds a review comment
-  carrying the key, pr_ready and pr_close find the PR already
-  in the asked-for state. workflow_dispatch has no GitHub-side record, so only
-  the in-process record guards a retry. check_run_create likewise only has
-  the in-process record; a restart can create another check run.
+  first result marked ``replayed`` and sends nothing. Across restarts and
+  runtimes GitHub itself is the record: pr_create finds an open PR for the
+  head, pr_comment finds a comment carrying the key, pr_thread_reply finds a
+  review comment carrying the key, pr_ready and pr_close find the PR already
+  in the asked-for state, and check_run_create finds a check run with the key
+  in its ``external_id``. workflow_dispatch has no GitHub-side record, so only
+  the in-process record guards a retry.
 - **Claim.** pr_close is refused with ``claim_not_held`` unless the requesting
   lane and run hold a live claim on the PR in node_pr_claim_registry_effect.
   The claim is checked in dry_run too, since it needs no GitHub call.
@@ -717,11 +717,20 @@ async def _pr_thread_reply(run: _Run) -> ModelRepoWriteCompleted:
     )
 
 
+def _check_runs_request(c: ModelRepoWriteRequest) -> ModelGithubHttpRequest:
+    return ModelGithubHttpRequest(
+        method="GET",
+        path=f"/repos/{c.repo}/commits/{c.head_sha}/check-runs"
+        f"?check_name={quote(c.name or '', safe='')}&filter=all&per_page={LIST_PAGE_SIZE}",
+    )
+
+
 def _check_run_create_request(c: ModelRepoWriteRequest) -> ModelGithubHttpRequest:
     body: dict[str, object] = {
         "name": c.name,
         "head_sha": c.head_sha,
         "status": c.status,
+        "external_id": c.idempotency_key,
     }
     if c.conclusion is not None:
         body["conclusion"] = c.conclusion
@@ -733,7 +742,18 @@ def _check_run_create_request(c: ModelRepoWriteRequest) -> ModelGithubHttpReques
 
 
 async def _check_run_create(run: _Run) -> ModelRepoWriteCompleted:
-    created = (await run.send(_check_run_create_request(run.command))).body
+    c = run.command
+    existing = (await run.send(_check_runs_request(c))).body or {}
+    checks = existing.get("value", existing.get("check_runs"))
+    for check in checks if isinstance(checks, list) else []:
+        if isinstance(check, dict) and check.get("external_id") == c.idempotency_key:
+            return run.completed(
+                replayed=True,
+                check_run_id=_int_at(check, "id"),
+                html_url=_str_at(check, "html_url"),
+                head_sha=_str_at(check, "head_sha"),
+            )
+    created = (await run.send(_check_run_create_request(c))).body
     return run.completed(
         check_run_id=_int_at(created, "id"),
         html_url=_str_at(created, "html_url"),
@@ -787,7 +807,7 @@ def planned_requests(
             ),
         )
     if op is EnumRepoWriteOperation.CHECK_RUN_CREATE:
-        return (_check_run_create_request(c),)
+        return (_check_runs_request(c), _check_run_create_request(c))
     if op is EnumRepoWriteOperation.WORKFLOW_DISPATCH:
         return (
             *tip,

@@ -37,8 +37,11 @@ description: >
   contract file. A moved head during preflight is refused with head_moved.
   check_run_create posts a check name, immutable head_sha, status, optional
   conclusion and typed output (title and summary) through the same transport.
-  completed requires conclusion; queued and in_progress omit it. Its replay
-  record is in-process only, so a retry after restart can create another run.
+  completed requires conclusion; queued and in_progress omit it. Before posting,
+  it lists check runs for that head and name and returns a run replayed when its
+  external_id matches the idempotency key. The POST carries that external_id,
+  so GitHub is the replay record across restarts and runtimes. workflow_dispatch
+  stays in-process only because GitHub keeps no record of the dispatch.
   pr_thread_reply posts one reply on the review-comment thread that
   thread_comment_id starts, under the node's own write identity. It checks the
   PR's head when given an expected one, and a review comment carrying the
@@ -76,10 +79,10 @@ operations:
     description: "Request ModelRepoWriteRequest with pr_number, thread_comment_id and body, result ModelRepoWriteCompleted (comment_id, html_url) or ModelRepoWriteFailed; replaces gh api --method POST /repos/{o}/{r}/pulls/{n}/comments/{id}/replies. Scan the PR's review comments for the idempotency marker, POST the reply."
     transport: rest
   - name: workflow_dispatch
-    description: "Request ModelRepoWriteRequest, result ModelRepoWriteCompleted or ModelRepoWriteFailed; replaces gh workflow run. POST /repos/{o}/{r}/actions/workflows/{w}/dispatches."
+    description: "Request ModelRepoWriteRequest, result ModelRepoWriteCompleted or ModelRepoWriteFailed; replaces gh workflow run. POST /repos/{o}/{r}/actions/workflows/{w}/dispatches. Replay protection stays in-process only because GitHub keeps no record of the dispatch."
     transport: rest
   - name: check_run_create
-    description: "Request ModelRepoWriteRequest with name, head_sha, status (queued, in_progress, completed), optional conclusion and output (title, summary); replaces gh api --method POST /repos/{o}/{r}/check-runs. Result ModelRepoWriteCompleted with check_run_id, html_url and head_sha or ModelRepoWriteFailed. POST /repos/{o}/{r}/check-runs via the existing GitHub transport and auth. Requires checks write permission; replay protection is in-process only."
+    description: "Request ModelRepoWriteRequest with name, head_sha, status (queued, in_progress, completed), optional conclusion and output (title, summary); replaces gh api --method POST /repos/{o}/{r}/check-runs. Result ModelRepoWriteCompleted with check_run_id, html_url and head_sha or ModelRepoWriteFailed. GET /repos/{o}/{r}/commits/{head_sha}/check-runs for the check name; a run whose external_id matches the idempotency key is returned replayed across restarts and runtimes. Otherwise POST /repos/{o}/{r}/check-runs with external_id set to the key via the existing GitHub transport and auth. Requires checks write permission."
     transport: rest
 
 modes:

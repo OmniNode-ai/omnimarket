@@ -25,6 +25,11 @@ requirements:
         statement: 'AC1: the layering check refuses omnimarket named in Dockerfile.runtime, any CI install step or any test fixture of omnibase_infra -- falsifier: pytest of the layering check over fixture Dockerfile and workflow lines'
       - id: AC2
         statement: 'AC2: Dockerfile.runtime installs no omnimarket and the runtime still boots -- falsifier: the runtime-boot-smoke job on the PR head, plus the layering pytest over the real file'
+  - id: req-write-fence-every-runtime
+    statement: 'A duplicate delivery of one write command to a second runtime during a rebalance writes nothing twice.'
+    acceptance:
+      - id: AC3
+        statement: 'AC3: check_run_create finds its earlier check run on GitHub by external_id equal to the idempotency key and does not post again from a second handler instance -- falsifier: pytest of the write handler with two handler instances'
 evidence_requirements:
   - kind: tests
     description: >-
@@ -82,3 +87,12 @@ dod_evidence:
       - check_type: command
         check_value: |-
           gh api "repos/OmniNode-ai/omnimarket/contents/Dockerfile.runtime?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n";"") | @base64d | split("\n") as $l | ($l | map(. == "ARG INFRA_RUNTIME_IMAGE") | any) and ($l | map(. == "FROM ${INFRA_RUNTIME_IMAGE}") | any) and ($l | map(. == "ENV BIFROST_BASE_CONTRACT_PATH=/app/config/delegation/bifrost_delegation.base.yaml") | any) and ($l | map(. == "COPY --chown=omniinfra:omniinfra src/omnimarket/configs/bifrost_delegation.yaml /app/config/delegation/bifrost_delegation.base.yaml") | any)' | grep -qx true
+  - id: dod-omn-21279-ac3-check-run-fenced-across-runtimes
+    description: >-
+      AC3. Two handler instances stand for two runtimes. The second one's transport lists a check run whose external_id is the request's idempotency key; the handler returns it replayed and sends no POST. The first POST carries external_id, and a listed run with another external_id still posts. Red first: 11 check_run tests fail against the handler at the merge base.
+    source: generated
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect tests/test_golden_chain_github_repo_write_effect.py -q -n 0 -p no:randomly -k check_run
+    binds_ac:
+      - "AC3"

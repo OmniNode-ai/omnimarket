@@ -273,6 +273,11 @@ async def test_a_close_carrying_the_callers_claim_crosses_the_bus_and_completes(
 
 async def test_check_run_create_is_published_as_completed() -> None:
     output = {"title": "Lab job", "summary": "Recorded lab check."}
+    read = ModelGithubHttpRequest(
+        method="GET",
+        path=f"/repos/{_REPO}/commits/{_HEAD}/check-runs"
+        f"?check_name=lab%2Fpr-merged-publisher&filter=all&per_page={LIST_PAGE_SIZE}",
+    )
     post = ModelGithubHttpRequest(
         method="POST",
         path=f"/repos/{_REPO}/check-runs",
@@ -282,10 +287,17 @@ async def test_check_run_create_is_published_as_completed() -> None:
             "status": "completed",
             "conclusion": "success",
             "output": output,
+            "external_id": "golden-chain-omn20912",
         },
     )
     fake = _Recorded(
         [
+            (
+                read,
+                ModelGithubHttpResponse(
+                    status=200, headers=_HEADERS, body={"check_runs": []}
+                ),
+            ),
             (
                 post,
                 ModelGithubHttpResponse(
@@ -297,7 +309,7 @@ async def test_check_run_create_is_published_as_completed() -> None:
                         "html_url": f"https://github.com/{_REPO}/runs/4",
                     },
                 ),
-            )
+            ),
         ]
     )
     handler = HandlerGithubRepoWriteEffect(fake, clock=_CLOCK.timestamp)
@@ -319,8 +331,8 @@ async def test_check_run_create_is_published_as_completed() -> None:
     assert completed.check_run_id == 4
     assert completed.head_sha == _HEAD
     assert completed.html_url == f"https://github.com/{_REPO}/runs/4"
-    assert completed.http_statuses == (201,)
+    assert completed.http_statuses == (200, 201)
     assert completed.mode is EnumRepoWriteMode.ENFORCE
-    assert fake.sent == [post]
+    assert fake.sent == [read, post]
     assert fake.exchanges == []
     assert _on(broker, _FAILED) == []

@@ -1077,12 +1077,16 @@ def _check_command(**overrides: object) -> ModelRepoWriteRequest:
 
 
 def _check_post(
-    *, status: str = "completed", conclusion: str | None = "success"
+    *,
+    status: str = "completed",
+    conclusion: str | None = "success",
+    external_id: str = "check-run-create-19998",
 ) -> ModelGithubHttpRequest:
     body: dict[str, object] = {
         "name": "lab/pr-merged-publisher",
         "head_sha": _HEAD,
         "status": status,
+        "external_id": external_id,
         "output": {"title": "Lab publisher", "summary": "One merge published."},
     }
     if conclusion is not None:
@@ -1090,6 +1094,71 @@ def _check_post(
     return ModelGithubHttpRequest(
         method="POST", path=f"/repos/{_REPO}/check-runs", body=body
     )
+
+
+def _check_list() -> ModelGithubHttpRequest:
+    return ModelGithubHttpRequest(
+        method="GET",
+        path=f"/repos/{_REPO}/commits/{_HEAD}/check-runs"
+        f"?check_name=lab%2Fpr-merged-publisher&filter=all&per_page={LIST_PAGE_SIZE}",
+    )
+
+
+@pytest.mark.parametrize("list_key", ["value", "check_runs"])
+async def test_check_run_create_replays_across_runtimes(list_key: str) -> None:
+    request = _check_command(idempotency_key="check-run-create-21279")
+    check_run = {
+        "id": 4,
+        "external_id": request.idempotency_key,
+        "head_sha": _HEAD,
+        "html_url": f"https://github.com/{_REPO}/runs/4",
+    }
+    post = _check_post(external_id=request.idempotency_key)
+    first_transport = _Recorded(
+        [(_check_list(), _ok({list_key: []})), (post, _ok(check_run, status=201))]
+    )
+    second_transport = _Recorded(
+        [(_check_list(), _ok({list_key: [{"external_id": "another-key"}, check_run]}))]
+    )
+    first_handler = _handler(first_transport)
+    second_handler = _handler(second_transport)
+    first = await first_handler.handle(request)
+    second = await second_handler.handle(request)
+    assert isinstance(first, ModelRepoWriteCompleted)
+    assert first.replayed is False
+    assert isinstance(second, ModelRepoWriteCompleted)
+    assert second.replayed is True
+    assert second.check_run_id == first.check_run_id == 4
+    assert second.html_url == check_run["html_url"]
+    assert second.head_sha == _HEAD
+    assert second_transport.sent == [_check_list()]
+    assert not any(
+        r.method == "POST" and r.path == f"/repos/{_REPO}/check-runs"
+        for r in second_transport.sent
+    )
+    assert first_transport.drained()
+    assert second_transport.drained()
+
+
+@pytest.mark.parametrize("existing", [[], [{"external_id": "another-key", "id": 9}]])
+async def test_check_run_create_posts_external_id_when_no_matching_run_exists(
+    existing: list[object],
+) -> None:
+    request = _check_command(idempotency_key="check-run-create-21279")
+    post = _check_post(external_id=request.idempotency_key)
+    transport = _Recorded(
+        [
+            (_check_list(), _ok({"check_runs": existing})),
+            (post, _ok({"id": 4, "head_sha": _HEAD}, status=201)),
+        ]
+    )
+    result = await _handler(transport).handle(request)
+    assert isinstance(result, ModelRepoWriteCompleted)
+    assert result.replayed is False
+    assert result.check_run_id == 4
+    assert transport.sent[-1].body is not None
+    assert transport.sent[-1].body["external_id"] == request.idempotency_key
+    assert transport.drained()
 
 
 async def test_check_run_create_posts_recorded_response_and_replays() -> None:
@@ -1107,7 +1176,7 @@ async def test_check_run_create_posts_recorded_response_and_replays() -> None:
         },
         status=201,
     )
-    transport = _Recorded([(_check_post(), response)])
+    transport = _Recorded([(_check_list(), _ok([])), (_check_post(), response)])
     handler = _handler(transport)
     request = _check_command()
     result = await handler.handle(
@@ -1117,7 +1186,7 @@ async def test_check_run_create_posts_recorded_response_and_replays() -> None:
     assert result.check_run_id == 4
     assert result.html_url == f"https://github.com/{_REPO}/runs/4"
     assert result.head_sha == _HEAD
-    assert result.http_statuses == (201,)
+    assert result.http_statuses == (200, 201)
     assert result.quota is not None
     assert result.quota.remaining == 4900
     assert result.pr_number is None
@@ -1128,14 +1197,19 @@ async def test_check_run_create_posts_recorded_response_and_replays() -> None:
     assert replay.replayed
     assert replay.check_run_id == 4
     assert replay.correlation_id == UUID(int=1)
-    assert transport.sent == [_check_post()]
+    assert transport.sent == [_check_list(), _check_post()]
     assert transport.drained()
 
 
 @pytest.mark.parametrize("status", ["queued", "in_progress"])
 async def test_check_run_create_nonterminal_omits_conclusion(status: str) -> None:
     post = _check_post(status=status, conclusion=None)
-    transport = _Recorded([(post, _ok({"id": 4, "head_sha": _HEAD}, status=201))])
+    transport = _Recorded(
+        [
+            (_check_list(), _ok([])),
+            (post, _ok({"id": 4, "head_sha": _HEAD}, status=201)),
+        ]
+    )
     result = await _handler(transport).handle(
         _check_command(status=status, conclusion=None)
     )
@@ -1144,12 +1218,14 @@ async def test_check_run_create_nonterminal_omits_conclusion(status: str) -> Non
     assert transport.drained()
 
 
-async def test_check_run_create_dry_run_plans_same_post_without_transport() -> None:
+async def test_check_run_create_dry_run_plans_read_then_post_without_transport() -> (
+    None
+):
     transport = _Recorded([])
     result = await _handler(transport).handle(_check_command(dry_run=True))
     assert isinstance(result, ModelRepoWriteCompleted)
     assert result.mode is EnumRepoWriteMode.DRY_RUN
-    assert result.requests == (_check_post(),)
+    assert result.requests == (_check_list(), _check_post())
     assert result.check_run_id is None
     assert transport.sent == []
 
@@ -1171,7 +1247,13 @@ async def test_check_run_create_refuses_under_quota_before_post() -> None:
 @pytest.mark.parametrize("http_status", [403, 422])
 async def test_check_run_create_github_refusal_is_typed(http_status: int) -> None:
     transport = _Recorded(
-        [(_check_post(), _ok({"message": "Checks write refused"}, status=http_status))]
+        [
+            (_check_list(), _ok([])),
+            (
+                _check_post(),
+                _ok({"message": "Checks write refused"}, status=http_status),
+            ),
+        ]
     )
     result = await _handler(transport).handle(_check_command())
     assert isinstance(result, ModelRepoWriteFailed)
@@ -1248,9 +1330,15 @@ async def test_check_run_create_omits_optional_output() -> None:
             "head_sha": _HEAD,
             "status": "completed",
             "conclusion": "success",
+            "external_id": "check-run-create-19998",
         },
     )
-    transport = _Recorded([(post, _ok({"id": 4, "head_sha": _HEAD}, status=201))])
+    transport = _Recorded(
+        [
+            (_check_list(), _ok([])),
+            (post, _ok({"id": 4, "head_sha": _HEAD}, status=201)),
+        ]
+    )
     result = await _handler(transport).handle(_check_command(output=None))
     assert isinstance(result, ModelRepoWriteCompleted)
     assert transport.drained()
