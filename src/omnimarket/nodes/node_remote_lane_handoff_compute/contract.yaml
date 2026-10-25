@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_remote_lane_handoff_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Locate a remote lane's stamped CLAIM in supplied ledger rows or its queued host
+  bus outbox request before starting the lane, or decide whether its handoff can
+  retry while the CLAIM reaches the live ledger. Pure computation without I/O,
+  on its own command topic so the runtime seeds this decision's request model.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: decide_remote_lane_handoff
+    handler:
+      name: HandlerRemoteLaneHandoff
+      module: omnimarket.nodes.node_remote_lane_handoff_compute.handlers.handler_remote_lane_handoff
+    input_model: omnimarket.nodes.node_remote_lane_handoff_compute.models.model_remote_lane_handoff.ModelRemoteLaneHandoffRequest
+    output_model: omnimarket.nodes.node_remote_lane_handoff_compute.models.model_remote_lane_handoff.ModelRemoteLaneHandoffResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.remote-lane-handoff-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.remote-lane-handoff-decided.v1
+terminal_event: onex.evt.omnimarket.remote-lane-handoff-decided.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.remote-lane-handoff-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.remote-lane-handoff-decided.v1
+metadata:
+  ticket: OMN-20864
+  transport_type: kafka
+lifecycle: experimental

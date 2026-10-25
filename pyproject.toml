@@ -334,6 +334,7 @@ node_migration_sync_plan_compute = "omnimarket.nodes.node_migration_sync_plan_co
 node_migration_sync_effect = "omnimarket.nodes.node_migration_sync_effect"
 node_cloud_session_placement_effect = "omnimarket.nodes.node_cloud_session_placement_effect"
 node_remote_lane_close_compute = "omnimarket.nodes.node_remote_lane_close_compute"
+node_remote_lane_handoff_compute = "omnimarket.nodes.node_remote_lane_handoff_compute"
 node_remote_lane_compute = "omnimarket.nodes.node_remote_lane_compute"
 node_remote_lane_effect = "omnimarket.nodes.node_remote_lane_effect"
 node_dev_cause_lane_receiver_effect = "omnimarket.nodes.node_dev_cause_lane_receiver_effect"

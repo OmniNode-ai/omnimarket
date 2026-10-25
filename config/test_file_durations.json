@@ -951,6 +951,7 @@
   "tests/nodes/node_remote_lane_compute/test_venv_drift_placement.py": 0.07,
   "tests/nodes/node_remote_lane_effect/test_error_chain_remote_lane_effect.py": 0.05,
   "tests/nodes/node_remote_lane_effect/test_golden_chain_remote_lane_effect.py": 0.22,
+  "tests/nodes/node_remote_lane_handoff_compute/test_remote_lane_handoff.py": 0.1,
   "tests/nodes/node_repo_health_repair_effect/test_golden_chain_repo_health_repair_effect.py": 0.01,
   "tests/nodes/node_repo_health_repair_effect/test_handler_repo_health_repair_effect.py": 0.05,
   "tests/nodes/node_repo_health_repair_effect/test_lane_intake.py": 0.04,
