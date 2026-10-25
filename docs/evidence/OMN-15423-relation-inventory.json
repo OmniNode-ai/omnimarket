@@ -8382,6 +8382,7 @@
       "accessor_nodes": [
         "node_context_compaction_orchestrator",
         "node_projection_session_content",
+        "node_session_context_sources_effect",
         "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
@@ -8394,7 +8395,8 @@
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_context_compaction_orchestrator/contract.yaml",
-        "src/omnimarket/nodes/node_projection_session_content/contract.yaml"
+        "src/omnimarket/nodes/node_projection_session_content/contract.yaml",
+        "src/omnimarket/nodes/node_session_context_sources_effect/contract.yaml"
       ],
       "current_schema": [
         "omninode_internal"
@@ -8435,6 +8437,7 @@
       "producer": "node_projection_session_content",
       "readers": [
         "node_context_compaction_orchestrator",
+        "node_session_context_sources_effect",
         "node_transcript_read_effect"
       ],
       "target_schema": "omninode_internal",
@@ -9235,6 +9238,7 @@
         "node_context_source_ledger_effect",
         "node_context_source_work_state_effect",
         "node_projection_work_ledger",
+        "node_session_context_sources_effect",
         "node_work_ledger_query_effect",
         "node_work_ledger_seq_gap_effect",
         "service:omnimarket_projection_migration_runner"
@@ -9253,6 +9257,7 @@
         "src/omnimarket/nodes/node_context_source_ledger_effect/contract.yaml",
         "src/omnimarket/nodes/node_context_source_work_state_effect/contract.yaml",
         "src/omnimarket/nodes/node_projection_work_ledger/contract.yaml",
+        "src/omnimarket/nodes/node_session_context_sources_effect/contract.yaml",
         "src/omnimarket/nodes/node_work_ledger_query_effect/contract.yaml",
         "src/omnimarket/nodes/node_work_ledger_seq_gap_effect/contract.yaml"
       ],
@@ -9299,6 +9304,7 @@
         "node_lab_job_check_effect",
         "node_pr_landing_orchestrator",
         "node_pr_lifecycle_orchestrator",
+        "node_session_context_sources_effect",
         "node_work_ledger_emit_effect",
         "node_work_ledger_query_effect",
         "node_work_ledger_seq_gap_effect"

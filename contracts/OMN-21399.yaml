@@ -56,7 +56,6 @@ dod_evidence:
   - id: "dod-omn21399-deploy-import"
     description: "Hosted deploy check, runnable on the hosted runner with no lab route, broker or database: the five placement node packages import from the installed omnimarket and each resolves its onex.nodes entry point. Fails at the merge base, where the packages and entry points are absent."
     source: "manual"
-    binds_ac: ["AC2"]
     checks:
       - check_type: "command"
         check_value: "uv run --locked python -c \"from importlib.metadata import entry_points; eps={e.name: e for e in entry_points(group='onex.nodes')}; [eps[n].load() for n in ('node_host_capability_compute','node_lane_guard_admission_compute','node_lane_placement_recovery_effect','node_link_gate_compute','node_link_history_effect')]\""

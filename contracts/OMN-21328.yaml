@@ -102,7 +102,6 @@ dod_evidence:
   - id: "dod-omn21328-slice3-remaining-deploy-import"
     description: "Hosted deploy check, runnable on the hosted runner with no lab route, broker or database: the two node packages load from their onex.nodes entry points in the installed omnimarket and the sandbox probe handler renders its probe with an explicit private data clone name. Fails at the merge base, where the packages and entry points are absent."
     source: "manual"
-    binds_ac: ["AC7", "AC8"]
     checks:
       - check_type: "command"
         check_value: "uv run --locked python -c \"from importlib.metadata import entry_points; eps={e.name: e for e in entry_points(group='onex.nodes')}; [eps[n].load() for n in ('node_codex_sandbox_probe_compute','node_clone_parity_compute')]; from omnimarket.nodes.node_codex_sandbox_probe_compute.handlers.handler_codex_sandbox_probe import codex_roots_probe_sh; assert 'CODEX_ROOTS_BESIDE=repo-a' in codex_roots_probe_sh(private_data='repo-a')\""
