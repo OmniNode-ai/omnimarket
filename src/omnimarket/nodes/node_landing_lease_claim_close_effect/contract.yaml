@@ -12,7 +12,9 @@ node_version: 1.0.0
 description: Close open controller lease claims through the supplied writer after
   release predates the ledger read. Skip live leases, releases in the current tick,
   recent unstamped leases, and recorded successful closes. Bound writes by the request
-  limit, record attempts in each lease directory, and retry refused appends.
+  limit, record attempts in each lease directory, and retry refused appends. Preserve
+  actual executor engine, model and host from stamped results or placement records;
+  explicitly mark historical leases whose executor identity is missing.
 input_model:
   name: ModelLeaseClaimCloseRequest
   module: omnimarket.nodes.node_landing_lease_claim_close_effect.models.model_landing_lease_claim_close

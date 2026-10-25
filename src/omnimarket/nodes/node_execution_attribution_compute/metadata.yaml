@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_execution_attribution_compute
+version: 1.0.0
+description: Stamp actual executor engine, model, host and PR on results and TERMINAL
+  cells without I/O.
+pack: pr_lifecycle
+node_role: compute
+display_name: Execution Attribution Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_execution_attribution_compute: omnimarket.nodes.node_execution_attribution_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- execution-attribution
