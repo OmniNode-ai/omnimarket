@@ -66,12 +66,14 @@ permissions:
 jobs:
   hostile-review:
     name: Hostile Reviewer (adversarial gate)
+    # The amd64 LAN pools carry arch-amd64; off-LAN h203-light runners do not.
+    # If an off-LAN pool gains this label, require a dedicated LAN label instead.
     runs-on: >-
       ${{
         github.event_name == 'pull_request'
         && github.event.pull_request.head.repo.full_name != github.repository
         && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
-        || fromJSON(vars.OMNI_REVIEW_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
+        || fromJSON(vars.OMNI_REVIEW_RUNS_ON_JSON || '["self-hosted","omnibase-ci","arch-amd64"]')
       }}
     # OMN-15066: was 35 (2100s). The "Run adversarial review" step calls the
     # two models SEQUENTIALLY (cli_review.run_review, a plain for loop), and

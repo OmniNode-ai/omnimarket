@@ -1,0 +1,65 @@
+schema_version: "1.0.0"
+ticket_id: OMN-17292
+title: "Keep the Hostile Reviewer on runners that can reach its voters"
+summary: >-
+  Runner-label follow-up to omnibase_infra#5330. This contract carries the
+  source repository's AC5 for the omnimarket port. The ticket's completed
+  architecture criteria AC1-AC4 are historical and are not redefined or
+  re-proven by this runner-only change. The review job requires arch-amd64,
+  which the LAN amd64 pools carry and the off-LAN h203-light pools lack.
+  Actions variables, fork routing and required gate semantics stay unchanged.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn17292-hostile-reviewer-lan-label
+    statement: >-
+      The Hostile Reviewer trusted fallback requires arch-amd64 so an
+      h203-light runner cannot accept the review job.
+    acceptance:
+      - id: AC5
+        statement: >-
+          AC5: the hostile-review job falls back to
+          [self-hosted, omnibase-ci, arch-amd64], a label set the h203-light
+          runners do not satisfy, while fork PRs keep the public runner path
+          -- falsifier: env PYTHONDONTWRITEBYTECODE=1 uv run pytest
+          tests/ci/test_hostile_review_lan_runner_omn17292.py -q
+          -p no:randomly --no-cov
+
+evidence_requirements:
+  - kind: tests
+    description: The parsed review-job fallback excludes h203-light and preserves fork routing.
+    command: >-
+      env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_hostile_review_lan_runner_omn17292.py
+      -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn17292-ac5-hostile-reviewer-lan-label
+    description: >-
+      The parsed job requires the LAN amd64 label and excludes h203-light.
+      Both placement assertions fail against the unchanged workflow.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_hostile_review_lan_runner_omn17292.py
+          -q -p no:randomly --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC5]
+  - id: dod-omn17292-ac5-published-workflow
+    description: >-
+      Hosted-runner deploy-scope probe reads this exact commit's workflow from
+      GitHub and requires the arch-amd64 fallback in the review job.
+      The source content at the merge base lacks that fallback.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/hostile-reviewer.yml?ref=$(git rev-parse HEAD)"
+          --jq .content | base64 -d | python3 -c
+          'import json,sys; text=sys.stdin.read().split("  hostile-review-gate:")[0];
+          assert json.dumps(["self-hosted","omnibase-ci","arch-amd64"], separators=(",",":")) in text'
+        cwd: ${OMNI_HOME}/omnimarket
