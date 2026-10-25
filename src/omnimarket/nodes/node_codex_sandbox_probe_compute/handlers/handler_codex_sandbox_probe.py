@@ -241,7 +241,11 @@ def _private_data_name(
 ) -> str:
     """Resolve the private data clone name explicitly or from the shared repos overlay."""
     if private_data is None:
-        overlay = load_structured_overlay("repos", ModelReposPrivateData, environ)
+        overlay = (
+            load_structured_overlay("repos", ModelReposPrivateData, environ)
+            if find_node_overlay("repos", environ) is not None
+            else None
+        )
         if overlay is None or overlay.private_data is None:
             where = find_node_overlay("repos", environ)
             raise NodeOverlayError(
