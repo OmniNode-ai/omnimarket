@@ -1,0 +1,12 @@
+{
+  "bus_lane": "dev",
+  "broker": "dev-broker:9092",
+  "observed_at": "2026-10-25T19:53:41.577194Z",
+  "commands": [
+    {"node": "node_github_repo_gateway_effect", "topic": "onex.cmd.omnimarket.github-repo-gateway-read-requested.v1"},
+    {"node": "node_github_repo_write_effect", "topic": "onex.cmd.omnimarket.github-repo-write-requested.v1"}
+  ],
+  "members": [],
+  "error": "",
+  "unreadable_nodes": []
+}

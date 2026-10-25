@@ -22,12 +22,12 @@ import pytest
 
 from omnimarket.nodes.node_platform_diagnostics.handlers.dimension_checks import (
     DiagnosticsCheckContext,
+    _check_runtime_registration,
     check_contract_health,
     check_coverage,
     check_database_projections,
     check_golden_chain,
     check_hook_health,
-    check_runtime_nodes,
     run_dimension_checks,
 )
 from omnimarket.nodes.node_platform_diagnostics.models.model_diagnostics_result import (
@@ -44,7 +44,7 @@ from omnimarket.nodes.node_platform_readiness.handlers.handler_platform_readines
 
 def _ctx(tmp_path: Path, *, dry_run: bool = False) -> DiagnosticsCheckContext:
     return DiagnosticsCheckContext(
-        omni_home=tmp_path,
+        workspace_root=tmp_path,
         dashboard_api="http://localhost:9999",
         github_token="",
         github_repos=["OmniNode-ai/omnimarket"],
@@ -148,7 +148,7 @@ class TestCheckContractHealth:
     async def test_exception_wrapped_as_fail(self, tmp_path: Path) -> None:
         """If sweep_dir.iterdir() raises, result is FAIL."""
         ctx = _ctx(tmp_path)
-        # Point omni_home at a non-directory to force an OSError on stat
+        # Point workspace_root at a non-directory to force an OSError on stat
         sweep_dir = tmp_path / ".onex_state" / "contract-sweep"
         sweep_dir.parent.mkdir(parents=True, exist_ok=True)
         sweep_dir.write_text("not a directory")  # file, not dir
@@ -210,7 +210,7 @@ class TestCheckRuntimeNodes:
     @pytest.mark.asyncio
     async def test_missing_sweep_dir_returns_warn(self, tmp_path: Path) -> None:
         ctx = _ctx(tmp_path)
-        result = await check_runtime_nodes(ctx)
+        result = await _check_runtime_registration(ctx)
         assert result.status == EnumReadinessStatus.WARN
         assert result.dimension == EnumDiagnosticDimension.RUNTIME_NODES
 
@@ -222,7 +222,7 @@ class TestCheckRuntimeNodes:
             json.dumps({"missing_entry_points": [], "total_nodes": 12})
         )
         ctx = _ctx(tmp_path)
-        result = await check_runtime_nodes(ctx)
+        result = await _check_runtime_registration(ctx)
         assert result.status == EnumReadinessStatus.PASS
         assert result.check_count == 12
 
@@ -236,7 +236,7 @@ class TestCheckRuntimeNodes:
             )
         )
         ctx = _ctx(tmp_path)
-        result = await check_runtime_nodes(ctx)
+        result = await _check_runtime_registration(ctx)
         assert result.status == EnumReadinessStatus.FAIL
         assert len(result.actionable_items) >= 2
 

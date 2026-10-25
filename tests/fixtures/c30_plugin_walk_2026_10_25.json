@@ -1,0 +1,118 @@
+{
+  "captured_at": "2026-10-25",
+  "host": "h101",
+  "plugin": {
+    "source": "onex@omninode-tools",
+    "version": "0.3.2"
+  },
+  "description": "Reduced actual lab stream events and read-only SQLite readback. Unrelated fields and events omitted. These are recorded captures, not a hosted plugin execution.",
+  "capture_sha256": {
+    "positive": "eecd2e7f2a9d46a630c102ca7d45166cad7fe5e012879a02d78e9f9b93e250af",
+    "negative": "d2ea7bc6973b7bd4b1526473a1264795732ced40a8ac173b1dc9ff963931e835"
+  },
+  "positive": [
+    {
+      "type": "system",
+      "subtype": "init",
+      "skills": [
+        "graphify",
+        "deep-research",
+        "onex:delegate",
+        "dataviz",
+        "update-config",
+        "verify",
+        "debug",
+        "code-review",
+        "simplify",
+        "batch",
+        "fewer-permission-prompts",
+        "doctor",
+        "loop",
+        "claude-api",
+        "workflow-authoring",
+        "run",
+        "run-skill-generator",
+        "plugin-authoring"
+      ]
+    },
+    {
+      "type": "assistant",
+      "message": {
+        "content": [
+          {
+            "type": "tool_use",
+            "id": "call_4377b468742e43b6a6c816ad",
+            "name": "Bash",
+            "input": {
+              "command": "onex delegate \"Explain in one sentence what a unit test is.\" --task-type document --bus inmemory --locus in-process --ticket OMN-20376 --caller-lane dead-rung-nemotron-1520 --timeout 90 --max-tokens 512 --criteria final_artifact_only --criteria-mode replace-task-class --json",
+              "description": "Delegate document task via onex CLI"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "user",
+      "message": {
+        "content": [
+          {
+            "type": "tool_result",
+            "tool_use_id": "call_4377b468742e43b6a6c816ad",
+            "content": "{\"node_name\": \"node_delegate_skill_orchestrator\", \"status\": \"success\", \"run_id\": \"f76c64b2-652e-4ad4-b2ce-4b3476b558a3\", \"correlation_id\": \"b4ba8b70-1d57-418d-b788-fc1918483fef\", \"result\": {\"status\": \"completed\", \"model_name\": \"nvidia/nemotron-3-ultra-550b-a55b:free\", \"metrics\": {\"input_tokens\": 218, \"output_tokens\": 103, \"total_tokens\": 321, \"tokens_to_compliance\": 0, \"compliance_attempts\": 0, \"cost_usd\": 0.0, \"cost_measured\": true, \"cost_savings_usd\": 0.001466, \"frontier_costs_usd\": {\"claude-opus-4-6\": 0.003665, \"claude-sonnet-4-20250514\": 0.002199, \"claude-haiku-3-5\": 0.0005864, \"gpt-4o\": 0.001575}, \"premium_counterfactual\": {\"model\": \"claude-sonnet-5-5\", \"price_in_per_1k\": \"0.002\", \"price_out_per_1k\": \"0.01\", \"as_of\": \"2026-10-06\", \"tokens_in\": 218, \"tokens_out\": 103, \"counterfactual_cost_usd\": \"0.001466\", \"pricing_source\": \"pricing_manifest\", \"measured\": false}, \"latency_ms\": 5993}}}"
+          }
+        ]
+      }
+    },
+    {
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "num_turns": 2
+    }
+  ],
+  "negative": [
+    {
+      "type": "system",
+      "subtype": "init",
+      "skills": [
+        "graphify",
+        "deep-research",
+        "dataviz",
+        "update-config",
+        "verify",
+        "debug",
+        "code-review",
+        "simplify",
+        "batch",
+        "fewer-permission-prompts",
+        "doctor",
+        "loop",
+        "claude-api",
+        "workflow-authoring",
+        "run",
+        "run-skill-generator",
+        "plugin-authoring"
+      ]
+    },
+    {
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "num_turns": 1
+    }
+  ],
+  "readback": {
+    "b4ba8b70-1d57-418d-b788-fc1918483fef": {
+      "delegation_events": [
+        {
+          "terminal_ok": 1
+        }
+      ],
+      "llm_call_metrics": [
+        {
+          "total_tokens": 321
+        }
+      ]
+    }
+  }
+}

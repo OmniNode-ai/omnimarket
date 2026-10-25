@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_idle_slot_fill_effect
+version: 1.0.0
+description: 'The lab is never idle: from the throughput tick''s live pool hosts and finding lines, choose the lanes that
+  fill the free lab slots from the standing pillar backlog, and refuse an orchestrator Stop turn that left free
+  headroom or an unowned red with nothing dispatched. Repository names, the cloud backlog declaration and the experiment
+  designs come from the idle_slot_fill and repos overlays.'
+pack: distributed_validation
+node_role: effect
+display_name: Idle Slot Fill Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_idle_slot_fill_effect: omnimarket.nodes.node_idle_slot_fill_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- idle-slot-fill-effect
+- OMN-21409

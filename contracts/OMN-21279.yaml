@@ -115,3 +115,40 @@ dod_evidence:
       - check_type: command
         check_value: |-
           gh api "repos/OmniNode-ai/omnimarket/contents/Dockerfile.runtime?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n";"") | @base64d | split("\n") as $l | ($l | map(. == "ARG INFRA_RUNTIME_IMAGE") | any) and ($l | map(. == "FROM ${INFRA_RUNTIME_IMAGE}") | any) and ($l | map(. == "ENV BIFROST_BASE_CONTRACT_PATH=/app/config/delegation/bifrost_delegation.base.yaml") | any) and ($l | map(. == "COPY --chown=omniinfra:omniinfra src/omnimarket/configs/bifrost_delegation.yaml /app/config/delegation/bifrost_delegation.base.yaml") | any)' | grep -qx true
+  - id: dod-omn-21279-runtime-command-redundancy
+    description: >-
+      AC2 supporting runtime-health evidence: execute the zero, singleton,
+      duplicate, two-runtime and unreadable
+      membership cases and the compute command-to-terminal chain. The tests
+      import the new runtime coverage models and compute handler, which are
+      absent from the merge base.
+    source: generated
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_node_runtime_coverage.py tests/test_golden_chain_runtime_coverage_compute.py -q --no-cov
+  - id: dod-omn-21279-runtime-observation-and-health
+    description: >-
+      AC2 supporting runtime-health evidence: execute broker membership,
+      manifest corroboration, selected-lane
+      isolation, green-registration failure and CLI exit behavior, plus the
+      effect command-to-terminal chain. The effect and its shared models are
+      absent from the merge base. This proves diagnostics behavior, not that
+      the observed deployment currently has two serving runtimes.
+    source: generated
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_node_runtime_coverage.py tests/test_golden_chain_runtime_coverage_effect.py -q --no-cov
+  - id: dod-omn-21279-runtime-deploy-source-readback
+    description: >-
+      AC2 supporting hosted-runner deploy-scope source readback: the public raw
+      GitHub endpoint at this checkout's head must serve the compute handler
+      containing the two-runtime threshold and membership filtering. The
+      endpoint fails at the merge base because this handler does not exist.
+      This checks published source availability, not lab runtime activation.
+    source: generated
+    checks:
+      - check_type: command
+        check_value: >-
+          bash -o pipefail -c 'curl --fail --silent --show-error "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_runtime_coverage_compute/handlers/handler_runtime_coverage.py" | python3 -c "import sys; source=sys.stdin.read(); assert \"count >= 2\" in source; assert \"m.node == command.node and command.topic in m.topics\" in source"'
