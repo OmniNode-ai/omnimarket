@@ -14,6 +14,11 @@ node_version: "0.1.0"
 description: >
   Decides cloud eligibility and account placement, maintains local account state,
   and renders or parses cloud session text. Callers perform network probes.
+dependencies:
+  - name: omnimarket.nodes.node_llm_delegation_call_effect
+    dependency_type: internal
+    description: "Public cloud-session start renderer owns the harness invocation."
+    required: true
 input_model:
   name: "ModelCloudSessionPlacementRequest"
   module: "omnimarket.nodes.node_cloud_session_placement_effect.models.model_cloud_session_placement"
