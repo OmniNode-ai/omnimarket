@@ -119,7 +119,8 @@ dod_evidence:
       pre-PR slot's effects runtime, publishes one compaction command on the
       slot's KAFKA_TOPIC_NAMESPACE topics with a manual trigger and a fresh
       barrier_id, and asserts the package reply is status built with a package
-      id. It skips when no pre-PR slot is up, so hosted CI skips it. Its run
+      id. It carries the kafka marker, so hosted CI's not-kafka selection never
+      collects it, and it skips when no pre-PR slot is up. Its run
       against a live pre-PR slot returned native with failure_class
       source_not_caught_up, so AC1 remains unmet.
     source: "manual"
@@ -132,3 +133,4 @@ dod_evidence:
           grep -q 'f"{ns}.{request}"' tests/integration/test_compaction_pack_build_slot_probe.py
           && grep -q 'reply.get("status") == "built"' tests/integration/test_compaction_pack_build_slot_probe.py
           && grep -q 'reply.get("package_id")' tests/integration/test_compaction_pack_build_slot_probe.py
+          && grep -q 'pytest.mark.kafka' tests/integration/test_compaction_pack_build_slot_probe.py

@@ -6,9 +6,10 @@ The probe runs inside the slot's effects runtime and publishes the compaction
 command on the slot's own topic namespace (``KAFKA_TOPIC_NAMESPACE``): ``onex
 run-node`` publishes on the bare topic names, so on a namespaced slot it reaches
 the shared dev lane instead of the slot's handler. It awaits the package reply
-and the fallback event. It skips when no pre-PR slot is up on the host, so hosted
-CI never runs it; the lab pool's ``prepr_runtime_pool.py verify --tests`` runs it
-on a slot built from the ref.
+and the fallback event. It needs a live Kafka broker, so it carries the ``kafka``
+marker and hosted CI's ``-m "not kafka"`` selection never collects it; it also
+skips when no pre-PR slot is up on the host. The lab pool's
+``prepr_runtime_pool.py verify --tests`` runs it on a slot built from the ref.
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ from omnimarket.events.topics import (
     CONTEXT_COMPACTION_REQUESTED_TOPIC_V1,
 )
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.kafka]
 
 _SLOT_MARK = "prepr"
 _RUN_TIMEOUT_S = 120
