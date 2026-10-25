@@ -1,0 +1,86 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract
+# Node: NodeContextInstallConfirmRequestCompute (OMN-21336, plan task TA.13)
+
+name: node_context_install_confirm_request_compute
+version: "1.0.0"
+contract_name: node_context_install_confirm_request_compute
+node_name: node_context_install_confirm_request_compute
+
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+
+node_type: COMPUTE_GENERIC
+runtime_profiles: [main]
+
+description: >
+  Assemble a session's captured compact content chunks and published activations into
+  the install-confirm request. Validate complete package hashes before parsing records,
+  report unreadable packages, retain capture progress, deduplicate records by newest
+  package capture and package key, and deduplicate activations by earliest publication.
+  Deterministic; no I/O.
+
+input_model:
+  name: ModelInstallConfirmAssemblyRequest
+  module: omnimarket.models.context_install_confirm_request
+
+output_model:
+  name: ModelInstallConfirmAssemblyResult
+  module: omnimarket.models.context_install_confirm_request
+
+handler:
+  module: omnimarket.nodes.node_context_install_confirm_request_compute.handlers.handler_context_install_confirm_request
+  class: HandlerContextInstallConfirmRequest
+  input_model: omnimarket.models.context_install_confirm_request.ModelInstallConfirmAssemblyRequest
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerContextInstallConfirmRequest
+        module: omnimarket.nodes.node_context_install_confirm_request_compute.handlers.handler_context_install_confirm_request
+      event_model:
+        name: ModelInstallConfirmAssemblyRequest
+        module: omnimarket.models.context_install_confirm_request
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+capabilities:
+  - name: context.compaction.install_confirm_request
+    description: Assemble install-confirm requests from captured compact chunks and activations
+    version: 1.0.0
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.context-install-confirm-request-assembly-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-install-confirm-request-assembled.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.context-install-confirm-request-assembly-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.context-install-confirm-request-assembled.v1
+
+terminal_event: onex.evt.omnimarket.context-install-confirm-request-assembled.v1
+
+metadata:
+  author: OmniNode Team
+  license: MIT
+  ticket: OMN-21336
+  maturity: alpha
+  tags:
+    - context-compaction
+    - install-confirm
