@@ -521,3 +521,12 @@ async def test_projection_read_returns_installed_with_boundary_uuid(
     assert installed["session_id"] == raw["session_id"]
     assert installed["boundary_uuid"] == raw["boundaries"][0]["boundary_uuid"]
     assert installed["activation_id"] == raw["boundaries"][0]["activation_id"]
+
+
+def test_bus_backed_exposure_declares_a_reasoned_reader_opt_out() -> None:
+    """exposure-reader-coverage (OMN-17199) refuses a bus_backed exposure with no reader."""
+    contract = yaml.safe_load((NODE / "contract.yaml").read_text())
+    (exposure,) = contract["projection_api"]["exposures"]
+    assert exposure["bus_backed"] is True
+    assert exposure["consumers"] == "none"
+    assert "node_projection_read_effect" in exposure["consumers_reason"]

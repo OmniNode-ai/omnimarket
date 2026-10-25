@@ -100,6 +100,15 @@ projection_api:
       cursor_column: projection_cursor
       freshness_column: projected_at
       limit: 100
+      # Self-expiring opt-out: exposure-reader-coverage (OMN-17199) fails a
+      # standing `consumers: none` once a reader exists, so the change that adds
+      # a reader deletes both keys.
+      consumers: none
+      consumers_reason: >-
+        No Omnidash component, local page or typed status-page backend reader
+        reads this exposure yet; AC2's lab proof reads it once by hand through
+        node_projection_read_effect (OMN-21336). The change that adds a reader
+        deletes this opt-out.
 
 metadata:
   transport_type: kafka

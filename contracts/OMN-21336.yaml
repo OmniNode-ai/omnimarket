@@ -26,6 +26,9 @@ requirements:
       - id: "AC2"
         statement: >-
           AC2: after a /compact on a lab host the projection reads installed with the boundary uuid -- falsifier: onex node node_projection_read_effect for the compaction receipts projection returns no installed row for that session
+      - id: "AC3"
+        statement: >-
+          AC3: the bus_backed compaction-receipts.v1 exposure carries a reasoned consumers opt-out until a reader lands, so omnibase_infra's exposure-reader-coverage gate passes against this tree -- falsifier: uv run pytest tests/test_compaction_receipts_projection_writer.py -q -k reasoned_reader_opt_out
 evidence_requirements:
   - kind: "tests"
     description: "AC1: recorded producer output for every verdict, SQL-bound payloads, replay and malformed-event refusal."
@@ -64,3 +67,11 @@ dod_evidence:
       - check_type: "command"
         check_value: "gh api 'repos/OmniNode-ai/omnibase_infra/contents/src/omnibase_infra/topology/instances/local.yaml?ref=3078fa4ec02b3c242502a6de8ca21729b66cc48a' -H 'Accept: application/vnd.github.raw' | grep -q -- '- compaction_receipts'"
     binds_ac: ["AC2"]
+  - id: "dod-omn21336-ac3-exposure-reader-opt-out"
+    description: "AC3: no Omnidash component, local page or typed status-page backend reader reads onex.snapshot.projection.compaction-receipts.v1, so omnibase_infra's exposure-reader-coverage gate reported it as no_reader against omnimarket dev f014086a6 with omnidash dev 03338b97. The exposure now declares consumers: none with a reason; the change that adds a reader deletes both keys. The test fails at the merge base, where the exposure has no opt-out."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_compaction_receipts_projection_writer.py -q -k reasoned_reader_opt_out"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
