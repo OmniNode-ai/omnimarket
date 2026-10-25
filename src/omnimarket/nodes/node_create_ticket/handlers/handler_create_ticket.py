@@ -60,6 +60,10 @@ from omnimarket.handlers.handler_lane_intake import (
     resolve_label_id,
     stamp_description,
 )
+from omnimarket.handlers.handler_lane_write_identity import (
+    ModelLaneWriteIdentity,
+    assert_linear_principal_is_actor,
+)
 from omnimarket.inference.secret_store_resolver import resolve_api_key_loop_safe
 from omnimarket.nodes.contract_topics import contract_secret_ref
 
@@ -657,6 +661,11 @@ class LinearTicketHttpGateway:
             raise RuntimeError(f"Linear GraphQL error: {data['errors']}")
         return data
 
+    def viewer_id(self) -> str:
+        """The Linear user id this credential writes as (OMN-20355)."""
+        viewer = self._post(_VIEWER_QUERY, {}).get("data", {}).get("viewer", {})
+        return str(viewer.get("id", ""))
+
     def create_ticket(
         self,
         *,
@@ -756,8 +765,10 @@ class HandlerCreateTicket:
         ticket_guard: TicketGuardProtocol | None = None,
         state_resolver: TicketStateResolverProtocol | None = None,
         lane_intake_policy: ModelLaneIntakePolicy | None = None,
+        principal_resolver: Callable[[], str] | None = None,
     ) -> None:
         self._injectable_lane_intake_policy = lane_intake_policy
+        self._injectable_principal_resolver = principal_resolver
         self._injectable_client = linear_client
         self._pillar_owners_path = pillar_owners_path
         self._injectable_tracker = tracker
@@ -801,6 +812,21 @@ class HandlerCreateTicket:
             return self._injectable_lane_intake_policy
         return read_lane_intake_policy(locate_ticket_guard())
 
+    def _assert_lane_actor(self, surface: str) -> None:
+        """Refuse a write whose credential is not the declared lane actor (OMN-20355).
+
+        Silent when ``ONEX_AUTOMATION_ACTOR_ID`` is not configured, and the
+        principal is then not resolved. Called after dry_run returns, before the
+        first Linear write.
+        """
+        identity = ModelLaneWriteIdentity.from_env(os.environ)
+        if identity is None:
+            return
+        resolve = self._injectable_principal_resolver or (
+            LinearTicketHttpGateway(self._linear_api_key()).viewer_id
+        )
+        assert_linear_principal_is_actor(identity, surface=surface, principal=resolve())
+
     def handle(self, request: ModelCreateTicketRequest) -> ModelCreateTicketResult:
         """Process one create, read or comment request."""
         if request.operation is EnumTicketOperation.READ:
@@ -833,6 +859,7 @@ class HandlerCreateTicket:
                 guard_path=decision.guard_path,
                 dry_run=True,
             )
+        self._assert_lane_actor("transition")
         state_id = self._get_state_resolver().resolve_state_id(ticket_id, state)
         tracker = self._get_tracker()
 
@@ -891,6 +918,7 @@ class HandlerCreateTicket:
                 team=request.team,
                 dry_run=True,
             )
+        self._assert_lane_actor("comment")
         tracker = self._get_tracker()
 
         async def _post() -> Any:
@@ -1005,6 +1033,7 @@ class HandlerCreateTicket:
             if request.pillar
             else None
         )
+        self._assert_lane_actor("create")
         client = self._get_client()
         ticket_id, ticket_url = client.create_ticket(
             title=request.title,

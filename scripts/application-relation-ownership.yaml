@@ -205,6 +205,13 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_ci_attempt_outcome/migrations/0000_create_ci_attempt_outcome.sql
       access: read_write
       role: ci_attempts
+    # OMN-20169: tenant-scoped capability cells per map run.
+    - name: delegation_capability_cells
+      database_ref: application
+      schema: public
+      migration: src/omnimarket/nodes/node_projection_delegation_capability_map/migrations/0000_create_delegation_capability_cells.sql
+      access: read_write
+      role: delegation_capability_cells
     # OMN-20242: tenant-scoped current dispositions.
     - name: delegation_dispositions
       database_ref: application
