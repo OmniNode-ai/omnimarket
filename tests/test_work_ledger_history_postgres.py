@@ -18,7 +18,7 @@ from uuid import uuid4
 
 import psycopg2
 import pytest
-from psycopg2.extensions import parse_dsn
+from psycopg2.extensions import make_dsn, parse_dsn
 
 from omnimarket.events.model_ledger_row_event import work_ledger_row_id
 from omnimarket.models.work_ledger_query import ModelWorkLedgerQueryRequest
@@ -41,11 +41,34 @@ MIGRATIONS = (
 ENV = "ONEX_TEST_LEDGER_HISTORY_DSN"
 
 
-@pytest.fixture
-def database() -> Iterator[tuple[Any, str]]:
+def _test_dsn() -> str | None:
     dsn = os.environ.get(ENV)
+    if dsn:
+        return dsn
+    # The hosted Tests job exports its ephemeral PostgreSQL 16 service as
+    # INTEGRATION_POSTGRES_*; use it so CI executes this proof instead of skipping.
+    service = {
+        key: os.environ.get(f"INTEGRATION_POSTGRES_{key.upper()}")
+        for key in ("host", "port", "user", "password", "db")
+    }
+    if not all(service.values()):
+        return None
+    return make_dsn(
+        host=service["host"],
+        port=service["port"],
+        user=service["user"],
+        password=service["password"],
+        dbname=service["db"],
+    )
+
+
+@pytest.fixture
+def database(monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[Any, str]]:
+    dsn = _test_dsn()
     if not dsn:
         pytest.skip(f"{ENV} must name an ephemeral local PostgreSQL database")
+    # The production reader resolves its DSN from this variable.
+    monkeypatch.setenv(ENV, dsn)
     host = parse_dsn(dsn).get("host", "")
     if host not in {"127.0.0.1", "::1", "localhost"} and not host.startswith("/"):
         pytest.fail(

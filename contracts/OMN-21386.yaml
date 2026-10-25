@@ -96,10 +96,9 @@ dod_evidence:
     the shipped migrations and production writer SQL, then run the production read-only query handler.
     Require original first-ingest time across replay, NULL legacy authority, ledger isolation, both source
     rolls in sequence order and incomplete for truncation or gaps. Fails at the merge base where the history
-    API and migration are absent. This does not claim live deployment or backfill provenance.'
+    API and migration are absent. This does not claim live deployment or backfill provenance. It binds
+    no criterion because a command-only probe is not a binding; AC1 is bound by dod-history-ac1-boundary.'
   source: manual
-  binds_ac:
-  - AC1
   checks:
   - check_type: command
     check_value: "set -eu\nledger_probe=$(docker run --detach --rm --label onex.deploy-probe=ledger-history\
