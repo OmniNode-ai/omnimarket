@@ -58,3 +58,7 @@ config:
 # No node contract subscribes to these; they leave the ONEX node graph here.
 externally_consumed_topics:
   - onex.evt.omnimarket.platform-diagnostics-completed.v1
+
+# Deployment-owned placement and registry endpoints are read by the health adapter.
+runtime_coverage:
+  policy_relative_path: config/lab/runtime_coverage.yaml
