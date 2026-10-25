@@ -16,6 +16,7 @@ from types import FrameType
 from typing import Any
 
 from omnimarket.handlers.node_overlay_reader import resolve_setting
+from omnimarket.models.model_execution_identity import ModelExecutionIdentity
 
 from ..models.model_landing_lease_claim_close import (
     ModelLeaseClaimCloseRequest,
@@ -196,6 +197,30 @@ def cause_claim(
     return (ok, err)
 
 
+def _execution_cells(directory: Path, *, include_pr: bool = False) -> list[str]:
+    """Keep the actual executor on closeout; placement also recovers older results."""
+    result = _read(directory / "result.json")
+    placement = _read(directory / "placement.json")
+    result = result if isinstance(result, dict) else {}
+    placement = placement if isinstance(placement, dict) else {}
+    engine = result.get("engine") or placement.get("engine")
+    host = result.get("host") or placement.get("host")
+    if not engine or not host:
+        # Historical/unstarted leases must still close, without inventing an executor.
+        return ["model=none", "attribution_missing=executor-identity"]
+    identity = ModelExecutionIdentity(engine=str(engine), host=str(host))
+    cells = identity.cells()
+    if include_pr and result.get("pr"):
+        pr = str(result["pr"])
+        if any(
+            re.fullmatch(r"(?:[\w.-]+/)?[\w.-]+#[0-9]+", ref) is None
+            for ref in pr.split(",")
+        ):
+            raise ValueError("executor PR must be a PR reference")
+        cells["pr"] = pr
+    return [f"{key}={value}" for key, value in cells.items()]
+
+
 def cause_terminal(
     directory: Path,
     writer: Callable[[str], tuple[bool, str]],
@@ -226,7 +251,7 @@ def cause_terminal(
             f"lane={relay['lane']}",
             f"ticket={ticket}",
             f"actor={CONTROLLER_ACTOR}",
-            "model=none",
+            *_execution_cells(directory, include_pr=True),
             "friction=none",
             "outcome=handed-off",
             "handed_to=landing-controller",
@@ -325,7 +350,7 @@ def close_row(
             f"lane={lane}",
             f"ticket={ticket}",
             f"actor={CONTROLLER_ACTOR}",
-            "model=none",
+            *_execution_cells(directory, include_pr=bool(claim.get("cause"))),
             "friction=none",
             "outcome=handed-off",
             "handed_to=landing-controller",
