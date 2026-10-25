@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Session context sources, pinned mode first (OMN-21108, plan task TA.6).
+"""Session context sources from pinned bundles or live projections (OMN-21108, plan task TA.6).
 
 A context source in the TC.1 shape: `handle(ModelContextSourceRequest) -> ModelContextSourceResult`,
 one factor per read. The request's one scope names the mode.
@@ -22,11 +22,10 @@ The carry rule is in `carry_rule`.
 REPO_STATE is `unavailable` in pinned mode where the case excludes it, and always in live mode;
 it is never filled from a cwd.
 
-`session:<session_id>` is live mode (OMN-21111). OPERATOR_WORDS_UNRECORDED reads the session's
-transcript under ONEX_SESSION_TRANSCRIPT_ROOT and the markdown ledger at ONEX_LEDGER_PATH (both
-required, no default) up to the request's revision when that is a row stamp, and applies the same
-carry rule; a RULING or OPERATOR-CONSENT row also records the words it quotes verbatim
-(`live_transcript_reader`). Any other live factor but REPO_STATE is refused with a typed error.
+`session:<session_id>` reads the contract-bound session_content and work_ledger_rows
+projections up to the revision watermark for an explicitly bound tenant. The same prompt
+classification and carry rule apply; RULING and OPERATOR-CONSENT quotes also record words.
+Reader failures are unavailable. Any other live factor but REPO_STATE is refused.
 """
 
 from __future__ import annotations
@@ -35,7 +34,7 @@ import hashlib
 import json
 import os
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar
@@ -63,13 +62,13 @@ from omnibase_core.models.context.model_context_source_span import (
 from omnimarket.nodes.node_session_context_sources_effect.handlers.carry_rule import (
     carry,
 )
-from omnimarket.nodes.node_session_context_sources_effect.handlers.live_transcript_reader import (
-    LEDGER_PATH_ENV,
-    TRANSCRIPT_ROOT_ENV,
+from omnimarket.nodes.node_session_context_sources_effect.handlers.live_session_reader import (
+    PostgresSessionProjectionReader,
+    ProtocolSessionContentReader,
+    ProtocolSessionLedgerReader,
     ledger_lines,
+    load_session_live_binding,
     quote_citations,
-    transcript_path,
-    transcript_prompts,
 )
 from omnimarket.nodes.node_session_context_sources_effect.models import (
     EnumCarryDisposition,
@@ -154,18 +153,24 @@ def _chain_records(
     chain: bytes, chain_path: str
 ) -> tuple[list[dict[str, Any]], set[str]]:
     """Content records (chunks joined, in instant order) and the boundary summary hashes."""
-    parts: dict[str, list[tuple[int, dict[str, Any]]]] = {}
+    rows = [json.loads(line) for line in chain.decode("utf-8").splitlines()]
     summaries: set[str] = set()
-    for number, line in enumerate(chain.decode("utf-8").splitlines(), start=1):
-        row: dict[str, Any] = json.loads(line)
-        where = f"{chain_path} line {number}"
-        moment = _timestamp(row, where)
-        kind = str(row.get("kind", ""))
-        if kind.startswith("hook:"):
+    content = []
+    for number, row in enumerate(rows, start=1):
+        _timestamp(row, f"{chain_path} line {number}")
+        if str(row.get("kind", "")).startswith("hook:"):
             if row.get("summary_sha256"):
                 summaries.add(str(row["summary_sha256"]))
-            continue
-        row["_at"] = moment
+        else:
+            content.append(row)
+    return _join_chunks(content, chain_path), summaries
+
+
+def _join_chunks(rows: Iterable[dict[str, Any]], source: str) -> list[dict[str, Any]]:
+    """Join each event's chunks and sort captures for both source modes."""
+    parts: dict[str, list[tuple[int, dict[str, Any]]]] = {}
+    for row in rows:
+        row = {**row, "_at": _timestamp(row, f"{source}#{row['event_id']}")}
         parts.setdefault(str(row["event_id"]), []).append(
             (int(row.get("chunk_index", 0)), row)
         )
@@ -183,7 +188,7 @@ def _chain_records(
             }
         )
     records.sort(key=lambda record: (record["at"], record["event_id"]))
-    return records, summaries
+    return records
 
 
 def _operator_prompts(
@@ -273,12 +278,29 @@ def _ledger_rows(
 
 
 class HandlerSessionContextSources:
-    """One session-tier read: pinned from a replay case, or live (REPO_STATE only, unavailable)."""
+    """Session-tier reads from pinned replay cases or tenant-bound live projections."""
 
     synchronous_execution: ClassVar[bool] = True
 
-    def __init__(self, env: Mapping[str, str] | None = None) -> None:
+    def __init__(
+        self,
+        env: Mapping[str, str] | None = None,
+        *,
+        contract_path: Path | None = None,
+        content_reader: ProtocolSessionContentReader | None = None,
+        ledger_reader: ProtocolSessionLedgerReader | None = None,
+        tenant_ids: tuple[str, ...] | None = None,
+    ) -> None:
         self._env = env
+        binding = load_session_live_binding(
+            contract_path
+            if contract_path is not None
+            else Path(__file__).resolve().parents[1] / "contract.yaml"
+        )
+        reader = PostgresSessionProjectionReader(binding)
+        self._content_reader = content_reader if content_reader is not None else reader
+        self._ledger_reader = ledger_reader if ledger_reader is not None else reader
+        self._tenant_ids = binding.tenant_ids if tenant_ids is None else tenant_ids
 
     def handle(self, request: ModelContextSourceRequest) -> ModelContextSourceResult:
         modes = [s for s in request.scopes if s.startswith((CASE_SCOPE, SESSION_SCOPE))]
@@ -369,35 +391,27 @@ class HandlerSessionContextSources:
     def _live(
         self, request: ModelContextSourceRequest, session_id: str
     ) -> ModelContextSourceResult:
-        env = os.environ if self._env is None else self._env
-        root = env.get(TRANSCRIPT_ROOT_ENV, "")
-        if not root or not Path(root).is_dir():
-            raise _ReadFailureError(
-                EnumSessionSourceFailure.TRANSCRIPT_ROOT_MISSING,
-                f"{TRANSCRIPT_ROOT_ENV} is required, has no default, and must name a directory",
-            )
-        path = transcript_path(Path(root), session_id)
-        if path is None or not path.is_file():
-            raise _ReadFailureError(
-                EnumSessionSourceFailure.TRANSCRIPT_NOT_FOUND,
-                f"session {session_id} has no transcript under {TRANSCRIPT_ROOT_ENV}",
-            )
-        ledger = env.get(LEDGER_PATH_ENV, "")
-        if not ledger or not Path(ledger).is_file():
-            raise _ReadFailureError(
-                EnumSessionSourceFailure.LEDGER_MISSING,
-                f"{LEDGER_PATH_ENV} is required, has no default, and must name the ledger file",
-            )
+        if request.access.tenant_id not in self._tenant_ids:
+            return ModelContextSourceResult(status=EnumContextSourceStatus.DENIED)
         until = (
             datetime.fromisoformat(request.revision)
             if _SOURCE_STAMP.match(request.revision)
             else None
         )
         watermark = until.strftime("%Y-%m-%dT%H:%M:%SZ") if until else None
-        prompts = transcript_prompts(
-            path.read_text(encoding="utf-8").splitlines(), path.name, until=until
+        try:
+            content = self._content_reader.read_prompt_rows(
+                session_id=session_id, until=until
+            )
+            raw_rows = self._ledger_reader.read_raw_rows(until=until)
+        except Exception as exc:
+            return ModelContextSourceResult.error(
+                EnumContextSourceErrorCode.INVALID_RESPONSE, str(exc)
+            )
+        prompts = _operator_prompts(
+            _join_chunks(content, "session_content"), set(), "session_content"
         )
-        rows = ledger_lines(Path(ledger).read_text(encoding="utf-8"), until=watermark)
+        rows = ledger_lines("\n".join(raw_rows), until=watermark)
         citations, ranges = _ledger_rows(["\n".join(rows).encode("utf-8")])
         citations.extend(quote_citations(prompts, rows))
         return _carried(prompts, citations, ranges)
@@ -445,8 +459,6 @@ def _carried(
 
 
 __all__ = [
-    "LEDGER_PATH_ENV",
     "REPLAY_ROOT_ENV",
-    "TRANSCRIPT_ROOT_ENV",
     "HandlerSessionContextSources",
 ]
