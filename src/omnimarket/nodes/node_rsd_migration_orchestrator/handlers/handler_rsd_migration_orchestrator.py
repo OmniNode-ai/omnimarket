@@ -37,7 +37,7 @@ from typing import Final, Literal, Protocol
 import yaml
 
 from omnimarket.inference.task_class_authority import ModelTaskClassAuthority
-from omnimarket.nodes.node_delegated_code_edit_orchestrator.models.model_delegated_code_edit import (
+from omnimarket.models.model_delegated_code_edit import (
     EnumCodeEditStatus,
     ModelCodeEditResult,
     ModelDeclaredCheck,

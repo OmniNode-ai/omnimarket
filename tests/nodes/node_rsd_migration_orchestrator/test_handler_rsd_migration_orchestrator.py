@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.nodes.node_delegated_code_edit_orchestrator.models.model_delegated_code_edit import (
+from omnimarket.models.model_delegated_code_edit import (
     EnumCodeEditStatus,
     ModelCodeEditResult,
     ModelDelegatedCodeEditRequest,

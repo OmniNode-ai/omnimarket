@@ -9,7 +9,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from omnimarket.nodes.node_delegated_code_edit_orchestrator.models.model_delegated_code_edit import (
+from omnimarket.models.model_delegated_code_edit import (
     ModelCodeEditResult,
 )
 

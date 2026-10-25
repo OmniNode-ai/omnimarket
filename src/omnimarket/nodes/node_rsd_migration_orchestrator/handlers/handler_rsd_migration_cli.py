@@ -9,7 +9,7 @@ import json
 import sys
 from pathlib import Path
 
-from omnimarket.nodes.node_delegated_code_edit_orchestrator.models.model_delegated_code_edit import (
+from omnimarket.models.model_delegated_code_edit import (
     ModelCodeEditResult,
     ModelDelegatedCodeEditRequest,
 )
