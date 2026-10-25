@@ -1003,6 +1003,13 @@ node_landing_placement_wait_effect = "omnimarket.nodes.node_landing_placement_wa
 node_landing_tick_bounds_compute = "omnimarket.nodes.node_landing_tick_bounds_compute"
 node_landing_tick_speed_effect = "omnimarket.nodes.node_landing_tick_speed_effect"
 node_landing_upstream_gate_compute = "omnimarket.nodes.node_landing_upstream_gate_compute"
+node_host_capability_compute = "omnimarket.nodes.node_host_capability_compute"
+node_lane_guard_admission_compute = "omnimarket.nodes.node_lane_guard_admission_compute"
+node_lane_placement_recovery_effect = "omnimarket.nodes.node_lane_placement_recovery_effect"
+node_link_gate_compute = "omnimarket.nodes.node_link_gate_compute"
+node_link_history_effect = "omnimarket.nodes.node_link_history_effect"
+node_clone_parity_compute = "omnimarket.nodes.node_clone_parity_compute"
+node_codex_sandbox_probe_compute = "omnimarket.nodes.node_codex_sandbox_probe_compute"
 node_landing_worker_engine_compute = "omnimarket.nodes.node_landing_worker_engine_compute"
 node_merge_sweep_same_head_compute = "omnimarket.nodes.node_merge_sweep_same_head_compute"
 
