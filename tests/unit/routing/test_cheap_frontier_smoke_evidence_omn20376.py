@@ -24,8 +24,13 @@ from omnimarket.validators.routing_tier_backend_bindability import (
 )
 
 pytestmark = pytest.mark.unit
+# A dated measurement record: under receipts/ it is a historical record, so the
+# retired-value guard does not read the remote model ids it names.
 FIXTURE = (
-    Path(__file__).parents[2] / "fixtures" / "cheap_frontier_smokes_2026_10_25.json"
+    Path(__file__).parents[2]
+    / "fixtures"
+    / "receipts"
+    / "cheap_frontier_smokes_2026_10_25.json"
 )
 TIER = "cheap_frontier"
 

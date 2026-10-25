@@ -5,10 +5,10 @@ title: "Withdraw the dead Nemotron Super rung and verify the published delegate 
 summary: >-
   The authenticated OpenRouter catalogue still advertises Nemotron Super, but
   its chat endpoint returns HTTP 404 because the upstream Nvidia function is
-  missing. No rename was established. Park its endpoint with explicit_pin_only, remove its tier entry
+  missing. No rename was established. Park it endpoint-less with explicit_pin_only, remove its tier entry
   and onboarding default; keep Ultra and the north-mini spread peer
   ahead of the existing metered tiers. Move the default adequacy judge to Ultra
-  so parking the backend leaves no active caller. A live CI catalogue
+  so withdrawing the backend leaves no active caller. A live CI catalogue
   check refuses missing served model ids and defaults, including placement
   peers, without treating catalogue presence as proof of inference health.
   The ticket's supplied C30 criteria are preserved below and were also walked
@@ -93,12 +93,18 @@ dod_evidence:
       Falsifiable hosted deploy smoke for the packaged routing configuration:
       read the declared backends, ordinary rules, defaults and tier entries;
       require Super to have no endpoint and to be pin-only, exclude it from tier
-      selection and onboarding defaults, and require the remaining free rung to carry
-      judge_adequacy. This exact withdrawn-rung test was run against the original
-      three YAML files and failed on the previously serving Super backend, then passed
-      after restoring the fix. No lab credentials, broker or model server are
-      required on the hosted runner.
+      selection and onboarding defaults, refuse a pin naming it, and require the
+      remaining free rung to carry judge_adequacy. Super is parked the way
+      cloud-glm is: an inert endpoint_url_env name satisfies the routing-authority
+      shape audit, which refuses a non-local backend with neither field, and no
+      lane binds it. The withdrawn-rung test fails on the merge-base config, which
+      serves Super. The command probe reads the packaged routing contract from
+      GitHub at the checked-out commit and requires the withdrawal note; the merge
+      base carries none. No lab credentials, broker or model server are required
+      on the hosted runner.
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/validators/test_provider_model_catalogue.py tests/unit/delegation/test_openrouter_review_reasoning_omn19432.py -q --refuse-skips"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/bifrost_delegation.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"Super is withdrawn\" > /dev/null'"

@@ -525,7 +525,7 @@ backends:
     model_name: "nvidia/nemotron-3-ultra-550b-a55b:free"
     secret_ref: llm.openrouter.api_key
     # Parked 2026-10-25: 6 of 10 accepted on the cheap_frontier smoke, under the
-    # bar of 7 (tests/fixtures/cheap_frontier_smokes_2026_10_25.json). The
+    # bar of 7 (tests/fixtures/receipts/cheap_frontier_smokes_2026_10_25.json). The
     # endpoint stays so an explicit pin, the default judge, can still reach it;
     # the ordinary ladder cannot.
     explicit_pin_only: true
@@ -560,8 +560,13 @@ backends:
   # north-mini spread peer remain the free tier before metered escalation.
   # The Super declaration is parked for historical references only. No endpoint
   # and explicit_pin_only prevent ordinary or pinned inference on the dead slug.
+  # Parked the same way as cloud-glm above: the `endpoint_url_env` name is inert
+  # and exists only for the provider endpoint shape audit. The deploy-time
+  # renderer strips it, nothing reads it from the process environment, and a
+  # lane overlay binds only local backends, so no lane sets it.
   - backend_id: openrouter-nemotron-super
     provider: openrouter
+    endpoint_url_env: BIFROST_OPENROUTER_NEMOTRON_SUPER_ENDPOINT_URL
     endpoint_url: null
     explicit_pin_only: true
     model_name: "nvidia/nemotron-3-super-120b-a12b:free"
