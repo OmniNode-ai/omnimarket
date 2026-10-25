@@ -10,6 +10,7 @@ from omnibase_core.types import JsonType
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.lab_fill import ModelLabFillPrLandFacts, ModelLabFillPrLandPlan
+from omnimarket.models.model_engine_experiment import ModelEngineExperimentRow
 from omnimarket.models.model_lab_daemon_drift import ModelLabDaemonDrift
 
 _TS = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"
@@ -357,6 +358,11 @@ class ModelThroughputTickRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     now: str = Field(pattern=_TS)
+    engine_experiments: list[ModelEngineExperimentRow] | None = Field(
+        default=None,
+        description="kind=experiment STATUS rows read from the ledger (OMN-21396); None skips the engine line.",
+    )
+    engine_experiment_window_hours: int = Field(default=24, ge=1)
     controller_max_minutes: int = Field(default=15, ge=0)
     controller_run_max_minutes: int = Field(default=30, ge=0)
     watcher_max_minutes: int = Field(default=15, ge=0)
