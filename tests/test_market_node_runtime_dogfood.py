@@ -364,7 +364,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # node_beacon_trace_capture_effect reads host-local beacon JSONL and is run
     # by `python -m` on the lab host, not by a runtime, so it is experimental
     # with no handler_routing: 23 -> 24.
-    assert summary["skipped"] == 24
+    # node_lane_placement_recovery_effect is called in process by the host
+    # placement caller through its node.py, not by a bus command or a runtime,
+    # so it is experimental with no handler_routing: 24 -> 25.
+    assert summary["skipped"] == 25
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {

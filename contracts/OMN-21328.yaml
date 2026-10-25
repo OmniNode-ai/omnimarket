@@ -13,10 +13,20 @@ requirements:
         statement: "AC5: node_standup_draft_check_compute applies the script's rules, constants, findings and warnings to a draft, through its handler and its typed request and result models -- falsifier: uv run pytest tests/nodes/node_standup_draft_check_compute/test_standup_draft_check.py -q fails"
       - id: "AC6"
         statement: "AC6: python -m omnimarket.nodes.node_standup_draft_check_compute reads the draft on stdin and the fact sheet as --facts-json text and prints the script's output lines with exit codes 0, 1 and 2 -- falsifier: uv run pytest tests/nodes/node_standup_draft_check_compute/test_standup_draft_check.py -q -k cli fails"
+  - id: "req-omn21328-slice3-remaining-nodes"
+    statement: "The two placement nodes that slice 3 of the scripts migration counts beside the five already moved, node_codex_sandbox_probe_compute and node_clone_parity_compute, are ported to omnimarket with their tests; the private data clone name is read from the repos overlay and the registry-root variable in rendered shell is a parameter. No caller switches in this pull request."
+    acceptance:
+      - id: "AC7"
+        statement: "AC7: node_codex_sandbox_probe_compute renders the Codex roots and sandbox probe lines, grants the sibling clone named by repos.private_data and refuses with repos.private_data named when no overlay or argument supplies it -- falsifier: uv run pytest tests/nodes/node_codex_sandbox_probe_compute/test_codex_sandbox_probe.py tests/nodes/node_codex_sandbox_probe_compute/test_golden_chain_codex_sandbox_probe_compute.py -q fails"
+      - id: "AC8"
+        statement: "AC8: node_clone_parity_compute renders the clone parity probe and judges its lines, and both nodes are onex.nodes entry points -- falsifier: uv run pytest tests/nodes/node_clone_parity_compute/test_clone_parity.py tests/nodes/node_clone_parity_compute/test_golden_chain_clone_parity_compute.py -q fails, or either entry point is missing"
 evidence_requirements:
   - kind: "tests"
     description: "The standup draft check node's ported tests: the checker rules, the CLI parity cases and the handler through its request and result models. None exists at the merge base."
     command: "uv run pytest tests/nodes/node_standup_draft_check_compute/test_standup_draft_check.py tests/nodes/node_standup_draft_check_compute/test_registration.py -q --no-cov"
+  - kind: "tests"
+    description: "The two remaining slice 3 nodes' tests: the ported Codex sandbox probe tests, the repos.private_data overlay read and refusal, the registry-root variable parameter, and the clone parity probe. None exists at the merge base."
+    command: "uv run pytest tests/nodes/node_codex_sandbox_probe_compute/test_codex_sandbox_probe.py tests/nodes/node_codex_sandbox_probe_compute/test_golden_chain_codex_sandbox_probe_compute.py tests/nodes/node_clone_parity_compute/test_clone_parity.py tests/nodes/node_clone_parity_compute/test_golden_chain_clone_parity_compute.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -73,3 +83,25 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_standup_draft_check_compute/handlers/handler_standup_draft_check.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("class HandlerStandupDraftCheck", "def check(", "def milestone_warnings(", "def m4_delegation_warnings(")); print("standup draft check deploy probe: PASS")'
+  - id: "dod-omn21328-ac7-codex-sandbox-probe-node"
+    description: "AC7: the Codex sandbox probe node's tests pass, including the ported roots program, write probe and lane-lock tests, the repos.private_data overlay read, its refusal and the explicit argument."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_codex_sandbox_probe_compute/test_codex_sandbox_probe.py tests/nodes/node_codex_sandbox_probe_compute/test_golden_chain_codex_sandbox_probe_compute.py -q --no-cov"
+    binds_ac: ["AC7"]
+  - id: "dod-omn21328-ac8-clone-parity-node"
+    description: "AC8: the clone parity node's tests pass and both nodes resolve as onex.nodes entry points."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_clone_parity_compute/test_clone_parity.py tests/nodes/node_clone_parity_compute/test_golden_chain_clone_parity_compute.py -q --no-cov"
+      - check_type: "command"
+        check_value: "uv run python -c \"from importlib.metadata import entry_points; names={e.name for e in entry_points(group='onex.nodes')}; need={'node_codex_sandbox_probe_compute','node_clone_parity_compute'}; missing=need-names; assert not missing, missing\""
+    binds_ac: ["AC8"]
+  - id: "dod-omn21328-slice3-remaining-deploy-import"
+    description: "Hosted deploy check, runnable on the hosted runner with no lab route, broker or database: the two node packages load from their onex.nodes entry points in the installed omnimarket and the sandbox probe handler renders its probe with an explicit private data clone name. Fails at the merge base, where the packages and entry points are absent."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run --locked python -c \"from importlib.metadata import entry_points; eps={e.name: e for e in entry_points(group='onex.nodes')}; [eps[n].load() for n in ('node_codex_sandbox_probe_compute','node_clone_parity_compute')]; from omnimarket.nodes.node_codex_sandbox_probe_compute.handlers.handler_codex_sandbox_probe import codex_roots_probe_sh; assert 'CODEX_ROOTS_BESIDE=repo-a' in codex_roots_probe_sh(private_data='repo-a')\""

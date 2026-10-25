@@ -18,6 +18,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 import yaml
+from pydantic import BaseModel, ValidationError
 
 OVERLAY_ROOTS_ENV = "ONEX_SKILL_OVERLAY_ROOTS"
 OVERLAY_FILE_NAME = "overlay.yaml"
@@ -81,6 +82,41 @@ def load_node_overlay(
             f"{OVERLAY_ROOTS_ENV}: overlay {path} fields {bad} must be non-empty strings"
         )
     return {key: value.strip() for key, value in raw.items()}
+
+
+def load_structured_overlay[ModelT: BaseModel](
+    overlay_id: str,
+    model: type[ModelT],
+    environ: Mapping[str, str] | None = None,
+) -> ModelT | None:
+    """Read ``<root>/<overlay_id>/overlay.yaml`` as ``model``, or ``None`` when no root holds one.
+
+    For overlays whose fields are lists or mappings, which :func:`load_node_overlay`
+    does not accept. An unreadable file raises :class:`NodeOverlayError` naming the
+    path and the exception type only; a document ``model`` refuses raises naming the
+    path and the fields at fault.
+    """
+    path = find_node_overlay(overlay_id, environ)
+    if path is None:
+        return None
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        raise NodeOverlayError(
+            f"{OVERLAY_ROOTS_ENV}: overlay {path} is unreadable ({type(exc).__name__})"
+        ) from None
+    try:
+        return model.model_validate(raw)
+    except ValidationError as exc:
+        fields = sorted(
+            {
+                ".".join(str(part) for part in err["loc"]) or "<document>"
+                for err in exc.errors()
+            }
+        )
+        raise NodeOverlayError(
+            f"{OVERLAY_ROOTS_ENV}: overlay {path} is invalid for {overlay_id}: fields {fields}"
+        ) from None
 
 
 def not_configured_message(

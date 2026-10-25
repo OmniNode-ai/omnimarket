@@ -35,6 +35,11 @@ requirements:
     acceptance:
       - id: "AC4"
         statement: "AC4: the throughput tick prints one line per engine over 24 hours with attempts, successes and escalations"
+  - id: "req-omn21396-scm-unanswered-read-retry"
+    statement: "Gateway reads retry when the bus is unavailable or gives no terminal event."
+    acceptance:
+      - id: "AC5"
+        statement: "AC5: gateway reads retry an unavailable bus or absent terminal for at most three attempts, pause 20 seconds between attempts, use fresh correlation IDs and report the JSON attempts count; exhausted reads retain exit 69 or 75, and failed terminals and writes are not retried."
 evidence_requirements:
   - kind: "tests"
     description: "Engine ladder, experiment row and tick line tests pass"
@@ -86,4 +91,42 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
         check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_remote_lane_compute/handlers/handler_remote_lane_placement.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"above-route-ceiling\" > /dev/null'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21396-scm-unanswered-read-retry"
+    description: "Focused tests exercise gateway read recovery, three-attempt exhaustion, fresh correlation IDs, unchanged exit codes, and no retry for failed terminals or writes."
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py -q --no-cov -k 'read_retries or read_exhausts or read_failed_terminal or write_timeout'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21396-scm-unanswered-deploy-probe"
+    description: "Hosted-runner deploy probe starts the installed onex scm release-list command with incompatible in-memory bus and broker-lane selectors. The real bus opener refuses each attempt. Within 23 seconds, the CLI must report two bus failures and remain pending for its third attempt; the probe then terminates only its own child. The merge-base CLI exits after one failure. This requires no lane credentials or services and does not claim a dev-lane or production rollout."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run --locked python -c '
+          import json
+          import subprocess
+          child = subprocess.Popen(["onex", "scm", "release-list", "OmniNode-ai/omnimarket", "--source", "bus", "--bus", "inmemory", "--bus-lane", "scm-retry-probe"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+          pending = False
+          try:
+              try:
+                  stdout, stderr = child.communicate(timeout=23)
+              except subprocess.TimeoutExpired:
+                  pending = True
+                  child.terminate()
+                  stdout, stderr = child.communicate(timeout=2)
+          finally:
+              if child.poll() is None:
+                  child.kill()
+                  child.communicate()
+          errors = [line for line in stderr.splitlines() if line.startswith("bus:")]
+          assert pending, (child.returncode, stdout, stderr)
+          assert len(errors) == 2, errors
+          assert all("in-memory bus has none" in line for line in errors), errors
+          assert not stdout.strip(), stdout
+          print(json.dumps({"probe": "scm-bus-open-retry", "observed_bus_failures": len(errors), "pending_before_cleanup": pending}, sort_keys=True))
+          '
         cwd: "${OMNI_HOME}/omnimarket"

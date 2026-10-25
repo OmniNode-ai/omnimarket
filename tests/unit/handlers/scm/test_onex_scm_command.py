@@ -973,7 +973,160 @@ def test_failed_write_terminal_exits_one_on_the_failure_topic(
     assert answer["result"]["reason"] == "head_moved"
 
 
-def test_no_terminal_exits_75(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.fixture
+def retry_pauses(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    pauses: list[float] = []
+    monkeypatch.setattr("time.sleep", pauses.append)
+    return pauses
+
+
+def _install_bus_attempts(
+    monkeypatch: pytest.MonkeyPatch, attempts: list[FakeBus | Exception]
+) -> list[FakeBus | Exception]:
+    opened_attempts: list[FakeBus | Exception] = []
+
+    @contextlib.asynccontextmanager
+    async def opened(_: dict[str, object]) -> AsyncIterator[FakeBus]:
+        attempt = attempts[len(opened_attempts)]
+        opened_attempts.append(attempt)
+        if isinstance(attempt, Exception):
+            raise attempt
+        yield attempt
+
+    monkeypatch.setattr(scm_cli, "_open_bus", opened)
+    return opened_attempts
+
+
+def test_read_retries_timeout_with_a_fresh_correlation_id(
+    monkeypatch: pytest.MonkeyPatch, retry_pauses: list[float]
+) -> None:
+    unanswered, completed = FakeBus(answer=False), FakeBus()
+    opened = _install_bus_attempts(monkeypatch, [unanswered, completed])
+
+    result = _run(["pr-view", *_READ_ARGS["pr-view"], "--timeout-s", "0.01"])
+
+    assert result.exit_code == 0, result.output
+    answer = _answer(result)
+    assert answer["outcome"] == "completed"
+    assert answer["attempts"] == 2
+    assert len(result.stdout.strip().splitlines()) == 1
+    assert len(opened) == 2
+    envelopes = [bus.published[0][1] for bus in (unanswered, completed)]
+    ids = [envelope["correlation_id"] for envelope in envelopes]
+    assert len(set(ids)) == 2
+    for envelope in envelopes:
+        assert envelope["payload"]["correlation_id"] == envelope["correlation_id"]
+    assert answer["bus"]["correlation_id"] == ids[-1]
+    assert retry_pauses == [20]
+
+
+def test_read_exhausts_three_unanswered_attempts(
+    monkeypatch: pytest.MonkeyPatch, retry_pauses: list[float]
+) -> None:
+    bus = FakeBus(answer=False)
+    _install(monkeypatch, bus)
+
+    result = _run(["pr-view", *_READ_ARGS["pr-view"], "--timeout-s", "0.01"])
+
+    assert result.exit_code == scm_cli.EXIT_NO_TERMINAL, result.output
+    answer = _answer(result)
+    assert answer["status"] == "no_terminal"
+    assert answer["attempts"] == 3
+    assert len(result.stdout.strip().splitlines()) == 1
+    assert len(bus.published) == 3
+    ids = [envelope["correlation_id"] for _, envelope in bus.published]
+    assert len(set(ids)) == 3
+    assert answer["correlation_id"] == ids[-1]
+    assert retry_pauses == [20, 20]
+
+
+@pytest.mark.parametrize("error_type", [scm_cli.LabRunBusError, InfraConnectionError])
+def test_read_retries_when_the_bus_does_not_open(
+    monkeypatch: pytest.MonkeyPatch,
+    retry_pauses: list[float],
+    error_type: type[Exception],
+) -> None:
+    bus = FakeBus()
+    opened = _install_bus_attempts(monkeypatch, [error_type("unavailable"), bus])
+
+    result = _run(["pr-view", *_READ_ARGS["pr-view"]])
+
+    assert result.exit_code == 0, result.output
+    assert _answer(result)["attempts"] == 2
+    assert len(opened) == 2
+    assert len(bus.published) == 1
+    assert retry_pauses == [20]
+
+
+@pytest.mark.parametrize("error_type", [scm_cli.LabRunBusError, InfraConnectionError])
+def test_read_exhausts_three_bus_unavailable_attempts(
+    monkeypatch: pytest.MonkeyPatch,
+    retry_pauses: list[float],
+    error_type: type[Exception],
+) -> None:
+    opened = _install_bus_attempts(
+        monkeypatch, [error_type("unavailable") for _ in range(3)]
+    )
+
+    result = _run(["pr-view", *_READ_ARGS["pr-view"]])
+
+    assert result.exit_code == scm_cli.EXIT_BUS_UNAVAILABLE, result.output
+    assert len(opened) == 3
+    assert "bus:" in result.stderr
+    assert "unavailable" in result.stderr
+    assert retry_pauses == [20, 20]
+
+
+def test_read_failed_terminal_is_not_retried(
+    monkeypatch: pytest.MonkeyPatch, retry_pauses: list[float]
+) -> None:
+    class FailedReadBus(FakeBus):
+        def _respond(
+            self, topic: str, payload: dict[str, Any]
+        ) -> tuple[str, dict[str, Any]]:
+            assert topic == GATEWAY.command
+            return GATEWAY.success, {"outcome": "failed", "error": "read refused"}
+
+    bus = FailedReadBus()
+    opened = _install_bus_attempts(monkeypatch, [bus])
+
+    result = _run(["pr-view", *_READ_ARGS["pr-view"]])
+
+    assert result.exit_code == scm_cli.EXIT_FAILED, result.output
+    assert _answer(result)["outcome"] == "failed"
+    assert _answer(result)["attempts"] == 1
+    assert len(opened) == len(bus.published) == 1
+    assert retry_pauses == []
+
+
+def test_write_timeout_is_not_retried(
+    monkeypatch: pytest.MonkeyPatch, retry_pauses: list[float]
+) -> None:
+    bus = FakeBus(answer=False)
+    opened = _install_bus_attempts(monkeypatch, [bus])
+
+    result = _run(
+        [
+            "pr-create",
+            *_WRITE_ARGS["pr-create"],
+            "--lane",
+            "lane-x",
+            "--timeout-s",
+            "0.01",
+        ]
+    )
+
+    assert result.exit_code == scm_cli.EXIT_NO_TERMINAL, result.output
+    assert _answer(result)["status"] == "no_terminal"
+    assert _answer(result)["attempts"] == 1
+    assert len(opened) == len(bus.published) == 1
+    assert bus.published[0][0] == WRITE.command
+    assert retry_pauses == []
+
+
+def test_no_terminal_exits_75(
+    monkeypatch: pytest.MonkeyPatch, retry_pauses: list[float]
+) -> None:
     _install(monkeypatch, FakeBus(answer=False))
     result = _run(["release-list", REPO, "--timeout-s", "0.05"])
     assert result.exit_code == scm_cli.EXIT_NO_TERMINAL
@@ -982,6 +1135,7 @@ def test_no_terminal_exits_75(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_a_bus_refusal_exits_69_without_a_traceback(
     monkeypatch: pytest.MonkeyPatch,
+    retry_pauses: list[float],
 ) -> None:
     class RefusingBus(FakeBus):
         async def subscribe(self, topic: str, *args: Any, **kwargs: Any) -> Any:
