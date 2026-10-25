@@ -44,7 +44,7 @@ requirements:
     statement: "A Codex lane gets the uv data directory, and a lane needing what the Codex sandbox cannot grant is kept off the Codex rung."
     acceptance:
       - id: "AC6"
-        statement: "AC6: the Codex lane's writable roots include $HOME/.local/share/uv and no parent of it, and a lane declaring host-paths-write, host-process-read, linear-write or nested-sandbox skips the Codex rung with reason sandbox-capability while a lane declaring none of them is still placed on Codex."
+        statement: "AC6: the Codex lane's writable roots include $HOME/.local/share/uv and no parent of it, and a lane declaring host-paths-write, host-process-read, linear-write or nested-sandbox skips the Codex rung with reason sandbox-capability while a lane declaring none of them is still placed on Codex; the roots program fits the profile on Linux only and counts a sandbox that times out as fitting."
 evidence_requirements:
   - kind: "tests"
     description: "Engine ladder, experiment row and tick line tests pass"
@@ -168,12 +168,12 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegated_code_edit/test_loop_ports.py -q --no-cov -k 'retried_once_in_process or refusal_is_not_retried or in_process_timeout_is_not_retried or names_both_causes or retry_checks_the_backend_pin'"
         cwd: "."
   - id: "dod-omn21396-ac6-codex-sandbox-causes"
-    description: "Failing-first tests (7 failed at the merge base): the roots lines create and grant $HOME/.local/share/uv by its real path and no parent; each of the four ungrantable capabilities skips the Codex rung with reason sandbox-capability; no capability or docker still places on Codex."
+    description: "Failing-first tests (7 failed at the merge base): the roots lines create and grant $HOME/.local/share/uv by its real path and no parent; each of the four ungrantable capabilities skips the Codex rung with reason sandbox-capability; no capability or docker still places on Codex; a fit that times out or runs off Linux keeps every root (3 more tests that failed at the first head)."
     source: "manual"
     binds_ac: ["AC6"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_codex_sandbox_probe_compute/test_codex_sandbox_probe.py tests/nodes/node_remote_lane_compute/test_engine_ladder_remote_lane_compute.py -q --no-cov -n 0 -k 'uv_data or capabilit'"
+        check_value: "uv run pytest tests/nodes/node_codex_sandbox_probe_compute/test_codex_sandbox_probe.py tests/nodes/node_remote_lane_compute/test_engine_ladder_remote_lane_compute.py -q --no-cov -n 0 -k 'uv_data or capabilit or sandbox_timeout or fit_off_linux'"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21396-ac6-deploy-probe"
     description: "Hosted-runner deploy probe: the installed package's placement node, given a nested-sandbox lane and a host with Codex and sonnet slots, answers rung sonnet and refuses codex with sandbox-capability. It fails at the merge base, whose ladder model forbids required_capabilities. No credentials or services."

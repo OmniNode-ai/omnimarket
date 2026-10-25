@@ -80,11 +80,13 @@ def roots_program(
     priority: str = "",
     limit: int = LIMIT,
     with_codex: bool = True,
+    program: str | None = None,
+    fake_codex: str = FAKE_CODEX,
 ) -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     fake = bin_dir / "codex"
-    fake.write_text(FAKE_CODEX % {"limit": limit}, encoding="utf-8")
+    fake.write_text(fake_codex % {"limit": limit}, encoding="utf-8")
     fake.chmod(fake.stat().st_mode | stat.S_IXUSR)
     base = [str(tmp_path / "w"), str(tmp_path / "c")]
     for path in base:
@@ -92,15 +94,21 @@ def roots_program(
     env = {
         "PATH": "/usr/bin:/bin",
         "FAKE_CODEX_LOG": str(tmp_path / "roots-codex.log"),
+        "FAKE_CODEX_CALLS": str(tmp_path / "roots-codex-calls.log"),
         "CODEX_ROOTS_PRIORITY": priority,
         "TMPDIR": str(tmp_path),
     }
     args = [str(fake), json.dumps(base)] if with_codex else []
+    if program is None:
+        # The fake's profile budget models Linux even when the tests run on macOS.
+        program = probe.CODEX_GIT_ROOTS_PROGRAM.replace(
+            "sys.platform.startswith('linux')", "True"
+        )
     return subprocess.run(
         [
             "python3",
             "-c",
-            probe.CODEX_GIT_ROOTS_PROGRAM,
+            program,
             str(registry(tmp_path, clones)),
             "",
             *args,
@@ -117,6 +125,41 @@ def test_the_roots_program_without_the_codex_binary_grants_every_clone(
 ) -> None:
     done = roots_program(tmp_path, 12, with_codex=False)
     assert len(json.loads(done.stdout)) == 12 * 4
+    assert "dropped" not in done.stderr
+
+
+@pytest.mark.parametrize("linux", [True, False], ids=["linux", "macos"])
+def test_the_roots_program_counts_a_sandbox_timeout_as_fitting(
+    tmp_path: Path, linux: bool
+) -> None:
+    program = probe.CODEX_GIT_ROOTS_PROGRAM.replace(
+        "timeout=30", "timeout=0.2"
+    ).replace("sys.platform.startswith('linux')", str(linux))
+    done = roots_program(
+        tmp_path, 3, program=program, fake_codex="#!/bin/sh\nexec sleep 1\n"
+    )
+    assert done.returncode == 0
+    assert set(json.loads(done.stdout)) == {
+        str((tmp_path / "registry" / f"repo{index:02d}" / ".git" / relative).resolve())
+        for index in range(3)
+        for relative in ("objects", "refs", "logs/refs", "worktrees")
+    }
+    assert "dropped" not in done.stderr
+    assert not list(tmp_path.glob("*.fit")), "the fitting scratch is removed"
+
+
+def test_the_roots_program_skips_the_fit_off_linux(tmp_path: Path) -> None:
+    program = probe.CODEX_GIT_ROOTS_PROGRAM.replace(
+        "sys.platform.startswith('linux')", "False"
+    )
+    done = roots_program(tmp_path, 3, program=program)
+    assert done.returncode == 0
+    assert not (tmp_path / "roots-codex-calls.log").exists()
+    assert set(json.loads(done.stdout)) == {
+        str((tmp_path / "registry" / f"repo{index:02d}" / ".git" / relative).resolve())
+        for index in range(3)
+        for relative in ("objects", "refs", "logs/refs", "worktrees")
+    }
     assert "dropped" not in done.stderr
 
 

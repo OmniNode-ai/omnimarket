@@ -143,6 +143,8 @@ CODEX_ROOTS_FIT_SPARE = 20
 # do not keeps whole clones in order: the lane's own clone and the sibling internal clone, the lane's repository
 # (``CODEX_ROOTS_PRIORITY``), then the rest by path. It names the dropped repositories on stderr.
 # The fit leaves CODEX_ROOTS_FIT_SPARE spare roots of margin, not the pool probe's 8.
+# The fit runs on Linux only, and a sandbox that does not answer within the timeout counts as fitting
+# (OMN-21396, h200: the fit's 30 s timeout crashed the roots program on macOS).
 # A worktree probe lane: worktree add -b failed 255 "cannot lock ref" in the ungranted clone
 # (OMN-17427, 2026-10-07).
 CODEX_GIT_ROOTS_PROGRAM = r"""import json,os,pathlib,shutil,subprocess,sys,tempfile
@@ -205,8 +207,9 @@ def fits(candidate):
                        '-c','sandbox_workspace_write.writable_roots='+json.dumps(base+candidate+extra),'--','true'],
                       stdin=subprocess.DEVNULL,capture_output=True,text=True,check=False,timeout=30)
   return 'Argument list too long' not in done.stdout+done.stderr
+ except subprocess.TimeoutExpired: return True
  finally: shutil.rmtree(pad,ignore_errors=True)
-if cx and base and not fits(all_roots):
+if cx and base and sys.platform.startswith('linux') and not fits(all_roots):
  low,high=len(keep),len(units)
  while low<high:
   mid=(low+high+1)//2
