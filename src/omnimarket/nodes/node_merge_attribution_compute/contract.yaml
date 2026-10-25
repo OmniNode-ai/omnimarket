@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_merge_attribution_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Read supplied merge, ledger, worker cost and commit identity evidence;
+  distinguish engines, hosts, automation and person identities without guessing missing
+  engine evidence.
+input_model:
+  name: ModelMergeAttributionRequest
+  module: omnimarket.nodes.node_merge_attribution_compute.models.model_merge_attribution
+  description: Historical merge and supplied provenance evidence.
+output_model:
+  name: ModelMergeAttributionResult
+  module: omnimarket.nodes.node_merge_attribution_compute.models.model_merge_attribution
+  description: Engine, host, evidence basis and missing-attribution class.
+handler:
+  module: omnimarket.nodes.node_merge_attribution_compute.handlers.handler_merge_attribution
+  class: HandlerMergeAttribution
+  input_model: omnimarket.nodes.node_merge_attribution_compute.models.model_merge_attribution.ModelMergeAttributionRequest
+  output_model: omnimarket.nodes.node_merge_attribution_compute.models.model_merge_attribution.ModelMergeAttributionResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_merge_attribution_compute.handlers.handler_merge_attribution:HandlerMergeAttribution
+  handlers:
+  - operation: read_merge_attribution
+    handler:
+      name: HandlerMergeAttribution
+      module: omnimarket.nodes.node_merge_attribution_compute.handlers.handler_merge_attribution
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation with supplied evidence; no I/O.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local
+  description: Read supplied merge, ledger, worker cost and commit identity evidence;
+    distinguish engines, hosts, automation and person identities without guessing
+    missing engine evidence.
+  author: OmniNode Team
+  created: '2026-10-25'
+  tags:
+  - compute
+  - merge-attribution
+  related_tickets:
+  - OMN-21396

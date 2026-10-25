@@ -53,6 +53,8 @@ dod_evidence:
         check_value: "test -f src/omnimarket/nodes/node_idle_slot_fill_effect/contract.yaml -a -f src/omnimarket/nodes/node_idle_slot_fill_effect/handlers/handler_idle_slot_fill.py -a -f src/omnimarket/nodes/node_idle_slot_fill_effect/models/model_idle_slot_fill.py -a -f src/omnimarket/nodes/node_idle_slot_fill_effect/node.py -a -f src/omnimarket/nodes/node_idle_slot_fill_effect/cloud_backlog.py"
       - check_type: "command"
         check_value: "test -z \"$(git ls-tree -r --name-only HEAD | grep -E '(cloud_backlog|experiments)[.]json$')\""
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_idle_slot_fill_effect/test_golden_chain_idle_slot_fill_effect.py tests/nodes/node_idle_slot_fill_effect/test_overlay_refusals.py::test_the_node_ships_no_private_json_and_no_internal_topic -q"
   - id: "dod-omn21409-ac2-topics"
     description: "No tracked file in this repository names an onex.cmd or onex.evt topic of the internal plugin namespace. The pattern is written with a bracket so this contract does not match itself. It first requires the moved node's contract to declare its command topic in the omnimarket namespace, so it fails at the merge base, which has no such contract."
     source: "manual"
@@ -60,13 +62,15 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "grep -q -E 'onex[.]cmd[.]omnimarket[.]idle-slot-fill-requested[.]v1' src/omnimarket/nodes/node_idle_slot_fill_effect/contract.yaml && test -z \"$(git grep -l -E 'onex[.](cmd|evt)[.]omniclaude-in[t]ernal')\""
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_idle_slot_fill_effect/test_golden_chain_idle_slot_fill_effect.py::test_contract_golden_chain tests/nodes/node_idle_slot_fill_effect/test_overlay_refusals.py::test_the_node_ships_no_private_json_and_no_internal_topic -q"
   - id: "dod-omn21409-ac3-overlay-refusals"
     description: "Every idle_slot_fill key refuses naming itself with the overlay root empty, and the moved test_idle_slot_fill_node, test_idle_turn_guard and test_cloud_backlog_fill pass. Fails at the merge base, which has none of these tests."
     source: "manual"
     binds_ac: ["AC3"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_idle_slot_fill_effect -q"
+        check_value: "uv run pytest tests/nodes/node_idle_slot_fill_effect/test_overlay_refusals.py tests/nodes/node_idle_slot_fill_effect/test_idle_slot_fill_node.py tests/nodes/node_idle_slot_fill_effect/test_idle_turn_guard.py tests/nodes/node_idle_slot_fill_effect/test_cloud_backlog_fill.py -q"
   - id: "dod-omn21409-deploy-import"
     description: "Hosted deploy check, runnable on the hosted runner with no lab route, broker or database: the node package imports from the installed omnimarket and resolves its onex.nodes entry point. Fails at the merge base, where the package and entry point are absent."
     source: "manual"
