@@ -25,7 +25,8 @@ node_version: "0.1.0"
 description: >
   Resolves the sha a remote lane's worktree is built from: the named sha, the named
   branch or tag, or the repository's landing branch read from the remote through its
-  canonical clone or public URL. Decides nothing about where the lane runs.
+  canonical clone or public URL. Archives final run artifacts before host closeout
+  removes working directories and expires managed report archives.
 input_model:
   name: "ModelRemoteLaneRefRequest"
   module: "omnimarket.nodes.node_remote_lane_effect.models.model_remote_lane_effect"
@@ -48,6 +49,12 @@ handler_routing:
         module: "omnimarket.nodes.node_remote_lane_effect.handlers.handler_remote_lane_ref"
       input_model: "omnimarket.nodes.node_remote_lane_effect.models.model_remote_lane_effect.ModelRemoteLaneRefRequest"
       output_model: "omnimarket.nodes.node_remote_lane_effect.models.model_remote_lane_effect.ModelRemoteLaneRefResult"
+    - operation: "retain_finished_remote_run"
+      handler:
+        name: "HandlerRemoteLaneRetention"
+        module: "omnimarket.nodes.node_remote_lane_effect.handlers.handler_remote_lane_retention"
+      input_model: "omnimarket.nodes.node_remote_lane_effect.models.model_remote_lane_retention.ModelRemoteLaneRetentionRequest"
+      output_model: "omnimarket.nodes.node_remote_lane_effect.models.model_remote_lane_retention.ModelRemoteLaneRetentionResult"
 descriptor:
   node_archetype: effect
   purity: effectful
