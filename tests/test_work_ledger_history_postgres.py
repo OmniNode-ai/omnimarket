@@ -208,3 +208,33 @@ def test_postgres_history_returns_both_sources_and_rejects_truncation_and_gaps(
             assert cursor.fetchone()[0] == "on"
     finally:
         source.close()
+
+
+def test_history_database_accepts_ci_service_environment(monkeypatch) -> None:
+    monkeypatch.delenv(ENV, raising=False)
+    for key, value in {
+        "HOST": "127.0.0.1",
+        "PORT": "15432",
+        "USER": "postgres",
+        "PASSWORD": "fixture-password",
+        "DB": "ephemeral",
+    }.items():
+        monkeypatch.setenv(f"INTEGRATION_POSTGRES_{key}", value)
+    resolved = parse_dsn(_test_dsn())
+    assert resolved["host"] == "127.0.0.1"
+    assert resolved["port"] == "15432"
+    assert resolved["dbname"] == "ephemeral"
+    assert resolved["password"] == "fixture-password"
+
+
+def test_history_database_prefers_explicit_probe_environment(monkeypatch) -> None:
+    monkeypatch.setenv(ENV, "host=/tmp/fixture dbname=probe")
+    monkeypatch.setenv("INTEGRATION_POSTGRES_HOST", "127.0.0.1")
+    assert parse_dsn(_test_dsn())["host"] == "/tmp/fixture"
+
+
+def test_history_database_never_uses_ambient_runtime_dsn(monkeypatch) -> None:
+    monkeypatch.delenv(ENV, raising=False)
+    monkeypatch.delenv("INTEGRATION_POSTGRES_HOST", raising=False)
+    monkeypatch.setenv("OMNINODE_INTERNAL_DB_URL", "postgresql://runtime/forbidden")
+    assert _test_dsn() is None

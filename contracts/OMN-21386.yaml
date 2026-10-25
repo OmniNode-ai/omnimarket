@@ -42,6 +42,8 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/test_work_ledger_history_query.py -q
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_work_ledger_history_verification.py -q --refuse-skips
 - id: dod-history-ac2-hosted-suite
   description: 'AC2 hosted leg: the history query tests and the existing work-ledger query regressions
     this pull request changes pass at its head and fail at the merge base, where the history API is absent.
@@ -109,3 +111,29 @@ dod_evidence:
       \ = 1\nledger_port=$(docker port \"$ledger_probe\" 5432/tcp | awk -F: '$1 == \"127.0.0.1\" { print\
       \ $2 }')\ntest -n \"$ledger_port\"\nONEX_TEST_LEDGER_HISTORY_DSN=\"host=127.0.0.1 port=$ledger_port\
       \ user=postgres dbname=postgres\" uv run pytest tests/test_work_ledger_history_postgres.py -q --refuse-skips"
+- id: dod-history-ci-database-inputs
+  description: The PostgreSQL proof consumes the suite's ephemeral integration service inputs,
+    prefers an explicit probe DSN, and never falls through to the runtime DSN.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_work_ledger_history_postgres.py -q -k 'environment or ambient' --refuse-skips
+- id: dod-history-installed-archive-comparison
+  description: Compare the full and deliberately truncated terminal payloads exported from the installed
+    lab release against both archive files using the operator-supplied acquisition manifest. Input files
+    stay private. Fixture replay is not installed-release proof. The release owner supplies the manifest
+    with authoritative source labels, sequence bounds and exclusive ingest cutoff, then captures both
+    answers after the migration is vendored, released and deployed.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: >-
+      uv run python -m omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_history_verification
+      --request "$ONEX_HISTORY_REQUEST"
+      --response "$ONEX_HISTORY_RESPONSE"
+      --truncated-response "$ONEX_HISTORY_TRUNCATED_RESPONSE"
+      --archive "$ONEX_HISTORY_ARCHIVE_ONE"
+      --archive "$ONEX_HISTORY_ARCHIVE_TWO"
