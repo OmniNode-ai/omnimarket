@@ -9,8 +9,10 @@ local dispatch port raises "No local model is declared" from
 wrote a ``delegation_events`` row, so the Runs page had no failed run to show
 (measured on the lab host 2026-10-21, recorded on OMN-19919, gate OMN-19919 AC-8).
 
-* AC1 -- the refused run leaves exactly one row for its correlation id, with
-  ``terminal_ok`` 0 and a non-null cause, and no model-call row (no call was made).
+* AC1 -- the refused run publishes exactly one typed failed terminal on the
+  node's declared failure topic, and leaves exactly one row for its correlation
+  id, with ``terminal_ok`` 0 and a non-null cause, and no model-call row (no
+  call was made).
 * AC2 -- the row is built from a terminal that passes the same construction guard
   a dispatched run's terminal does: no attempts, so its cause is
   ``refused_before_dispatch`` (the OMN-19004 invariant); a terminal claiming any
@@ -43,6 +45,7 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
+    _local_terminal_topic,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
     handler_delegation_routing as routing,
@@ -180,19 +183,46 @@ def _rows(db_path: Path, table: str, correlation_id: UUID) -> list[dict[str, Any
         conn.close()
 
 
+class _RecordingPublisher:
+    """Stands in for the port's terminal publisher and records every publish."""
+
+    def __init__(self) -> None:
+        self.published: list[dict[str, Any]] = []
+
+    def publish(self, **kwargs: Any) -> None:
+        self.published.append(kwargs)
+
+
 def test_ac1_a_routing_refusal_leaves_one_failed_row_with_its_cause(
-    clean_install: Path, tmp_path: Path
+    clean_install: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _declare(clean_install)
     effect = _RecordingEffect()
     correlation_id = uuid4()
+    port = _port(tmp_path, effect)
+    publisher = _RecordingPublisher()
+    monkeypatch.setattr(port, "_terminal_publisher", publisher)
 
     with pytest.raises(ProtocolConfigurationError) as exc_info:
-        _dispatch(_port(tmp_path, effect), correlation_id)
+        _dispatch(port, correlation_id)
 
     # The refusal still reaches the caller, naming both remedies (OMN-19442).
     assert "No local model is declared" in str(exc_info.value)
     assert effect.calls == []
+
+    # Exactly one typed delegation terminal is published, on the node's declared
+    # failure topic, for this run.
+    assert len(publisher.published) == 1, publisher.published
+    (published,) = publisher.published
+    assert published["topic"] == _local_terminal_topic(success=False)
+    assert published["event_type"] == "delegate_skill.failed"
+    assert published["correlation_id"] == str(correlation_id)
+    terminal = ModelDelegateSkillTerminalProjection.from_payload(published["payload"])
+    assert terminal.status == "failed"
+    assert (
+        terminal.terminal_failure_cause
+        is EnumDelegationTerminalFailureCause.REFUSED_BEFORE_DISPATCH
+    )
 
     rows = _rows(tmp_path / "evidence.sqlite", "delegation_events", correlation_id)
     assert len(rows) == 1, rows
