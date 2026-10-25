@@ -22,16 +22,16 @@ requirements:
           AC5: the hostile-review job falls back to
           [self-hosted, omnibase-ci, arch-amd64], a label set the h203-light
           runners do not satisfy, while fork PRs keep the public runner path
-          -- falsifier: uv run --frozen pytest
-          tests/ci/test_hostile_review_lan_runner_omn17292.py -q -n 0
+          -- falsifier: env PYTHONDONTWRITEBYTECODE=1 uv run pytest
+          tests/ci/test_hostile_review_lan_runner_omn17292.py -q
           -p no:randomly --no-cov
 
 evidence_requirements:
   - kind: tests
     description: The parsed review-job fallback excludes h203-light and preserves fork routing.
     command: >-
-      uv run --frozen pytest tests/ci/test_hostile_review_lan_runner_omn17292.py
-      -q -n 0 -p no:randomly --no-cov
+      env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_hostile_review_lan_runner_omn17292.py
+      -q -p no:randomly --no-cov
 emergency_bypass:
   enabled: false
   justification: ""
@@ -45,8 +45,8 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: >-
-          uv run --frozen pytest tests/ci/test_hostile_review_lan_runner_omn17292.py
-          -q -n 0 -p no:randomly --no-cov
+          env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_hostile_review_lan_runner_omn17292.py
+          -q -p no:randomly --no-cov
         cwd: ${OMNI_HOME}/omnimarket
     binds_ac: [AC5]
   - id: dod-omn17292-ac5-published-workflow
@@ -63,4 +63,3 @@ dod_evidence:
           'import json,sys; text=sys.stdin.read().split("  hostile-review-gate:")[0];
           assert json.dumps(["self-hosted","omnibase-ci","arch-amd64"], separators=(",",":")) in text'
         cwd: ${OMNI_HOME}/omnimarket
-    binds_ac: [AC5]
