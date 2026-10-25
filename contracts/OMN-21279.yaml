@@ -115,7 +115,6 @@ dod_evidence:
       endpoint fails at the merge base because this handler does not exist.
       This checks published source availability, not lab runtime activation.
     source: generated
-    binds_ac: [AC2]
     checks:
       - check_type: command
         check_value: >-
