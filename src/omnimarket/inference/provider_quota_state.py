@@ -105,6 +105,10 @@ _RELATION_PATTERN = re.compile(r"^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$")
 #: ``disposition`` of the synthetic block an unreadable snapshot returns.
 UNKNOWN_QUOTA_STATE_DISPOSITION = "quota_state_unknown"
 
+#: ``disposition`` of the timed block a connection-level failure records on a
+#: host's own key (OMN-20910). Ordinary routing honours it; a pinned run does not.
+HOST_UNREACHABLE_DISPOSITION = "host_unreachable"
+
 #: ``disposition`` of the synthetic block a spent declared quota window returns.
 DECLARED_QUOTA_EXHAUSTED_DISPOSITION = "declared_quota_exhausted"
 

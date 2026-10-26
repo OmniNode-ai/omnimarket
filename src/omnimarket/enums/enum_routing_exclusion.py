@@ -83,6 +83,13 @@ class EnumRoutingExclusionReason(StrEnum):
     BACKEND_QUOTA_DOMAIN_DISABLED = "backend_quota_domain_disabled"
     """The provider's own quota verdict bars this backend's domain (OMN-16932)."""
 
+    BACKEND_HOST_UNREACHABLE = "backend_host_unreachable"
+    """The backend's host refused the connection recently (OMN-20910).
+
+    Ordinary routing skips it until the recorded block lifts; a pinned run
+    still reaches it.
+    """
+
     BACKEND_EXCLUDED_AFTER_TRANSPORT_FAILURE = (
         "backend_excluded_after_transport_failure"
     )

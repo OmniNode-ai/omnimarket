@@ -97,6 +97,11 @@ requirements:
         statement: "AC36: node_github_repo_write_effect answers a pr_thread_reply with a POST to the thread's replies endpoint carrying the idempotency marker, replays a reply whose key a review comment already carries, refuses a moved head, a missing thread and a quota under the floor with the typed reasons pr_comment has, and plans the same requests in dry_run; onex scm pr-thread-reply publishes it -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_pr_thread_reply.py tests/unit/handlers/scm/test_onex_scm_command.py -q -n 0 --no-cov fails at the merge base"
       - id: "AC37"
         statement: "AC37: node_github_repo_gateway_effect answers a pr_review_threads read over a recorded GraphQL payload with each thread's id, path, line, resolved state and root comment id, pages and cuts at the request limit, and raises on a GraphQL error; onex scm pr-threads publishes it -- falsifier: env -u PYTHONPATH uv run pytest tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_review_threads.py -q -n 0 --no-cov fails at the merge base"
+  - id: "req-unreachable-host-skipped"
+    statement: "A backend whose host refused a connection is skipped by ordinary delegation routing until the recorded block lifts and the next attempt probes it; a pinned (smoke) run still reaches it."
+    acceptance:
+      - id: "AC38"
+        statement: "AC38: a connection-level failure (no route, refused, name not resolved) on a local host is observed as a timed host_unreachable block on the provider quota state; ordinary routing and spread selection skip the backend, a pinned run reaches it, it returns when the block lifts, a failed probe blocks it again, and a host that answered with an error or timed out on read is never blocked -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/delegation/test_unreachable_host_skipped_omn20910.py -q -n 0 --no-cov fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "The workflow reads the overlay at every roster site."
@@ -324,3 +329,11 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_review_threads.py tests/nodes/node_github_repo_gateway_effect/test_github_repo_gateway_protocols.py -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC37"]
+  - id: "dod-omn20910-ac38-unreachable-host-skipped"
+    description: "A host that refused the connection is skipped by ordinary routing and spread selection, reached by a pinned run, and returns when its block lifts."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_unreachable_host_skipped_omn20910.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC38"]
