@@ -1,0 +1,86 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21423"
+title: "GitHub write and gateway nodes answered by any runtime (replay of the h201 outage)"
+summary: >-
+  The GitHub write effect ran on one runtime only, so when that runtime stopped every pull request
+  write stopped with it. node_github_repo_write_effect and node_github_repo_gateway_effect now declare
+  placement: {mode: any} in their contracts, so every runtime that loads them joins the one consumer
+  group the runtime derives for each node. The runtime's contract discovery ignores keys it does not
+  read, so the block changes no behaviour on a runtime that predates placement. Each runtime reads
+  the token from the contract-declared GITHUB_TOKEN ref through the secret store resolver; no
+  credential value moves. Keeping a runtime with no token out of the write node's group is a runtime
+  discovery rule in omnibase_infra and the failover replay is a lab run; neither is in this change.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn21423-placement-any"
+    statement: >-
+      Both GitHub nodes may be answered by any runtime, a runtime with no GitHub token stays out of
+      the write node's group, and stopping the answering runtime moves the next write to another one.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: both nodes' contracts declare `placement: {mode: any}` -- falsifier: a contract test reads another mode"
+      - id: "AC2"
+        statement: "AC2: stopping the runtime that answered the last scratch-PR write leaves the next write answered by another `runtime_id` within 30 s, three runs in a row -- falsifier: the lab receipt shows a gap above 30 s, a failed write, or the same `runtime_id` before and after the stop"
+      - id: "AC3"
+        statement: "AC3: a runtime with no GitHub token does not join the write node's group -- falsifier: the group's member list on the dev broker includes a runtime whose membership record reads `token=absent`"
+evidence_requirements:
+  - kind: "tests"
+    description: "The placement and token-declaration contract tests over both GitHub nodes."
+    command: "uv run pytest tests/ci/test_github_nodes_placement_any_omn21423.py -q --no-cov --refuse-skips"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21423-ac1-placement-any"
+    description: >-
+      Both contracts read placement equal to {mode: any}. Fails at the merge base, where neither
+      contract declares a placement block.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_github_nodes_placement_any_omn21423.py::test_github_node_declares_placement_mode_any -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21423-ac2-prerequisite"
+    description: >-
+      In-repo prerequisite of AC2 only: the write node is declared answerable by any runtime, so a
+      second runtime may take the next write. The three-run failover replay against the dev runtimes
+      is a lab run that needs the image on every runtime host; it is pending and was not run by this
+      change. Fails at the merge base, where neither contract declares a placement block.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_github_nodes_placement_any_omn21423.py::test_github_node_declares_placement_mode_any -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21423-ac3-token-declared"
+    description: >-
+      In-repo half of AC3 only: both nodes declare GITHUB_TOKEN required under secrets, the record a
+      runtime's discovery reads to keep a node it cannot authenticate out of its consumer group. The
+      skip itself belongs to omnibase_infra's contract discovery and the dev-broker member list read
+      is a lab check; both are pending and were not run by this change. The placement assertion in
+      the same file fails at the merge base.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_github_nodes_placement_any_omn21423.py -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21423-deploy-contract"
+    description: >-
+      Hosted deploy check, runnable on the hosted runner with no lab route, broker or database: the
+      installed omnimarket ships the write node's contract with placement mode any. Fails at the merge
+      base, where the contract has no placement block.
+      Hosted deploy probe: gh api reads the write node's contract.yaml at the checked-out commit and finds the placement block; at the merge base the block is absent, so the read finds nothing and the check exits nonzero.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run --locked python -c \"import yaml,sys; from importlib.resources import files; c=yaml.safe_load(files('omnimarket.nodes.node_github_repo_write_effect').joinpath('contract.yaml').read_text()); sys.exit(0 if c.get('placement')=={'mode':'any'} else 1)\""
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_github_repo_write_effect/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"placement:\" > /dev/null'"
+        cwd: "${OMNI_HOME}/omnimarket"

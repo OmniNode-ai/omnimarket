@@ -5,8 +5,6 @@
 Rev 7 changes (from hostile review C3-C6):
   C5: Idempotent CronCreate — handler checks CronList before calling CronCreate.
       Does not create duplicate crons on re-run.
-  C4: Dispatch lease — both dispatch paths (cron + triggered build loop) must
-      acquire .onex_state/dispatch-lock.json before dispatching.
   C3: Dispatch-event files include task_id — verifier uses IDs not scalar count.
   C6: check_command: str replaced by EnumDodCheckType — no command injection.
 
@@ -254,17 +252,15 @@ def build_pulse_prompt(
             f"  - Cap respawns at 3. After 3rd failure -> escalate to user.\n"
             f"  - Log respawns to {state_dir}/friction/respawn-{{task_id}}-attempt-{{n}}.json\n\n"
             f"### Dispatch (routing={model_routing_preference})\n"
-            f"1. Acquire dispatch lease: {state_dir}/dispatch-lock.json\n"
-            f"2. Pull Linear active sprint. Classify unworked tickets (mechanical vs reasoning).\n"
-            f"3. For each unworked ticket:\n"
+            f"1. Pull Linear active sprint. Classify unworked tickets (mechanical vs reasoning).\n"
+            f"2. For each unworked ticket:\n"
             f"   a. Generate tick_id = tick-YYYYMMDD-HHMM.\n"
             f"   b. Check if node_dispatch_worker is deployed and consuming.\n"
             f"      YES -> dispatch via dogfood path, write dispatch-event file.\n"
             f"      NO  -> dispatch via {fallback_agent}, write dispatch-event file.\n"
             f"   c. Write {state_dir}/dispatch-events/{{tick_id}}-{{task_id}}.json\n"
             f"      {{ tick_id, task_id, ticket_id, dispatch_path, model_used, timestamp }}\n"
-            f"   d. Write {state_dir}/task-contracts/{{task_id}}.json (ModelTaskContract).\n"
-            f"4. Release dispatch lease.\n\n"
+            f"   d. Write {state_dir}/task-contracts/{{task_id}}.json (ModelTaskContract).\n\n"
             f"### CronOutputVerificationRoutine (post-dispatch gate)\n"
             f"dispatched_task_ids = task_ids from dispatch-event files for this tick_id.\n"
             f"dispatched = len(dispatched_task_ids)\n\n"

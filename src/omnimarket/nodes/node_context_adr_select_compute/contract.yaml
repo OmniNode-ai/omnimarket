@@ -1,0 +1,55 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract — node_context_adr_select_compute
+# Pure compute: the ADR tier of the context service (OMN-21126).
+---
+name: node_context_adr_select_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Select accepted, unsuperseded ADRs tagged with at least one of the request's
+  topics, from documents read by a git source at a pinned commit, in path order.
+  Each admitted entry is a context-source entry whose text is the ADR body,
+  byte-equal to the file after its closing frontmatter delimiter, stamped
+  path@sha with its zero-based half-open line span and verified verbatim.
+  Invalid frontmatter and empty bodies are listed as exclusions regardless of
+  topic; in-topic superseded and non-accepted ADRs are also excluded. Duplicate
+  paths are a typed refusal. No token budget and no pack hash: the builder owns
+  both. No I/O, same input = same output.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: context_adr_select
+      handler:
+        name: HandlerContextAdrSelect
+        module: omnimarket.nodes.node_context_adr_select_compute.handlers.handler_context_adr_select
+      input_model: omnimarket.nodes.node_context_adr_select_compute.models.model_context_adr_select.ModelAdrSelectRequest
+      output_model: omnimarket.nodes.node_context_adr_select_compute.models.model_context_adr_select.ModelAdrSelectResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+
+terminal_event: onex.evt.omnimarket.context-adr-select-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.context-adr-select-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-adr-select-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.context-adr-select-requested.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.context-adr-select-completed.v1
+
+metadata:
+  ticket: OMN-21126
+  transport_type: kafka

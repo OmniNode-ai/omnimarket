@@ -37,5 +37,24 @@ assert Path(os.environ["BIFROST_BASE_CONTRACT_PATH"]).is_file()
 print("omnimarket", importlib.metadata.version("omnimarket"))
 PY
 
+# OMN-21422: both GitHub nodes are registered under onex.nodes by omnimarket and
+# import in this image, after the entry-point strip above.
+RUN /app/.venv/bin/python - <<'GITHUB_NODES'
+import importlib
+import importlib.metadata
+
+NODES = ("node_github_repo_write_effect", "node_github_repo_gateway_effect")
+registered = importlib.metadata.entry_points(group="onex.nodes")
+for node in NODES:
+    matches = [entry for entry in registered if entry.name == node]
+    assert len(matches) == 1, f"{node}: {len(matches)} onex.nodes entry points"
+    entry = matches[0]
+    assert entry.value == f"omnimarket.nodes.{node}", f"{node}: {entry.value}"
+    dist = entry.dist.name.lower().replace("_", "-") if entry.dist else None
+    assert dist == "omnimarket", f"{node}: registered by {dist}"
+    importlib.import_module(entry.value)
+print("github nodes registered and importable:", ",".join(NODES))
+GITHUB_NODES
+
 LABEL com.omninode.omnimarket_vcs_ref=${OMNIMARKET_VCS_REF}
 USER root
