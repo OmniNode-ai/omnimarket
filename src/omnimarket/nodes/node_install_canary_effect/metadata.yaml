@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_install_canary_effect
+version: 1.0.0
+description: Run an installed plugin's smoke checks, restore the prior installation
+  on failure, hold the failed revision, queue one repair lane, cap lane delivery at
+  a passed revision, install a file set from one revision whole or not at all and
+  name an imported file from an older revision.
+pack: distributed_validation
+node_role: effect
+display_name: Install Canary Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_install_canary_effect: omnimarket.nodes.node_install_canary_effect
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_write
+dependencies:
+- pydantic>=2.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- remote-lane

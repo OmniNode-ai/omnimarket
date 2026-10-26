@@ -1,0 +1,92 @@
+{
+  "name": "node_lane_queue_argv_compute",
+  "node_type": "COMPUTE_GENERIC",
+  "node_version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "description": "Build the remote-lane runner's own command for a lane again, for the lane queue a no-host lane waits in, from the run's inputs, the brief the run pinned and never --host, whose pin is the queue entry's and ages out.",
+  "input_model": {
+    "name": "ModelLaneQueueArgvRequest",
+    "module": "omnimarket.nodes.node_lane_queue_argv_compute.models.model_lane_queue_argv"
+  },
+  "output_model": {
+    "name": "ModelLaneQueueArgvResult",
+    "module": "omnimarket.nodes.node_lane_queue_argv_compute.models.model_lane_queue_argv"
+  },
+  "handler_routing": {
+    "routing_strategy": "operation_match",
+    "default_handler": "omnimarket.nodes.node_lane_queue_argv_compute.handlers.handler_lane_queue_argv:HandlerLaneQueueArgv",
+    "handlers": [
+      {
+        "operation": "handle",
+        "handler": {
+          "name": "HandlerLaneQueueArgv",
+          "module": "omnimarket.nodes.node_lane_queue_argv_compute.handlers.handler_lane_queue_argv"
+        },
+        "topic": "onex.cmd.omnimarket.lane-queue-argv-requested.v1"
+      }
+    ]
+  },
+  "entrypoint": {
+    "name": "NodeLaneQueueArgvCompute",
+    "module": "omnimarket.nodes.node_lane_queue_argv_compute"
+  },
+  "execution": {
+    "deterministic": true,
+    "side_effects": false,
+    "caller": "remote-lane runner queue_no_host, when a lane ends no-host"
+  },
+  "contract_version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "handler": {
+    "module": "omnimarket.nodes.node_lane_queue_argv_compute.handlers.handler_lane_queue_argv",
+    "class": "HandlerLaneQueueArgv",
+    "input_model": "omnimarket.nodes.node_lane_queue_argv_compute.models.model_lane_queue_argv.ModelLaneQueueArgvRequest",
+    "output_model": "omnimarket.nodes.node_lane_queue_argv_compute.models.model_lane_queue_argv.ModelLaneQueueArgvResult"
+  },
+  "event_bus": {
+    "subscribe_topics": [
+      "onex.cmd.omnimarket.lane-queue-argv-requested.v1"
+    ],
+    "publish_topics": [
+      "onex.evt.omnimarket.lane-queue-argv-completed.v1"
+    ]
+  },
+  "runtime_dispatch": {
+    "command_topic": "onex.cmd.omnimarket.lane-queue-argv-requested.v1"
+  },
+  "descriptor": {
+    "node_archetype": "compute",
+    "purity": "pure",
+    "runtime_profiles": [
+      "main"
+    ],
+    "idempotent": true,
+    "timeout_ms": 5000
+  },
+  "replay": {
+    "requires_validator_version": true,
+    "timestamp_authority": "ingest_sequence",
+    "deterministic": true
+  },
+  "terminal_event": "onex.evt.omnimarket.lane-queue-argv-completed.v1",
+  "metadata": {
+    "transport_type": "inmemory"
+  },
+  "externally_consumed_topics": [
+    "onex.evt.omnimarket.lane-queue-argv-completed.v1"
+  ],
+  "runtime_profiles": [
+    "main"
+  ]
+}

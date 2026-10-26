@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_pr_head_stage_compute
+version: 1.0.0
+description: Render the shell that fetches a remote lane's --pr heads into the lab
+  host's cache and the shell that stages each head into the clone owning the lane's
+  worktree before the engine starts.
+pack: distributed_validation
+node_role: compute
+display_name: Pr Head Stage Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_pr_head_stage_compute: omnimarket.nodes.node_pr_head_stage_compute
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- remote-lane

@@ -1,0 +1,91 @@
+{
+  "name": "node_lane_report_relay_effect",
+  "node_type": "EFFECT_GENERIC",
+  "node_version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "description": "A remote lane writes its report under the running host's claude_scratch reports directory; at close the launching host copies the lane's own report files into its own reports directory in one remote call, or leaves the lane's final message there when the lane wrote none. It never raises and never changes the lane's outcome. It follows the delegation receipt relay: the runner already holds the ssh path to the host at close, so no second store is added.",
+  "input_model": {
+    "name": "ModelLaneReportRelayRequest",
+    "module": "omnimarket.nodes.node_lane_report_relay_effect.models.model_lane_report_relay"
+  },
+  "output_model": {
+    "name": "ModelLaneReportRelayResult",
+    "module": "omnimarket.nodes.node_lane_report_relay_effect.models.model_lane_report_relay"
+  },
+  "handler": {
+    "module": "omnimarket.nodes.node_lane_report_relay_effect.handlers.handler_lane_report_relay",
+    "class": "HandlerLaneReportRelay",
+    "input_model": "omnimarket.nodes.node_lane_report_relay_effect.models.model_lane_report_relay.ModelLaneReportRelayRequest",
+    "output_model": "omnimarket.nodes.node_lane_report_relay_effect.models.model_lane_report_relay.ModelLaneReportRelayResult"
+  },
+  "entrypoint": {
+    "name": "NodeLaneReportRelayEffect",
+    "module": "omnimarket.nodes.node_lane_report_relay_effect"
+  },
+  "policy": {
+    "report_max_bytes": 8388608,
+    "ssh_timeout_seconds": 180
+  },
+  "contract_version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "handler_routing": {
+    "routing_strategy": "operation_match",
+    "default_handler": "omnimarket.nodes.node_lane_report_relay_effect.handlers.handler_lane_report_relay:HandlerLaneReportRelay",
+    "handlers": [
+      {
+        "operation": "handle",
+        "handler": {
+          "name": "HandlerLaneReportRelay",
+          "module": "omnimarket.nodes.node_lane_report_relay_effect.handlers.handler_lane_report_relay"
+        },
+        "topic": "onex.cmd.omnimarket.lane-report-relay-requested.v1"
+      }
+    ]
+  },
+  "event_bus": {
+    "subscribe_topics": [
+      "onex.cmd.omnimarket.lane-report-relay-requested.v1"
+    ],
+    "publish_topics": [
+      "onex.evt.omnimarket.lane-report-relay-completed.v1"
+    ]
+  },
+  "runtime_dispatch": {
+    "command_topic": "onex.cmd.omnimarket.lane-report-relay-requested.v1"
+  },
+  "descriptor": {
+    "node_archetype": "effect",
+    "purity": "side_effecting",
+    "runtime_profiles": [
+      "effects"
+    ],
+    "idempotent": false,
+    "timeout_ms": 300000
+  },
+  "replay": {
+    "requires_validator_version": true,
+    "timestamp_authority": "ingest_sequence",
+    "deterministic": false
+  },
+  "terminal_event": "onex.evt.omnimarket.lane-report-relay-completed.v1",
+  "metadata": {
+    "transport_type": "inmemory"
+  },
+  "externally_consumed_topics": [
+    "onex.evt.omnimarket.lane-report-relay-completed.v1"
+  ],
+  "runtime_profiles": [
+    "effects"
+  ]
+}
