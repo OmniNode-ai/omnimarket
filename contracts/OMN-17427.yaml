@@ -4054,3 +4054,31 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: "uv run pytest tests/unit/handlers/scm/test_onex_scm_clone_reads.py tests/nodes/node_throughput_tick_decision_compute/test_pr_land_fallback_throughput_tick_decision_compute.py -q --no-cov -k 'registry_clone_can_be_a_sibling or green_unlanded'"
+  - id: "dod-omn17427-pr4470-file-retention-policy"
+    description: "This pull request separates seven-day launching-host outputs from fourteen-day receipts and requires archival for every enabled file category. The merge-base policy has no separate outputs entry and still enables plain deletion."
+    source: "manual"
+    binds_ac: ["AC58"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/test_file_retention_archive_safety.py -q -p no:randomly --no-cov --refuse-skips -k 'launching_host_outputs or every_enabled_host_job_entry_requires_archival'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-pr4470-file-retention-safety"
+    description: "This pull request preserves protected, changed, newly arrived and unsynced files, verifies existing archives during dry runs, and reports zero actual dry-run removals. The archive-safety tests exercise these behaviors and fail against the merge-base handler."
+    source: "manual"
+    binds_ac: ["AC59"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/test_file_retention_archive_safety.py tests/nodes/test_omn17427_file_retention.py -q -p no:randomly --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-pr4470-file-retention-deploy-probe"
+    description: "Hosted deployment probe builds this head's wheel and installs it outside the project, loads its packaged retention policy, archives a disposable old output, reads the gzip back, and requires the source to survive without a sync acknowledgement. The runner needs no lab access, credentials or live service. The merge-base policy lacks the separate output rule. This is an artifact readback, not an installed-service deployment claim."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          set -eu
+          probe_dir=$(mktemp -d)
+          trap 'rm -rf "$probe_dir"' EXIT
+          uv build --wheel --out-dir "$probe_dir"
+          uv run --no-project --with "$probe_dir"/*.whl python "$PWD/tests/ci/probe_ruling_drift_artifact.py"
+        cwd: "${OMNI_HOME}/omnimarket"
