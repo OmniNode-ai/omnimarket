@@ -68,15 +68,17 @@ dod_evidence:
   - id: dod-omn-21422-ac2-one-image
     description: >-
       AC2, image-side supporting evidence only: every runtime host is to run
-      the one image this Dockerfile defines, so one digest is possible. The
-      four-host digest and dev-bus readback from /onex/dev/runtimes/ is
+      the one image this Dockerfile defines, FROM the infra runtime base and
+      carrying the GitHub node build check, so one digest is possible. The
+      merge base has no GITHUB_NODES build step, so the check test fails
+      there. The four-host digest and dev-bus readback from /onex/dev/runtimes/ is
       pending runtime deploy units and the membership records of OMN-21421;
       this item does not read it.
     source: generated
     binds_ac: [AC2]
     checks:
       - check_type: test_passes
-        check_value: uv run pytest tests/unit/docker/test_runtime_image_github_nodes_omn21422.py::test_image_from_names_the_infra_runtime_base -q --no-cov
+        check_value: uv run pytest tests/unit/docker/test_runtime_image_github_nodes_omn21422.py::test_image_from_names_the_infra_runtime_base tests/unit/docker/test_runtime_image_github_nodes_omn21422.py::test_image_check_passes_where_both_nodes_are_installed -q --no-cov
   - id: dod-omn-21422-ac3-image-github-nodes
     description: >-
       AC3, image-side supporting evidence only: the image build check requires
