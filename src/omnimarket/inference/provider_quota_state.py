@@ -342,6 +342,20 @@ class ModelProviderQuotaSnapshot(BaseModel):
         return None
 
 
+def _undeclared_host_domain(endpoint_url: str, host: str) -> str:
+    """The key of a host the policy does not describe: ``host:<host>[:<port>]``.
+
+    The port is part of it (OMN-20910): a refused connection says one service is
+    down, not that its host's other services are, so a block recorded for
+    ``local:8000`` must not bar the backend on ``local:8001``.
+    """
+    try:
+        port = urlparse(endpoint_url).port
+    except ValueError:
+        port = None
+    return f"host:{host}" if port is None else f"host:{host}:{port}"
+
+
 def quota_domain_for_endpoint(endpoint_url: str) -> str | None:
     """Return the quota failure domain an endpoint belongs to.
 
@@ -362,13 +376,13 @@ def quota_domain_for_endpoint(endpoint_url: str) -> str | None:
         # is also called on the read path for every routing eligibility check.
         # Degrading to host-keying here keeps routing working; a genuinely
         # missing policy still fails loud where it is loaded for classification.
-        return f"host:{host}"
+        return _undeclared_host_domain(endpoint_url, host)
     # Host first, then the declared path prefix (OMN-20154): z.ai's general API
     # and Coding Plan share a host and a key but not a counter.
     provider = provider_rule_for_endpoint(policy.providers, endpoint_url)
     if provider is not None:
         return provider.provider_id
-    return f"host:{host}"
+    return _undeclared_host_domain(endpoint_url, host)
 
 
 def endpoint_is_metered(endpoint_url: str) -> bool:

@@ -95,7 +95,7 @@ class TestConnectionFailureIsObserved:
         assert observation is not None
         assert observation.outcome is EnumProviderQuotaOutcome.LIMIT_HIT
         assert observation.disposition == HOST_UNREACHABLE_DISPOSITION
-        assert observation.provider_id == "host:dead-host.test"
+        assert observation.provider_id == "host:dead-host.test:8000"
         assert observation.blocked_until == _NOW + HOST_UNREACHABLE_COOLDOWN
         assert not observation.blocked_indefinitely
 
@@ -127,6 +127,14 @@ class TestConnectionFailureIsObserved:
     ) -> None:
         snapshot = _snapshot_after_connection_failure(error=error)
         assert _backend_routable(_backend(_DEAD_URL), quota_state=snapshot) is True
+
+    def test_a_refusal_on_one_port_does_not_bar_a_service_on_another(self) -> None:
+        snapshot = _snapshot_after_connection_failure(
+            error="[Errno 111] Connection refused"
+        )
+        other_port = "http://dead-host.test:8001/v1/chat/completions"
+        assert _backend_routable(_backend(_DEAD_URL), quota_state=snapshot) is False
+        assert _backend_routable(_backend(other_port), quota_state=snapshot) is True
 
     def test_a_successful_local_call_emits_nothing(self) -> None:
         assert (
