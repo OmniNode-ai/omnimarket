@@ -8,18 +8,14 @@ summary: >-
   launcher no longer imports omnimarket into its system Python. The pull request
   does not implement the ticket's own AC1, AC2 or AC3 (the per-host parity probe,
   parity-aware placement and the DEGRADED queue-status line). This contract
-  declares and binds none of them; they stay open on the ticket. It declares one
-  deliverable criterion of this pull request's own, DOD1, for the entrypoint.
-  Repointing the launcher at this entrypoint is a separate plugin source release.
+  declares and binds none of them; they stay open on the ticket. Its evidence
+  binds DOD1, this pull request's own deliverable and not a ticket criterion: the
+  entrypoint emits the host retention payload with no local cleanup while
+  building it, and an invalid request exits nonzero with no payload. Repointing
+  the launcher at this entrypoint is a separate plugin source release.
 is_seam_ticket: false
 interface_change: true
 interfaces_touched: ["public_api"]
-requirements:
-  - id: "req-omn20266-closeout-dispatch-entrypoint"
-    statement: "The dispatch interpreter can build the guarded host retention payload without the launcher importing omnimarket."
-    acceptance:
-      - id: "DOD1"
-        statement: "DOD1: python -m omnimarket.nodes.node_remote_lane_effect.run_retention --script <request.json> emits the host retention payload with no local cleanup while building it, and an invalid request (a bool keep_days, a string delete, an unexpected key) exits nonzero with no payload. This is a deliverable of this pull request only, not the ticket's AC1, AC2 or AC3."
 evidence_requirements:
   - kind: "tests"
     description: "Closeout dispatch CLI and existing ownership/archive safety checks. Does not claim the ticket's host-parity criteria."
