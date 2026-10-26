@@ -1,0 +1,72 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21425"
+title: "The GitHub write effect refuses stale fences on every write verb"
+summary: "node_github_repo_write_effect reads an optional lease {kind, resource, fence, expires_at} on every write command. Before any GitHub call, in dry_run and enforce, it refuses the command unless the injected fence port (omnibase_infra's check_fence, OMN-21424) answers ok: stale is lease_fence_stale, expired is lease_expired, unknown, a port error or no port is lease_unreadable. A lease expiring inside the contract's descriptor.timeout_ms is refused lease_expired without asking. A command with no lease is not fenced. The effect serves no push operation (pushes stay git), so the push leg of AC1 is pending."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched: ["events", "protocols"]
+requirements:
+  - id: "req-omn21425-fenced-writes"
+    statement: "The GitHub write effect refuses a command whose lease fence is stale, expired or unreadable before any GitHub call, on every write verb it serves."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: `pr_comment`, `pr_edit`, `pr_ready`, `pr_close` and push commands carrying a fence lower than the live one are refused `LEASE_FENCE_STALE` -- falsifier: a pytest over each verb records a GitHub call or a different refusal"
+      - id: "AC2"
+        statement: "AC2: a command whose lease expires before the effect's deadline is refused `LEASE_EXPIRED` before any GitHub call -- falsifier: the pytest records a GitHub call"
+      - id: "AC3"
+        statement: "AC3: with the fence port reading `unknown`, every write is refused `LEASE_UNREADABLE` -- falsifier: the pytest records a GitHub call"
+evidence_requirements:
+  - kind: "tests"
+    description: "The lease fence tests over every write verb the effect serves, on a transport that records every call. None exists at the merge base."
+    command: "uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_lease_fence_omn21425.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21425-ac1-stale-fence"
+    description: "AC1: a command carrying a fence lower than the live one is refused lease_fence_stale with no GitHub call on pr_comment, pr_edit, pr_ready and pr_close, and on pr_create, pr_thread_reply, workflow_dispatch and check_run_create; the live fence writes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_lease_fence_omn21425.py -q --no-cov -k 'stale or live_fence or covered'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21425-ac1-push"
+    description: "AC1, push leg. Pending: node_github_repo_write_effect serves no push operation; handler_source_control_github refuses push_branch and force_push because pushes stay git from the lane's worktree. Fencing a push needs a push operation on the effect, which this pull request does not add. A disposition is required at the local Done gate."
+    source: "manual"
+    checks:
+      - check_type: "disposition"
+        check_value: "dod-omn21425-ac1-push"
+    execution_scope: "local_done_gate"
+  - id: "dod-omn21425-ac2-expired"
+    description: "AC2: a lease expiring inside the effect's deadline (the contract's descriptor.timeout_ms by default) is refused lease_expired before any GitHub call on every verb, and the port reading expired is refused lease_expired."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_lease_fence_omn21425.py -q --no-cov -k 'expir or deadline'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21425-ac3-unreadable"
+    description: "AC3: the fence port reading unknown refuses every verb lease_unreadable with no GitHub call; no port, a port that raises and an unrecognised answer are refused the same way."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_lease_fence_omn21425.py -q --no-cov -k 'unknown or unreadable'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21425-deploy-node-cli"
+    description: "Hosted deploy smoke: dispatch node_github_repo_write_effect through the in-process ONEX runtime with a dry_run pr_comment carrying a lease. No fence port is wired in that runtime, so the typed result must be failed with reason lease_unreadable and no request sent. The merge base refuses the lease field as an extra input. No GitHub token, lane services or etcd are required. This checks the packaged node at the evaluated checkout, not a production rollout."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          uv sync --locked;
+          runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+          printf '%s' '{"correlation_id": "00000000-0000-4000-8000-000000021425", "operation": "pr_comment", "repo": "OmniNode-ai/omnimarket", "idempotency_key": "omn21425-deploy-smoke", "requested_by_lane": "omn21425-deploy-probe", "pr_number": 1, "body": "fence smoke", "dry_run": true, "lease": {"kind": "landing-fix", "resource": "pr:OmniNode-ai/omnimarket#1", "fence": 1, "expires_at": "2099-01-01T00:00:00Z"}}' > "$probe_dir/input.json";
+          env -u PYTHONPATH PYTHONDONTWRITEBYTECODE=1 "$runtime_bin/onex" node node_github_repo_write_effect --input "$probe_dir/input.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+          "$runtime_bin/python" -c 'import json, sys; r = json.load(open(sys.argv[1]))["result"]; assert r["outcome"] == "failed" and r["reason"] == "lease_unreadable" and r["requests"] == [], r' "$probe_dir/receipt.json"
+        cwd: "${OMNI_HOME}/omnimarket"

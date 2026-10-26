@@ -66,6 +66,7 @@ pytestmark = pytest.mark.unit
 
 REPO = "OmniNode-ai/omnimarket"
 HEAD = "a" * 40
+NODE_ID = "PR_kwDOAbCdEf4AAAABcDeFgH"
 MOVED = "b" * 40
 GATEWAY = load_topics(EnumScmNode.GATEWAY)
 WRITE = load_topics(EnumScmNode.WRITE)
@@ -350,6 +351,7 @@ def _watcher(tmp_path: Path, *, age: timedelta = timedelta(minutes=1)) -> Path:
                 },
                 "facts": {
                     "number": 77,
+                    "node_id": NODE_ID,
                     "title": "feat(OMN-20913): x",
                     "state": "OPEN",
                     "draft": False,
@@ -1185,6 +1187,8 @@ def test_write_without_a_head_anywhere_is_a_usage_error(
         ("pr-view", f"{REPO}#77", "head_sha", HEAD),
         ("pr-status", f"{REPO}#77", "class", "pending"),
         ("pr-checks", f"{REPO}#77", "pending", ["CI Summary"]),
+        ("pr-view", f"{REPO}#77", "node_id", NODE_ID),
+        ("pr-status", f"{REPO}#77", "node_id", NODE_ID),
         ("pr-list", REPO, "count", 1),
         ("pr-merge-commit", f"{REPO}#70", "merge_commit_sha", "c" * 40),
     ],
@@ -1207,6 +1211,27 @@ def test_state_reads_are_answered_from_the_watcher_before_the_bus(
     assert answer["bus"] is None
     assert answer["result"][key] == value
     assert bus.published == []
+
+
+def test_pr_list_names_each_open_pr_node_id(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _install(monkeypatch, FakeBus())
+    state = _watcher(tmp_path)
+    answer = _answer(_run(["pr-list", REPO, "--watcher-state", str(state)]))
+    assert [pr["node_id"] for pr in answer["result"]["prs"]] == [NODE_ID]
+
+
+def test_a_watcher_state_without_node_ids_prints_null(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _install(monkeypatch, FakeBus())
+    state = _watcher(tmp_path)
+    raw = json.loads(state.read_text(encoding="utf-8"))
+    del raw["prs"]["omnimarket#77"]["facts"]["node_id"]
+    state.write_text(json.dumps(raw), encoding="utf-8")
+    answer = _answer(_run(["pr-view", f"{REPO}#77", "--watcher-state", str(state)]))
+    assert answer["result"]["node_id"] is None
 
 
 def test_pr_view_leaves_the_body_out_of_the_local_answer(
