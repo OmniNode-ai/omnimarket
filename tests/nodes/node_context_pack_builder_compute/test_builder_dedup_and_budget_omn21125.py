@@ -224,15 +224,21 @@ class TestOptionalExclusionByBudget:
 @pytest.mark.unit
 def test_roi_runner_still_reports_budget_fail_when_an_arm_does_not_fit() -> None:
     # AC1: the ROI runner measures whole arms; an arm whose factors do not fit
-    # stays a budget failure rather than a silently smaller arm.
-    _, _, warnings, stage = _build_context_pack(
+    # stays a budget failure rather than a silently smaller arm. Require the
+    # successful builder's exclusion path, not its former whole-pack rejection.
+    context_text, pack_hash, warnings, stage = _build_context_pack(
         ("golden_chain", "exemplar"),
         {"golden_chain": "chain", "exemplar": "x" * 70_000},
         "contract-sha",
     )
 
     assert stage == EnumFailureStage.BUDGET_FAIL
-    assert warnings
+    assert context_text == ""
+    assert pack_hash == ""
+    assert len(warnings) == 1
+    assert warnings[0].startswith(
+        "context-pack builder excluded 1 artifact(s) by budget: exemplar:"
+    )
 
 
 _CONTRACT = (
