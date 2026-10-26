@@ -88,34 +88,54 @@ def load_structured_overlay[ModelT: BaseModel](
     overlay_id: str,
     model: type[ModelT],
     environ: Mapping[str, str] | None = None,
-) -> ModelT | None:
-    """Read ``<root>/<overlay_id>/overlay.yaml`` as ``model``, or ``None`` when no root holds one.
+    *,
+    explicit: object | None = None,
+    file_env: str | None = None,
+) -> ModelT:
+    """Validate an explicit document, a pinned file, or the first overlay, in order.
 
-    For overlays whose fields are lists or mappings, which :func:`load_node_overlay`
-    does not accept. An unreadable file raises :class:`NodeOverlayError` naming the
-    path and the exception type only; a document ``model`` refuses raises naming the
-    path and the fields at fault.
+    ``file_env`` names an environment variable containing a YAML file path. An
+    unset or blank variable defers to ``<root>/<overlay_id>/overlay.yaml`` under
+    ``ONEX_SKILL_OVERLAY_ROOTS``. ``environ`` defaults to the process environment.
+    An explicit model or document takes precedence without reading either file.
+
+    No source raises :class:`NodeOverlayError` naming the id and model fields.
+    A broken selected source refuses without trying a lower-priority source.
+    Errors name the source, exception type and invalid fields, never document
+    values or exception messages, which may contain private deployment facts.
     """
-    path = find_node_overlay(overlay_id, environ)
-    if path is None:
-        return None
-    try:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, yaml.YAMLError) as exc:
-        raise NodeOverlayError(
-            f"{OVERLAY_ROOTS_ENV}: overlay {path} is unreadable ({type(exc).__name__})"
-        ) from None
+    if explicit is not None:
+        raw = explicit
+        source = f"explicit overlay {overlay_id}"
+    else:
+        env = os.environ if environ is None else environ
+        pinned = env.get(file_env, "").strip() if file_env else ""
+        path = Path(pinned) if pinned else find_node_overlay(overlay_id, env)
+        if path is None:
+            settings = ", ".join(f"{overlay_id}.{name}" for name in model.model_fields)
+            raise NodeOverlayError(
+                not_configured_message(
+                    overlay_id, settings or overlay_id, (file_env,) if file_env else ()
+                )
+            )
+        source = f"{file_env if pinned else OVERLAY_ROOTS_ENV}: overlay {path}"
+        try:
+            raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, yaml.YAMLError) as exc:
+            raise NodeOverlayError(
+                f"{source} is unreadable ({type(exc).__name__})"
+            ) from None
     try:
         return model.model_validate(raw)
     except ValidationError as exc:
         fields = sorted(
             {
                 ".".join(str(part) for part in err["loc"]) or "<document>"
-                for err in exc.errors()
+                for err in exc.errors(include_input=False, include_context=False)
             }
         )
         raise NodeOverlayError(
-            f"{OVERLAY_ROOTS_ENV}: overlay {path} is invalid for {overlay_id}: fields {fields}"
+            f"{source} is invalid for {overlay_id} (ValidationError): fields {fields}"
         ) from None
 
 

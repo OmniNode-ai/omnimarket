@@ -25,7 +25,7 @@ from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Literal
 
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.delegated_test_loop.lab_run_bus import (
     FocusedRunBusCaller,

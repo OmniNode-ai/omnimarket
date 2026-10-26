@@ -27,6 +27,11 @@ description: >
   Pure, order-independent fold over compaction receipts. Deduplicate identical copies,
   group by candidate, activation and fallback invocation identities, detect conflicting
   copies, and apply installation fact precedence. Deterministic; no I/O or clock.
+  A second pure handler, HandlerContextCurrentContextFold, derives each session's
+  current context (boundary algorithm step 5) from install-confirm results: the
+  newest boundary on the one maximal chain, what it installed, and each installed
+  activation retired at the next boundary. Its state joins in any order and with
+  duplicates. It is exported, not routed, and has no table yet.
 
 input_model:
   name: ModelCompactionFoldRequest

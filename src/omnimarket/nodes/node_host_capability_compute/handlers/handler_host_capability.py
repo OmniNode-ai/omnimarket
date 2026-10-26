@@ -238,7 +238,11 @@ def registry_root_candidates(
     pinned = env.get("ONEX_REGISTRY_ROOT", "")
     if pinned.strip():
         return _validate_registry_roots((pinned,), "ONEX_REGISTRY_ROOT")
-    overlay = load_structured_overlay("lab_hosts", ModelLabHostsRegistryRoots, env)
+    overlay = (
+        load_structured_overlay("lab_hosts", ModelLabHostsRegistryRoots, env)
+        if find_node_overlay("lab_hosts", env) is not None
+        else None
+    )
     if overlay is None or overlay.registry_root_candidates is None:
         where = find_node_overlay("lab_hosts", env)
         raise NodeOverlayError(

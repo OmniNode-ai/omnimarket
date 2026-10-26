@@ -106,7 +106,15 @@ def unresolvable(
     because a fake that refuses everything would also withhold the local tier,
     which declares no credential at all, and the test would then pass while
     describing a ladder nobody has.
+
+    It also starts from the committed ladder: a config cached by an earlier
+    test with a synthetic contract carries no placement, and with the shipped
+    Ultra parked pin-only that ladder holds no ordinary cheap_frontier rung.
     """
+    monkeypatch.setattr(routing, "_config", None)
+    monkeypatch.setattr(routing, "_config_spread_peers", None)
+    monkeypatch.setattr(routing, "_config_spread_weights", None)
+    routing._load_bifrost_endpoints.cache_clear()
 
     def _apply(missing: frozenset[str] | set[str]) -> None:
         def fake_available(

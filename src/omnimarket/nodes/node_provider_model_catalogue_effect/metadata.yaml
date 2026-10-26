@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_provider_model_catalogue_effect
+version: 1.0.0
+description: Read-only provider model catalogue check with typed input and result.
+pack: routing
+node_role: effect
+display_name: ProviderModelCatalogue Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_provider_model_catalogue_effect: omnimarket.nodes.node_provider_model_catalogue_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- validation

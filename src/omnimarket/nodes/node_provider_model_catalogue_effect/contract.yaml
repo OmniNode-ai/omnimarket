@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_provider_model_catalogue_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Read-only provider model catalogue check with typed input and result.
+input_model:
+  name: ModelProviderModelCatalogueRequest
+  module: omnimarket.nodes.node_provider_model_catalogue_effect.models.model_provider_model_catalogue
+  description: Typed request for the read-only check.
+output_model:
+  name: ModelProviderModelCatalogueResult
+  module: omnimarket.nodes.node_provider_model_catalogue_effect.models.model_provider_model_catalogue
+  description: Typed result of the read-only check.
+handler:
+  module: omnimarket.nodes.node_provider_model_catalogue_effect.handlers.handler_provider_model_catalogue
+  class: HandlerProviderModelCatalogue
+  input_model: omnimarket.nodes.node_provider_model_catalogue_effect.models.model_provider_model_catalogue.ModelProviderModelCatalogueRequest
+  output_model: omnimarket.nodes.node_provider_model_catalogue_effect.models.model_provider_model_catalogue.ModelProviderModelCatalogueResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_provider_model_catalogue_effect.handlers.handler_provider_model_catalogue:HandlerProviderModelCatalogue
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerProviderModelCatalogue
+      module: omnimarket.nodes.node_provider_model_catalogue_effect.handlers.handler_provider_model_catalogue
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct typed handler invocation or package command entry point.
+descriptor:
+  node_archetype: effect
+  purity: impure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 60000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: false
+metadata:
+  transport_type: local
+  description: Read-only provider model catalogue check with typed input and result.
+  author: OmniNode Team
+  created: '2026-10-25'
+  tags:
+  - effect
+  - validation
+  related_tickets: []

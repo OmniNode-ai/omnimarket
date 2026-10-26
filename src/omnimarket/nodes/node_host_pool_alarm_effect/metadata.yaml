@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_pool_alarm_effect
+version: 1.0.0
+description: "Name a lab pool host the tick cannot trust once per episode, and queue one decision row per host and class."
+pack: operator_tooling
+node_role: effect
+display_name: Host Pool Alarm Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_host_pool_alarm_effect: omnimarket.nodes.node_host_pool_alarm_effect
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_write
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- host-pool-alarm-effect
+- OMN-21411

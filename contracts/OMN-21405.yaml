@@ -1,0 +1,123 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21405"
+title: "Structured overlay loader with source precedence and named refusals"
+summary: >-
+  Extend the shared structured overlay reader to validate an explicit value,
+  then the YAML file named by file_env, then the first overlay root. Refuse
+  absent or invalid configuration with the id, source path, exception type
+  and invalid fields, without exposing document values. Existing node callers
+  retain their field-specific missing-setting guidance.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn21405-precedence"
+    statement: "Validate the highest-priority supplied structured overlay."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the loader returns the validated model from an explicit value, else the file named by file_env, else the overlay under ONEX_SKILL_OVERLAY_ROOTS, in that order -- falsifier: uv run pytest tests -q -k structured_overlay_precedence fails"
+  - id: "req-omn21405-refusal"
+    statement: "Refuse absent and invalid configuration with actionable, redacted errors."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: an absent overlay raises naming the id, an invalid one names the path and the exception type, and a model violation names the field -- falsifier: uv run pytest tests -q -k structured_overlay_refusal fails"
+evidence_requirements:
+  - kind: "tests"
+    description: "Structured overlay precedence and refusal tests pass."
+    command: "uv run pytest tests/unit/handlers/test_node_overlay_reader_structured.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21405-ac1-precedence"
+    description: >-
+      Explicit models and documents win over pinned files; pinned files win
+      over overlays; unset variables use the first available root. List and
+      mapping fields validate into the requested model. Fails before the change.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/test_node_overlay_reader_structured.py -q -k structured_overlay_precedence"
+        cwd: "."
+  - id: "dod-omn21405-ac2-refusal"
+    description: >-
+      Missing overlays name the id and fields; broken selected files name the
+      path and exception type and never fall back; nested model violations
+      name the field without leaking the input value. Fails before the change.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/test_node_overlay_reader_structured.py -q -k structured_overlay_refusal"
+        cwd: "."
+  - id: "dod-omn21405-deploy-loader"
+    description: >-
+      Hosted source deployment check: fetch the loader from GitHub at the
+      checked-out commit, execute that published source and require pinned-file
+      validation and a named absence refusal. Also smoke the installed package
+      outside the source tree. Fails before the change because file_env is
+      unsupported and absence returns None. Proves published source behavior,
+      not activation on a host; requires no lab endpoint or private overlay.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          uv run --locked python -c '
+          import os
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+          from pydantic import BaseModel
+          from omnimarket.handlers.node_overlay_reader import NodeOverlayError, load_structured_overlay
+          class Probe(BaseModel):
+              roles: list[str]
+          with TemporaryDirectory() as directory:
+              os.chdir(directory)
+              path = Path(directory) / "probe.yaml"
+              path.write_text("roles: [reader]\n", encoding="utf-8")
+              result = load_structured_overlay("probe", Probe, {"PROBE_FILE": str(path)}, file_env="PROBE_FILE")
+              assert isinstance(result, Probe) and result.roles == ["reader"], result
+              try:
+                  load_structured_overlay("missing_probe", Probe, {})
+              except NodeOverlayError as error:
+                  assert "missing_probe" in str(error) and "roles" in str(error), error
+              else:
+                  raise AssertionError("missing configuration did not refuse")
+          print("structured overlay installed-package smoke passed")
+          '
+        cwd: "."
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          published="$(mktemp)";
+          trap 'rm -f "$published"' EXIT;
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/node_overlay_reader.py?ref=$(git rev-parse HEAD)" --jq .content > "$published";
+          uv run --locked python - "$published" <<'PY'
+          import base64
+          import sys
+          import types
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+          from pydantic import BaseModel
+          source = base64.b64decode(Path(sys.argv[1]).read_text()).decode("utf-8")
+          published = types.ModuleType("published_overlay_reader")
+          exec(compile(source, "published_overlay_reader.py", "exec"), vars(published))
+          class Probe(BaseModel):
+              roles: list[str]
+          with TemporaryDirectory() as directory:
+              path = Path(directory) / "probe.yaml"
+              path.write_text("roles: [reader]\n", encoding="utf-8")
+              result = published.load_structured_overlay("probe", Probe, {"PROBE_FILE": str(path)}, file_env="PROBE_FILE")
+              assert isinstance(result, Probe) and result.roles == ["reader"], result
+              try:
+                  published.load_structured_overlay("missing_probe", Probe, {})
+              except published.NodeOverlayError as error:
+                  assert "missing_probe" in str(error) and "roles" in str(error), error
+              else:
+                  raise AssertionError("published loader did not refuse missing configuration")
+          print("published structured overlay source deploy probe passed")
+          PY
+        cwd: "."

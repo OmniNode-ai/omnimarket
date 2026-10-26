@@ -178,9 +178,11 @@ def apply_reviewer_pool(
     ]
 
 
-def reviewer_runs_in_flight(records: Mapping[str, Mapping[str, Any]]) -> int:
+def reviewer_runs_in_flight(
+    records: Mapping[str, Mapping[str, Any]], *, now: str
+) -> int:
     request = ModelReviewerRunsFacts.model_validate(
-        {"records": {k: dict(v) for k, v in records.items()}}
+        {"records": {k: dict(v) for k, v in records.items()}, "now": now}
     )
     return HandlerCountReviewerRunsInFlight().handle(request).in_flight
 

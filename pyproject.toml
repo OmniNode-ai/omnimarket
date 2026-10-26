@@ -313,6 +313,8 @@ Homepage = "https://github.com/OmniNode-ai/omnimarket"
 Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
+node_runtime_coverage_compute = "omnimarket.nodes.node_runtime_coverage_compute"
+node_runtime_coverage_effect = "omnimarket.nodes.node_runtime_coverage_effect"
 node_landing_tlc_receipt_effect = "omnimarket.nodes.node_landing_tlc_receipt_effect"
 node_hourly_tick_effect = "omnimarket.nodes.node_hourly_tick_effect"
 node_lab_disk_growth_effect = "omnimarket.nodes.node_lab_disk_growth_effect"
@@ -519,6 +521,7 @@ node_on_vs_off_experiment_compute = "omnimarket.nodes.node_on_vs_off_experiment_
 node_entropy_experiment_orchestrator = "omnimarket.nodes.node_entropy_experiment_orchestrator"
 node_delegated_test_loop_orchestrator = "omnimarket.nodes.node_delegated_test_loop_orchestrator"
 node_delegated_code_edit_orchestrator = "omnimarket.nodes.node_delegated_code_edit_orchestrator"
+node_rsd_migration_orchestrator = "omnimarket.nodes.node_rsd_migration_orchestrator"
 node_context_roi_compute = "omnimarket.nodes.node_context_roi_compute"
 node_context_roi_runner = "omnimarket.nodes.node_context_roi_runner"
 node_context_role_adoption_verdict_compute = "omnimarket.nodes.node_context_role_adoption_verdict_compute"
@@ -1015,6 +1018,18 @@ node_link_gate_compute = "omnimarket.nodes.node_link_gate_compute"
 node_link_history_effect = "omnimarket.nodes.node_link_history_effect"
 node_clone_parity_compute = "omnimarket.nodes.node_clone_parity_compute"
 node_codex_sandbox_probe_compute = "omnimarket.nodes.node_codex_sandbox_probe_compute"
+node_adoption_recovery_effect = "omnimarket.nodes.node_adoption_recovery_effect"
+node_cause_claim_ownership_effect = "omnimarket.nodes.node_cause_claim_ownership_effect"
+node_stuck_owner_actor_effect = "omnimarket.nodes.node_stuck_owner_actor_effect"
+node_host_pool_alarm_effect = "omnimarket.nodes.node_host_pool_alarm_effect"
+node_script_node_src_compute = "omnimarket.nodes.node_script_node_src_compute"
+node_controller_fix_plan_compute = "omnimarket.nodes.node_controller_fix_plan_compute"
+node_operator_waiting_tick_effect = "omnimarket.nodes.node_operator_waiting_tick_effect"
+node_green_draft_clock_compute = "omnimarket.nodes.node_green_draft_clock_compute"
+node_green_controller_read_compute = "omnimarket.nodes.node_green_controller_read_compute"
+node_exception_queue_effect = "omnimarket.nodes.node_exception_queue_effect"
+node_plugin_bump_stuck_compute = "omnimarket.nodes.node_plugin_bump_stuck_compute"
+node_idle_slot_fill_effect = "omnimarket.nodes.node_idle_slot_fill_effect"
 node_landing_worker_engine_compute = "omnimarket.nodes.node_landing_worker_engine_compute"
 node_execution_attribution_compute = "omnimarket.nodes.node_execution_attribution_compute"
 node_merge_attribution_compute = "omnimarket.nodes.node_merge_attribution_compute"
@@ -1024,6 +1039,9 @@ node_brief_compact_compute = "omnimarket.nodes.node_brief_compact_compute"
 node_standup_retrospective_compute = "omnimarket.nodes.node_standup_retrospective_compute"
 node_lane_host_discovery_compute = "omnimarket.nodes.node_lane_host_discovery_compute"
 node_umbrella_ticket_compute = "omnimarket.nodes.node_umbrella_ticket_compute"
+node_provider_model_catalogue_effect = "omnimarket.nodes.node_provider_model_catalogue_effect"
+node_plugin_walk_evidence_effect = "omnimarket.nodes.node_plugin_walk_evidence_effect"
+node_tlc_result_summary_effect = "omnimarket.nodes.node_tlc_result_summary_effect"
 
 [project.scripts]
 onex-hourly-tick = "omnimarket.nodes.node_hourly_tick_effect.handlers.handler_hourly_tick_cli:main"
@@ -1560,6 +1578,14 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "omnibase_core.validation.antipattern_registry_loader"
+ignore_missing_imports = true
+
+# The cause claim node imports these two nodes lazily; they move to omnimarket in their own slices.
+[[tool.mypy.overrides]]
+module = [
+    "omnimarket.nodes.node_cause_fix_guard_compute.*",
+    "omnimarket.nodes.node_landing_shared_base_effect.*",
+]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

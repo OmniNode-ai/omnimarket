@@ -3,8 +3,8 @@ ticket_id: "OMN-19998"
 title: "omnimarket dev binds every repo contract criterion to repo pytest evidence again"
 summary: "omnimarket#3783 added dod-omnimarket-pr-3775-deploy-probe to contracts/OMN-20074.yaml with binds_ac AC10, but the item's only check is a gh api deploy probe. tests/ci/test_repo_evidence_caller_workflow.py::test_every_repo_contract_binds_every_criterion requires every binds_ac item to carry uv run pytest evidence naming a repo test file, so that test fails on dev 6b43215db and turns Tests (Split 14/20) red on every pull request whose shard carries it. The deploy probe stays as deploy evidence without binds_ac, as the merged deploy probes in contracts/OMN-20676.yaml and others do, and AC10 stays bound by dod-omnimarket-pr-3775-rejection to its rejection test file."
 is_seam_ticket: false
-interface_change: false
-interfaces_touched: []
+interface_change: true
+interfaces_touched: ["public_api"]
 requirements:
   - id: "req-repo-contracts-bind-pytest-evidence"
     statement: "Every repo-owned contracts/OMN-*.yaml on dev binds each acceptance criterion only through dod_evidence items that name an existing repo pytest file, so the repo evidence test passes on dev."
@@ -191,6 +191,21 @@ requirements:
     acceptance:
       - id: "AC35"
         statement: "AC35: projection_delegation_disposition, projection_delegation_eval, projection_metering_summary, projection_provider_quota and projection_routing_feedback declare runtime_profiles [tenant-projection], and the derived check over every node contract finds no in-process tenant_projection writer owned by a shared runtime -- falsifier: uv run pytest tests/unit/runtime/test_omn19998_tenant_projection_writers_leave_main.py -q fails at the merge base, naming those five"
+  - id: "req-draft-reviewer-slot"
+    statement: "Draft PR voter jobs consume no reviewer slots, including the recorded omnimarket#4409 draft."
+    acceptance:
+      - id: "AC36"
+        statement: "AC36: Draft PR voter jobs consume no reviewer slots, including the recorded omnimarket#4409 draft. -- falsifier: uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_reviewer_slot_count.py::test_draft_reviewer_does_not_hold_a_slot -q fails at the merge base"
+  - id: "req-stale-reviewer-slot"
+    statement: "Watcher CI reads older than the controller pending-CI bound of eight minutes consume no reviewer slots; fresh voters still count through the boundary."
+    acceptance:
+      - id: "AC37"
+        statement: "AC37: Watcher CI reads older than the controller pending-CI bound of eight minutes consume no reviewer slots; fresh voters still count through the boundary. -- falsifier: uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_reviewer_slot_count.py::test_stale_watcher_ci_read_does_not_hold_a_slot -q fails at the merge base"
+  - id: "req-summary-reviewer-slot"
+    statement: "Hostile Review Gate summary jobs consume no voter slots, while queued and active Hostile Reviewer jobs do."
+    acceptance:
+      - id: "AC38"
+        statement: "AC38: Hostile Review Gate summary jobs consume no voter slots, while queued and active Hostile Reviewer jobs do. -- falsifier: uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_reviewer_slot_count.py::test_hostile_review_gate_summary_does_not_hold_a_voter_slot -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -826,4 +841,36 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           uv run python -c 'from importlib.resources import files; import yaml; names=["delegation_disposition", "delegation_eval", "metering_summary", "provider_quota", "routing_feedback"]; got={n: yaml.safe_load((files("omnimarket.nodes.node_projection_" + n) / "contract.yaml").read_text()).get("runtime_profiles") for n in names}; assert all(v == ["tenant-projection"] for v in got.values()), got'
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19998-draft-reviewer-slot"
+    description: "Draft PR voter jobs consume no reviewer slots, including the recorded omnimarket#4409 draft. The recorded regression fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_reviewer_slot_count.py::test_draft_reviewer_does_not_hold_a_slot -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC36"]
+  - id: "dod-omn19998-stale-reviewer-slot"
+    description: "Watcher CI reads older than the controller pending-CI bound of eight minutes consume no reviewer slots; fresh voters still count through the boundary. The recorded regression fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_reviewer_slot_count.py::test_stale_watcher_ci_read_does_not_hold_a_slot -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC37"]
+  - id: "dod-omn19998-summary-reviewer-slot"
+    description: "Hostile Review Gate summary jobs consume no voter slots, while queued and active Hostile Reviewer jobs do. The recorded regression fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_reviewer_slot_count.py::test_hostile_review_gate_summary_does_not_hold_a_voter_slot -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC38"]
+  - id: "dod-omn19998-reviewer-slot-deploy-probe"
+    description: "Hosted-runner readback invokes the installed pure counter on a stale voter, a draft voter and a summary job, then verifies a fresh voter still counts. The previous counter returns three for the first request and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run python -c 'from omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_count_reviewer_runs_in_flight import HandlerCountReviewerRunsInFlight as H; from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_reviewer_runs_facts import ModelReviewerRunsFacts as R; now="2026-10-26T00:47:00Z"; row=lambda draft,at,name: {"facts":{"state":"OPEN","draft":draft,"head_sha":"head"},"ci":{"sha":"head","read_at":at,"runs":[[name,"in_progress","",""]]}}; voter="Hostile Reviewer (adversarial gate)"; records={"draft":row(True,now,voter),"stale":row(False,"2026-10-25T15:15:35Z",voter),"summary":row(False,now,"Hostile Review Gate")}; h=H(); assert h.handle(R(records=records,now=now)).in_flight == 0; assert h.handle(R(records={"fresh":row(False,now,voter)},now=now)).in_flight == 1'
         cwd: "${OMNI_HOME}/omnimarket"
