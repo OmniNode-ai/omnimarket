@@ -1,0 +1,86 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21432"
+title: "TA.9b Replay producer exports verified native summaries, pinned carry honors quote citations, and the answer scorer fails closed"
+summary: >-
+  Prerequisite for the TA.9 replay evaluation. The replay producer exports complete,
+  session, length and hash verified native compact summaries as separately pinned
+  native files and reassembles projection chunks by their shared item hash; the
+  verifier refuses a missing or tampered native file. Pinned-mode carry removes only
+  prompts the ledger quote citations fully record before the boundary, as live mode
+  does. The answer comparison fails closed on unavailable answers. Not in this change:
+  the TA.9 quality criteria (the recorded post-recovery replay still fails Q1 and
+  cannot score Q2) and the TA.16 auto trigger, whose tickets stay open.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21432-native-summary-export"
+    statement: "The replay producer exports verified native summaries as pinned native files."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the replay producer exports each complete, session, length and hash verified native compact summary as a separately pinned native file, reassembling projection chunks by their shared item hash, and the verifier refuses a missing or tampered native file -- falsifier: uv run pytest tests/nodes/node_context_compaction_manifest_compute -q --no-cov -k native_summary"
+  - id: "req-omn21432-pinned-carry-quotes"
+    statement: "Pinned-mode carry applies the live quote-citation coverage."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: pinned-mode carry removes only prompts the ledger quote citations fully record before the boundary, the same coverage live mode applies -- falsifier: uv run pytest tests/nodes/node_session_context_sources_effect -q --no-cov -k pinned_quote"
+  - id: "req-omn21432-scorer-fails-closed"
+    statement: "The answer comparison fails closed on unavailable answers."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: the answer comparison fails closed when package or native answers are unavailable, so unavailable answers never establish Q2 parity -- falsifier: uv run pytest tests/nodes/node_context_replay_eval_compute -q --no-cov -k missing_answers_cannot_pass"
+evidence_requirements:
+  - kind: "tests"
+    description: "Producer, native pins, carry coverage and fail-closed scorer regressions."
+    command: "uv run pytest tests/nodes/node_context_replay_eval_compute tests/test_golden_chain_context_replay_eval_compute.py tests/nodes/node_context_compaction_manifest_compute tests/test_golden_chain_context_compaction_manifest_compute.py tests/nodes/node_session_context_sources_effect -q --no-cov"
+  - kind: "manual"
+    description: "Deploy validation for the caller-contract deploy gate: the shipped scorer source read at the checkout commit and a behavioral probe of the installed package. No lab service is required."
+    command: "deploy: gh api contents of handler_replay_eval.py at HEAD and a hosted behavioral probe"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21432-ac1-native-summary-export"
+    description: "Native summary export, chunk reassembly by item hash and the verifier's refusal of missing or tampered native files. The tests fail at the merge base, whose producer exports no native-summary bytes."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_context_compaction_manifest_compute/test_context_compaction_manifest.py -q --no-cov -k 'native_summary or resolvable_id_without_summary'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21432-ac2-pinned-carry-quotes"
+    description: "Pinned quotes apply the live carry coverage, and a quote after the boundary cannot remove a prompt. The tests fail at the merge base, whose pinned carry ignores ledger quote citations."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_session_context_sources_effect/test_session_context_sources.py -q --no-cov -k pinned_quote"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21432-ac3-scorer-fails-closed"
+    description: "Missing answers cannot pass the quality comparison. The test fails at the merge base, where unavailable answers establish Q2 parity."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_context_replay_eval_compute/test_context_replay_eval.py -q --no-cov -k missing_answers_cannot_pass"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21432-deploy-hosted-fail-closed"
+    description: "Hosted source and behavioral probes of the shipped scorer. The GitHub content read pins the live source to the checkout revision and requires the unavailable-answer guards; the behavioral probe fails at the merge base where unavailable answers incorrectly establish Q2 parity. No lab service is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          bash -euo pipefail -c '
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_context_replay_eval_compute/handlers/handler_replay_eval.py?ref=$(git rev-parse HEAD)" --jq '\''.content | gsub("\n"; "") | @base64d | (contains("and run.package_unavailable == 0") and contains("and run.native_unavailable == 0"))'\'' | grep -qx true'
+      - check_type: "command"
+        check_value: |-
+          uv run --frozen --no-dev python -c '
+          from omnimarket.nodes.node_context_replay_eval_compute.handlers import HandlerAnswerComparison
+          from omnimarket.nodes.node_context_replay_eval_compute.models import ModelAnswerComparisonRequest
+          request = ModelAnswerComparisonRequest.model_validate({"runs": [{"run_id": run_id, "cases": [{"case_id": f"case-{i}", "candidate_id": f"not-built:{i}", "package_answer": "UNAVAILABLE", "native_answer": "UNAVAILABLE"} for i in range(3)]} for run_id in ("a", "b")]})
+          result = HandlerAnswerComparison().handle(request)
+          assert not result.next_action_met, result
+          assert all(run.package_unavailable == run.native_unavailable == 3 for run in result.runs), result
+          assert len(result.falsifiers) == 2 and all("unavailable" in value for value in result.falsifiers), result
+          print("unavailable answers fail closed")'

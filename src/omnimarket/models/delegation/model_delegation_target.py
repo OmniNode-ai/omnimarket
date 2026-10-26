@@ -48,7 +48,7 @@ class ModelDelegationTargetRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     request_id: UUID
-    target: Literal["model-call", "claude-code", "codex", "claude-glm"]
+    target: Literal["model-call", "claude-code", "codex", "claude-glm", "antigravity"]
     brief: str = Field(min_length=1)
     call_site: str = Field(min_length=1)
     repo: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")

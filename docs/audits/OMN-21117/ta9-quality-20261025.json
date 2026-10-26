@@ -1,0 +1,537 @@
+{
+  "run_id": "ta9-rerun-20261025T205952Z",
+  "host": "h200",
+  "lane": "cmod-ta9-rerun-2100",
+  "base_sha": "a086896205e1752c2cc3e17f116bc17f532a63a6",
+  "uncommitted_patch": true,
+  "source_sha256": {
+    "src/omnimarket/nodes/node_context_compaction_manifest_compute/handlers/handler_compaction_manifest.py": "f0470b836d922b31d48afa02a270c707ec80b906fd72426d8a4238d1e422b549",
+    "src/omnimarket/nodes/node_context_compaction_manifest_compute/models/model_compaction_manifest.py": "647b4343670dd24e659d23fb471f3c5fc0ee2b7ea2d24e095825ecdbc7127d6b",
+    "src/omnimarket/nodes/node_context_replay_eval_compute/handlers/handler_replay_eval.py": "d64da743f7890962e24d54fbc08335167c8ca2ebeda3c049c6a611f2c8107a77",
+    "src/omnimarket/nodes/node_context_replay_eval_compute/models/model_replay_eval.py": "c3546be55aa35822e5fae9a2b0c47fcedf7d2ed42abd2c71f6d46a1811c7bd9c",
+    "src/omnimarket/nodes/node_session_context_sources_effect/handlers/handler_session_context_sources.py": "c3089b9cee2de6dee2bd20aba8871f1473b8ef57ef609d7cfa11312ee4f6772f"
+  },
+  "manifest_sha256": "d1e6aceae006b23eb43209ffe10dacd04336d7bec8f6e24a409dce677c25a531",
+  "raw_metadata_sha256": "50703b9b33338328730d25145e5e6506fe814e40f52bdaafa174f07ebe426011",
+  "method": "Two new pinned replays on h200 against the unchanged T0.2 manifest, required factors, fixed questions and 16000-token budget. No model was asked because no candidate or native input was available. Fresh-session collection was attempted separately and refused by the sandbox; these are fresh executions over historical samples, not fresh samples.",
+  "runs": [
+    {
+      "run_id": "ta9-rerun-20261025T205952Z-a",
+      "presence": {
+        "cases": [
+          {
+            "case_id": "L1-compact-mod-not-hooks",
+            "candidate_id": null,
+            "statements": [
+              {
+                "statement_id": "L1-s1",
+                "presence": "MISSING"
+              }
+            ],
+            "passed": false
+          },
+          {
+            "case_id": "L2-merge-queue-reasked",
+            "candidate_id": null,
+            "statements": [
+              {
+                "statement_id": "L2-s1",
+                "presence": "MISSING"
+              }
+            ],
+            "passed": false
+          },
+          {
+            "case_id": "L6-foreground-two-boundaries",
+            "candidate_id": null,
+            "statements": [
+              {
+                "statement_id": "L6-s1",
+                "presence": "MISSING"
+              }
+            ],
+            "passed": false
+          }
+        ],
+        "cases_total": 3,
+        "cases_passed": 0,
+        "all_present": false,
+        "falsifiers": [
+          "case L1-compact-mod-not-hooks: statement L1-s1 MISSING",
+          "case L2-merge-queue-reasked: statement L2-s1 MISSING",
+          "case L6-foreground-two-boundaries: statement L6-s1 MISSING"
+        ]
+      },
+      "answers": [
+        {
+          "case_id": "L1-compact-mod-not-hooks",
+          "candidate_id": "not-built:L1-compact-mod-not-hooks",
+          "package_answer": "UNAVAILABLE",
+          "native_answer": "UNAVAILABLE"
+        },
+        {
+          "case_id": "L2-merge-queue-reasked",
+          "candidate_id": "not-built:L2-merge-queue-reasked",
+          "package_answer": "UNAVAILABLE",
+          "native_answer": "UNAVAILABLE"
+        },
+        {
+          "case_id": "L6-foreground-two-boundaries",
+          "candidate_id": "not-built:L6-foreground-two-boundaries",
+          "package_answer": "UNAVAILABLE",
+          "native_answer": "UNAVAILABLE"
+        }
+      ],
+      "builds": [
+        {
+          "case_id": "L1-compact-mod-not-hooks",
+          "status": "failed",
+          "candidate_id": null,
+          "errors": [
+            "required tiers not resolved: orchestration_state=unresolved, open_work=unresolved"
+          ],
+          "required_factors": [
+            {
+              "factor": "operator_rulings",
+              "status": "resolved",
+              "entry_count": 664,
+              "token_estimate": 123697
+            },
+            {
+              "factor": "operator_words_unrecorded",
+              "status": "resolved",
+              "entry_count": 188,
+              "token_estimate": 18254
+            },
+            {
+              "factor": "orchestration_state",
+              "status": "unresolved",
+              "entry_count": 0,
+              "token_estimate": 0
+            },
+            {
+              "factor": "open_work",
+              "status": "unresolved",
+              "entry_count": 0,
+              "token_estimate": 0
+            }
+          ]
+        },
+        {
+          "case_id": "L2-merge-queue-reasked",
+          "status": "failed",
+          "candidate_id": null,
+          "errors": [
+            "required tiers not resolved: open_work=unresolved"
+          ],
+          "required_factors": [
+            {
+              "factor": "operator_rulings",
+              "status": "resolved",
+              "entry_count": 626,
+              "token_estimate": 118479
+            },
+            {
+              "factor": "operator_words_unrecorded",
+              "status": "resolved",
+              "entry_count": 70,
+              "token_estimate": 7131
+            },
+            {
+              "factor": "orchestration_state",
+              "status": "resolved",
+              "entry_count": 5,
+              "token_estimate": 436
+            },
+            {
+              "factor": "open_work",
+              "status": "unresolved",
+              "entry_count": 0,
+              "token_estimate": 0
+            }
+          ]
+        },
+        {
+          "case_id": "L6-foreground-two-boundaries",
+          "status": "failed",
+          "candidate_id": null,
+          "errors": [
+            "required tiers not resolved: orchestration_state=unresolved, open_work=unresolved"
+          ],
+          "required_factors": [
+            {
+              "factor": "operator_rulings",
+              "status": "resolved",
+              "entry_count": 546,
+              "token_estimate": 107099
+            },
+            {
+              "factor": "operator_words_unrecorded",
+              "status": "resolved",
+              "entry_count": 380,
+              "token_estimate": 145393
+            },
+            {
+              "factor": "orchestration_state",
+              "status": "unresolved",
+              "entry_count": 0,
+              "token_estimate": 0
+            },
+            {
+              "factor": "open_work",
+              "status": "unresolved",
+              "entry_count": 0,
+              "token_estimate": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "run_id": "ta9-rerun-20261025T205952Z-b",
+      "presence": {
+        "cases": [
+          {
+            "case_id": "L1-compact-mod-not-hooks",
+            "candidate_id": null,
+            "statements": [
+              {
+                "statement_id": "L1-s1",
+                "presence": "MISSING"
+              }
+            ],
+            "passed": false
+          },
+          {
+            "case_id": "L2-merge-queue-reasked",
+            "candidate_id": null,
+            "statements": [
+              {
+                "statement_id": "L2-s1",
+                "presence": "MISSING"
+              }
+            ],
+            "passed": false
+          },
+          {
+            "case_id": "L6-foreground-two-boundaries",
+            "candidate_id": null,
+            "statements": [
+              {
+                "statement_id": "L6-s1",
+                "presence": "MISSING"
+              }
+            ],
+            "passed": false
+          }
+        ],
+        "cases_total": 3,
+        "cases_passed": 0,
+        "all_present": false,
+        "falsifiers": [
+          "case L1-compact-mod-not-hooks: statement L1-s1 MISSING",
+          "case L2-merge-queue-reasked: statement L2-s1 MISSING",
+          "case L6-foreground-two-boundaries: statement L6-s1 MISSING"
+        ]
+      },
+      "answers": [
+        {
+          "case_id": "L1-compact-mod-not-hooks",
+          "candidate_id": "not-built:L1-compact-mod-not-hooks",
+          "package_answer": "UNAVAILABLE",
+          "native_answer": "UNAVAILABLE"
+        },
+        {
+          "case_id": "L2-merge-queue-reasked",
+          "candidate_id": "not-built:L2-merge-queue-reasked",
+          "package_answer": "UNAVAILABLE",
+          "native_answer": "UNAVAILABLE"
+        },
+        {
+          "case_id": "L6-foreground-two-boundaries",
+          "candidate_id": "not-built:L6-foreground-two-boundaries",
+          "package_answer": "UNAVAILABLE",
+          "native_answer": "UNAVAILABLE"
+        }
+      ],
+      "builds": [
+        {
+          "case_id": "L1-compact-mod-not-hooks",
+          "status": "failed",
+          "candidate_id": null,
+          "errors": [
+            "required tiers not resolved: orchestration_state=unresolved, open_work=unresolved"
+          ],
+          "required_factors": [
+            {
+              "factor": "operator_rulings",
+              "status": "resolved",
+              "entry_count": 664,
+              "token_estimate": 123697
+            },
+            {
+              "factor": "operator_words_unrecorded",
+              "status": "resolved",
+              "entry_count": 188,
+              "token_estimate": 18254
+            },
+            {
+              "factor": "orchestration_state",
+              "status": "unresolved",
+              "entry_count": 0,
+              "token_estimate": 0
+            },
+            {
+              "factor": "open_work",
+              "status": "unresolved",
+              "entry_count": 0,
+              "token_estimate": 0
+            }
+          ]
+        },
+        {
+          "case_id": "L2-merge-queue-reasked",
+          "status": "failed",
+          "candidate_id": null,
+          "errors": [
+            "required tiers not resolved: open_work=unresolved"
+          ],
+          "required_factors": [
+            {
+              "factor": "operator_rulings",
+              "status": "resolved",
+              "entry_count": 626,
+              "token_estimate": 118479
+            },
+            {
+              "factor": "operator_words_unrecorded",
+              "status": "resolved",
+              "entry_count": 70,
+              "token_estimate": 7131
+            },
+            {
+              "factor": "orchestration_state",
+              "status": "resolved",
+              "entry_count": 5,
+              "token_estimate": 436
+            },
+            {
+              "factor": "open_work",
+              "status": "unresolved",
+              "entry_count": 0,
+              "token_estimate": 0
+            }
+          ]
+        },
+        {
+          "case_id": "L6-foreground-two-boundaries",
+          "status": "failed",
+          "candidate_id": null,
+          "errors": [
+            "required tiers not resolved: orchestration_state=unresolved, open_work=unresolved"
+          ],
+          "required_factors": [
+            {
+              "factor": "operator_rulings",
+              "status": "resolved",
+              "entry_count": 546,
+              "token_estimate": 107099
+            },
+            {
+              "factor": "operator_words_unrecorded",
+              "status": "resolved",
+              "entry_count": 380,
+              "token_estimate": 145393
+            },
+            {
+              "factor": "orchestration_state",
+              "status": "unresolved",
+              "entry_count": 0,
+              "token_estimate": 0
+            },
+            {
+              "factor": "open_work",
+              "status": "unresolved",
+              "entry_count": 0,
+              "token_estimate": 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "answer_comparison": {
+    "runs": [
+      {
+        "run_id": "ta9-rerun-20261025T205952Z-a",
+        "cases": 3,
+        "package_matches": 0,
+        "native_matches": 0,
+        "native_unavailable": 3,
+        "package_unavailable": 3,
+        "package_at_least_native": true
+      },
+      {
+        "run_id": "ta9-rerun-20261025T205952Z-b",
+        "cases": 3,
+        "package_matches": 0,
+        "native_matches": 0,
+        "native_unavailable": 3,
+        "package_unavailable": 3,
+        "package_at_least_native": true
+      }
+    ],
+    "next_action_met": false,
+    "determinism_checked": true,
+    "candidate_id_mismatches": [],
+    "candidate_ids_identical": true,
+    "falsifiers": [
+      "run ta9-rerun-20261025T205952Z-a: answers unavailable: package 3, native 3",
+      "run ta9-rerun-20261025T205952Z-b: answers unavailable: package 3, native 3"
+    ]
+  },
+  "candidate_determinism_proved": false,
+  "native_summaries": [
+    {
+      "case_id": "L1-compact-mod-not-hooks",
+      "session_id": "4fb6b47e-ec68-4a15-ab71-0de49ccbcec6",
+      "post_at": "2026-10-15T04:00:21.053029Z",
+      "status": "SUMMARY_UNAVAILABLE",
+      "length": 9623,
+      "sha256": "d989c987813b41047bc4d800fd67406258b42d5669656100dc210c4205ea08cf",
+      "content_record_id": "3f854deb-764b-5b3a-9b1d-3d8e70d93c2d"
+    },
+    {
+      "case_id": "L1-compact-mod-not-hooks",
+      "session_id": "4fb6b47e-ec68-4a15-ab71-0de49ccbcec6",
+      "post_at": "2026-10-15T04:01:16.352869Z",
+      "status": "SUMMARY_UNAVAILABLE",
+      "length": 10171,
+      "sha256": "bed53ed4ddf5d0c6ca468434baccdcb57cd890e6dd2fb9b27b5160829cfdb7b8",
+      "content_record_id": "b9712b24-2c57-5c37-8471-d91033e39a5a"
+    },
+    {
+      "case_id": "L2-merge-queue-reasked",
+      "session_id": "4fb6b47e-ec68-4a15-ab71-0de49ccbcec6",
+      "post_at": "2026-10-13T23:29:14.912773Z",
+      "status": "SUMMARY_UNAVAILABLE",
+      "length": 23742,
+      "sha256": "6b58992eee31487ce021cd883a9110e9dd86aa76ea11ab75a99425cc78f67126",
+      "content_record_id": "54b4cc51-51eb-5672-8f48-b2ca14515ba2"
+    },
+    {
+      "case_id": "L6-foreground-two-boundaries",
+      "session_id": "ae703c28-ae76-508a-947b-078e4114d281",
+      "post_at": "2026-10-10T03:46:51.796001Z",
+      "status": "SUMMARY_UNAVAILABLE",
+      "length": 23791,
+      "sha256": "cecbdb7fa449d14fc54c3c47e1efae82a44de02e69374d2afaff798767c6f7d6",
+      "content_record_id": "a5ebc550-11c5-544d-bbdb-90b98df075c6"
+    },
+    {
+      "case_id": "L6-foreground-two-boundaries",
+      "session_id": "ae703c28-ae76-508a-947b-078e4114d281",
+      "post_at": "2026-10-10T22:34:44.379222Z",
+      "status": "SUMMARY_UNAVAILABLE",
+      "length": 26851,
+      "sha256": "676ec2a60ba9c6f25d42c767b872ab46b9fbe6297cfcb87f4b8c9a8f4c406d9c",
+      "content_record_id": "515f542d-50d9-51ad-9288-8066cdbda3e5"
+    }
+  ],
+  "auto_installation": null,
+  "quality_passed": false,
+  "limitations": [
+    "Historical native bytes absent from lab bundle and original transcripts absent on h201.",
+    "Carry remains over budget without authoritative review coverage.",
+    "Required work-state unresolved.",
+    "No auto binding or installed projection proof.",
+    "No 17-session boundary census.",
+    "No freshly captured sample: sandbox denied the transcript/setup writes; no bypass attempted.",
+    "No new emitted hook or compact row was observed after runtime recovery; projection replayed older rows.",
+    "No runtime restart, deployment, production operation or ticket write performed."
+  ],
+  "prior_run": {
+    "run_id": "ta9-finish-20261025T190104Z",
+    "source_commit": "a8545d6eff906c1f6d27b4faff6787ac070cdd66",
+    "pull_request": 4422,
+    "q1": "0/3",
+    "q2": "unscorable"
+  },
+  "capture_readback": {
+    "checked_at": "2026-10-25T21:01:16.289294+00:00",
+    "lane": "dev",
+    "queries": [
+      {
+        "name": "latest_hook",
+        "rows": [
+          {
+            "event_id": "f0e1e4e2-cf50-5b9c-8562-21f5865dc4ed",
+            "session_id": "a7429f89-24a5-4de2-8c18-2480bee50c4d",
+            "hook_event_name": "PreToolUse",
+            "emitted_at": "2026-10-25 18:31:25.489836+00:00",
+            "ingested_at": "2026-10-25 20:56:59.916056+00:00"
+          }
+        ]
+      },
+      {
+        "name": "latest_content",
+        "rows": [
+          {
+            "event_id": "76ac92b992eb4883d41cbb8d645343c9dcd899fc888f6352cfe6c484ed7d8072",
+            "session_id": "5ca8a10c-cce9-4412-84ad-f3187fa870ea",
+            "content_kind": "tool_response",
+            "emitted_at": "2026-10-25 19:08:37.481226+00:00",
+            "ingested_at": "2026-10-25 20:56:59.905230+00:00"
+          }
+        ]
+      },
+      {
+        "name": "latest_compact",
+        "rows": [
+          {
+            "event_id": "4f7efd58de58778bd2bb34bccba052589b3f89450adb0da905aaeb2025da78d9",
+            "session_id": "3f19c07d-e41f-4369-8d0c-72cac530c84a",
+            "emitted_at": "2026-10-25 01:49:00.369183+00:00",
+            "ingested_at": "2026-10-25 01:49:00.613239+00:00"
+          }
+        ]
+      },
+      {
+        "name": "fresh_probe_hook",
+        "rows": []
+      }
+    ]
+  },
+  "claim_readback": {
+    "source": "dev work_ledger_rows projection",
+    "timestamp": "2026-10-25T20:49:27Z",
+    "request_id": "c97c3739-47bb-4aa3-83ce-832d4e012f6e"
+  },
+  "fresh_sample_attempt": {
+    "session_id": "66967517-dae1-4878-8126-8c1b4e320b51",
+    "second_session_id": "3945d894-a2d1-4ed1-a3d6-619001282a42",
+    "producer_step": "Claude transcript writer and SessionStart setup, before PostCompact compact_items/capture",
+    "failure": "EPERM creating ~/.claude/projects/<project> and ~/.claude/session-env/<session>; transcript writer degraded at exit",
+    "resume_result": "No conversation found; no compact producer invocation or fresh capture can be claimed",
+    "sandbox_unchanged": true
+  },
+  "runtime_observation": {
+    "checked_at": "2026-10-25T20:58:26Z",
+    "scope": "dev compose project omnibase-infra only",
+    "runtime_state": "running; reported healthy",
+    "broker_state": "restarted around 20:57Z; coordinator failures in runtime and projection writer logs",
+    "runtime_error": "GroupCoordinatorNotAvailableError",
+    "projection_writer_error": "NodeNotReadyError / connection refused on compose broker listener",
+    "ledger_cli_error": "TopicAuthorizationFailedError on work-ledger-query-completed",
+    "inference": "Recent ingested_at on old emitted_at rows demonstrates backlog ingestion, not fresh hook collection."
+  },
+  "validation": {
+    "focused_tests": "210 passed in 3.26s",
+    "strict_mypy": "Success: no issues found in 5 source files",
+    "source_commit_carried": "a8545d6eff906c1f6d27b4faff6787ac070cdd66",
+    "prior_failing_first": {
+      "result": "10 failed, 4 passed, 149 deselected",
+      "selection": "missing_answers_cannot_pass_quality_comparison or native_summary or resolvable_id_without or pinned_quotes_apply or pinned_quote_after"
+    }
+  }
+}

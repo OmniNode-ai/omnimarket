@@ -64,10 +64,12 @@ _OID = re.compile(r"^[0-9a-f]{40}$")
 # clone's default branch.
 _PR_BASES: Final[tuple[str, ...]] = ("dev", "main")
 LS_REMOTE_TIMEOUT_S: Final[int] = 120
-# The facts a pr-view answer carries; the watcher's PR body is left out (it can
+# The facts a pr-view answer carries (``node_id`` is the GraphQL node id the
+# merge-queue enqueue mutation takes); the watcher's PR body is left out (it can
 # be 64 KiB and `onex scm pr-view --source bus` returns it through pr_text).
 _VIEW_FACTS: Final[tuple[str, ...]] = (
     "number",
+    "node_id",
     "title",
     "state",
     "draft",
@@ -117,12 +119,15 @@ def default_clone_path(repo: str) -> Path | None:
 
     A declared root is the only root read: one that holds no clone of the repo
     answers None and never falls through. A host that declares none resolves
-    the clone under ``$OMNI_HOME``, which the command's help does not name.
+    the clone under ``$OMNI_HOME`` or its sibling registry checkout.
     """
     root = os.environ.get(CLONE_ROOT_ENV) or os.environ.get("OMNI_HOME")
     if not root:
         return None
-    clone = Path(root) / repo.split("/", 1)[1]
+    name = repo.split("/", 1)[1]
+    clone = Path(root) / name
+    if not (clone / ".git").exists() and not os.environ.get(CLONE_ROOT_ENV):
+        clone = Path(root).parent / name
     return clone if (clone / ".git").exists() else None
 
 
@@ -224,6 +229,7 @@ class HandlerScmLocalState:
             result.update(
                 {
                     "state": pr_state,
+                    "node_id": facts.get("node_id"),
                     "head_sha": facts.get("head_sha"),
                     "draft": facts.get("draft"),
                     "armed": facts.get("armed"),
@@ -269,6 +275,7 @@ class HandlerScmLocalState:
             prs.append(
                 {
                     "number": facts.get("number"),
+                    "node_id": facts.get("node_id"),
                     "title": facts.get("title"),
                     "draft": facts.get("draft"),
                     "head_sha": facts.get("head_sha"),

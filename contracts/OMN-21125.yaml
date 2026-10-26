@@ -3,7 +3,7 @@ schema_version: "1.0.0"
 ticket_id: "OMN-21125"
 title: "Context selection policy: POLICY_SCOPE_RULE, rule_ref invariant, validated model ranking"
 summary: >-
-  The selection-policy half of plan task TC.2. node_context_selection_policy_compute stamps a candidate admitted by a profile-declared rule POLICY_SCOPE_RULE with a rule_ref and a null score; ModelFactorSelection requires rule_ref and a null score for POLICY_SCOPE_RULE and refuses rule_ref on every other reason; a model ranking of optional candidate ids is accepted only as a subset of the eligible optional ids, otherwise ignored and counted in selection_rejected; optional candidates fill by rank, then precedence order is restored; the selection is identical under every permutation of the candidate input. The builder half (content dedup, excluded_by_budget) is not in this change.
+  The selection-policy half of plan task TC.2. node_context_selection_policy_compute stamps a candidate admitted by a profile-declared rule POLICY_SCOPE_RULE with a rule_ref and a null score; ModelFactorSelection requires rule_ref and a null score for POLICY_SCOPE_RULE and refuses rule_ref on every other reason; a model ranking of optional candidate ids is accepted only as a subset of the eligible optional ids, otherwise ignored and counted in selection_rejected; optional candidates fill by rank, then precedence order is restored; the selection is identical under every permutation of the candidate input. The builder half: node_context_pack_builder_compute dedups artifacts by a sha256 of normalised content, keeps the higher-authority copy and lists each removed artifact in dropped_duplicates; optional artifacts that do not fit the budget are skipped, scanning continues, and the skipped ones are listed in excluded_by_budget in reverse precedence; required artifacts over budget still fail TOKEN_BUDGET_EXCEEDED and the error names them; node_context_roi_runner still reports budget_fail for an arm that does not fit.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -19,10 +19,22 @@ requirements:
         statement: "AC3: a model ranking naming an id outside the eligible optional set is ignored, the deterministic order is used, and the result counts selection_rejected -- falsifier: uv run pytest tests/nodes/node_context_selection_policy_compute/test_scope_rule_and_model_ranking.py -q -k 'fills_by_rank or outside_id or required_id or never_drops'"
       - id: "AC4"
         statement: "AC4: the selection is identical under every permutation of the candidate input order -- falsifier: uv run pytest tests/nodes/node_context_selection_policy_compute/test_scope_rule_and_model_ranking.py -q -k every_input_permutation"
+  - id: "req-builder-dedup-and-budget"
+    statement: "The context-pack builder dedups artifacts by normalised content and excludes optional artifacts that do not fit the budget, listing both."
+    acceptance:
+      - id: "AC5"
+        statement: "AC5 (ticket AC2): a required artifact never appears in excluded_by_budget; optional artifacts that do not fit are listed there in reverse precedence and the pack builds; a required set over budget still fails TOKEN_BUDGET_EXCEEDED and names its items -- falsifier: uv run pytest tests/nodes/node_context_pack_builder_compute/test_builder_dedup_and_budget_omn21125.py -q -n 0 -k TestOptionalExclusionByBudget"
+      - id: "AC6"
+        statement: "AC6 (ticket AC3 and AC13): two artifacts with equal normalised content yield one chunk and one dropped_duplicates entry, and when the two copies differ in tier the higher-authority copy is kept -- falsifier: uv run pytest tests/nodes/node_context_pack_builder_compute/test_builder_dedup_and_budget_omn21125.py -q -n 0 -k TestContentDedup"
+      - id: "AC7"
+        statement: "AC7 (ticket AC1): node_context_roi_runner still reports budget_fail for an arm whose factors do not fit, and its tests pass unchanged -- falsifier: uv run pytest tests/nodes/node_context_roi_runner/test_context_roi_runner_emits_runtime_observed_rows.py tests/nodes/node_context_roi_runner/test_dispatch_envelope_unwrap.py tests/nodes/node_context_roi_runner/test_extract_row_envelope_unwrap.py tests/nodes/node_context_roi_runner/test_failed_terminal_routing.py tests/nodes/node_context_roi_runner/test_golden_chain_context_roi_runner.py tests/nodes/node_context_roi_runner/test_handle_async_non_blocking.py tests/nodes/node_context_roi_runner/test_handler_context_roi_runner.py tests/nodes/node_context_roi_runner/test_register_before_publish.py tests/nodes/node_context_pack_builder_compute/test_builder_dedup_and_budget_omn21125.py -q -k 'roi_runner or context_roi'"
 evidence_requirements:
   - kind: "tests"
     description: "Selection-policy extensions for OMN-21125."
     command: "uv run pytest tests/nodes/node_context_selection_policy_compute/test_scope_rule_and_model_ranking.py tests/nodes/node_context_selection_policy_compute/test_handler_context_selection_policy.py tests/test_golden_chain_context_selection_policy.py -q -n 0"
+  - kind: "tests"
+    description: "Context-pack builder dedup and budget exclusion for OMN-21125."
+    command: "uv run pytest tests/nodes/node_context_pack_builder_compute/test_builder_dedup_and_budget_omn21125.py tests/nodes/node_context_pack_builder_compute/test_guidance_section_parser.py tests/nodes/node_context_pack_builder_compute/test_handler_context_pack_builder.py tests/nodes/node_context_roi_runner/test_context_roi_runner_emits_runtime_observed_rows.py tests/nodes/node_context_roi_runner/test_dispatch_envelope_unwrap.py tests/nodes/node_context_roi_runner/test_extract_row_envelope_unwrap.py tests/nodes/node_context_roi_runner/test_failed_terminal_routing.py tests/nodes/node_context_roi_runner/test_golden_chain_context_roi_runner.py tests/nodes/node_context_roi_runner/test_handle_async_non_blocking.py tests/nodes/node_context_roi_runner/test_handler_context_roi_runner.py tests/nodes/node_context_roi_runner/test_register_before_publish.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -67,3 +79,48 @@ dod_evidence:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_context_selection_policy_compute/models/model_selection_result.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'POLICY_SCOPE_RULE selection requires a rule_ref'"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21125-ac5-budget-exclusion"
+    description: "Optional artifacts that do not fit are skipped with scanning continuing and are listed in reverse precedence; required artifacts are never excluded; a required set over budget fails TOKEN_BUDGET_EXCEEDED naming its items. The tests fail at the merge base, whose builder fails any over-budget input."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_builder_compute/test_builder_dedup_and_budget_omn21125.py -q -n 0 -k TestOptionalExclusionByBudget"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn21125-ac6-content-dedup"
+    description: "Equal normalised content yields one chunk and one dropped_duplicates entry; the required copy survives an optional copy placed ahead of it in precedence; a dropped duplicate is not charged to the budget. The tests fail at the merge base, whose builder refuses duplicates."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_pack_builder_compute/test_builder_dedup_and_budget_omn21125.py -q -n 0 -k TestContentDedup"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn21125-ac7-roi-runner-unchanged"
+    description: "The ROI runner's tests pass and an arm that does not fit is still budget_fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_roi_runner/test_context_roi_runner_emits_runtime_observed_rows.py tests/nodes/node_context_roi_runner/test_dispatch_envelope_unwrap.py tests/nodes/node_context_roi_runner/test_extract_row_envelope_unwrap.py tests/nodes/node_context_roi_runner/test_failed_terminal_routing.py tests/nodes/node_context_roi_runner/test_golden_chain_context_roi_runner.py tests/nodes/node_context_roi_runner/test_handle_async_non_blocking.py tests/nodes/node_context_roi_runner/test_handler_context_roi_runner.py tests/nodes/node_context_roi_runner/test_register_before_publish.py tests/nodes/node_context_pack_builder_compute/test_builder_dedup_and_budget_omn21125.py -q -k 'roi_runner or context_roi'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
+  - id: "dod-omn21125-deploy-probe-builder"
+    description: "Deploy probe. The checkout's own environment builds a pack with a duplicate and an optional artifact over budget and asserts one dropped duplicate and one budget exclusion. It fails at the merge base, whose builder refuses both inputs. The hosted runner can run it inside the check budget; no lab route is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run --frozen python -c '
+          from omnibase_core.enums.enum_context_factor import EnumContextFactor as F
+          from omnibase_core.enums.enum_context_pack_provenance import EnumContextPackProvenance as P
+          from omnimarket.nodes.node_context_pack_builder_compute.handlers.handler_context_pack_builder import HandlerContextPackBuilder
+          from omnimarket.pack.model_context_pack_artifact import ModelContextPackArtifact as A
+          from omnimarket.pack.model_context_pack_builder_request import ModelContextPackBuilderRequest as R
+          from omnimarket.pack.model_context_profile import ModelContextProfile as Pr
+          def a(f, c, t, h):
+              return A(factor=f, content=c, token_estimate=t, provenance=P.GENERATED, source_artifact_hash=h, source_contract_hash="c")
+          prof = Pr(model_id="m", required_factors=(F.GOLDEN_CHAIN,), optional_factors=(F.EXEMPLAR,), factor_precedence=(F.GOLDEN_CHAIN, F.EXEMPLAR), token_budget=100, profile_version="v")
+          r = HandlerContextPackBuilder().handle(R(contract_hash="c", generated_at="2026-10-26T07:00:00Z", profile=prof, artifacts=(a(F.GOLDEN_CHAIN, "x", 60, "g1"), a(F.GOLDEN_CHAIN, "x", 60, "g2"), a(F.EXEMPLAR, "y", 50, "e1"))))
+          assert r.status.value == "ok", r.errors
+          assert [d.source_artifact_hash for d in r.dropped_duplicates] == ["g2"], r.dropped_duplicates
+          assert [e.source_artifact_hash for e in r.excluded_by_budget] == ["e1"], r.excluded_by_budget
+          print("dedup and budget exclusion present")'

@@ -434,7 +434,7 @@ delegation_adapters:
   allowed_owners: [OmniNode-ai]
   call_sites:
     lab_job:
-      targets: [codex, claude-code, claude-glm]
+      targets: [codex, claude-code, claude-glm, antigravity]
       timeout_seconds: 4500
       agents: {}
   model_registry: {}

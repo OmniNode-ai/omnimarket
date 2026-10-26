@@ -64,6 +64,12 @@ outputs:
     type: array
   warnings:
     type: array
+  dropped_duplicates:
+    type: array
+    description: Artifacts removed because their normalised content equals a kept artifact's (OMN-21125).
+  excluded_by_budget:
+    type: array
+    description: Optional artifacts left out because they did not fit the token budget, lowest precedence first (OMN-21125).
 
 terminal_event: onex.evt.omnimarket.context-pack-build-completed.v1
 

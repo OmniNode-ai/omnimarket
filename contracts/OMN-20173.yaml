@@ -1,0 +1,79 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-20173"
+title: "Antigravity (agy -p) is a delegation target the lab calls directly, on the host's one login"
+summary: >
+  The delegation effect node gains an antigravity coding-session target beside
+  codex, claude-code and claude-glm. It runs one agy -p prompt in an exact-commit
+  worktree and reads the printed answer. It never forwards a Gemini, Google or ADC
+  key, takes no account or profile selection, and answers a missing binary, a
+  logged-out host, a call-site credential entry or an oversized prompt with a typed
+  antigravity-refused detail. The harness invocation check watches agy, and
+  kind=experiment rows accept antigravity as a measured engine that is never placed
+  on the remote-lane ladder.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn20173-agy-target"
+    statement: "agy -p runs as a delegation target on the host's one signed-in login."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: an antigravity delegation request runs agy -p with one prompt in an exact-commit worktree, reads the printed answer as the result, and passes no key, ADC variable, account or profile selection"
+      - id: "AC2"
+        statement: "AC2: a missing agy binary, a logged-out agy, a call-site credential entry and an oversized prompt each end as a failed receipt whose detail is antigravity-refused with the cause, never a run on an API key"
+      - id: "AC3"
+        statement: "AC3: the harness invocation check watches the agy CLI, and kind=experiment rows record antigravity as a measured engine while the remote-lane ladder is unchanged"
+evidence_requirements:
+  - kind: "tests"
+    description: "Antigravity target, harness policy and experiment row tests pass"
+    command: "uv run pytest tests/unit/nodes/node_llm_delegation_call_effect/test_antigravity_target.py tests/unit/nodes/node_llm_delegation_call_effect/test_delegation_targets.py tests/nodes/node_harness_invocation_check_effect tests/nodes/node_remote_lane_compute -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20173-ac1-run-and-read"
+    description: "A fake agy binary on PATH receives the prompt as its -p value and the answer it prints comes back as the completed result, with every key and ADC variable stripped from its environment. Fails at the merge base, which has no antigravity target."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_llm_delegation_call_effect/test_antigravity_target.py -q --no-cov -k 'argv or environment or reads_the_printed_answer'"
+        cwd: "."
+  - id: "dod-omn20173-ac2-typed-refusals"
+    description: "Missing binary, logged-out agy with keys set, call-site secret_env and a 200000-character prompt each return status failed with detail antigravity-refused and the cause."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_llm_delegation_call_effect/test_antigravity_target.py -q --no-cov -k 'missing_binary or logged_out or credentials_are_refused or oversized'"
+        cwd: "."
+  - id: "dod-omn20173-ac3-policy-and-rows"
+    description: "The harness policy lists agy, the lab_job call site declares the antigravity target, and an antigravity experiment row round-trips through the ledger text while next_engine stays ladder-only."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_llm_delegation_call_effect/test_antigravity_target.py tests/nodes/node_remote_lane_compute/test_engine_experiment_rows.py -q --no-cov -k 'measured_engine or harness_policy or experiment'"
+        cwd: "."
+  - id: "dod-omn20173-deploy-probe"
+    description: "Hosted-runner deploy probe: dispatch the packaged node_harness_invocation_check_effect through the in-process ONEX runtime over a scratch tree whose one script starts agy outside the delegation handler directory, and require a typed receipt that refuses exactly that agy site. The merge base's policy lists only codex and claude, so its receipt refuses nothing and the assertion fails. A second check builds the antigravity argv from the installed package with the prompt after -p and no permission bypass. Needs no agy install, login, credential, broker or lab route. This checks the packaged nodes at the evaluated checkout, not a production rollout."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+          mkdir -p "$probe_dir/repo/scripts";
+          printf '%s\n' '#!/usr/bin/env bash' 'agy -p "summarize" --output-format text' > "$probe_dir/repo/scripts/spawn_agy.sh";
+          printf '%s' "{\"repo_root\": \"$probe_dir/repo\"}" > "$probe_dir/input.json";
+          env -u PYTHONPATH ONEX_LANE=omn20173-deploy-probe "$runtime_bin/onex" node node_harness_invocation_check_effect --input "$probe_dir/input.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --emit-socket "$probe_dir/no-daemon.sock" --omnibase-path "$PWD" > "$probe_dir/receipt.json" || true;
+          "$runtime_bin/python" -c 'import json, sys; r = json.load(open(sys.argv[1]))["result"]; assert r["admitted"] is False and r["exit_code"] != 0 and [s["target"] for s in r["refused"]] == ["agy"] and r["refused"][0]["path"] == "scripts/spawn_agy.sh", r; print("agy spawn refused", r["refused"])' "$probe_dir/receipt.json"
+        cwd: "."
+      - check_type: "command"
+        check_value: "uv run --locked python -c 'from uuid import uuid4; from omnimarket.models.delegation.model_delegation_target import ModelDelegationTargetRequest as R; from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_delegation_target import HandlerAntigravityArguments as A; r=R(request_id=uuid4(), target=\"antigravity\", brief=\"ping\", call_site=\"lab_job\", repo=\"OmniNode-ai/omnimarket\", commit_sha=\"a\"*40); a=A().argv(r, model=\"\"); assert a[:3]==[\"agy\",\"-p\",\"ping\"] and \"--dangerously-skip-permissions\" not in a, a; print(\"agy-argv ok\")'"
+        cwd: "."

@@ -10,7 +10,8 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 ENGINE_LADDER: tuple[str, ...] = ("code-edit", "glm", "codex", "sonnet", "opus")
-HARNESS_EXPERIMENT_ENGINES: tuple[str, ...] = ("local-agent", "antigravity")
+MEASURED_ONLY_ENGINES: tuple[str, ...] = ("antigravity",)
+HARNESS_EXPERIMENT_ENGINES: tuple[str, ...] = ("local-agent", *MEASURED_ONLY_ENGINES)
 CLAUDE_RUNGS = ("sonnet", "opus")
 LOW_RISK_CLASSES = ("doc", "test", "lint", "small-fix")
 ESCALATING_OUTCOMES = ("failed", "blocked-own-work", "checks-red")

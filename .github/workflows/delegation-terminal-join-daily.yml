@@ -27,6 +27,8 @@
 # RUNNER: pinned literally for the same reason as the delegation nightly
 # (scripts/ci/check_lane_job_placement.py): the job needs a socket to the lab
 # lane broker, which only the self-hosted lab runners have.
+# Requiring arch-amd64 keeps it on the LAN amd64 pools and excludes the off-LAN
+# h203-light runners that joined omnibase-ci on 2026-10-24.
 
 name: Delegation terminal join (daily)
 
@@ -55,7 +57,7 @@ concurrency:
 jobs:
   terminal-join:
     name: Delegation terminal join (read-only)
-    runs-on: [self-hosted, omnibase-ci]
+    runs-on: [self-hosted, omnibase-ci, arch-amd64]
     timeout-minutes: 15
     env:
       # The lane-declared SASL principal (OMN-18012). The overlay declares the

@@ -211,6 +211,11 @@ requirements:
     acceptance:
       - id: "AC39"
         statement: "AC39: translate_chat_request sets provider_request_options thinking {type: disabled} for enable_thinking false and the native payload carries it; absent, true, non-bool and non-mapping values send no thinking key; the dry run shows it -- falsifier: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway.py -q -k 'reasoning_off or reasoning_values' fails with the handler at the merge base"
+  - id: "req-lane-bound-jobs-stay-on-lan-runners"
+    statement: "The delegation workflows' lab-bound jobs (delegation regression nightly golden-tasks, terminal-join daily, rung-eval) require the arch-amd64 label beside self-hosted and omnibase-ci, so an off-LAN h203-light runner, which joined omnibase-ci on 2026-10-24 and lacks arch-amd64, can no longer take them; nightly run 40288891742 ran on h203-light-1, reached neither the lane bus nor its Postgres, and turned delegation-health-check / Delegation Health Check red on every runtime PR."
+    acceptance:
+      - id: "AC40"
+        statement: "AC40: every LANE_BOUND_JOBS job pins [self-hosted, omnibase-ci, arch-amd64] in its workflow, the h203-light label set does not satisfy any of them while the LAN amd64 label set does, and check_lane_job_placement.py passes -- falsifier: uv run pytest tests/test_delegation_nightly_placement.py -q fails at the merge base, where the nightly pins [self-hosted, omnibase-ci]"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -894,4 +899,19 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           uv run python -c 'from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import translate_chat_request as t; from omnimarket.nodes.node_llm_delegation_call_effect.handlers.anthropic_messages import build_messages_payload as b; p={"messages":[{"role":"system","content":"s"},{"role":"user","content":"u"}],"max_tokens":64,"chat_template_kwargs":{"enable_thinking":False}}; r=t(p,model="claude-sonnet-5-5",endpoint_url="https://provider.invalid/v1/messages",secret_ref="ref",timeout_seconds=30.0); assert b(r)["thinking"] == {"type":"disabled"}, b(r); p.pop("chat_template_kwargs"); assert "thinking" not in b(t(p,model="claude-sonnet-5-5",endpoint_url="https://provider.invalid/v1/messages",secret_ref="ref",timeout_seconds=30.0))'
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19998-lane-bound-jobs-lan-runner"
+    description: "Every lane-bound delegation job pins arch-amd64, which the off-LAN h203-light runners lack. The nightly label test fails at the merge base, where the nightly pins [self-hosted, omnibase-ci]."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_delegation_nightly_placement.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC40"]
+  - id: "dod-omn19998-lane-bound-jobs-placement-probe"
+    description: "Hosted-runner readback runs the lane-bound placement checker over the checked-in workflows; it fails if any lane-bound job lacks arch-amd64."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/ci/check_lane_job_placement.py"
         cwd: "${OMNI_HOME}/omnimarket"
