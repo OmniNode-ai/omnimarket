@@ -20,6 +20,13 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from omnimarket.handlers.rules_lane_requirements import (
+    claude_required as claude_required,
+)
+from omnimarket.handlers.rules_lane_requirements import (
+    declarations as declarations,
+)
+
 from ..models.model_lane_engine_failover import (
     ModelLaneEngineFailoverRequest,
     ModelLaneEngineFailoverResult,
@@ -55,33 +62,6 @@ def parse_route(brief: str) -> dict[str, str] | None:
             tok.partition("=") for tok in found.group(1).split() if "=" in tok
         )
     }
-
-
-def declarations(brief: str) -> list[str]:
-    """Only column-zero metadata outside fenced quotations declares an engine requirement."""
-    out, fence = [], None
-    for line in brief.splitlines():
-        if line.startswith(("```", "~~~")):
-            marker = line[:3]
-            fence = None if fence == marker else marker if fence is None else fence
-        elif fence is None:
-            out.append(line)
-    return out
-
-
-def claude_required(brief: str) -> bool:
-    for line in declarations(brief):
-        if re.fullmatch(
-            r"Required (?:engine|model):\s*(?:claude(?:[-_](?:opus|sonnet))?|opus|sonnet)\s*",
-            line,
-            re.IGNORECASE,
-        ):
-            return True
-        if line.startswith("ROUTE:") and re.search(
-            r"\b(?:pinned|required)=true\b|\bfallback=none\b", line
-        ):
-            return True
-    return False
 
 
 def engine_readings(readings: list[Any]) -> list[Any]:

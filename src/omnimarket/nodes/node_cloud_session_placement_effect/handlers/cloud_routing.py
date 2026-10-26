@@ -4,9 +4,11 @@
 
 from collections.abc import Collection, Mapping, Sequence
 
+from omnimarket.handlers.rules_background_lane_models import OPUS_REFUSAL, is_opus
+
 from .cloud_session import lane_kind
 
-CLAUDE_MODELS = {"sonnet": "claude_sonnet", "opus": "claude_opus"}
+CLAUDE_MODELS = {"sonnet": "claude_sonnet"}
 CLOUD_LANE_KINDS = frozenset(
     {"conflict-fix", "red-test-fix", "small-code", "plan-draft"}
 )
@@ -27,6 +29,8 @@ def cloud_refusal(
     """Why this lane may not run as a cloud session, or None when it may."""
     if placement == "lab":
         return "--placement lab"
+    if is_opus(model):
+        return OPUS_REFUSAL
     if model not in models:
         return f"--model {model} is not a Claude Code lane"
     if not repo:

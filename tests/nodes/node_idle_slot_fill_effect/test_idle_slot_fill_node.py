@@ -89,8 +89,8 @@ def fill(**changes) -> models.ModelIdleSlotFillResult:
 def test_free_slots_are_filled_from_the_tick_lines_in_pillar_order():
     result = fill()
     assert [(s["kind"], s["key"], s["model"]) for s in result.sends] == [
-        ("process-fix", "repo-private-data#812", "opus"),
-        ("cause-red", "repo-status:omnimarket", "opus"),
+        ("process-fix", "repo-private-data#812", "sonnet"),
+        ("cause-red", "repo-status:omnimarket", "sonnet"),
     ]
     first, second = result.sends
     assert first["lane"] == "fill-pf-drive-repo-private-data-812-20261018T2130Z"
@@ -133,7 +133,7 @@ def test_a_host_tick_repair_goes_to_the_launching_host_only():
     repair, *other = result.sends
     assert repair["key"] == "repair:host-tick:minutes-watch"
     assert repair["host"] == "host-b"
-    assert repair["model"] == "opus"
+    assert repair["model"] == "sonnet"
     lines = repair["brief"].splitlines()
     parent = next(i for i, line in enumerate(lines) if line.startswith("Parent: "))
     assert lines[parent + 1] == "Required host: host-b"
@@ -145,7 +145,7 @@ def test_a_host_tick_repair_goes_to_the_launching_host_only():
         "repo-private-data#812",
         "repo-status:omnimarket",
     ]
-    assert all("host" not in s and s["model"] == "opus" for s in other)
+    assert all("host" not in s and s["model"] == "sonnet" for s in other)
     assert result.claude_free == 3
     assert result.idle_after == 0
     assert result.skipped == []
@@ -169,7 +169,7 @@ def test_a_host_tick_repair_waits_for_a_free_launching_host_slot(slots, free, er
         "repo-private-data#812",
         "repo-status:omnimarket",
     ]
-    assert all("host" not in s and s["model"] == "opus" for s in result.sends)
+    assert all("host" not in s and s["model"] == "sonnet" for s in result.sends)
     assert result.skipped == [
         {
             "key": "repair:host-tick:minutes-watch",
@@ -207,7 +207,7 @@ def test_host_tick_repairs_take_no_more_than_the_launching_host_s_and_the_pool_s
     )
     repairs = [s for s in result.sends if s["kind"] == "lab-repair"]
     assert len(repairs) == (1 if sweep == 0 else 0)
-    assert all(s["host"] == "host-b" and s["model"] == "opus" for s in repairs)
+    assert all(s["host"] == "host-b" and s["model"] == "sonnet" for s in repairs)
     assert [s["model"] for s in result.sends if s["kind"] != "lab-repair"] == [
         "codex",
         "codex",
@@ -235,7 +235,7 @@ def test_codex_lanes_go_to_codex_only_hosts_after_claude_slots():
         ],
     )
     assert [(s["key"], s["model"]) for s in result.sends] == [
-        ("repo-private-data#812", "opus"),
+        ("repo-private-data#812", "sonnet"),
         ("repo-status:omnimarket", "codex"),
         ("exp:cache-warm", "codex"),
     ]
@@ -1649,3 +1649,158 @@ def test_dropped_items_are_not_sent_and_recording_is_read_only_safe_and_failure_
             f[0] == "unknown" and f[1] == "lab-fill-dropped" and "not writable" in f[2]
             for f in found
         )
+
+
+def test_no_opus_claude_fill_brief_routes_sonnet():
+    result = fill()
+    assert result.sends
+    for send in result.sends:
+        assert send["model"] == "sonnet"
+        assert "ROUTE: model=sonnet effort=high" in send["brief"]
+        assert "model=opus" not in send["brief"]
+
+
+@pytest.mark.parametrize("required", ["opus", "claude-opus", "claude_opus", " OPUS "])
+def test_no_opus_required_engine_is_skipped_with_ruling(required):
+    result = fill(
+        lines=headroom("host-a"),
+        backlog=[
+            {
+                "kind": "ticket",
+                "key": "opus-only",
+                "repo": "omnimarket",
+                "ticket": "OMN-21396",
+                "required_engine": required,
+            }
+        ],
+    )
+    assert result.sends == []
+    assert result.idle_after == 2
+    assert result.skipped[0]["key"] == "opus-only"
+    assert (
+        "RULING 2026-10-26T11:31:48Z lane=orchestrator-31d9" in result.skipped[0]["why"]
+    )
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "Required engine: opus",
+        "Required model: claude-opus",
+        "Required engine: claude_opus",
+    ],
+)
+def test_no_opus_brief_requirement_is_skipped_with_ruling(declaration):
+    result = fill(
+        lines=headroom("host-a"),
+        backlog=[
+            {
+                "kind": "ticket",
+                "key": "brief-opus",
+                "repo": "omnimarket",
+                "ticket": "OMN-21396",
+                "brief": declaration,
+            }
+        ],
+    )
+    assert result.sends == []
+    assert "RULING 2026-10-26T11:31:48Z" in result.skipped[0]["why"]
+
+
+def test_no_opus_skip_preserves_slot_for_the_next_item():
+    result = fill(
+        lines=headroom("host-a"),
+        hosts=[host("host-a", 1, 0)],
+        backlog=[
+            {
+                "kind": "ticket",
+                "key": "opus-only",
+                "ticket": "OMN-21396",
+                "required_engine": "opus",
+            },
+            {
+                "kind": "ticket",
+                "key": "claude-work",
+                "ticket": "OMN-21396",
+                "required_engine": "claude",
+            },
+        ],
+    )
+    assert [(s["key"], s["model"]) for s in result.sends] == [("claude-work", "sonnet")]
+    assert len(result.skipped) == 1
+    assert result.idle_after == 0
+
+
+@pytest.mark.parametrize(
+    "required", ["claude", "sonnet", "claude-sonnet", "claude_sonnet"]
+)
+def test_no_opus_claude_requirement_waits_instead_of_falling_to_codex(required):
+    result = fill(
+        lines=headroom("host-a"),
+        hosts=[host("host-a", 0, 1)],
+        backlog=[
+            {
+                "kind": "ticket",
+                "key": "claude-only",
+                "ticket": "OMN-21396",
+                "required_engine": required,
+            }
+        ],
+    )
+    assert result.sends == []
+    assert result.skipped == [
+        {"key": "claude-only", "why": "claude-required: waiting for Claude quota"}
+    ]
+    assert result.idle_after == 1
+
+
+@pytest.mark.parametrize("fence", ["```", "~~~"])
+def test_no_opus_quoted_requirement_is_not_a_pin(fence):
+    result = fill(
+        lines=headroom("host-a"),
+        backlog=[
+            {
+                "kind": "ticket",
+                "key": "quoted",
+                "ticket": "OMN-21396",
+                "brief": f"{fence}\nRequired engine: opus\n{fence}\nUse the active routing policy.",
+            }
+        ],
+    )
+    assert len(result.sends) == 1
+    assert result.sends[0]["model"] == "sonnet"
+    assert result.skipped == []
+
+
+def test_no_opus_lab_fill_runner_gets_sonnet_and_reports_opus_skip(tmp_path: Path):
+    src = sources(tmp_path, [], experiments=[])
+    (tmp_path / "backlog.json").write_text(
+        json.dumps(
+            {
+                "items": [
+                    {
+                        "kind": "ticket",
+                        "key": "opus-only",
+                        "ticket": "OMN-21396",
+                        "required_engine": "opus",
+                    },
+                    {
+                        "kind": "ticket",
+                        "key": "claude-work",
+                        "ticket": "OMN-21396",
+                        "required_engine": "claude",
+                    },
+                ]
+            }
+        )
+    )
+    found, lanes, calls = lab_fill(tmp_path, src)
+    assert len(lanes) == len(calls) == 1
+    call = calls[0]
+    assert call[call.index("--model") + 1] == "sonnet"
+    brief = Path(call[call.index("--brief") + 1]).read_text()
+    assert "ROUTE: model=sonnet effort=high" in brief
+    assert "Required engine: claude" in brief
+    missing = next(row for row in found if row[1] == "lab-fill-backlog")
+    assert "opus-only" in missing[2]
+    assert "RULING 2026-10-26T11:31:48Z lane=orchestrator-31d9" in missing[2]

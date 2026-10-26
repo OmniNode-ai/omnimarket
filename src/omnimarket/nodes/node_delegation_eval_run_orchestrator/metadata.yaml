@@ -1,6 +1,6 @@
 name: delegation_eval_run_orchestrator
-version: "1.0.0"
-description: "Replay one rater's labelled delegation items through the acceptance gate and report false passes per task class."
+version: "1.1.0"
+description: "Replay labelled model or harness trials with model and configuration identity, reporting false passes per task class."
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 capabilities:
   standalone: false

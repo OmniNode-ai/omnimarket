@@ -1,6 +1,6 @@
 ---
 name: projection_delegation_eval
-contract_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 1, patch: 0}
 node_type: reducer
 # OMN-17556: this projection writes a TENANT-domain table, so its handler
 # resolves the tenant_projection binding. That binding's credential is a
@@ -115,6 +115,9 @@ projection_api:
         - gate_version
         - rater_role
         - rubric_version
+        - harness
+        - model
+        - configuration
         - total_n
         - accepted_n
         - false_pass_count

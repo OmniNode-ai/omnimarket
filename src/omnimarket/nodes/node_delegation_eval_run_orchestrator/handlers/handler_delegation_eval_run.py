@@ -103,6 +103,10 @@ def eval_run_id(
     gate_version: str,
     class_rubric_version: str | None = None,
     generation_stability_sha: str | None = None,
+    *,
+    harness: str | None = None,
+    model: str | None = None,
+    configuration: str | None = None,
 ) -> UUID:
     """Stable uuid5, extended by the class rubric version for rubric runs and by
     the generation-stability digest for runs that carry repeated generations."""
@@ -111,6 +115,12 @@ def eval_run_id(
         name += f"\n{class_rubric_version}"
     if generation_stability_sha is not None:
         name += f"\ngeneration:{generation_stability_sha}"
+    if harness is not None:
+        name += "\n" + json.dumps(
+            {"harness": harness, "model": model, "configuration": configuration},
+            sort_keys=True,
+            separators=(",", ":"),
+        )
     return uuid5(EVAL_RUN_NAMESPACE, name)
 
 
@@ -207,6 +217,11 @@ class HandlerDelegationEvalRun:
         sha = label_set_sha256(
             items, rater_role=request.rater_role, rubric_version=request.rubric_version
         )
+        identity = {
+            "harness": request.harness,
+            "model": request.model,
+            "configuration": request.configuration,
+        }
         run_id = eval_run_id(
             request.manifest_id,
             sha,
@@ -214,8 +229,10 @@ class HandlerDelegationEvalRun:
             generation_stability_sha=generation_stability_sha256(
                 request.generation_stability
             ),
+            **identity,
         )
         common = {
+            **identity,
             "tenant_id": request.tenant_id,
             "eval_run_id": run_id,
             "manifest_id": request.manifest_id,
@@ -255,6 +272,7 @@ class HandlerDelegationEvalRun:
             request.gate_version,
             contract.rubric_version if rubric_classes else None,
             generation_stability_sha256(request.generation_stability),
+            **identity,
         )
         common["eval_run_id"] = run_id
         items = tuple(

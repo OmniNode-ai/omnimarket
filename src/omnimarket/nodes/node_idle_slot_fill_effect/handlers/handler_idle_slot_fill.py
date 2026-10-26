@@ -53,6 +53,15 @@ host tick not firing, a tick node that cannot run, a failed relaunch or fill dis
 nothing (no Agent,
 Workflow, lane skill or remote-lane runner call), is refused with the lines it read. A tick whose own ``lab-fill``
 line sent lanes into every free slot (``idle_after=0``) answers the headroom by itself.
+
+RULING 2026-10-26T11:31:48Z: Claude fills use Sonnet. Explicit Opus requirements
+are skipped with the ruling in the existing backlog report, without consuming a slot.
+
+OMN-21396: before selecting any candidate kind, the effect reads scope=fixer
+HOLDs from the declared ledger and its archives. Held work is reported with
+RULING 2026-10-26T17:22:56Z on lab-fill-dropped; an unread ledger blocks
+repository work. Generation being off or the stored backlog being full does
+not bypass the read. RELEASE and expiry share the landing controller's rule.
 """
 
 from __future__ import annotations
@@ -74,8 +83,13 @@ from pathlib import Path
 from typing import Any
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.handlers.rules_background_lane_models import OPUS_REFUSAL, is_opus
 from omnimarket.handlers.rules_lab_fill_tickets import plan_ticket_backlog
+from omnimarket.handlers.rules_lane_requirements import claude_required, declarations
+from omnimarket.handlers.work_ledger_fixer_holds import fixer_hold_reasons
+from omnimarket.handlers.work_ledger_text import split_ledger_rows
 from omnimarket.models.lab_fill import ModelLabFillTicketFacts
+from omnimarket.models.landing_ledger_row import ModelLandingLedgerRow
 from omnimarket.nodes.node_idle_slot_fill_effect import overlay
 from omnimarket.nodes.node_idle_slot_fill_effect.models import (
     ModelBacklogSources,
@@ -86,9 +100,6 @@ from omnimarket.nodes.node_idle_slot_fill_effect.models import (
     ModelLabFillRequest,
     ModelLabFillResult,
 )
-from omnimarket.nodes.node_lane_placement_recovery_effect.handlers.handler_lane_engine_failover import (
-    claude_required,
-)
 
 from .handler_ruling_recovery import HandlerRulingRecovery
 
@@ -98,7 +109,7 @@ TICKET_ID = re.compile(r"OMN-[0-9]+")
 TICKET_RULE = "omnimarket.handlers.rules_lab_fill_tickets.plan_ticket_backlog (omnimarket#4384, RULING 2026-10-20T10:45:21Z)"
 FACT_MAX_AGE = timedelta(hours=48)
 EXPERIMENT_RERUN_AFTER = timedelta(hours=24)
-CLAUDE_MODEL, CODEX_MODEL, EFFORT = "opus", "codex", "high"
+CLAUDE_MODEL, CODEX_MODEL, EFFORT = "sonnet", "codex", "high"
 GENERATED_KINDS = ("ticket", "readback", "experiment-design")
 DASHBOARD_RULING = "RULING 2026-10-01T10:53:36Z lane=dashboard-stayout (OMN-19969)"
 DASHBOARD_CRITERIA = frozenset({"C31", "C32"})
@@ -116,6 +127,7 @@ _DEV_RED = re.compile(
     r"(?!.*\| FIX: the controller owns it)"
 )
 DEV_RED_RULING = "RULING 2026-10-14T03:57:46Z lane=orchestrator-31d9 (OMN-20730)"
+RETIRED_RULING = "RULING 2026-10-26T17:22:56Z lane=orchestrator-31d9"
 
 BACKLOG_ORDER = ("ruling-relaunch", "m4-board-red", "experiment-design")
 _REPAIR = re.compile(
@@ -226,6 +238,58 @@ def _priority(kind: str, repo: str) -> str:
         and repo in overlay.mvp_repos()
     )
     return "mvp-landing" if mvp else "other"
+
+
+def read_fixer_holds(now: str, env: Mapping[str, str]) -> tuple[dict[str, str], str]:
+    """Read the declared ledger and its rolls, including HOLDs older than the claim window.
+
+    Unlike backlog generation, this read runs even when generation is off or the
+    stored backlog fills every slot. An unread ledger never means no HOLDs.
+    """
+    path = env.get("ONEX_LEDGER_PATH")
+    root = env.get("ONEX_REGISTRY_ROOT") or env.get("OMNI_HOME")
+    ledger = (
+        Path(path).expanduser()
+        if path
+        else (
+            Path(root).expanduser() / "docs/tracking/ROLLING_WORK_LEDGER.md"
+            if root
+            else None
+        )
+    )
+    if ledger is None:
+        return {}, "configure ONEX_LEDGER_PATH or a registry root before filling"
+    try:
+        paths = [
+            ledger,
+            *sorted((ledger.parent / "archive").glob("ROLLING_WORK_LEDGER*.md")),
+        ]
+        rows = []
+        for source in paths:
+            for text in split_ledger_rows(source.read_text(encoding="utf-8")):
+                stamp, rtype, _ = text.split(" | ", 2)
+                if rtype in {"HOLD", "RELEASE"}:
+                    rows.append(ModelLandingLedgerRow(ts=stamp, rtype=rtype, text=text))
+        clock = datetime.strptime(now, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+        return fixer_hold_reasons(sorted(rows, key=lambda row: row.ts), clock), ""
+    except (OSError, ValueError) as exc:
+        return {}, f"{ledger}: {type(exc).__name__}: {exc}"
+
+
+def fixer_hold_reason(item: Mapping[str, Any], holds: Mapping[str, str]) -> str | None:
+    """Apply the HOLD to all candidate kinds, including tickets lacking an explicit repo."""
+    repo = str(item.get("repo") or "").split("/", 1)[-1]
+    text = " ".join(str(item.get(key) or "") for key in ("title", "fact", "brief"))
+    for held, row in holds.items():
+        if (
+            (held == "all" and (repo or item.get("kind") != "lab-repair"))
+            or held == repo
+            or re.search(rf"(?<![\w-]){re.escape(held)}(?![\w-])", text, re.IGNORECASE)
+        ):
+            return (
+                f"fixer HOLD repo={held} scope=fixer; {RETIRED_RULING}; source: {row}"
+            )
+    return None
 
 
 def candidates(
@@ -638,13 +702,33 @@ class HandlerIdleSlotFill:
             request.lines,
             request.backlog,
             request.generated,
-            out_of_scope=request.out_of_scope,
         ):
             if item["kind"] == "ruling-relaunch" and not item["repo"]:
                 skipped.append(
                     {
                         "key": item["key"],
                         "why": "repo-unread: cannot judge the recovery item's repository scope",
+                    }
+                )
+                continue
+            if why := fixer_hold_reason(item, request.fixer_holds):
+                dropped.append({"key": item["key"], "why": why})
+                continue
+            if request.fixer_holds_unread and (
+                item["repo"] or item["kind"] != "lab-repair"
+            ):
+                dropped.append(
+                    {
+                        "key": item["key"],
+                        "why": f"fixer HOLD ledger unread: {request.fixer_holds_unread}; {RETIRED_RULING}",
+                    }
+                )
+                continue
+            if item["repo"] in request.out_of_scope:
+                dropped.append(
+                    {
+                        "key": item["key"],
+                        "why": f"out-of-scope: {request.out_of_scope[item['repo']]}",
                     }
                 )
                 continue
@@ -726,12 +810,24 @@ class HandlerIdleSlotFill:
                 )
                 continue
             pin = None
-            required = str(item.get("required_engine") or "").lower()
+            required = (
+                str(item.get("required_engine") or "").strip().lower().replace("_", "-")
+            )
+            opus_declaration = any(
+                is_opus(match[1])
+                for line in declarations(item.get("brief", ""))
+                if (
+                    match := re.fullmatch(
+                        r"Required (?:engine|model):\s*(.*?)\s*", line, re.IGNORECASE
+                    )
+                )
+            )
+            if is_opus(required) or opus_declaration:
+                skipped.append({"key": item["key"], "why": OPUS_REFUSAL})
+                continue
             pinned = required in (
                 "claude",
-                "opus",
                 "sonnet",
-                "claude-opus",
                 "claude-sonnet",
             ) or claude_required(item.get("brief", ""))
             if required == "codex":
@@ -1832,6 +1928,7 @@ class HandlerLabFill:
         completed.update(answered_items(backlog, sent, lanes=lanes))
         scope = request.out_of_scope
         scope_unread = scope if isinstance(scope, str) else ""
+        holds, holds_unread = read_fixer_holds(request.now, os.environ)
         decision = HandlerIdleSlotFill().handle(
             ModelIdleSlotFillRequest(
                 now=request.now,
@@ -1852,9 +1949,20 @@ class HandlerLabFill:
                 standing_tickets=standing,
                 watcher_state=watcher,
                 completed=completed,
+                fixer_holds=holds,
+                fixer_holds_unread=holds_unread,
             )
         )
         found: list[tuple[str, str, str, str]] = list(recovery.found)
+        if holds_unread:
+            found.append(
+                (
+                    "unknown",
+                    "lab-fill-fixer-holds",
+                    f"fixer HOLD ledger unread; repository work is not sent: {holds_unread}",
+                    "restore the declared ledger and its archive reads",
+                )
+            )
         if unread is not None:
             found.append(
                 (
@@ -1905,6 +2013,8 @@ class HandlerLabFill:
                         standing_tickets=standing,
                         watcher_state=watcher,
                         completed=completed,
+                        fixer_holds=holds,
+                        fixer_holds_unread=holds_unread,
                     )
                 )
         if decision.dropped:
