@@ -182,7 +182,6 @@ dod_evidence:
       The merge base lacks these statements. This verifies published source;
       the subprocess tests above verify behavior, not a live lane deployment.
     source: generated
-    binds_ac: [AC3]
     checks:
       - check_type: command
         check_value: >-
