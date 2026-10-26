@@ -115,6 +115,8 @@ sources:
     precedence:
       probe: inference_bridge_endpoints
 not_routing_resolution_sites:
+  - site: "src/omnimarket/nodes/node_idle_slot_fill_effect/handlers/ruling_live_checks.py:find_node_overlay('node_review_voters_overlay_compute')"
+    reason: observes the currently declared required review voter identities to report ruling drift; it never invokes a voter, chooses an inference route or changes the roster
   - site: "src/omnimarket/delegation/content_grounding.py:resolve_path_config(_CONTRACT_PATH_CONFIG_KEY)"
     reason: reads the quality-gate section of the task-class contract; it judges an answer and selects no route
   - site: "src/omnimarket/delegation/identifier_grounding.py:resolve_path_config(_CONTRACT_PATH_CONFIG_KEY)"

@@ -45,6 +45,26 @@ requirements:
       - id: "AC6"
         statement: |-
           AC6: the pre-commit hook delegation-answer-gate and the required lint job both run tests/unit/delegation/test_answer_gate_omn20489.py -- falsifier: uv run pytest tests/ci/test_delegation_answer_gate_wiring_omn20780.py -q -p no:randomly --no-cov fails at the merge base because the hook and the lint step are absent
+  - id: "req-omn20780-blocked-ruling-relaunch"
+    statement: "Abandoned blocked or partial work on a process ruling becomes one lab-fill item after two hours."
+    acceptance:
+      - id: "AC7"
+        statement: "AC7: a blocked or partial TERMINAL on a process ruling mechanism-ticket, or with a CLAIM or brief citing a RULING, becomes one item after two hours without a later CLAIM; a later CLAIM or successful terminal suppresses it."
+  - id: "req-omn20780-recovery-dispatch"
+    statement: "The recovery item retains staged work and the named blocker and goes through existing lab-fill gates, Codex first."
+    acceptance:
+      - id: "AC8"
+        statement: "AC8: the item carries branch, patch path, run directory and blocker; the actor dispatches Codex on admitted shared or dedicated capacity, once, without bypassing scope or runner gates."
+  - id: "req-omn20780-repeat-block-exception"
+    statement: "A second block of the same ruled work remains an orchestrator exception, never a silent stop."
+    acceptance:
+      - id: "AC9"
+        statement: "AC9: a second block prints a finding and records one durable EXCEPTION row addressed to the parent orchestrator, including with zero free slots; no automatic third attempt is dispatched."
+  - id: "req-omn20780-live-ruling-invariants"
+    statement: "Every throughput tick reads the declared live ruling checks and reports mismatches with their live readings."
+    acceptance:
+      - id: "AC10"
+        statement: "AC10: a process ruling may declare one live-check; the two standing container and reviewer checks are declared; every tick reads them, including without headroom, and a mismatch prints MISSING ruling-drift:<ruling timestamp> with the live reading."
 evidence_requirements:
   - kind: "tests"
     description: "The hook and the lint job run the guarding tests, and the guarding tests pass."
@@ -102,3 +122,37 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_delegation_answer_gate_wiring_omn20780.py tests/unit/delegation/test_answer_gate_omn20489.py -q -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC6"]
+  - id: "dod-omn20780-ruling-detector"
+    description: "Lane blocked recovery and live invariants: AC7, behavioral controls fail before the implementation exists."
+    source: "manual"
+    binds_ac: ["AC7"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/test_ruling_recovery.py -q -p no:randomly --no-cov --refuse-skips -k 'blocked_ruled_work or waits_two_hours or claim_or_brief or unruled_success or sent_item or corrected_mechanism or claim_in_terminal_second'"
+  - id: "dod-omn20780-ruling-actor"
+    description: "Lane blocked recovery and live invariants: AC8, behavioral controls fail before the implementation exists."
+    source: "manual"
+    binds_ac: ["AC8"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/test_ruling_recovery.py -q -p no:randomly --no-cov --refuse-skips -k 'tick_dispatches_codex or shared_capacity or archive_and_citation or unknown_recovery_repository or owning_repository or stored_recovery_kind'"
+  - id: "dod-omn20780-ruling-exception"
+    description: "Lane blocked recovery and live invariants: AC9, behavioral controls fail before the implementation exists."
+    source: "manual"
+    binds_ac: ["AC9"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/test_ruling_recovery.py -q -p no:randomly --no-cov --refuse-skips -k 'second_block or tick_records_one_orchestrator_exception'"
+  - id: "dod-omn20780-ruling-drift"
+    description: "Lane blocked recovery and live invariants: AC10, behavioral controls fail before the implementation exists."
+    source: "manual"
+    binds_ac: ["AC10"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/test_ruling_recovery.py -q -p no:randomly --no-cov --refuse-skips -k 'live_reading_changes or runtime_check or review_check or unread_live or packaged_checks or process_ruling_can_declare or live_reader'"
+  - id: "dod-omn20780-ruling-deploy"
+    description: "Hosted deploy check: import the installed node entrypoint and exercise the packaged checks against a split runtime and wrong reviewer roster, with no Docker daemon, registry, credentials or lab network."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/test_ruling_recovery.py -q -p no:randomly --no-cov --refuse-skips -k packaged_node_deploy_behavior"

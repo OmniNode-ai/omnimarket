@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Expectations are ruled state. Readings always come from the live deployment.
+checks:
+  - ruling: "2026-10-20T21:56:19Z"
+    kind: compose-runtime
+    runtime_services: [runtime, omninode-runtime]
+    backing_services: [postgres, postgresql, redpanda, redis, valkey, qdrant, memgraph, omnibase-infra-memgraph, neo4j, minio, bifrost, infisical, keycloak, phoenix, consul, vault]
+    max_runtime: 1
+  - ruling: "2026-10-18T15:06:49Z"
+    # Operator's live clarification, 2026-10-26T13:30:01Z, recorded by
+    # operator-capture at 13:32:35Z, reaffirms this ruling with these model ids.
+    kind: review-voters
+    model_ids: [claude-sonnet-5-5, claude-opus-5-5]
