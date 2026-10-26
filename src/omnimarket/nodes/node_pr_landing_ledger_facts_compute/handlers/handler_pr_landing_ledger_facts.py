@@ -28,6 +28,7 @@ from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from typing import Final
 
+from omnimarket.handlers.work_ledger_fixer_holds import fixer_hold_reasons
 from omnimarket.models.landing_decision import (
     ModelLandingCauseOwner,
     ModelLandingCauseRelease,
@@ -166,22 +167,7 @@ def last_rows(rows: Iterable[ModelLandingLedgerRow]) -> dict[str, str]:
 
 
 def fixer_holds(rows: Iterable[ModelLandingLedgerRow], now: datetime) -> list[str]:
-    rows = list(rows)
-    released = {cell(r.text, "re") for r in rows if r.rtype == "RELEASE"} - {""}
-    out: set[str] = set()
-    for r in rows:
-        if r.rtype != "HOLD" or cell(r.text, "scope") != FIXER_SCOPE:
-            continue
-        if (cell(r.text, "id") or r.ts) in released or r.ts in released:
-            continue
-        until = _stamp(cell(r.text, "until"))
-        if until is not None and until <= now:
-            continue
-        for repo in cell(r.text, "repo").split(","):
-            repo = repo.strip().split("/", 1)[-1]
-            if repo:
-                out.add(repo)
-    return sorted(out)
+    return sorted(fixer_hold_reasons(rows, now))
 
 
 def _owner_repo(repo: str) -> str:

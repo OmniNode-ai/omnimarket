@@ -1,0 +1,370 @@
+[
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-delegate",
+    "failure_kinds": {
+      "not-logged-in": 3
+    },
+    "harness": "claude",
+    "median_minutes": null,
+    "model": "sonnet",
+    "n": 0,
+    "pass_rate": null,
+    "passes": 0,
+    "task_class": "ci-log-diagnosis",
+    "unavailable": 3
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-delegate",
+    "failure_kinds": {
+      "not-logged-in": 3
+    },
+    "harness": "claude",
+    "median_minutes": null,
+    "model": "sonnet",
+    "n": 0,
+    "pass_rate": null,
+    "passes": 0,
+    "task_class": "docs-edit",
+    "unavailable": 3
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-delegate",
+    "failure_kinds": {
+      "not-logged-in": 3
+    },
+    "harness": "claude",
+    "median_minutes": null,
+    "model": "sonnet",
+    "n": 0,
+    "pass_rate": null,
+    "passes": 0,
+    "task_class": "failing-test-fix",
+    "unavailable": 3
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-delegate",
+    "failure_kinds": {
+      "not-logged-in": 3
+    },
+    "harness": "claude",
+    "median_minutes": null,
+    "model": "sonnet",
+    "n": 0,
+    "pass_rate": null,
+    "passes": 0,
+    "task_class": "host-read-only",
+    "unavailable": 3
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-delegate",
+    "failure_kinds": {
+      "not-logged-in": 3
+    },
+    "harness": "claude",
+    "median_minutes": null,
+    "model": "sonnet",
+    "n": 0,
+    "pass_rate": null,
+    "passes": 0,
+    "task_class": "rebase-conflict",
+    "unavailable": 3
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-delegate",
+    "failure_kinds": {
+      "not-logged-in": 3
+    },
+    "harness": "claude",
+    "median_minutes": null,
+    "model": "sonnet",
+    "n": 0,
+    "pass_rate": null,
+    "passes": 0,
+    "task_class": "review-thread-reply",
+    "unavailable": 3
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-delegate",
+    "failure_kinds": {
+      "not-logged-in": 3
+    },
+    "harness": "claude",
+    "median_minutes": null,
+    "model": "sonnet",
+    "n": 0,
+    "pass_rate": null,
+    "passes": 0,
+    "task_class": "ticket-evidence-fix",
+    "unavailable": 3
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-delegate",
+    "failure_kinds": {},
+    "harness": "claude-glm",
+    "median_minutes": 0.2589874406034748,
+    "model": "glm-5.3",
+    "n": 3,
+    "pass_rate": 1.0,
+    "passes": 3,
+    "task_class": "ci-log-diagnosis",
+    "unavailable": 0
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-delegate",
+    "failure_kinds": {},
+    "harness": "claude-glm",
+    "median_minutes": 0.41252845726752035,
+    "model": "glm-5.3",
+    "n": 3,
+    "pass_rate": 1.0,
+    "passes": 3,
+    "task_class": "docs-edit",
+    "unavailable": 0
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-delegate",
+    "failure_kinds": {},
+    "harness": "claude-glm",
+    "median_minutes": 0.5343896979621301,
+    "model": "glm-5.3",
+    "n": 3,
+    "pass_rate": 1.0,
+    "passes": 3,
+    "task_class": "failing-test-fix",
+    "unavailable": 0
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-delegate",
+    "failure_kinds": {
+      "permission-denied": 1
+    },
+    "harness": "claude-glm",
+    "median_minutes": 1.024295677182575,
+    "model": "glm-5.3",
+    "n": 3,
+    "pass_rate": 0.6666666666666666,
+    "passes": 2,
+    "task_class": "host-read-only",
+    "unavailable": 0
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-delegate",
+    "failure_kinds": {
+      "permission-denied": 3
+    },
+    "harness": "claude-glm",
+    "median_minutes": 1.5019641341175884,
+    "model": "glm-5.3",
+    "n": 3,
+    "pass_rate": 0.0,
+    "passes": 0,
+    "task_class": "rebase-conflict",
+    "unavailable": 0
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-delegate",
+    "failure_kinds": {},
+    "harness": "claude-glm",
+    "median_minutes": 0.34744354931171983,
+    "model": "glm-5.3",
+    "n": 3,
+    "pass_rate": 1.0,
+    "passes": 3,
+    "task_class": "review-thread-reply",
+    "unavailable": 0
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-delegate",
+    "failure_kinds": {},
+    "harness": "claude-glm",
+    "median_minutes": 0.3575145228377854,
+    "model": "glm-5.3",
+    "n": 3,
+    "pass_rate": 1.0,
+    "passes": 3,
+    "task_class": "ticket-evidence-fix",
+    "unavailable": 0
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-cli",
+    "failure_kinds": {
+      "sandbox-initialization": 3
+    },
+    "harness": "codex",
+    "median_minutes": null,
+    "model": "configured-default",
+    "n": 0,
+    "pass_rate": null,
+    "passes": 0,
+    "task_class": "ci-log-diagnosis",
+    "unavailable": 3
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-cli",
+    "failure_kinds": {
+      "sandbox-initialization": 3
+    },
+    "harness": "codex",
+    "median_minutes": null,
+    "model": "configured-default",
+    "n": 0,
+    "pass_rate": null,
+    "passes": 0,
+    "task_class": "docs-edit",
+    "unavailable": 3
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-cli",
+    "failure_kinds": {
+      "sandbox-initialization": 3
+    },
+    "harness": "codex",
+    "median_minutes": null,
+    "model": "configured-default",
+    "n": 0,
+    "pass_rate": null,
+    "passes": 0,
+    "task_class": "failing-test-fix",
+    "unavailable": 3
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-cli",
+    "failure_kinds": {
+      "sandbox-initialization": 3
+    },
+    "harness": "codex",
+    "median_minutes": null,
+    "model": "configured-default",
+    "n": 0,
+    "pass_rate": null,
+    "passes": 0,
+    "task_class": "host-read-only",
+    "unavailable": 3
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-cli",
+    "failure_kinds": {
+      "sandbox-initialization": 3
+    },
+    "harness": "codex",
+    "median_minutes": null,
+    "model": "configured-default",
+    "n": 0,
+    "pass_rate": null,
+    "passes": 0,
+    "task_class": "rebase-conflict",
+    "unavailable": 3
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-cli",
+    "failure_kinds": {
+      "sandbox-initialization": 3
+    },
+    "harness": "codex",
+    "median_minutes": null,
+    "model": "configured-default",
+    "n": 0,
+    "pass_rate": null,
+    "passes": 0,
+    "task_class": "review-thread-reply",
+    "unavailable": 3
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-cli",
+    "failure_kinds": {
+      "sandbox-initialization": 3
+    },
+    "harness": "codex",
+    "median_minutes": null,
+    "model": "configured-default",
+    "n": 0,
+    "pass_rate": null,
+    "passes": 0,
+    "task_class": "ticket-evidence-fix",
+    "unavailable": 3
+  },
+  {
+    "configuration": "fixture-v1:crush:timeout-90s",
+    "failure_kinds": {},
+    "harness": "local-agent",
+    "median_minutes": 0.21394715974262604,
+    "model": "Qwen3.8-27B",
+    "n": 3,
+    "pass_rate": 1.0,
+    "passes": 3,
+    "task_class": "ci-log-diagnosis",
+    "unavailable": 0
+  },
+  {
+    "configuration": "fixture-v1:crush:timeout-90s",
+    "failure_kinds": {},
+    "harness": "local-agent",
+    "median_minutes": 0.21223992753463486,
+    "model": "Qwen3.8-27B",
+    "n": 3,
+    "pass_rate": 1.0,
+    "passes": 3,
+    "task_class": "docs-edit",
+    "unavailable": 0
+  },
+  {
+    "configuration": "fixture-v1:crush:timeout-90s",
+    "failure_kinds": {},
+    "harness": "local-agent",
+    "median_minutes": 0.35760636201594026,
+    "model": "Qwen3.8-27B",
+    "n": 3,
+    "pass_rate": 1.0,
+    "passes": 3,
+    "task_class": "failing-test-fix",
+    "unavailable": 0
+  },
+  {
+    "configuration": "fixture-v1:crush:timeout-90s",
+    "failure_kinds": {},
+    "harness": "local-agent",
+    "median_minutes": 0.1747008786536753,
+    "model": "Qwen3.8-27B",
+    "n": 3,
+    "pass_rate": 1.0,
+    "passes": 3,
+    "task_class": "host-read-only",
+    "unavailable": 0
+  },
+  {
+    "configuration": "fixture-v1:crush:timeout-90s",
+    "failure_kinds": {},
+    "harness": "local-agent",
+    "median_minutes": 0.4975236142675082,
+    "model": "Qwen3.8-27B",
+    "n": 3,
+    "pass_rate": 1.0,
+    "passes": 3,
+    "task_class": "rebase-conflict",
+    "unavailable": 0
+  },
+  {
+    "configuration": "fixture-v1:crush:timeout-90s",
+    "failure_kinds": {},
+    "harness": "local-agent",
+    "median_minutes": 0.3824960069886098,
+    "model": "Qwen3.8-27B",
+    "n": 3,
+    "pass_rate": 1.0,
+    "passes": 3,
+    "task_class": "review-thread-reply",
+    "unavailable": 0
+  },
+  {
+    "configuration": "fixture-v1:crush:timeout-90s",
+    "failure_kinds": {},
+    "harness": "local-agent",
+    "median_minutes": 0.30405787265238665,
+    "model": "Qwen3.8-27B",
+    "n": 3,
+    "pass_rate": 1.0,
+    "passes": 3,
+    "task_class": "ticket-evidence-fix",
+    "unavailable": 0
+  }
+]

@@ -6,9 +6,9 @@ node_type: EFFECT_GENERIC
 runtime_profiles: []
 contract_version:
   major: 1
-  minor: 0
+  minor: 1
   patch: 0
-node_version: 1.0.0
+node_version: 1.1.0
 description: >
   The lab is never idle (RULING 2026-10-14T21:46:25Z, operator 2026-10-18). fill: from the throughput tick's live
   pool hosts, its own finding lines and the lanes the merge sweep places this tick, choose the lanes that fill the
@@ -21,6 +21,12 @@ description: >
   and whose tool calls dispatched nothing. The repository names, the cloud backlog declaration and the experiment
   designs are read from the idle_slot_fill and repos overlays; a key no overlay supplies refuses naming the key.
   Called in process through node.py by the throughput tick and the Stop hook.
+  The throughput effect reads each process ruling's optional live-check JSON object on every run, plus the two
+  standing declarations in ruling_checks.yaml. A mismatch or unread reading is MISSING ruling-drift:<timestamp>
+  with the live reading. This runs even without free slots. A blocked or partial ruled-work terminal abandoned
+  for two hours becomes one Codex-first ruling-relaunch item, retaining its staged branch, patch path, run
+  directory and named blocker. It passes the existing scope, admission, brief and launch gates. A second block
+  becomes a durable orchestrator EXCEPTION row and never an automatic third attempt.
 input_model:
   name: ModelIdleSlotFillRequest
   module: omnimarket.nodes.node_idle_slot_fill_effect.models.model_idle_slot_fill
@@ -71,3 +77,4 @@ metadata:
   related_tickets:
   - OMN-17427
   - OMN-21409
+  - OMN-20780

@@ -1,0 +1,55 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# ONEX Node Contract — node_context_doc_section_select_compute
+# Pure compute: the ADR tier of the context service (OMN-21126).
+---
+name: node_context_doc_section_select_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Select verbatim markdown sections for the canonical-shapes, architecture-patterns
+  and plan-excerpt tiers, from documents read by a git source at a pinned commit.
+  Tiers, triggers and always-inject sections come from request data; an unknown key
+  fails validation. Each admitted entry's text is a contiguous slice of its document,
+  stamped path@sha with its half-open line span and verified verbatim. A plan whose
+  lifecycle row is not active is excluded; a shape defined differently in two
+  documents is ambiguous and both are excluded. Cited paths are checked against the
+  commit's tree. No token budget and no pack hash: the builder owns both. No I/O,
+  same input = same output.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: context_doc_section_select
+      handler:
+        name: HandlerContextDocSectionSelect
+        module: omnimarket.nodes.node_context_doc_section_select_compute.handlers.handler_context_doc_section_select
+      input_model: omnimarket.nodes.node_context_doc_section_select_compute.models.model_context_doc_section_select.ModelDocSectionSelectRequest
+      output_model: omnimarket.nodes.node_context_doc_section_select_compute.models.model_context_doc_section_select.ModelDocSectionSelectResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+
+terminal_event: onex.evt.omnimarket.context-doc-section-select-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.context-doc-section-select-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.context-doc-section-select-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.context-doc-section-select-requested.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.context-doc-section-select-completed.v1
+
+metadata:
+  ticket: OMN-21126
+  transport_type: kafka

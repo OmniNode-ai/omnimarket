@@ -1,0 +1,9 @@
+{
+  "adapter_sha256": {
+    "harness-delegate/scripts/harness_delegate.py": "927ca64f71665873bccab5ab5cf32260708a335b26bba33c68ce45f6730c6808",
+    "lane-brief/scripts/lab_crush.py": "a3ac2924c943f6e03a3e51a98390797a488f3cf294bf4d70270884fcadb550af"
+  },
+  "claude": "2.1.295 (Claude Code)",
+  "codex": "codex-cli 0.159.2",
+  "crush": "crush version v0.60.0"
+}

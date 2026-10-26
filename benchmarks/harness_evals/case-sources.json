@@ -1,0 +1,46 @@
+{
+  "items": [
+    {
+      "task_class": "rebase-conflict",
+      "source_receipt": "rlane-rebase-omnibase-infra-5376-0f070b.ctx/prompt.txt",
+      "source_sha256": "571e6702be237f6f9faf7ec4c53477a4f4efbdc67fd2fad9ffab93a735fcba59",
+      "adaptation": "Task shape adapted: small standalone lower/upper-bound conflict; not the original repository diff."
+    },
+    {
+      "task_class": "failing-test-fix",
+      "source_receipt": "rlane-fill-defect-execution-adapter-20261026T1-13bdb1.ctx/prompt.txt",
+      "source_sha256": "c0306265bad05bfa312c4cab7571503624b806335687f308e06bb276aa0974fe",
+      "adaptation": "Reduced deterministic repair tasks; disabled endpoint and engine escalation also follow existing package regressions."
+    },
+    {
+      "task_class": "ci-log-diagnosis",
+      "source_receipt": "rlane-cause-omnimarket-tests-split-3-20-drive--338b5f.ctx/run.out",
+      "source_sha256": "32e69a0c111fc7a2de0804735522c99645a6e2be22b30a719bfd401d01966b7a",
+      "adaptation": "Synthetic compact logs inspired by real pytest failure tails; fixture node ids are synthetic."
+    },
+    {
+      "task_class": "ticket-evidence-fix",
+      "source_receipt": "rlane-rebase-omnibase-infra-5376-0f070b.ctx/prompt.txt",
+      "source_sha256": "571e6702be237f6f9faf7ec4c53477a4f4efbdc67fd2fad9ffab93a735fcba59",
+      "adaptation": "Reduced evidence binding contract, not the production YAML contract schema."
+    },
+    {
+      "task_class": "review-thread-reply",
+      "source_receipt": "rlane-cause-omnibase-infra-hostile-review-thre-d5bb4c.ctx/prompt.txt",
+      "source_sha256": "9487c81003b0246b1e469eeb7a9db7a339d84f9f273b7b27c849ee612c364ebd",
+      "adaptation": "Offline fact-preserving reply draft; no external thread read or reply is part of the checker."
+    },
+    {
+      "task_class": "docs-edit",
+      "source_receipt": "rlane-fill-defect-docs-only-floor-mismatch-202-7e2472.ctx/prompt.txt",
+      "source_sha256": "12c687600022d2c29b15b7064383d5af1e948ad18d270c86affe8d55b472e61b",
+      "adaptation": "Reduced brief edit; not a replay of the full lane patch."
+    },
+    {
+      "task_class": "host-read-only",
+      "source": "current lab host os.uname and sys.version_info",
+      "adaptation": "Checker independently reads the current host; only answer.json may be added to the fixture."
+    }
+  ],
+  "privacy": "Source receipts and transcripts stay in private lab state; only their hashes and reduced fixture definitions are committed."
+}
