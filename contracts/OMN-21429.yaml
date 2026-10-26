@@ -1,0 +1,41 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21429"
+title: "Queue, dispatch and run claims on the generic service"
+summary: >-
+  The omnimarket half of AC3 of slice 6 of the OMN-21279 runtime cluster and
+  generic lease plan: the session-bootstrap dispatch lease
+  (src/omnimarket/nodes/node_session_bootstrap/dispatch_lease.py, inventory
+  row E11, no non-test caller) is deleted with its tests, and the build
+  dispatch pulse prompt no longer tells an agent to acquire or release
+  dispatch-lock.json. The omniclaude half of AC3 (preexisting_fix_lock.py,
+  row E2) is a separate omniclaude change. AC1 and AC2 are not bound here:
+  AC2 is bound in omnibase_infra (the generic lease kinds), and AC1 waits on
+  an omnibase_infra release carrying the generic lease.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21429-ac3-bootstrap-dispatch-lease-deleted"
+    statement: "The session-bootstrap dispatch lease is deleted."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: the pre-existing-fix lock (E2) and the session-bootstrap dispatch lease are deleted -- falsifier: either file exists on the integration branch"
+evidence_requirements:
+  - kind: "tests"
+    description: "The session bootstrap Rev 7 tests pass and the pulse prompt names no dispatch-lock.json."
+    command: "uv run pytest tests/test_session_bootstrap_rev7.py -q -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21429-ac3-bootstrap-dispatch-lease-deleted"
+    description: "The session-bootstrap dispatch lease file is absent from the tree and the build dispatch pulse prompt names no dispatch-lock.json. Fails at the merge base, which holds the file and the prompt step."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "command"
+        check_value: "test ! -e src/omnimarket/nodes/node_session_bootstrap/dispatch_lease.py"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_session_bootstrap_rev7.py -q -n 0 -k test_prompt_has_no_dispatch_lease"

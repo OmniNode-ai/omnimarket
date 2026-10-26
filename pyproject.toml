@@ -378,6 +378,7 @@ node_external_deadman_check_compute = "omnimarket.nodes.node_external_deadman_ch
 node_context_compaction_manifest_compute = "omnimarket.nodes.node_context_compaction_manifest_compute"
 node_compaction_loss_compute = "omnimarket.nodes.node_compaction_loss_compute"
 node_context_round_one_eval_compute = "omnimarket.nodes.node_context_round_one_eval_compute"
+node_context_adr_select_compute = "omnimarket.nodes.node_context_adr_select_compute"
 node_context_invariants_select_compute = "omnimarket.nodes.node_context_invariants_select_compute"
 node_context_replay_eval_compute = "omnimarket.nodes.node_context_replay_eval_compute"
 node_context_compaction_latency_compute = "omnimarket.nodes.node_context_compaction_latency_compute"
@@ -731,6 +732,7 @@ node_design_to_plan = "omnimarket.nodes.node_design_to_plan"
 node_ticket_work = "omnimarket.nodes.node_ticket_work"
 node_ticket_research_enrichment_compute = "omnimarket.nodes.node_ticket_research_enrichment_compute"
 node_create_ticket = "omnimarket.nodes.node_create_ticket"
+node_linear_ticket_write_effect = "omnimarket.nodes.node_linear_ticket_write_effect"
 node_plan_to_tickets = "omnimarket.nodes.node_plan_to_tickets"
 node_release = "omnimarket.nodes.node_release"
 node_reject_skip_token_compute = "omnimarket.nodes.node_reject_skip_token_compute"
@@ -1123,6 +1125,7 @@ seed = "omnimarket.cli.cli_seed:seed_command"
 # the bus; the rest publish the node's typed command and wait for its terminal
 # event. Discovered over installed distributions like the groups above.
 scm = "omnimarket.handlers.scm.scm_cli:scm_group"
+ticket = "omnimarket.handlers.ticket.ticket_cli:ticket_group"
 # OMN-17427: `onex lab-archive` -- archive lab history older than seven days to Drive
 # under a CPU, IO and bandwidth budget, then free the local copy. A shim over
 # node_lab_history_archive_effect, discovered over installed distributions like the groups above.

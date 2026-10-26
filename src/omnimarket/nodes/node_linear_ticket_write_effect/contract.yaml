@@ -1,0 +1,80 @@
+---
+name: node_linear_ticket_write_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: EFFECT_GENERIC
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  EFFECT: create, read, comment and transition Linear tickets over the bus.
+  All create calls run node_create_ticket's installed ticket-creation guard,
+  requiring Gate, labelled criteria with falsifiers, parent or epic, Backlog,
+  no project and the caller's first-line lane stamp. The description is sent
+  unchanged. No guard or an undecidable guard refuses before Linear is called.
+  Commands carry lane, run and idempotency identity as the SCM effect does.
+  Successful writes replay in-process (1024 records); concurrent requests are
+  serialized; caller cancellation cannot release the replay lock while the
+  synchronous gateway still runs. After a worker restart or timeout read before retrying: replay
+  records do not survive restart. Read results are always fresh.
+input_model:
+  name: ModelTicketWriteRequest
+  module: omnimarket.nodes.node_linear_ticket_write_effect.models.model_ticket_write_io
+output_model:
+  name: ModelTicketWriteCompleted
+  module: omnimarket.nodes.node_linear_ticket_write_effect.models.model_ticket_write_io
+operations:
+  - name: create
+    description: Guard the exact caller payload, create in Backlog without project.
+  - name: read
+    description: Read the ticket through the Linear adapter; no local stub.
+  - name: comment
+    description: Post a comment through the Linear adapter.
+  - name: transition
+    description: Guard the update, resolve the named state for the team and update.
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  timeout_ms: 60000
+  runtime_profiles: [effects]
+secrets:
+  LINEAR_API_KEY:
+    description: Contract-declared key resolved by the existing ticket handler.
+    required: true
+event_bus:
+  version: {major: 1, minor: 0, patch: 0}
+  subscribe_topics:
+    - onex.cmd.omnimarket.linear-ticket-write-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.linear-ticket-write-completed.v1
+    - onex.evt.omnimarket.linear-ticket-write-failed.v1
+published_events:
+  - event_type: TicketWriteCompleted
+    topic: onex.evt.omnimarket.linear-ticket-write-completed.v1
+    description: Guarded operation completed, or successful write replayed.
+  - event_type: TicketWriteFailed
+    topic: onex.evt.omnimarket.linear-ticket-write-failed.v1
+    description: Typed refusal or failure; exception strings are never published.
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - operation: linear_ticket.write
+      message_category: command
+      handler:
+        name: HandlerLinearTicketWriteEffect
+        module: omnimarket.nodes.node_linear_ticket_write_effect.handlers.handler_linear_ticket_write
+      event_model:
+        name: ModelTicketWriteRequest
+        module: omnimarket.nodes.node_linear_ticket_write_effect.models.model_ticket_write_io
+      topic: onex.cmd.omnimarket.linear-ticket-write-requested.v1
+terminal_event: onex.evt.omnimarket.linear-ticket-write-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.linear-ticket-write-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.linear-ticket-write-completed.v1
+    failure: onex.evt.omnimarket.linear-ticket-write-failed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.linear-ticket-write-completed.v1
+  - onex.evt.omnimarket.linear-ticket-write-failed.v1
+metadata:
+  transport_type: kafka
+  description: Guarded Linear ticket operations for workers over the event bus.
+  tags: [effect, linear, ticket]

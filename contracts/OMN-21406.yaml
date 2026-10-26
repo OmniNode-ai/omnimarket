@@ -1,0 +1,83 @@
+schema_version: "1.0.0"
+ticket_id: OMN-21406
+title: "S2b: the six overlay files holding 21 private-value keys ship as a plugin release"
+summary: >-
+  Adds the typed documents (one model per overlay) and the key reader for the 21
+  private-value overlay keys of the repos, lab_hosts, hygiene_vocab, remote_lane,
+  idle_slot_fill and throughput_tick overlays. The six overlay files themselves
+  are authored in the private plugin repository and ship as an onex-overlays
+  plugin release; this PR carries the models and the tests that resolve every key
+  from a fixture and refuse naming the key when nothing supplies it. The per-host
+  readback of the released plugin (AC3) is outstanding until that release is cut.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: req-omn21406-overlay-keys
+    statement: >-
+      Every private deployment value the moved scripts need is one of 21 overlay
+      keys, read through one resolver that never carries a packaged fallback value.
+    acceptance:
+      - id: AC1
+        statement: >-
+          The six overlay documents validate against their models and together
+          hold exactly the 21 keys of the inventory.
+      - id: AC2
+        statement: >-
+          21 tests resolve a key from a fixture and 21 expect a refusal naming the
+          key when the overlay root is empty and every input variable is cleared,
+          plus precedence tests for lab_hosts.hosts, lab_hosts.registry_root_candidates,
+          repos.private_data_home_envs and repos.knowledge_base_home_env.
+      - id: AC3
+        statement: >-
+          On every pool host the installed onex-overlays plugin reads the released
+          version and ONEX_SKILL_OVERLAY_ROOTS resolves all six ids. Outstanding
+          until the plugin release is cut; this PR does not prove it.
+evidence_requirements:
+  - kind: tests
+    description: The 21-key reader, the six overlay models and the key tests.
+    command: "uv run pytest tests/unit/handlers/test_overlay_keys.py -q -k overlay_keys --no-cov --refuse-skips"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn21406-ac1-21-keys
+    description: >-
+      The registry holds exactly 21 keys partitioned over the six overlay models,
+      and a fixture file per overlay validates against its model and holds only
+      its own keys. Fails at the merge base, which has no overlay key reader.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/unit/handlers/test_overlay_keys.py -q --no-cov --refuse-skips -k 'overlay_keys_are_the_21 or fixture_file_validates'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-omn21406-ac2-resolve-and-refuse
+    description: >-
+      Each of the 21 keys resolves from a fixture and refuses naming the key with
+      an empty overlay root and no variable set; the four precedence cases pass.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/unit/handlers/test_overlay_keys.py -q --no-cov --refuse-skips -k overlay_keys"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-omn21406-ac3-prerequisite
+    description: >-
+      AC3 prerequisite only: the six overlay documents resolve all 21 keys in
+      the runtime reader. A deploy check the hosted runner can run verifies that
+      GitHub serves the key reader at the pushed commit. The per-host plugin readback is
+      outstanding until the onex-overlays release is cut and must not be reported
+      as proven by this check.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/handlers/test_overlay_keys.py -q --no-cov --refuse-skips -k resolve_from_fixture"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: command
+        check_value: >-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/overlay_keys.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c "def resolve_overlay_key"'
+        cwd: "${OMNI_HOME}/omnimarket"

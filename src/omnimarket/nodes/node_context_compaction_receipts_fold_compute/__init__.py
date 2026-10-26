@@ -5,5 +5,8 @@
 from omnimarket.nodes.node_context_compaction_receipts_fold_compute.handlers.handler_context_compaction_receipts_fold import (
     HandlerContextCompactionReceiptsFold,
 )
+from omnimarket.nodes.node_context_compaction_receipts_fold_compute.handlers.handler_context_current_context_fold import (
+    HandlerContextCurrentContextFold,
+)
 
-__all__ = ["HandlerContextCompactionReceiptsFold"]
+__all__ = ["HandlerContextCompactionReceiptsFold", "HandlerContextCurrentContextFold"]

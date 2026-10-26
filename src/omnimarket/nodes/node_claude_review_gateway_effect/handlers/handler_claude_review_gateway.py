@@ -50,6 +50,12 @@ is returned as the message content. The provider's ``stop_reason`` rides back as
 ``finish_reason`` (``length`` for ``max_tokens``, never a silently shortened
 body) and the cache usage rides back in ``usage``.
 
+**A voter's reasoning-off request is honoured (OMN-19998).** The voter's
+``chat_template_kwargs.enable_thinking`` false becomes the native ``thinking``
+``{"type": "disabled"}``. A Claude model that reasons by default counts its
+reasoning against ``max_tokens``; on a large diff it spent the whole budget and
+answered nothing. Any other value sends no ``thinking`` key.
+
 Not here: a per-key budget ledger with a reserve, a sticky key per review run,
 and the overlay entry.
 """
@@ -103,6 +109,8 @@ MODELS_ROUTE = "/v1/models"
 #: compatible endpoint with HTTP 400, so the voter's sampling is not forwarded.
 _CLAUDE_TEMPERATURE = 1.0
 _DEFAULT_MAX_TOKENS = 4096
+#: The native thinking option for a voter's explicit reasoning-off request.
+_DISABLED_THINKING = {"type": "disabled"}
 #: The line the prompt builder puts between the parts of a message that are cached
 #: apart: system instructions and catalog | standing rules, and diff | persona.
 BLOCK_BOUNDARY_MARKER = "<<onex-cache-boundary>>"
@@ -402,6 +410,7 @@ def translate_chat_request(
     A key that belongs to an Anthropic workspace names it in the call's
     ``anthropic-workspace-id`` header (OMN-20967): the provider answers the
     key only with it.
+    Only ``chat_template_kwargs.enable_thinking`` set to bool False disables thinking.
     """
     messages = payload.get("messages")
     system_parts: list[str] = []
@@ -436,6 +445,7 @@ def translate_chat_request(
         else _DEFAULT_MAX_TOKENS
     )
     request_id = str(uuid.uuid4())
+    chat_template_kwargs = payload.get("chat_template_kwargs")
     return ModelLlmDelegationCallRequest(
         request_id=request_id,
         correlation_id=request_id,
@@ -457,6 +467,12 @@ def translate_chat_request(
             {workspace_header(): workspace_id} if workspace_id is not None else {}
         ),
         inference_protocol="anthropic_messages",
+        provider_request_options=(
+            {"thinking": _DISABLED_THINKING.copy()}
+            if isinstance(chat_template_kwargs, Mapping)
+            and chat_template_kwargs.get("enable_thinking") is False
+            else {}
+        ),
         system_blocks=system_blocks,
         messages=(ModelPromptMessage(role="user", blocks=user_blocks),),
         tool_schema=tool_schema,
@@ -481,6 +497,7 @@ def describe_call(request: ModelLlmDelegationCallRequest) -> dict[str, Any]:
         "task_type": request.task_type,
         "max_tokens": request.max_tokens,
         "temperature": request.temperature,
+        "thinking": request.provider_request_options.get("thinking"),
         "system_block_chars": [len(block.text) for block in request.system_blocks],
         "prompt_block_chars": [
             len(block.text) for message in request.messages for block in message.blocks

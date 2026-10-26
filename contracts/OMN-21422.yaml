@@ -1,0 +1,94 @@
+schema_version: 1.0.0
+ticket_id: OMN-21422
+title: omnimarket runtime image loads every node and runs on every lab runtime host
+summary: >-
+  The omnimarket runtime image is defined in omnimarket (Dockerfile.runtime),
+  built FROM the omnibase_infra runtime image supplied as INFRA_RUNTIME_IMAGE,
+  which the composed-boot job builds at the release-train tag locked in uv.lock,
+  never a sha. This PR adds a build step that runs in the image after
+  omnimarket's install and the entry-point strip and fails the build unless
+  both GitHub nodes (node_github_repo_write_effect,
+  node_github_repo_gateway_effect) are registered under onex.nodes by the
+  omnimarket distribution and import. AC2 and AC3 need runtime deploy units
+  and the runtime membership records of OMN-21421; their entries here are
+  image-side supporting evidence only, and the deploy readback they name is
+  pending.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-transcribed-acceptance-criteria
+    statement: >-
+      The ticket author's acceptance criteria, transcribed verbatim.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the runtime image that installs omnimarket is defined in omnimarket and built FROM the omnibase_infra runtime base -- falsifier: omnibase_infra''s layering check (OMN-21279 AC1) finds omnimarket in `docker/Dockerfile.runtime`'
+      - id: AC2
+        statement: 'AC2: runtimes on h200, h101, h105 and h203 run the same image digest and all four are on the dev bus -- falsifier: the membership records under `/onex/dev/runtimes/` show a different digest, a missing host, or h200 on a local broker'
+      - id: AC3
+        statement: 'AC3: each runtime''s membership record lists `node_github_repo_write_effect` and `node_github_repo_gateway_effect` -- falsifier: any of the four records omits either node'
+evidence_requirements:
+  - kind: tests
+    description: >-
+      The image definition's FROM names the infra runtime base argument, the
+      build runs the GitHub node check after the entry-point strip, and that
+      exact check passes where both nodes are installed and refuses an
+      unregistered node.
+    command: uv run pytest tests/unit/docker/test_runtime_image_github_nodes_omn21422.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn-21422-ac1-image-from-infra-base
+    description: >-
+      AC1: Dockerfile.runtime in omnimarket has exactly one FROM, FROM
+      ${INFRA_RUNTIME_IMAGE}, after ARG INFRA_RUNTIME_IMAGE, with no sha pin,
+      and its build runs the GitHub node check after the entry-point strip.
+      The merge base has no GITHUB_NODES build step, so the tests fail there.
+    source: generated
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/docker/test_runtime_image_github_nodes_omn21422.py -q --no-cov
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/docker/test_composed_runtime_image_omn21279.py -q --no-cov
+  - id: dod-omn-21422-ac1-deploy-probe
+    description: >-
+      AC1 deploy-scope probe: read Dockerfile.runtime from the public raw
+      GitHub endpoint at this checkout's head. Fail unless it builds FROM
+      ${INFRA_RUNTIME_IMAGE} and runs the GitHub node check. The merge base
+      has no GITHUB_NODES build step, so the probe fails there.
+    source: generated
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/docker/test_runtime_image_github_nodes_omn21422.py -q --no-cov
+      - check_type: command
+        check_value: >-
+          bash -o pipefail -c 'curl --fail --silent --show-error "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/Dockerfile.runtime" | python3 -c "import sys; lines=sys.stdin.read().splitlines(); assert [l for l in lines if l.startswith(\"FROM \")] == [\"FROM \${INFRA_RUNTIME_IMAGE}\"]; assert \"RUN /app/.venv/bin/python - <<\x27GITHUB_NODES\x27\" in lines"'
+  - id: dod-omn-21422-ac2-one-image
+    description: >-
+      AC2, image-side supporting evidence only: every runtime host is to run
+      the one image this Dockerfile defines, FROM the infra runtime base and
+      carrying the GitHub node build check, so one digest is possible. The
+      merge base has no GITHUB_NODES build step, so the check test fails
+      there. The four-host digest and dev-bus readback from /onex/dev/runtimes/ is
+      pending runtime deploy units and the membership records of OMN-21421;
+      this item does not read it.
+    source: generated
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/docker/test_runtime_image_github_nodes_omn21422.py::test_image_from_names_the_infra_runtime_base tests/unit/docker/test_runtime_image_github_nodes_omn21422.py::test_image_check_passes_where_both_nodes_are_installed -q --no-cov
+  - id: dod-omn-21422-ac3-image-github-nodes
+    description: >-
+      AC3, image-side supporting evidence only: the image build check requires
+      both GitHub nodes registered under onex.nodes and importable, and refuses
+      a node that is not registered. The per-runtime membership record readback
+      is pending OMN-21421; this item does not read it.
+    source: generated
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/docker/test_runtime_image_github_nodes_omn21422.py::test_both_github_nodes_are_registered_by_omnimarket tests/unit/docker/test_runtime_image_github_nodes_omn21422.py::test_image_check_passes_where_both_nodes_are_installed tests/unit/docker/test_runtime_image_github_nodes_omn21422.py::test_image_check_refuses_an_unregistered_node -q --no-cov
