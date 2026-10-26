@@ -27,6 +27,7 @@ class ModelLabDiskHygieneResult:
     protected_projects: tuple[str, ...] = ()
     removed_containers: tuple[str, ...] = ()
     kept_containers: tuple[str, ...] = ()
+    ghost_containers: tuple[str, ...] = ()
     removed_tmp: tuple[str, ...] = ()
     removed_tmp_bytes: int = 0
     steps: tuple[ModelLabDiskHygieneStep, ...] = ()
@@ -44,6 +45,8 @@ class ModelLabDiskHygieneResult:
             f"containers_removed={len(self.removed_containers)}",
             f"tmp_removed={len(self.removed_tmp)}",
         ]
+        if self.ghost_containers:
+            parts.append(f"ghost_containers={len(self.ghost_containers)}")
         if self.errors:
             parts.append(f"docker_errors={len(self.errors)}")
         return " ".join(parts)
