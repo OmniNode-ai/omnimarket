@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_tlc_result_summary_effect
+version: 0.1.0
+description: >
+  Summarize TLC model checker results: one line per results/*.out file in a run directory,
+  naming its config's invariants, the verdict, distinct states, search depth and trace length.
+entry_points:
+  onex.nodes:
+    node_tlc_result_summary_effect: omnimarket.nodes.node_tlc_result_summary_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- effect
+- tlc
+pack: operator_tooling
+display_name: TLC Result Summary Effect
+node_role: effect

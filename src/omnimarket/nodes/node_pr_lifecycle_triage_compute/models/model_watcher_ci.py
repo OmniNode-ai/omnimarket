@@ -16,6 +16,7 @@ class ModelWatcherCi(BaseModel):
     model_config = ConfigDict(frozen=True, extra="ignore")
 
     sha: str | None = None
+    read_at: str | None = None
     red: tuple[str, ...] | None = None
     pending: tuple[str, ...] | None = None
     cancelled: tuple[str, ...] | None = None

@@ -136,7 +136,7 @@ operations:
       module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_apply_reviewer_pool"
   - name: "count_reviewer_runs_in_flight"
     description: >-
-      Hostile-review runs queued or running on open PRs' current heads, from the watcher's records. Pure, no I/O.
+      Fresh hostile-review voter jobs queued or running on open non-draft PRs' current heads, from watcher records and an explicit decision time. CI reads older than eight minutes and summary gates consume no voter slots. Pure, no I/O.
     input_model:
       name: "ModelReviewerRunsFacts"
       module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_reviewer_runs_facts"

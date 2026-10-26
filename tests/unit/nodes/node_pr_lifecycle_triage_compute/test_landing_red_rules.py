@@ -494,27 +494,41 @@ def test_reviewer_pool_keeps_the_order_and_every_other_key_of_each_pr() -> None:
 def test_reviewer_pool_in_flight_counts_queued_and_running_reviewer_runs() -> None:
     records = {
         "omnibase_infra#1": {
-            "facts": {"state": "OPEN"},
+            "facts": {"state": "OPEN", "draft": False, "head_sha": H},
             "ci": {
-                "runs": [["Hostile Reviewer (adversarial gate)", "in_progress", "", ""]]
+                "sha": H,
+                "read_at": "2026-10-26T00:47:00Z",
+                "runs": [
+                    ["Hostile Reviewer (adversarial gate)", "in_progress", "", ""]
+                ],
             },
         },
         "omniclaude#2": {
-            "facts": {"state": "OPEN"},
+            "facts": {"state": "OPEN", "draft": False, "head_sha": H},
             "ci": {
+                "sha": H,
+                "read_at": "2026-10-26T00:47:00Z",
                 "runs": [
-                    ["Hostile Review Gate", "queued", "", ""],
+                    ["Hostile Reviewer (adversarial gate)", "queued", "", ""],
                     ["Tests", "in_progress", "", ""],
-                ]
+                ],
             },
         },
         "omnimarket#3": {
-            "facts": {"state": "OPEN"},
-            "ci": {"runs": [["Hostile Review Gate", "completed", "failure", ""]]},
+            "facts": {"state": "OPEN", "draft": False, "head_sha": H},
+            "ci": {
+                "sha": H,
+                "read_at": "2026-10-26T00:47:00Z",
+                "runs": [["Hostile Review Gate", "completed", "failure", ""]],
+            },
         },
         "omnimarket#4": {
-            "facts": {"state": "MERGED"},
-            "ci": {"runs": [["Hostile Review Gate", "queued", "", ""]]},
+            "facts": {"state": "MERGED", "head_sha": H},
+            "ci": {
+                "sha": H,
+                "read_at": "2026-10-26T00:47:00Z",
+                "runs": [["Hostile Reviewer (adversarial gate)", "queued", "", ""]],
+            },
         },
     }
-    assert lf.reviewer_runs_in_flight(records) == 2
+    assert lf.reviewer_runs_in_flight(records, now="2026-10-26T00:47:00Z") == 2

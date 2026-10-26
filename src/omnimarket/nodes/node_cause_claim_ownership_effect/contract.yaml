@@ -1,0 +1,61 @@
+name: node_cause_claim_ownership_effect
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >
+  One rule for who owns a shared red check, shared by queue-status's merge pulse and the throughput tick. A live cause
+  CLAIM on a root check owns every check that inherits it through the workflow's needs graph, and a CLAIM on an
+  inheriting gate is a CLAIM on its root (cause_family). For the tick, it also reads the ledger's cause CLAIMs through
+  queue-status's own reader and turns each repo-status line the decision node left MISSING as shared_red_unowned into a
+  NOTE naming the owning lane. A process-fix PR the tick would name a driver lane for is a NOTE naming its owner instead
+  when an unreleased landing-controller lease (on the PR or on a cause it is a member of) or a ledger CLAIM live within
+  45 minutes covers it (HandlerProcessFixOwnership). Reads the ledger, the controller's state.json and the canonical
+  clone's workflows (git, never GitHub); writes nothing. Heads whose red predates a merged Fix-Check fix absent from
+  the head, or which the existing shared-base barrier would refresh, name update-branch or a conflict rebase instead
+  of a cause lane. Both queue-status and the throughput tick use this same read and the shared-base node's ancestry.
+input_model:
+  name: ModelCauseClaimOwnershipRequest
+  module: omnimarket.nodes.node_cause_claim_ownership_effect.models
+output_model:
+  name: ModelCauseClaimOwnershipResult
+  module: omnimarket.nodes.node_cause_claim_ownership_effect.models
+handler:
+  module: omnimarket.nodes.node_cause_claim_ownership_effect.handler
+  class: HandlerCauseClaimOwnership
+  input_model: omnimarket.nodes.node_cause_claim_ownership_effect.models.ModelCauseClaimOwnershipRequest
+  output_model: omnimarket.nodes.node_cause_claim_ownership_effect.models.ModelCauseClaimOwnershipResult
+entrypoint:
+  name: NodeCauseClaimOwnershipEffect
+  module: omnimarket.nodes.node_cause_claim_ownership_effect.node
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_cause_claim_ownership_effect.handler:HandlerCauseClaimOwnership
+  handlers:
+    - operation: own
+      topic: onex.cmd.omnimarket.cause-claim-ownership-requested.v1
+      handler:
+        name: HandlerCauseClaimOwnership
+        module: omnimarket.nodes.node_cause_claim_ownership_effect.handler
+    - operation: own_process_fix
+      topic: onex.cmd.omnimarket.cause-claim-ownership-requested.v1
+      handler:
+        name: HandlerProcessFixOwnership
+        module: omnimarket.nodes.node_cause_claim_ownership_effect.handler
+terminal_event: onex.evt.omnimarket.cause-claim-ownership-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.cause-claim-ownership-requested.v1
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 120000
+  runtime_profiles:
+    - effects
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.cause-claim-ownership-requested.v1]
+  publish_topics: [onex.evt.omnimarket.cause-claim-ownership-completed.v1]
+metadata:
+  transport_type: inmemory
+  related_tickets: [OMN-19998]
+externally_consumed_topics:
+- onex.evt.omnimarket.cause-claim-ownership-completed.v1

@@ -126,6 +126,10 @@ def test_unread_experiment_designs_are_reported_not_swallowed(
     _, note = handler.read_generated(sources, None, {}, "2026-10-19T16:00:00Z")
     assert "experiments unread" in note
     assert "idle_slot_fill.experiment_designs" in note
+    with pytest.raises(NodeOverlayError) as caught:
+        overlay.experiment_designs(env)
+    assert len(str(caught.value)) > 160
+    assert " ".join(str(caught.value).splitlines()) in note
 
 
 def test_the_node_ships_no_private_json_and_no_internal_topic() -> None:
