@@ -73,7 +73,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegation_context_pack_budget_compute -q -p no:randomly --no-cov -n 0 -k 'hash or no_profile or chain'"
+        check_value: "uv run pytest tests/nodes/node_delegation_context_pack_budget_compute/test_delegation_context_pack_budget.py tests/nodes/node_delegation_context_pack_budget_compute/test_golden_chain_delegation_context_pack_budget_compute.py -q -p no:randomly --no-cov -n 0 -k 'hash or no_profile or chain'"
     binds_ac: ["DoD4"]
   - id: "dod-omn21119-deploy-pack-budget-probe"
     description: "Hosted-runner probe: run the packaged node_delegation_context_pack_budget_compute through `onex node` over an in-memory bus for a profile-naming task class with 2500 of 8000 grounded-input tokens composed, and require request_pack with budget 5500 and no dispatch. At the merge base the node does not exist and the probe fails. No lane services or credentials are required."
