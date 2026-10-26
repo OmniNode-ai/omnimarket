@@ -342,13 +342,16 @@ class ModelProviderQuotaSnapshot(BaseModel):
         return None
 
 
-def _undeclared_host_domain(endpoint_url: str, host: str) -> str:
-    """The key of a host the policy does not describe: ``host:<host>[:<port>]``.
+def host_unreachable_domain_for_endpoint(endpoint_url: str) -> str | None:
+    """The connection-failure key: ``host:<host>[:<port>]`` (OMN-20910).
 
     The port is part of it (OMN-20910): a refused connection says one service is
     down, not that its host's other services are, so a block recorded for
     ``local:8000`` must not bar the backend on ``local:8001``.
     """
+    host = (urlparse(endpoint_url).hostname or "").lower()
+    if not host:
+        return None
     try:
         port = urlparse(endpoint_url).port
     except ValueError:
@@ -376,13 +379,13 @@ def quota_domain_for_endpoint(endpoint_url: str) -> str | None:
         # is also called on the read path for every routing eligibility check.
         # Degrading to host-keying here keeps routing working; a genuinely
         # missing policy still fails loud where it is loaded for classification.
-        return _undeclared_host_domain(endpoint_url, host)
+        return f"host:{host}"
     # Host first, then the declared path prefix (OMN-20154): z.ai's general API
     # and Coding Plan share a host and a key but not a counter.
     provider = provider_rule_for_endpoint(policy.providers, endpoint_url)
     if provider is not None:
         return provider.provider_id
-    return _undeclared_host_domain(endpoint_url, host)
+    return f"host:{host}"
 
 
 def endpoint_is_metered(endpoint_url: str) -> bool:
@@ -409,12 +412,26 @@ def quota_block_for_backend(
     domain = quota_domain_for_endpoint(endpoint_url)
     if domain is None:
         return None
-    return snapshot.block_for(
+    block = snapshot.block_for(
         provider_id=domain,
         credential_ref=credential_ref_for(api_key_ref),
         model_name=model_name,
         metered=not domain.startswith("host:"),
         declared_limit=declared_quota_limit_for(domain),
+    )
+    # Keep quota counters host-wide. Only a connection failure is scoped to a
+    # service's port, and a quota block must take precedence so a pinned call
+    # cannot bypass it through the host-unreachable exception.
+    if block is not None or not domain.startswith("host:"):
+        return block
+    host_domain = host_unreachable_domain_for_endpoint(endpoint_url)
+    if host_domain is None or host_domain == domain:
+        return None
+    return snapshot.block_for(
+        provider_id=host_domain,
+        credential_ref=credential_ref_for(api_key_ref),
+        model_name=model_name,
+        metered=False,
     )
 
 

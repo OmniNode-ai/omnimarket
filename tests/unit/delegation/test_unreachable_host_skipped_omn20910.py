@@ -35,6 +35,7 @@ from omnimarket.inference.provider_quota_observation import (
 )
 from omnimarket.inference.provider_quota_state import (
     HOST_UNREACHABLE_DISPOSITION,
+    ModelProviderQuotaBlock,
     ModelProviderQuotaSnapshot,
 )
 from omnimarket.models.delegation.wire import ModelTierModel
@@ -153,6 +154,29 @@ class TestConnectionFailureIsObserved:
 
 
 class TestRoutingSkipsTheUnreachableHost:
+    @pytest.mark.parametrize("quota_first", [False, True])
+    def test_host_wide_quota_still_binds_a_pin_beside_a_port_failure(
+        self, quota_first: bool
+    ) -> None:
+        snapshot = _snapshot_after_connection_failure()
+        quota = ModelProviderQuotaBlock(
+            credential_ref="unauthenticated",
+            provider_id="host:dead-host.test",
+            model_scope="*",
+            disposition="disable_until_billing",
+            blocked_indefinitely=True,
+        )
+        blocks = (quota, *snapshot.blocks) if quota_first else (*snapshot.blocks, quota)
+        snapshot = snapshot.model_copy(update={"blocks": blocks})
+        for url in (_DEAD_URL, "http://dead-host.test:8001/v1/chat/completions"):
+            assert _backend_routable(_backend(url), quota_state=snapshot) is False
+            assert (
+                _backend_routable(
+                    _backend(url), quota_state=snapshot, explicit_pin=True
+                )
+                is False
+            )
+
     def test_ordinary_routing_skips_it_and_leaves_its_sibling(self) -> None:
         snapshot = _snapshot_after_connection_failure()
         assert _backend_routable(_backend(_DEAD_URL), quota_state=snapshot) is False

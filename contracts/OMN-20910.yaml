@@ -334,6 +334,18 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/delegation/test_unreachable_host_skipped_omn20910.py -q -n 0 --no-cov"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/delegation/test_unreachable_host_skipped_omn20910.py tests/unit/routing/test_entry_tier_share_omn20163.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC38"]
+  - id: "dod-omn20910-deploy-unreachable-host-smoke"
+    description: "The check runs tests/unit/delegation/test_unreachable_host_skipped_omn20910.py and tests/unit/routing/test_entry_tier_share_omn20163.py in a disposable Python 3.13 container from a read-only checkout with no provider key or lab service, verifying port-scoped connection refusals, sibling service eligibility, pinned runs, cooldown expiry, and host-wide quota blocks for OMN-20910."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker pull -q ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: |-
+          env docker run --rm --user "$(id -u):$(id -g)" -v "${PWD}:/workspace:ro" -w /workspace -v "$(uv cache dir):/uv-cache" -v "$(command -v uv):/usr/local/bin/uv:ro" -e UV_LINK_MODE=copy -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0="*" -e PYTHONDONTWRITEBYTECODE=1 -e UV_PROJECT_ENVIRONMENT=/tmp/unreachable-host-venv -e UV_CACHE_DIR=/uv-cache ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a uv run --frozen pytest tests/unit/delegation/test_unreachable_host_skipped_omn20910.py tests/unit/routing/test_entry_tier_share_omn20163.py -q -p no:randomly -p no:cacheprovider --no-cov --basetemp=/tmp/unreachable-host-tests
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC38"]

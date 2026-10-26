@@ -45,6 +45,7 @@ from omnimarket.inference.provider_quota_policy import (
 from omnimarket.inference.provider_quota_state import (
     HOST_UNREACHABLE_DISPOSITION,
     endpoint_is_metered,
+    host_unreachable_domain_for_endpoint,
     quota_domain_for_endpoint,
     resolve_quota_tenant,
 )
@@ -189,7 +190,11 @@ def build_quota_observation(
         succeeded or _CONNECTION_FAILURE_PATTERN.search(error_message) is None
     ):
         return None
-    provider_id = quota_domain_for_endpoint(endpoint_url)
+    provider_id = (
+        quota_domain_for_endpoint(endpoint_url)
+        if metered
+        else host_unreachable_domain_for_endpoint(endpoint_url)
+    )
     if provider_id is None or not model_name.strip():
         return None
     tenant = resolve_quota_tenant(tenant_id)
