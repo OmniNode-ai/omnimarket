@@ -2,7 +2,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-21090"
 title: "Claude Code context service and delegation adapter (compaction mod)"
-summary: "This repository change adds the per-session current-context fold of the plan's section 6 boundary algorithm, step 5 (TA.13): a pure handler in node_context_compaction_receipts_fold_compute that joins install-confirm results of one session in any order and with duplicates, keeps the maximal boundary chains and every boundary observation, and reads back the current boundary, what it installed, and each installed activation retired at the next boundary. It is not routed and has no table yet. The epic criteria are read through the Linear API on child tickets and are not bound by this contract."
+summary: "This repository change adds the per-session current-context fold of the plan's section 6 boundary algorithm, step 5 (TA.13): a pure handler in node_context_compaction_receipts_fold_compute that joins install-confirm results of one session in any order and with duplicates, keeps the maximal boundary chains and every boundary observation, and reads back the current boundary, what it installed, and each installed activation retired at the next boundary. It is not routed and has no table yet. The epic criteria are read through the Linear API on child tickets and are not bound by this contract. The ownership manifest also declares omninode_internal.compaction_current_context and its cursor sequence ahead of migration delivery; no writer node or SQL is added by the ownership stage."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -30,6 +30,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The current-context fold tests pass."
     command: "uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_current_context_fold.py -q -p no:randomly --no-cov"
+  - kind: "tests"
+    description: "The relation inventory tests pass with the new ownership rows and the regenerated inventory."
+    command: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q -p no:randomly --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -131,3 +134,43 @@ dod_evidence:
           print(v.state.value, v.boundary_uuid, len(v.retirements))
           PY
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21090-ac1-current-context-ownership"
+    description: "This repository's part: the table and cursor sequence ownership rows are declared exactly once with the expected schema, migration path and access, the ownership loader resolves both, and no node SQL ships yet. Fails at the merge base, where neither row exists. The child-ticket state this criterion names is read through the Linear API and is not bound here."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q -p no:randomly --no-cov -k compaction_current_context_ownership_precedes_migration_delivery"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21090-ac2-current-context-census"
+    description: "Track A (TA.13, the current-context projection): the declared-table census moves to 118 with the new declaration and the source-created census is unchanged at 108. Fails at the merge base, where the census reads 117. The child-ticket state this criterion names is read through the Linear API and is not bound here."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q -p no:randomly --no-cov -k retained_live_census_gap_fails_closed"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21090-ac3-inventory-fresh"
+    description: "The checked-in relation inventory is regenerated from source and matches it. The new ownership declaration is also required, so the check fails where that declaration is absent. The child-ticket state this criterion names is read through the Linear API and is not bound here."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q -p no:randomly --no-cov -k 'checked_in_inventory_is_source_derived_and_current or compaction_current_context_ownership_precedes_migration_delivery'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21090-ac4-inventory-generator-check"
+    description: "The relation inventory generator's own freshness check exits 0 over the checked-in evidence. The new ownership declaration is also required, so the check fails where that declaration is absent. The child-ticket state this criterion names is read through the Linear API and is not bound here."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run python scripts/generate_application_relation_inventory.py --check && env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q -p no:randomly --no-cov -k compaction_current_context_ownership_precedes_migration_delivery"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21090-ac5-receipts-ownership-unchanged"
+    description: "The compaction_receipts ownership and delivered migrations beside the new declaration are unchanged. The new ownership declaration is also required, so the check fails where that declaration is absent. The child-ticket state this criterion names is read through the Linear API and is not bound here."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q -p no:randomly --no-cov -k 'compaction_receipts_ownership_and_migration_delivery or compaction_current_context_ownership_precedes_migration_delivery'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
