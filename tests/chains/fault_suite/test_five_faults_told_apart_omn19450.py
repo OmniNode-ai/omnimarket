@@ -82,3 +82,38 @@ async def test_the_five_faults_are_told_apart_and_none_reads_provider_error(
         for fault, cause in causes.items()
     }
     assert len(told_apart) == len(_FAULTS), told_apart
+
+
+def test_the_suite_runs_on_a_schedule_and_publishes_its_result() -> None:
+    """AC2: the nightly workflow runs the fault suite on dev and publishes it.
+
+    The scheduled run itself is read live by the contract's gh check; this pins
+    what that run is: a cron trigger, a checkout of dev, the fault suite run with
+    a JUnit report, a per-case job summary, and the report uploaded as an artifact.
+    """
+    from pathlib import Path
+
+    import yaml
+
+    workflow_path = (
+        Path(__file__).resolve().parents[3]
+        / ".github/workflows/delegation-fault-suite-nightly.yml"
+    )
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    # PyYAML reads the bare `on:` key as True.
+    triggers = workflow.get("on", workflow.get(True))
+    assert [entry["cron"] for entry in triggers["schedule"]]
+    (job,) = workflow["jobs"].values()
+    steps = job["steps"]
+    checkout = next(
+        s for s in steps if str(s.get("uses", "")).startswith("actions/checkout")
+    )
+    assert checkout["with"]["ref"] == "dev"
+    runs = "\n".join(str(s.get("run", "")) for s in steps)
+    assert "uv run pytest tests/chains/fault_suite" in runs
+    assert "--junitxml=delegation_fault_suite_junit.xml" in runs
+    assert "GITHUB_STEP_SUMMARY" in runs
+    upload = next(
+        s for s in steps if str(s.get("uses", "")).startswith("actions/upload-artifact")
+    )
+    assert upload["with"]["path"] == "delegation_fault_suite_junit.xml"
