@@ -18,7 +18,7 @@ requirements:
 evidence_requirements:
 - kind: tests
   description: The first-run baseline tests pass at the head; this is a test-only binding of work merged in omnimarket#3127 (coverage-only, OMN-20070).
-  command: uv run pytest tests/nodes/node_delegation_eval_run_orchestrator/test_first_run_baseline_omn19793.py -q --no-cov
+  command: uv run pytest tests/nodes/node_delegation_eval_run_orchestrator/test_run_terminals.py -q --no-cov
 emergency_bypass:
   enabled: false
   justification: ''
@@ -29,7 +29,7 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_delegation_eval_run_orchestrator/test_first_run_baseline_omn19793.py -k "reproduces_the_label_set_and_run_id or recorded_arm_matches_the_report" -q --no-cov
+    check_value: uv run pytest tests/nodes/node_delegation_eval_run_orchestrator/test_run_terminals.py -k "reproduces_the_label_set_and_run_id or recorded_arm_matches_the_report" -q --no-cov
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC1
@@ -38,7 +38,7 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_delegation_eval_run_orchestrator/test_first_run_baseline_omn19793.py tests/test_golden_chain_projection_delegation_eval.py -k redelivered_run -q --no-cov
+    check_value: uv run pytest tests/nodes/node_delegation_eval_run_orchestrator/test_run_terminals.py tests/test_golden_chain_projection_delegation_eval.py -k redelivered_run -q --no-cov
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC2
@@ -47,7 +47,7 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_delegation_eval_run_orchestrator/test_first_run_baseline_omn19793.py tests/test_golden_chain_projection_delegation_eval.py -k "run_completed_row_count" -q --no-cov
+    check_value: uv run pytest tests/nodes/node_delegation_eval_run_orchestrator/test_run_terminals.py tests/test_golden_chain_projection_delegation_eval.py -k "run_completed_row_count" -q --no-cov
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC3
