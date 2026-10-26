@@ -325,3 +325,18 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run python -m omnimarket.nodes.node_rsd_migration_orchestrator check-shape --worktree . --node node_tlc_result_summary_effect --require-entry-point"
     binds_ac: ["AC1"]
+  - id: "dod-omn21373-scm-local-state-node-id"
+    description: "This pull request's share of the PR node id change, and no acceptance criterion's whole: the local-state reader behind onex scm pr-view, pr-status and pr-list prints node_id from the watcher's per-PR facts, and prints null when the state predates the field. Fails at the merge base, whose reader carries no node_id. The watcher writer that records the id is a separate change."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -c node_id src/omnimarket/handlers/scm/handler_scm_local_state.py"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py -q -n 0 --no-cov"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21373-deploy-scm-node-id-reader"
+    description: "Hosted reader smoke: run the SCM command suite against a temporary watcher-state fixture, without a broker, credentials or live watcher. The pr-view, pr-status and pr-list cases require the producer's node_id; a state predating that field returns null. This fails against the base reader, which omits node_id. The epic's per-host unit readback remains pending."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py -q -n 0 --no-cov"

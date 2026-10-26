@@ -30,6 +30,17 @@ class ProtocolGithubRepoWriteTransport(Protocol):
 
 
 @runtime_checkable
+class ProtocolLeaseFence(Protocol):
+    """Whether the fence still names the resource's live grant; one of ok,
+    stale, expired, unknown (omnibase_infra check_fence, OMN-21424).
+    """
+
+    async def check_fence(self, *, kind: str, resource: str, fence: int) -> str:
+        """Read the status of this grant's fence."""
+        ...
+
+
+@runtime_checkable
 class ProtocolPrClaimLookup(Protocol):
     """Read the claim on one PR from the claim registry."""
 
@@ -40,4 +51,8 @@ class ProtocolPrClaimLookup(Protocol):
         ...
 
 
-__all__: list[str] = ["ProtocolGithubRepoWriteTransport", "ProtocolPrClaimLookup"]
+__all__: list[str] = [
+    "ProtocolGithubRepoWriteTransport",
+    "ProtocolLeaseFence",
+    "ProtocolPrClaimLookup",
+]

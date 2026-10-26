@@ -42,6 +42,9 @@
 #       2026-09-13: every one of the 88 online org runners carries
 #       `self-hosted,Linux,X64,omnibase-ci`, and a TCP probe from inside one of
 #       those runner containers reaches the lab lane broker and Postgres ports.
+#       This stopped being sufficient on 2026-10-24 when off-LAN h203-light
+#       runners joined omnibase-ci, so the pin now also requires arch-amd64
+#       (OMN-19998).
 #
 #   (2) THE ADDRESS. The runner carried the stability lane bootstrap address as
 #       its hardcoded default for EVERY lane, so a `--lane dev` dispatch read
@@ -150,7 +153,11 @@ jobs:
     # This job's entire premise is a socket to the lab network. Do not replace
     # this with a routing-variable read; tests/test_delegation_nightly_placement.py
     # fails the build if you do.
-    runs-on: [self-hosted, omnibase-ci]
+    # Off-LAN h203-light runners joined omnibase-ci on 2026-10-24; run
+    # 40288891742 on h203-light-1 could not reach the lab. arch-amd64 keeps this
+    # on the LAN amd64 pools. If an off-LAN runner ever gains arch-amd64, this
+    # pin needs a dedicated LAN label instead.
+    runs-on: [self-hosted, omnibase-ci, arch-amd64]
     # Sized to the probe's OWN derived ceiling, not to a habit. The corpus is
     # published in waves of the lane's declared serving concurrency (1), each
     # wave bounded by the delegate-skill orchestrator's declared handler
