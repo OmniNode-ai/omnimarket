@@ -20,6 +20,7 @@ import yaml
 from omnibase_core.models.delegation.wire import EnumDelegationTerminalFailureCause
 
 from omnimarket.enums.enum_delegation_acceptance import EnumDelegationAcceptanceReason
+from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.inference.local_byok_credential_adapter import (
     register_local_byok_credential,
 )
@@ -234,12 +235,8 @@ async def test_finish_reason_length_is_quality_gate_refused(
     assert TRUNCATION_CHECK_NAME == "not_truncated_by_output_budget"
     assert TRUNCATION_CHECK_NAME in deciding.acceptance_detail
     assert "finish_reason=length" in deciding.acceptance_detail
-    if {
-        "finish_reason",
-        "truncated",
-    } <= ModelDelegateSkillAttemptRecord.model_fields.keys():
-        assert deciding.finish_reason == "length"
-        assert deciding.truncated is True
+    assert deciding.finish_reason == EnumProviderFinishReason.LENGTH, deciding
+    assert deciding.truncated is True, deciding
 
 
 @pytest.mark.parametrize("faults", [pytest.param(_FAULTS, id="all-five-faults")])
@@ -282,3 +279,7 @@ async def test_the_five_faults_have_pairwise_distinct_evidence_and_none_reads_pr
         veto.acceptance_reason != truncation.acceptance_reason
         or veto_rule != truncation_rule
     )
+    assert truncation.finish_reason == EnumProviderFinishReason.LENGTH, truncation
+    assert truncation.truncated is True, truncation
+    assert veto.finish_reason != EnumProviderFinishReason.LENGTH, veto
+    assert veto.truncated is False, veto
