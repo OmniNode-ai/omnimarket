@@ -338,3 +338,52 @@ __all__: list[str] = [
     "pr_key",
     "shared_reds",
 ]
+
+
+def plan_green_repo_landing(
+    facts: ModelLabFillPrLandFacts, idle_slots: int, now: str
+) -> ModelLabFillPrLandPlan:
+    """One landing lane per green repository, preserving every existing safety gate.
+
+    RULING 2026-10-10T04:08:23Z: green unlanded work also consumes idle slots.
+    A lane hands work to the landing controller; it never merges or arms a PR.
+    """
+    at = _stamp(now)
+    if at is None:
+        raise ValueError("now must be an ISO timestamp with a timezone")
+    if not facts.holds.read:
+        return plan_pr_land_fallback(facts, idle_slots, now)
+    holds = in_force_holds(facts.holds.lines, at)
+    chosen: dict[str, ModelLabFillOpenPr] = {}
+    for pr in sorted(
+        facts.prs,
+        key=lambda p: (pr_key(p.pr).partition("#")[0], int(p.pr.partition("#")[2])),
+    ):
+        if pr.ci_verdict != "GREEN":
+            continue
+        last = pr.last_outcome
+        if (
+            last is not None
+            and last.outcome.lower() == "blocked"
+            and last.head_sha in ("", pr.head_sha)
+        ):
+            stamp = _stamp(last.at)
+            if stamp is None or at - stamp < timedelta(hours=facts.cooldown_hours):
+                continue
+        decision = _decide(pr, holds, {}, at, timedelta(hours=facts.cooldown_hours))
+        if decision.reason not in (None, EnumLabFillSkipReason.HANDED_OFF):
+            continue
+        chosen.setdefault(_repo(pr_key(pr.pr)), pr)
+    dispatch = tuple(
+        ModelLabFillPrLandDispatch(
+            pr=pr_key(pr.pr),
+            repo=repo,
+            head_sha=pr.head_sha,
+            head_ref=pr.head_ref,
+            ticket=pr.ticket,
+            title=pr.title,
+            pr_class=EnumLabFillPrLandClass.GREEN_UNLANDED,
+        )
+        for repo, pr in sorted(chosen.items())[: max(0, idle_slots)]
+    )
+    return ModelLabFillPrLandPlan(idle_slots=max(0, idle_slots), dispatch=dispatch)

@@ -17,7 +17,8 @@ Stop read classified other words and not these, and is otherwise carried as unco
 whose content is a boundary's compaction summary is never a prompt. Citations (`prompt_id=` with
 `covers=<start>:<end>`) and review rows (`reviewed=<first>..<last>` on a RULING row) come from the
 pinned ledger prefixes only, so a row written after the case's boundary cannot change the read.
-The carry rule is in `carry_rule`.
+RULING and OPERATOR-CONSENT quotes also record words, as in live mode. The carry rule is in
+`carry_rule`.
 
 REPO_STATE is `unavailable` in pinned mode where the case excludes it, and always in live mode;
 it is never filled from a cwd.
@@ -386,6 +387,14 @@ class HandlerSessionContextSources:
         records, summaries = _chain_records(chain, chain_path)
         prompts = _operator_prompts(records, summaries, chain_path)
         citations, ranges = _ledger_rows(prefixes)
+        rows = [
+            row
+            for prefix in prefixes
+            for row in ledger_lines(
+                prefix.decode("utf-8", errors="replace"), until=None
+            )
+        ]
+        citations.extend(quote_citations(prompts, rows))
         return _carried(prompts, citations, ranges)
 
     def _live(

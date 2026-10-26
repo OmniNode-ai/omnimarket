@@ -119,12 +119,15 @@ def default_clone_path(repo: str) -> Path | None:
 
     A declared root is the only root read: one that holds no clone of the repo
     answers None and never falls through. A host that declares none resolves
-    the clone under ``$OMNI_HOME``, which the command's help does not name.
+    the clone under ``$OMNI_HOME`` or its sibling registry checkout.
     """
     root = os.environ.get(CLONE_ROOT_ENV) or os.environ.get("OMNI_HOME")
     if not root:
         return None
-    clone = Path(root) / repo.split("/", 1)[1]
+    name = repo.split("/", 1)[1]
+    clone = Path(root) / name
+    if not (clone / ".git").exists() and not os.environ.get(CLONE_ROOT_ENV):
+        clone = Path(root).parent / name
     return clone if (clone / ".git").exists() else None
 
 

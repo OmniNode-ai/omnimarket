@@ -1,4 +1,7 @@
-"""Pure deterministic assembly of ModelContextPack artifacts."""
+"""Pure deterministic context-pack assembly with content deduplication.
+
+Optional artifacts that do not fit the token budget are excluded.
+"""
 
 from __future__ import annotations
 
@@ -19,7 +22,9 @@ from omnimarket.pack.model_context_pack_builder_request import (
 )
 from omnimarket.pack.model_context_pack_builder_result import (
     EnumContextPackBuilderStatus,
+    ModelContextPackBudgetExclusion,
     ModelContextPackBuilderResult,
+    ModelContextPackDroppedDuplicate,
 )
 from omnimarket.pack.model_context_profile import (
     ModelContextProfile,
@@ -76,6 +81,52 @@ def _missing_required_factors(
     return tuple(
         factor for factor in profile.required_factors if factor not in available
     )
+
+
+def _content_sha256(content: str) -> str:
+    content = content.replace("\r\n", "\n").replace("\r", "\n")
+    normalised = "\n".join(line.rstrip() for line in content.split("\n")).strip()
+    return hashlib.sha256(normalised.encode("utf-8")).hexdigest()
+
+
+def _deduplicate_artifacts(
+    artifacts: tuple[ModelContextPackArtifact, ...],
+    profile: ModelContextProfile,
+) -> tuple[
+    tuple[ModelContextPackArtifact, ...],
+    tuple[ModelContextPackDroppedDuplicate, ...],
+]:
+    required_factors = set(profile.required_factors)
+    keyed = tuple(
+        (_content_sha256(artifact.content), artifact) for artifact in artifacts
+    )
+    winners: dict[str, int] = {}
+    for index, (content_hash, artifact) in enumerate(keyed):
+        winner_index = winners.get(content_hash)
+        if winner_index is None or (
+            artifact.factor in required_factors
+            and keyed[winner_index][1].factor not in required_factors
+        ):
+            winners[content_hash] = index
+
+    kept: list[ModelContextPackArtifact] = []
+    dropped: list[ModelContextPackDroppedDuplicate] = []
+    for index, (content_hash, artifact) in enumerate(keyed):
+        winner_index = winners[content_hash]
+        if index == winner_index:
+            kept.append(artifact)
+            continue
+        winner = keyed[winner_index][1]
+        dropped.append(
+            ModelContextPackDroppedDuplicate(
+                factor=artifact.factor,
+                source_artifact_hash=artifact.source_artifact_hash,
+                content_sha256=content_hash,
+                kept_factor=winner.factor,
+                kept_source_artifact_hash=winner.source_artifact_hash,
+            )
+        )
+    return tuple(kept), tuple(dropped)
 
 
 def _chunks(
@@ -146,7 +197,48 @@ class HandlerContextPackBuilder:
             )
 
         ordered_artifacts = _ordered_artifacts(request.artifacts, request.profile)
-        chunks = _chunks(ordered_artifacts, request.profile)
+        kept_artifacts, dropped_duplicates = _deduplicate_artifacts(
+            ordered_artifacts, request.profile
+        )
+        required_factors = set(request.profile.required_factors)
+        required = tuple(
+            artifact
+            for artifact in kept_artifacts
+            if artifact.factor in required_factors
+        )
+        required_total = sum(artifact.token_estimate for artifact in required)
+        if required_total > request.profile.token_budget:
+            return _failure(
+                EnumContextPackFailure.TOKEN_BUDGET_EXCEEDED,
+                (
+                    f"token estimate {required_total} of required artifacts exceeds "
+                    f"budget {request.profile.token_budget}: "
+                    + ", ".join(
+                        f"{artifact.factor.value}:{artifact.source_artifact_hash}"
+                        for artifact in required
+                    )
+                ),
+            )
+
+        used = required_total
+        admitted: list[ModelContextPackArtifact] = []
+        excluded: list[ModelContextPackBudgetExclusion] = []
+        for artifact in kept_artifacts:
+            if artifact.factor in required_factors:
+                admitted.append(artifact)
+            elif used + artifact.token_estimate <= request.profile.token_budget:
+                admitted.append(artifact)
+                used += artifact.token_estimate
+            else:
+                excluded.append(
+                    ModelContextPackBudgetExclusion(
+                        factor=artifact.factor,
+                        source_artifact_hash=artifact.source_artifact_hash,
+                        token_estimate=artifact.token_estimate,
+                    )
+                )
+
+        chunks = _chunks(tuple(admitted), request.profile)
         duplicate_ids = _duplicate_chunk_ids(chunks)
         if duplicate_ids:
             return _failure(
@@ -155,15 +247,6 @@ class HandlerContextPackBuilder:
             )
 
         total_tokens = sum(chunk.token_estimate for chunk in chunks)
-        if total_tokens > request.profile.token_budget:
-            return _failure(
-                EnumContextPackFailure.TOKEN_BUDGET_EXCEEDED,
-                (
-                    f"token estimate {total_tokens} exceeds budget "
-                    f"{request.profile.token_budget}"
-                ),
-            )
-
         context_pack = ModelContextPack(
             pack_id=_pack_id(request, chunks),
             contract_hash=request.contract_hash,
@@ -178,6 +261,8 @@ class HandlerContextPackBuilder:
             status=EnumContextPackBuilderStatus.OK,
             context_pack=context_pack,
             pack_hash=pack_hash,
+            dropped_duplicates=dropped_duplicates,
+            excluded_by_budget=tuple(reversed(excluded)),
         )
 
 

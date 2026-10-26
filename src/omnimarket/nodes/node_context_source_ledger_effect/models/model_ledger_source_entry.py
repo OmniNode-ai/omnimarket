@@ -101,3 +101,9 @@ class ModelLedgerSourceResult(ModelContextSourceResult):
     """``ModelContextSourceResult`` whose entries are ledger entries."""
 
     entries: tuple[ModelLedgerSourceEntry, ...] = ()
+    watermark_reached: int | None = Field(
+        default=None,
+        ge=0,
+        strict=True,
+        description="Highest contiguous unique sequence in the requested ledger; NULL legacy rows still make the result stale",
+    )
