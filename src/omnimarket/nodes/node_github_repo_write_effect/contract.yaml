@@ -9,7 +9,7 @@
 # (metadata side_effect_class read_only, descriptor idempotent true); a write
 # needs a mode, a quota floor and guards a read never does.
 name: node_github_repo_write_effect
-contract_version: {major: 1, minor: 4, patch: 0}
+contract_version: {major: 1, minor: 5, patch: 0}
 node_type: EFFECT_GENERIC
 node_version: {major: 1, minor: 3, patch: 0}
 
@@ -45,6 +45,11 @@ description: >
   idempotency key returns the first reply replayed. A thread that is not on
   that pull request is refused not_found; GitHub refuses a reply to a reply
   with github_refused.
+  A command carrying lease {kind, resource, fence, expires_at} is refused before
+  any GitHub call unless the runtime's fence port answers ok: lease_fence_stale
+  for a newer grant, lease_expired for no live grant or a lease expiring inside
+  descriptor.timeout_ms, lease_unreadable when the port answers unknown, fails
+  or is not wired.
 
 input_model:
   name: ModelRepoWriteRequest
