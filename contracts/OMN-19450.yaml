@@ -85,6 +85,11 @@ dod_evidence:
           --branch dev --status success --limit 1 --json createdAt
           --jq '.[0].createdAt | fromdateiso8601 | (now - .) < 691200' | grep -qx true
         cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: >-
+          uv run pytest tests/chains/fault_suite/test_five_faults_told_apart_omn19450.py
+          -q -k schedule_and_publishes
+        cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn19450-ac1-five-distinct-causes"
     description: "The five faults end in auth_failed, provider_quota_exhausted, timeout and quality_gate_refused (twice) on the bus path and the local path, and none reads provider_error."
