@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_tlc_result_summary_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: []
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: 1.0.0
+
+description: >
+  Summarize TLC model checker results: one line per results/*.out file in a run directory,
+  naming its config's invariants, the verdict, distinct states, search depth and trace length.
+
+input_model:
+  name: ModelTlcResultSummaryRequest
+  module: omnimarket.nodes.node_tlc_result_summary_effect.models.model_tlc_result_summary
+output_model:
+  name: ModelTlcResultSummaryResult
+  module: omnimarket.nodes.node_tlc_result_summary_effect.models.model_tlc_result_summary
+handler:
+  module: omnimarket.nodes.node_tlc_result_summary_effect.handlers.handler_tlc_result_summary
+  class: HandlerTlcResultSummary
+  input_model: omnimarket.nodes.node_tlc_result_summary_effect.models.model_tlc_result_summary.ModelTlcResultSummaryRequest
+  output_model: omnimarket.nodes.node_tlc_result_summary_effect.models.model_tlc_result_summary.ModelTlcResultSummaryResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_tlc_result_summary_effect.handlers.handler_tlc_result_summary:HandlerTlcResultSummary
+  handlers:
+    - operation: summarize
+      handler:
+        name: HandlerTlcResultSummary
+        module: omnimarket.nodes.node_tlc_result_summary_effect.handlers.handler_tlc_result_summary
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct invocation by python -m omnimarket.nodes.node_tlc_result_summary_effect on the host holding the TLC run directory.
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 30000
+
+metadata:
+  ticket: OMN-21373
+  transport_type: local
