@@ -59,6 +59,7 @@ from omnibase_infra.event_bus.models.model_event_message import ModelEventMessag
 
 from omnimarket.enums.enum_delegation_acceptance import EnumDelegationAcceptanceReason
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -348,26 +349,41 @@ async def test_the_truncation_carries_the_stop_reason_and_the_flag(
 
     assert deciding["finish_reason"] == "length", deciding
     assert deciding["truncated"] is True, deciding
+    deciding_attempt = run.consumer.attempts[-1]
+    assert deciding_attempt.finish_reason == EnumProviderFinishReason.LENGTH, (
+        deciding_attempt
+    )
+    assert deciding_attempt.truncated is True, deciding_attempt
+    assert run.consumer.finish_reason == EnumProviderFinishReason.LENGTH, run.consumer
+    assert run.consumer.truncated is True, run.consumer
 
 
 async def test_the_veto_and_the_truncation_are_told_apart_by_their_deciding_attempt(
     monkeypatch: pytest.MonkeyPatch,
     record_property: Callable[[str, object], None],
 ) -> None:
-    veto = dict(
-        (
-            await _run_fault("gate_veto", monkeypatch, record_property)
-        ).canonical.escalation_history[-1]
-    )
-    truncation = dict(
-        (
-            await _run_fault("truncation", monkeypatch, record_property)
-        ).canonical.escalation_history[-1]
-    )
+    veto_run = await _run_fault("gate_veto", monkeypatch, record_property)
+    truncation_run = await _run_fault("truncation", monkeypatch, record_property)
+    veto = dict(veto_run.canonical.escalation_history[-1])
+    truncation = dict(truncation_run.canonical.escalation_history[-1])
 
     assert veto.get("finish_reason") != truncation.get("finish_reason")
     assert bool(veto.get("truncated")) is False
     assert truncation.get("truncated") is True
+    veto_attempt = veto_run.consumer.attempts[-1]
+    truncation_attempt = truncation_run.consumer.attempts[-1]
+    assert veto_attempt.finish_reason != EnumProviderFinishReason.LENGTH, veto_attempt
+    assert veto_attempt.truncated is False, veto_attempt
+    assert truncation_attempt.finish_reason == EnumProviderFinishReason.LENGTH, (
+        truncation_attempt
+    )
+    assert truncation_attempt.truncated is True, truncation_attempt
+    assert f"deciding_rules={_VETO_RULE}" in veto_run.canonical.failure_reason, (
+        veto_run.canonical.failure_reason
+    )
+    assert (
+        f"deciding_rules={_VETO_RULE}" not in truncation_run.canonical.failure_reason
+    ), truncation_run.canonical.failure_reason
 
 
 @pytest.mark.parametrize("status", [401, 403])
