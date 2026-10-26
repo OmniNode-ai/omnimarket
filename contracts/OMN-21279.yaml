@@ -61,7 +61,7 @@ requirements:
           lane's own common git dir and the objects directory of each of its
           alternates, never a registry peer's whole git dir, "/", $HOME or an
           alternate that is not a repository's objects directory -- falsifier:
-          uv run pytest tests/nodes/node_codex_sandbox_probe_compute -q --no-cov
+          uv run pytest tests/nodes/node_codex_sandbox_probe_compute/test_codex_sandbox_probe.py -q --no-cov
 evidence_requirements:
   - kind: tests
     description: >-
@@ -197,6 +197,8 @@ dod_evidence:
     source: generated
     binds_ac: [AC3]
     checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_pool_read_share_effect/test_golden_chain_pool_read_share_effect.py -q --no-cov
       - check_type: command
         check_value: >-
           bash -o pipefail -c 'curl --fail --silent --show-error
@@ -214,7 +216,7 @@ dod_evidence:
     binds_ac: [AC4]
     checks:
       - check_type: test_passes
-        check_value: uv run pytest tests/nodes/node_codex_sandbox_probe_compute -q --no-cov
+        check_value: uv run pytest tests/nodes/node_codex_sandbox_probe_compute/test_codex_sandbox_probe.py -q --no-cov
   - id: dod-omn-21279-codex-git-roots-deploy-readback
     description: >-
       AC4 hosted-runner deploy-scope source readback: the public raw endpoint
@@ -225,6 +227,8 @@ dod_evidence:
     source: generated
     binds_ac: [AC4]
     checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_codex_sandbox_probe_compute/test_codex_sandbox_probe.py -q --no-cov
       - check_type: command
         check_value: >-
           bash -o pipefail -c 'curl --fail --silent --show-error
