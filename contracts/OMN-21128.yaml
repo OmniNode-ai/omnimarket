@@ -34,6 +34,29 @@ requirements:
           reason, and a refusal lists every violation, not the first -- falsifier: the kwargs,
           zero-argument, second-binding, database-import, failed-run and all-violations tests
           in tests/nodes/node_exemplar_admission_compute/test_golden_chain_exemplar_admission_compute.py fail
+  - id: "req-exemplar-registry-reconcile"
+    statement: "The exemplar registry's sync plan is a pure omnimarket compute that reconciles an admission result at a commit against the registry's current rows into one create, revise, retain, deprecate or revoke row per logical source, and never drops a source silently."
+    acceptance:
+      - id: "AC6"
+        statement: >-
+          AC6: a newly admitted source is created active with its gate receipt; an unchanged active
+          source is a typed retain; changed content or a gate version bump revises with a new version
+          digest; an active source absent at the commit or refused for an ordinary reason is deprecated
+          with its reason codes; a refusal carrying a declared revoke code revokes; a revoked source
+          with the same bytes stays revoked -- falsifier: the create, retain, revise, deprecate, revoke
+          and revoked tests in tests/nodes/node_exemplar_registry_reconcile_compute/test_golden_chain_exemplar_registry_reconcile_compute.py fail
+      - id: "AC7"
+        statement: >-
+          AC7: the plan is ordered by logical source, independent of input order, bound by counts and a
+          reconciliation hash, and fails closed on an admitted source with no content digest, a row or
+          admission from another repository, and duplicate rows or decisions -- falsifier: the ordered,
+          deterministic and fails_closed tests in tests/nodes/node_exemplar_registry_reconcile_compute/test_golden_chain_exemplar_registry_reconcile_compute.py fail
+      - id: "AC8"
+        statement: >-
+          AC8: the reconcile node is dispatched through its contract on the RuntimeLocal in-memory bus,
+          its topics are declared in contract.yaml and its entry point resolves -- falsifier:
+          test_contract_declares_topics_models_handler_and_entry_point or the over-the-bus chain tests in
+          tests/nodes/node_exemplar_registry_reconcile_compute/test_golden_chain_exemplar_registry_reconcile_compute.py fail
   - id: "req-exemplar-admission-receipt-and-data"
     statement: "Admission rests on check-run records on the cited commit and declared deny data, never on a caller-asserted success."
     acceptance:
@@ -61,6 +84,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC1-AC5: the admission compute's focused tests."
     command: "uv run pytest tests/nodes/node_exemplar_admission_compute -q -p no:randomly --no-cov"
+  - kind: "tests"
+    description: "AC6-AC8: the registry reconcile compute's focused tests."
+    command: "uv run pytest tests/nodes/node_exemplar_registry_reconcile_compute -q -p no:randomly --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -90,10 +116,41 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_exemplar_admission_compute/test_golden_chain_exemplar_admission_compute.py -q -n 0 -k 'contract_declares or over_the_bus'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
+  - id: "dod-omn21128-reconcile-lifecycle"
+    description: "Create, revise, retain, deprecate and revoke follow the declared lifecycle rules; at the merge base the node package does not exist and the file fails at collection."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_exemplar_registry_reconcile_compute/test_golden_chain_exemplar_registry_reconcile_compute.py -q -n 0 -k 'created or retain or revises or deprecated or revoke or revoked'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn21128-reconcile-plan-binding"
+    description: "The plan is ordered, deterministic and fails closed on missing digests, foreign repositories and duplicates."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_exemplar_registry_reconcile_compute/test_golden_chain_exemplar_registry_reconcile_compute.py -q -n 0 -k 'ordered or deterministic or fails_closed or malformed or validated'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
+  - id: "dod-omn21128-reconcile-bus"
+    description: "The reconcile node runs through its contract on the in-memory bus."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_exemplar_registry_reconcile_compute/test_golden_chain_exemplar_registry_reconcile_compute.py -q -n 0 -k 'contract_declares or over_the_bus'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8"]
   - id: "dod-omn21128-deploy-probe"
     description: "Deploy probe: the handler read from GitHub at the checked-out commit defines HandlerExemplarAdmission. A head without it fails the probe."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_exemplar_admission_compute/handlers/handler_exemplar_admission.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'class HandlerExemplarAdmission'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21128-reconcile-deploy-probe"
+    description: "Deploy probe: the reconcile handler read from GitHub at the checked-out commit defines HandlerExemplarRegistryReconcile. A head without it fails the probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_exemplar_registry_reconcile_compute/handlers/handler_exemplar_registry_reconcile.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'class HandlerExemplarRegistryReconcile'"
         cwd: "${OMNI_HOME}/omnimarket"
