@@ -307,6 +307,17 @@ def _build_context_pack(
         )
         return "", "", warnings, failure_stage
 
+    if result.excluded_by_budget:
+        # The ROI runner measures whole arms, so a partial arm is a budget failure.
+        warnings.append(
+            f"context-pack builder excluded {len(result.excluded_by_budget)} artifact(s) by budget: "
+            + ", ".join(
+                f"{e.factor.value}:{e.source_artifact_hash}"
+                for e in result.excluded_by_budget
+            )
+        )
+        return "", "", warnings, EnumFailureStage.BUDGET_FAIL
+
     context_text = "\n\n".join(
         f"[{chunk.factor.value}]\n{chunk.content}"
         for chunk in result.context_pack.chunks
