@@ -122,10 +122,13 @@ CODEX_ROOTS_PROBE_HEADROOM = 8
 # set never sits at the ceiling. On one lab host, 2026-10-23, 109 roots sat only 2 spare roots under it and failed the probe.
 CODEX_ROOTS_FIT_SPARE = 20
 # A scratch cwd has no common gitdir. Git worktree add still writes objects, refs and the worktree
-# registry of the host's repository clones. Grant those directories, never the canonical index,
-# HEAD, config or source tree. Materialize them before Codex resolves its roots (OMN-17427).
-# Only the registry clones, the sibling private data clone and the lane's own common dir are granted, never the
-# peer bare caches in the runner's repository cache: the runner fills those from outside the sandbox, and on Linux codex
+# registry of the host's repository clones. Grant those directories for peer clones, leaving their index,
+# HEAD, config and source tree read-only. Materialize them before Codex resolves its roots (OMN-17427).
+# Grant the lane's OWN common dir whole: git fetch writes FETCH_HEAD, packed-refs, shallow and gc.pid at its top (OMN-21279).
+# This makes that clone's hooks and config writable inside the sandbox, so only the lane's own common dir is granted this way.
+# Also grant its direct alternate objects directories, without granting the alternate clones' other metadata.
+# Only the registry clones, the sibling private data clone, the lane's own common dir and its direct alternate objects are granted.
+# Other peer bare caches in the runner's repository cache stay read-only: the runner fills those from outside the sandbox, and on Linux codex
 # hands its whole permission profile to codex-linux-sandbox as ONE argument, about 1.1 KB per writable root,
 # which the kernel refuses past 128 KiB (MAX_ARG_STRLEN). Granting all 19 caches put one lab host at 140 roots and every
 # Codex lane there failed the probe with "Argument list too long (os error 7)" (OMN-17427, 2026-10-07).
@@ -182,16 +185,41 @@ rest=[]
 if registry.is_dir():
  for p in sorted(registry.iterdir()): rest.extend(entry(p/'.git'))
 keep=metadata_of(keep); rest=[d for d in metadata_of(rest) if d not in keep]
+common=keep[0] if common else None
+home=pathlib.Path.home().resolve()
+def safe_root(path):
+ return path!=pathlib.Path(path.anchor) and path!=home and (common is None or path not in common.parents)
+own_roots=[]
+if common is not None:
+ if not safe_root(common): raise SystemExit('CODEX-GIT-ROOTS unsafe common dir: '+str(common))
+ own_roots.append(str(common))
+ alternates=common/'objects/info/alternates'
+ if alternates.is_file():
+  for line in alternates.read_text(errors='replace').splitlines():
+   line=line.strip()
+   if not line or line.startswith('#'): continue
+   path=pathlib.Path(line)
+   if not path.is_absolute(): path=common/'objects'/path
+   try:
+    path=path.resolve()
+    valid=safe_root(path) and path.name=='objects' and path.is_dir() and (path.parent/'HEAD').is_file()
+   except (OSError,RuntimeError,ValueError): valid=False
+   if valid: own_roots.append(str(path))
+   else: print('CODEX-GIT-ROOTS skip alternate: '+str(path),file=sys.stderr)
 rest.sort(key=lambda d: (label(d) not in priority, str(d)))
 units=keep+rest
 def roots_of(directories):
  out=[]
  for directory in directories:
+  if directory==common:
+   out.extend(own_roots); continue
   for relative in ('objects','refs','logs/refs','worktrees'):
    path=directory/relative
+   path=path.resolve()
+   if not safe_root(path): raise SystemExit('CODEX-GIT-ROOTS unsafe root: '+str(path))
    path.mkdir(parents=True,exist_ok=True)
-   out.append(str(path.resolve()))
- return out
+   out.append(str(path))
+ return list(dict.fromkeys(out))
 all_roots=roots_of(units)
 # Codex hands its whole permission profile to its Linux helper as ONE argument (about 1.2 KB per writable root), which the kernel
 # refuses past 128 KiB. With the codex binary and the lane's other roots given, the registry clones are fitted to that ceiling by

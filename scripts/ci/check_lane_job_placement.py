@@ -40,13 +40,19 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # Add a row here when a job's correctness depends on WHERE its runner sits.
 # Never remove one to make a routing flip land: a lane-bound job that has to
 # move needs its labels changed here, in the same commit, deliberately.
+# arch-amd64 selects the LAN amd64 pools: the h203-light runners that joined
+# omnibase-ci on 2026-10-24 are off-LAN and lack this label.
 LANE_BOUND_JOBS: dict[str, dict[str, list[str]]] = {
     ".github/workflows/delegation-regression-nightly.yml": {
-        "golden-tasks": ["self-hosted", "omnibase-ci"],
+        "golden-tasks": ["self-hosted", "omnibase-ci", "arch-amd64"],
     },
     # OMN-19440: the daily command-to-terminal join reads the lab lane broker.
     ".github/workflows/delegation-terminal-join-daily.yml": {
-        "terminal-join": ["self-hosted", "omnibase-ci"],
+        "terminal-join": ["self-hosted", "omnibase-ci", "arch-amd64"],
+    },
+    # The rungs are lab hosts.
+    ".github/workflows/delegation-rung-eval-nightly.yml": {
+        "rung-eval": ["self-hosted", "omnibase-ci", "arch-amd64"],
     },
 }
 

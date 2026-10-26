@@ -49,6 +49,19 @@ requirements:
           names the last complete PROBE-STEP marker or says before any step
           marker. An incomplete final marker is ignored. Shared reads replay
           the diagnostic and the host-unreadable alarm row includes it.
+  - id: req-codex-git-cache-roots
+    statement: >-
+      A Codex lane can run git fetch in its own clone: the sandbox's writable
+      roots name the lane's common git dir and the objects directories of its
+      alternates, and nothing wider.
+    acceptance:
+      - id: AC4
+        statement: >-
+          AC4: the roots program of node_codex_sandbox_probe_compute grants the
+          lane's own common git dir and the objects directory of each of its
+          alternates, never a registry peer's whole git dir, "/", $HOME or an
+          alternate that is not a repository's objects directory -- falsifier:
+          uv run pytest tests/nodes/node_codex_sandbox_probe_compute -q --no-cov
 evidence_requirements:
   - kind: tests
     description: >-
@@ -180,12 +193,48 @@ dod_evidence:
       at the checkout head must serve the timeout handler preserving the
       subprocess exception's stdout and naming the last complete step.
       The merge base lacks these statements. This verifies published source;
-      the subprocess tests above verify behavior, not a live lane deployment.
+      the pytest check below runs the subprocess tests that verify behavior,
+      not a live lane deployment. Its must-fail control is the merge base with
+      merged fix 015dafb91 reverted.
     source: generated
-    binds_ac: [AC3]
     checks:
+      - check_type: test_passes
+        check_value: >-
+          env PYTHONDONTWRITEBYTECODE=1 uv run pytest
+          tests/nodes/node_pool_read_share_effect/test_golden_chain_pool_read_share_effect.py
+          -q --no-cov
       - check_type: command
         check_value: >-
           bash -o pipefail -c 'curl --fail --silent --show-error
           "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_pool_read_share_effect/handlers/handler_pool_read_share.py"
           | python3 -c "import sys; source=sys.stdin.read(); assert \"return _timed_out(argv, timeout, exc.stdout)\" in source; assert \"step = last_step(stdout)\" in source; assert \"before any step marker\" in source"'
+  - id: dod-omn-21279-codex-git-cache-roots
+    description: >-
+      AC4: run the roots program over a worktree whose common git dir is in
+      another clone and over a clone with alternates (a valid objects dir, "/",
+      $HOME, a missing path, a directory that is no repository's objects dir).
+      The common-dir and alternates tests fail at the merge base, whose roots
+      omit the common dir (git fetch under the Codex sandbox: cannot open
+      .git/FETCH_HEAD: Read-only file system).
+    source: generated
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_codex_sandbox_probe_compute/test_codex_sandbox_probe.py tests/nodes/node_codex_sandbox_probe_compute/test_golden_chain_codex_sandbox_probe_compute.py -q --no-cov
+  - id: dod-omn-21279-codex-git-roots-deploy-readback
+    description: >-
+      AC4 hosted-runner deploy-scope source readback: the public raw endpoint
+      at the checkout head must serve the handler granting the lane's own
+      common git dir and naming a skipped alternate. The merge base lacks both
+      statements. This verifies published source, not that a Codex lane has
+      run with the new roots. The pytest check runs the roots program's tests.
+    source: generated
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_codex_sandbox_probe_compute/test_codex_sandbox_probe.py -q --no-cov
+      - check_type: command
+        check_value: >-
+          bash -o pipefail -c 'curl --fail --silent --show-error
+          "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_codex_sandbox_probe_compute/handlers/handler_codex_sandbox_probe.py"
+          | python3 -c "import sys; source=sys.stdin.read(); assert \"own_roots.append(str(common))\" in source; assert \"CODEX-GIT-ROOTS skip alternate\" in source"'

@@ -25,6 +25,8 @@
 #
 # Self-hosted only: the rungs are lab hosts with no route from a hosted runner
 # (scripts/ci/check_lane_job_placement.py).
+# Requiring arch-amd64 keeps it on the LAN amd64 pools and excludes the off-LAN
+# h203-light runners that joined omnibase-ci on 2026-10-24.
 
 name: Delegation rung eval (nightly)
 
@@ -46,7 +48,7 @@ concurrency:
 jobs:
   rung-eval:
     name: Per-rung eval and missing-night report
-    runs-on: [self-hosted, omnibase-ci]
+    runs-on: [self-hosted, omnibase-ci, arch-amd64]
     timeout-minutes: 90
     env:
       RUNG_EVAL_TABLE_DIR: ${{ vars.RUNG_EVAL_TABLE_DIR }}

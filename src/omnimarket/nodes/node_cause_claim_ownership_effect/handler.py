@@ -31,6 +31,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from omnimarket.handlers.rules_merge_sweep import leased_lanes
+
 from .models import (
     ModelCauseClaimOwnershipRequest,
     ModelCauseClaimOwnershipResult,
@@ -335,10 +337,14 @@ def live_cause_claims(
     qs: Any, registry_root: Path, now: Any, ledger: Path | None
 ) -> list[tuple[str, str]]:
     """(lane, CLAIM first line) of every open, live, non-dispatcher CLAIM carrying a ``cause=`` cell: the rows
-    ``qs.shared_red_owners`` reads, with its window and its 45-minute liveness."""
+    ``qs.shared_red_owners`` reads, with its window and its 45-minute liveness. A silent lane is live while it
+    holds a lane-work lease (OMN-21428)."""
     dm = qs.load_drain_map_module()
     grammar = dm.load_grammar(registry_root)
     rows, _ = dm.load_rows(registry_root, 1.0, now, grammar, ledger=ledger)
+    leased = leased_lanes(
+        [{"type": r.rtype, "lane": r.lane, "text": r.text} for r in rows]
+    )
     claims = dm.open_claims(rows, grammar, now - timedelta(days=1))
     context = qs.owner_context(rows, dm)
     out = []
@@ -348,7 +354,11 @@ def live_cause_claims(
             live = qs.parse_stamp(stamp) >= now - qs.SILENT_AFTER
         except ValueError:
             live = False
-        if live and lane not in context["dispatchers"] and cause_cells(c.text):
+        if (
+            (live or lane in leased)
+            and lane not in context["dispatchers"]
+            and cause_cells(c.text)
+        ):
             out.append((lane, c.text.split("\n", 1)[0]))
     return out
 
@@ -686,13 +696,17 @@ def claim_lane_owners(
     qs: Any, ledger: Path | None, now: Any, refs: list[str]
 ) -> dict[str, list[str]]:
     """``repo#n`` -> the lanes whose live CLAIM names it: drain_map.py's own row reader and owner match, and its liveness
-    rule (a lane with no row for 45 minutes owns nothing; a chain CLAIM 180). Raises when the ledger cannot be read."""
+    rule (a lane with no row for 45 minutes owns nothing; a chain CLAIM 180). A silent lane is live while it holds
+    a lane-work lease (OMN-21428). Raises when the ledger cannot be read."""
     dm = qs.load_drain_map_module()
     if not os.environ.get("ONEX_REGISTRY_ROOT", "").strip():
         raise RuntimeError("ONEX_REGISTRY_ROOT is not set")
     home = Path(os.environ["ONEX_REGISTRY_ROOT"])
     grammar = dm.load_grammar(home)
     rows, _ = dm.load_rows(home, 7.0, now, grammar, ledger)
+    leased = leased_lanes(
+        [{"type": r.rtype, "lane": r.lane, "text": r.text} for r in rows]
+    )
     claims = dm.open_claims(rows, grammar, now - timedelta(days=7))
     context = qs.owner_context(rows, dm)
 
@@ -715,7 +729,7 @@ def claim_lane_owners(
             {
                 f"live CLAIM {o.lane}"
                 for o in owners
-                if o.kind == "CLAIM" and o.live and not o.ended
+                if o.kind == "CLAIM" and (o.live or o.lane in leased) and not o.ended
             }
         )
     return found
