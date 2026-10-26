@@ -68,9 +68,9 @@ _UPSERT_VERDICT = """
         tenant_id, eval_run_id, item_key, manifest_id, gate_version, rater_role,
         rubric_version, task_class, stratum, label, recorded_verdict,
         recorded_deciding_check, replayed_verdict, replayed_deciding_check,
-        replay_count, observed_at, first_seen_at, updated_at
+        replay_count, observed_at, backend_configuration, latency_ms, first_seen_at, updated_at
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW())
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb, $18, NOW(), NOW())
     ON CONFLICT (tenant_id, eval_run_id, item_key)
     DO UPDATE SET
         label = EXCLUDED.label,
@@ -79,6 +79,8 @@ _UPSERT_VERDICT = """
         replayed_verdict = EXCLUDED.replayed_verdict,
         replayed_deciding_check = EXCLUDED.replayed_deciding_check,
         replay_count = EXCLUDED.replay_count,
+        backend_configuration = EXCLUDED.backend_configuration,
+        latency_ms = EXCLUDED.latency_ms,
         observed_at = EXCLUDED.observed_at,
         updated_at = NOW()
     WHERE public.delegation_eval_item_verdicts.observed_at < EXCLUDED.observed_at
@@ -95,11 +97,11 @@ _UPSERT_RESULT = """
         false_refusal_upper_bound, false_refusal_wilson_low, false_refusal_wilson_high,
         false_refusal_line_verdict, undetermined_n, undetermined_share, flip_rate,
         flip_rate_wilson_low, flip_rate_wilson_high, flip_measured_backend_id,
-        observed_at, first_seen_at, updated_at
+        observed_at, backend_configuration, first_seen_at, updated_at
     )
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
             $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
-            $31, $32, $33, NOW(), NOW())
+            $31, $32, $33, $34::jsonb, NOW(), NOW())
     ON CONFLICT (tenant_id, eval_run_id, task_class, stratum, arm)
     DO UPDATE SET
         total_n = EXCLUDED.total_n,
@@ -124,6 +126,7 @@ _UPSERT_RESULT = """
         flip_rate_wilson_low = EXCLUDED.flip_rate_wilson_low,
         flip_rate_wilson_high = EXCLUDED.flip_rate_wilson_high,
         flip_measured_backend_id = EXCLUDED.flip_measured_backend_id,
+        backend_configuration = EXCLUDED.backend_configuration,
         observed_at = EXCLUDED.observed_at,
         updated_at = NOW()
     WHERE public.delegation_eval_results.observed_at < EXCLUDED.observed_at
@@ -219,6 +222,10 @@ class DelegationEvalProjectionWriter(BaseProjectionRunner):
                 verdict.replayed_deciding_check,
                 verdict.replay_count,
                 verdict.observed_at,
+                None
+                if verdict.backend_configuration is None
+                else verdict.backend_configuration.model_dump_json(),
+                verdict.latency_ms,
                 tenant=str(verdict.tenant_id),
             )
             upserted += int(bool(returned))
@@ -259,6 +266,9 @@ class DelegationEvalProjectionWriter(BaseProjectionRunner):
                 row.flip_rate_wilson_high,
                 row.flip_measured_backend_id,
                 row.observed_at,
+                None
+                if row.backend_configuration is None
+                else row.backend_configuration.model_dump_json(),
                 tenant=str(row.tenant_id),
             )
             upserted += int(bool(returned))

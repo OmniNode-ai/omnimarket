@@ -1,6 +1,6 @@
 name: delegation_eval_run_orchestrator
 version: "1.0.0"
-description: "Replay one rater's labelled delegation items through the acceptance gate and report false passes per task class."
+description: "Replay labelled or fresh backend-pinned delegation items; the offline lab generator attests model artifacts before endpoint calls."
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 capabilities:
   standalone: false
@@ -10,7 +10,7 @@ capabilities:
   side_effect_class: none
 dependencies:
   - "omnibase_core>=0.39.0"
-tags: [orchestrator, delegation, evaluation]
+tags: [orchestrator, delegation, evaluation, backend-eval]
 pack: "pipeline"
 display_name: "Delegation Eval Run Orchestrator"
 node_role: "orchestrator"

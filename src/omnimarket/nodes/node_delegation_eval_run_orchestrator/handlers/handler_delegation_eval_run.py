@@ -103,6 +103,7 @@ def eval_run_id(
     gate_version: str,
     class_rubric_version: str | None = None,
     generation_stability_sha: str | None = None,
+    backend_generation_sha: str | None = None,
 ) -> UUID:
     """Stable uuid5, extended by the class rubric version for rubric runs and by
     the generation-stability digest for runs that carry repeated generations."""
@@ -111,6 +112,8 @@ def eval_run_id(
         name += f"\n{class_rubric_version}"
     if generation_stability_sha is not None:
         name += f"\ngeneration:{generation_stability_sha}"
+    if backend_generation_sha is not None:
+        name += f"\nbackend-generation:{backend_generation_sha}"
     return uuid5(EVAL_RUN_NAMESPACE, name)
 
 
@@ -207,6 +210,20 @@ class HandlerDelegationEvalRun:
         sha = label_set_sha256(
             items, rater_role=request.rater_role, rubric_version=request.rubric_version
         )
+        backend_sha = None
+        if request.backend_configuration is not None:
+            backend_sha = hashlib.sha256(
+                json.dumps(
+                    {
+                        "backend": request.backend_configuration.model_dump(
+                            mode="json"
+                        ),
+                        "generation_sha256": request.generation_sha256,
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode()
+            ).hexdigest()
         run_id = eval_run_id(
             request.manifest_id,
             sha,
@@ -214,6 +231,7 @@ class HandlerDelegationEvalRun:
             generation_stability_sha=generation_stability_sha256(
                 request.generation_stability
             ),
+            backend_generation_sha=backend_sha,
         )
         common = {
             "tenant_id": request.tenant_id,
@@ -224,6 +242,7 @@ class HandlerDelegationEvalRun:
             "rater_role": request.rater_role,
             "rubric_version": request.rubric_version,
             "observed_at": self._clock(),
+            "backend_configuration": request.backend_configuration,
         }
         if not items:
             return ModelEvalRunResult(
@@ -255,6 +274,7 @@ class HandlerDelegationEvalRun:
             request.gate_version,
             contract.rubric_version if rubric_classes else None,
             generation_stability_sha256(request.generation_stability),
+            backend_sha,
         )
         common["eval_run_id"] = run_id
         items = tuple(
@@ -313,6 +333,8 @@ class HandlerDelegationEvalRun:
                         replayed_verdict=str(verdict.replayed.verdict),
                         replayed_deciding_check=verdict.replayed.deciding_check,
                         replay_count=verdict.replay_count,
+                        backend_configuration=request.backend_configuration,
+                        latency_ms=request.item_latencies_ms.get(verdict.item_id),
                     )
                     for verdict in result.item_verdicts
                 ),

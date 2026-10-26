@@ -40,6 +40,7 @@ class HandlerProjectionDelegationEvalRun:
                 ModelDelegationEvalResultsRow(
                     **keyed,
                     label_set_sha256=request.label_set_sha256,
+                    backend_configuration=request.backend_configuration,
                     **row.model_dump(),
                 )
                 for row in request.results

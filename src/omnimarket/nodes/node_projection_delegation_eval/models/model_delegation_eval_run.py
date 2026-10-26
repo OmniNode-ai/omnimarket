@@ -12,6 +12,7 @@ from omnimarket.events.delegation_eval import (
     ModelDelegationEvalResultRow,
     ModelDelegationEvalRunCompleted,
 )
+from omnimarket.models.delegation_eval_backend import ModelDelegationEvalBackend
 
 
 class ModelDelegationEvalRunProjectionRequest(ModelDelegationEvalRunCompleted):
@@ -51,6 +52,7 @@ class ModelDelegationEvalResultsRow(_RunKeyed, ModelDelegationEvalResultRow):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     label_set_sha256: str
+    backend_configuration: ModelDelegationEvalBackend | None = None
 
 
 class ModelDelegationEvalRunProjectionResult(BaseModel):

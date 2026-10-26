@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import sys
 from importlib import metadata
@@ -57,6 +58,7 @@ from omnimarket.events.delegation_gate_eval.model_gate_eval_item import (
     ModelGateEvalItem,
 )
 from omnimarket.lab_work.named_env import read_named_env
+from omnimarket.models.delegation_eval_backend import ModelDelegationEvalBackend
 from omnimarket.models.delegation_gate_eval.model_generation_stability_request import (
     ModelGenerationStabilityRequest,
 )
@@ -204,7 +206,43 @@ async def _read_labelled(args: argparse.Namespace, tenant: str) -> list[dict[str
 
 def _run(args: argparse.Namespace) -> dict[str, Any]:
     tenant = str(UUID(args.tenant_id))
-    rows = asyncio.run(_read_labelled(args, tenant))
+    generated_path = getattr(args, "generated_items", None)
+    pin_path = getattr(args, "backend_pin", None)
+    if bool(generated_path) != bool(pin_path):
+        raise ValueError("generated-items and backend-pin must be supplied together")
+    backend = None
+    generation_sha = None
+    latencies = {}
+    if generated_path:
+        assert pin_path is not None
+        backend = ModelDelegationEvalBackend.model_validate_json(
+            Path(pin_path).read_text()
+        )
+        raw = Path(generated_path).read_bytes()
+        generation_sha = hashlib.sha256(raw).hexdigest()
+        rows = []
+        seen = set()
+        for line in raw.decode().splitlines():
+            if not line.strip():
+                continue
+            item = json.loads(line)
+            if item["backend_configuration"] != backend.model_dump(mode="json"):
+                raise ValueError("generated item backend differs from pin")
+            key = item["item_key"]
+            if key in seen:
+                raise ValueError("duplicate generated item key")
+            seen.add(key)
+            latencies[key] = item["latency_ms"]
+            rows.append(
+                {
+                    **item,
+                    "label": "unlabelable",
+                    "gate_verdict": None,
+                    "deciding_check": None,
+                }
+            )
+    else:
+        rows = asyncio.run(_read_labelled(args, tenant))
     if args.task_class is not None:
         rows = [row for row in rows if row["task_class"] in args.task_class]
     gate_version = args.gate_version or f"omnimarket=={metadata.version('omnimarket')}"
@@ -223,6 +261,9 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
             rubric_version=args.rubric_version,
             gate_version=gate_version,
             generation_stability=stability,
+            backend_configuration=backend,
+            generation_sha256=generation_sha,
+            item_latencies_ms=latencies,
         )
     )
     payload = result.payload.model_dump(mode="json")
@@ -254,6 +295,13 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--rater-role", required=True)
     run.add_argument("--rubric-version", required=True)
     run.add_argument("--gate-version", default="")
+    run.add_argument(
+        "--generated-items",
+        help="Private JSONL of fresh endpoint generations; discards historical labels",
+    )
+    run.add_argument(
+        "--backend-pin", help="Attested backend pin JSON; required with generated-items"
+    )
     run.add_argument(
         "--task-class",
         action="append",

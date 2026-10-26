@@ -8,6 +8,7 @@ from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, JsonValue
 
+from omnimarket.models.delegation_eval_backend import ModelDelegationEvalBackend
 from omnimarket.models.delegation_gate_eval.model_generation_stability_request import (
     ModelGenerationStabilityRequest,
 )
@@ -59,6 +60,9 @@ class ModelDelegationEvalRunRequest(BaseModel):
     rubric_version: str = Field(min_length=1)
     gate_version: str = Field(min_length=1)
     generation_stability: ModelGenerationStabilityRequest | None = None
+    backend_configuration: ModelDelegationEvalBackend | None = None
+    generation_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    item_latencies_ms: dict[str, float] = Field(default_factory=dict)
 
 
 class ModelDelegationEvalItemVerdict(BaseModel):
@@ -75,6 +79,8 @@ class ModelDelegationEvalItemVerdict(BaseModel):
     replayed_verdict: str
     replayed_deciding_check: str | None
     replay_count: int = Field(ge=1)
+    backend_configuration: ModelDelegationEvalBackend | None = None
+    latency_ms: float | None = Field(default=None, ge=0, allow_inf_nan=False)
 
 
 class ModelDelegationEvalResultRow(BaseModel):
@@ -131,6 +137,7 @@ class ModelDelegationEvalRunCompleted(BaseModel):
     rubric_version: str
     status: str
     failure_reasons: tuple[str, ...] = ()
+    backend_configuration: ModelDelegationEvalBackend | None = None
     item_verdicts: tuple[ModelDelegationEvalItemVerdict, ...] = ()
     results: tuple[ModelDelegationEvalResultRow, ...] = ()
     observed_at: AwareDatetime

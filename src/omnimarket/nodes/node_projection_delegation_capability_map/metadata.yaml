@@ -1,6 +1,6 @@
 name: projection_delegation_capability_map
 version: "1.0.0"
-description: "OMN-20169 tenant-scoped delegation capability cells per model, backend, configuration, class and size band."
+description: "Tenant-scoped delegation capability cells from labels or fresh pinned generations graded by class rubrics."
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 capabilities:
   standalone: true

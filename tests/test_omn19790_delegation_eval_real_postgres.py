@@ -133,6 +133,18 @@ async def test_delegation_eval_replacement_reads_back_typed_columns() -> None:
 _RUN_ID = UUID("735b18b8-734e-5c7d-bc00-47926ac70963")
 
 
+_BACKEND = json.dumps(
+    {
+        "backend_id": "eval-q8",
+        "endpoint": "http://example.invalid:8130",
+        "host": "test",
+        "model": "qwen",
+        "model_file": "/test-q8.gguf",
+        "quant": "Q8_0",
+    }
+)
+
+
 def _verdict_args(observed_at: datetime) -> tuple[object, ...]:
     return (
         _TENANT,
@@ -151,6 +163,8 @@ def _verdict_args(observed_at: datetime) -> tuple[object, ...]:
         "semantic_adequacy",
         3,
         observed_at,
+        _BACKEND,
+        1.25,
     )
 
 
@@ -190,6 +204,7 @@ def _result_args(observed_at: datetime) -> tuple[object, ...]:
         0.567,
         "local-heavy-reasoning",
         observed_at,
+        _BACKEND,
     )
 
 
@@ -239,6 +254,8 @@ async def test_omn19793_redelivered_run_upserts_one_verdict_and_one_result_row()
         assert verdicts[0]["run_type"] == "uuid"
         assert verdicts[0]["eval_run_id"] == _RUN_ID
         assert verdicts[0]["replay_count"] == 3
+        assert json.loads(verdicts[0]["backend_configuration"]) == json.loads(_BACKEND)
+        assert verdicts[0]["latency_ms"] == 1.25
         assert verdicts[0]["observed_at"] == _T0 + timedelta(seconds=1)
 
         results = await conn.fetch(
@@ -248,6 +265,7 @@ async def test_omn19793_redelivered_run_upserts_one_verdict_and_one_result_row()
         assert len(results) == 1
         row = results[0]
         assert row["rate_type"] == "double precision"
+        assert json.loads(row["backend_configuration"]) == json.loads(_BACKEND)
         assert row["accepted_n"] == 20
         assert row["false_pass_count"] == 16
         assert row["false_pass_line_verdict"] == "refused"

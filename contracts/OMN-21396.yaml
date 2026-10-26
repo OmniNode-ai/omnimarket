@@ -198,3 +198,20 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run --locked python -c 'from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_placement import HandlerRemoteLanePlacement as H; from omnimarket.nodes.node_remote_lane_compute.models import ModelRemoteLanePlacementRequest as R; r=H().handle(R.model_validate({\"engine\":\"codex\",\"readings\":[{\"name\":\"h201\",\"engines\":[\"codex\",\"claude_sonnet\"],\"lane_slots\":2,\"lane_cap\":4,\"rank_free\":10.0}],\"ladder\":{\"lane\":\"probe\",\"ceiling\":\"sonnet\",\"risk_class\":\"feature\",\"required_capabilities\":[\"nested-sandbox\"]}})); assert r.rung==\"sonnet\", r; assert [v.reason for v in r.rungs if v.engine==\"codex\"]==[\"sandbox-capability\"], r.rungs; print(\"ac6-probe ok\")'"
         cwd: "${OMNI_HOME}/omnimarket"
+
+  - id: "dod-omn21396-backend-eval-deploy"
+    description: >
+      Hosted deploy preparation for the quant-eval slice: the packaged endpoint
+      runner refuses a matching alias on a different quant or model artifact,
+      never retries or falls back, and drops historical answer labels. The eval
+      node gives each backend and generation digest a distinct run id; its
+      writer serializes the backend pin and latency on every verdict. Fresh
+      rubric evidence folds into backend cells, with underpowered cells refused
+      and missing class rubrics omitted. These checks fail before this slice.
+      No live endpoint, broker or credential is required. The existing AC1-AC4
+      escalation evidence above remains the acceptance evidence for the ticket.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_eval_run_orchestrator/test_backend_run.py tests/nodes/node_delegation_eval_run_orchestrator/test_backend_projection.py tests/nodes/node_delegation_eval_run_orchestrator/test_generated_map.py tests/nodes/node_delegation_eval_orchestrator/test_lab_generated_items.py -q --no-cov --refuse-skips"
+        cwd: "."
