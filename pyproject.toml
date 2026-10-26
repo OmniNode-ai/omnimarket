@@ -1180,7 +1180,9 @@ omnimarket = "omnimarket.nodes"
 # (workspace_id column) byte-identical.
 # OMN-20169: infra#5347 vendors node_projection_delegation_capability_map
 # 0000-0002 and grants tenant_projection_writer on delegation_capability_cells.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261026141327-a040aaf64e24" }
+# OMN-21396: infra#5389 vendors node_projection_delegation_eval 0008
+# (harness eval identity columns) byte-identical.
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261026171930-8b6a1d173584" }
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
 # their git-source overrides). The version-range overrides below already target
 # the released artifacts: core>=0.46.7,<0.47.0 and
