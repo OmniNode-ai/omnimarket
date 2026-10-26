@@ -9,7 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from omnimarket.nodes.node_exemplar_admission_compute.models.model_exemplar_admission import (
+from omnimarket.models.exemplar_admission import (
     ModelExemplarAdmissionResult,
     ModelGateReceipt,
     ViolationCode,

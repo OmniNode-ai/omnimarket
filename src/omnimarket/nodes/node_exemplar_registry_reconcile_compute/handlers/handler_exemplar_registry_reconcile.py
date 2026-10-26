@@ -7,7 +7,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-from omnimarket.nodes.node_exemplar_admission_compute.models.model_exemplar_admission import (
+from omnimarket.models.exemplar_admission import (
     ModelAdmissionDecision,
 )
 from omnimarket.nodes.node_exemplar_registry_reconcile_compute.models.model_exemplar_registry_reconcile import (
