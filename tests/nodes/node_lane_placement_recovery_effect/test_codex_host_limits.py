@@ -221,7 +221,9 @@ def test_existing_node_observes_engine_return_before_any_retry(tmp_path: Path) -
         NodeLanePlacementRecoveryEffect,
     )
 
-    p = receipt(tmp_path, final=False)
+    # The node reads the wall clock, so the refusal must end inside its one-hour bench.
+    ended = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    p = receipt(tmp_path, final=False, ended_at=ended)
     args = SimpleNamespace(
         model="codex", run_id="run", receipt=str(p), lane="lane", placement="lab"
     )
