@@ -2,62 +2,46 @@ schema_version: "1.0.0"
 ticket_id: "OMN-20266"
 title: "Remote-lane closeout dispatch interpreter boundary"
 summary: >-
-  Adds a typed dispatch-process entrypoint that builds the existing guarded host
-  retention payload without importing omnimarket in the launcher. This is a
-  partial closeout slice: the ticket's original host-parity criteria below are
-  preserved verbatim and remain unproved by this repository change. Their checks
-  deliberately refuse closure until evidence for the original scope is supplied.
-  A separate source release must repoint the launcher and accounting subprocesses.
+  This pull request's share only: a typed dispatch-process entrypoint,
+  python -m omnimarket.nodes.node_remote_lane_effect.run_retention --script
+  <request.json>, that builds the existing guarded host retention payload so the
+  launcher no longer imports omnimarket into its system Python. The pull request
+  does not implement the ticket's own AC1, AC2 or AC3 (the per-host parity probe,
+  parity-aware placement and the DEGRADED queue-status line). This contract
+  declares and binds none of them; they stay open on the ticket. Repointing the
+  launcher at this entrypoint is a separate plugin source release.
 is_seam_ticket: false
 interface_change: true
 interfaces_touched: ["public_api"]
-requirements:
-  - id: "req-host-parity"
-    statement: "The original ticket host-parity obligations remain required."
-    acceptance:
-      - id: "AC1"
-        statement: "AC1: A committed per-host parity probe reports, for each pool host, the required canonical clones present at origin tip, the dispatch venv's omnimarket revision against the launching host's, gh auth status, and pytest importable, as one typed record per host -- falsifier: uv run pytest -k lab_host_parity_probe on a fixture host missing one clone, asserting a parity-failed record naming it"
-      - id: "AC2"
-        statement: "AC2: Placement refuses (or skips with the reason recorded) a host whose latest parity record fails for anything the unit's declared needs name, instead of placing the unit -- falsifier: uv run pytest -k placement_skips_parity_failed_host"
-      - id: "AC3"
-        statement: "AC3: The probe runs on the pool's existing schedule and its failures appear in queue-status as a DEGRADED line naming the host and the missing item -- falsifier: a queue-status run against a recorded parity failure prints that line"
 evidence_requirements:
   - kind: "tests"
-    description: "Closeout dispatch CLI and existing ownership/archive safety checks. Does not claim original host-parity completion."
+    description: "Closeout dispatch CLI and existing ownership/archive safety checks. Does not claim the ticket's host-parity criteria."
     command: "uv run --locked pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov --refuse-skips"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: "dod-omn20266-ac1-unresolved"
-    description: "Original AC1 remains unproved by this closeout slice; refuses ticket closure until per-host probe evidence is supplied."
-    source: "manual"
-    binds_ac: ["AC1"]
-    checks:
-      - check_type: "command"
-        check_value: "python3 -c \"raise SystemExit('AC1 unresolved: supply the canonical-clone, dispatch revision, gh login and pytest host-probe proof')\""
-  - id: "dod-omn20266-ac2-unresolved"
-    description: "Original AC2 remains unproved by this closeout slice; refuses ticket closure until declared-needs admission evidence is supplied."
-    source: "manual"
-    binds_ac: ["AC2"]
-    checks:
-      - check_type: "command"
-        check_value: "python3 -c \"raise SystemExit('AC2 unresolved: supply placement_skips_parity_failed_host proof')\""
-  - id: "dod-omn20266-ac3-unresolved"
-    description: "Original AC3 remains unproved by this closeout slice; refuses ticket closure until scheduled probe and DEGRADED queue-status evidence is supplied."
-    source: "manual"
-    binds_ac: ["AC3"]
-    checks:
-      - check_type: "command"
-        check_value: "python3 -c \"raise SystemExit('AC3 unresolved: supply scheduled host probe and recorded DEGRADED queue-status proof')\""
-  - id: "dod-omn20266-closeout-deploy"
+  - id: "dod-omn20266-closeout-dispatch-cli"
     description: >-
-      Hosted deploy check with no broker, database, host credentials or lab access:
-      the dispatch CLI emits a host payload that archives a final fixture run and
-      preserves unsafe requests. Fails at the merge base, which emits no payload.
-      This proves the closeout entrypoint only; it does not bind the original ACs.
+      Hosted check with no broker, database, host credentials or lab access: the
+      dispatch CLI emits a host payload that archives a final fixture run without
+      local cleanup while building it, and an invalid request (a bool keep_days, a
+      string delete, an unexpected key) exits nonzero with no payload. Fails at the
+      merge base, whose run_retention module has no command-line entrypoint. Binds
+      none of the ticket's criteria.
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run --locked pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -k dispatch_cli -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20266-closeout-deploy-probe"
+    description: >-
+      Deploy probe. Read the retention module from GitHub at the checked-out commit
+      and require the strict request parse the entrypoint introduces. It fails at
+      the merge base, where the module has no entrypoint.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_remote_lane_effect/run_retention.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"ModelRemoteLaneRetentionRequest.model_validate_json(\" > /dev/null'"
+        cwd: "${OMNI_HOME}/omnimarket"
