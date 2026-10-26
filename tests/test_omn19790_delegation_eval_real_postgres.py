@@ -184,6 +184,11 @@ def _result_args(observed_at: datetime) -> tuple[object, ...]:
         "refused",
         0,
         0.0,
+        # OMN-19795: the class's generation flip rate, its Wilson bounds and backend.
+        0.35,
+        0.181,
+        0.567,
+        "local-heavy-reasoning",
         observed_at,
     )
 
@@ -247,6 +252,23 @@ async def test_omn19793_redelivered_run_upserts_one_verdict_and_one_result_row()
         assert row["false_pass_count"] == 16
         assert row["false_pass_line_verdict"] == "refused"
         assert row["projection_cursor"] is not None
+        # OMN-19795: migration 0007's columns hold the flip measurement, typed.
+        flip = await conn.fetchrow(
+            f"SELECT pg_typeof(flip_rate)::text AS rate_type, "
+            f"pg_typeof(flip_measured_backend_id)::text AS backend_type "
+            f"FROM {schema}.delegation_eval_results"
+        )
+        assert flip is not None
+        assert (flip["rate_type"], flip["backend_type"]) == (
+            "double precision",
+            "text",
+        )
+        assert (
+            row["flip_rate"],
+            row["flip_rate_wilson_low"],
+            row["flip_rate_wilson_high"],
+            row["flip_measured_backend_id"],
+        ) == (0.35, 0.181, 0.567, "local-heavy-reasoning")
     finally:
         try:
             await transaction.rollback()

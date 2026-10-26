@@ -50,6 +50,9 @@ from omnimarket.events.delegation_gate_eval.model_gate_rate_row import (
 from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
     ModelAttemptRubricVerdict,
 )
+from omnimarket.models.delegation_gate_eval.model_generation_stability_request import (
+    ModelGenerationStabilityRequest,
+)
 from omnimarket.models.ranges import ModelRangeAcceptanceLine
 from omnimarket.nodes.node_delegation_eval_run_orchestrator.models.model_eval_run import (
     ModelEvalRunResult,
@@ -99,12 +102,30 @@ def eval_run_id(
     label_sha: str,
     gate_version: str,
     class_rubric_version: str | None = None,
+    generation_stability_sha: str | None = None,
 ) -> UUID:
-    """Stable uuid5, extended by the class rubric version for rubric runs."""
+    """Stable uuid5, extended by the class rubric version for rubric runs and by
+    the generation-stability digest for runs that carry repeated generations."""
     name = f"{manifest_id}\n{label_sha}\n{gate_version}"
     if class_rubric_version is not None:
         name += f"\n{class_rubric_version}"
+    if generation_stability_sha is not None:
+        name += f"\ngeneration:{generation_stability_sha}"
     return uuid5(EVAL_RUN_NAMESPACE, name)
+
+
+def generation_stability_sha256(
+    stability: ModelGenerationStabilityRequest | None,
+) -> str | None:
+    """sha256 of the ordered repeated-generation groups, or None without any."""
+    if stability is None or not stability.groups:
+        return None
+    ordered = sorted(
+        (g.task_class, g.item_id, g.backend_id, [str(v) for v in g.verdicts])
+        for g in stability.groups
+    )
+    body = json.dumps(ordered, separators=(",", ":"))
+    return hashlib.sha256(body.encode()).hexdigest()
 
 
 def _error_bound(lower_bound: float | None) -> float | None:
@@ -139,6 +160,14 @@ def _result_row(row: ModelGateRateRow) -> ModelDelegationEvalResultRow:
         false_refusal_line_verdict=str(fr.verdict),
         undetermined_n=row.undetermined_n,
         undetermined_share=row.undetermined_share,
+        flip_rate=row.flip_rate,
+        flip_rate_wilson_low=None
+        if row.flip_rate_wilson is None
+        else row.flip_rate_wilson.low,
+        flip_rate_wilson_high=None
+        if row.flip_rate_wilson is None
+        else row.flip_rate_wilson.high,
+        flip_measured_backend_id=row.measured_backend_id,
     )
 
 
@@ -178,7 +207,14 @@ class HandlerDelegationEvalRun:
         sha = label_set_sha256(
             items, rater_role=request.rater_role, rubric_version=request.rubric_version
         )
-        run_id = eval_run_id(request.manifest_id, sha, request.gate_version)
+        run_id = eval_run_id(
+            request.manifest_id,
+            sha,
+            request.gate_version,
+            generation_stability_sha=generation_stability_sha256(
+                request.generation_stability
+            ),
+        )
         common = {
             "tenant_id": request.tenant_id,
             "eval_run_id": run_id,
@@ -218,6 +254,7 @@ class HandlerDelegationEvalRun:
             sha,
             request.gate_version,
             contract.rubric_version if rubric_classes else None,
+            generation_stability_sha256(request.generation_stability),
         )
         common["eval_run_id"] = run_id
         items = tuple(
@@ -238,6 +275,7 @@ class HandlerDelegationEvalRun:
             ModelDelegationGateEvalRequest(
                 run_id=str(run_id),
                 items=items,
+                generation_stability=request.generation_stability,
                 rubric_false_pass_lines={
                     task_class: line
                     for task_class, line in contract.false_pass_lines.items()
@@ -287,5 +325,6 @@ __all__ = [
     "EVAL_RUN_NAMESPACE",
     "HandlerDelegationEvalRun",
     "eval_run_id",
+    "generation_stability_sha256",
     "label_set_sha256",
 ]
