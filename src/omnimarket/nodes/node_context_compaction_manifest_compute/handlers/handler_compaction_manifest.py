@@ -9,8 +9,10 @@ The bundle helpers at the end are the only I/O and take an explicit root.
 
 Pairing keeps an unpaired PreCompact; a window starts at the previous *paired* PostCompact;
 `operator_prompt` is used where it exists and the heuristic reports its measured accuracy; a
-repeat with no boundary between is a control; a session may carry more than one lane; a hashed
-summary that resolves to no row is `SUMMARY_UNAVAILABLE`.
+repeat with no boundary between is a control; a session may carry more than one lane. Native
+summaries are resolved from complete `compact` captures by session, character length and hash,
+and exported to `native/<sha256>.txt` separately from the pre-boundary chain. An id alone is
+`SUMMARY_UNAVAILABLE`, even if the caller lists it as resolvable.
 
 HASH RULES. The transcript chain is one JSON object per line (keys sorted, UTF-8, no ASCII
 escaping), ordered by instant, event id and chunk index; the pin is the sha256 of those bytes. A
@@ -383,6 +385,77 @@ def _ruling_in(stamp: str, prefixes: Iterable[bytes]) -> bool:
     )
 
 
+def _native_summary(
+    pair: ModelBoundaryPair, records: tuple[ModelCapturedRecord, ...]
+) -> bytes | None:
+    """Resolve a summary from complete compact captures, bound by session, length and hash.
+
+    Compact captures happen after PreCompact, outside the input chain's cutoff. They must
+    be exported separately, never added to the package's pre-boundary context.
+    """
+    if pair.summary_record_id is None or pair.summary_sha256 is None:
+        return None
+    groups: dict[tuple[str, str], list[ModelCapturedRecord]] = {}
+    for record in records:
+        if record.session_id == pair.session_id and record.content_kind == "compact":
+            # Projection event ids address individual chunks, not the captured item.
+            # The producer stamps the full item's hash on every chunk.
+            key = (
+                ("sha256", record.content_sha256)
+                if record.content_sha256 is not None
+                else ("event", record.event_id)
+            )
+            groups.setdefault(key, []).append(record)
+    for (kind, digest), chunks in groups.items():
+        chunks.sort(key=lambda record: record.chunk_index)
+        count = chunks[0].chunk_count
+        if (
+            count < 1
+            or len(chunks) != count
+            or [record.chunk_index for record in chunks] != list(range(count))
+            or any(record.chunk_count != count for record in chunks)
+        ):
+            continue
+        package = "".join(record.content for record in chunks)
+        if kind == "sha256" and _sha(package.encode("utf-8")) != digest:
+            continue
+        try:
+            rows = [json.loads(line) for line in package.splitlines() if line.strip()]
+        except json.JSONDecodeError:
+            continue
+        if (
+            not rows
+            or not isinstance(rows[0], dict)
+            or not (
+                rows[0].get("type") == "system"
+                and rows[0].get("subtype") == "compact_boundary"
+            )
+        ):
+            continue
+        for row in rows[1:]:
+            if not isinstance(row, dict) or row.get("isCompactSummary") is not True:
+                continue
+            message = row.get("message")
+            text = message.get("content") if isinstance(message, dict) else None
+            if isinstance(text, list):
+                text = "\n".join(
+                    block["text"]
+                    for block in text
+                    if isinstance(block, dict)
+                    and block.get("type") == "text"
+                    and isinstance(block.get("text"), str)
+                )
+            if not isinstance(text, str):
+                continue
+            content = text.encode("utf-8")
+            if (
+                len(text) == pair.summary_length
+                and _sha(content) == pair.summary_sha256
+            ):
+                return content
+    return None
+
+
 class HandlerReplayManifestBuilder:
     """Build the manifest and the bundle of its cases, or refuse naming the broken pin."""
 
@@ -503,7 +576,7 @@ class HandlerReplayManifestBuilder:
                 item["not_recorded_at_first_boundary"] for item in statements
             ),
             "boundaries": [
-                self._boundary(pair, request, ledger_files) for pair in chosen
+                self._boundary(pair, request, ledger_files, bundle) for pair in chosen
             ],
             "transcript_chain": {
                 "bundle_path": chain_path,
@@ -577,7 +650,27 @@ class HandlerReplayManifestBuilder:
         pair: ModelBoundaryPair,
         request: ModelBuildManifestRequest,
         ledger_files: dict[str, Any],
+        bundle: dict[str, bytes],
     ) -> dict[str, Any]:
+        summary = {
+            "status": (
+                EnumSummaryStatus.UNAVAILABLE.value
+                if pair.summary_record_id is not None
+                else EnumSummaryStatus.NOT_CAPTURED.value
+            ),
+            "length": pair.summary_length,
+            "sha256": pair.summary_sha256,
+            "content_record_id": pair.summary_record_id,
+        }
+        native = _native_summary(pair, request.records)
+        if native is not None:
+            path = f"native/{_sha(native)}.txt"
+            bundle[path] = native
+            summary.update(
+                status=EnumSummaryStatus.RESOLVED.value,
+                bundle_path=path,
+                bytes=len(native),
+            )
         window = HandlerPromptWindow().handle(
             ModelPromptWindowRequest(
                 records=tuple(
@@ -605,12 +698,7 @@ class HandlerReplayManifestBuilder:
             "window_start": _iso(pair.window_start) if pair.window_start else None,
             "operator_prompts_in_window": window.operator_count,
             "operator_prompts_exact": window.exact,
-            "summary": {
-                "status": pair.summary_status.value,
-                "length": pair.summary_length,
-                "sha256": pair.summary_sha256,
-                "content_record_id": pair.summary_record_id,
-            },
+            "summary": summary,
             "ledger_cuts": ledger_files["cuts"][pair.pre_event_id],
         }
 
@@ -751,6 +839,15 @@ class HandlerReplayBundleVerifier:
                     f"{cid}: ledger {entry['name']} prefix sha256 or length mismatch"
                 )
         for boundary in case["boundaries"]:
+            summary = boundary["summary"]
+            if summary["status"] == EnumSummaryStatus.RESOLVED.value:
+                native = files.get(summary.get("bundle_path", ""))
+                if native is None:
+                    failures.append(f"{cid}: resolved native summary file missing")
+                elif len(native) != summary.get("bytes") or _sha(native) != summary.get(
+                    "sha256"
+                ):
+                    failures.append(f"{cid}: native summary sha256 or length mismatch")
             for cut in boundary["ledger_cuts"]:
                 entry = next(
                     (e for e in case["ledger"]["files"] if e["name"] == cut["name"]),

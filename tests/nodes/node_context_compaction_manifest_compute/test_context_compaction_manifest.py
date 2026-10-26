@@ -430,6 +430,197 @@ def bundle_file(result: Any, suffix: str) -> bytes:
     return content
 
 
+def native_world(*, chunks: int = 1) -> tuple[ModelBuildManifestRequest, bytes]:
+    request, _ = world()
+    summary = "Synthetic native summary: preserve the retry budget. ✓"
+    package = (
+        "\n".join(
+            json.dumps(row, ensure_ascii=False)
+            for row in (
+                {"type": "system", "subtype": "compact_boundary", "uuid": "boundary-2"},
+                {
+                    "type": "user",
+                    "isCompactSummary": True,
+                    "message": {"content": summary},
+                },
+            )
+        )
+        + "\n"
+    )
+    split = len(package) // chunks
+    records = tuple(
+        record("compact-2", "compact", at(15, "00:51:01"), part).model_copy(
+            update={
+                "chunk_index": i,
+                "chunk_count": chunks,
+                "content_sha256": hashlib.sha256(package.encode()).hexdigest(),
+            }
+        )
+        for i, part in enumerate(
+            (package,) if chunks == 1 else (package[:split], package[split:])
+        )
+    )
+    request = request.model_copy(
+        update={
+            "events": tuple(
+                event.model_copy(
+                    update={
+                        "summary_length": len(summary),
+                        "summary_sha256": hashlib.sha256(summary.encode()).hexdigest(),
+                    }
+                )
+                if event.event_id == "post-2"
+                else event
+                for event in request.events
+            ),
+            "records": request.records + records,
+        }
+    )
+    return request, summary.encode()
+
+
+def test_native_summary_reassembles_real_projection_rows_with_distinct_ids() -> None:
+    from omnimarket.nodes.node_projection_session_content.handlers.session_content_fold import (
+        fold_session_content,
+    )
+    from omnimarket.nodes.node_projection_session_content.models.model_session_content import (
+        ModelSessionContentRecord,
+    )
+
+    request, summary = native_world(chunks=2)
+    captures = [r for r in request.records if r.content_kind == "compact"]
+    rows = [
+        fold_session_content(
+            ModelSessionContentRecord.model_validate(
+                {
+                    "session_id": r.session_id,
+                    "content_kind": r.content_kind,
+                    "chunk_index": r.chunk_index,
+                    "chunk_count": r.chunk_count,
+                    "emitted_at": r.emitted_at,
+                    "content": r.content,
+                    "content_sha256": r.content_sha256,
+                }
+            )
+        )
+        for r in captures
+    ]
+    assert len({row.event_id for row in rows}) == 2
+    projected = tuple(
+        r.model_copy(update={"event_id": row.event_id})
+        for r, row in zip(captures, rows, strict=True)
+    )
+    result = build(
+        request.model_copy(
+            update={
+                "records": tuple(
+                    r for r in request.records if r.content_kind != "compact"
+                )
+                + projected,
+            }
+        )
+    )
+    pin = case_of(result)["boundaries"][-1]["summary"]
+    assert pin["status"] == "RESOLVED"
+    assert {file.path: file.content for file in result.bundle_files}[
+        pin["bundle_path"]
+    ] == summary
+
+
+@pytest.mark.parametrize("chunks", [1, 2])
+def test_native_summary_is_exported_after_the_last_precompact(
+    chunks: int, tmp_path: Path
+) -> None:
+    request, summary = native_world(chunks=chunks)
+    result = build(request)
+    pin = case_of(result)["boundaries"][-1]["summary"]
+    assert pin["status"] == "RESOLVED"
+    assert pin["bytes"] == len(summary)
+    assert pin["sha256"] == hashlib.sha256(summary).hexdigest()
+    assert {f.path: f.content for f in result.bundle_files}[
+        pin["bundle_path"]
+    ] == summary
+    assert summary not in bundle_file(result, "transcript_chain.jsonl")
+    bundle_io.write_bundle_files(tmp_path, result.bundle_files)
+    assert (tmp_path / pin["bundle_path"]).read_bytes() == summary
+    assert (
+        handlers.HandlerReplayBundleVerifier()
+        .handle(
+            ModelVerifyBundleRequest(
+                manifest_yaml=result.manifest_yaml,
+                bundle_files=bundle_io.read_bundle_files(tmp_path),
+            )
+        )
+        .ok
+    )
+
+
+def test_resolvable_id_without_summary_bytes_is_still_unavailable() -> None:
+    request, _ = world()
+    result = build(request.model_copy(update={"resolvable_record_ids": ("rec-2",)}))
+    assert (
+        case_of(result)["boundaries"][-1]["summary"]["status"] == "SUMMARY_UNAVAILABLE"
+    )
+
+
+@pytest.mark.parametrize(
+    "failure", ["wrong_session", "incomplete", "wrong_hash", "duplicate", "malformed"]
+)
+def test_native_summary_export_requires_complete_matching_capture(failure: str) -> None:
+    request, _ = native_world(chunks=2)
+    records = list(request.records)
+    if failure == "wrong_session":
+        records = [
+            r.model_copy(update={"session_id": OTHER})
+            if r.content_kind == "compact"
+            else r
+            for r in records
+        ]
+    elif failure == "incomplete":
+        records.pop()
+    elif failure == "duplicate":
+        records.append(records[-1])
+    elif failure == "malformed":
+        records[-1] = records[-1].model_copy(update={"content": "not json\n"})
+    else:
+        records[-1] = records[-1].model_copy(
+            update={"content": records[-1].content.replace("retry", "other")}
+        )
+    result = build(request.model_copy(update={"records": tuple(records)}))
+    assert (
+        case_of(result)["boundaries"][-1]["summary"]["status"] == "SUMMARY_UNAVAILABLE"
+    )
+
+
+@pytest.mark.parametrize("tamper", ["missing", "content", "pin"])
+def test_verifier_refuses_resolved_native_summary_without_valid_bytes(
+    tamper: str,
+) -> None:
+    request, summary = native_world()
+    result = build(request)
+    manifest = yaml.safe_load(result.manifest_yaml)
+    pin = manifest["cases"][0]["boundaries"][-1]["summary"]
+    # Construct the expected producer output so the verifier regression fails independently.
+    path = "native/test-summary.txt"
+    pin.update(status="RESOLVED", bundle_path=path, bytes=len(summary))
+    files = tuple(f for f in result.bundle_files if f.path != pin.get("bundle_path"))
+    if tamper != "missing":
+        files += (
+            ModelBundleFile(
+                path=path, content=summary if tamper == "pin" else b"tampered"
+            ),
+        )
+    if tamper == "pin":
+        pin.pop("bundle_path")
+    verdict = handlers.HandlerReplayBundleVerifier().handle(
+        ModelVerifyBundleRequest(
+            manifest_yaml=yaml.safe_dump(manifest), bundle_files=files
+        )
+    )
+    assert not verdict.ok
+    assert any("native summary" in failure for failure in verdict.failures)
+
+
 class TestBuilder:
     def test_transcript_chain_is_pinned_to_the_last_boundary_and_one_session(
         self,

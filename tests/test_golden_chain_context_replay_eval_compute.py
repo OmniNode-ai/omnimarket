@@ -103,10 +103,15 @@ def test_golden_chain_presence_answers_capacity_and_review_rows() -> None:
             }
         )
     )
-    assert answers.next_action_met
+    # Numeric superiority cannot establish Q2 when a native answer is absent.
+    assert not answers.next_action_met
     assert answers.determinism_checked
     assert answers.candidate_ids_identical
-    assert answers.candidate_id_mismatches == answers.falsifiers == ()
+    assert answers.candidate_id_mismatches == ()
+    assert answers.falsifiers == (
+        "run run-1: answers unavailable: package 0, native 1",
+        "run run-2: answers unavailable: package 0, native 1",
+    )
     assert [run.run_id for run in answers.runs] == ["run-1", "run-2"]
     for run in answers.runs:
         assert run.cases == run.package_matches == 2
