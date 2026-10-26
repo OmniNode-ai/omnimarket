@@ -14,6 +14,13 @@ requirements:
       - id: "AC1"
         statement: |-
           AC1: every acceptance class has declared false-pass and false-refusal ranges with the full declared line, and removing any required entry or underpowering an acceptance range is refused naming the check -- falsifier: uv run pytest tests/test_omn19320_check_register.py -q fails at the merge base on the false-refusal tests
+  - id: "req-omn19794-ac2-underpowered-range-refused"
+    statement: |-
+      A range declared with n below the power-analysed n is refused naming the check.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: a range declared with n below the power-analysed n is refused naming the check -- falsifier: uv run pytest tests/test_omn19320_check_register.py -v in omnimarket
 evidence_requirements:
   - kind: "tests"
     description: "AC1 hosted probe. The check register tests pass at the head, including the per-class false-refusal ranges."
@@ -31,3 +38,11 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn19320_check_register.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn19794-ac2-underpowered-range-named"
+    description: "AC2: each of the fourteen acceptance ranges (false-pass and false-refusal for the seven classes), underpowered alone to one below its power-analysed n, is refused with exactly one error naming that check and both n values; the check-register CLI exits non-zero naming it."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/test_omn19320_check_register.py -q -p no:randomly -k "underpowered_range_is_refused_naming_only_itself or cli_refuses_one_underpowered_range"'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
