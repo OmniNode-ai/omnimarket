@@ -2203,16 +2203,14 @@ task_classes:
     # rather than route them to a neighbouring class.
     gateway_exposure: internal
     # OMN-17427: operator RULING 2026-10-02T19:33:51Z, lane orchestrator-2a21.
-    # The first-ordered rung below left the lab Studio on 2026-10-08, when its
-    # server swapped models; the record is kept as dated evidence, not as setup.
-    # Order: gpt-oss-120b (local, lab), then GLM glm-5.3 through Claude Code;
+    # Order: the retired lab rung, then the cloud rung;
     # if neither is adequate, code_review is not delegated and stays with Claude.
     # Each rung measured on the same 28-prompt set before adoption: 14 held-out
     # real code_review prompts x 2 draws, blind opus rater ev4-blind-v1,
     # adequate bar 21 of 28 with no invented lines.
     # Qwen3.8-27B (local-coder, shipped first rung): 0/28 adequate
     # (lane deleg-quality-low-2a21, 2026-10-02).
-    # gpt-oss-120b (.200, backend local-studio-planner): 0/28 adequate;
+    # Retired lab rung: 0/28 adequate;
     # 22 answers delivered, all inadequate, 14 for wrong/invented line citations;
     # 5 runs exceeded the 240 s class budget; 1 gate-refused three times and
     # fell to Qwen. glm-5.3 through Claude Code (harness claude-glm): 13/28

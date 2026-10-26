@@ -12,6 +12,22 @@
 #   pre-commit run --all-files
 
 repos:
+  - repo: local
+    hooks:
+      - id: retired-model-references
+        name: Retired model references (including dated history)
+        entry: env -u PYTHONPATH uv run --frozen python -m omnimarket.nodes.node_retired_model_reference_check_effect
+        language: system
+        always_run: true
+        pass_filenames: false
+        stages: [pre-commit]
+      - id: history-archive-safety
+        name: History removal requires verified archives
+        entry: env -u PYTHONPATH uv run --frozen pytest tests/nodes/test_file_retention_archive_safety.py -q -n 0 -p no:randomly --no-cov
+        language: system
+        files: ^(src/omnimarket/nodes/node_retention_cleanup/.*|scripts/retention/.*|tests/nodes/test_file_retention_archive_safety\.py|\.pre-commit-config\.yaml|\.github/workflows/ci\.yml)$
+        pass_filenames: false
+        stages: [pre-commit]
   # OMN-19998: public-repository runner placement (RULING 2026-10-16T07:07:09Z,
   # "Ci runners should be for private repos only"). CI twin job
   # public-runner-placement in .github/workflows/ci.yml; keep this rev equal to

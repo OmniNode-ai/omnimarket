@@ -20,7 +20,7 @@
   <array>
     <string>/bin/bash</string>
     <string>-c</string>
-    <string>cd "__OMNIMARKET_DIR__" &amp;&amp; exec env -u PYTHONPATH uv run --frozen python -m omnimarket.nodes.node_retention_cleanup --files</string>
+    <string>exec env -u PYTHONPATH uv run --frozen --project "__OMNIMARKET_DIR__" python -m omnimarket.nodes.node_retention_cleanup --files</string>
   </array>
 
   <key>StartCalendarInterval</key>

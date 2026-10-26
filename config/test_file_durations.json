@@ -3191,7 +3191,6 @@
   "tests/unit/routing/test_entry_tier_share_omn20163.py": 4.48,
   "tests/unit/routing/test_handler_routing_intent_dod_overlay.py": 0.35,
   "tests/unit/routing/test_inprocess_spread_omn19432.py": 0.99,
-  "tests/unit/routing/test_no_gpt_oss_in_routing_config_omn19432.py": 10.85,
   "tests/unit/routing/test_north_mini_spread_omn17427.py": 0.86,
   "tests/unit/routing/test_omn16200_clean_install_defaults.py": 0.07,
   "tests/unit/routing/test_omn18676_overlay_binding_single_seam.py": 0.77,

@@ -24,8 +24,8 @@ from omnimarket.validators.routing_tier_backend_bindability import (
 )
 
 pytestmark = pytest.mark.unit
-# A dated measurement record: under receipts/ it is a historical record, so the
-# retired-value guard does not read the remote model ids it names.
+# Dated measurements remain covered by the repository's retired-model gate.
+# Retired identifiers are redacted; measured counts and verdicts are preserved.
 FIXTURE = (
     Path(__file__).parents[2]
     / "fixtures"

@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.delegation_experiment_record.model_experiment_record import (
     ModelExperimentRecord,
@@ -16,7 +16,8 @@ class ModelExperimentRecordRequest(BaseModel):
 
     The caller reads that set; the check holds no I/O. ``protected_path_markers`` name the
     dev-lane overlay and the bifrost contract path, and ``retired_models`` the models no
-    experiment may measure.
+    experiment may measure. The deployment overlay must supply that policy; a
+    missing or empty policy fails validation rather than disabling the check.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -28,4 +29,4 @@ class ModelExperimentRecordRequest(BaseModel):
         "bifrost_delegation",
         "bifrost_overrides",
     )
-    retired_models: tuple[str, ...] = ("gpt-oss-120b",)
+    retired_models: tuple[str, ...] = Field(min_length=1)

@@ -38,8 +38,10 @@ import shutil
 import socket
 import subprocess
 import tarfile
+import tempfile
 import zlib
 from collections.abc import Iterator
+from contextlib import suppress
 from pathlib import Path
 from typing import IO, Literal
 
@@ -111,6 +113,9 @@ class FileRetentionItemResult(BaseModel):
         "ok", "dry_run", "absent", "disabled", "archive_unavailable", "error"
     ]
     action: str = ""
+    files_eligible: int = 0
+    bytes_eligible: int = 0
+    files_verified: int = 0
     units_removed: int = 0
     files_removed: int = 0
     bytes_removed: int = 0
@@ -130,6 +135,8 @@ class FileRetentionResult(BaseModel):
     host: str
     dry_run: bool
     items: list[FileRetentionItemResult] = Field(default_factory=list)
+    files_eligible: int = 0
+    files_verified: int = 0
     files_removed: int = 0
     bytes_removed: int = 0
     files_archived: int = 0
@@ -160,7 +167,11 @@ class _Unit:
 
 
 def _is_protected(path: Path) -> bool:
-    return path.name in _PROTECTED_NAMES or path.name.startswith(_PROTECTED_PREFIX)
+    return (
+        path.name in _PROTECTED_NAMES
+        or path.name == ".git"
+        or path.name.startswith(_PROTECTED_PREFIX)
+    )
 
 
 def _walk(path: Path) -> Iterator[Path]:
@@ -196,7 +207,7 @@ def _units(root: Path, entry: FileRetentionEntry) -> list[_Unit]:
             continue
         if not (match.is_file() or match.is_dir()):
             continue
-        if match.is_dir() and (match / ".git").exists():
+        if match.is_dir() and any(match.rglob(".git")):
             continue
         unit = _measure(match)
         if unit.files:
@@ -289,18 +300,24 @@ def _archive_dest(
 def _ensure_archive(src: Path, dest: Path) -> int:
     """Leave a verified copy of ``src`` at ``dest``; reuse one that still verifies."""
     if dest.exists():
-        try:
-            _verify_archive(src, dest)
-        except OSError:
-            dest.unlink()
-        else:
-            return dest.stat().st_size
-    try:
-        _write_archive(src, dest)
+        # A different archive can be the only remaining copy of an earlier run.
+        # Refuse the collision; never unlink or overwrite it to make a retry pass.
         _verify_archive(src, dest)
-    except OSError:
-        dest.unlink(missing_ok=True)
-        raise
+        return dest.stat().st_size
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix=".archive-", dir=dest.parent)
+    os.close(fd)
+    staging = Path(name)
+    try:
+        _write_archive(src, staging)
+        _verify_archive(src, staging)
+        # Exclusive creation works on the archive's cloud filesystem as well as
+        # local disks, and cannot replace a concurrent run's archive.
+        with staging.open("rb") as source, dest.open("xb") as target:
+            shutil.copyfileobj(source, target, _CHUNK)
+        _verify_archive(src, dest)
+    finally:
+        staging.unlink(missing_ok=True)
     return dest.stat().st_size
 
 
@@ -320,11 +337,41 @@ def _has_marker(path: Path, marker: str) -> bool:
     return done.returncode == 0
 
 
-def _remove(unit: Path) -> None:
-    if unit.is_dir():
-        shutil.rmtree(unit)
-    else:
-        unit.unlink()
+def _fingerprint(path: Path) -> tuple[int, int, int, int, str]:
+    if path.is_symlink():
+        raise OSError("source became a symlink")
+    st = path.stat()
+    return st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, _sha256(_file_chunks(path))
+
+
+def _remove_verified(
+    unit: _Unit, snapshots: dict[Path, tuple[int, int, int, int, str]]
+) -> Iterator[Path]:
+    # Validate the whole unit before the first unlink. A new file invalidates the
+    # archive's coverage; a changed file needs another archive on a later run.
+    if unit.path.is_dir() and any(unit.path.rglob(".git")):
+        raise OSError("source acquired git metadata")
+    if set(_walk(unit.path)) != set(unit.files) or any(
+        _fingerprint(file) != snapshots[file] for file in unit.files
+    ):
+        raise OSError("source changed after archive verification")
+    parents: set[Path] = set()
+    for file in unit.files:
+        if any(parent.is_symlink() for parent in file.parents):
+            raise OSError("source parent became a symlink")
+        if _fingerprint(file) != snapshots[file]:
+            raise OSError("source changed before removal")
+        file.unlink()
+        yield file
+        parent = file.parent
+        while parent == unit.path or unit.path in parent.parents:
+            parents.add(parent)
+            parent = parent.parent
+    # Empty directories only: protected files, symlinks and newly arrived files
+    # survive even if a writer changes the tree after the last verification.
+    for parent in sorted(parents, key=lambda path: len(path.parts), reverse=True):
+        with suppress(OSError):
+            parent.rmdir()
 
 
 def _resolve(path: str) -> Path | None:
@@ -349,6 +396,8 @@ class NodeFileRetention:
             host=host,
             dry_run=request.dry_run,
             items=items,
+            files_eligible=sum(i.files_eligible for i in items),
+            files_verified=sum(i.files_verified for i in items),
             files_removed=sum(i.files_removed for i in items),
             bytes_removed=sum(i.bytes_removed for i in items),
             files_archived=sum(i.files_archived for i in items),
@@ -392,12 +441,22 @@ class NodeFileRetention:
             "abytes": 0,
             "pending": 0,
             "pbytes": 0,
+            "eligible": 0,
+            "ebytes": 0,
+            "verified": 0,
         }
         error = ""
         for unit in units:
             if unit.newest >= cutoff:
                 continue
+            counts["eligible"] += len(unit.files)
+            counts["ebytes"] += unit.bytes
             try:
+                snapshots = (
+                    {file: _fingerprint(file) for file in unit.files}
+                    if not request.dry_run
+                    else {}
+                )
                 if entry.action == "archive" and archive_root is not None and not note:
                     dest = _archive_dest(
                         archive_root,
@@ -407,8 +466,17 @@ class NodeFileRetention:
                         unit.path.is_dir(),
                     )
                     archived = 0
-                    if not request.dry_run:
-                        archived = _ensure_archive(unit.path, dest)
+                    if request.dry_run:
+                        if dest.exists():
+                            _verify_archive(unit.path, dest)
+                            counts["verified"] += len(unit.files)
+                            if request.synced_marker and not _has_marker(
+                                dest, request.synced_marker
+                            ):
+                                counts["pending"] += 1
+                                counts["pbytes"] += unit.bytes
+                        continue
+                    archived = _ensure_archive(unit.path, dest)
                     counts["afiles"] += len(unit.files)
                     counts["abytes"] += archived
                     if (
@@ -419,14 +487,18 @@ class NodeFileRetention:
                         counts["pending"] += 1
                         counts["pbytes"] += unit.bytes
                         continue
+                    # Verify again after checking upload acknowledgement, directly
+                    # before the per-file unchanged checks and removal.
+                    _verify_archive(unit.path, dest)
+                    counts["verified"] += len(unit.files)
                 if not request.dry_run:
-                    _remove(unit.path)
+                    for file in _remove_verified(unit, snapshots):
+                        counts["files"] += 1
+                        counts["bytes"] += snapshots[file][2]
+                    counts["units"] += 1
             except OSError as exc:
                 error = f"{unit.path.name}: {exc}"
                 break
-            counts["units"] += 1
-            counts["files"] += len(unit.files)
-            counts["bytes"] += unit.bytes
         status: Literal["ok", "dry_run", "error"] = (
             "error" if error else "dry_run" if request.dry_run else "ok"
         )
@@ -434,6 +506,9 @@ class NodeFileRetention:
             name=entry.name,
             status=status,
             action=entry.action,
+            files_eligible=counts["eligible"],
+            bytes_eligible=counts["ebytes"],
+            files_verified=counts["verified"],
             units_removed=counts["units"],
             files_removed=counts["files"],
             bytes_removed=counts["bytes"],

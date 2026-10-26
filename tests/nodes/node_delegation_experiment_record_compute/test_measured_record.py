@@ -41,6 +41,7 @@ def test_record_passes_the_check_with_its_runs_as_receipts() -> None:
     fx = _fixture()
     record = ModelExperimentRecord.model_validate(fx["record"])
     request = ModelExperimentRecordRequest(
+        retired_models=("retired-test-model",),
         listed_experiment_ids=(record.experiment_id,),
         records=(record,),
         known_receipt_ids=tuple(run["run_id"] for run in fx["runs"]),
@@ -56,7 +57,9 @@ def test_record_without_the_runs_table_receipts_is_refused() -> None:
     fx = _fixture()
     record = ModelExperimentRecord.model_validate(fx["record"])
     request = ModelExperimentRecordRequest(
-        listed_experiment_ids=(record.experiment_id,), records=(record,)
+        retired_models=("retired-test-model",),
+        listed_experiment_ids=(record.experiment_id,),
+        records=(record,),
     )
     result = HandlerDelegationExperimentRecord().handle(request)
     assert len(result.issues) == 32
