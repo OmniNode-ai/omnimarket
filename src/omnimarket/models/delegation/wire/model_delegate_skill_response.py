@@ -317,6 +317,26 @@ class ModelDelegateSkillAttemptRecord(BaseModel):
         ),
     )
 
+    identity_status: str = Field(default="unrecorded")
+
+    @model_validator(mode="after")
+    def stamp_identity_status(self) -> Self:
+        identity = self.configuration.serving_identity if self.configuration else None
+        status = "unrecorded"
+        if identity is not None and self.backend_id.strip() and self.model_id.strip():
+            status = "recorded" if self.host == identity.host else "mismatch"
+        object.__setattr__(self, "identity_status", status)
+        return self
+
+    @property
+    def scoring_identity(self) -> tuple[str, str, str] | None:
+        """Unattributed calls never contribute to a model/quant score."""
+        if self.identity_status != "recorded" or self.configuration is None:
+            return None
+        identity = self.configuration.serving_identity
+        assert identity is not None
+        return self.model_id, self.backend_id, identity.fingerprint
+
     # OMN-20168: lineage and placement of this rung within the delegation.
     attempt_id: UUID | None = Field(
         default=None, description="Stable identity of this delegation attempt."

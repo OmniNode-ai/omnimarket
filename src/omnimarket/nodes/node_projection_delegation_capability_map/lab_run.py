@@ -34,6 +34,8 @@ from datetime import datetime
 from typing import Any
 from uuid import NAMESPACE_URL, UUID, uuid5
 
+from pydantic import ValidationError
+
 from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
 from omnimarket.handlers.handler_size_band_measurement import measure_size_band
 from omnimarket.inference.task_class_authority import (
@@ -41,6 +43,7 @@ from omnimarket.inference.task_class_authority import (
     load_task_class_authority,
 )
 from omnimarket.lab_work.named_env import read_named_env
+from omnimarket.models.delegation.model_backend_identity import ModelBackendIdentity
 from omnimarket.models.delegation.model_size_band import ModelSizeBand
 from omnimarket.models.delegation_capability_map.enum_capability_source import (
     EnumCapabilitySource,
@@ -71,7 +74,14 @@ _LABELLED_SQL = """
     SELECT i.item_key, i.task_class, i.label, i.prompt_snapshot, i.observed_at,
            i.rubric_version, i.rater_role,
            NULLIF(COALESCE(e.routed_model, e.model_name), '') AS model_key,
-           NULLIF(e.backend_id, '') AS backend_id
+           NULLIF(e.backend_id, '') AS backend_id,
+           (SELECT a->'configuration'->'serving_identity'
+            FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.attempt_history) = 'array'
+                THEN e.attempt_history ELSE '[]'::jsonb END) a
+            WHERE a->>'backend_id' = e.backend_id
+              AND a->>'identity_status' = 'recorded'
+              AND a->>'quality_gate_passed' = 'true'
+            LIMIT 1) AS serving_identity
     FROM public.delegation_eval_items AS i
     LEFT JOIN public.delegation_events AS e
       ON e.correlation_id = i.correlation_id AND e.tenant_id::text = i.tenant_id::text
@@ -125,6 +135,19 @@ def build_map_run(
             continue
         model_key = item.get("model_key")
         backend_id = item.get("backend_id")
+        declared = item.get("serving_identity")
+        if isinstance(declared, str):
+            try:
+                declared = json.loads(declared)
+            except ValueError:
+                declared = None
+        try:
+            identity = ModelBackendIdentity.model_validate(declared)
+        except ValidationError:
+            skipped["serving_identity_unrecorded"] += 1
+            continue
+        if model_key:
+            model_key = f"{model_key}@{identity.fingerprint}"
         rows.append(
             ModelCapabilityVerdictRow(
                 tenant_id=tenant_id,

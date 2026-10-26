@@ -13,6 +13,7 @@ from omnimarket.enums.enum_dod_band_source import EnumDodBandSource
 from omnimarket.enums.enum_requested_response_shape import (
     EnumRequestedResponseShape,
 )
+from omnimarket.models.delegation.model_backend_identity import ModelBackendIdentity
 from omnimarket.models.delegation.model_size_band import ModelSizeBand
 
 
@@ -20,6 +21,8 @@ class ModelRoutingDecision(BaseModel):
     """Routing reducer output: selected model, endpoint, cost tier, and rationale."""
 
     model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
+
+    serving_identity: ModelBackendIdentity | None = None
 
     correlation_id: UUID = Field(
         ...,

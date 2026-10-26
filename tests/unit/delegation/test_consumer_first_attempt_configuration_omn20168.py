@@ -30,6 +30,7 @@ _ATTEMPT = {
     "parent_attempt_id": "5b8a0e39-d9fc-472a-a15f-c0591863fe52",
 }
 _CONFIGURATION = {
+    "serving_identity": None,
     "temperature": 0.2,
     "top_p": None,
     "max_tokens": 256,

@@ -90,6 +90,7 @@ from omnimarket.inference.task_class_authority import (
 from omnimarket.models.delegation.credential_withheld_rung import (
     ModelCredentialWithheldRung,
 )
+from omnimarket.models.delegation.model_backend_identity import ModelBackendIdentity
 from omnimarket.models.delegation.model_delegation_backend_placement import (
     ModelPlacedDelegationBackend,
 )
@@ -820,6 +821,7 @@ class BifrostBackendRef:
         "max_tokens",
         "model_name",
         "provider",
+        "serving_identity",
         "timeout_ms",
     )
 
@@ -834,7 +836,9 @@ class BifrostBackendRef:
         extra_headers: dict[str, str] | None = None,
         api_key_env: str | None = None,
         explicit_pin_only: bool = False,
+        serving_identity: ModelBackendIdentity | None = None,
     ) -> None:
+        self.serving_identity = serving_identity
         self.endpoint_url = endpoint_url
         self.explicit_pin_only = explicit_pin_only
         self.model_name = model_name
@@ -985,6 +989,7 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
             )
 
         backends[backend.backend_id] = BifrostBackendRef(
+            serving_identity=backend.serving_identity,
             endpoint_url=url,
             explicit_pin_only=backend.explicit_pin_only,
             model_name=model_name,
@@ -3346,6 +3351,7 @@ def delta(
                 correlation_id=request.correlation_id,
                 task_type=task_type,
                 selected_model=model_name,
+                serving_identity=backend.serving_identity,
                 selected_backend_id=_backend_id_for_ref(selected.backend_ref),
                 endpoint_url=backend.endpoint_url,
                 api_key_ref=backend.api_key_ref,

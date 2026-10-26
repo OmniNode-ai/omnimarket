@@ -63,6 +63,12 @@ def _items(
             "rater_role": "blind_model:claude-opus-5-5",
             "model_key": "qwen3-coder-30b",
             "backend_id": "local-url",
+            "serving_identity": {
+                "host": "inference.example",
+                "model_file": "weights.gguf",
+                "quant": "Q8_0",
+                "context_tokens": 65536,
+            },
         }
         | extra
         for i in range(n)
@@ -209,3 +215,9 @@ def test_the_labelled_seed_is_one_run_per_label_set() -> None:
         _TENANT, [*items, items[0] | {"item_key": "u", "label": "unlabelable"}]
     )
     assert skipped == {"label_not_adequate_or_inadequate": 1}
+
+
+def test_labelled_seed_refuses_missing_serving_identity():
+    run, skipped = build_map_run(_TENANT, _items(3, 3, serving_identity=None))
+    assert skipped == {"serving_identity_unrecorded": 3}
+    assert not run.rows

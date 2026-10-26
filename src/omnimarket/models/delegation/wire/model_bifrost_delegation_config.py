@@ -12,6 +12,10 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 from omnimarket.enums.enum_deployment_fact_kind import EnumDeploymentFactKind
+from omnimarket.models.delegation.model_backend_identity import (
+    ModelBackendIdentity,
+    validate_backend_identities,
+)
 from omnimarket.models.delegation.model_deployment_fact_marker import deployment_fact
 
 
@@ -165,6 +169,8 @@ class ModelDelegationBackendConfig(BaseModel):
     """Backend definition for the Bifrost delegation gateway."""
 
     model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
+
+    serving_identity: ModelBackendIdentity | None = None
 
     explicit_pin_only: StrictBool = Field(
         default=False,
@@ -602,6 +608,11 @@ class ModelBifrostDelegationConfig(BaseModel):
     """Bifrost delegation gateway configuration."""
 
     model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
+
+    @model_validator(mode="after")
+    def validate_serving_identities(self) -> ModelBifrostDelegationConfig:
+        validate_backend_identities([b.model_dump() for b in self.backends])
+        return self
 
     config_version: str = Field(..., description="Semver config version.")
     schema_version: str = Field(

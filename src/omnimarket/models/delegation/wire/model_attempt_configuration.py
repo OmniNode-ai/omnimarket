@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from omnimarket.enums.enum_delegation_context_strategy import (
     EnumDelegationContextStrategy,
 )
+from omnimarket.models.delegation.model_backend_identity import ModelBackendIdentity
 
 
 class ModelAttemptConfiguration(BaseModel):
@@ -18,6 +19,8 @@ class ModelAttemptConfiguration(BaseModel):
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
+
+    serving_identity: ModelBackendIdentity | None = None
 
     max_tokens: int | None = Field(default=None, ge=1)
     temperature: float | None = Field(default=None, ge=0.0)

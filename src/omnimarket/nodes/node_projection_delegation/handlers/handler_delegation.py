@@ -75,6 +75,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     _preserve_run_attribution,
     _preserve_terminal_failure,
     _stamp_accepting_attempt,
+    _stamp_canonical_history,
     _stamp_declared_failure_cause,
     _stamp_not_routed,
     _stamp_routing_tier,
@@ -1764,6 +1765,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             "request_override_applied": event.request_override_applied,
             "override_within_bounds": event.override_within_bounds,
         }
+        if event.escalation_history:
+            _stamp_canonical_history(row, event.escalation_history)
         # Resolve only the event's declared tenant against the registry.
         # terminal_write_tenant refuses missing attribution regardless of
         # enforcement or the writer's configured tenant (OMN-20651).

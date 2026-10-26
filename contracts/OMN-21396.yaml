@@ -198,3 +198,20 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run --locked python -c 'from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_placement import HandlerRemoteLanePlacement as H; from omnimarket.nodes.node_remote_lane_compute.models import ModelRemoteLanePlacementRequest as R; r=H().handle(R.model_validate({\"engine\":\"codex\",\"readings\":[{\"name\":\"h201\",\"engines\":[\"codex\",\"claude_sonnet\"],\"lane_slots\":2,\"lane_cap\":4,\"rank_free\":10.0}],\"ladder\":{\"lane\":\"probe\",\"ceiling\":\"sonnet\",\"risk_class\":\"feature\",\"required_capabilities\":[\"nested-sandbox\"]}})); assert r.rung==\"sonnet\", r; assert [v.reason for v in r.rungs if v.engine==\"codex\"]==[\"sandbox-capability\"], r.rungs; print(\"ac6-probe ok\")'"
         cwd: "${OMNI_HOME}/omnimarket"
+
+  - id: "dod-omn21396-serving-identity"
+    description: >
+      Hosted-runner deploy preparation check: routing rejects a shared alias
+      backed by different weight files or quants and rejects a declaration for
+      another endpoint host. In-process attempts and bus-history projection
+      retain the contract identity. A missing identity is explicitly unrecorded
+      and has no scoring key. Labelled capability-map seeds exclude missing
+      identities and partition known identities by host, weights, quant and
+      context fingerprint. This checks packaged code with hermetic fixtures;
+      it does not assert that live overlays or model servers have been changed.
+    source: "manual"
+    binds_ac: ["AC1", "AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_backend_identity_omn21396.py tests/test_golden_chain_projection_delegation_capability_map.py -q --no-cov"
+        cwd: "."

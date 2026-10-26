@@ -16,6 +16,9 @@ from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceReason,
 )
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
+from omnimarket.models.delegation.wire.model_attempt_configuration import (
+    ModelAttemptConfiguration,
+)
 from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
     ModelAttemptRubricVerdict,
 )
@@ -25,6 +28,8 @@ class ModelDelegationEscalationAttempt(BaseModel):
     """Evidence record for a single tier attempt during escalation."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
+
+    configuration: ModelAttemptConfiguration | None = None
 
     tier_name: str = Field(
         ..., description="Name of the tier attempted (e.g. 'local', 'cheap_cloud')."

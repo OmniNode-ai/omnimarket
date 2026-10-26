@@ -1334,6 +1334,7 @@ def _attempt_configuration(
 ) -> dict[str, object]:
     """The call parameters one rung is dispatched with (OMN-20168)."""
     return ModelAttemptConfiguration(
+        serving_identity=backend.serving_identity,
         max_tokens=resolve_effective_max_tokens(
             requested=max_tokens, backend_max_tokens=backend.max_tokens
         ),

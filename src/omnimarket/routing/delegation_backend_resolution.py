@@ -58,6 +58,10 @@ from omnimarket.inference.local_byok_credential_adapter import (
     registered_local_byok_providers,
 )
 from omnimarket.inference.task_class_authority import withheld_delegation_refusal
+from omnimarket.models.delegation.model_backend_identity import (
+    ModelBackendIdentity,
+    validate_backend_identities,
+)
 from omnimarket.models.delegation.model_bifrost_overlay_provenance import (
     ModelBifrostOverlayProvenance,
 )
@@ -152,6 +156,8 @@ class ModelResolvedDelegationBackend(BaseModel):
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
+
+    serving_identity: ModelBackendIdentity | None = None
 
     backend_id: str = Field(..., min_length=1)
     model_id: str = Field(..., min_length=1)
@@ -710,6 +716,7 @@ def resolve_delegation_backend(
         if provenance is not None and provenance.overlay_source is not None
         else "no overlay was merged"
     )
+    validate_backend_identities(merged)
     if backend_id is not None:
         backend = _select_backend_by_id(merged, backend_id)
         if backend is None:
@@ -812,6 +819,7 @@ def resolve_delegation_backend(
             model_id_source = record.describe()
 
     return ModelResolvedDelegationBackend(
+        serving_identity=backend.get("serving_identity"),
         backend_id=resolved_backend_id,
         model_id=model_name,
         endpoint_ref=endpoint_url,

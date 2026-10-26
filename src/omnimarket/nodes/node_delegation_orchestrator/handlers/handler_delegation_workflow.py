@@ -4708,12 +4708,22 @@ class HandlerDelegationWorkflow:
         ``escalation_history`` names the backend that served it and not only
         the model-id hash in ``routing_decision_id``.
         """
-        if attempt.backend_ref is not None or workflow.routing_decision is None:
+        if workflow.routing_decision is None:
             return attempt
-        backend_ref = (workflow.routing_decision.selected_backend_ref or "").strip()
-        if not backend_ref:
-            return attempt
-        return attempt.model_copy(update={"backend_ref": backend_ref})
+        from omnimarket.models.delegation.wire.model_attempt_configuration import (
+            ModelAttemptConfiguration,
+        )
+
+        decision = workflow.routing_decision
+        updates: dict[str, object] = {}
+        if attempt.backend_ref is None and decision.selected_backend_ref.strip():
+            updates["backend_ref"] = decision.selected_backend_ref.strip()
+        if attempt.configuration is None:
+            updates["configuration"] = ModelAttemptConfiguration(
+                serving_identity=decision.serving_identity,
+                max_tokens=decision.max_tokens,
+            )
+        return attempt.model_copy(update=updates)
 
     @staticmethod
     def _acceptance_decision(
