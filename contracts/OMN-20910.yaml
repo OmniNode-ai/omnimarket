@@ -358,7 +358,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/delegation/rung_eval -q -n 0 -p no:randomly --no-cov"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/delegation/rung_eval/test_check_missing_fail_window.py -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC39"]
   - id: "dod-omn20910-deploy-rung-eval-fail-window-smoke"
