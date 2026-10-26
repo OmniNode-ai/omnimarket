@@ -21,10 +21,24 @@ requirements:
         statement: "AC2: the select compute applies no token budget and computes no hash over the selection: an oversize fixture of 300 entries returns all 300, and the result model has no budget or hash field -- falsifier: uv run pytest tests/nodes/node_context_invariants_select_compute/test_golden_chain_context_invariants_select.py -q -n 0 -k no_budget fails at the merge base"
       - id: "AC3"
         statement: "AC3: no file the change adds names a private repository -- falsifier: grep -rliE 'knowledge.base.internal|omninode.infra|omnibase.internal' over the node package and its tests lists a file"
+  - id: "req-adr-select-compute"
+    statement: "The ADR tier of the context service is an omnimarket compute node in canonical shape (contract, node, handler) with its topics declared in its contract."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: on public ADR files at a pinned sha, only status accepted entries with empty superseded_by and a topic in the request's topics are admitted, in path order, each body byte-equal to the file after its frontmatter and stamped path@sha with its line span; not-accepted and superseded entries in topic are listed as excluded -- falsifier: uv run pytest tests/nodes/node_context_adr_select_compute/test_golden_chain_context_adr_select.py -q -n 0 fails at the merge base, where the node package does not exist"
+      - id: "AC5"
+        statement: "AC5: two files sharing the id ADR-0010 are distinct entries keyed by path -- falsifier: uv run pytest tests/nodes/node_context_adr_select_compute/test_golden_chain_context_adr_select.py -q -n 0 -k sharing_an_id fails at the merge base"
+      - id: "AC6"
+        statement: "AC6: the ADR select compute applies no token budget and computes no hash over the selection: an oversize fixture of 300 ADRs returns all 300, and the result model has no budget or hash field -- falsifier: uv run pytest tests/nodes/node_context_adr_select_compute/test_golden_chain_context_adr_select.py -q -n 0 -k no_budget fails at the merge base"
+      - id: "AC7"
+        statement: "AC7: no file the ADR select change adds names a private repository -- falsifier: grep -rliE 'knowledge.base.internal|omninode.infra|omnibase.internal' over the ADR node package and its tests lists a file"
 evidence_requirements:
   - kind: "tests"
     description: "Invariants select compute for OMN-21126."
     command: "uv run pytest tests/nodes/node_context_invariants_select_compute/test_golden_chain_context_invariants_select.py -q -n 0"
+  - kind: "tests"
+    description: "ADR select compute for OMN-21126."
+    command: "uv run pytest tests/nodes/node_context_adr_select_compute/test_golden_chain_context_adr_select.py -q -n 0"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -65,3 +79,46 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_context_invariants_select_compute/handlers/handler_context_invariants_select.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerContextInvariantsSelect'
+  - id: "dod-omn21126-ac4-adr-select"
+    description: "The ADR select tests pass at the head; at the merge base the node package does not exist and the file fails at collection."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_adr_select_compute/test_golden_chain_context_adr_select.py -q -n 0"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21126-ac5-adr-shared-id"
+    description: "Two files sharing ADR-0010 come back as two entries keyed by path."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_adr_select_compute/test_golden_chain_context_adr_select.py -q -n 0 -k sharing_an_id"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn21126-ac6-adr-no-budget"
+    description: "The oversize fixture of 300 ADRs returns every entry and the result model carries no budget or hash field."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_adr_select_compute/test_golden_chain_context_adr_select.py -q -n 0 -k no_budget"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn21126-ac7-adr-no-private-names"
+    description: "The ADR select handler exists and no file under its node package or tests names a private repository; at the merge base the handler is absent and the check fails."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_adr_select_compute/test_golden_chain_context_adr_select.py -q -n 0 -k no_private_names"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: >-
+          test -f src/omnimarket/nodes/node_context_adr_select_compute/handlers/handler_context_adr_select.py && ! grep -rqiE 'knowledge.base.internal|omninode.infra|omnibase.internal' src/omnimarket/nodes/node_context_adr_select_compute tests/nodes/node_context_adr_select_compute
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
+  - id: "dod-omn21126-adr-deploy-probe"
+    description: "Hosted-runner probe reads the ADR select handler at this commit and requires its handler class; the base has no such file and the probe finds no match."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_context_adr_select_compute/handlers/handler_context_adr_select.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerContextAdrSelect'
