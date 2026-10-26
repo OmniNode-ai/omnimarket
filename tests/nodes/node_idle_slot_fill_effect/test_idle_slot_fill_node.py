@@ -1287,6 +1287,87 @@ def test_an_experiment_with_a_completed_receipt_in_24_hours_is_not_resent(
             )
 
 
+@pytest.mark.parametrize(
+    ("case", "lane", "receipt", "dropped"),
+    [
+        (
+            "done-after-fact",
+            "fill-defect-nemotron-ultra-rejects-20261019T0617Z",
+            {"outcome": "done", "ended_at": "2026-10-19T06:26:05Z"},
+            True,
+        ),
+        (
+            "handed-off-after-fact",
+            "fill-defect-nemotron-ultra-rejects-20261019T0919Z",
+            {"outcome": "handed-off", "ended_at": "2026-10-19T09:43:54Z"},
+            True,
+        ),
+        (
+            "done-before-fact",
+            "fill-defect-nemotron-ultra-rejects-20261019T0100Z",
+            {"outcome": "done", "ended_at": "2026-10-19T02:00:00Z"},
+            False,
+        ),
+        (
+            "blocked-after-fact",
+            "fill-defect-nemotron-ultra-rejects-20261019T0617Z",
+            {"outcome": "blocked", "ended_at": "2026-10-19T06:26:05Z"},
+            False,
+        ),
+        (
+            "running",
+            "fill-defect-nemotron-ultra-rejects-20261019T0617Z",
+            {"final": False, "ended_at": "2026-10-19T06:26:05Z"},
+            False,
+        ),
+        (
+            "other-key-sharing-the-prefix",
+            "fill-defect-nemotron-ultra-rejects-extra-20261019T0617Z",
+            {"outcome": "done", "ended_at": "2026-10-19T06:26:05Z"},
+            False,
+        ),
+    ],
+)
+def test_a_stored_item_a_fill_lane_answered_after_its_fact_is_not_resent(
+    tmp_path: Path, monkeypatch, case, lane, receipt, dropped
+):
+    # 2026-10-26: deleg:nemotron-ultra-rejects (fact_at 03:05Z) was sent five times in twelve hours, though its 06:17Z lane
+    # ended done and its 09:19Z lane handed-off: only a merged PR or a 48-hour fact dropped a stored defect item.
+    src = sources(tmp_path, [], experiments=[])
+    (tmp_path / "backlog.json").write_text(
+        json.dumps(
+            {
+                "items": [
+                    {
+                        "kind": "defect",
+                        "key": "deleg:nemotron-ultra-rejects",
+                        "repo": "omnimarket",
+                        "ticket": "OMN-9101",
+                        "fact_at": "2026-10-19T03:05:00Z",
+                        "fact": "a rung accepts 8 of 14 answers",
+                    }
+                ]
+            }
+        )
+    )
+    lanes = tmp_path / "lanes"
+    monkeypatch.setenv("ONEX_REMOTE_LANE_DIR", str(lanes))
+    path = lanes / lane / "r.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({"final": True, "status": "done", **receipt}))
+    found, sent, _ = lab_fill(tmp_path, src)
+    assert bool(sent) is not dropped, case
+    if dropped:
+        note = next(f for f in found if f[1] == "lab-fill-dropped")
+        answer = f"answered {lane} at {receipt['ended_at']}"
+        assert f"deleg:nemotron-ultra-rejects {answer}" in note[2]
+        assert json.loads((tmp_path / "state/lab-fill.dropped.json").read_text())[
+            "deleg:nemotron-ultra-rejects"
+        ]["why"].startswith(answer)
+    else:
+        assert sent == ["fill-defect-nemotron-ultra-rejects-20261019T1600Z"]
+
+
 def test_the_generator_calls_the_omnimarket_ticket_rule_with_the_facts(tmp_path: Path):
     seen = []
 
