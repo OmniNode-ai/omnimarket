@@ -134,3 +134,41 @@ def test_without_pr_land_facts_the_headroom_fix_is_unchanged() -> None:
         "lanes of the session's pillar work to h201 through the remote-lane runner; never pin to a host "
         "without headroom"
     ]
+
+
+def test_green_unlanded_fallback_is_per_repo_and_keeps_hold_and_owner_gates():
+    from omnimarket.handlers.rules_lab_fill_pr_land import plan_green_repo_landing
+    from omnimarket.models.lab_fill import ModelLabFillPrLandFacts
+
+    facts = ModelLabFillPrLandFacts.model_validate(
+        {
+            "holds": {
+                "source": "ledger",
+                "read": True,
+                "lines": [
+                    "2026-10-26T12:00:00Z | HOLD | lane=operator | id=h1 | pr=held#1"
+                ],
+            },
+            "prs": [
+                {"pr": p, "head_sha": "abc", "ci_verdict": ci, "owner": owner}
+                for p, ci, owner in [
+                    ("repo#1", "GREEN", ""),
+                    ("repo#2", "GREEN", ""),
+                    ("other#3", "GREEN", ""),
+                    ("held#1", "GREEN", ""),
+                    ("owned#1", "GREEN", "live"),
+                    ("red#1", "RED", ""),
+                ]
+            ],
+        }
+    )
+    plan = plan_green_repo_landing(facts, 10, "2026-10-26T12:15:00Z")
+    assert {d.repo for d in plan.dispatch} == {"repo", "other"}
+    assert len(plan.dispatch) == 2
+    assert not plan_green_repo_landing(
+        facts.model_copy(
+            update={"holds": facts.holds.model_copy(update={"read": False})}
+        ),
+        10,
+        "2026-10-26T12:15:00Z",
+    ).dispatch

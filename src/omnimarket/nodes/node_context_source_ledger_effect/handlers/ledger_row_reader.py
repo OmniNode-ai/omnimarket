@@ -17,7 +17,7 @@ import os
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 import yaml
 from omnibase_infra.runtime.overlay.contract_env_ref import expand_contract_env_refs
@@ -43,6 +43,7 @@ class ModelLedgerSourceRow(BaseModel):
     row_id: str = Field(min_length=1)
     raw_row: str = Field(min_length=1)
     source_ref: str = Field(min_length=1)
+    ledger_seq: int | None = Field(default=None, ge=1, strict=True)
 
 
 class ModelLedgerSourceBinding(BaseModel):
@@ -86,6 +87,35 @@ class ProtocolLedgerRowReader(Protocol):
     """Every ledger row whose stamp is at or before ``as_of``."""
 
     def read_rows(self, *, as_of: datetime) -> tuple[ModelLedgerSourceRow, ...]: ...
+
+
+@runtime_checkable
+class ProtocolLedgerSequenceReader(Protocol):
+    """Every row through a sequence, including all unsequenced legacy rows."""
+
+    def read_sequence(
+        self, *, ledger_id: str, through_seq: int
+    ) -> tuple[ModelLedgerSourceRow, ...]: ...
+
+
+def reached_sequence(
+    sequences: tuple[int | None, ...], requested: int
+) -> tuple[int, bool]:
+    """Contiguous unique prefix; legacy NULLs prevent claiming complete history.
+
+    Duplicate delivery is stale even for identical rows: the projection's
+    sequence index deliberately permits duplicates so consumers can report them.
+    Values beyond the requested boundary do not belong to this snapshot.
+    """
+    counts: dict[int, int] = {}
+    for value in sequences:
+        if value is None or value > requested:
+            continue
+        counts[value] = counts.get(value, 0) + 1
+    watermark = 0
+    while counts.get(watermark + 1) == 1:
+        watermark += 1
+    return watermark, watermark == requested and None not in sequences
 
 
 class PostgresLedgerRowReader:
@@ -145,6 +175,40 @@ class PostgresLedgerRowReader:
             for row_id, raw_row in fetched
         )
 
+    def read_sequence(
+        self, *, ledger_id: str, through_seq: int
+    ) -> tuple[ModelLedgerSourceRow, ...]:
+        """Read one ledger's sequence snapshot without a timestamp cutoff.
+
+        NULL rows predate sequence cutover. Include them so the caller cannot
+        mistake a contiguous modern tail for complete authority history. Only a
+        governed backfill can remove that stale condition; this reader never
+        assigns synthetic sequences or writes the projection.
+        """
+        schema, table = self._binding.relation.split(".", 1)
+        query = pgsql.SQL(
+            "SELECT row_id, raw_row, ledger_seq FROM {relation}"
+            " WHERE ledger_id = %s AND (ledger_seq <= %s OR ledger_seq IS NULL)"
+            " ORDER BY ledger_seq NULLS FIRST, row_id"
+        ).format(relation=pgsql.Identifier(schema, table))
+        try:
+            with self._connect().cursor() as cursor:
+                cursor.execute(query, (ledger_id, through_seq))
+                fetched = list(cursor.fetchall())
+            return tuple(
+                ModelLedgerSourceRow(
+                    row_id=row_id,
+                    raw_row=raw_row,
+                    source_ref=f"{table}:{row_id}",
+                    ledger_seq=ledger_seq,
+                )
+                for row_id, raw_row, ledger_seq in fetched
+            )
+        except Exception as exc:
+            with contextlib.suppress(Exception):
+                self.close()
+            raise LedgerSourceReadError(self._redacted(exc)) from None
+
 
 class MarkdownLedgerRowReader:
     """Pinned mode: a manifest case's ledger and archive-roll prefixes."""
@@ -184,5 +248,7 @@ __all__ = [
     "ModelLedgerSourceRow",
     "PostgresLedgerRowReader",
     "ProtocolLedgerRowReader",
+    "ProtocolLedgerSequenceReader",
     "load_ledger_source_binding",
+    "reached_sequence",
 ]

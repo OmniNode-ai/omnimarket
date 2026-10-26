@@ -83,8 +83,12 @@ print("PARITY-GITIDENT %s %s" % git_identity())
 # untracked file an incoming commit adds) and keeps every other, so the dirty paths are named in the PROVISIONED line or the
 # refusal (2026-10-18: the canonical private knowledge-base clones on two lab hosts were 323 commits behind with 1629 dirty
 # paths, none of them touched by the incoming commits, and every kb lane ended no-host on "the clone has uncommitted changes").
+# The default branch is re-read from the remote first (OMN-20266): refs/remotes/origin/HEAD is cut at clone time and fetch never moves it, so a
+# clone kept on dev by the host reconciler was refused as "not the default branch main" after the remote default became dev.
 PROVISION_FAST_FORWARD_SH = r"""if [ -n "$D" ] && [ "$NEW" = 0 ]; then
   git -C "$D" fetch -q origin >/dev/null 2>&1 || true
+  case "$(git -C "$D" config --get remote.origin.url)" in git@github.com:*|https://github.com/*|ssh://git@github.com/*)
+    ONEX_CANONICAL_CONVERGE=1 git -C "$D" remote set-head origin --auto >/dev/null 2>&1 || true;; esac
   ref=$(git -C "$D" symbolic-ref -q refs/remotes/origin/HEAD) || ref=""
   if [ -z "$ref" ]; then for b in main dev; do git -C "$D" rev-parse -q --verify "refs/remotes/origin/$b^{commit}" >/dev/null && { ref="refs/remotes/origin/$b"; break; }; done; fi
   def="${ref#refs/remotes/origin/}"; cur=$(git -C "$D" symbolic-ref -q --short HEAD) || cur=""

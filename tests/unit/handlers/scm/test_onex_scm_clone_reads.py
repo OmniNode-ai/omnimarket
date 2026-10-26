@@ -463,3 +463,19 @@ def test_commit_checks_rejects_a_sha_that_is_not_hex(repo: Repo) -> None:
 def test_positive_control_a_node_verb_does_open_the_bus(repo: Repo) -> None:
     with pytest.raises(AssertionError, match="opened the bus"):
         _run(["pr-list", REPO, "--source", "bus"])
+
+
+def test_registry_clone_can_be_a_sibling_of_the_workspace(tmp_path, monkeypatch):
+    from omnimarket.handlers.scm.handler_scm_local_state import default_clone_path
+
+    home = tmp_path / "workspace"
+    home.mkdir()
+    clone = tmp_path / "registry_owner"
+    (clone / ".git").mkdir(parents=True)
+    monkeypatch.setenv("OMNI_HOME", str(home))
+    monkeypatch.delenv("ONEX_SCM_CLONE_ROOT", raising=False)
+    assert default_clone_path("OmniNode-ai/registry_owner") == clone
+    explicit = tmp_path / "declared"
+    explicit.mkdir()
+    monkeypatch.setenv("ONEX_SCM_CLONE_ROOT", str(explicit))
+    assert default_clone_path("OmniNode-ai/registry_owner") is None

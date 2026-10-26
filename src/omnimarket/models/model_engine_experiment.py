@@ -10,6 +10,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 ENGINE_LADDER: tuple[str, ...] = ("code-edit", "glm", "codex", "sonnet", "opus")
+MEASURED_ONLY_ENGINES: tuple[str, ...] = ("antigravity",)
 CLAUDE_RUNGS = ("sonnet", "opus")
 LOW_RISK_CLASSES = ("doc", "test", "lint", "small-fix")
 ESCALATING_OUTCOMES = ("failed", "blocked-own-work", "checks-red")
@@ -68,8 +69,8 @@ class ModelEngineExperimentRow(BaseModel):
     @field_validator("engine")
     @classmethod
     def validate_engine(cls, value: str) -> str:
-        if value not in ENGINE_LADDER:
-            raise ValueError("engine must be in ENGINE_LADDER")
+        if value not in ENGINE_LADDER + MEASURED_ONLY_ENGINES:
+            raise ValueError("engine must be in ENGINE_LADDER or MEASURED_ONLY_ENGINES")
         return value
 
     @field_validator("next_engine")

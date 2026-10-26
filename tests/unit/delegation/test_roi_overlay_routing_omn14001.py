@@ -900,3 +900,51 @@ def test_postgres_read_adapter_is_read_only_and_guards_identifiers() -> None:
     with pytest.raises(ValueError, match="unsafe table identifier"):
         adapter._quote_ident("bad; DROP TABLE x")
     assert adapter._quote_ident("context_roi_scores") == '"context_roi_scores"'
+
+
+# --- OMN-19795 (EV.7): the minimum sample cites the measured flip rates -------
+
+
+def test_min_samples_citation_reproduces_the_measured_flip_rates() -> None:
+    """The cited flip counts are what the committed groups give back.
+
+    The groups are the content-free three-verdict sets measured on the dev lane
+    (tests/fixtures/delegation_eval/omn19795_generation_groups.json).
+    """
+    import json
+
+    from omnimarket.models.delegation_gate_eval.model_generation_stability_request import (
+        ModelGenerationStabilityRequest,
+    )
+    from omnimarket.nodes.node_delegation_eval_run_orchestrator.handlers.handler_delegation_eval_run import (
+        generation_stability_sha256,
+    )
+    from omnimarket.nodes.node_delegation_gate_eval_compute.handlers.handler_delegation_gate_eval import (
+        compute_generation_stability,
+    )
+    from omnimarket.routing.roi_overlay import (
+        DEFAULT_ROI_MIN_SAMPLES,
+        ROI_MIN_SAMPLES_GENERATION_STABILITY,
+    )
+
+    fixture = (
+        Path(__file__).resolve().parents[2]
+        / "fixtures/delegation_eval/omn19795_generation_groups.json"
+    )
+    request = ModelGenerationStabilityRequest.model_validate(
+        {"groups": json.loads(fixture.read_text(encoding="utf-8"))["groups"]}
+    )
+    citation = ROI_MIN_SAMPLES_GENERATION_STABILITY
+    assert DEFAULT_ROI_MIN_SAMPLES == 5
+    assert citation.groups_sha256 == generation_stability_sha256(request)
+    rows = compute_generation_stability(request).rows
+    assert {row.measured_backend_id for row in rows} == {citation.backend_id}
+    assert {row.task_class: (row.flips_n, row.groups_n) for row in rows} == dict(
+        citation.flips
+    )
+    above = tuple(
+        row.task_class for row in rows if row.flip_rate_wilson.high > citation.line
+    )
+    assert above == citation.above_line
+    assert set(citation.unmeasured) == {"code_review"}
+    assert not {row.task_class for row in rows} & set(citation.unmeasured)

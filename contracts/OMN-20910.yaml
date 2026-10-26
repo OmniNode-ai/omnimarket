@@ -107,6 +107,11 @@ requirements:
     acceptance:
       - id: "AC39"
         statement: "AC39: the stored answers of runs ef0e0d15 and 80dcfc6f and five labelled forms pass _check_cites_specific_lines, a label with no number, an identifier and a word ending in line are still refused, and the existing forms still pass -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/delegation/test_omn20910_labelled_line_citation.py -q -n 0 --no-cov fails at the merge base"
+  - id: "req-rung-eval-fail-window"
+    statement: "The rung-eval check-missing command lists every gap in its window but sets exit 1 only for gaps on the newest nights (--fail-window-days, default 1), so a past night that cannot be back-filled no longer keeps the nightly unit failed for the rest of the window."
+    acceptance:
+      - id: "AC39"
+        statement: "AC39: with every cell present on the night checked and gaps on two older nights, check-missing exits 0 and still prints a MISSING line for each older night; a gap on the night checked exits 1; --fail-window-days 3 exits 1 on the same table; --fail-window-days 0 is refused -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/delegation/rung_eval/test_check_missing_fail_window.py -q -n 0 --no-cov -p no:randomly fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "The workflow reads the overlay at every roster site."
@@ -371,4 +376,23 @@ dod_evidence:
       - check_type: "command"
         check_value: |-
           env docker run --rm --user "$(id -u):$(id -g)" -v "${PWD}:/workspace:ro" -w /workspace -v "$(uv cache dir):/uv-cache" -v "$(command -v uv):/usr/local/bin/uv:ro" -e UV_LINK_MODE=copy -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0="*" -e PYTHONDONTWRITEBYTECODE=1 -e UV_PROJECT_ENVIRONMENT=/tmp/labelled-line-venv -e UV_CACHE_DIR=/uv-cache ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a uv run --frozen pytest tests/unit/delegation/test_omn20910_labelled_line_citation.py tests/unit/delegation/test_omn20844_line_citation_needs_numbered_input.py -q -p no:randomly -p no:cacheprovider --no-cov --basetemp=/tmp/labelled-line-tests
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20910-ac39-rung-eval-fail-window"
+    description: "check-missing reports every gap in the window and fails only on gaps of the newest nights."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/delegation/rung_eval/test_check_missing_fail_window.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC39"]
+  - id: "dod-omn20910-deploy-rung-eval-fail-window-smoke"
+    description: "The check runs tests/unit/delegation/rung_eval in a disposable Python container from a read-only checkout with no rung endpoint, provider key or lab service, verifying that check-missing reports older gaps and exits 1 only for gaps of the newest nights for OMN-20910."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker pull -q ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: |-
+          env docker run --rm --user "$(id -u):$(id -g)" -v "${PWD}:/workspace:ro" -w /workspace -v "$(uv cache dir):/uv-cache" -v "$(command -v uv):/usr/local/bin/uv:ro" -e UV_LINK_MODE=copy -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0="*" -e PYTHONDONTWRITEBYTECODE=1 -e UV_PROJECT_ENVIRONMENT=/tmp/rung-eval-venv -e UV_CACHE_DIR=/uv-cache ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a uv run --frozen pytest tests/unit/delegation/rung_eval -q -n 0 -p no:randomly -p no:cacheprovider --no-cov --basetemp=/tmp/rung-eval-tests
         cwd: "${OMNI_HOME}/omnimarket"

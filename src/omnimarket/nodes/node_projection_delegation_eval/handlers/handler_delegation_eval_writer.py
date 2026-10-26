@@ -93,11 +93,13 @@ _UPSERT_RESULT = """
         false_pass_wilson_low, false_pass_wilson_high, false_pass_line_verdict,
         false_pass_required_n, refused_n, false_refusal_count, false_refusal_rate,
         false_refusal_upper_bound, false_refusal_wilson_low, false_refusal_wilson_high,
-        false_refusal_line_verdict, undetermined_n, undetermined_share, observed_at,
-        first_seen_at, updated_at
+        false_refusal_line_verdict, undetermined_n, undetermined_share, flip_rate,
+        flip_rate_wilson_low, flip_rate_wilson_high, flip_measured_backend_id,
+        observed_at, first_seen_at, updated_at
     )
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
-            $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, NOW(), NOW())
+            $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
+            $31, $32, $33, NOW(), NOW())
     ON CONFLICT (tenant_id, eval_run_id, task_class, stratum, arm)
     DO UPDATE SET
         total_n = EXCLUDED.total_n,
@@ -118,6 +120,10 @@ _UPSERT_RESULT = """
         false_refusal_line_verdict = EXCLUDED.false_refusal_line_verdict,
         undetermined_n = EXCLUDED.undetermined_n,
         undetermined_share = EXCLUDED.undetermined_share,
+        flip_rate = EXCLUDED.flip_rate,
+        flip_rate_wilson_low = EXCLUDED.flip_rate_wilson_low,
+        flip_rate_wilson_high = EXCLUDED.flip_rate_wilson_high,
+        flip_measured_backend_id = EXCLUDED.flip_measured_backend_id,
         observed_at = EXCLUDED.observed_at,
         updated_at = NOW()
     WHERE public.delegation_eval_results.observed_at < EXCLUDED.observed_at
@@ -248,6 +254,10 @@ class DelegationEvalProjectionWriter(BaseProjectionRunner):
                 row.false_refusal_line_verdict,
                 row.undetermined_n,
                 row.undetermined_share,
+                row.flip_rate,
+                row.flip_rate_wilson_low,
+                row.flip_rate_wilson_high,
+                row.flip_measured_backend_id,
                 row.observed_at,
                 tenant=str(row.tenant_id),
             )
