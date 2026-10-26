@@ -1,0 +1,90 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21411"
+title: "S5a: nine session-start nodes move to omnimarket"
+summary: >-
+  Slice S5a of the scripts migration moves nine session-start nodes into omnimarket from the plugin
+  repository at its main: adoption recovery, cause claim ownership, stuck owner actor, host pool
+  alarm, script node source, controller fix plan, operator waiting tick, green draft clock and green
+  controller read. The two plugin nodes they call in process that omnimarket lacked, the exception
+  queue and the plugin bump stuck judgement, move with them. The registry-root variable is
+  ONEX_REGISTRY_ROOT, the plugin repository name the exception rows are filed against is a request
+  field, and the plugin callers are repointed in a later slice.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn21411-nine-nodes"
+    statement: >-
+      The nine nodes exist in omnimarket with their ported tests, free of the old registry-root
+      variable.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: omnimarket lists the 36 files of the nine nodes' contract, handler, models and node modules"
+      - id: "AC2"
+        statement: "AC2: the hygiene gate over the moved files exits 0 and git grep -n -F OMNI_HOME over them prints nothing"
+      - id: "AC3"
+        statement: "AC3: the ported tests of the nine nodes pass in omnimarket CI"
+evidence_requirements:
+  - kind: "tests"
+    description: "The nine nodes' ported and new tests, with the two nodes they call in process."
+    command: "uv run pytest tests/nodes/node_adoption_recovery_effect/test_adoption_recovery.py tests/nodes/node_cause_claim_ownership_effect/test_cause_claim_ownership_node.py tests/nodes/node_controller_fix_plan_compute/test_controller_fix_plan.py tests/nodes/node_exception_queue_effect/test_exception_queue_node.py tests/nodes/node_green_controller_read_compute/test_green_controller_read_node.py tests/nodes/node_green_draft_clock_compute/test_green_draft_clock_node.py tests/nodes/node_host_pool_alarm_effect/test_host_pool_alarm_node.py tests/nodes/node_operator_waiting_tick_effect/test_operator_waiting_tick_node.py tests/nodes/node_plugin_bump_stuck_compute/test_plugin_bump_stuck.py tests/nodes/node_script_node_src_compute/test_script_node_src.py tests/nodes/node_stuck_owner_actor_effect/test_stuck_owner_actor.py -q --no-cov --refuse-skips"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21411-ac1-thirty-six-files"
+    description: >-
+      The 36 module files (contract.yaml, handler.py, models.py, node.py for each of the nine
+      nodes) are present. The directories also hold an __init__.py and a metadata.yaml each, which
+      check_node_metadata_dependencies.py requires, so a ls-tree count of a directory reads 54, not 36.
+      Fails at the merge base, which has none of the nine directories.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'for n in node_adoption_recovery_effect node_cause_claim_ownership_effect node_stuck_owner_actor_effect node_host_pool_alarm_effect node_script_node_src_compute node_controller_fix_plan_compute node_operator_waiting_tick_effect node_green_draft_clock_compute node_green_controller_read_compute; do for f in contract.yaml handler.py models.py node.py; do test -f src/omnimarket/nodes/$n/$f || { echo missing $n/$f; exit 1; }; done; done; echo nine-nodes-with-their-four-source-files-present'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_session_start_nodes_present.py::test_the_nine_nodes_carry_their_36_source_files -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21411-ac2-registry-root"
+    description: >-
+      No file of the nine nodes names the old registry-root variable. The hygiene gate over the
+      added lines exited 0 on the lane host with the private vocabulary read from the host.
+      It first requires the nine node directories, so it fails at the merge base, which has none of them.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'for n in node_adoption_recovery_effect node_cause_claim_ownership_effect node_stuck_owner_actor_effect node_host_pool_alarm_effect node_script_node_src_compute node_controller_fix_plan_compute node_operator_waiting_tick_effect node_green_draft_clock_compute node_green_controller_read_compute; do test -d src/omnimarket/nodes/$n || { echo missing $n; exit 1; }; done; ! git grep -n -F OMNI_HOME -- src/omnimarket/nodes/node_adoption_recovery_effect src/omnimarket/nodes/node_cause_claim_ownership_effect src/omnimarket/nodes/node_stuck_owner_actor_effect src/omnimarket/nodes/node_host_pool_alarm_effect src/omnimarket/nodes/node_script_node_src_compute src/omnimarket/nodes/node_controller_fix_plan_compute src/omnimarket/nodes/node_operator_waiting_tick_effect src/omnimarket/nodes/node_green_draft_clock_compute src/omnimarket/nodes/node_green_controller_read_compute'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_session_start_nodes_present.py::test_no_file_of_the_nine_nodes_names_the_old_registry_root_variable -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21411-ac3-ported-tests"
+    description: >-
+      The ported node tests (cause claim ownership, green controller read, green draft clock, host
+      pool alarm, operator waiting tick, stuck owner actor, exception queue) and the new tests for
+      the other nodes pass. Fails at the merge base, which has none of these nodes.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_adoption_recovery_effect/test_adoption_recovery.py tests/nodes/node_cause_claim_ownership_effect/test_cause_claim_ownership_node.py tests/nodes/node_controller_fix_plan_compute/test_controller_fix_plan.py tests/nodes/node_exception_queue_effect/test_exception_queue_node.py tests/nodes/node_green_controller_read_compute/test_green_controller_read_node.py tests/nodes/node_green_draft_clock_compute/test_green_draft_clock_node.py tests/nodes/node_host_pool_alarm_effect/test_host_pool_alarm_node.py tests/nodes/node_operator_waiting_tick_effect/test_operator_waiting_tick_node.py tests/nodes/node_plugin_bump_stuck_compute/test_plugin_bump_stuck.py tests/nodes/node_script_node_src_compute/test_script_node_src.py tests/nodes/node_stuck_owner_actor_effect/test_stuck_owner_actor.py -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21411-deploy-import"
+    description: >-
+      Hosted deploy check, runnable on the hosted runner with no lab route, broker or database: the
+      nine node packages import from the installed omnimarket and each resolves its onex.nodes entry
+      point. Fails at the merge base, where the packages and entry points are absent.
+      Hosted deploy probe: gh api reads pyproject.toml at the checked-out commit and finds the node_green_controller_read_compute entry point; at the merge base the entry is absent, so the read finds nothing and the check exits nonzero.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run --locked python -c \"from importlib.metadata import entry_points; eps={e.name: e for e in entry_points(group='onex.nodes')}; [eps[n].load() for n in ('node_adoption_recovery_effect','node_cause_claim_ownership_effect','node_stuck_owner_actor_effect','node_host_pool_alarm_effect','node_script_node_src_compute','node_controller_fix_plan_compute','node_operator_waiting_tick_effect','node_green_draft_clock_compute','node_green_controller_read_compute')]; print('nine entry points load')\""
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/pyproject.toml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"node_green_controller_read_compute = \" > /dev/null'"
+        cwd: "${OMNI_HOME}/omnimarket"

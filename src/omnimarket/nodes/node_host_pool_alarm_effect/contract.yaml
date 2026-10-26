@@ -1,0 +1,52 @@
+name: node_host_pool_alarm_effect
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >
+  The throughput tick's alarm for a lab host whose pool read cannot be trusted (OMN-17427). A declared host whose
+  pool read is UNREADABLE (or timed out) on two consecutive ticks is MISSING host-unreadable:<host>, and a host whose
+  own probe readings show swap-in over a bound or memory pressure is MISSING host-swapping:<host>. Each alarm names
+  the host, its lane cap, the probe error or readings and a FIX, goes to the exception queue as one decision row per
+  host per episode (the operator is pushed once, not once per tick), and silences the host's free-headroom line so the
+  Stop idle guard does not read its slots as free. An episode ends after two clean reads.
+input_model:
+  name: ModelHostPoolAlarmRequest
+  module: omnimarket.nodes.node_host_pool_alarm_effect.models
+output_model:
+  name: ModelHostPoolAlarm
+  module: omnimarket.nodes.node_host_pool_alarm_effect.models
+handler:
+  module: omnimarket.nodes.node_host_pool_alarm_effect.handler
+  class: HandlerHostPoolAlarm
+  input_model: omnimarket.nodes.node_host_pool_alarm_effect.models.ModelHostPoolAlarmRequest
+  output_model: omnimarket.nodes.node_host_pool_alarm_effect.models.ModelHostPoolAlarm
+entrypoint:
+  name: NodeHostPoolAlarmEffect
+  module: omnimarket.nodes.node_host_pool_alarm_effect.node
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_host_pool_alarm_effect.handler:HandlerHostPoolAlarm
+  handlers:
+    - operation: tick
+      topic: onex.cmd.omnimarket.host-pool-alarm-requested.v1
+      handler:
+        name: HandlerHostPoolAlarm
+        module: omnimarket.nodes.node_host_pool_alarm_effect.handler
+terminal_event: onex.evt.omnimarket.host-pool-alarm-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.host-pool-alarm-requested.v1
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 120000
+  runtime_profiles:
+    - effects
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.host-pool-alarm-requested.v1]
+  publish_topics: [onex.evt.omnimarket.host-pool-alarm-completed.v1]
+metadata:
+  transport_type: inmemory
+  related_tickets: [OMN-17427]
+externally_consumed_topics:
+- onex.evt.omnimarket.host-pool-alarm-completed.v1

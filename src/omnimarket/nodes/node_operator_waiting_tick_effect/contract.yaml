@@ -1,0 +1,51 @@
+name: node_operator_waiting_tick_effect
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >
+  The operator-waiting tick's output and its acting row (RULING 2026-10-14T18:04:24Z, OMN-16177). From the open asks
+  to the operator that loops_check.py operator-waiting read from the ledger inbox, it renders the list (oldest first,
+  grouped by ticket, each with its age, the new ones marked) and, when at least one ask is open, appends one STATUS
+  row with actor=script:operator-waiting-tick through the plugin's row writer, so the ruling audit reads the tick as
+  the mechanism acting. A refused write is one NOTE line after the list, never a lost list.
+input_model:
+  name: ModelOperatorWaitingRequest
+  module: omnimarket.nodes.node_operator_waiting_tick_effect.models
+output_model:
+  name: ModelOperatorWaiting
+  module: omnimarket.nodes.node_operator_waiting_tick_effect.models
+handler:
+  module: omnimarket.nodes.node_operator_waiting_tick_effect.handler
+  class: HandlerOperatorWaitingTick
+  input_model: omnimarket.nodes.node_operator_waiting_tick_effect.models.ModelOperatorWaitingRequest
+  output_model: omnimarket.nodes.node_operator_waiting_tick_effect.models.ModelOperatorWaiting
+entrypoint:
+  name: NodeOperatorWaitingTickEffect
+  module: omnimarket.nodes.node_operator_waiting_tick_effect.node
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_operator_waiting_tick_effect.handler:HandlerOperatorWaitingTick
+  handlers:
+    - operation: tick
+      topic: onex.cmd.omnimarket.operator-waiting-tick-requested.v1
+      handler:
+        name: HandlerOperatorWaitingTick
+        module: omnimarket.nodes.node_operator_waiting_tick_effect.handler
+terminal_event: onex.evt.omnimarket.operator-waiting-tick-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.operator-waiting-tick-requested.v1
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 120000
+  runtime_profiles:
+    - effects
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.operator-waiting-tick-requested.v1]
+  publish_topics: [onex.evt.omnimarket.operator-waiting-tick-completed.v1]
+metadata:
+  transport_type: inmemory
+  related_tickets: [OMN-19854]
+externally_consumed_topics:
+- onex.evt.omnimarket.operator-waiting-tick-completed.v1
