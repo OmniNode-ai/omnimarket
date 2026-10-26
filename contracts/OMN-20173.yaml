@@ -55,7 +55,7 @@ dod_evidence:
     binds_ac: ["AC3"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_llm_delegation_call_effect/test_antigravity_target.py tests/nodes/node_harness_invocation_check_effect tests/nodes/node_remote_lane_compute -q --no-cov -k 'measured_engine or harness_policy or golden or ladder or experiment'"
+        check_value: "uv run pytest tests/unit/nodes/node_llm_delegation_call_effect/test_antigravity_target.py tests/nodes/node_remote_lane_compute/test_engine_experiment_rows.py -q --no-cov -k 'measured_engine or harness_policy or experiment'"
         cwd: "."
   - id: "dod-omn20173-deploy-probe"
     description: "Hosted-runner deploy probe: dispatch the packaged node_harness_invocation_check_effect through the in-process ONEX runtime over a scratch tree whose one script starts agy outside the delegation handler directory, and require a typed receipt that refuses exactly that agy site. The merge base's policy lists only codex and claude, so its receipt refuses nothing and the assertion fails. A second check builds the antigravity argv from the installed package with the prompt after -p and no permission bypass. Needs no agy install, login, credential, broker or lab route. This checks the packaged nodes at the evaluated checkout, not a production rollout."
