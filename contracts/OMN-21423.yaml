@@ -50,12 +50,12 @@ dod_evidence:
       In-repo prerequisite of AC2 only: the write node is declared answerable by any runtime, so a
       second runtime may take the next write. The three-run failover replay against the dev runtimes
       is a lab run that needs the image on every runtime host; it is pending and was not run by this
-      change. Fails at the merge base, where the write contract declares no placement.
+      change. Fails at the merge base, where neither contract declares a placement block.
     source: "manual"
     binds_ac: ["AC2"]
     checks:
-      - check_type: "command"
-        check_value: "uv run --locked python -c \"import yaml,sys; c=yaml.safe_load(open('src/omnimarket/nodes/node_github_repo_write_effect/contract.yaml')); sys.exit(0 if c.get('placement')=={'mode':'any'} else 1)\""
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_github_nodes_placement_any_omn21423.py::test_github_node_declares_placement_mode_any -q --no-cov --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21423-ac3-token-declared"
     description: >-
