@@ -1,0 +1,84 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - RSD Migration Orchestrator (OMN-21373)
+#
+# Moves one script into one omnimarket node in canonical shape. The dispatch
+# reads its task class from the onex.contracts registry entry
+# task_class_authority before any model turn and refuses when the entry is
+# missing, the class is undeclared or the contract declares it unroutable. The
+# work is one delegated code edit loop (node_delegated_code_edit_orchestrator)
+# with writes confined to the new node and its tests and the declared checks
+# shape, tests and lint. An accepted loop registers the node's onex.nodes entry
+# point, and the shape is checked again with the entry point required.
+#
+# FIRST SLICE: the code edit loop is reached through an injected runner bound by
+# the node's CLI on the host that holds the worktree. The node declares no
+# event_bus block, so no shared runtime attaches it.
+name: "node_rsd_migration_orchestrator"
+lifecycle: experimental
+node_type: "ORCHESTRATOR_GENERIC"
+runtime_profiles: [main]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  Runs one RSD migration: resolves the code_generation task class from the
+  task_class_authority registry entry, runs one delegated code edit loop that
+  writes the new node and its tests, registers the node's ONEX nodes entry
+  point when the loop is accepted, checks the canonical node shape, and writes
+  <state root>/runs/<correlation id>/rsd_migration_receipt.json.
+input_model:
+  name: "ModelRsdMigrationTask"
+  module: "omnimarket.nodes.node_rsd_migration_orchestrator.models.model_rsd_migration"
+  description: "The script text and label, the node name, the absolute worktree, the purpose, the turn cap, the caller lane and the ticket."
+output_model:
+  name: "ModelRsdMigrationReceipt"
+  module: "omnimarket.nodes.node_rsd_migration_orchestrator.models.model_rsd_migration"
+  description: "Status (migrated, not_migrated, refused), the dispatch authority, the code edit result, whether the entry point was registered, and the shape problems."
+handler:
+  module: "omnimarket.nodes.node_rsd_migration_orchestrator.handlers.handler_rsd_migration_orchestrator"
+  class: "HandlerRsdMigrationOrchestrator"
+  input_model: "omnimarket.nodes.node_rsd_migration_orchestrator.models.model_rsd_migration.ModelRsdMigrationTask"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_rsd_migration_orchestrator.handlers.handler_rsd_migration_orchestrator:HandlerRsdMigrationOrchestrator"
+  handlers:
+    - operation: "run_rsd_migration"
+      handler:
+        name: "HandlerRsdMigrationOrchestrator"
+        module: "omnimarket.nodes.node_rsd_migration_orchestrator.handlers.handler_rsd_migration_orchestrator"
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: false
+  timeout_ms: 7200000
+outputs:
+  status:
+    type: str
+    enum: [migrated, not_migrated, refused]
+  refusal:
+    type: str
+  entry_point_registered:
+    type: bool
+  shape_problems:
+    type: array
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.rsd-migration-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.rsd-migration-completed.v1"
+    failure: "onex.evt.omnimarket.rsd-migration-failed.v1"
+metadata:
+  transport_type: inmemory
+  description: "RSD migration orchestrator (first slice: in-process on the worktree host, code edit turns over the bus)"
+  author: "OmniNode Team"
+  created: "2026-10-25"
+  tags:
+    - "orchestrator"
+    - "rsd"
+    - "migration"
+    - "OMN-21373"
+  related_tickets:
+    - "OMN-21373"
+    - "OMN-20290"

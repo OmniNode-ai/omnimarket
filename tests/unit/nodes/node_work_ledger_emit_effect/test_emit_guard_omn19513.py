@@ -111,7 +111,7 @@ def test_the_spool_only_lane_is_not_a_publish(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("ONEX_EMIT_EFFECT_SPOOL_ONLY", "true")
-    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", REAL_BOOTSTRAP)
+    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", LOOPBACK_BOOTSTRAP)
     result = HandlerWorkLedgerEmit(
         emitter=HandlerEventEmitEffect(spool=SpoolOutbox(tmp_path / "spool"))
     ).handle(ModelWorkLedgerEmitRequest(row=CLAIM))

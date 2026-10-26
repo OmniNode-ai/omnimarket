@@ -15,6 +15,7 @@ class ModelReviewerRunsFacts(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     records: dict[str, ModelWatcherRecord]
+    now: str
 
 
 __all__: list[str] = ["ModelReviewerRunsFacts"]

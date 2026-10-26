@@ -36,6 +36,8 @@ outcome is unknown: read before retrying; a write retried with the same
 idempotency key is not written twice).
 Gateway reads retry on no terminal or bus unavailability for up to three total
 attempts, pausing 20 seconds between attempts; writes make one attempt (OMN-21396).
+With ``--bus inmemory``, the selected contract is hosted in this process by
+the runtime dispatcher before the command is published.
 
 Registered in ``[project.entry-points."onex.cli"]``; the CLI discovers it over
 installed distributions.
@@ -147,7 +149,7 @@ def _call_bus(
     timeout_s: float,
 ) -> int:
     async def main() -> ModelScmTerminal:
-        async with _open_bus(bus_opts) as opened:
+        async with _open_bus({**bus_opts, "scm_node": spec.node}) as opened:
             return await ScmBusCaller(opened).call(
                 node=spec.node,
                 request=request,
@@ -180,7 +182,11 @@ def _call_bus(
             if attempt == max_attempts:
                 return EXIT_BUS_UNAVAILABLE
         else:
-            failed = terminal.failed or terminal.payload.get("outcome") == "failed"
+            failed = (
+                terminal.failed
+                or terminal.payload.get("outcome") == "failed"
+                or terminal.payload.get("status") == "failed"
+            )
             result = terminal.payload.get("result", terminal.payload)
             return _emit(
                 ModelScmAnswer(
@@ -224,7 +230,15 @@ def _open_bus(
         Callable[..., contextlib.AbstractAsyncContextManager[ProtocolLabRunBus]],
         open_lab_run_bus,
     )
-    return opener(**dict(zip(names, values, strict=True)))
+    opened = opener(**dict(zip(names, values, strict=True)))
+    if values[0] == "inmemory":
+        from omnimarket.handlers.scm.scm_inprocess import open_scm_inprocess
+
+        node = bus_opts["scm_node"]
+        if not isinstance(node, EnumScmNode):
+            raise LabRunBusError("the in-memory SCM bus requires a node")
+        return open_scm_inprocess(opened, node)
+    return opened
 
 
 def _bus_kind(value: object) -> BusKind:
