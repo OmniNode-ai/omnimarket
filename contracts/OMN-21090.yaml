@@ -76,20 +76,21 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
   - id: "dod-omn21090-deploy-current-context-probe"
-    description: "Hosted-runner probe: run the packaged install-confirm compute over a P6-shaped custom compaction and then the same capture grown by a native compaction, fold both results in both orders through the packaged current-context handler, and require the native boundary current with the custom activation retired there. At the merge base the handler module does not exist and the probe fails. No lane services or credentials are required."
+    description: "Hosted-runner probe: run the packaged node_context_install_confirm_compute through `onex node` over an in-memory bus over a P6-shaped custom compaction and then the same capture grown by a native compaction, fold both results in both orders through the packaged current-context handler, and require the native boundary current with the custom activation retired there. At the merge base the handler module does not exist and the probe fails. No lane services or credentials are required."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: |
           set -eu
           export PYTHONDONTWRITEBYTECODE=1
-          uv run --locked python - <<'PY'
+          probe="$(mktemp -d)"
+          trap 'rm -rf "$probe"' EXIT
+          uv run --locked python - "$probe" <<'PY'
+          import sys
           import uuid
           from omnimarket.models.context_install_confirm import ModelCapturedTranscriptRecord as R, ModelInstallConfirmRequest as Q, ModelPublishedActivation as A
           from omnimarket.models.context_pack_render import ModelContextPackRenderMessage as M
-          from omnimarket.nodes.node_context_install_confirm_compute.handlers.handler_context_install_confirm import HandlerContextInstallConfirm as H, observed_messages_hash as h
-          from omnimarket.nodes.node_context_compaction_receipts_fold_compute.handlers.handler_context_current_context_fold import HandlerContextCurrentContextFold as F
-          from omnimarket.models.context_compaction_fold import ModelCurrentContextProjectionRequest as P
+          from omnimarket.nodes.node_context_install_confirm_compute.handlers.handler_context_install_confirm import observed_messages_hash as h
           a = uuid.uuid4()
           msgs = [("user", "legend"), ("assistant", "ok"), ("user", "trailer\nactivation_id: %s" % a)]
           t = "2026-10-17T12:00:10Z"
@@ -104,7 +105,23 @@ dod_evidence:
                         R(uuid="s2", parent_uuid="b2", record_type="user", role="user", text="native summary", is_compact_summary=True, timestamp="2026-10-17T12:00:30Z"),
                         R(uuid="k0", parent_uuid="s2", record_type="user", role="user", text="kept", timestamp="2026-10-17T12:00:30Z")]
           act = A(activation_id=a, installed_messages_hash=h(M(role=r, text=x) for r, x in msgs), published_at="2026-10-17T12:00:05Z")
-          early, late = (H().handle(Q(session_id="s", records=tuple(c), activations=(act,))) for c in (rs, grown))
+          for name, c in (("early", rs), ("late", grown)):
+              open("%s/%s.json" % (sys.argv[1], name), "w").write(Q(session_id="s", records=tuple(c), activations=(act,)).model_dump_json())
+          open("%s/activation" % sys.argv[1], "w").write(str(a))
+          PY
+          export PATH="$(uv run --locked python -c 'import sysconfig; print(sysconfig.get_path("scripts"))'):$PATH";
+          onex node node_context_install_confirm_compute --input "$probe/early.json" --backend event_bus=inmemory --output receipt > "$probe/early.out.json";
+          onex node node_context_install_confirm_compute --input "$probe/late.json" --backend event_bus=inmemory --output receipt > "$probe/late.out.json";
+          uv run --locked python - "$probe" <<'PY'
+          import json
+          import sys
+          import uuid
+          from omnimarket.models.context_install_confirm import ModelInstallConfirmResult as S
+          from omnimarket.nodes.node_context_compaction_receipts_fold_compute.handlers.handler_context_current_context_fold import HandlerContextCurrentContextFold as F
+          from omnimarket.models.context_compaction_fold import ModelCurrentContextProjectionRequest as P
+          d = sys.argv[1]
+          a = uuid.UUID(open("%s/activation" % d).read())
+          early, late = (S.model_validate(json.load(open("%s/%s.out.json" % (d, n)))["result"]) for n in ("early", "late"))
           views = [F().handle(P(events=e)).current for e in ((early, late), (late, early), (late, early, late))]
           assert views[0] == views[1] == views[2], views
           v = views[0]
