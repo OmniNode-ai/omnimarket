@@ -105,6 +105,10 @@ _RELATION_PATTERN = re.compile(r"^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$")
 #: ``disposition`` of the synthetic block an unreadable snapshot returns.
 UNKNOWN_QUOTA_STATE_DISPOSITION = "quota_state_unknown"
 
+#: ``disposition`` of the timed block a connection-level failure records on a
+#: host's own key (OMN-20910). Ordinary routing honours it; a pinned run does not.
+HOST_UNREACHABLE_DISPOSITION = "host_unreachable"
+
 #: ``disposition`` of the synthetic block a spent declared quota window returns.
 DECLARED_QUOTA_EXHAUSTED_DISPOSITION = "declared_quota_exhausted"
 
@@ -338,6 +342,23 @@ class ModelProviderQuotaSnapshot(BaseModel):
         return None
 
 
+def host_unreachable_domain_for_endpoint(endpoint_url: str) -> str | None:
+    """The connection-failure key: ``host:<host>[:<port>]`` (OMN-20910).
+
+    The port is part of it (OMN-20910): a refused connection says one service is
+    down, not that its host's other services are, so a block recorded for
+    ``local:8000`` must not bar the backend on ``local:8001``.
+    """
+    host = (urlparse(endpoint_url).hostname or "").lower()
+    if not host:
+        return None
+    try:
+        port = urlparse(endpoint_url).port
+    except ValueError:
+        port = None
+    return f"host:{host}" if port is None else f"host:{host}:{port}"
+
+
 def quota_domain_for_endpoint(endpoint_url: str) -> str | None:
     """Return the quota failure domain an endpoint belongs to.
 
@@ -391,12 +412,26 @@ def quota_block_for_backend(
     domain = quota_domain_for_endpoint(endpoint_url)
     if domain is None:
         return None
-    return snapshot.block_for(
+    block = snapshot.block_for(
         provider_id=domain,
         credential_ref=credential_ref_for(api_key_ref),
         model_name=model_name,
         metered=not domain.startswith("host:"),
         declared_limit=declared_quota_limit_for(domain),
+    )
+    # Keep quota counters host-wide. Only a connection failure is scoped to a
+    # service's port, and a quota block must take precedence so a pinned call
+    # cannot bypass it through the host-unreachable exception.
+    if block is not None or not domain.startswith("host:"):
+        return block
+    host_domain = host_unreachable_domain_for_endpoint(endpoint_url)
+    if host_domain is None or host_domain == domain:
+        return None
+    return snapshot.block_for(
+        provider_id=host_domain,
+        credential_ref=credential_ref_for(api_key_ref),
+        model_name=model_name,
+        metered=False,
     )
 
 

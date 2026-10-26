@@ -36,6 +36,7 @@ POOL_READ_DIR = (
 )
 POOL_READ_TTL_S = 30.0
 PROBE_TIMEOUT_S = 20.0
+PROBE_STEP_MARKER = "PROBE-STEP "  # the remote probe prints ``PROBE-STEP <name>`` on its own line before each step
 
 
 def probe_key(argv: Sequence[str]) -> str:
@@ -46,18 +47,43 @@ def probe_key(argv: Sequence[str]) -> str:
     return hashlib.sha256(json.dumps(parts).encode("utf-8")).hexdigest()[:32]
 
 
+def last_step(stdout: str) -> str | None:
+    """The name on the last complete ``PROBE_STEP_MARKER`` line of a probe's partial stdout; None when it printed none.
+    A last line cut off before its newline is not read: its name may be cut too."""
+    name = None
+    for line in stdout.split("\n")[:-1]:
+        if line.startswith(PROBE_STEP_MARKER):
+            name = line[len(PROBE_STEP_MARKER) :].strip() or name
+    return name
+
+
+def _timed_out(
+    argv: list[str], timeout: float, partial: str | bytes | None
+) -> subprocess.CompletedProcess[str]:
+    """Exit 255 with the stdout the probe printed before the timeout, and the last step marker in it named."""
+    stdout = (
+        partial.decode("utf-8", "replace")
+        if isinstance(partial, bytes)
+        else partial or ""
+    )
+    step = last_step(stdout)
+    where = f"in step {step}" if step else "before any step marker"
+    return subprocess.CompletedProcess(
+        argv, 255, stdout, f"timed out after {timeout:.0f}s {where}"
+    )
+
+
 def capture_live(
     argv: list[str], timeout: float = PROBE_TIMEOUT_S
 ) -> subprocess.CompletedProcess[str]:
-    """The probe run live when the caller passes no capture: a timeout or a launch failure is exit 255."""
+    """The probe run live when the caller passes no capture: a timeout or a launch failure is exit 255. A timeout keeps
+    the stdout the probe had printed and names its last ``PROBE_STEP_MARKER`` step, so a stall names where it stalled."""
     try:
         return subprocess.run(
             argv, capture_output=True, text=True, timeout=timeout, check=False
         )
-    except subprocess.TimeoutExpired:
-        return subprocess.CompletedProcess(
-            argv, 255, "", f"timed out after {timeout:.0f}s"
-        )
+    except subprocess.TimeoutExpired as exc:
+        return _timed_out(argv, timeout, exc.stdout)
     except OSError as exc:
         return subprocess.CompletedProcess(argv, 255, "", str(exc))
 

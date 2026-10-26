@@ -15,6 +15,8 @@ import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 stuck = importlib.import_module(
     "omnimarket.nodes.node_stuck_owner_actor_effect.handler"
 )
@@ -447,6 +449,58 @@ def test_a_live_cause_claim_owns_the_red_base(tmp_path) -> None:
     )  # silent 60 minutes: the CLAIM owns nothing
     act(tmp_path, land, runner, w={**watcher(), "prs": {}}, ledger=ledger)
     assert len(runner.calls) == 1
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("lease_first", [True, False])
+def test_silent_cause_claim_with_lane_work_lease(
+    tmp_path: Path, lease_first: bool
+) -> None:
+    ledger = tmp_path / "ledger.md"
+    lease = (
+        f"{ts(120)} | CLAIM | lane=lw-a | actor=script:node_projection_lease | "
+        "kind=lane-work | lease=6f1c2a8e-1b7d-4c55-9d1e-2f3a4b5c6d7e\n"
+    )
+    claim = f"{ts(120)} | CLAIM | lane=lw-a | cause=plugin-repo-a:validate-plugin\n"
+    # The lease CLAIM names no cause, so the lane's cause CLAIM is kept in either order.
+    ledger.write_text(lease + claim if lease_first else claim + lease)
+    assert stuck.live_cause_claims(ledger, NOW, "plugin-repo-a", "validate-plugin") == [
+        "lw-a"
+    ]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "lease_cells",
+    [
+        "",
+        " | actor=claims-lane | kind=lane-work | lease=6f1c2a8e-1b7d-4c55-9d1e-2f3a4b5c6d7e",
+    ],
+)
+def test_silent_cause_claim_without_lane_work_lease(
+    tmp_path: Path, lease_cells: str
+) -> None:
+    ledger = tmp_path / "ledger.md"
+    ledger.write_text(
+        f"{ts(120)} | CLAIM | lane=lw-a | cause=plugin-repo-a:validate-plugin{lease_cells}\n"
+    )
+    assert (
+        stuck.live_cause_claims(ledger, NOW, "plugin-repo-a", "validate-plugin") == []
+    )
+
+
+@pytest.mark.unit
+def test_terminal_closes_lane_work_lease_before_new_cause_claim(tmp_path: Path) -> None:
+    ledger = tmp_path / "ledger.md"
+    ledger.write_text(
+        f"{ts(180)} | CLAIM | lane=lw-a | actor=script:node_projection_lease | "
+        "kind=lane-work | lease=6f1c2a8e-1b7d-4c55-9d1e-2f3a4b5c6d7e\n"
+        f"{ts(150)} | TERMINAL | lane=lw-a\n"
+        f"{ts(120)} | CLAIM | lane=lw-a | cause=plugin-repo-a:validate-plugin\n"
+    )
+    assert (
+        stuck.live_cause_claims(ledger, NOW, "plugin-repo-a", "validate-plugin") == []
+    )
 
 
 def test_a_red_under_two_hours_and_a_young_bump_get_no_lane(tmp_path) -> None:
