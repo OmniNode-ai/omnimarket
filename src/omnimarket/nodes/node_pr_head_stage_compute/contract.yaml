@@ -1,0 +1,92 @@
+{
+  "name": "node_pr_head_stage_compute",
+  "node_type": "COMPUTE_GENERIC",
+  "node_version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "description": "Render the shell that fetches a remote lane's --pr heads into the lab host's cache and the shell that stages each head into the clone owning the lane's worktree before the engine starts.",
+  "input_model": {
+    "name": "ModelPrHeadStageRequest",
+    "module": "omnimarket.nodes.node_pr_head_stage_compute.models.model_pr_head_stage"
+  },
+  "output_model": {
+    "name": "ModelPrHeadStageResult",
+    "module": "omnimarket.nodes.node_pr_head_stage_compute.models.model_pr_head_stage"
+  },
+  "handler_routing": {
+    "routing_strategy": "operation_match",
+    "default_handler": "omnimarket.nodes.node_pr_head_stage_compute.handlers.handler_pr_head_stage:HandlerPrHeadStage",
+    "handlers": [
+      {
+        "operation": "handle",
+        "handler": {
+          "name": "HandlerPrHeadStage",
+          "module": "omnimarket.nodes.node_pr_head_stage_compute.handlers.handler_pr_head_stage"
+        },
+        "topic": "onex.cmd.omnimarket.pr-head-stage-requested.v1"
+      }
+    ]
+  },
+  "entrypoint": {
+    "name": "NodePrHeadStageCompute",
+    "module": "omnimarket.nodes.node_pr_head_stage_compute"
+  },
+  "execution": {
+    "deterministic": true,
+    "side_effects": false,
+    "caller": "remote-lane runner PR-head fetch and stage steps"
+  },
+  "contract_version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "handler": {
+    "module": "omnimarket.nodes.node_pr_head_stage_compute.handlers.handler_pr_head_stage",
+    "class": "HandlerPrHeadStage",
+    "input_model": "omnimarket.nodes.node_pr_head_stage_compute.models.model_pr_head_stage.ModelPrHeadStageRequest",
+    "output_model": "omnimarket.nodes.node_pr_head_stage_compute.models.model_pr_head_stage.ModelPrHeadStageResult"
+  },
+  "event_bus": {
+    "subscribe_topics": [
+      "onex.cmd.omnimarket.pr-head-stage-requested.v1"
+    ],
+    "publish_topics": [
+      "onex.evt.omnimarket.pr-head-stage-completed.v1"
+    ]
+  },
+  "runtime_dispatch": {
+    "command_topic": "onex.cmd.omnimarket.pr-head-stage-requested.v1"
+  },
+  "descriptor": {
+    "node_archetype": "compute",
+    "purity": "pure",
+    "runtime_profiles": [
+      "main"
+    ],
+    "idempotent": true,
+    "timeout_ms": 5000
+  },
+  "replay": {
+    "requires_validator_version": true,
+    "timestamp_authority": "ingest_sequence",
+    "deterministic": true
+  },
+  "terminal_event": "onex.evt.omnimarket.pr-head-stage-completed.v1",
+  "metadata": {
+    "transport_type": "inmemory"
+  },
+  "externally_consumed_topics": [
+    "onex.evt.omnimarket.pr-head-stage-completed.v1"
+  ],
+  "runtime_profiles": [
+    "main"
+  ]
+}

@@ -1,0 +1,112 @@
+{
+  "name": "node_lane_github_budget_effect",
+  "node_type": "EFFECT_GENERIC",
+  "node_version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "description": "Enforce the remote runner's lane read budget, share successful CI reads across lanes on a host, and relay sanitized accounting to the landing controller. This is the runner's process boundary; GitHub reads remain work of the existing node_github_repo_gateway_effect through onex scm, never a second REST client.",
+  "input_model": {
+    "name": "ModelLaneGithubCall",
+    "module": "omnimarket.nodes.node_lane_github_budget_effect.models.model_lane_github_budget"
+  },
+  "output_model": {
+    "name": "ModelLaneGithubResult",
+    "module": "omnimarket.nodes.node_lane_github_budget_effect.models.model_lane_github_budget"
+  },
+  "handler": {
+    "module": "omnimarket.nodes.node_lane_github_budget_effect.handlers.handler_lane_github_budget",
+    "class": "HandlerLaneGithubBudget",
+    "input_model": "omnimarket.nodes.node_lane_github_budget_effect.models.model_lane_github_budget.ModelLaneGithubCall",
+    "output_model": "omnimarket.nodes.node_lane_github_budget_effect.models.model_lane_github_budget.ModelLaneGithubResult"
+  },
+  "entrypoint": {
+    "name": "NodeLaneGithubBudgetEffect",
+    "module": "omnimarket.nodes.node_lane_github_budget_effect"
+  },
+  "policy": {
+    "raw_gh_read_budget": 0,
+    "gateway_cache_misses_per_lane": 8,
+    "job_log_ttl_seconds": 86400,
+    "run_view_ttl_seconds": 30,
+    "auth_status_ttl_seconds": 300,
+    "auth_status_stale_seconds": 21600,
+    "auth_status_lock_wait_seconds": 3,
+    "auth_status_timeout_seconds": 6,
+    "auth_status_local_seconds": 2,
+    "exhaustion_exit_code": 78
+  },
+  "dependencies": {
+    "gateway": {
+      "node": "node_github_repo_gateway_effect",
+      "handler": "HandlerGithubRepoGatewayEffect",
+      "operations": [
+        "job_log_tail",
+        "run_jobs"
+      ],
+      "command_topic": "onex.cmd.omnimarket.github-repo-gateway-read-requested.v1",
+      "terminal_topic": "onex.evt.omnimarket.github-repo-gateway-read-completed.v1",
+      "transport": "onex scm"
+    }
+  },
+  "contract_version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "handler_routing": {
+    "routing_strategy": "operation_match",
+    "default_handler": "omnimarket.nodes.node_lane_github_budget_effect.handlers.handler_lane_github_budget:HandlerLaneGithubBudget",
+    "handlers": [
+      {
+        "operation": "handle",
+        "handler": {
+          "name": "HandlerLaneGithubBudget",
+          "module": "omnimarket.nodes.node_lane_github_budget_effect.handlers.handler_lane_github_budget"
+        },
+        "topic": "onex.cmd.omnimarket.lane-github-budget-requested.v1"
+      }
+    ]
+  },
+  "event_bus": {
+    "subscribe_topics": [
+      "onex.cmd.omnimarket.lane-github-budget-requested.v1"
+    ],
+    "publish_topics": [
+      "onex.evt.omnimarket.lane-github-budget-completed.v1"
+    ]
+  },
+  "runtime_dispatch": {
+    "command_topic": "onex.cmd.omnimarket.lane-github-budget-requested.v1"
+  },
+  "descriptor": {
+    "node_archetype": "effect",
+    "purity": "side_effecting",
+    "runtime_profiles": [
+      "effects"
+    ],
+    "idempotent": false,
+    "timeout_ms": 300000
+  },
+  "replay": {
+    "requires_validator_version": true,
+    "timestamp_authority": "ingest_sequence",
+    "deterministic": false
+  },
+  "terminal_event": "onex.evt.omnimarket.lane-github-budget-completed.v1",
+  "metadata": {
+    "transport_type": "inmemory"
+  },
+  "externally_consumed_topics": [
+    "onex.evt.omnimarket.lane-github-budget-completed.v1"
+  ],
+  "runtime_profiles": [
+    "effects"
+  ]
+}

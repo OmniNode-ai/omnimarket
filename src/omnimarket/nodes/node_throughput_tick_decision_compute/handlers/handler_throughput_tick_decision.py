@@ -1345,7 +1345,8 @@ def check_engine_experiments(
         for row in request.engine_experiments or []
         if row.at is None or now - parse_stamp(row.at) <= window
     ]
-    for engine in ENGINE_LADDER:
+    extra_engines = sorted({row.engine for row in rows} - set(ENGINE_LADDER))
+    for engine in (*ENGINE_LADDER, *extra_engines):
         attempts = [row for row in rows if row.engine == engine]
         successes = sum(row.outcome == SUCCESS_OUTCOME for row in attempts)
         escalations = sum(row.next_engine != NO_ENGINE for row in attempts)

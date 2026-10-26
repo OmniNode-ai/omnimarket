@@ -1,0 +1,92 @@
+{
+  "name": "node_codex_landing_compute",
+  "node_type": "COMPUTE_GENERIC",
+  "node_version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "description": "Render exact-head JSON parsing and bytecode cleanup commands for Codex landing.",
+  "input_model": {
+    "name": "ModelCodexLandingRequest",
+    "module": "omnimarket.nodes.node_codex_landing_compute.models.model_codex_landing"
+  },
+  "output_model": {
+    "name": "ModelCodexLandingResult",
+    "module": "omnimarket.nodes.node_codex_landing_compute.models.model_codex_landing"
+  },
+  "handler_routing": {
+    "routing_strategy": "operation_match",
+    "default_handler": "omnimarket.nodes.node_codex_landing_compute.handlers.handler_codex_landing:HandlerCodexLanding",
+    "handlers": [
+      {
+        "operation": "handle",
+        "handler": {
+          "name": "HandlerCodexLanding",
+          "module": "omnimarket.nodes.node_codex_landing_compute.handlers.handler_codex_landing"
+        },
+        "topic": "onex.cmd.omnimarket.codex-landing-requested.v1"
+      }
+    ]
+  },
+  "entrypoint": {
+    "name": "NodeCodexLandingCompute",
+    "module": "omnimarket.nodes.node_codex_landing_compute"
+  },
+  "execution": {
+    "deterministic": true,
+    "side_effects": false,
+    "caller": "CodexEngine landing shell generation"
+  },
+  "contract_version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "handler": {
+    "module": "omnimarket.nodes.node_codex_landing_compute.handlers.handler_codex_landing",
+    "class": "HandlerCodexLanding",
+    "input_model": "omnimarket.nodes.node_codex_landing_compute.models.model_codex_landing.ModelCodexLandingRequest",
+    "output_model": "omnimarket.nodes.node_codex_landing_compute.models.model_codex_landing.ModelCodexLandingResult"
+  },
+  "event_bus": {
+    "subscribe_topics": [
+      "onex.cmd.omnimarket.codex-landing-requested.v1"
+    ],
+    "publish_topics": [
+      "onex.evt.omnimarket.codex-landing-completed.v1"
+    ]
+  },
+  "runtime_dispatch": {
+    "command_topic": "onex.cmd.omnimarket.codex-landing-requested.v1"
+  },
+  "descriptor": {
+    "node_archetype": "compute",
+    "purity": "pure",
+    "runtime_profiles": [
+      "main"
+    ],
+    "idempotent": true,
+    "timeout_ms": 5000
+  },
+  "replay": {
+    "requires_validator_version": true,
+    "timestamp_authority": "ingest_sequence",
+    "deterministic": true
+  },
+  "terminal_event": "onex.evt.omnimarket.codex-landing-completed.v1",
+  "metadata": {
+    "transport_type": "inmemory"
+  },
+  "externally_consumed_topics": [
+    "onex.evt.omnimarket.codex-landing-completed.v1"
+  ],
+  "runtime_profiles": [
+    "main"
+  ]
+}

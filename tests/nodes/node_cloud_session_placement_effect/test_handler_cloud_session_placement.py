@@ -103,7 +103,7 @@ def test_route(tmp_path: Path) -> None:
         "route",
         brief="Lane kind: small-code",
         repo="repo_a",
-        model="opus",
+        model="sonnet",
         excluded_repos=("repo_a",),
     )
     assert result.refusal == "repo_a is excluded from cloud sessions"
@@ -392,3 +392,12 @@ def test_missing_session_url_returns_error(tmp_path: Path) -> None:
         session={"session_id": "session_01CloudLaneProof"},
     )
     assert result.error == "missing field: session.url"
+
+
+@pytest.mark.parametrize("model", ["opus", "claude-opus", "claude_opus"])
+def test_no_opus_cloud_route_is_refused(tmp_path: Path, model: str) -> None:
+    result = call(
+        tmp_path, "route", brief="Lane kind: small-code", repo="repo_a", model=model
+    )
+    assert result.refusal is not None
+    assert "RULING 2026-10-26T11:31:48Z" in result.refusal

@@ -28,10 +28,13 @@ and places as before.
 OMN-21396: supplied ladder facts choose the cheapest eligible engine up to the route
 ceiling, escalating past failed attempts and returning one experiment row for the last.
 A lane declaring a capability the Codex sandbox cannot grant skips the Codex rung.
+RULING 2026-10-26T11:31:48Z disables Opus for these background lanes, including
+legacy requests and pinned routes; failed Sonnet attempts stop with no next engine.
 """
 
 from __future__ import annotations
 
+from omnimarket.handlers.rules_background_lane_models import OPUS_REFUSAL, is_opus
 from omnimarket.models.model_engine_experiment import (
     CLAUDE_RUNGS,
     CODEX_UNGRANTABLE_CAPABILITIES,
@@ -169,6 +172,8 @@ def _rung_reason(ladder: ModelRemoteLaneLadder, rung: str) -> str | None:
     """The first route or readiness rule that refuses a rung."""
     if ENGINE_LADDER.index(rung) > ENGINE_LADDER.index(ladder.ceiling):
         return "above-route-ceiling"
+    if is_opus(rung):
+        return OPUS_REFUSAL
     if ladder.pinned and rung != ladder.ceiling:
         return "pinned-to-route"
     if ladder.claude_required and rung not in CLAUDE_RUNGS:
@@ -271,6 +276,15 @@ class HandlerRemoteLanePlacement:
     def _place(
         self, request: ModelRemoteLanePlacementRequest
     ) -> ModelRemoteLanePlacementResult:
+        if is_opus(request.engine):
+            return ModelRemoteLanePlacementResult(
+                host=None,
+                engine=request.engine,
+                verdicts=tuple(
+                    ModelRemoteLaneHostVerdict(host=reading.name, reason=OPUS_REFUSAL)
+                    for reading in request.readings
+                ),
+            )
         pick, reasons = _select(request, {})
         blocked: dict[str, str] = {}
         if _drift_judged(request):

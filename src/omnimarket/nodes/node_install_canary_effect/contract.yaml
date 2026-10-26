@@ -1,0 +1,114 @@
+{
+  "name": "node_install_canary_effect",
+  "node_type": "EFFECT_GENERIC",
+  "node_version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "description": "Run an installed plugin's smoke checks, restore the prior installation on failure, hold the failed revision, queue one repair lane, cap lane delivery at a passed revision, install a file set from one revision whole or not at all and name an imported file from an older revision.",
+  "handler_routing": {
+    "routing_strategy": "operation_match",
+    "default_handler": "omnimarket.nodes.node_install_canary_effect.handlers.handler_install_canary:HandlerInstallCanary",
+    "handlers": [
+      {
+        "operation": "handle",
+        "handler": {
+          "name": "HandlerInstallCanary",
+          "module": "omnimarket.nodes.node_install_canary_effect.handlers.handler_install_canary"
+        },
+        "topic": "onex.cmd.omnimarket.install-canary-requested.v1"
+      }
+    ]
+  },
+  "contract_version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "handler": {
+    "module": "omnimarket.nodes.node_install_canary_effect.handlers.handler_install_canary",
+    "class": "HandlerInstallCanary",
+    "input_model": "omnimarket.nodes.node_install_canary_effect.handlers.handler_install_canary.ModelInstallCanaryRequest",
+    "output_model": "omnimarket.nodes.node_install_canary_effect.handlers.handler_install_canary.ModelInstallCanaryResult"
+  },
+  "event_bus": {
+    "subscribe_topics": [
+      "onex.cmd.omnimarket.install-canary-requested.v1"
+    ],
+    "publish_topics": [
+      "onex.evt.omnimarket.install-canary-completed.v1"
+    ]
+  },
+  "runtime_dispatch": {
+    "command_topic": "onex.cmd.omnimarket.install-canary-requested.v1"
+  },
+  "descriptor": {
+    "node_archetype": "effect",
+    "purity": "side_effecting",
+    "runtime_profiles": [
+      "effects"
+    ],
+    "idempotent": false,
+    "timeout_ms": 300000
+  },
+  "replay": {
+    "requires_validator_version": true,
+    "timestamp_authority": "ingest_sequence",
+    "deterministic": false
+  },
+  "input_model": {
+    "name": "ModelInstallCanaryRequest",
+    "module": "omnimarket.nodes.node_install_canary_effect.handlers.handler_install_canary"
+  },
+  "output_model": {
+    "name": "ModelInstallCanaryResult",
+    "module": "omnimarket.nodes.node_install_canary_effect.handlers.handler_install_canary"
+  },
+  "operations": [
+    "pool_verdict",
+    "cmd_canary_pool",
+    "canary_hold",
+    "adopt_marketplace",
+    "canary_cap",
+    "merged_plugin_sha",
+    "installed_commit",
+    "shipped_plugin_sha",
+    "lane_ship_drift",
+    "receipt_plugins",
+    "publish_plugin_commit",
+    "ensure_plugin_trees",
+    "tick_findings",
+    "scan_copy",
+    "tree_sha256",
+    "pin",
+    "read_bytes",
+    "copy_bytes",
+    "source_path",
+    "stage_file",
+    "write_atomic",
+    "install_set",
+    "install_stale",
+    "keep_held",
+    "restore_held"
+  ],
+  "entrypoint": {
+    "name": "NodeInstallCanaryEffect",
+    "module": "omnimarket.nodes.node_install_canary_effect"
+  },
+  "terminal_event": "onex.evt.omnimarket.install-canary-completed.v1",
+  "metadata": {
+    "transport_type": "inmemory"
+  },
+  "externally_consumed_topics": [
+    "onex.evt.omnimarket.install-canary-completed.v1"
+  ],
+  "runtime_profiles": [
+    "effects"
+  ]
+}

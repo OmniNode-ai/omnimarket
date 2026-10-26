@@ -21,6 +21,9 @@ description: >
   so the voter's overflow list moves the review on. A refused or credit-
   exhausted key is set aside and the next key on the host serves. A dry run
   plans one review without an upstream call. No key value is logged or returned.
+  The host declares thinking_mode as disabled (default) or adaptive. A reasoning-off
+  review uses disabled thinking only when the model supports it; an adaptive gateway
+  sends thinking.type adaptive with output_config.effort low instead.
   Each review is one native Messages call (OMN-20910): the system message is split
   into cached system blocks, the user message into a cached diff block and an
   uncached persona block, a json_schema response_format becomes a forced tool, and

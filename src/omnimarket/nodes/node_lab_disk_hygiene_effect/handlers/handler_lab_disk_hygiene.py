@@ -315,7 +315,7 @@ class HandlerLabDiskHygiene:
                 if census is None
                 else f"census unreadable, no container removed: {exc}"[:400]
             )
-        removed, kept, running = self._containers(
+        removed, kept, running, ghosts = self._containers(
             request, census_ok, declared, names, steps, errors
         )
         if not request.dry_run:
@@ -327,6 +327,7 @@ class HandlerLabDiskHygiene:
             protected_projects=tuple(sorted(declared | running)),
             removed_containers=tuple(removed),
             kept_containers=tuple(kept),
+            ghost_containers=tuple(ghosts),
             removed_tmp=tuple(tmp_removed),
             removed_tmp_bytes=tmp_bytes,
             steps=tuple(steps),
@@ -399,16 +400,17 @@ class HandlerLabDiskHygiene:
         names: set[str],
         steps: list[ModelLabDiskHygieneStep],
         errors: list[str],
-    ) -> tuple[list[str], list[str], set[str]]:
+    ) -> tuple[list[str], list[str], set[str], list[str]]:
         listed = self._run(["docker", "ps", "-a", "--no-trunc", "--format", PS_FORMAT])
         if listed.returncode != 0:
             errors.append(f"docker ps exit {listed.returncode}: {_tail(listed.stderr)}")
-            return [], [], set()
+            return [], [], set(), []
         rows = [line.split("\t") for line in listed.stdout.splitlines() if line.strip()]
         rows = [[*r, "", "", "", ""][:4] for r in rows]
         running = {r[3] for r in rows if r[2] == "running" and r[3]}
         removed: list[str] = []
         kept: list[str] = []
+        ghosts: list[str] = []
         candidates: dict[str, str] = {}
         for cid, name, state, project in rows:
             if state not in STOPPED_STATES:
@@ -423,15 +425,27 @@ class HandlerLabDiskHygiene:
             else:
                 candidates[cid] = name
         if not candidates:
-            return removed, kept, running
+            return removed, kept, running, ghosts
         ages = self._run(["docker", "inspect", "--format", INSPECT_FORMAT, *candidates])
         finished = {}
         for line in ages.stdout.splitlines():
+            if not line.strip():
+                continue
             cid, _, stamp = line.partition("\t")
             finished[cid.strip()] = _finished_at(stamp)
+        if ages.returncode != 0 and not finished:
+            errors.append(
+                f"docker inspect exit {ages.returncode}: {_tail(ages.stderr)}"
+            )
+            kept.extend(name or cid[:12] for cid, name in candidates.items())
+            return removed, kept, running, ghosts
         bar = request.exited_container_hours * 3600
         doomed: list[str] = []
         for cid, name in candidates.items():
+            if cid not in finished:
+                kept.append(name or cid[:12])
+                ghosts.append(cid[:12])
+                continue
             when = finished.get(cid)
             if when is not None and (self._now() - when).total_seconds() < bar:
                 kept.append(name)
@@ -440,7 +454,7 @@ class HandlerLabDiskHygiene:
                 removed.append(name)
         if doomed and not request.dry_run:
             self._step("containers", ["docker", "rm", *doomed], steps, errors)
-        return removed, kept, running
+        return removed, kept, running, ghosts
 
     def _prunes(
         self,
