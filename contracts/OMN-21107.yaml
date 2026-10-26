@@ -10,7 +10,10 @@ summary: >-
   amends and extends link without closing, corrects lists the correcting row on its
   target of any kind, and a hold past its until reads expired at as_of. Links are
   re-derived from the stored raw_row, so no table is added. This is the projection
-  half; the omnibase_core reducer twin and the parity extension follow.
+  half. The parity check (parity.py) compares, per row, the projected raw_row
+  with the markdown row text and the authority fields parsed from each, and per
+  entity the relationship closure re-derived from each side's rows. The
+  omnibase_core reducer twin follows.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -40,7 +43,27 @@ requirements:
           work_ledger_state to a closed superseded ruling listing its correction --
           falsifier: tests/test_work_ledger_real_postgres_write_path.py::test_the_closure_read_back_from_the_tables_is_order_independent
           fails with INTEGRATION_POSTGRES set
+      - id: "AC4"
+        statement: >-
+          AC4: negative control: a projection copy in which one RULING row's words are
+          changed while its id and timestamps are kept reports row_text_differs, and one
+          in which a corrects= link is dropped reports row_text_differs,
+          row_authority_differs and state_relations_differ on the corrected ruling --
+          falsifier:
+          tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity_text_relations.py
+          fails
+      - id: "AC5"
+        statement: >-
+          AC5: the extended parity check reports exact parity on a faithful projection
+          with every row's text, parsed authority fields and relationship closure
+          compared, through compare() and the CLI over a JSON export (the code half of
+          the ticket's AC3; the full-UTC-day run against the lab projection is a
+          separate post-merge read) -- falsifier: the faithful-projection tests in
+          test_work_ledger_parity_text_relations.py or test_work_ledger_parity.py fail
 evidence_requirements:
+  - kind: "tests"
+    description: "AC4 and AC5: the extended parity check, its negative controls and the database loader."
+    command: "uv run pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity_text_relations.py tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity.py -q -p no:randomly --no-cov"
   - kind: "tests"
     description: "AC1 and AC2: the fold fixtures, permutations and the D1 pair."
     command: "uv run pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_relationships.py -q -p no:randomly --no-cov"
@@ -76,10 +99,26 @@ dod_evidence:
         check_value: "uv run pytest tests/test_work_ledger_real_postgres_write_path.py -q -n 0 -k 'closure_read_back'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn21107-ac4-negative-controls"
+    description: "A changed RULING row's words and a dropped corrects= link each make the extended parity report a mismatch of the right kind."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity_text_relations.py -q -n 0 -k 'negative_control or dropped or without_its_text or no_longer_parses'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21107-ac5-faithful-exact"
+    description: "A faithful projection is exact over text, authority fields and relationship closure, through compare(), the JSON CLI and the database loader."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity_text_relations.py tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity.py -q -n 0 -k 'faithful or cli or receipt or database_reads_state_live or do_not_run'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
   - id: "dod-omn21107-deploy-probe"
-    description: "Deploy probe: the fold read from GitHub at the checked-out commit defines close_relationships. A head without it fails the probe."
+    description: "Deploy probe: the parity check read from GitHub at the checked-out commit defines the relationship mismatch kind and the raw-row loader. A head without the extension fails the probe."
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_work_ledger/handlers/work_ledger_fold.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'def close_relationships'"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_work_ledger/parity.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'def load_projection_raw_rows_json'"
         cwd: "${OMNI_HOME}/omnimarket"

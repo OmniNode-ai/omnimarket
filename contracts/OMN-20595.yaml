@@ -1,64 +1,164 @@
 ---
-schema_version: "1.0.0"
-ticket_id: "OMN-20595"
-title: "Lab lanes can create, read and comment on tickets through node_create_ticket"
-summary: "node_create_ticket handles create, read and comment, sends the caller's description unchanged, and runs the installed ticket-creation guard on every create. AC1 to AC3 are bound to the node's tests. The lab readback is recorded in the pull request body and is not bound."
+schema_version: 1.0.0
+ticket_id: OMN-20595
+title: Workers reach guarded Linear ticket operations over the event bus
+summary: 'Adds the Linear ticket write effect and onex ticket CLI. The four node_create_ticket items are carried
+  unchanged from the earlier OMN-20595 pull requests. This pull request binds the ticket bus effect tests (AC1-AC3
+  through the effect), the hosted guard_unavailable probe (AC3) and the AC5 proof validator tests, each of which
+  fails at the merge base where the effect does not exist. The AC4 resolver behaviour lives in omnibase_infra; its
+  test is listed under evidence_requirements. The live three-host AC5 lab proof needs a lab consumer of the merged
+  effect, so it runs after merge from evidence_requirements and fails on the recorded ACL refusal until real receipts
+  and a canceled scratch ticket are recorded.'
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-  - id: "req-node-create-ticket-operations-and-guard"
-    statement: "node_create_ticket is the one ticket node for lab lanes. The criteria below are the ones the node's tests cover; each id is the label the binding item claims through binds_ac."
-    acceptance:
-      - id: "AC1"
-        statement: "AC1: the node handles create, read and comment, and its contract input_model names the model handle() takes -- falsifier: uv run pytest tests/nodes/node_create_ticket/test_ticket_operations.py -k operations_and_contract_input_model -q in omnimarket"
-      - id: "AC2"
-        statement: "AC2: a create sends the caller's description to Linear byte for byte -- falsifier: uv run pytest tests/nodes/node_create_ticket/test_ticket_operations.py -k description_passes_through -q in omnimarket"
-      - id: "AC3"
-        statement: "AC3: a create the installed ticket-creation guard refuses, or for which no guard is found, raises and never calls Linear -- falsifier: uv run pytest tests/nodes/node_create_ticket/test_ticket_operations.py -k guard -q in omnimarket"
-      - id: "AC4"
-        statement: "AC4: operation=transition moves a ticket to a named state only after the installed guard accepts the exact {id, state} payload, and a refusal or a missing guard raises with no write -- falsifier: uv run pytest tests/nodes/node_create_ticket/test_ticket_transition.py -q in omnimarket"
+- id: req-node-create-ticket-operations-and-guard
+  statement: The ticket criteria are preserved verbatim. Local behavior and outstanding lab proof have separate
+    checks.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: node_create_ticket handles create, read and comment operations, and its contract input_model
+      names the model handle() takes -- falsifier: uv run pytest tests/nodes/node_create_ticket -k operations_and_contract_input_model'
+  - id: AC2
+    statement: 'AC2: a create passes the caller''s description to Linear byte for byte, with no appended checklist
+      -- falsifier: uv run pytest tests/nodes/node_create_ticket -k description_passes_through_unchanged'
+  - id: AC3
+    statement: 'AC3: a create whose description the installed ticket-creation guard refuses, or for which no guard
+      is found, raises and never calls Linear -- falsifier: uv run pytest tests/nodes/node_create_ticket -k guard_refusal_blocks_create'
+  - id: AC4
+    statement: 'AC4: resolve_project_tracker raises when Linear is selected and no key resolves, and returns the
+      local stub only when the stub is selected explicitly -- falsifier: uv run pytest tests/services/test_resolver.py
+      -k fails_loud'
+  - id: AC5
+    statement: 'AC5: a remote lane on each of h101, h201 and h202 reads [OMN-20570](https://linear.app/omninode/issue/OMN-20570)
+      through the node, and a lab lane''s create with an unfalsified criterion is refused by the guard -- falsifier:
+      onex_remote_lane.py receipts for the three hosts, each result naming the ticket title or the guard refusal
+      code'
 evidence_requirements:
-  - kind: "tests"
-    description: "AC1 to AC3 hosted probe. The ticket operation tests pass at the head and fail at the merge base, where the operations and the guard do not exist."
-    command: "env -u PYTHONPATH uv run pytest tests/nodes/node_create_ticket/test_ticket_operations.py -q"
-  - kind: "tests"
-    description: "AC4 hosted probe. The ticket transition tests pass at the head and fail at the merge base, where operation=transition does not exist."
-    command: "env -u PYTHONPATH uv run pytest tests/nodes/node_create_ticket/test_ticket_transition.py -q"
+- kind: tests
+  description: Local ticket bus behavior and guarded legacy operations.
+  command: uv run pytest tests/nodes/node_linear_ticket_write_effect tests/nodes/node_create_ticket tests/services/test_resolver.py
+    -q
+- kind: tests
+  description: AC4 resolver behaviour, implemented in omnibase_infra.
+  command: uv run pytest tests/services/test_resolver.py -k fails_loud -q
+- kind: tests
+  description: Required lab proof remains incomplete; this check must not pass on the recorded ACL refusal.
+  command: uv run python -m omnimarket.nodes.node_linear_ticket_write_effect.handlers.handler_lab_proof docs/operations/OMN-20595-lab.json
 emergency_bypass:
   enabled: false
-  justification: ""
-  follow_up_ticket_id: ""
+  justification: ''
+  follow_up_ticket_id: ''
 dod_evidence:
-  - id: "dod-omn20595-ac1-operations"
-    description: "AC1 hosted probe. The node handles create, read and comment and its contract input model matches handle()."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_create_ticket/test_ticket_operations.py -k operations_and_contract_input_model -q"
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC1"]
-  - id: "dod-omn20595-ac2-description-pass-through"
-    description: "AC2 hosted probe. The caller's description reaches Linear and the guard payload unchanged."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_create_ticket/test_ticket_operations.py -k description_passes_through -q"
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC2"]
-  - id: "dod-omn20595-ac3-guard-blocks-create"
-    description: "AC3 hosted probe. A guard refusal, an undecidable exit or a missing guard blocks the create before any Linear call."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_create_ticket/test_ticket_operations.py -k guard -q"
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC3"]
-  - id: "dod-omn20595-ac4-transition"
-    description: "AC4 hosted probe. operation=transition writes only after the guard accepts the exact payload and raises with no write otherwise."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_create_ticket/test_ticket_transition.py -q"
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC4"]
+- id: dod-omn20595-ac1-operations
+  description: AC1 hosted probe. The node handles create, read and comment and its contract input model matches
+    handle().
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_create_ticket/test_ticket_operations.py -k operations_and_contract_input_model
+      -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn20595-ac2-description-pass-through
+  description: AC2 hosted probe. The caller's description reaches Linear and the guard payload unchanged.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_create_ticket/test_ticket_operations.py -k description_passes_through
+      -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2
+- id: dod-omn20595-ac3-guard-blocks-create
+  description: AC3 hosted probe. A guard refusal, an undecidable exit or a missing guard blocks the create before
+    any Linear call.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_create_ticket/test_ticket_operations.py -k guard -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC3
+- id: dod-omn20595-ac4-transition
+  description: AC4 hosted probe. operation=transition writes only after the guard accepts the exact payload and
+    raises with no write otherwise.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_create_ticket/test_ticket_transition.py -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC4
+- id: dod-omn20595-ac5-proof-validator
+  description: The AC5 lab proof validator refuses the recorded ACL refusal, a missing host read, a guard refusal
+    without unfalsified_criterion and a scratch lifecycle without bus terminals or a canceled state.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_linear_ticket_write_effect/test_lab_proof.py -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC5
+- id: dod-omn20595-ticket-bus
+  description: The effect routes typed terminals, preserves remote identity, serializes replays and the CLI returns
+    bus coordinates.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_linear_ticket_write_effect/test_golden_chain_linear_ticket_write_effect.py
+      tests/nodes/node_linear_ticket_write_effect/test_ticket_cli.py tests/nodes/node_linear_ticket_write_effect/test_ticket_guard_identity.py
+      -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+- id: dod-omn20595-deploy-ticket-effect
+  description: Hosted packaged-runtime probe. Invoke the effect through onex with the in-memory backend and an explicitly
+    absent guard, and require a typed guard_unavailable terminal. No broker, Linear credentials or lab route is
+    required.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: 'set -eu;
+
+      probe_dir="$(mktemp -d)";
+
+      trap ''rm -rf "$probe_dir"'' EXIT;
+
+      runtime_bin="$(uv run --locked python -c ''import sys; from pathlib import Path; print(Path(sys.executable).parent)'')";
+
+      printf ''%s'' ''{"operation":"create","title":"Scratch guard availability probe","dry_run":true,"correlation_id":"1f4c796b-3254-411b-a684-09477594c23d","idempotency_key":"hosted-guard-probe","requested_by_lane":"hosted-probe"}''
+      > "$probe_dir/input.json";
+
+      env -u OMNI_HOME -u OMNIBASE_INTERNAL_PATH -u ONEX_PILLAR_OWNERS_PATH ONEX_TICKET_GUARD_PATH="$probe_dir/absent.py"
+      "$runtime_bin/onex" node node_linear_ticket_write_effect --input "$probe_dir/input.json" --state-root "$probe_dir/state"
+      --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+
+      uv run --locked python -c ''
+
+      import json
+
+      import sys
+
+      from pathlib import Path
+
+      receipt = json.loads(Path(sys.argv[1]).read_text())
+
+      result = receipt["result"]
+
+      assert result["outcome"] == "failed", result
+
+      assert result["reason"] == result["terminal_failure_cause"] == "guard_unavailable", result
+
+      assert receipt["result_model"].endswith(".ModelTicketWriteFailed"), receipt
+
+      print(json.dumps({"run_id": receipt["run_id"], "reason": result["reason"]}))
+
+      '' "$probe_dir/receipt.json";
+
+      '
+    cwd: ${OMNI_HOME}/omnimarket

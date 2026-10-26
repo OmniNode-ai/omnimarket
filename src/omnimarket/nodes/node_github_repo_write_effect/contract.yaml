@@ -114,6 +114,14 @@ quota_floor:
     core: 500
     graphql: 500
 
+# Any runtime that loads this node may answer it (OMN-21423): every such
+# runtime joins the one consumer group the runtime derives for the node, so
+# stopping one leaves the others answering. The block names a mode, never a
+# group; the group stays runtime-owned. Each runtime reads GITHUB_TOKEN from
+# the ref under secrets: through the secret store resolver.
+placement:
+  mode: any
+
 descriptor:
   node_archetype: effect
   purity: impure
