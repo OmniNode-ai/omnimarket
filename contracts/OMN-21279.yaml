@@ -278,7 +278,7 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: >-
-          env PYTHONDONTWRITEBYTECODE=1 uv run pytest
+          env -u PYTHONPATH uv run --frozen pytest
           tests/nodes/node_lane_placement_recovery_effect/test_codex_host_limits.py
           -q --no-cov -n 0
   - id: dod-omn-21279-codex-limit-deploy-smoke
