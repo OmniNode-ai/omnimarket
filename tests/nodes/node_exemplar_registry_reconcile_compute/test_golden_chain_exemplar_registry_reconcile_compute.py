@@ -17,10 +17,12 @@ from importlib.metadata import entry_points
 from pathlib import Path
 from typing import Any
 
-import omnimarket.nodes.node_exemplar_registry_reconcile_compute as node_package
 import pytest
 import yaml
 from omnibase_core.enums.enum_workflow_result import EnumWorkflowResult
+from pydantic import ValidationError
+
+import omnimarket.nodes.node_exemplar_registry_reconcile_compute as node_package
 from omnimarket.nodes.node_exemplar_registry_reconcile_compute.handlers.handler_exemplar_registry_reconcile import (
     HandlerExemplarRegistryReconcile,
 )
@@ -29,8 +31,6 @@ from omnimarket.nodes.node_exemplar_registry_reconcile_compute.models.model_exem
     ModelExemplarRegistryReconcileResult,
     ModelExemplarRegistryRow,
 )
-from pydantic import ValidationError
-
 from tests.runtime_local_compat import RuntimeLocal
 
 pytestmark = pytest.mark.unit
@@ -372,6 +372,11 @@ def test_duplicate_current_rows_fail_closed() -> None:
     row = current_row("node_a")
     with pytest.raises(ValueError, match="duplicate"):
         reconcile(request(decision("node_a"), rows=[row, row]))
+
+
+def test_duplicate_admission_decisions_fail_closed() -> None:
+    with pytest.raises(ValueError, match="duplicate admission decision: node_a"):
+        reconcile(request(decision("node_a"), decision("node_a")))
 
 
 def test_admission_for_another_repository_fails_closed() -> None:
