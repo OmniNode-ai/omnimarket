@@ -375,6 +375,7 @@ node_capture_item_identity_effect = "omnimarket.nodes.node_capture_item_identity
 node_checkpoint_capture_effect = "omnimarket.nodes.node_checkpoint_capture_effect"
 node_compact_package_read_effect = "omnimarket.nodes.node_compact_package_read_effect"
 node_exemplar_admission_compute = "omnimarket.nodes.node_exemplar_admission_compute"
+node_exemplar_registry_reconcile_compute = "omnimarket.nodes.node_exemplar_registry_reconcile_compute"
 node_external_deadman_check_compute = "omnimarket.nodes.node_external_deadman_check_compute"
 node_context_compaction_manifest_compute = "omnimarket.nodes.node_context_compaction_manifest_compute"
 node_compaction_loss_compute = "omnimarket.nodes.node_compaction_loss_compute"
