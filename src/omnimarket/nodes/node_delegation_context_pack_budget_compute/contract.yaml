@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_delegation_context_pack_budget_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  The delegation orchestrator's context-pack budget and admission for a task class that
+  names a context profile (TA.18 AC1/AC3): pack budget is the backend's grounded-input
+  ceiling minus the request composed without the pack, never above the profile budget;
+  no room means sent without a pack and recorded no_room; a pack answer with an empty
+  hash is refused. Deterministic, with no I/O, no clock and no randomness.
+input_model:
+  name: ModelDelegationContextPackBudgetRequest
+  module: omnimarket.nodes.node_delegation_context_pack_budget_compute.models.model_delegation_context_pack_budget
+output_model:
+  name: ModelDelegationContextPackBudgetResult
+  module: omnimarket.nodes.node_delegation_context_pack_budget_compute.models.model_delegation_context_pack_budget
+handler:
+  module: omnimarket.nodes.node_delegation_context_pack_budget_compute.handlers.handler_delegation_context_pack_budget
+  class: HandlerDelegationContextPackBudget
+  input_model: omnimarket.nodes.node_delegation_context_pack_budget_compute.models.model_delegation_context_pack_budget.ModelDelegationContextPackBudgetRequest
+  output_model: omnimarket.nodes.node_delegation_context_pack_budget_compute.models.model_delegation_context_pack_budget.ModelDelegationContextPackBudgetResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_delegation_context_pack_budget_compute.handlers.handler_delegation_context_pack_budget:HandlerDelegationContextPackBudget
+  handlers:
+    - operation: decide_delegation_context_pack_budget
+      handler:
+        name: HandlerDelegationContextPackBudget
+        module: omnimarket.nodes.node_delegation_context_pack_budget_compute.handlers.handler_delegation_context_pack_budget
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+inputs:
+  correlation_id: {type: str, required: true, description: Correlation identifier for this delegation.}
+  task_class: {type: str, required: true, description: Task class whose context-pack admission is decided.}
+  context_profile: {type: str, required: false, description: Context profile named by the task class.}
+  profile_token_budget: {type: int, required: false, description: Token budget declared by the context profile.}
+  composed_request_tokens: {type: int, required: true, description: Token count of the request composed without the pack.}
+  max_grounded_input_tokens: {type: int, required: true, description: Routed backend's grounded-input token ceiling.}
+  token_estimator: {type: str, required: true, description: Tokenizer or conservative estimate used to count the request.}
+  context_pack_hash: {type: str, required: false, description: Pack orchestrator's answer; absent when no answer has arrived.}
+outputs:
+  correlation_id: {type: str}
+  task_class: {type: str}
+  context_profile: {type: str}
+  status: {type: str, enum: [not_requested, request_pack, no_room, attach, refuse_empty_hash]}
+  dispatch_allowed: {type: bool}
+  token_budget_override: {type: int}
+  context_pack_hash: {type: str}
+  composed_request_tokens: {type: int}
+  max_grounded_input_tokens: {type: int}
+  token_estimator: {type: str}
+  reason: {type: str}
+terminal_event: onex.evt.omnimarket.delegation-context-pack-budget-decided.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.delegation-context-pack-budget-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegation-context-pack-budget-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-context-pack-budget-decided.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-context-pack-budget-decided.v1
+metadata:
+  transport_type: inmemory
+  description: Context-pack budget and admission for the delegation orchestrator
+  author: OmniNode Team
+  created: "2026-10-26"
+  related_tickets: [OMN-21119]
