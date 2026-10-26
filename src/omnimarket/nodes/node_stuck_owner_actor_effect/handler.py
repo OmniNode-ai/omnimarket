@@ -27,6 +27,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from omnimarket.handlers.rules_merge_sweep import lane_work_lease
 from omnimarket.models.plugin_version_bump import BUMP_BRANCH
 from omnimarket.nodes.node_cause_claim_ownership_effect.handler import claim_names_cause
 
@@ -272,7 +273,10 @@ def _cells(line: str) -> tuple[datetime, str, dict[str, str]] | None:
 def live_cause_claims(
     ledger: Path | None, now: datetime, repo: str, check: str
 ) -> list[str]:
-    """Lanes whose open CLAIM names ``repo:check`` and which wrote a row in the last 45 minutes."""
+    """Lanes whose open CLAIM names ``repo:check`` and which wrote within 45 minutes.
+
+    A silent lane is stale unless its lane holds a lane-work lease, OMN-21428.
+    """
     if ledger is None:
         return []
     try:
@@ -281,6 +285,7 @@ def live_cause_claims(
         return []
     last: dict[str, datetime] = {}
     claims: dict[str, str] = {}
+    leased: set[str] = set()
     for line in lines:
         row = _cells(line)
         if row is None:
@@ -291,13 +296,20 @@ def live_cause_claims(
             continue
         last[lane] = max(at, last.get(lane, at))
         if kind == "CLAIM":
-            claims[lane] = line.split(" | ", 1)[1] if " | " in line else line
+            if lane_work_lease(line) is not None:
+                leased.add(
+                    lane
+                )  # the lease CLAIM names no cause: keep the lane's cause CLAIM
+            else:
+                claims[lane] = line.split(" | ", 1)[1] if " | " in line else line
         elif kind == "TERMINAL":
             claims.pop(lane, None)
+            leased.discard(lane)
     return sorted(
         lane
         for lane, text in claims.items()
-        if now - last[lane] <= CLAIM_LIVE and claim_names_cause(text, repo, check)
+        if (lane in leased or now - last[lane] <= CLAIM_LIVE)
+        and claim_names_cause(text, repo, check)
     )
 
 
