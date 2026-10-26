@@ -81,9 +81,9 @@ requirements:
       just before it sends a lane, and skips a ticket that is completed,
       cancelled, assigned to anyone other than the operator, or unread.
     acceptance:
-      - id: AC5
+      - id: AC6
         statement: >-
-          AC5: gate_live_tickets and the live Linear gate skip completed,
+          AC6: gate_live_tickets and the live Linear gate skip completed,
           cancelled and other-owner tickets, send open tickets that are
           unassigned or the operator's, and send nothing when the live read
           fails -- falsifier: uv run pytest
@@ -300,24 +300,24 @@ dod_evidence:
           -q --no-cov -n 0
   - id: dod-omn-21279-lab-fill-live-ticket-gate
     description: >-
-      AC5: the pure live gate and its Linear reader over recorded GraphQL
+      AC6: the pure live gate and its Linear reader over recorded GraphQL
       answers: closed, cancelled, duplicate and other-owner tickets are not
       sent, unassigned and operator-owned open tickets are, a ticket Linear
       does not return is not sent, and an unreadable read sends nothing. The
       tests fail at the merge base, which has no live gate module.
     source: generated
-    binds_ac: [AC5]
+    binds_ac: [AC6]
     checks:
       - check_type: test_passes
         check_value: uv run pytest tests/unit/handlers/test_lab_fill_live_gate.py -q --no-cov
   - id: dod-omn-21279-lab-fill-live-gate-deploy-readback
     description: >-
-      AC5 hosted-runner deploy-scope source readback: the public raw endpoint
+      AC6 hosted-runner deploy-scope source readback: the public raw endpoint
       at the checkout head must serve the live gate reader with its batched
       Linear query and fail-closed handling. The merge base lacks the file.
       This verifies published source, not that the plugin's fill calls it.
     source: generated
-    binds_ac: [AC5]
+    binds_ac: [AC6]
     checks:
       - check_type: test_passes
         check_value: uv run pytest tests/unit/handlers/test_lab_fill_live_gate.py -q --no-cov
