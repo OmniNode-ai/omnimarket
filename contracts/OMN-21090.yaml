@@ -2,14 +2,14 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-21090"
 title: "Claude Code context service and delegation adapter (compaction mod)"
-summary: "This repository change binds real sources to the agent_spawn context pack tiers that had none: invariants (the repository CLAUDE.md invariant sections, the architectural invariant registry and the newest ledger RULING rows that name the repository), canonical_shapes (the repository CLAUDE.md shape sections) and exemplar (the newest merged pull request whose conventional type the caller lane kind maps to). One new effect node serves the three factors and the orchestrator binds it through its contract context_tier_sources block. The agent_spawn profile admits shapes and the exemplar for a named lane kind; its budget values are unchanged. The epic criteria are read through the Linear API on child tickets and are not bound by this contract."
+summary: "This repository change adds the per-session current-context fold of the plan's section 6 boundary algorithm, step 5 (TA.13): a pure handler in node_context_compaction_receipts_fold_compute that joins install-confirm results of one session in any order and with duplicates, keeps the maximal boundary chains and every boundary observation, and reads back the current boundary, what it installed, and each installed activation retired at the next boundary. It is not routed and has no table yet. The epic criteria are read through the Linear API on child tickets and are not bound by this contract."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-  - id: "req-omn21090-agent-spawn-tier-sources"
+  - id: "req-omn21090-current-context-fold"
     statement: |-
-      The agent_spawn context pack carries resolved invariants, canonical_shapes and exemplar tiers read from sources bound in the orchestrator contract, within the unchanged token budget.
+      The per-session current context derived from install-confirm results is the same for every arrival order and duplicate set, and records an installed activation retired at the next boundary without revising its installation fact.
     acceptance:
       - id: "AC1"
         statement: |-
@@ -28,84 +28,89 @@ requirements:
           AC5: every Track E ticket under this epic is Done with its own criteria met -- falsifier: a child ticket of this epic in track E not in state Done, read through the Linear API
 evidence_requirements:
   - kind: "tests"
-    description: "The repository doctrine source, the orchestrator tier binding and the agent_spawn lane-kind rule tests pass."
-    command: "uv run pytest tests/unit/nodes/node_context_source_repo_doctrine_effect/test_context_source_repo_doctrine.py -q -p no:randomly --no-cov"
+    description: "The current-context fold tests pass."
+    command: "uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_current_context_fold.py -q -p no:randomly --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: "dod-omn21090-ac1-doctrine-source"
-    description: "This repository's part: the new repository doctrine source answers invariants, canonical_shapes and exemplar from contract-declared data. The test module fails at the merge base, where the node does not exist. The child-ticket state this criterion names is read through the Linear API and is not bound here."
+  - id: "dod-omn21090-ac1-current-context-fold"
+    description: "Track T0 rides on the install-confirm compute and the adapter's capture. This repository's part here: results of the merged install-confirm compute over a growing P6-shaped capture fold to the custom activation retired at the native boundary. The test module fails at the merge base, where the fold does not exist. The child-ticket state this criterion names is read through the Linear API and is not bound here."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_context_source_repo_doctrine_effect/test_context_source_repo_doctrine.py -q -p no:randomly --no-cov"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_current_context_fold.py -q -p no:randomly --no-cov -k 'growing_capture'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
-  - id: "dod-omn21090-ac2-tier-binding"
-    description: "This repository's part: the orchestrator contract binds the three factors to the doctrine source node, loaded through the same contract binding as every other tier. Fails at the merge base, where the three factors have no binding. The child-ticket state this criterion names is read through the Linear API and is not bound here."
+  - id: "dod-omn21090-ac2-current-context-fold"
+    description: "Track A (TA.13, boundary algorithm step 5): custom then native records the custom activation retired at the native boundary and makes the native boundary current; native then custom makes the custom activation current. The test module fails at the merge base, where the fold does not exist. The child-ticket state this criterion names is read through the Linear API and is not bound here."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_tier_source_binding.py -q -p no:randomly --no-cov"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_current_context_fold.py -q -p no:randomly --no-cov -k 'retires_the_custom_activation or native_then_custom'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
-  - id: "dod-omn21090-ac3-lane-kind-rule"
-    description: "This repository's part: agent_spawn admits canonical_shapes and exemplar for a named lane kind; with no archetype and no lane kind they stay withheld. Fails at the merge base, where no lane-kind rule exists. The child-ticket state this criterion names is read through the Linear API and is not bound here."
+  - id: "dod-omn21090-ac3-current-context-fold"
+    description: "Every arrival permutation of install-confirm results, with duplicates, folds to one state, and folding one at a time onto a stored state equals one batch. The test module fails at the merge base, where the fold does not exist. The child-ticket state this criterion names is read through the Linear API and is not bound here."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_context_task_kind_rules_compute/test_task_kind_rules.py -q -p no:randomly --no-cov -k agent_spawn"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_current_context_fold.py -q -p no:randomly --no-cov -k 'every_permutation or incremental_fold'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
-  - id: "dod-omn21090-ac4-track-c-pack"
-    description: "Track C context service: an agent_spawn pack built for a lane carries the bound tiers. The source tests cover each tier, including rulings deduplicated across overlapping ledger archive splits. The child-ticket state this criterion names is read through the Linear API and is not bound here."
+  - id: "dod-omn21090-ac4-current-context-fold"
+    description: "A later boundary never changes an earlier retirement, and a re-folded duplicate reports unchanged. The test module fails at the merge base, where the fold does not exist. The child-ticket state this criterion names is read through the Linear API and is not bound here."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_context_source_repo_doctrine_effect/test_context_source_repo_doctrine.py -q -p no:randomly --no-cov"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_current_context_fold.py -q -p no:randomly --no-cov -k 'never_changes_an_earlier_retirement or refolding_a_duplicate'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
-  - id: "dod-omn21090-ac5-binding-suite"
-    description: "The orchestrator tier binding suite passes with the three new bindings and shared instances. The child-ticket state this criterion names is read through the Linear API and is not bound here."
+  - id: "dod-omn21090-ac5-current-context-fold"
+    description: "Diverging chains and differing decided readings of one boundary are conflicts in every order; undecided and unreadable readings are resolved by a fuller capture in any order. The test module fails at the merge base, where the fold does not exist. The child-ticket state this criterion names is read through the Linear API and is not bound here."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_context_pack_orchestrator/test_tier_source_binding.py -q -p no:randomly --no-cov"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_current_context_fold.py -q -p no:randomly --no-cov -k 'diverging_chains or differing_decided or undecided_reading or unreadable_reading'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
-  - id: "dod-omn21090-deploy-pack-probe"
-    description: "Hosted-runner probe: build an agent_spawn pack through the packaged node_context_pack_orchestrator over an in-memory bus, against a temporary registry root holding a copy of this checkout's CLAUDE.md and invariant registry, a one-commit git repository for the exemplar and a one-row ledger. Require status ok, lane_rules, invariants, canonical_shapes and exemplar resolved and included, nothing excluded by budget and at most 4000 tokens. At the merge base the invariants tier is unavailable and the probe fails. No lane services or credentials are required."
+  - id: "dod-omn21090-deploy-current-context-probe"
+    description: "Hosted-runner probe: run the packaged install-confirm compute over a P6-shaped custom compaction and then the same capture grown by a native compaction, fold both results in both orders through the packaged current-context handler, and require the native boundary current with the custom activation retired there. At the merge base the handler module does not exist and the probe fails. No lane services or credentials are required."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: |
           set -eu
           export PYTHONDONTWRITEBYTECODE=1
-          probe="$(mktemp -d)"
-          trap 'rm -rf "$probe"' EXIT
-          mkdir -p "$probe/omnimarket/src/omnimarket/nodes/node_architectural_invariant_loop"
-          cp CLAUDE.md "$probe/omnimarket/CLAUDE.md"
-          cp -R src/omnimarket/nodes/node_architectural_invariant_loop/invariants "$probe/omnimarket/src/omnimarket/nodes/node_architectural_invariant_loop/invariants"
-          printf '# Guide\n\n## Operating Rules\n\n### 9. Per-ticket work uses worktrees\n\nWork in a worktree.\n\n### 10. Local gates are mechanically enforced\n\nNever bypass a gate.\n\n### 17. Never override core.hooksPath\n\nLeave hooksPath alone.\n' > "$probe/CLAUDE.md"
-          printf '2026-10-20T00:00:00Z | RULING | lane=probe | omnimarket nodes keep topics in contract.yaml\n' > "$probe/ledger.md"
-          git -C "$probe/omnimarket" init -q
-          git -C "$probe/omnimarket" -c user.name=probe -c user.email=probe@example.invalid commit -q --allow-empty -m "feat(OMN-21090): probe exemplar (#1)"
-          git -C "$probe/omnimarket" update-ref refs/remotes/origin/dev HEAD
-          printf '{"request":{"profile_name":"agent_spawn","caller_scope":{"repository":"omnimarket","lane_kind":"design-build"}},"access":{"tenant_id":"lab"}}' > "$probe/request.json";
-          export PATH="$(uv run --locked python -c 'import sysconfig; print(sysconfig.get_path("scripts"))'):$PATH";
-          OMNI_HOME="$probe" ONEX_LEDGER_PATH="$probe/ledger.md" onex node node_context_pack_orchestrator --input "$probe/request.json" --backend event_bus=inmemory --output receipt > "$probe/receipt.json";
-          uv run --locked python - "$probe/receipt.json" <<'PY'
-          import json
-          import sys
-          result = json.load(open(sys.argv[1]))["result"]
-          tiers = {t["factor"]: t for t in result["tier_statuses"]}
-          assert result["status"] == "ok", result["status"]
-          assert result["excluded_by_budget"] == [], result["excluded_by_budget"]
-          for factor in ("lane_rules", "invariants", "canonical_shapes", "exemplar"):
-              assert tiers[factor]["status"] == "resolved" and tiers[factor]["included"], tiers[factor]
-          assert sum(result["factor_token_estimates"].values()) <= 4000
-          print(result["task_kind"], result["factor_token_estimates"])
+          uv run --locked python - <<'PY'
+          import uuid
+          from omnimarket.models.context_install_confirm import ModelCapturedTranscriptRecord as R, ModelInstallConfirmRequest as Q, ModelPublishedActivation as A
+          from omnimarket.models.context_pack_render import ModelContextPackRenderMessage as M
+          from omnimarket.nodes.node_context_install_confirm_compute.handlers.handler_context_install_confirm import HandlerContextInstallConfirm as H, observed_messages_hash as h
+          from omnimarket.nodes.node_context_compaction_receipts_fold_compute.handlers.handler_context_current_context_fold import HandlerContextCurrentContextFold as F
+          from omnimarket.models.context_compaction_fold import ModelCurrentContextProjectionRequest as P
+          a = uuid.uuid4()
+          msgs = [("user", "legend"), ("assistant", "ok"), ("user", "trailer\nactivation_id: %s" % a)]
+          t = "2026-10-17T12:00:10Z"
+          rs = [R(uuid="p0", record_type="user", role="user", text="hi", prompt_source="sdk", timestamp="2026-10-17T12:00:00Z"),
+                R(uuid="b1", record_type="system", subtype="compact_boundary", logical_parent_uuid="p0", timestamp=t)]
+          p = "b1"
+          for i, (role, text) in enumerate(msgs):
+              rs.append(R(uuid="r%d" % i, parent_uuid=p, record_type=role, role=role, text=text, timestamp=t)); p = "r%d" % i
+          rs.append(R(uuid="c1", parent_uuid=p, record_type="user", role="user", text="<local-command-caveat>", is_meta=True, timestamp="2026-10-17T12:00:11Z"))
+          grown = rs + [R(uuid="u2", parent_uuid="c1", record_type="user", role="user", text="next", prompt_source="sdk", timestamp="2026-10-17T12:00:20Z"),
+                        R(uuid="b2", record_type="system", subtype="compact_boundary", logical_parent_uuid="u2", preserved_uuids=("k0",), timestamp="2026-10-17T12:00:30Z"),
+                        R(uuid="s2", parent_uuid="b2", record_type="user", role="user", text="native summary", is_compact_summary=True, timestamp="2026-10-17T12:00:30Z"),
+                        R(uuid="k0", parent_uuid="s2", record_type="user", role="user", text="kept", timestamp="2026-10-17T12:00:30Z")]
+          act = A(activation_id=a, installed_messages_hash=h(M(role=r, text=x) for r, x in msgs), published_at="2026-10-17T12:00:05Z")
+          early, late = (H().handle(Q(session_id="s", records=tuple(c), activations=(act,))) for c in (rs, grown))
+          views = [F().handle(P(events=e)).current for e in ((early, late), (late, early), (late, early, late))]
+          assert views[0] == views[1] == views[2], views
+          v = views[0]
+          assert v.state.value == "current" and v.boundary_uuid == "b2" and v.kind.value == "native", v
+          [r] = v.retirements
+          assert (r.activation_id, r.installed_at_boundary_uuid, r.retired_at_boundary_uuid) == (a, "b1", "b2"), v
+          print(v.state.value, v.boundary_uuid, len(v.retirements))
           PY
         cwd: "${OMNI_HOME}/omnimarket"
