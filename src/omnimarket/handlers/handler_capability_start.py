@@ -23,11 +23,11 @@ cell, its n and its bound.
 from __future__ import annotations
 
 import logging
-import os
 import re
 from collections.abc import Sequence
 from typing import Any, Protocol
 
+from omnimarket.adapters.asyncpg_adapter import DB_URL_ENV, AsyncpgAdapter
 from omnimarket.models.delegation.model_size_band import EnumSizeBand
 from omnimarket.models.delegation.wire.model_attempt_configuration import (
     ModelAttemptConfiguration,
@@ -48,7 +48,6 @@ from omnimarket.projection.tenant_isolation import TENANT_GUC
 
 _logger = logging.getLogger(__name__)
 
-_ENV_DSN = "OMNIDASH_ANALYTICS_DB_URL"
 _CONNECT_TIMEOUT_SECONDS = 3
 DELEGATION_CAPABILITY_CELLS_RELATION = "public.delegation_capability_cells"
 _RELATION_PATTERN = re.compile(r"^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$")
@@ -229,7 +228,8 @@ class PostgresCapabilityCellReader:
 
 def resolve_capability_cell_reader() -> PostgresCapabilityCellReader | None:
     """The live map reader, gated on the projection DSN; None keeps the static order."""
-    dsn = os.environ.get(_ENV_DSN, "").strip()
+    # The projection DSN the asyncpg adapter resolves for every projection read.
+    dsn = AsyncpgAdapter().dsn.strip()
     if not dsn:
         return None
     try:
@@ -238,7 +238,7 @@ def resolve_capability_cell_reader() -> PostgresCapabilityCellReader | None:
         _logger.warning(
             "resolve_capability_cell_reader failed to construct a reader from %s; "
             "routing keeps the static tier order",
-            _ENV_DSN,
+            DB_URL_ENV,
             exc_info=True,
         )
         return None
