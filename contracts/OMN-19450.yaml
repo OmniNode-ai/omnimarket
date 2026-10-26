@@ -6,6 +6,23 @@ summary: "Hand-authored OCC evidence companion for OmniNode-ai/omnimarket#3239 (
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+requirements:
+  - id: "req-omn19450-fault-causes"
+    statement: >-
+      Injected provider and gate faults end in terminals whose causes tell them apart, none reads provider_error, and the
+      suite that proves it runs on a schedule with a published result.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: each of the five injected faults ends in a terminal with a distinct cause and none reads provider_error
+      - id: "AC2"
+        statement: |-
+          AC2: the suite runs on a schedule and its result is published
+      - id: "AC3"
+        statement: >-
+          AC3: the wrong-key, 429 and timeout faults end in auth_failed, provider_quota_exhausted and timeout; the
+          gate-veto and truncation faults both end in quality_gate_refused and are told apart by typed evidence on the
+          deciding attempt (finish_reason length plus the truncated flag, against the named vetoing rule)
 evidence_requirements:
   - kind: "ci"
     description: "PR #3239 product diff scope present"
@@ -32,3 +49,41 @@ dod_evidence:
       - check_type: "command"
         check_value: |-
           gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_orchestrator/handlers/handler_delegation_workflow.py?ref=29b7dbf2f1fc55bf74bd23302f965e4142e40269' --jq '.content' | base64 -d | grep -cF 'provider http 401'
+  - id: "dod-omn19450-ac1-five-faults-told-apart"
+    description: >-
+      AC1, as the ticket's 2026-09-25 amendment reads it (no truncation cause exists, so AC3 supersedes the literal
+      five distinct causes): all five faults run through one bus-path rig, every canonical terminal names a cause, none
+      reads provider_error, and the five are told apart by cause or by the deciding attempt's truncated flag. Fails
+      with the fix's cause mapping removed (the wrong key, timeout and truncation then name no cause).
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/chains/fault_suite/test_five_faults_told_apart_omn19450.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19450-ac3-bus-path-causes"
+    description: >-
+      AC3 on the bus path: each fault's consumer and canonical terminal carry its expected cause (auth_failed,
+      provider_quota_exhausted, timeout, and quality_gate_refused for the veto and the truncation) and none reads
+      provider_error; the veto and truncation runs differ in finish_reason and the truncated flag on the deciding attempt.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: >-
+          uv run pytest tests/chains/fault_suite/test_bus_path_faults_omn19450.py -q -n 0 --no-cov
+          -k "each_fault_decides_its_own_cause or told_apart_by_their_deciding_attempt"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn19450-ac2-scheduled-run-published"
+    description: >-
+      AC2: the nightly workflow delegation-fault-suite-nightly.yml (cron, dev) has a scheduled run younger than 8 days
+      that concluded success; each run publishes a per-case job summary and the JUnit report as an artifact.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh run list --repo OmniNode-ai/omnimarket --workflow delegation-fault-suite-nightly.yml --event schedule
+          --branch dev --status success --limit 1 --json createdAt
+          --jq '.[0].createdAt | fromdateiso8601 | (now - .) < 691200' | grep -qx true
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
