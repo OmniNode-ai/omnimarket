@@ -68,7 +68,6 @@ dod_evidence:
   - id: "dod-omn21432-deploy-hosted-fail-closed"
     description: "Hosted source and behavioral probes of the shipped scorer. The GitHub content read pins the live source to the checkout revision and requires the unavailable-answer guards; the behavioral probe fails at the merge base where unavailable answers incorrectly establish Q2 parity. No lab service is required."
     source: "manual"
-    binds_ac: ["AC3"]
     checks:
       - check_type: "command"
         check_value: |-
