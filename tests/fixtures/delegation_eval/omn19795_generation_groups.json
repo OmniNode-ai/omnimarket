@@ -1,0 +1,1605 @@
+{
+ "_comment": "OMN-19795 EV.7: content-free repeated-generation groups measured on the dev lane on 2026-10-26, three gated verdicts per labelled prompt on local-heavy-reasoning. Item ids and verdicts only; no prompt or answer.",
+ "groups": [
+  {
+   "task_class": "code_generation",
+   "item_id": "13448c6d-de2e-4f1b-939e-4b387b891b27:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "code_generation",
+   "item_id": "1f333edc-8724-4122-9505-6bb54354ee61:4",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "code_generation",
+   "item_id": "23fe5987-d1f1-46e2-b6de-d4b95f0586d9:6",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "code_generation",
+   "item_id": "2701f3be-4629-448d-ade4-1de00147be01:4",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "code_generation",
+   "item_id": "5ac63830-f5f3-4c8a-879a-32e92288b470:1",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "code_generation",
+   "item_id": "5eba3f07-9ccb-4aa3-bac5-f4111ebdc80e:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "code_generation",
+   "item_id": "6f8dbc26-15db-4bb2-8a94-25e2e288cc52:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "code_generation",
+   "item_id": "75f5d333-5fce-4551-b451-d6db212b607a:6",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "code_generation",
+   "item_id": "79aab575-071a-421a-a6d2-b99ef321e316:1",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "code_generation",
+   "item_id": "9723ca21-1f83-4ff4-9722-c5961946ad69:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "code_generation",
+   "item_id": "98915094-3e7c-4174-81ec-a1c04d094f27:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "code_generation",
+   "item_id": "b54958e6-c288-480d-98df-006951a3d807:2",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "code_generation",
+   "item_id": "bb8dddc9-40db-4b85-bdd8-2d5e8078e95b:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "code_generation",
+   "item_id": "c1e0de59-a2a7-44d7-8889-52919202ebb2:4",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "code_generation",
+   "item_id": "d6457a61-dccd-4231-98d9-139f82c13bcf:4",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "code_generation",
+   "item_id": "d93d9bf1-d873-4672-ba0d-3d87baf4a907:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "code_generation",
+   "item_id": "d993cad0-bcb3-4795-8c0d-e11eb7c17c2e:4",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "code_generation",
+   "item_id": "e3888abf-af28-4c36-97e0-abaf49839045:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "code_generation",
+   "item_id": "f1e2a73d-0218-4c7d-b461-787c022b46c9:4",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "code_generation",
+   "item_id": "fb074619-93f0-4978-8983-0aa7f127cd93:2",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "document",
+   "item_id": "04dcaad6-9626-40eb-86df-a178f6086cb2:5",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "document",
+   "item_id": "0c0cd969-c799-45fb-a6ba-6b002d95f15f:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "document",
+   "item_id": "10dcf93d-f36a-4335-9c68-478163d5243f:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "document",
+   "item_id": "1705e788-3a08-4c50-8b6d-5d90670ce198:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "document",
+   "item_id": "3650586b-1eae-40e2-a758-681900091584:1",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "document",
+   "item_id": "471896d4-263c-43f1-b7d8-2a5a9b6e77ef:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "document",
+   "item_id": "48074473-d893-4ea1-9bba-6467faae8c26:5",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "document",
+   "item_id": "4cfb38eb-22b2-4a7b-83a9-667df013bd28:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "document",
+   "item_id": "57083dd1-bbb3-4bdb-ab99-46d6caede241:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "document",
+   "item_id": "62e7c82d-9428-47f6-b581-3eab27db52be:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "document",
+   "item_id": "66fd9000-db6e-406b-8a76-c84403e66c82:6",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "document",
+   "item_id": "6fa6ef52-8b2b-4158-82b0-c5c2fecbe4c7:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "document",
+   "item_id": "884d371d-3f60-462a-bbcf-3f4b77b33098:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "document",
+   "item_id": "9a3f64f0-f0de-4f42-9b5e-442b0442f09c:5",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "document",
+   "item_id": "9a4843e5-8880-4e90-912a-c85927e2ea0e:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "document",
+   "item_id": "9b7bce69-903e-4fb9-9aee-95899c625944:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "document",
+   "item_id": "b7e33a4e-c429-4a8a-a346-a198bf22d36f:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "document",
+   "item_id": "d2352391-2971-45b2-864e-855581e3804e:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "document",
+   "item_id": "da9cc7d3-eb2d-42e3-a7c8-d33918c4a55b:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "document",
+   "item_id": "e9a26ea7-dfcd-4526-bab5-a0ec0f6a7bc0:5",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "planning",
+   "item_id": "02e47fd8-87a5-4b84-ac6b-5f10d99ec1e3:3",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "refused",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "planning",
+   "item_id": "078759b7-c9da-481a-a826-5d7ddb192c94:3",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "planning",
+   "item_id": "1b6adf70-1244-45ec-bd90-5709b92008a6:1",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "planning",
+   "item_id": "1e9920e4-3687-4467-ab42-5f119359f3b7:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "planning",
+   "item_id": "2e11ac75-4ce7-45cf-9d08-c445c3b27911:3",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "planning",
+   "item_id": "31ffc76a-7854-4378-9673-64a2e91488c4:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "planning",
+   "item_id": "45bfb8cc-4d01-47b6-a596-3e0455aae7fd:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "planning",
+   "item_id": "4feff269-23a8-4b07-aa65-75c5d7fe9291:3",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "planning",
+   "item_id": "50039a37-c3f5-467f-b899-2270042a2b99:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "planning",
+   "item_id": "60c683b7-4a5e-4576-8208-ef20511d3c70:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "planning",
+   "item_id": "67c99108-f929-42de-a097-bbb683cc771d:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "planning",
+   "item_id": "68d3a832-8998-4073-8098-cb8eb79e6f84:2",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "planning",
+   "item_id": "738dca30-9bb9-46eb-87c3-bfdd1fc571fd:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "planning",
+   "item_id": "9521b369-c1a4-43aa-b379-3c8e644b0f62:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "planning",
+   "item_id": "a030d298-d60c-4e91-af59-9f9dbe7f56e1:3",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "planning",
+   "item_id": "a89dd9fc-5b16-4b4a-b48b-833ff31986ad:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "planning",
+   "item_id": "b349a0a5-899f-4d04-bfd3-339811ada201:3",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "planning",
+   "item_id": "c113c7e1-50ea-42b4-a7f1-38176d5e332e:3",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "planning",
+   "item_id": "c8f9360a-4011-46c4-a426-2f76a377c9ec:1",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "accepted",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "planning",
+   "item_id": "f63ae513-c63e-4754-aa71-0e36fd524476:3",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "reasoning",
+   "item_id": "02f27389-c64a-4211-a74e-9d882bf57802:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "reasoning",
+   "item_id": "10e9204e-b8a3-4f9e-8d03-2f5fecaa5406:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "reasoning",
+   "item_id": "1fedccc4-f6d9-482e-a1aa-9567640edac8:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "reasoning",
+   "item_id": "21b98bbc-9a74-43a0-bbf9-9a828791cd67:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "reasoning",
+   "item_id": "23ee3e8d-d870-4e25-bf8d-170872ce1795:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "reasoning",
+   "item_id": "3cbbf5ef-dd98-45cf-a2e9-ad2ee1c30d9e:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "reasoning",
+   "item_id": "4a5da61b-98a9-4112-86c0-6a85bb2154f0:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "reasoning",
+   "item_id": "4d44f4e5-523f-46fd-a32a-ef3f96d23e58:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "reasoning",
+   "item_id": "556acd84-877e-431d-b141-8ebc100b04c3:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "reasoning",
+   "item_id": "573f4f5f-5f9c-4837-8cac-a151080e83df:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "reasoning",
+   "item_id": "5cf71077-bd50-4572-a34e-feaa00690186:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "reasoning",
+   "item_id": "6047fb8e-85cd-48ed-aaea-0ebb68f1cc18:1",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "reasoning",
+   "item_id": "89751d54-8d5d-47b7-b94f-7badb36d67ee:3",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "reasoning",
+   "item_id": "8c577938-ca6a-4e71-8f43-aa6708783d92:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "reasoning",
+   "item_id": "9587a034-61c8-48a3-9c54-19465f05e016:2",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "reasoning",
+   "item_id": "c8352c19-ad9a-4acc-b1de-c89e1dd29a4f:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "reasoning",
+   "item_id": "d4371c99-6c5d-4ca1-804a-0a6b59b06c9e:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "reasoning",
+   "item_id": "e3bd1f77-c580-418d-9b14-456631706fa7:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "reasoning",
+   "item_id": "e958d78d-3e0e-481e-b3fe-58410f4e92af:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "reasoning",
+   "item_id": "ecd0c067-11f5-476a-9871-94fb27b6c558:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "research",
+   "item_id": "057d45de-f73c-4005-9127-c7e786f7efa4:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "research",
+   "item_id": "179bc7c9-0a86-4b8c-9096-fe20c033da53:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "research",
+   "item_id": "21f6455d-31cc-486c-83d8-c7dcbde82067:4",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "research",
+   "item_id": "336a977a-40b2-4791-89a9-c77dedff6a60:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "research",
+   "item_id": "3645290f-2018-4229-936a-7a5be69c817e:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "research",
+   "item_id": "4602edc5-c5d3-49c6-a92b-bdc6dc9fd084:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "research",
+   "item_id": "4caed696-6ef8-41ad-a864-caae2f0bdfb1:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "research",
+   "item_id": "4e6e0e50-7688-47be-8240-9fefb2689b3f:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "research",
+   "item_id": "5aae96d5-9970-4569-8b87-a4c6719fc12f:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "research",
+   "item_id": "5b199592-cc54-4a64-b05e-7e96cd92152d:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "research",
+   "item_id": "6918912c-f4df-45bb-aae3-7424c0ac91f8:4",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "research",
+   "item_id": "85719a8b-4c45-4fa9-adbc-cfbf6e42c08f:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "research",
+   "item_id": "b4b30aae-918c-4d5f-b524-86ad991c81bb:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "research",
+   "item_id": "be308b8c-2339-4734-81d9-d98ff5a8a679:4",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "research",
+   "item_id": "c35f1a9b-5641-4f3a-81f2-8c273fe1f8ab:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "research",
+   "item_id": "d3443e9b-01cb-4c09-80ea-51ccde0079b1:4",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "research",
+   "item_id": "dfb8231e-28d2-4450-af40-fff1c20fd902:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "research",
+   "item_id": "eda442ee-08a9-4a44-96c5-55f8502fcfcc:4",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "research",
+   "item_id": "f4960eb1-bf4c-49e0-a323-f6d1a6f6fa1c:4",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "research",
+   "item_id": "f99d5485-1d18-476e-861b-0e81835752cf:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "review",
+   "item_id": "0175b1e1-f6aa-4e43-aacb-0504ba5e3bad:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "review",
+   "item_id": "0688bd10-2fab-429b-b690-8e900a73fd3d:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "review",
+   "item_id": "0ec1e759-389c-4665-afa3-491df836ec08:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "review",
+   "item_id": "15243d45-0d04-47ac-a2dc-db442c03c7c6:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "review",
+   "item_id": "1e5a690a-902e-4e2e-831d-cb5856fb348c:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "review",
+   "item_id": "228ee4a1-3314-4636-8eb9-4c3897a295ca:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "review",
+   "item_id": "266d3f7f-156f-4eb8-9191-b08a7025c522:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "review",
+   "item_id": "2ba59e0a-8d8d-4e7b-8449-9dc3d6311cd8:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "review",
+   "item_id": "350f4781-809f-4a7a-961d-cab5a2e257d5:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "review",
+   "item_id": "3dfe989b-60a6-4039-af9f-40e0751d7610:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "review",
+   "item_id": "4b2ae34a-fa34-4adc-897f-c95c9f05857f:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "review",
+   "item_id": "6935be4a-fd0b-494d-bf41-9c50d517e991:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "review",
+   "item_id": "70705f92-fc03-407b-91ad-4b967cf97e75:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "review",
+   "item_id": "83bd09db-eb2f-4535-a64a-b8146e15e90b:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "review",
+   "item_id": "85147e71-b8b4-4a47-967b-70d2c2a76e8e:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "review",
+   "item_id": "a74320f5-03e5-440e-b93d-133372148c60:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "review",
+   "item_id": "ea1d5e12-5de7-4d96-adde-0dc2f3914b18:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "review",
+   "item_id": "f157a2d9-3c83-4df6-a7a4-11918f5730c5:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "review",
+   "item_id": "f22d8403-3537-4a59-bf03-d5fcee7799cd:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "review",
+   "item_id": "f8b37a65-44e2-48bc-b8ec-782bb30f663c:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "summarization",
+   "item_id": "0bdc4fc1-d065-41fc-8c73-8722e076fd4b:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "summarization",
+   "item_id": "0d630645-c661-4e50-a62d-3a76e4cbcffd:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "summarization",
+   "item_id": "26761877-2fe7-4036-997c-6592bb95034e:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "summarization",
+   "item_id": "3cb436a8-d3bd-4c23-acec-2ee431ec8f46:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "summarization",
+   "item_id": "409fe092-4b49-4e85-852f-ddf5a8a97b1d:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "summarization",
+   "item_id": "79af6e13-2228-4234-8ab7-c1f70a204a8b:3",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "summarization",
+   "item_id": "7ee3c423-2013-4ac3-8659-3b71b7941a8d:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "summarization",
+   "item_id": "8913b691-c0b5-4a5a-bd89-9cabe80d80e2:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "summarization",
+   "item_id": "8f492a9d-65a6-4982-9a5b-0f772f763302:3",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "summarization",
+   "item_id": "b6718b46-2f5e-4f4f-9414-3f333912f9a3:5",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "summarization",
+   "item_id": "b83be57b-317a-4bb2-90e2-1648d82e0571:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "summarization",
+   "item_id": "bf8c96b7-35c8-43f0-b3df-49e5b811f080:5",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "summarization",
+   "item_id": "c49629ea-3a2c-42fc-8dcb-6d0b0ad310a8:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "summarization",
+   "item_id": "c8b1244e-c769-403b-9dd8-2a87601b46c2:5",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "summarization",
+   "item_id": "ddb88ff7-3919-44ec-a82b-d128a58fbab3:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "summarization",
+   "item_id": "ea2dbe08-3ad1-4ffd-aa7f-a6368338c63e:1",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "summarization",
+   "item_id": "eb2d2b28-5bda-4602-ad6c-461ae555e4da:5",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "summarization",
+   "item_id": "f5dca979-e9f6-47c6-b121-502f90a74dca:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "summarization",
+   "item_id": "f8e6d4c0-7d08-4a71-a0a9-aba8579fc2b6:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "summarization",
+   "item_id": "fd6981fb-273e-4a41-9196-85cb5c245865:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "test",
+   "item_id": "04ac362b-8d9d-4208-b251-73a9a090d2a7:3",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "test",
+   "item_id": "229dd0b7-d807-40fb-ac71-c47a92ccdfad:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "test",
+   "item_id": "43dc11f5-5b10-490b-847a-8617ddb6c9e8:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "test",
+   "item_id": "457a9191-0f36-4092-8cb9-13e50d9882ed:1",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "test",
+   "item_id": "470aa35c-fde8-43fb-a81d-878927e3f3f2:2",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "test",
+   "item_id": "4a90a21f-4163-477f-80ab-67a0d8601d55:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "test",
+   "item_id": "52ef5571-352c-4a1f-9c4f-663dee0b7a94:1",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "test",
+   "item_id": "5a2a155b-204f-42c0-a63e-ba3385c3c51f:3",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "test",
+   "item_id": "5af3fb9d-c3d2-4ae9-ab61-39949537b17a:5",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "test",
+   "item_id": "6f27abf2-2168-488f-ad73-caefc657d62c:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "test",
+   "item_id": "77aecbd5-13e8-4b3d-9d29-9da2157e9c3a:1",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "test",
+   "item_id": "7e44ece8-0dcf-4baa-b878-5c94f8968560:1",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "test",
+   "item_id": "8a830c13-15a2-4f8c-95c9-7c93ae145713:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "test",
+   "item_id": "96fb9e26-00c7-4365-99d0-eeb3fe9211cc:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "test",
+   "item_id": "a681d4fb-7eed-4441-8b33-07a5744996c9:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "test",
+   "item_id": "b6ff83f9-dd54-420b-ae74-48fe58e7fd2a:5",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "refused",
+    "refused",
+    "refused"
+   ]
+  },
+  {
+   "task_class": "test",
+   "item_id": "d4a307e1-3994-4dad-ba1a-9b4eeadbaf5f:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "test",
+   "item_id": "de42affe-76b0-43e9-afd5-ca8f4d8929b3:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "test",
+   "item_id": "ec86d7c5-68af-4373-bde1-8485fbf73cd3:0",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  },
+  {
+   "task_class": "test",
+   "item_id": "f69c6320-7321-4764-85cd-c5dd365d12f9:1",
+   "backend_id": "local-heavy-reasoning",
+   "verdicts": [
+    "accepted",
+    "accepted",
+    "accepted"
+   ]
+  }
+ ]
+}

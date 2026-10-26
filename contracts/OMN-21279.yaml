@@ -62,6 +62,19 @@ requirements:
           alternates, never a registry peer's whole git dir, "/", $HOME or an
           alternate that is not a repository's objects directory -- falsifier:
           uv run pytest tests/nodes/node_codex_sandbox_probe_compute/test_codex_sandbox_probe.py tests/nodes/node_codex_sandbox_probe_compute/test_golden_chain_codex_sandbox_probe_compute.py -q --no-cov
+  - id: req-codex-zero-turn-host-limits
+    statement: >-
+      The lane brief also requests a Codex host circuit breaker under the
+      2026-10-26T11:31:48Z engine-policy ruling. The ticket's original infra
+      layering criteria AC1 and AC2 above remain unchanged and are not
+      claimed by this additional work.
+    acceptance:
+      - id: AC5
+        statement: >-
+          A zero-turn Codex HTTP 429 writes a host-specific Codex limit until
+          the provider reset or one hour, prevents same-host retry, excludes
+          that host from Codex placement and tick headroom, and reports daily
+          Codex 429 counts by host.
   - id: req-lab-fill-live-ticket-gate
     statement: >-
       The lab fill re-reads each ticket's live state and assignee from Linear
@@ -250,6 +263,41 @@ dod_evidence:
           bash -o pipefail -c 'curl --fail --silent --show-error
           "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_codex_sandbox_probe_compute/handlers/handler_codex_sandbox_probe.py"
           | python3 -c "import sys; source=sys.stdin.read(); assert \"own_roots.append(str(common))\" in source; assert \"CODEX-GIT-ROOTS skip alternate\" in source"'
+  - id: dod-omn-21279-codex-zero-turn-host-limits
+    description: >-
+      AC5: run the typed recovery node, receipt/error observation, reset
+      parsing, atomic Codex-only marker, retry refusal, pure placement,
+      tick adapters and decision tests. The baseline fails collection because
+      the Codex observation handler is absent. The tests use temporary local
+      files and need no credential, lab host or external service.
+      The installed plugin still needs the thin adapter calls; these tests
+      prove the market-owned mechanism, not live plugin adoption.
+    source: generated
+    execution_scope: hosted_and_local
+    binds_ac: [AC5]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          env -u PYTHONPATH uv run --frozen pytest
+          tests/nodes/node_lane_placement_recovery_effect/test_codex_host_limits.py
+          -q --no-cov -n 0
+  - id: dod-omn-21279-codex-limit-deploy-smoke
+    description: >-
+      Hosted-runner deploy-scope smoke: invoke the packaged recovery node
+      with a typed Codex limit request and a finished engine attempt, then
+      read back its marker and sanitized non-retryable failure. This checks
+      the deployable package entrypoint without access to private lab hosts.
+      It fails at the merge base where the typed observation model and
+      handler do not exist; live plugin adoption remains outstanding.
+    source: generated
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          env -u PYTHONPATH uv run --frozen pytest
+          tests/nodes/node_lane_placement_recovery_effect/test_codex_host_limits.py
+          -k "node_dispatches_typed_limit_request or existing_node_observes_engine_return"
+          -q --no-cov -n 0
   - id: dod-omn-21279-lab-fill-live-ticket-gate
     description: >-
       AC5: the pure live gate and its Linear reader over recorded GraphQL

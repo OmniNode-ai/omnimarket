@@ -27,12 +27,13 @@ The runtime is the calling script's globals: the runner's exit codes, ``write_re
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import replace
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -40,11 +41,16 @@ from ..models.model_claude_account_limit import (
     ModelClaudeAccountLimitRequest,
     ModelClaudeAccountLimitResult,
 )
+from ..models.model_codex_lane_limit import (
+    ModelCodexLaneLimitRequest,
+    ModelCodexLaneLimitResult,
+)
 from ..models.model_lane_engine_failover import (
     ModelLaneEngineFailoverRequest,
     ModelLaneEngineFailoverResult,
 )
 from .handler_claude_account_limit import HandlerClaudeAccountLimit
+from .handler_codex_lane_limit import CODEX_LIMITED_PREFIX, HandlerCodexLaneLimit, _read
 from .handler_lane_engine_failover import HandlerLaneEngineFailover
 
 LOST_STATUS = "placement-lost"
@@ -69,17 +75,111 @@ class HandlerLanePlacementRecovery:
         self.engine_handler = HandlerLaneEngineFailover(runtime)
 
     def handle(
-        self, request: ModelClaudeAccountLimitRequest | ModelLaneEngineFailoverRequest
-    ) -> ModelClaudeAccountLimitResult | ModelLaneEngineFailoverResult:
+        self,
+        request: ModelClaudeAccountLimitRequest
+        | ModelLaneEngineFailoverRequest
+        | ModelCodexLaneLimitRequest,
+    ) -> (
+        ModelClaudeAccountLimitResult
+        | ModelLaneEngineFailoverResult
+        | ModelCodexLaneLimitResult
+    ):
+        if isinstance(request, ModelCodexLaneLimitRequest):
+            return HandlerCodexLaneLimit().handle(request)
         if isinstance(request, ModelLaneEngineFailoverRequest):
             return self.engine_handler.handle(request)
         return self.account_handler.handle(request)
 
     def execute(self, args: Any, **kwargs: Any) -> int:
-        request = ModelLaneEngineFailoverRequest(
-            args, self.runtime["execute_once"], kwargs
-        )
+        request = ModelLaneEngineFailoverRequest(args, self.execute_observed, kwargs)
         return self.engine_handler.handle(request).exit_code
+
+    def execute_observed(self, args: Any, **kwargs: Any) -> int:
+        """Write the Codex marker before an attempt can be retried or returned."""
+        current = copy.copy(args)
+        current.run_id = (
+            args.run_id
+            or f"rlane-{args.lane[:40]}-{self.runtime['secrets'].token_hex(3)}"
+        )
+        path = (
+            Path(args.receipt)
+            if args.receipt
+            else self.runtime["state_dir"]() / args.lane / f"{current.run_id}.json"
+        )
+        current.receipt = str(path)
+        code = self.runtime["execute_once"](current, **kwargs)
+        if current.model == "codex":
+            HandlerCodexLaneLimit().handle(
+                ModelCodexLaneLimitRequest(
+                    str(path),
+                    str(self.runtime["landing_placement"].placement_dir()),
+                    completed_attempt=True,
+                )
+            )
+        return cast("int", code)
+
+    def codex_placement_facts(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Add engine-specific marks to the pure placement request under the caller's lock."""
+        lp = self.runtime["landing_placement"]
+        directory = lp.placement_dir()
+        wire = copy.deepcopy(request)
+        wire["codex_limited_hosts"] = sorted(lp.codex_limited_hosts(directory))
+        return wire
+
+    def codex_tick_facts(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Count today's refused runs once and apply markers to the tick's live read."""
+        from .handler_lane_engine_failover import tick_request
+
+        wire = tick_request(request)
+        facts = wire.get("lab_headroom")
+        if not isinstance(facts, dict):
+            return wire
+        lp = self.runtime["_load_placement"]()
+        if lp is None:
+            return wire
+        directory = lp.placement_dir()
+        now = datetime.fromisoformat(
+            str(wire["now"]).replace("Z", "+00:00")
+        ).astimezone(UTC)
+        counts = {str(host["name"]): 0 for host in facts.get("hosts", [])}
+        seen = set()
+        paths = [
+            str(receipt["path"])
+            for receipt in facts.get("receipts", [])
+            if receipt.get("path")
+        ]
+        visited = set()
+        for path in paths:
+            if path in visited:
+                continue
+            visited.add(path)
+            data = _read(Path(path))
+            # A final root receipt can name a different engine after failover.
+            # The attempt receipts retain the Codex event and host identity.
+            for attempt in (data.get("failover") or {}).get("attempts", []):
+                if attempt.get("receipt"):
+                    paths.append(str(attempt["receipt"]))
+            if not str(data.get("ended_at", "")).startswith(now.date().isoformat()):
+                continue
+            result = HandlerCodexLaneLimit().handle(
+                ModelCodexLaneLimitRequest(str(path), str(directory), now)
+            )
+            key = (data.get("host"), data.get("run_id") or str(path))
+            if result.observed_429 and key not in seen:
+                seen.add(key)
+                name = str(data["host"])
+                counts[name] = counts.get(name, 0) + 1
+        facts["codex_429_counts"] = counts
+        for host in facts.get("hosts", []):
+            marker = directory / f"{CODEX_LIMITED_PREFIX}{host['name']}"
+            if marker.exists():
+                body = _read(marker)
+                host["codex_limited_mark"] = (
+                    {"state": "present", "until": body["until"]}
+                    if body.get("until")
+                    else {"state": "unreadable"}
+                )
+        return wire
 
     # ---- the runner ----------------------------------------------------------------------------------------------------
 

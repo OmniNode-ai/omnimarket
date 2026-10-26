@@ -125,6 +125,7 @@ class ModelRemoteLanePlacementRequest(BaseModel):
     engine: str = Field(min_length=1)
     pinned_host: str | None = None
     limited_hosts: tuple[str, ...] = ()
+    codex_limited_hosts: tuple[str, ...] = ()
     auth_expired_hosts: tuple[str, ...] = ()
     readings: tuple[ModelRemoteLaneHostReading, ...] = ()
     # The launching host's dispatch-venv lock hash: the hash every host must hold. Drift is

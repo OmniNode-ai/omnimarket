@@ -139,8 +139,6 @@ not_routing_resolution_sites:
     reason: names the overlay file in an error message when repos.private_data is not configured; the clone name supplies sandbox writable roots and selects no route for delegated work
   - site: "src/omnimarket/nodes/node_idle_slot_fill_effect/overlay.py:find_node_overlay(overlay_id)"
     reason: names the overlay file in an error message when an idle_slot_fill or repos key is not configured; the keys supply repository names, a cloud backlog declaration and experiment designs and select no route for delegated work
-  - site: "src/omnimarket/nodes/node_landing_lease_claim_close_effect/handlers/handler_landing_lease_claim_close.py:resolve_setting(LANDING_CONTROLLER_OVERLAY)"
-    reason: the ticket ids the landing controller writes into its CLAIM and TERMINAL ledger rows; a ledger cell, not a route for delegated work
   - site: "src/omnimarket/nodes/node_install_superset_guard_effect/handlers/handler_install_superset_cli.py:resolve_setting(PLUGIN_INSTALL_OVERLAY)"
     reason: the ticket id the installer's superset check writes into each intentional-drop ledger row; a ledger cell, not a route for delegated work
   - site: "src/omnimarket/nodes/node_brief_compact_compute/handlers/handler_brief_compact.py:resolve_setting('node_brief_compact_compute')"

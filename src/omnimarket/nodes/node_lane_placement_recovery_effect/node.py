@@ -12,7 +12,6 @@ from .handlers.handler_lane_engine_failover import (
     host_admission,
     initialize_receipt,
     parse_route,
-    tick_request,
 )
 from .handlers.handler_lane_placement_recovery import HandlerLanePlacementRecovery
 
@@ -27,4 +26,5 @@ class NodeLanePlacementRecoveryEffect(HandlerLanePlacementRecovery):
     host_admission = staticmethod(host_admission)
     initialize_receipt = staticmethod(initialize_receipt)
     parse_route = staticmethod(parse_route)
-    tick_request = staticmethod(tick_request)
+    tick_request = HandlerLanePlacementRecovery.codex_tick_facts
+    placement_request = HandlerLanePlacementRecovery.codex_placement_facts
