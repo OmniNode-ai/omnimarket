@@ -91,6 +91,7 @@ def load_structured_overlay[ModelT: BaseModel](
     *,
     explicit: object | None = None,
     file_env: str | None = None,
+    missing_message: str | None = None,
 ) -> ModelT:
     """Validate an explicit document, a pinned file, or the first overlay, in order.
 
@@ -100,6 +101,7 @@ def load_structured_overlay[ModelT: BaseModel](
     An explicit model or document takes precedence without reading either file.
 
     No source raises :class:`NodeOverlayError` naming the id and model fields.
+    ``missing_message`` lets a key reader name the requested field and its input variables.
     A broken selected source refuses without trying a lower-priority source.
     Errors name the source, exception type and invalid fields, never document
     values or exception messages, which may contain private deployment facts.
@@ -112,6 +114,8 @@ def load_structured_overlay[ModelT: BaseModel](
         pinned = env.get(file_env, "").strip() if file_env else ""
         path = Path(pinned) if pinned else find_node_overlay(overlay_id, env)
         if path is None:
+            if missing_message is not None:
+                raise NodeOverlayError(missing_message)
             settings = ", ".join(f"{overlay_id}.{name}" for name in model.model_fields)
             raise NodeOverlayError(
                 not_configured_message(

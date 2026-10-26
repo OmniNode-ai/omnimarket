@@ -1,0 +1,45 @@
+{
+  "ticket": "OMN-20595",
+  "status": "incomplete",
+  "host": "h101",
+  "lane": "bus-ticketing-20595-1830",
+  "bus_probe": {
+    "requested_by_run": "ticket-read-h101-1830",
+    "correlation_id": "d2f81fd1-a70f-477a-9eb4-641b93ed30a3",
+    "operation": "read",
+    "ticket_id": "OMN-20570",
+    "bus_lane": "dev",
+    "exit_code": 69,
+    "reason": "TopicAuthorizationFailedError",
+    "topic": "onex.evt.omnimarket.linear-ticket-write-completed.v1",
+    "command_published": false
+  },
+  "guard_refusal": {
+    "transport": "inmemory",
+    "host": "h101",
+    "run_id": "fe392b56-ff1c-4195-bf7f-e224e6380465",
+    "correlation_id": "ea75c013-a06b-43b2-a4cb-fbd97b55a40b",
+    "outcome": "failed",
+    "reason": "guard_refused",
+    "finding_codes": [
+      "unfalsified_criterion"
+    ],
+    "dry_run": true,
+    "guard_selection": "explicit shipped plugin; same guard and policy digests as registry snapshot"
+  },
+  "remote_reads": [],
+  "scratch": null,
+  "blocker": "The h101 dev-bus principal cannot read the new terminal topic. The command was not published. No scratch ticket was created. Three-host readback and scratch create/read/comment/cancel remain unproven. The default installed guard also needs a policy containing lane_intake, or explicit selection of the current shipped plugin.",
+  "default_guard_probe": {
+    "transport": "inmemory",
+    "run_id": "5f1c9294-36e2-419e-a72f-e9a40920abb8",
+    "reason": "guard_unavailable",
+    "detail": "Default installed onex 2.3.2 policy lacks lane_intake. Node refuses before Linear."
+  },
+  "packaged_deploy_probe": {
+    "run_id": "830b3dd2-7e09-45bd-a2e1-5086700211db",
+    "transport": "inmemory",
+    "reason": "guard_unavailable",
+    "guard_explicitly_absent": true
+  }
+}

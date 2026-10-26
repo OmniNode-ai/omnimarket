@@ -2,14 +2,14 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-21338"
 title: "The work-ledger parity check reads each day's JSON window and the archive-roll boundary correctly, so a clean day reads exact"
-summary: "The JSON row loader of the work-ledger parity check now keeps only rows inside the selected inclusive UTC window and refuses a malformed export timestamp with exit 2, as the database loader's SQL window already does. The shared work_ledger_text splitter, used by the projection parity and the branch witness, now drops a complete, self-consistent generated archive-roll header (metadata comment, banner, empty line) instead of attaching it to the preceding row, so a row keeps one identity across a roll boundary. Malformed, quoted and inconsistent lookalikes remain row content. The live-day receipt can only be read after the deploy and is not claimed by this contract's tests."
+summary: "The JSON row loader of the work-ledger parity check now keeps only rows inside the selected inclusive UTC window and refuses a malformed export timestamp with exit 2, as the database loader's SQL window already does. The shared work_ledger_text splitter, used by the projection parity and the branch witness, now drops a complete, self-consistent generated archive-roll header (metadata comment, banner, empty line) instead of attaching it to the preceding row, so a row keeps one identity across a roll boundary. Malformed, quoted and inconsistent lookalikes remain row content. The window and boundary fixes are already present in the dispatched dev revision. A 2026-10-25 lab read found fixture rows among the persistent extras. The emit guard now refuses a test targeting a shared broker even in spool-only mode, because a later invocation can drain those rows. Historical mismatches and backfills remain disqualifying. The new guard needs deployment; its tests do not claim a future live-day receipt."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
   - id: "req-omn21338-parity-window-and-boundary"
     statement: |-
-      The parity check counts each row once, inside the selected UTC day, with one identity across an archive roll. Post-deploy observation, not a bound criterion: the node_projection_work_ledger parity run for a day after the deploy lists no extra or state row whose cause is a window or boundary miscount.
+      The parity check counts each row once, inside the selected UTC day, with one identity across an archive roll. The node_projection_work_ledger parity run must retain real missing, extra and state differences, including historical backfills and test contamination.
     acceptance:
       - id: "AC1"
         statement: |-
@@ -17,9 +17,12 @@ requirements:
       - id: "AC2"
         statement: |-
           AC2: a row that crosses an archive-roll boundary keeps one identity in the parity check and the branch witness -- falsifier: uv run pytest tests -q -k work_ledger_roll_boundary
+      - id: "AC3"
+        statement: |-
+          AC3: the parity receipt for a day after the deploy has no extra or state difference caused by either defect -- falsifier: the node_projection_work_ledger parity run for that day lists an extra or state row whose cause is a window or boundary miscount
 evidence_requirements:
   - kind: "tests"
-    description: "The JSON window cases fail on dev (12) and pass with the change (AC1); the roll-boundary cases fail on dev (3) and pass with the change (AC2)."
+    description: "Retain the already-landed JSON-window and roll-boundary controls (AC1 and AC2); the recorded fixture-spool regression fails six cases before this guard change and passes afterwards."
     command: "uv run pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity_json_window.py tests/unit/handlers/test_work_ledger_roll_boundary.py -q --no-cov"
 emergency_bypass:
   enabled: false
@@ -43,91 +46,44 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn21338-ac3-deploy-probe"
-    description: "The AC3 deploy-probe entry describes a synthetic container readback, not the live-day database receipt required after deployment. The check syncs this checkout's locked environment, then starts a disposable ubuntu:24.04 Docker container that bind-mounts the checkout (with its .venv), the venv's base interpreter and the host libsqlite3 its _sqlite3 module links (the image has none) read-only at their host paths and installs nothing, so it stays inside the dod-verify per-check budget. In the container the parity CLI runs on three generated archive-roll batches and a JSON export with one row before and one after the selected UTC day. The probe requires exit 0, three file rows, three projection rows, and no mismatches."
+    description: "Read-only lab proof is recorded in the PR Lab line: the projection's own database parity read for 2026-10-18 through 2026-10-24 reports only 2026-10-24 exact, with 10,614 matching rows and no backfill. Other days remain failures. A recorded database-only fixture row reproduces the spool-only escape in six failing cases before this change. These checks prevent new fixture contamination; a future post-deploy day receipt is still required, and no historical mismatch is removed or ignored. The hosted deploy probe runs the checked-out stdlib-only guard in an ephemeral Python 3.12 container with its source mounted read-only and networking disabled. Both test signals must refuse a shared-broker target with exit 79 for every spool-only spelling; ordinary runtime and loopback controls must still exit 0. The probe requires no package installation, credentials, shared container or lab route, and fails against the guard before the spool-only exemption was removed."
     source: "manual"
     checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_work_ledger_emit_effect/test_work_ledger_parity_fixture_spool.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
         check_value: |
-          set -eu;
-          out="$(mktemp)";
-          uv sync --locked -q >"$out" 2>&1 || { echo "AC3 probe: uv sync failed: $(tail -c 400 "$out" | tr '\n' ' ')" >&2; exit 1; };
-          here="$(pwd -P)";
-          py="$here/.venv/bin/python";
-          pyroot="$("$py" -c 'import os, sys; print(os.path.dirname(os.path.realpath(sys.base_prefix)))')";
-          sqlite_so="$("$py" -c 'import _sqlite3; print(_sqlite3.__file__)')";
-          lib="$(ldd "$sqlite_so" 2>/dev/null | awk '$1 ~ /^libsqlite3[.]so/ && $3 ~ /^[/]/ {print $3; exit}')";
-          set --;
-          if [ -n "$lib" ]; then
-            real="$(readlink -f "$lib")";
-            set -- --mount "type=bind,src=$real,dst=$(dirname "$real")/$(basename "$lib"),readonly";
-          fi;
-          docker run --rm -i --label com.docker.compose.project=landing-l15885-lab \
-            --mount "type=bind,src=$here,dst=$here,readonly" \
-            --mount "type=bind,src=$pyroot,dst=$pyroot,readonly" \
-            --workdir "$here" \
+          docker run --rm -i --network none --read-only \
+            --label com.docker.compose.project=landing-l16944-lab \
+            --mount "type=bind,src=$PWD/src/omnimarket/nodes/node_work_ledger_emit_effect/handlers/handler_work_ledger_emit_guard.py,dst=/probe/guard.py,readonly" \
             --env PYTHONDONTWRITEBYTECODE=1 \
-            --env LD_LIBRARY_PATH \
-            "$@" \
-            ubuntu:24.04 \
-            "$py" - >"$out" 2>&1 <<'PY' || fail=1
-          import hashlib
-          import json
+            python:3.12-slim@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704 \
+            python - <<'PY'
+          import os
           import subprocess
           import sys
-          import tempfile
-          from pathlib import Path
 
-          rows = [
-              "2026-10-02T23:59:59Z | STATUS | lane=probe | req=a | before the day",
-              "2026-10-03T00:00:00Z | STATUS | lane=probe | req=b | first second",
-              "2026-10-03T12:00:00Z | STATUS | lane=probe | req=c | midday",
-              "2026-10-03T23:59:59Z | STATUS | lane=probe | req=d | last second",
-              "2026-10-04T00:00:00Z | STATUS | lane=probe | req=e | after the day",
-          ]
-
-
-          def batch(batch_rows):
-              meta = {
-                  "source": "docs/tracking/ROLLING_WORK_LEDGER.md",
-                  "section_heading": "## Action Log (append-only)",
-                  "rolled_at": "2026-10-05T00:00:00Z",
-                  "entries": len(batch_rows),
-                  "first_rolled_heading": batch_rows[0],
-                  "last_rolled_heading": batch_rows[-1],
-              }
-              return (
-                  "<!-- ledger-roll-archive " + json.dumps(meta, sort_keys=True) + " -->\n"
-                  "## Rolled from ROLLING_WORK_LEDGER.md at 2026-10-05T00:00:00Z -- "
-                  f"{len(batch_rows)} rows\n\n" + "\n".join(batch_rows) + "\n"
+          def probe(signal, broker, spool_only, expected):
+              env = dict(os.environ, KAFKA_BOOTSTRAP_SERVERS=broker, ONEX_EMIT_EFFECT_SPOOL_ONLY=spool_only)
+              env.pop("PYTEST_CURRENT_TEST", None)
+              env.pop("ONEX_TEST_CONTEXT", None)
+              if signal:
+                  env[signal] = "1"
+              result = subprocess.run(
+                  [sys.executable, "/probe/guard.py"],
+                  env=env, capture_output=True, text=True, timeout=5,
               )
+              assert result.returncode == expected, (signal, broker, spool_only, result.returncode, result.stdout, result.stderr)
+              if expected == 79:
+                  assert "ledger-test-write-guard" in result.stderr
 
-
-          root = Path(tempfile.mkdtemp())
-          (root / "ledger.md").write_text(batch(rows[:2]) + batch(rows[2:4]) + batch(rows[4:]))
-          export = {
-              "rows": [
-                  {"row_id": hashlib.sha256(r.encode()).hexdigest(), "row_ts": r[:20], "source": "onex-ledger"}
-                  for r in rows
-              ],
-              "state": [],
-          }
-          (root / "export.json").write_text(json.dumps(export))
-          done = subprocess.run(
-              [
-                  sys.executable, "-m", "omnimarket.nodes.node_projection_work_ledger.parity",
-                  "--ledger", str(root / "ledger.md"),
-                  "--projection-json", str(root / "export.json"),
-                  "--utc-day", "2026-10-03",
-                  "--state-dir", str(root),
-              ],
-              capture_output=True, text=True,
-          )
-          assert done.returncode == 0, (done.returncode, done.stdout[-300:], done.stderr[-1500:])
-          report = json.loads(done.stdout)
-          assert report["file_rows"] == report["projection_rows"] == 3, report
-          assert report["mismatches"] == [], report
-          print("probe ok", report["file_rows"], report["projection_rows"])
+          for spool_only in ("1", "true", "yes", "on", " TRUE "):
+              for signal in ("ONEX_TEST_CONTEXT", "PYTEST_CURRENT_TEST"):
+                  probe(signal, "broker.lab.internal:9092", spool_only, 79)
+                  probe(signal, "127.0.0.1:9092", spool_only, 0)
+              probe(None, "broker.lab.internal:9092", spool_only, 0)
+          print("PASS: 10 shared-broker test refusals; 10 loopback and 5 runtime controls allowed")
           PY
-          [ "${fail:-0}" = 0 ] || { echo "AC3 probe: container run failed: $(tail -c 600 "$out" | tr '\n' ' ')" >&2; exit 1; };
-          cat "$out";
         cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
