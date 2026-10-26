@@ -1,0 +1,64 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-17098"
+title: "delegation-routing: served-model attribution guard missing on HandlerInferenceIntent, the path the orchestrator dispatches to"
+summary: >-
+  Coverage-only evidence for the merged fix (omnimarket#3288, 1e935f3e). HandlerInferenceIntent probes the
+  endpoint's served models before the chat call and refuses a configured model the endpoint does not serve with
+  the typed model_attribution_mismatch, recording no attribution to the configured model, on both its handle and
+  its runtime handle_async entrypoints. Every bound check fails at the fix's parent, which stamped
+  model_used=intent.model unconditionally.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn17098-served-model-guard"
+    statement: "HandlerInferenceIntent never stamps a configured model the endpoint does not serve."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: HandlerInferenceIntent gains the same fail-closed served-model attribution guard landed on
+          HandlerLlmDelegationCall: probe served models, reject or escalate on mismatch, never silently stamp
+          model_used=intent.model when the served model differs.
+      - id: "AC2"
+        statement: >-
+          AC2: A test using a stubbed endpoint that serves a different model than intent.model proves
+          HandlerInferenceIntent rejects or escalates rather than recording a false attribution.
+evidence_requirements:
+  - kind: "tests"
+    description: "Served-model guard tests on HandlerInferenceIntent pass"
+    command: >-
+      uv run pytest -q --no-cov tests/unit/delegation/test_omn17098_inference_intent_served_model_guard.py
+      tests/unit/delegation/test_omn17098_runtime_entrypoint_served_model_guard.py
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn17098-ac1-guard-probes-and-refuses"
+    description: >-
+      Against a loopback OpenAI-compatible endpoint, a configured model the endpoint does not list is refused with
+      model_attribution_mismatch before any chat POST, the response's model_used is not the configured model, and the
+      orchestrator classifies the error as MODEL_ATTRIBUTION_MISMATCH. Controls: a served configured model is still
+      recorded, an endpoint with no models listing is no evidence, and the cache reconciles after a model change.
+      Fails at the fix's parent, which made the call and stamped the configured model.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest -q --no-cov tests/unit/delegation/test_omn17098_inference_intent_served_model_guard.py"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17098-ac2-runtime-entrypoint-refuses"
+    description: >-
+      The runtime dispatch entrypoint (handle_async, the one handler wiring resolves) against a stubbed endpoint
+      serving a different model: no chat POST, model_used is not the configured model, typed mismatch error. Fails
+      at the fix's parent, where the response carries model_used equal to the configured model.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: >-
+          uv run pytest -q --no-cov tests/unit/delegation/test_omn17098_runtime_entrypoint_served_model_guard.py
+          tests/unit/delegation/test_omn17098_inference_intent_served_model_guard.py
+          -k "refuses_a_model_the_endpoint_does_not_serve or not_served_is_refused_not_attributed"
+        cwd: "${OMNI_HOME}/omnimarket"
