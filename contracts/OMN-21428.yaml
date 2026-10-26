@@ -1,0 +1,78 @@
+schema_version: "1.0.0"
+ticket_id: OMN-21428
+title: "Ledger CLAIM rows as a projection of lane-work leases"
+summary: >-
+  AC3, omnimarket part. Three owner-liveness readers of the 45-minute rule read lane-work lease state:
+  rules_merge_sweep.claim_owner, node_stuck_owner_actor_effect's live_cause_claims, and
+  node_cause_claim_ownership_effect's live_cause_claims and claim_lane_owners treat a lane that
+  holds an open lane-work lease CLAIM (actor=script:node_projection_lease, kind=lane-work, lease=<uuid>,
+  written by node_projection_lease under omnibase_infra#5371) as live however long ago its last row was.
+  A lane with no such CLAIM keeps the 45-minute rule. Not in this change: deleting DEAD_AFTER_MIN and
+  CLAIM_LIVE, which waits on the lane runners acquiring lane-work leases (the onex-remote-lane switch,
+  not in omnibase_infra#5371); AC1 and AC2 are omnibase_infra#5371; AC4 is not in this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21428-ac3-readers-read-lease-state
+    statement: "The readers of the 45-minute rule read lease state."
+    acceptance:
+      - id: AC3
+        statement: |-
+          AC3: the nine readers of the 45-minute rule (inventory D1) read lease state, and `DEAD_AFTER` is deleted -- falsifier: a grep for `DEAD_AFTER = timedelta(minutes=45)` finds a hit
+evidence_requirements:
+  - kind: tests
+    description: "The lane-work lease reader tests and the suites of the two readers pass."
+    command: "uv run pytest tests/unit/handlers/test_rules_merge_sweep_lane_work_lease.py tests/nodes/node_stuck_owner_actor_effect tests/nodes/node_cause_claim_ownership_effect tests/nodes/node_merge_sweep_reading_compute -q --no-cov"
+  - kind: manual
+    description: "Deploy validation command for the caller-contract deploy gate: the committed reader source read at the checkout commit. It starts nothing and touches no running lane."
+    command: "deploy: gh api contents of src/omnimarket/handlers/rules_merge_sweep.py at HEAD"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn21428-ac3-readers-read-lease-state
+    description: >-
+      lane_work_lease reads the lease id only from a CLAIM carrying actor=script:node_projection_lease,
+      kind=lane-work and a uuid lease= as its own first cells; leased_lanes holds a lane from that CLAIM to
+      its next TERMINAL; claim_owner answers live for a PR named by a 2-hour-silent lane holding the lease,
+      stale without it or with the lease cells under another actor; live_cause_claims returns a
+      2-hour-silent cause claimant holding the lease and not one without it. The tests fail at the merge
+      base, which has no lane_work_lease. DEAD_AFTER_MIN and CLAIM_LIVE are not deleted here.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/handlers/test_rules_merge_sweep_lane_work_lease.py tests/nodes/node_stuck_owner_actor_effect/test_stuck_owner_actor.py -q --no-cov -k "lane_work or leased"
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn21428-ac3-cause-claim-lease-state
+    description: >-
+      node_cause_claim_ownership_effect's live_cause_claims returns a 2-hour-silent cause claimant whose lane
+      holds an open lane-work lease CLAIM and not one whose lease CLAIM a later TERMINAL closed;
+      claim_lane_owners lists a silent PR CLAIM owner whose lane holds the lease and not one without it. Both
+      reuse rules_merge_sweep.leased_lanes. The tests fail at the merge base, which has no leased_lanes.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_cause_claim_ownership_effect/test_cause_claim_lane_work_lease_omn21428.py -q --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn21428-deploy-reader-surface
+    description: >-
+      Read the committed reader source at the checkout commit through the GitHub contents API. Fail when
+      the projection actor or the lease check in claim_owner is absent. Runs on hosted runners without a
+      container daemon or access to a private runtime.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/handlers/test_rules_merge_sweep_lane_work_lease.py tests/nodes/node_stuck_owner_actor_effect/test_stuck_owner_actor.py -q --no-cov -k "lane_work or leased"
+        cwd: ${OMNI_HOME}/omnimarket
+      - check_type: command
+        check_value: |
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/rules_merge_sweep.py?ref=$(git rev-parse HEAD)" --jq .content |
+            base64 -d > rules_merge_sweep.src &&
+          grep -F 'LANE_WORK_ACTOR = "script:node_projection_lease"' rules_merge_sweep.src > /dev/null &&
+          grep -F 'leased = leased_lanes(rows)' rules_merge_sweep.src > /dev/null
+        cwd: ${OMNI_HOME}/omnimarket

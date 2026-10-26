@@ -1,0 +1,570 @@
+# OMN-21279 option B: market depends on infra and owns the composed image.
+# Moved from omnibase_infra .github/workflows/reusable-runtime-boot.yml,
+# job boot-catalog-local: delegate-skill consumer liveness, all laptop service
+# health checks and their stopped-service negative control, kernel /health,
+# and the dev-lane environment and crash-loop phase, plus always diagnostics.
+# Each moved step is at least as strict: the probe/health/crash budgets are
+# unchanged, all three market projections must render with health checks, and
+# both kernels must print a market version equal to this PR head's pyproject.
+# Infra is checked out at the release or commit uv.lock pins (steps.pins).
+name: Composed Runtime Boot (OMN-21279)
+
+on:
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  composed-runtime-boot:
+    name: composed-runtime-boot (omnimarket on infra)
+
+    runs-on: ubuntu-latest
+
+    timeout-minutes: 120
+    env:
+      LOCAL_PROJECT: omnibase-infra-local
+    steps:
+      - name: Checkout omnimarket
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          path: market
+
+      - name: Setup Python and uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+        with:
+          version: "0.6.14"
+          python-version: "3.12"
+          enable-cache: false
+
+      - id: pins
+        name: Read the sibling release pins from this head's uv.lock
+        shell: bash
+        working-directory: market
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import re
+          import tomllib
+
+          with open("uv.lock", "rb") as lock_file:
+              packages = tomllib.load(lock_file).get("package", [])
+          pins = {}
+          failed = False
+          for name, output in (("omnibase-infra", "infra_version"), ("omnibase-core", "core_version")):
+              entries = [package for package in packages if package.get("name") == name]
+              sources = [package.get("source") for package in entries]
+              source = sources[0] if len(entries) == 1 else None
+              ref = None
+              if source == {"registry": "https://pypi.org/simple"}:
+                  ref = f"v{entries[0]['version']}"
+              # OMN-19998: a git source locked to one commit is a pin, checked out at that commit.
+              elif isinstance(source, dict) and set(source) == {"git"} and isinstance(source["git"], str):
+                  repository, _, commit = source["git"].partition("#")
+                  expected = f"https://github.com/OmniNode-ai/{name.replace('-', '_')}.git"
+                  if repository.split("?", 1)[0] == expected and re.fullmatch(r"[0-9a-f]{40}", commit):
+                      ref = commit
+              if ref is None:
+                  print(f"::error::{name}: source={sources!r}, entries={len(entries)}; a released or commit-pinned source is required (a sibling's moving dev branch is never an integration target).")
+                  failed = True
+                  continue
+              pins[output] = entries[0]["version"]
+              pins[output.replace("_version", "_ref")] = ref
+          if failed:
+              raise SystemExit(1)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output_file:
+              for key, version in pins.items():
+                  line = f"{key}={version}"
+                  print(line)
+                  print(line, file=output_file)
+          PY
+      - name: Checkout omnibase_infra at the locked release
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: OmniNode-ai/omnibase_infra
+          ref: ${{ steps.pins.outputs.infra_ref }}
+          path: infra
+
+      - name: Require Docker Compose (fail, never skip)
+        run: |
+          set -euo pipefail
+          docker info --format 'docker server {{.ServerVersion}}, {{.NCPU}} cpus, {{.MemTotal}} bytes'
+          docker compose version
+          command -v jq
+          command -v openssl
+
+      - name: Write the laptop env file and model overlay (make local-env)
+        run: |
+          set -euo pipefail
+          echo "LOCAL_ENV_FILE=${RUNNER_TEMP}/omnibase/local.env" >> "$GITHUB_ENV"
+          echo "LOCAL_OVERLAY_FILE=${RUNNER_TEMP}/omnibase/local.bifrost.yaml" >> "$GITHUB_ENV"
+          make -C infra local-env \
+            LOCAL_ENV_FILE="${RUNNER_TEMP}/omnibase/local.env" \
+            LOCAL_OVERLAY_FILE="${RUNNER_TEMP}/omnibase/local.bifrost.yaml"
+          # Names only: the file carries five generated passwords.
+          sed -e 's/=.*$/=<set>/' "${RUNNER_TEMP}/omnibase/local.env" | grep -v '^#' | grep .
+
+      - name: Build the infra runtime image at the pinned ref
+        run: |
+          set -euo pipefail
+          make -C infra up-local LOCAL_ENV_FILE="$LOCAL_ENV_FILE" LOCAL_OVERLAY_FILE="$LOCAL_OVERLAY_FILE"
+
+      - name: Build the composed omnimarket runtime image
+        run: |
+          set -euo pipefail
+          docker build -f market/Dockerfile.runtime \
+            --build-arg INFRA_RUNTIME_IMAGE=omnibase-infra-local-runtime:latest \
+            --build-arg OMNIMARKET_VCS_REF=${{ github.sha }} \
+            -t omnibase-infra-local-omnimarket-runtime:latest market
+
+      - name: Render the composed laptop bundle
+        working-directory: infra
+        run: |
+          set -euo pipefail
+          uv run python - <<'PYTHON'
+          import os
+          from pathlib import Path
+
+          import yaml
+
+          from omnibase_infra.docker.catalog.generator import generate_compose
+          from omnibase_infra.docker.catalog.resolver import CatalogResolver
+
+          bundles = yaml.safe_load(Path("docker/catalog/bundles.yaml").read_text(encoding="utf-8"))
+          bundle = "local-market" if "local-market" in bundles else "local"
+          compose = generate_compose(CatalogResolver(catalog_dir="docker/catalog").resolve([bundle]))
+          services = compose["services"]
+          required = {
+              "omnimarket-projection-delegation",
+              "omnimarket-projection-tenant-credentials",
+              "omnimarket-projection-llm-cost",
+          }
+          missing = required - services.keys()
+          if missing:
+              raise SystemExit(f"::error::composed bundle is missing market projections: {sorted(missing)}")
+          for name in required:
+              svc = services[name]
+              if "healthcheck" not in svc or svc.get("restart") == "no":
+                  raise SystemExit(f"::error::{name} must be a health-checked long-running service")
+          images = {"omnibase-infra-local-runtime:latest", "omnibase-infra-local-omnimarket-runtime:latest"}
+          replaced = set()
+          for name, svc in services.items():
+              if svc.get("image") in images:
+                  svc["image"] = "omnibase-infra-local-omnimarket-runtime:latest"
+                  svc.pop("build", None)
+                  replaced.add(name)
+          if not (required | {"omninode-runtime", "runtime-effects"}) <= replaced:
+              raise SystemExit("::error::both kernels and all market projections must use the composed image")
+          # Write the entire render so no Compose merge can retain the base build key.
+          output = Path(os.environ["RUNNER_TEMP"]) / "composed.yml"
+          output.write_text(yaml.safe_dump(compose, sort_keys=False), encoding="utf-8")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write(f"COMPOSED_FILES={output}\nCOMPOSED_BUNDLE={bundle}\n")
+          print(f"composed bundle: {bundle}; services on the composed image: {sorted(replaced)}")
+          PYTHON
+
+      - name: Boot the composed laptop profile
+        run: |
+          set -euo pipefail
+          # Catalog mounts are relative to infra/docker, even though the render is in RUNNER_TEMP.
+          docker compose -p omnibase-infra-local --project-directory "$GITHUB_WORKSPACE/infra/docker" \
+            --env-file "$LOCAL_ENV_FILE" --env-file infra/docker/runtime-policy.env \
+            -f "$COMPOSED_FILES" up -d --force-recreate --no-build
+
+      - name: Both runtime kernels report healthy and running (/health body)
+        run: |
+          set -euo pipefail
+          deadline=$(( $(date +%s) + 1800 ))
+          for svc in omninode-runtime runtime-effects; do
+            container="${LOCAL_PROJECT}-${svc}"
+            while :; do
+              body="$(docker exec "$container" curl -sS --max-time 10 http://localhost:8085/health 2>&1 || true)"
+              status="$(printf '%s' "$body" | jq -r '.status // empty' 2>/dev/null || true)"
+              running="$(printf '%s' "$body" | jq -r '.details.is_running // empty' 2>/dev/null || true)"
+              restarts="$(docker inspect --format '{{.RestartCount}}' "$container")"
+              echo "${svc}: status=${status:-none} is_running=${running:-none} restarts=${restarts}"
+              if [ "$status" = "healthy" ] && [ "$running" = "true" ]; then
+                break
+              fi
+              if [ "$(date +%s)" -ge "$deadline" ]; then
+                echo "last /health body: ${body}"
+                echo "::error::${svc} did not report healthy and running within 1800s"
+                exit 1
+              fi
+              sleep 20
+            done
+          done
+
+      - name: Every health-checked laptop service reports healthy
+        run: |
+          set -euo pipefail
+          services="$(uv run --project infra python - <<'PY'
+          import os
+
+          from omnibase_infra.docker.catalog.generator import generate_compose
+          from omnibase_infra.docker.catalog.resolver import CatalogResolver
+
+          compose = generate_compose(CatalogResolver(catalog_dir="infra/docker/catalog").resolve([os.environ["COMPOSED_BUNDLE"]]))
+          for name, svc in compose["services"].items():
+              if "healthcheck" in svc and svc.get("restart") != "no":
+                  print(name)
+          PY
+          )"
+          if [ -z "$services" ]; then
+            echo "::error::the local render lists no health-checked service"
+            exit 1
+          fi
+          failed=()
+          # One budget of 90 polls x 10 s for the whole step, not per service: the
+          # services boot in parallel, so a service still starting when the budget
+          # is spent gets one last look and fails, instead of N stuck services
+          # costing N x 15 minutes of CI.
+          polls_left=90
+          for svc in $services; do
+            container="${LOCAL_PROJECT}-${svc}"
+            status=""
+            while :; do
+              if ! status="$(docker inspect --format '{{.State.Health.Status}}' "$container" 2>/dev/null)"; then
+                status="missing"
+                break
+              fi
+              if [ "$status" = "healthy" ] || [ "$status" = "unhealthy" ]; then
+                break
+              fi
+              if [ "$polls_left" -le 0 ]; then
+                break
+              fi
+              polls_left=$((polls_left - 1))
+              sleep 10
+            done
+            restarts="$(docker inspect --format '{{.RestartCount}}' "$container" 2>/dev/null || echo "?")"
+            echo "${svc}: ${status:-none} restarts=${restarts}"
+            if [ "$status" != "healthy" ]; then
+              failed+=("${svc}=${status:-none}")
+            fi
+          done
+          if [ "${#failed[@]}" -gt 0 ]; then
+            echo "::error::laptop services not healthy: ${failed[*]}"
+            exit 1
+          fi
+
+      - name: Stopped laptop service fails the health step and restoring it passes (negative control)
+        run: |
+          set -euo pipefail
+          step_file="$(mktemp)"
+          STEP_NAME='Every health-checked laptop service reports healthy' \
+          JOB_NAME='composed-runtime-boot' uv run --project infra python - >"$step_file" <<'PY'
+          import os
+          import sys
+
+          import yaml
+
+          with open("market/.github/workflows/runtime-boot-composed.yml", encoding="utf-8") as fh:
+              steps = yaml.safe_load(fh)["jobs"][os.environ["JOB_NAME"]]["steps"]
+          hits = [s for s in steps if s.get("name") == os.environ["STEP_NAME"]]
+          if len(hits) != 1:
+              sys.exit(f"expected exactly one step named {os.environ['STEP_NAME']!r}, found {len(hits)}")
+          sys.stdout.write(hits[0]["run"])
+          PY
+          [ -s "$step_file" ] || { echo "::error::could not read the health step text"; exit 1; }
+          for svc in projection-api omnimarket-projection-delegation omnimarket-projection-tenant-credentials omnimarket-projection-llm-cost consumer-health-projection tenant-projection-writer; do
+            container="${LOCAL_PROJECT}-${svc}"
+            before="$(docker inspect --format '{{.State.Health.Status}}' "$container")"
+            if [ "$before" != "healthy" ]; then
+              echo "::error::${svc} reads ${before} before the negative control; the control needs a healthy start"
+              exit 1
+            fi
+            docker stop "$container" >/dev/null
+            echo "${svc} after stop: $(docker inspect --format '{{.State.Status}} health={{.State.Health.Status}}' "$container")"
+            if out="$(bash -e "$step_file" 2>&1)"; then
+              echo "$out"
+              docker start "$container" >/dev/null || true
+              echo "::error::the health step passed with ${svc} stopped (AC2 falsifier)"
+              exit 1
+            fi
+            echo "$out" | tail -n 3
+            if ! grep -F "laptop services not healthy:" <<<"$out" | grep -Fq "${svc}="; then
+              docker start "$container" >/dev/null || true
+              echo "::error::the health step failed with ${svc} stopped, but not because of ${svc}"
+              exit 1
+            fi
+            docker start "$container" >/dev/null
+            bash -e "$step_file"
+            echo "${svc}: stopped -> step failed naming it; started -> step passed"
+          done
+
+      - name: Read delegate-skill command topic from its contract
+        run: |
+          set -euo pipefail
+          uv run --project infra python - <<'PYTHON'
+          import os
+          from pathlib import Path
+
+          import yaml
+
+          path = Path("market/src/omnimarket/nodes/node_delegate_skill_orchestrator/contract.yaml")
+          contract = yaml.safe_load(path.read_text(encoding="utf-8"))
+          topic = (contract.get("runtime_dispatch") or {}).get("command_topic")
+          if not isinstance(topic, str) or not topic.strip() or any(c.isspace() for c in topic):
+              raise SystemExit(f"::error::{path} must declare runtime_dispatch.command_topic")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write(f"DELEGATE_COMMAND_TOPIC={topic}\n")
+          print(f"delegate-skill command topic from contract: {topic}")
+          PYTHON
+
+      - name: Delegate-skill command topic has a live consumer group
+        run: |
+          set -euo pipefail
+          broker="${LOCAL_PROJECT}-redpanda"
+          # The runtime names each consumer group after the node that owns it
+          # and the topic it consumes (...node_delegate_skill_orchestrator.
+          # consume.<version>.__t.<topic>), so the owner is read from the name
+          # and its liveness from describe: a group with no member is not live.
+          #
+          # Each listing is captured whole before anything reads it, and every
+          # read is a here-string: under pipefail a reader that stops early
+          # (awk's `exit`, `head`) sends SIGPIPE to a writer still producing
+          # rows, and the step then dies with exit 141 and no output, even
+          # with the group live (job 107881660050). The regression test
+          # tests/ci/test_runtime_boot_catalog_local_probe_omn19496.py runs
+          # this step's own text against a stub broker.
+          #
+          # OMN-20820: the broker requires SASL, so every rpk call here
+          # authenticates as the local superuser. The password is read from the
+          # env file and handed to docker by name, never on a command line.
+          pass="$(sed -n 's/^REDPANDA_SUPERUSER_PASSWORD=//p' "$LOCAL_ENV_FILE")"
+          if [ -z "$pass" ]; then
+            echo "::error::REDPANDA_SUPERUSER_PASSWORD is absent from the laptop env file"
+            exit 1
+          fi
+          broker_rpk() {
+            RPK_PASS="$pass" docker exec -e RPK_USER=onex-local -e RPK_PASS -e RPK_SASL_MECHANISM=SCRAM-SHA-256 "$broker" rpk "$@"
+          }
+          for _ in $(seq 1 30); do
+            if ! groups="$(broker_rpk group list)"; then
+              echo "rpk group list failed; retrying"
+              groups=""
+            fi
+            group="$(awk -v topic="__t.${DELEGATE_COMMAND_TOPIC}" \
+                '$2 ~ /node_delegate_skill_orchestrator/ && index($2, topic) && $3 == "Stable" {print $2; exit}' \
+                <<< "$groups")"
+            if [ -n "$group" ]; then
+              describe="$(broker_rpk group describe "$group")"
+              head -12 <<< "$describe"
+              members="$(awk '$1 == "MEMBERS" {print $2}' <<< "$describe")"
+              if [ "${members:-0}" -ge 1 ]; then
+                echo "live consumer group ${group} (${members} member) on ${DELEGATE_COMMAND_TOPIC}"
+                exit 0
+              fi
+            fi
+            sleep 10
+          done
+          broker_rpk group list | grep -i delegate || true
+          echo "::error::no live node_delegate_skill_orchestrator consumer group on ${DELEGATE_COMMAND_TOPIC}"
+          exit 1
+
+      - name: Dev-lane class -- derive the kernel environment from the dev lane's compose files
+        env:
+          DEV_LANE_COMPOSE_FILE: infra/docker/docker-compose.dev-lane.yml
+          INFRA_COMPOSE_FILE: infra/docker/docker-compose.infra.yml
+          # Any non-empty address selects the store, which is the class; the
+          # runner has no secrets store, so the address resolves nowhere. Every
+          # runtime profile declares prefetch_policy=disabled, so no boot path
+          # dials it unless a contract binds a store-carried secret.
+          DEV_LANE_CLASS_STORE_ADDR: http://secrets-store.dev-lane-class.invalid:8080
+        run: |
+          set -euo pipefail
+          : "${DEV_LANE_CLASS_OVERRIDE:=${RUNNER_TEMP}/dev-lane-class.override.yml}"
+          export DEV_LANE_CLASS_OVERRIDE
+          rm -f "$DEV_LANE_CLASS_OVERRIDE"
+          uv run --project infra python - <<'PY'
+          import os
+          import re
+          import sys
+          from pathlib import Path
+
+          import yaml
+
+          # Compose's merge tags (!override, !reset) are not YAML SafeLoader
+          # accepts; they only steer how compose merges files, so drop them.
+          COMPOSE_TAG = re.compile(r"(?<=\s)!(override|reset)(?=\s)")
+
+
+          def load(name):
+              text = Path(os.environ[name]).read_text(encoding="utf-8")
+              return yaml.safe_load(COMPOSE_TAG.sub("", text)) or {}
+
+
+          dev_lane = load("DEV_LANE_COMPOSE_FILE")
+          infra = load("INFRA_COMPOSE_FILE")
+          strict = dev_lane.get("x-dev-lane-strict-wiring-env")
+          if not isinstance(strict, dict) or not strict:
+              sys.exit(
+                  "::error::the dev lane overlay declares no x-dev-lane-strict-wiring-env "
+                  "mapping; the dev-lane class cannot be derived (refusing to default)"
+              )
+          runtime_env = infra.get("x-runtime-env")
+          if not isinstance(runtime_env, dict) or "INFISICAL_ADDR" not in runtime_env:
+              sys.exit(
+                  "::error::docker-compose.infra.yml x-runtime-env no longer binds "
+                  "INFISICAL_ADDR; re-derive the dev-lane class before changing this gate"
+              )
+          env = {str(key): str(value) for key, value in strict.items()}
+          env["INFISICAL_ADDR"] = os.environ["DEV_LANE_CLASS_STORE_ADDR"]
+          # The laptop render blanks GitHub credentials. Strict dev-lane
+          # wiring constructs handlers that require them (including the
+          # handshake policy gate), so preserve the infra base's bindings.
+          # Keep interpolation references here, never credential values: the
+          # compose steps supply the workflow identity when resolving them.
+          for key in ("GITHUB_TOKEN", "GH_TOKEN"):
+              if key not in runtime_env or not str(runtime_env[key]).strip():
+                  sys.exit(
+                      f"::error::docker-compose.infra.yml x-runtime-env no longer binds "
+                      f"{key}; re-derive the dev-lane class before changing this gate"
+                  )
+              env[key] = str(runtime_env[key])
+          # runtime-effects wires the gateway handlers only when it is given a
+          # secret-resolver config (service_kernel); under strict wiring the
+          # laptop render, which binds none, fails that wiring fatally. The dev
+          # lane's effects kernel binds the infra base's, so read it from there.
+          effects_env = (
+              (infra.get("services") or {}).get("runtime-effects", {}).get("environment")
+          )
+          resolver_keys = (
+              "ONEX_SECRET_RESOLVER_CONFIG_PATH",
+              "ONEX_SECRET_RESOLVER_CONFIG_JSON",
+          )
+          if not isinstance(effects_env, dict) or any(
+              key not in effects_env for key in resolver_keys
+          ):
+              sys.exit(
+                  "::error::docker-compose.infra.yml runtime-effects no longer binds "
+                  "the secret-resolver config; re-derive the dev-lane class before "
+                  "changing this gate"
+              )
+          effects_only = {key: str(effects_env[key]) for key in resolver_keys}
+          override = {
+              "services": {
+                  "omninode-runtime": {"environment": dict(env)},
+                  "runtime-effects": {"environment": {**env, **effects_only}},
+              }
+          }
+          Path(os.environ["DEV_LANE_CLASS_OVERRIDE"]).write_text(
+              yaml.safe_dump(override, sort_keys=True), encoding="utf-8"
+          )
+          print("dev-lane class kernel environment:", sorted(env))
+          PY
+          echo "DEV_LANE_CLASS_OVERRIDE=${DEV_LANE_CLASS_OVERRIDE}" >> "${GITHUB_ENV:-/dev/null}"
+          cat "$DEV_LANE_CLASS_OVERRIDE"
+
+      - name: Dev-lane class -- recreate both kernels with that environment
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          docker compose -p omnibase-infra-local --project-directory "$GITHUB_WORKSPACE/infra/docker" \
+            --env-file "$LOCAL_ENV_FILE" --env-file infra/docker/runtime-policy.env \
+            -f "$COMPOSED_FILES" -f "$DEV_LANE_CLASS_OVERRIDE" \
+            up -d --no-deps --force-recreate --no-build omninode-runtime runtime-effects
+          expected="$(python3 -c 'import pathlib, tomllib; print(tomllib.loads(pathlib.Path("market/pyproject.toml").read_text())["project"]["version"])')"
+          for kernel in omninode-runtime runtime-effects; do
+            container="${LOCAL_PROJECT}-${kernel}"
+            docker exec "$container" sh -c 'echo "INFISICAL_ADDR set: ${INFISICAL_ADDR:+yes} strict=${ONEX_WIRING_STRICT_MODE:-unset}"'
+            docker exec -e EXPECTED_OMNIMARKET_VERSION="$expected" "$container" /app/.venv/bin/python -c \
+              'import importlib.metadata as m; import os; actual = m.version("omnimarket"); print("omnimarket", actual, flush=True); assert actual == os.environ["EXPECTED_OMNIMARKET_VERSION"], "installed omnimarket version differs from checkout pyproject.toml"'
+          done
+
+      - name: Dev-lane class -- both kernels stay healthy and running with no restart (crash-loop gate)
+        run: |
+          set -euo pipefail
+          # A kernel that fails strict wiring or refuses its configuration
+          # exits, and `restart: unless-stopped` brings it back: a crash loop
+          # reads as a rising RestartCount long before /health could. Budget
+          # 900 s to healthy, then a 120 s hold in which neither kernel may
+          # restart or stop.
+          fail() {
+            echo "::error::$1"
+            for k in omninode-runtime runtime-effects; do
+              echo "::group::${k} logs (tail)"
+              docker logs --tail 80 "${LOCAL_PROJECT}-${k}" 2>&1 || true
+              echo "::endgroup::"
+            done
+            exit 1
+          }
+          check() {
+            local kernel="$1" container="${LOCAL_PROJECT}-$1" restarts state
+            restarts="$(docker inspect --format '{{.RestartCount}}' "$container")"
+            state="$(docker inspect --format '{{.State.Status}}' "$container")"
+            if [ "$restarts" != "0" ]; then
+              fail "dev-lane class: ${kernel} restarted ${restarts} time(s) (crash loop)"
+            fi
+            if [ "$state" != "running" ]; then
+              fail "dev-lane class: ${kernel} is ${state}, not running"
+            fi
+          }
+          deadline=$(( $(date +%s) + 900 ))
+          for kernel in omninode-runtime runtime-effects; do
+            while :; do
+              check "$kernel"
+              body="$(docker exec "${LOCAL_PROJECT}-${kernel}" curl -sS --max-time 10 http://localhost:8085/health 2>&1 || true)"
+              status="$(printf '%s' "$body" | jq -r '.status // empty' 2>/dev/null || true)"
+              running="$(printf '%s' "$body" | jq -r '.details.is_running // empty' 2>/dev/null || true)"
+              echo "${kernel}: status=${status:-none} is_running=${running:-none}"
+              if [ "$status" = "healthy" ] && [ "$running" = "true" ]; then
+                break
+              fi
+              if [ "$(date +%s)" -ge "$deadline" ]; then
+                fail "dev-lane class: ${kernel} did not report healthy and running within 900s (last body: ${body})"
+              fi
+              sleep 15
+            done
+          done
+          for _ in $(seq 1 8); do
+            sleep 15
+            for kernel in omninode-runtime runtime-effects; do
+              check "$kernel"
+            done
+          done
+          echo "dev-lane class: both kernels healthy, running, zero restarts"
+
+      - name: Container state and log tail (always)
+        if: always()
+        run: |
+          docker ps -a --filter "name=${LOCAL_PROJECT}" --format 'table {{.Names}}\t{{.Status}}' || true
+          for svc in omninode-runtime runtime-effects migration-gate forward-migration redpanda-partition-cap redpanda-local-sasl projection-api omnimarket-projection-delegation omnimarket-projection-tenant-credentials omnimarket-projection-llm-cost consumer-health-projection; do
+            echo "::group::${svc} logs (tail)"
+            docker logs --tail 120 "${LOCAL_PROJECT}-${svc}" 2>&1 || true
+            echo "::endgroup::"
+          done
+
+      - name: Kernel health verdicts (always, last before teardown)
+        if: always()
+        run: |
+          set +e
+          echo "runner: ${RUNNER_NAME:-unknown}"
+          docker info --format 'docker host {{.Name}}, server {{.ServerVersion}}, {{.NCPU}} cpus' | head -c 400
+          echo
+          docker ps -a --filter "name=${LOCAL_PROJECT}" --format 'table {{.Names}}\t{{.Status}}' | head -c 4000
+          echo
+          for svc in omninode-runtime runtime-effects; do
+            container="${LOCAL_PROJECT}-${svc}"
+            echo "--- ${svc}: state"
+            docker inspect --format 'status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} restarts={{.RestartCount}} started={{.State.StartedAt}}' "$container" | head -c 400
+            echo
+            echo "--- ${svc}: last healthcheck outputs"
+            docker inspect --format '{{if .State.Health}}{{range .State.Health.Log}}{{.End}} exit={{.ExitCode}} {{.Output}}{{end}}{{end}}' "$container" | tail -c 4000
+            echo
+            echo "--- ${svc}: /health body"
+            docker exec "$container" curl -sS --max-time 10 http://localhost:8085/health | head -c 4000
+            echo
+          done
+          exit 0
+
+      - name: Tear down the laptop profile and its volumes (always)
+        if: always()
+        run: |
+          make -C infra down-local-volumes || true
+          docker ps -a --filter "name=${LOCAL_PROJECT}" --format '{{.Names}}'

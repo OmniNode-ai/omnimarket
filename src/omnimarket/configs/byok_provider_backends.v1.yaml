@@ -235,9 +235,11 @@ providers:
         tags: [free, coder]
     # OMN-21215: what onboarding offers as this key's "Default", cheapest
     # first. Each id matches an entry above; the developer accepts or changes it.
+    # Super is no longer offered as a default: authenticated chat returns 404
+    # despite catalogue presence (2026-10-25). Explicit customer choices remain
+    # customer-owned; family discovery is not a promise of serving availability.
     default_models:
       - "google/gemma-4-31b-it:free"
-      - "nvidia/nemotron-3-super-120b-a12b:free"
       - "nvidia/nemotron-3-ultra-550b-a55b:free"
     # OMN-21215: the key a new developer adds first. Free models at $0 on
     # their own account, and one key reaches several model families.

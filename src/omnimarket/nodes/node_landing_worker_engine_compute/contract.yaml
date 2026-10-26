@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Landing Worker Engine Compute
+# Direct invocation only: no event bus or terminal event.
+name: "node_landing_worker_engine_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: >-
+  The landing worker's engine choice at placement, from the pool readings recounted under the placement lock. A code or
+  mechanical class on the first rung tries the Codex engine first; every worker then tries the node's Claude engine; and a
+  worker no Claude host can take (every Claude host usage-limited or full) runs on the Codex engine where a codex host has
+  room instead of waiting out its lease. A cause brief keeps waiting for Claude. LANDING_CODEX_MECHANICAL=0 turns off
+  every Codex route and LANDING_CODEX_FALLBACK=0 only the fallback. Pure: it reads and writes nothing itself.
+input_model:
+  name: "ModelLandingWorkerEngineRequest"
+  module: "omnimarket.nodes.node_landing_worker_engine_compute.models.model_landing_worker_engine"
+  description: "Typed inputs for landing worker engine."
+output_model:
+  name: "ModelLandingWorkerEngineResult"
+  module: "omnimarket.nodes.node_landing_worker_engine_compute.models.model_landing_worker_engine"
+  description: "Typed result of landing worker engine."
+handler:
+  module: "omnimarket.nodes.node_landing_worker_engine_compute.handlers.handler_landing_worker_engine"
+  class: "HandlerLandingWorkerEngine"
+  input_model: "omnimarket.nodes.node_landing_worker_engine_compute.models.model_landing_worker_engine.ModelLandingWorkerEngineRequest"
+  output_model: "omnimarket.nodes.node_landing_worker_engine_compute.models.model_landing_worker_engine.ModelLandingWorkerEngineResult"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_landing_worker_engine_compute.handlers.handler_landing_worker_engine:HandlerLandingWorkerEngine"
+  handlers:
+    - operation: "choose_engine"
+      handler:
+        name: "HandlerLandingWorkerEngine"
+        module: "omnimarket.nodes.node_landing_worker_engine_compute.handlers.handler_landing_worker_engine"
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: "Direct Python invocation of the handler with pool readings and its placement API."
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local
+  description: "Landing Worker Engine Compute — pure policy with no external transport."
+  author: "OmniNode Team"
+  created: "2026-10-24"
+  tags: ['compute', 'landing-worker-engine', 'OMN-17427', 'OMN-20531', 'OMN-20106']
+  related_tickets: ['OMN-17427', 'OMN-20531', 'OMN-20106']

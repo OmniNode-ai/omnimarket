@@ -1,6 +1,6 @@
 name: node_llm_delegation_call_effect
 version: "0.1.0"
-description: "Delegation call effect — model routing, generic inference and local coding-session adapters with lab job receipts"
+description: "Delegation call effect — model routing, generic inference and local and cloud coding-session adapters with lab job receipts"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:

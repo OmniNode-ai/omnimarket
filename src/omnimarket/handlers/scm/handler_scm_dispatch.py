@@ -301,7 +301,22 @@ class ScmBusCaller:
         timeout_s: float,
     ) -> ModelScmTerminal:
         """Raises ``TimeoutError`` when no terminal names the command in time."""
-        topics = load_topics(node)
+        return await self.call_topics(
+            topics=load_topics(node),
+            request=request,
+            correlation_id=correlation_id,
+            timeout_s=timeout_s,
+        )
+
+    async def call_topics(
+        self,
+        *,
+        topics: ModelScmTopics,
+        request: BaseModel,
+        correlation_id: uuid.UUID,
+        timeout_s: float,
+    ) -> ModelScmTerminal:
+        """Shared contract-topic transport for SCM and ticket commands."""
         envelope = ModelEventEnvelope[dict[str, object]](
             payload=request.model_dump(mode="json"),
             correlation_id=correlation_id,

@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_landing_upstream_gate_compute
+version: "1.0.0"
+description: "Landing Upstream Gate Compute — pure policy (OMN-19998)."
+pack: pr_lifecycle
+node_role: compute
+display_name: "Landing Upstream Gate Compute"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_landing_upstream_gate_compute: "omnimarket.nodes.node_landing_upstream_gate_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ['compute', 'landing-upstream-gate', 'OMN-19998']

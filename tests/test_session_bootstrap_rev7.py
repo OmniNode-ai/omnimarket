@@ -6,30 +6,16 @@
 
 Covers:
 - EnumDodCheckType registry (C6 fix: no arbitrary commands)
-- dispatch_lease.py (C4 fix: file-based mutex)
 - Cross-tick ID verification data structures
 - build_pulse_prompt output content
 """
 
 from __future__ import annotations
 
-import json
-import os
-import tempfile
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 import pytest
 
-from omnimarket.nodes.node_session_bootstrap.dispatch_lease import (
-    LEASE_EXPIRY_SECONDS,
-    DispatchLeaseHeld,
-    acquire_dispatch_lease,
-    dispatch_lease,
-    lease_age,
-    make_tick_id,
-    read_dispatch_lease,
-    release_dispatch_lease,
-)
 from omnimarket.nodes.node_session_bootstrap.dod_verification_registry import (
     DOD_VERIFICATION_REGISTRY,
     classify_evidence_kind,
@@ -48,16 +34,6 @@ from omnimarket.nodes.node_session_bootstrap.models.model_task_contract import (
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-def tmp_state(tmp_path: object) -> str:
-    """Temporary .onex_state directory."""
-    assert isinstance(tmp_path, type(tmp_path))  # just use tmp_path type
-    import tempfile
-
-    with tempfile.TemporaryDirectory() as d:
-        yield d  # type: ignore[misc]
 
 
 @pytest.fixture
@@ -260,129 +236,6 @@ class TestCheckRenderedOutputHttpProbeClassification:
 
 
 # ---------------------------------------------------------------------------
-# dispatch_lease.py — C4 fix
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestDispatchLease:
-    """File-based dispatch lease prevents concurrent dispatch."""
-
-    def test_acquire_creates_lock_file(self) -> None:
-        with tempfile.TemporaryDirectory() as state_dir:
-            acquire_dispatch_lease(state_dir, "tick-001", "test-holder")
-            lock_path = os.path.join(state_dir, "dispatch-lock.json")
-            assert os.path.isfile(lock_path)
-            with open(lock_path) as f:
-                data = json.load(f)
-            assert data["tick_id"] == "tick-001"
-            assert data["holder"] == "test-holder"
-            release_dispatch_lease(state_dir)
-
-    def test_release_removes_lock_file(self) -> None:
-        with tempfile.TemporaryDirectory() as state_dir:
-            acquire_dispatch_lease(state_dir, "tick-002", "test-holder")
-            release_dispatch_lease(state_dir)
-            lock_path = os.path.join(state_dir, "dispatch-lock.json")
-            assert not os.path.isfile(lock_path)
-
-    def test_second_acquire_raises_when_lease_held(self) -> None:
-        with tempfile.TemporaryDirectory() as state_dir:
-            acquire_dispatch_lease(state_dir, "tick-003", "first-holder")
-            with pytest.raises(DispatchLeaseHeld) as exc_info:
-                acquire_dispatch_lease(state_dir, "tick-004", "second-holder")
-            assert "first-holder" in str(exc_info.value)
-            release_dispatch_lease(state_dir)
-
-    def test_stale_lease_overwritten(self) -> None:
-        """A lease older than LEASE_EXPIRY_SECONDS can be overwritten."""
-        with tempfile.TemporaryDirectory() as state_dir:
-            # Write a stale lease manually
-            lock_path = os.path.join(state_dir, "dispatch-lock.json")
-            old_ts = (
-                datetime.now(tz=UTC) - timedelta(seconds=LEASE_EXPIRY_SECONDS + 60)
-            ).isoformat()
-            with open(lock_path, "w") as f:
-                json.dump(
-                    {
-                        "tick_id": "old-tick",
-                        "acquired_at": old_ts,
-                        "holder": "old-holder",
-                    },
-                    f,
-                )
-
-            # Should NOT raise — stale lease is overwritten
-            acquire_dispatch_lease(state_dir, "tick-new", "new-holder")
-            data = read_dispatch_lease(state_dir)
-            assert data is not None
-            assert data["holder"] == "new-holder"
-            release_dispatch_lease(state_dir)
-
-    def test_context_manager_releases_on_success(self) -> None:
-        with tempfile.TemporaryDirectory() as state_dir:
-            with dispatch_lease(state_dir, "tick-ctx", "ctx-holder"):
-                assert read_dispatch_lease(state_dir) is not None
-            assert read_dispatch_lease(state_dir) is None
-
-    def test_context_manager_releases_on_exception(self) -> None:
-        """dispatch_lease context manager releases even when body raises."""
-        with (
-            tempfile.TemporaryDirectory() as state_dir,
-            pytest.raises(RuntimeError),
-            dispatch_lease(state_dir, "tick-err", "err-holder"),
-        ):
-            raise RuntimeError("simulated dispatch error")
-
-    def test_context_manager_releases_on_exception_no_lock_after(self) -> None:
-        """After dispatch_lease body raises, lock file is absent."""
-        tmp = tempfile.mkdtemp()
-        try:
-            try:
-                with dispatch_lease(tmp, "tick-err2", "err-holder2"):
-                    raise RuntimeError("boom")
-            except RuntimeError:
-                pass
-            assert read_dispatch_lease(tmp) is None
-        finally:
-            import shutil
-
-            shutil.rmtree(tmp, ignore_errors=True)
-
-    def test_read_returns_none_when_no_lock(self) -> None:
-        with tempfile.TemporaryDirectory() as state_dir:
-            assert read_dispatch_lease(state_dir) is None
-
-    def test_lease_age_returns_none_when_no_lock(self) -> None:
-        with tempfile.TemporaryDirectory() as state_dir:
-            assert lease_age(state_dir) is None
-
-    def test_lease_age_returns_timedelta_when_held(self) -> None:
-        with tempfile.TemporaryDirectory() as state_dir:
-            acquire_dispatch_lease(state_dir, "tick-age", "age-holder")
-            age = lease_age(state_dir)
-            assert age is not None
-            assert age.total_seconds() >= 0
-            assert age.total_seconds() < 5  # just acquired
-            release_dispatch_lease(state_dir)
-
-    def test_make_tick_id_format(self) -> None:
-        """make_tick_id produces tick-YYYYMMDD-HHMM format."""
-        import re
-
-        ts = datetime(2026, 4, 12, 3, 15, tzinfo=UTC)
-        tick_id = make_tick_id(ts)
-        assert tick_id == "tick-20260412-0315"
-        assert re.match(r"tick-\d{8}-\d{4}", tick_id)
-
-    def test_release_is_idempotent(self) -> None:
-        """release_dispatch_lease on missing file doesn't raise."""
-        with tempfile.TemporaryDirectory() as state_dir:
-            # Should not raise even without prior acquire
-            release_dispatch_lease(state_dir)
-
-
-# ---------------------------------------------------------------------------
 # build_pulse_prompt — CronOutputVerificationRoutine content
 # ---------------------------------------------------------------------------
 
@@ -412,14 +265,14 @@ class TestBuildPulsePrompt:
         assert "VACUOUS_PULSE" in prompt
         assert "backlog_unworked_count" in prompt
 
-    def test_prompt_contains_dispatch_lease_reference(self) -> None:
+    def test_prompt_has_no_dispatch_lease(self) -> None:
         prompt = build_pulse_prompt(
             cron_name="build-dispatch-pulse",
             timeout_budget_ms=300000,
             session_id="sess-001",
             state_dir=".onex_state",
         )
-        assert "dispatch-lock.json" in prompt
+        assert "dispatch-lock.json" not in prompt
 
     def test_prompt_uses_provided_state_dir(self) -> None:
         prompt = build_pulse_prompt(

@@ -1,6 +1,6 @@
 name: node_session_context_sources_effect
 version: "1.0.0"
-description: "Session tiers of a context pack: pinned replay-case and live transcript reads of operator words, and repo state"
+description: "Session tiers of a context pack: pinned replay-case reads and live session_content and work_ledger_rows projection reads of operator words, and repo state"
 omnibase_core_compat: ">=0.47.46,<0.48.0"
 entry_points:
   onex.nodes:
@@ -8,18 +8,20 @@ entry_points:
 capabilities:
   standalone: true
   full_runtime: false
-  requires_network: false
+  requires_network: true
   requires_repo: false
   requires_secrets: false
   requires_docker: false
   side_effect_class: filesystem_read
 dependencies:
+  - "omnibase-infra>=0.38.76,<0.39.0"
   - "omnibase_core>=0.47.46,<0.48.0"
   - "pyyaml>=6.0"
+  - "psycopg2-binary>=2.9"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["effect", "context-pack", "context-source", "compaction", "deterministic"]
 pack: "pipeline"
 display_name: "Session Context Sources Effect"
 node_role: "effect"
-tickets: ["OMN-21108", "OMN-21111"]
+tickets: ["OMN-21108", "OMN-21111", "OMN-21099"]

@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_host_discovery_compute
+version: 1.0.0
+description: Render the shell lines with which a remote lane finds host-local inputs on its lab host,
+  the knowledge-base clone and the runner-placement hook's dated snapshot, and exports each or reports
+  it absent.
+pack: pr_lifecycle
+node_role: compute
+display_name: Lane Host Discovery Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_lane_host_discovery_compute: omnimarket.nodes.node_lane_host_discovery_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- lane-host-discovery-compute

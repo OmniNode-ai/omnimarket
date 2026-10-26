@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_landing_worker_engine_compute
+version: "1.0.0"
+description: "Landing Worker Engine Compute — pure policy (OMN-17427, OMN-20531, OMN-20106)."
+pack: pr_lifecycle
+node_role: compute
+display_name: "Landing Worker Engine Compute"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_landing_worker_engine_compute: "omnimarket.nodes.node_landing_worker_engine_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ['compute', 'landing-worker-engine', 'OMN-17427', 'OMN-20531', 'OMN-20106']

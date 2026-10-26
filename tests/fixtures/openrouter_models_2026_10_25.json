@@ -1,0 +1,21 @@
+{
+  "captured_at": "2026-10-25T15:16:24.255361+00:00",
+  "http_status": 200,
+  "source": "https://openrouter.ai/api/v1/models",
+  "data": [
+    {
+      "id": "cohere/north-mini-code:free"
+    },
+    {
+      "id": "nvidia/nemotron-3-ultra-550b-a55b:free"
+    },
+    {
+      "id": "google/gemma-4-31b-it:free"
+    },
+    {
+      "id": "nvidia/nemotron-3-super-120b-a12b:free"
+    }
+  ],
+  "captured_total_models": 467,
+  "selection": "Declared OpenRouter models, onboarding defaults, and withdrawn Super control; other rows omitted."
+}

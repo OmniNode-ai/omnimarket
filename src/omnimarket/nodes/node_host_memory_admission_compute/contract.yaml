@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Host Memory Admission Compute
+# Direct invocation only: no event bus or terminal event.
+name: "node_host_memory_admission_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: >-
+  Judge whether one lab host's memory and paging readings admit a new lane or worker.
+  A host is refused for memory available under the floor, Linux memory PSI over its
+  bar, swap traffic (swap-in plus swap-out) over its bar, or swap-in alone over its
+  own, lower bar. Swap-in is the pages a task waits on coming back from swap, so the
+  swap-in bar is the throughput tick's host-swapping bound (20 MB/s), and a host the
+  tick names as swapping takes no new lane or worker on the same reading. The bars
+  arrive in the request as data, declared once by the caller (landing_placement.py). A
+  reading the probe did not return (no PSI, no swap counters) is never judged. Swap
+  occupancy is reported history and never refuses.
+input_model:
+  name: "ModelHostMemoryAdmissionRequest"
+  module: "omnimarket.nodes.node_host_memory_admission_compute.models.model_host_memory_admission"
+  description: "Typed inputs for host memory admission."
+output_model:
+  name: "ModelHostMemoryAdmissionVerdict"
+  module: "omnimarket.nodes.node_host_memory_admission_compute.models.model_host_memory_admission"
+  description: "Typed result of host memory admission."
+handler:
+  module: "omnimarket.nodes.node_host_memory_admission_compute.handlers.handler_host_memory_admission"
+  class: "HandlerHostMemoryAdmission"
+  input_model: "omnimarket.nodes.node_host_memory_admission_compute.models.model_host_memory_admission.ModelHostMemoryAdmissionRequest"
+  output_model: "omnimarket.nodes.node_host_memory_admission_compute.models.model_host_memory_admission.ModelHostMemoryAdmissionVerdict"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_host_memory_admission_compute.handlers.handler_host_memory_admission:HandlerHostMemoryAdmission"
+  handlers:
+    - operation: "handle"
+      handler:
+        name: "HandlerHostMemoryAdmission"
+        module: "omnimarket.nodes.node_host_memory_admission_compute.handlers.handler_host_memory_admission"
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: "Direct Python invocation of the handler with one host memory reading and admission thresholds."
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local
+  description: "Host Memory Admission Compute — pure policy with no external transport."
+  author: "OmniNode Team"
+  created: "2026-10-24"
+  tags: ['compute', 'host-memory-admission', 'OMN-17427']
+  related_tickets: ['OMN-17427']

@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_plugin_walk_evidence_effect
+version: 1.0.0
+description: Read-only plugin walk evidence check with typed input and result.
+pack: delegation
+node_role: effect
+display_name: PluginWalkEvidence Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_plugin_walk_evidence_effect: omnimarket.nodes.node_plugin_walk_evidence_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- validation

@@ -1,0 +1,97 @@
+{
+  "measured_on": "2026-10-25",
+  "bar_accepted_of_10": 7,
+  "path": "onex delegate in-process (--bus inmemory --locus in-process), customer OpenRouter key, per-candidate model stored with the credential in a scratch HOME; acceptance is the delegate contract's own quality gate (status completed and quality_gate_passed)",
+  "tasks": "10 prompts taken from local delegate receipts that escalated from the local tier to cheap_frontier: 7 summarization, 1 review, 1 code_generation, 1 test",
+  "smokes": [
+    {
+      "model": "qwen/qwen3.7-flash",
+      "accepted": 9,
+      "tasks": 10,
+      "p50_seconds": 16.9,
+      "cost_usd_total": 0.00714,
+      "cost_usd_per_task": 0.000714,
+      "price_in_usd_per_million": 0.03,
+      "price_out_usd_per_million": 0.13,
+      "qualifies": true
+    },
+    {
+      "model": "cohere/north-mini-code:free",
+      "accepted": 9,
+      "tasks": 10,
+      "p50_seconds": 15.7,
+      "cost_usd_total": 0.0,
+      "cost_usd_per_task": 0.0,
+      "price_in_usd_per_million": 0.0,
+      "price_out_usd_per_million": 0.0,
+      "qualifies": true
+    },
+    {
+      "model": "mistralai/mistral-nemo",
+      "accepted": 8,
+      "tasks": 10,
+      "p50_seconds": 9.1,
+      "cost_usd_total": 0.00022,
+      "cost_usd_per_task": 2.2e-05,
+      "price_in_usd_per_million": 0.029,
+      "price_out_usd_per_million": 0.03,
+      "qualifies": true
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "accepted": 8,
+      "tasks": 10,
+      "p50_seconds": 3.2,
+      "cost_usd_total": 0.00365,
+      "cost_usd_per_task": 0.000365,
+      "price_in_usd_per_million": 0.044,
+      "price_out_usd_per_million": 0.133,
+      "qualifies": true
+    },
+    {
+      "model": "qwen/qwen3-coder-30b-a3b-instruct",
+      "accepted": 7,
+      "tasks": 10,
+      "p50_seconds": 5.9,
+      "cost_usd_total": 0.00198,
+      "cost_usd_per_task": 0.000198,
+      "price_in_usd_per_million": 0.07,
+      "price_out_usd_per_million": 0.28,
+      "qualifies": true
+    },
+    {
+      "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "accepted": 6,
+      "tasks": 10,
+      "p50_seconds": 10.9,
+      "cost_usd_total": 0.0,
+      "cost_usd_per_task": 0.0,
+      "price_in_usd_per_million": 0.0,
+      "price_out_usd_per_million": 0.0,
+      "qualifies": false
+    },
+    {
+      "model": "openai/gpt-oss-20b",
+      "accepted": 5,
+      "tasks": 10,
+      "p50_seconds": 1.1,
+      "cost_usd_total": 0.00059,
+      "cost_usd_per_task": 5.9e-05,
+      "price_in_usd_per_million": 0.018,
+      "price_out_usd_per_million": 0.09,
+      "qualifies": false
+    },
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "accepted": 0,
+      "tasks": 10,
+      "p50_seconds": null,
+      "cost_usd_total": 0.0,
+      "cost_usd_per_task": 0.0,
+      "price_in_usd_per_million": 0.0,
+      "price_out_usd_per_million": 0.0,
+      "qualifies": false,
+      "note": "not rerun: the chat endpoint answered HTTP 404 earlier the same day and the rung is parked"
+    }
+  ]
+}

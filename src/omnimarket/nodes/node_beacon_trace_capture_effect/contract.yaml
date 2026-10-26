@@ -1,0 +1,87 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# Host-local ingress: invoked by python -m, without an onex.nodes entry point.
+name: beacon_trace_capture_effect
+lifecycle: experimental
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: effect
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Reads agent-beacon's local runtime JSONL for Codex sessions and republishes
+  each event as a metadata-only hook event with actor codex; content never
+  leaves the file.
+input_model: omnimarket.nodes.node_beacon_trace_capture_effect.models.model_beacon_trace_capture.ModelBeaconTraceCaptureCommand
+output_model: omnimarket.nodes.node_beacon_trace_capture_effect.models.model_beacon_trace_capture.ModelBeaconTraceCaptureResult
+handler:
+  module: omnimarket.nodes.node_beacon_trace_capture_effect.handlers.handler_beacon_trace_capture
+  class: HandlerBeaconTraceCapture
+  input_model: omnimarket.nodes.node_beacon_trace_capture_effect.models.model_beacon_trace_capture.ModelBeaconTraceCaptureCommand
+descriptor:
+  node_archetype: effect
+  purity: side_effect
+  idempotent: true
+  timeout_ms: 120000
+  runtime_profiles:
+  - effects
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+  - onex.evt.omniclaude.hook-event.v1
+runtime_dispatch:
+  external_trigger: true
+externally_consumed_topics:
+- onex.evt.omniclaude.hook-event.v1
+metadata:
+  transport_type: kafka
+  execution_locus: host-local
+  ticket: OMN-19513
+inputs:
+  log_path:
+    type: str
+    required: true
+    description: Host-local agent-beacon runtime JSONL path.
+  offset:
+    type: int
+    required: true
+    description: Non-negative byte offset from the last acknowledged batch.
+  lane:
+    type: str
+    required: false
+    description: Caller-supplied lane stamp.
+  host:
+    type: str
+    required: true
+    description: Lab host stamp, never the trace's endpoint hostname.
+  dry_run:
+    type: bool
+    required: false
+    description: Map and count events without publishing.
+outputs:
+  next_offset:
+    type: int
+    description: Byte offset after the last complete line.
+  event_ids:
+    type: list
+    description: Deterministic IDs of all mapped events, including dry runs.
+  hook_event_counts:
+    type: object
+    description: Number of mapped events per hook name.
+  lines_read:
+    type: int
+    description: Complete lines read in this batch.
+  events_published:
+    type: int
+    description: Events handed to the publisher, zero for dry runs.
+  skipped:
+    type: int
+    description: JSON objects without a supported Codex mapping.
+  malformed:
+    type: int
+    description: Lines that are not JSON objects.

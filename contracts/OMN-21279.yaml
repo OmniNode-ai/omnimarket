@@ -1,0 +1,287 @@
+schema_version: 1.0.0
+ticket_id: OMN-21279
+title: omnimarket owns the composed runtime image and market boot gate
+summary: >-
+  Option B preserves market -> infra layering: omnimarket builds its runtime
+  image FROM the infra runtime built at the release-train-moved tag in uv.lock,
+  replacing any legacy market install in the base. This PR owns the market half
+  of reusable-runtime-boot.yml's boot-catalog-local job: delegate-skill consumer
+  liveness, all laptop service health checks and stopped-service controls, both
+  kernels' /health bodies, and the strict dev-lane crash-loop phase. Each kernel
+  must report the market version in this checkout's pyproject.toml. Infra's own
+  removal and layering check remain infra-side obligations; this contract binds
+  the market-owned composition that lets infra stop installing market.
+  The SCM CLI additionally hosts its selected market contract through the
+  canonical dispatcher when explicitly using the in-memory bus. This path
+  needs neither an infra runtime image nor Bifrost bootstrap configuration.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-transcribed-acceptance-criteria
+    statement: >-
+      The ticket author's acceptance criteria, transcribed from the infra
+      contract; this PR supplies the omnimarket-owned composed image and boot
+      coverage supporting those infra-side criteria.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the layering check refuses omnimarket named in Dockerfile.runtime, any CI install step or any test fixture of omnibase_infra -- falsifier: pytest of the layering check over fixture Dockerfile and workflow lines'
+      - id: AC2
+        statement: 'AC2: Dockerfile.runtime installs no omnimarket and the runtime still boots -- falsifier: the runtime-boot-smoke job on the PR head, plus the layering pytest over the real file'
+  - id: req-inprocess-scm-terminal
+    statement: >-
+      The SCM CLI hosts its selected contract on the in-memory bus before
+      publishing a command, without external runtime bootstrap configuration.
+    acceptance:
+      - id: AC3
+        statement: >-
+          AC3: in-memory SCM commands return real terminal envelopes: PR-create
+          dry runs complete without Bifrost configuration, closing without a
+          claim fails, gateway reads return paginated threads, and gateway
+          boundary failures fail -- falsifier: uv run pytest
+          tests/unit/handlers/scm/test_onex_scm_command.py -k "real_terminal or without_a_claim or uses_the_gateway_handler or boundary_failure_is_reported" -q -n 0 --refuse-skips --maxfail=1
+  - id: req-probe-timeout-step
+    statement: Preserve the diagnostics of a pool probe that times out.
+    acceptance:
+      - id: AC3
+        statement: >-
+          A timed-out capture returns exit 255, preserves partial stdout, and
+          names the last complete PROBE-STEP marker or says before any step
+          marker. An incomplete final marker is ignored. Shared reads replay
+          the diagnostic and the host-unreadable alarm row includes it.
+  - id: req-codex-git-cache-roots
+    statement: >-
+      A Codex lane can run git fetch in its own clone: the sandbox's writable
+      roots name the lane's common git dir and the objects directories of its
+      alternates, and nothing wider.
+    acceptance:
+      - id: AC4
+        statement: >-
+          AC4: the roots program of node_codex_sandbox_probe_compute grants the
+          lane's own common git dir and the objects directory of each of its
+          alternates, never a registry peer's whole git dir, "/", $HOME or an
+          alternate that is not a repository's objects directory -- falsifier:
+          uv run pytest tests/nodes/node_codex_sandbox_probe_compute/test_codex_sandbox_probe.py tests/nodes/node_codex_sandbox_probe_compute/test_golden_chain_codex_sandbox_probe_compute.py -q --no-cov
+  - id: req-codex-zero-turn-host-limits
+    statement: >-
+      The lane brief also requests a Codex host circuit breaker under the
+      2026-10-26T11:31:48Z engine-policy ruling. The ticket's original infra
+      layering criteria AC1 and AC2 above remain unchanged and are not
+      claimed by this additional work.
+    acceptance:
+      - id: AC5
+        statement: >-
+          A zero-turn Codex HTTP 429 writes a host-specific Codex limit until
+          the provider reset or one hour, prevents same-host retry, excludes
+          that host from Codex placement and tick headroom, and reports daily
+          Codex 429 counts by host.
+evidence_requirements:
+  - kind: tests
+    description: >-
+      Verify the locked infra pins step, market image composition and config
+      paths, and the moved boot gates; live boot evidence comes from job
+      composed-runtime-boot in .github/workflows/runtime-boot-composed.yml.
+    command: uv run pytest tests/unit/docker/test_composed_runtime_image_omn21279.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn-21279-deploy-inprocess-scm-terminal
+    description: >-
+      Hosted deploy-scope smoke for the in-process SCM entrypoint: run the real
+      CLI, contract discovery, handler resolver, dispatch engine and in-memory
+      transport. A PR-create dry run returns its completed terminal without
+      Bifrost runtime configuration; a close without a claim is still refused
+      on the failure terminal. The gateway returns recorded paginated threads
+      and reports boundary failures as failed. This fails at the merge base
+      with no_terminal. This supplements the image/layering evidence below;
+      the ticket's infra-side acceptance criteria remain unchanged.
+    source: generated
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py -k "real_terminal or without_a_claim or uses_the_gateway_handler or boundary_failure_is_reported" -q -n 0 --refuse-skips --maxfail=1
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac:
+      - "AC3"
+  - id: dod-omn-21279-ac1-market-owns-composed-image
+    description: >-
+      AC1, infra-side criterion supported by this omnimarket PR: moving market's
+      install and packaged delegation configs into the market-owned composed
+      image lets infra remove market from its own runtime image. The pytest
+      verifies FROM uses the required infra image argument, the pins step checks
+      out the infra release or commit uv.lock pins, and market installs into
+      /app/.venv.
+      This is supporting composition evidence, not a replacement for infra's
+      own layering checker. Red first: the tests fail before these files exist.
+    source: generated
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/docker/test_composed_runtime_image_omn21279.py -q
+    binds_ac:
+      - "AC1"
+  - id: dod-omn-21279-ac2-composed-runtime-boots
+    description: >-
+      AC2, market half: pytest guards image composition, packaged Bifrost base
+      and routing ladder, the delegate-skill live consumer probe, projection
+      health and stopped-service controls, checkout-version equality in each
+      kernel, and the unchanged 900-second/zero-restart dev-lane gate. Live boot
+      evidence is job composed-runtime-boot (display name composed-runtime-boot
+      (omnimarket on infra)) in .github/workflows/runtime-boot-composed.yml on
+      the PR head, building market from this checkout rather than a release;
+      it reports as its own check, so this item does not read its conclusion.
+    source: generated
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/docker/test_composed_runtime_image_omn21279.py -q
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/docker/test_composed_runtime_boot_delegate_probe_omn21279.py -q
+    binds_ac:
+      - "AC2"
+  - id: dod-omn-21279-ac2-deploy-probe-composed-dockerfile
+    description: >-
+      AC2, deploy-scope probe: read the market Dockerfile through GitHub's API
+      at the PR head carrying this contract. Fail unless the image inherits
+      the required infra argument and copies the packaged Bifrost base to the
+      configured path. The composed-runtime-boot job supplies live boot proof.
+    source: generated
+    checks:
+      - check_type: command
+        check_value: |-
+          gh api "repos/OmniNode-ai/omnimarket/contents/Dockerfile.runtime?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n";"") | @base64d | split("\n") as $l | ($l | map(. == "ARG INFRA_RUNTIME_IMAGE") | any) and ($l | map(. == "FROM ${INFRA_RUNTIME_IMAGE}") | any) and ($l | map(. == "ENV BIFROST_BASE_CONTRACT_PATH=/app/config/delegation/bifrost_delegation.base.yaml") | any) and ($l | map(. == "COPY --chown=omniinfra:omniinfra src/omnimarket/configs/bifrost_delegation.yaml /app/config/delegation/bifrost_delegation.base.yaml") | any)' | grep -qx true
+  - id: dod-omn-21279-runtime-command-redundancy
+    description: >-
+      AC2 supporting runtime-health evidence: execute the zero, singleton,
+      duplicate, two-runtime and unreadable
+      membership cases and the compute command-to-terminal chain. The tests
+      import the new runtime coverage models and compute handler, which are
+      absent from the merge base.
+    source: generated
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_node_runtime_coverage.py tests/test_golden_chain_runtime_coverage_compute.py -q --no-cov
+  - id: dod-omn-21279-runtime-observation-and-health
+    description: >-
+      AC2 supporting runtime-health evidence: execute broker membership,
+      manifest corroboration, selected-lane
+      isolation, green-registration failure and CLI exit behavior, plus the
+      effect command-to-terminal chain. The effect and its shared models are
+      absent from the merge base. This proves diagnostics behavior, not that
+      the observed deployment currently has two serving runtimes.
+    source: generated
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_node_runtime_coverage.py tests/test_golden_chain_runtime_coverage_effect.py -q --no-cov
+  - id: dod-omn-21279-runtime-deploy-source-readback
+    description: >-
+      AC2 supporting hosted-runner deploy-scope source readback: the public raw
+      GitHub endpoint at this checkout's head must serve the compute handler
+      containing the two-runtime threshold and membership filtering. The
+      endpoint fails at the merge base because this handler does not exist.
+      This checks published source availability, not lab runtime activation.
+    source: generated
+    checks:
+      - check_type: command
+        check_value: >-
+          bash -o pipefail -c 'curl --fail --silent --show-error "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_runtime_coverage_compute/handlers/handler_runtime_coverage.py" | python3 -c "import sys; source=sys.stdin.read(); assert \"count >= 2\" in source; assert \"m.node == command.node and command.topic in m.topics\" in source"'
+  - id: dod-omn-21279-probe-timeout-step-diagnostics
+    description: >-
+      AC3: exercise capture_live with real subprocess timeouts, partial stdout,
+      no marker, a truncated marker, shared-cache replay, and the pool alarm
+      row. These assertions fail with the handler before this PR's change.
+    source: generated
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          env PYTHONDONTWRITEBYTECODE=1 uv run pytest
+          tests/nodes/node_pool_read_share_effect/test_golden_chain_pool_read_share_effect.py
+          -q --no-cov
+  - id: dod-omn-21279-probe-timeout-deploy-source-readback
+    description: >-
+      AC3 hosted-runner deploy-scope source readback: the public raw endpoint
+      at the checkout head must serve the timeout handler preserving the
+      subprocess exception's stdout and naming the last complete step.
+      The merge base lacks these statements. This verifies published source;
+      the pytest check below runs the subprocess tests that verify behavior,
+      not a live lane deployment. Its must-fail control is the merge base with
+      merged fix 015dafb91 reverted.
+    source: generated
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          env PYTHONDONTWRITEBYTECODE=1 uv run pytest
+          tests/nodes/node_pool_read_share_effect/test_golden_chain_pool_read_share_effect.py
+          -q --no-cov
+      - check_type: command
+        check_value: >-
+          bash -o pipefail -c 'curl --fail --silent --show-error
+          "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_pool_read_share_effect/handlers/handler_pool_read_share.py"
+          | python3 -c "import sys; source=sys.stdin.read(); assert \"return _timed_out(argv, timeout, exc.stdout)\" in source; assert \"step = last_step(stdout)\" in source; assert \"before any step marker\" in source"'
+  - id: dod-omn-21279-codex-git-cache-roots
+    description: >-
+      AC4: run the roots program over a worktree whose common git dir is in
+      another clone and over a clone with alternates (a valid objects dir, "/",
+      $HOME, a missing path, a directory that is no repository's objects dir).
+      The common-dir and alternates tests fail at the merge base, whose roots
+      omit the common dir (git fetch under the Codex sandbox: cannot open
+      .git/FETCH_HEAD: Read-only file system).
+    source: generated
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_codex_sandbox_probe_compute/test_codex_sandbox_probe.py tests/nodes/node_codex_sandbox_probe_compute/test_golden_chain_codex_sandbox_probe_compute.py -q --no-cov
+  - id: dod-omn-21279-codex-git-roots-deploy-readback
+    description: >-
+      AC4 hosted-runner deploy-scope source readback: the public raw endpoint
+      at the checkout head must serve the handler granting the lane's own
+      common git dir and naming a skipped alternate. The merge base lacks both
+      statements. This verifies published source, not that a Codex lane has
+      run with the new roots. The pytest check runs the roots program's tests.
+    source: generated
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_codex_sandbox_probe_compute/test_codex_sandbox_probe.py -q --no-cov
+      - check_type: command
+        check_value: >-
+          bash -o pipefail -c 'curl --fail --silent --show-error
+          "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_codex_sandbox_probe_compute/handlers/handler_codex_sandbox_probe.py"
+          | python3 -c "import sys; source=sys.stdin.read(); assert \"own_roots.append(str(common))\" in source; assert \"CODEX-GIT-ROOTS skip alternate\" in source"'
+  - id: dod-omn-21279-codex-zero-turn-host-limits
+    description: >-
+      AC5: run the typed recovery node, receipt/error observation, reset
+      parsing, atomic Codex-only marker, retry refusal, pure placement,
+      tick adapters and decision tests. The baseline fails collection because
+      the Codex observation handler is absent. The tests use temporary local
+      files and need no credential, lab host or external service.
+      The installed plugin still needs the thin adapter calls; these tests
+      prove the market-owned mechanism, not live plugin adoption.
+    source: generated
+    execution_scope: hosted_and_local
+    binds_ac: [AC5]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          env -u PYTHONPATH uv run --frozen pytest
+          tests/nodes/node_lane_placement_recovery_effect/test_codex_host_limits.py
+          -q --no-cov -n 0
+  - id: dod-omn-21279-codex-limit-deploy-smoke
+    description: >-
+      Hosted-runner deploy-scope smoke: invoke the packaged recovery node
+      with a typed Codex limit request and a finished engine attempt, then
+      read back its marker and sanitized non-retryable failure. This checks
+      the deployable package entrypoint without access to private lab hosts.
+      It fails at the merge base where the typed observation model and
+      handler do not exist; live plugin adoption remains outstanding.
+    source: generated
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          env -u PYTHONPATH uv run --frozen pytest
+          tests/nodes/node_lane_placement_recovery_effect/test_codex_host_limits.py
+          -k "node_dispatches_typed_limit_request or existing_node_observes_engine_return"
+          -q --no-cov -n 0

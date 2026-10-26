@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_landing_tick_speed_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Persist clean and touched judging-path observations by base, dispatch
+  head, and result head, retrying unreadable observations. Load ledger row indexes
+  before a supplied reader and save changed indexes afterward. Remove unreadable indexes
+  and those whose ledger files are absent or older than nine days.
+input_model:
+  name: ModelLandingTickSpeedRequest
+  module: omnimarket.nodes.node_landing_tick_speed_effect.models.model_landing_tick_speed
+output_model:
+  name: ModelLandingTickSpeedResult
+  module: omnimarket.nodes.node_landing_tick_speed_effect.models.model_landing_tick_speed
+handler:
+  module: omnimarket.nodes.node_landing_tick_speed_effect.handlers.handler_landing_tick_speed
+  class: HandlerLandingTickSpeed
+  input_model: omnimarket.nodes.node_landing_tick_speed_effect.models.model_landing_tick_speed.ModelLandingTickSpeedRequest
+  output_model: omnimarket.nodes.node_landing_tick_speed_effect.models.model_landing_tick_speed.ModelLandingTickSpeedResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_landing_tick_speed_effect.handlers.handler_landing_tick_speed:HandlerLandingTickSpeed
+  handlers:
+  - operation: judge_touches
+    handler:
+      name: HandlerLandingTickSpeed
+      module: omnimarket.nodes.node_landing_tick_speed_effect.handlers.handler_landing_tick_speed
+  - operation: ledger_indexed
+    handler:
+      name: HandlerLandingTickSpeed
+      module: omnimarket.nodes.node_landing_tick_speed_effect.handlers.handler_landing_tick_speed
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the landing controller.
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 30000
+metadata:
+  transport_type: local
+  created: '2026-10-24'
+  tags:
+  - effect
+  - landing-tick-speed
+  related_tickets:
+  - OMN-21373

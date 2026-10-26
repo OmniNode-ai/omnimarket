@@ -111,6 +111,12 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_compaction_receipts/migrations/0000_create_compaction_receipts.sql
       access: read_write
       role: compaction_receipts
+    - name: compaction_current_context
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_compaction_current_context/migrations/0000_create_compaction_current_context.sql
+      access: read_write
+      role: compaction_current_context
     - name: automation_liveness_state
       database_ref: application
       schema: omninode_internal
@@ -205,6 +211,13 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_ci_attempt_outcome/migrations/0000_create_ci_attempt_outcome.sql
       access: read_write
       role: ci_attempts
+    # OMN-20169: tenant-scoped capability cells per map run.
+    - name: delegation_capability_cells
+      database_ref: application
+      schema: public
+      migration: src/omnimarket/nodes/node_projection_delegation_capability_map/migrations/0000_create_delegation_capability_cells.sql
+      access: read_write
+      role: delegation_capability_cells
     # OMN-20242: tenant-scoped current dispositions.
     - name: delegation_dispositions
       database_ref: application
@@ -1198,6 +1211,14 @@ database_objects:
     writers: []
   # OMN-21336: the BIGSERIAL paging cursor owned by compaction_receipts.
   - name: compaction_receipts_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  # OMN-21090: the BIGSERIAL paging cursor owned by compaction_current_context.
+  - name: compaction_current_context_projection_cursor_seq
     kind: sequence
     database_ref: application
     schema: omninode_internal

@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_guard_admission_compute
+version: 1.0.0
+description: Judge whether one bus pool host can run a unit under the lane guard. A bus unit runs a stub that execs
+  the host's installed copy of the launcher's lane guard and exits 78 LANE-GUARD-MISSING in 0 s when it is absent,
+  so the host must advertise lane-guard:<sha256> for the launcher's own guard sha256. A host that advertises only
+  other guards is refused with "lane guard <sha8> not installed". An advertisement with no lane-guard entry at all
+  comes from a serve that predates the entry and is admitted as not yet upgraded, because the host-side stub still
+  exits 78 when the guard file is missing; this tolerance is temporary and its follow-up ticket removes it once
+  every pool host advertises. A unit that is not delivered over the bus ships the guard inline and is never judged.
+pack: distributed_validation
+node_role: compute
+display_name: Lane Guard Admission Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_lane_guard_admission_compute: omnimarket.nodes.node_lane_guard_admission_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- lane-guard-admission-compute
+- OMN-21373

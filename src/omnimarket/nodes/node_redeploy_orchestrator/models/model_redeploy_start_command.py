@@ -11,6 +11,7 @@ in ``omnimarket.events.runtime_deployment``.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -34,6 +35,11 @@ class ModelRedeployStartCommand(BaseModel):
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
+
+    dev_deploy_protocol: Literal["health-v1"] | None = Field(
+        default=None,
+        description="Set only after deploy and verify consumers support selected health routes.",
+    )
 
     correlation_id: UUID = Field(..., description="Redeploy run correlation ID.")
     scope: EnumRedeployScope = Field(

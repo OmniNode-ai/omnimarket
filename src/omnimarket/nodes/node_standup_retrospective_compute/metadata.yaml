@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_standup_retrospective_compute
+version: 1.0.0
+description: Build the Friday stand-up retrospective (OMN-21286, RULING 2026-10-20T13:51:27Z, held at
+  the end of the Friday stand-up by RULING 2026-10-20T13:58:45Z). When the window ends on a Friday (UTC)
+  it reads the text of a JSON list of role, product use, one idea or friction and one process change, emits one row
+  per person and one unfiled Backlog ticket draft per contributed idea or friction, credited by role.
+  Only those fields are read, so a name an entry carries never reaches the sheet. Also owns the text rendering
+  of the section.
+pack: operator_tooling
+node_role: compute
+display_name: Standup Retrospective Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_standup_retrospective_compute: omnimarket.nodes.node_standup_retrospective_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- standup-retrospective-compute

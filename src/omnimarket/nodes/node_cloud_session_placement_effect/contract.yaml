@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# OVERLAY. No project, operator, repository owner, account, host name or host path
+# lives in this node; they arrive on the request, read by the caller from its overlay.
+name: "node_cloud_session_placement_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  Decides cloud eligibility and account placement, maintains local account state,
+  and renders or parses cloud session text. Callers perform network probes.
+dependencies:
+  - name: omnimarket.nodes.node_llm_delegation_call_effect
+    dependency_type: internal
+    description: "Public cloud-session start renderer owns the harness invocation."
+    required: true
+input_model:
+  name: "ModelCloudSessionPlacementRequest"
+  module: "omnimarket.nodes.node_cloud_session_placement_effect.models.model_cloud_session_placement"
+  description: "Action, overlay values, account state directory, and caller probe verdicts."
+output_model:
+  name: "ModelCloudSessionPlacementResult"
+  module: "omnimarket.nodes.node_cloud_session_placement_effect.models.model_cloud_session_placement"
+  description: "Placement decision, probe continuation, session text, or error."
+handler:
+  module: "omnimarket.nodes.node_cloud_session_placement_effect.handlers.handler_cloud_session_placement"
+  class: "HandlerCloudSessionPlacement"
+  input_model: "omnimarket.nodes.node_cloud_session_placement_effect.models.model_cloud_session_placement.ModelCloudSessionPlacementRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_cloud_session_placement_effect.handlers.handler_cloud_session_placement:HandlerCloudSessionPlacement"
+  handlers:
+    - operation: "decide_cloud_session_placement"
+      handler:
+        name: "HandlerCloudSessionPlacement"
+        module: "omnimarket.nodes.node_cloud_session_placement_effect.handlers.handler_cloud_session_placement"
+      input_model: "omnimarket.nodes.node_cloud_session_placement_effect.models.model_cloud_session_placement.ModelCloudSessionPlacementRequest"
+      output_model: "omnimarket.nodes.node_cloud_session_placement_effect.models.model_cloud_session_placement.ModelCloudSessionPlacementResult"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 130000
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.cloud-session-placement-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.cloud-session-placement-completed.v1"
+    failure: "onex.evt.omnimarket.cloud-session-placement-failed.v1"
+published_events:
+  - event_type: ModelCloudSessionPlacementResult
+    topic: onex.evt.omnimarket.cloud-session-placement-completed.v1
+    description: "The outcome of one cloud session placement operation."
+externally_consumed_topics:
+  - onex.evt.omnimarket.cloud-session-placement-completed.v1
+  - onex.evt.omnimarket.cloud-session-placement-failed.v1
+metadata:
+  transport_type: kafka
+  ticket: OMN-21373
+  description: "Cloud session placement and account state"
+  author: "OmniNode Team"
+  tags:
+    - "effect"
+    - "lab"
+    - "cloud-session"
+    - "OMN-21373"
+  related_tickets:
+    - "OMN-21373"

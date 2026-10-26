@@ -47,3 +47,9 @@ jobs:
 
       - name: Assert every tier-referenced backend is bindable by some lane
         run: uv run python -m omnimarket.validators.routing_tier_backend_bindability
+
+      - name: Assert provider catalogues still list declared OpenRouter models
+        run: uv run python -m omnimarket.nodes.node_provider_model_catalogue_effect
+
+      - name: Exercise catalogue refusal and withdrawn-rung regression controls
+        run: uv run pytest tests/validators/test_provider_model_catalogue.py -q

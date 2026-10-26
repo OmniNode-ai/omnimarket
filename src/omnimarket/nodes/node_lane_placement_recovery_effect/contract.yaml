@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_placement_recovery_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: 'A remote lane that has not been placed never reads ''placing'' forever: the runner ends its own receipt
+  when it is stopped before placement, its detached parent reports placement, and the throughput tick ends every
+  receipt a dead runner left placing and puts the lane back in the lane queue while the queue''s term lasts.
+  Codex zero-turn HTTP 429 observations write an engine-specific host marker with the provider reset
+  or a one-hour fallback, disable same-host retry, and count refused runs per host in tick facts.
+  The placement recovery operations (placement_wait, until_placed, end_unplaced, without_queued_no_host,
+  requeue_lost_placements, placement_refusals, execute_observed, codex_placement_facts, codex_tick_facts) are called in process through node.py.'
+input_model:
+  name: ModelClaudeAccountLimitRequest
+  module: omnimarket.nodes.node_lane_placement_recovery_effect.models.model_claude_account_limit
+output_model:
+  name: ModelClaudeAccountLimitResult
+  module: omnimarket.nodes.node_lane_placement_recovery_effect.models.model_claude_account_limit
+handler:
+  module: omnimarket.nodes.node_lane_placement_recovery_effect.handlers.handler_claude_account_limit
+  class: HandlerClaudeAccountLimit
+  input_model: omnimarket.nodes.node_lane_placement_recovery_effect.models.model_claude_account_limit.ModelClaudeAccountLimitRequest
+  output_model: omnimarket.nodes.node_lane_placement_recovery_effect.models.model_claude_account_limit.ModelClaudeAccountLimitResult
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the host placement caller with supplied runtime ports.
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: false
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: false
+metadata:
+  description: 'A remote lane that has not been placed never reads ''placing'' forever: the runner ends its own
+    receipt when it is stopped before placement, its detached parent reports placement, and the throughput tick
+    ends every receipt a dead runner left placing and puts the lane back in the lane queue while the queue''s term
+    lasts.'
+  author: OmniNode Team
+  created: '2026-10-24'
+  tags:
+  - effect
+  - lane-placement-recovery-effect
+  - OMN-21373
+  related_tickets:
+  - OMN-21373

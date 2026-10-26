@@ -10,6 +10,7 @@ from omnibase_core.types import JsonType
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.lab_fill import ModelLabFillPrLandFacts, ModelLabFillPrLandPlan
+from omnimarket.models.model_engine_experiment import ModelEngineExperimentRow
 from omnimarket.models.model_lab_daemon_drift import ModelLabDaemonDrift
 
 _TS = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"
@@ -146,6 +147,7 @@ class ModelLabHost(BaseModel):
         description="The live admission read (OMN-20864); used when the facts set `live_admission`.",
     )
     limited_mark: ModelLabMark = Field(default_factory=ModelLabMark)
+    codex_limited_mark: ModelLabMark = Field(default_factory=ModelLabMark)
     auth_mark: ModelLabMark = Field(default_factory=ModelLabMark)
     parses: dict[str, ModelLabReadingParse] = Field(
         default_factory=dict,
@@ -190,7 +192,7 @@ class ModelLabHeadroomFacts(BaseModel):
         default=False,
         description=(
             "The caller read the runner's live pool admission (OMN-20864): each host's `admission` decides its "
-            "free slots per engine, and the receipts, marks and parses below decide nothing."
+            "free slots per engine, and the receipts and parses below decide nothing. A current Codex limit mark still refuses Codex."
         ),
     )
     module_unavailable: bool = False
@@ -206,6 +208,7 @@ class ModelLabHeadroomFacts(BaseModel):
     receipts: list[ModelLabReceipt] = Field(
         default_factory=list, description="Receipts in the order the caller read them."
     )
+    codex_429_counts: dict[str, int] = Field(default_factory=dict)
     live_marker_hosts: list[str] = Field(
         default_factory=list,
         description="One host name per placement marker whose process is alive.",
@@ -357,6 +360,11 @@ class ModelThroughputTickRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     now: str = Field(pattern=_TS)
+    engine_experiments: list[ModelEngineExperimentRow] | None = Field(
+        default=None,
+        description="kind=experiment STATUS rows read from the ledger (OMN-21396); None skips the engine line.",
+    )
+    engine_experiment_window_hours: int = Field(default=24, ge=1)
     controller_max_minutes: int = Field(default=15, ge=0)
     controller_run_max_minutes: int = Field(default=30, ge=0)
     watcher_max_minutes: int = Field(default=15, ge=0)

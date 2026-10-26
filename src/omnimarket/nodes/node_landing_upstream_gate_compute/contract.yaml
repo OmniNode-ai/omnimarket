@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Landing Upstream Gate Compute
+# Direct invocation only: no event bus or terminal event.
+name: "node_landing_upstream_gate_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: >-
+  Which external blockers still hold one PR head from a fix worker. A blocker a worker judged at this very head
+  stands while it is a known kind, names another PR or issue the PR watcher reads open, and is no ref to the PR
+  itself. An upstream_open blocker stands for as long as its ref reads open and is lifted when the ref merges or
+  closes, with no clock; every other known kind also ends at the worker gate's backstop hours. Pure: it reads nothing
+  and writes nothing.
+input_model:
+  name: "ModelLandingUpstreamGateRequest"
+  module: "omnimarket.nodes.node_landing_upstream_gate_compute.models.model_landing_upstream_gate"
+  description: "Typed inputs for landing upstream gate."
+output_model:
+  name: "ModelLandingUpstreamGateResult"
+  module: "omnimarket.nodes.node_landing_upstream_gate_compute.models.model_landing_upstream_gate"
+  description: "Typed result of landing upstream gate."
+handler:
+  module: "omnimarket.nodes.node_landing_upstream_gate_compute.handlers.handler_landing_upstream_gate"
+  class: "HandlerLandingUpstreamGate"
+  input_model: "omnimarket.nodes.node_landing_upstream_gate_compute.models.model_landing_upstream_gate.ModelLandingUpstreamGateRequest"
+  output_model: "omnimarket.nodes.node_landing_upstream_gate_compute.models.model_landing_upstream_gate.ModelLandingUpstreamGateResult"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_landing_upstream_gate_compute.handlers.handler_landing_upstream_gate:HandlerLandingUpstreamGate"
+  handlers:
+    - operation: "upstream_gate"
+      handler:
+        name: "HandlerLandingUpstreamGate"
+        module: "omnimarket.nodes.node_landing_upstream_gate_compute.handlers.handler_landing_upstream_gate"
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: "Direct Python invocation of the handler with a PR head and supplied watcher records."
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local
+  description: "Landing Upstream Gate Compute — pure policy with no external transport."
+  author: "OmniNode Team"
+  created: "2026-10-24"
+  tags: ['compute', 'landing-upstream-gate', 'OMN-19998']
+  related_tickets: ['OMN-19998']

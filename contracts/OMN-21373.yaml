@@ -1,0 +1,342 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21373"
+title: "Move all code out of the private data repository to omnimarket and omniclaude, leaving it data only"
+summary: >-
+  Epic carrier for the internal-repos code migration. This repository's part,
+  port groups G1 and G2 of section 18 of the migration plan, adds nodes in
+  omnimarket's canonical shape (contract, metadata, handler, models, entry
+  point) with their direct tests. G1 adds five pure compute nodes:
+  node_host_memory_admission_compute, node_landing_worker_engine_compute,
+  node_landing_tick_bounds_compute, node_landing_upstream_gate_compute and
+  node_merge_sweep_same_head_compute. G2 adds node_pool_read_share_effect,
+  node_brief_compact_compute, node_standup_retrospective_compute,
+  node_lane_host_discovery_compute and node_umbrella_ticket_compute; the
+  knowledge-base repository name, the variable that holds its clone path and
+  the umbrella ticket set are read from the environment or the node overlay,
+  and a node refuses with the setting named when neither supplies it.
+  The plugin callers are not repointed here; that is the plugin release of the
+  slice that moves each caller. The epic's two acceptance criteria are read on
+  the private data repository and on the lab hosts and stay pending for the epic.
+  Port group G3 adds five landing and install effect nodes the same way:
+  node_landing_placement_wait_effect, node_landing_not_started_effect,
+  node_landing_lease_claim_close_effect, node_install_superset_guard_effect and
+  node_landing_tick_speed_effect; the ticket ids two of them write into ledger
+  rows are read from deployment overlays, with a refusal naming the field when
+  no overlay supplies one.
+  The cloud-session routing and placement logic (the cloud lane accounts file,
+  the consent rule, the per-account cap, slot holds, credit and rate readings,
+  the routing refusal and the cloud session text) moves into omnimarket as
+  node_cloud_session_placement_effect. Private values (hosts and their consent
+  columns, the placement directory, excluded repositories) arrive on the request
+  from the caller's overlay. This contract covers this pull request's share of
+  the epic only; the epic's criteria as a whole are not met by it.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn21373-g1-port"
+    statement: >-
+      The five G1 nodes exist in omnimarket with their tests, under module paths
+      in the omnimarket namespace, with no private repository name, lab host
+      name or address in their files.
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: the private data repository holds no code file outside its data checks, and its CI refuses any added code file -- falsifier: uv run pytest tests/test_src_freeze_omn19998.py -q fails, or git ls-files on main lists a .py under src/
+      - id: "AC2"
+        statement: >-
+          AC2: every launchd and systemd unit that ran the private data repository code runs the omnimarket or omniclaude copy -- falsifier: the plan's section 4 unit list read back on each host names an the private data repository path
+  - id: "req-omn21373-g3-port"
+    statement: >-
+      The five G3 nodes exist in omnimarket with their tests, under module paths
+      in the omnimarket namespace, with no private repository name, lab host
+      name, address or ticket constant in their code; the ledger ticket ids are
+      overlay fields.
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: the private data repository holds no code file outside its data checks, and its CI refuses any added code file -- falsifier: uv run pytest tests/test_src_freeze_omn19998.py -q fails, or git ls-files on main lists a .py under src/
+      - id: "AC2"
+        statement: >-
+          AC2: every launchd and systemd unit that ran the private data repository code runs the omnimarket or omniclaude copy -- falsifier: the plan's section 4 unit list read back on each host names an the private data repository path
+  - id: "req-omn21373-g2-port"
+    statement: >-
+      The five G2 nodes exist in omnimarket with their tests, under module paths
+      in the omnimarket namespace, with no private repository name, lab host
+      name or address in their files; each overlay-reading node refuses with the
+      setting named when neither its environment variable nor its overlay
+      supplies it, and resolves it from an overlay fixture.
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: the private data repository holds no code file outside its data checks, and its CI refuses any added code file -- falsifier: uv run pytest tests/test_src_freeze_omn19998.py -q fails, or git ls-files on main lists a .py under src/
+      - id: "AC2"
+        statement: >-
+          AC2: every launchd and systemd unit that ran the private data repository code runs the omnimarket or omniclaude copy -- falsifier: the plan's section 4 unit list read back on each host names an the private data repository path
+evidence_requirements:
+  - kind: "tests"
+    description: "G1 port: the five nodes' direct tests pass in omnimarket."
+    command: "uv run pytest tests/nodes/node_host_memory_admission_compute/test_golden_chain_host_memory_admission_compute.py tests/nodes/node_landing_worker_engine_compute/test_golden_chain_landing_worker_engine_compute.py tests/nodes/node_landing_tick_bounds_compute/test_golden_chain_landing_tick_bounds_compute.py tests/nodes/node_landing_upstream_gate_compute/test_golden_chain_landing_upstream_gate_compute.py tests/nodes/node_merge_sweep_same_head_compute/test_golden_chain_merge_sweep_same_head_compute.py -q"
+  - kind: "tests"
+    description: "The moved node's tests pass"
+    command: "uv run pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_accounts.py tests/nodes/node_cloud_session_placement_effect/test_cloud_session.py tests/nodes/node_cloud_session_placement_effect/test_handler_cloud_session_placement.py -q --no-cov"
+  - kind: "tests"
+    description: "G3 port: the five nodes' direct tests pass in omnimarket."
+    command: "uv run pytest tests/nodes/node_landing_placement_wait_effect/test_golden_chain_landing_placement_wait.py tests/nodes/node_landing_not_started_effect/test_golden_chain_landing_not_started.py tests/nodes/node_landing_lease_claim_close_effect/test_golden_chain_landing_lease_claim_close.py tests/nodes/node_install_superset_guard_effect/test_golden_chain_install_superset_guard.py tests/nodes/node_landing_tick_speed_effect/test_golden_chain_landing_tick_speed.py -q"
+  - kind: "tests"
+    description: "G2 port: the five nodes' direct tests pass in omnimarket."
+    command: "uv run pytest tests/nodes/node_pool_read_share_effect/test_golden_chain_pool_read_share_effect.py tests/nodes/node_brief_compact_compute/test_golden_chain_brief_compact_compute.py tests/nodes/node_standup_retrospective_compute/test_golden_chain_standup_retrospective_compute.py tests/nodes/node_lane_host_discovery_compute/test_golden_chain_lane_host_discovery_compute.py tests/nodes/node_umbrella_ticket_compute/test_golden_chain_umbrella_ticket_compute.py -q"
+  - kind: "tests"
+    description: "Slice 3: the five placement nodes' tests pass in omnimarket."
+    command: "uv run pytest tests/nodes/node_host_capability_compute/test_golden_chain_host_capability_compute.py tests/nodes/node_host_capability_compute/test_host_capability_parity.py tests/nodes/node_host_capability_compute/test_registry_roots.py tests/nodes/node_lane_guard_admission_compute/test_golden_chain_lane_guard_admission_compute.py tests/nodes/node_lane_placement_recovery_effect/test_golden_chain_lane_placement_recovery_effect.py tests/nodes/node_link_gate_compute/test_golden_chain_link_gate_compute.py tests/nodes/node_link_gate_compute/test_landing_link_loss.py tests/nodes/node_link_history_effect/test_golden_chain_link_history_effect.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21373-ac1-g1-nodes-in-omnimarket"
+    description: "AC1 contribution only: the five G1 nodes have a public home in omnimarket, so their copies can leave the internal repositories. The AC1 read on the private data repository itself stays pending for the epic."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_host_memory_admission_compute/test_golden_chain_host_memory_admission_compute.py tests/nodes/node_landing_worker_engine_compute/test_golden_chain_landing_worker_engine_compute.py tests/nodes/node_landing_tick_bounds_compute/test_golden_chain_landing_tick_bounds_compute.py tests/nodes/node_landing_upstream_gate_compute/test_golden_chain_landing_upstream_gate_compute.py tests/nodes/node_merge_sweep_same_head_compute/test_golden_chain_merge_sweep_same_head_compute.py -q"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_g1_local_invocation.py tests/test_market_node_runtime_dogfood.py::test_market_node_runtime_dogfood_inventory_classifies_all_entry_points -q"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21373-ac2-g1-entry-points"
+    description: "AC2 contribution only: the five nodes are registered onex.nodes entry points, which the callers that units run can be repointed to. The per-host unit readback stays pending for the epic."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_g1_local_invocation.py -q"
+      - check_type: "command"
+        check_value: "uv run python -c \"from importlib.metadata import entry_points; names={e.name for e in entry_points(group='onex.nodes')}; need={'node_host_memory_admission_compute','node_landing_worker_engine_compute','node_landing_tick_bounds_compute','node_landing_upstream_gate_compute','node_merge_sweep_same_head_compute'}; missing=need-names; assert not missing, missing\""
+    binds_ac: ["AC2"]
+  - id: "dod-omn21373-ac1-slice3-placement-nodes"
+    description: "AC1 contribution only: the five placement nodes the plugin's landing placement imports have a public home in omnimarket, with their private registry-root literals read from the lab_hosts overlay. The AC1 read on the private data repository itself stays pending for the epic."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_host_capability_compute/test_golden_chain_host_capability_compute.py tests/nodes/node_host_capability_compute/test_host_capability_parity.py tests/nodes/node_host_capability_compute/test_registry_roots.py tests/nodes/node_lane_guard_admission_compute/test_golden_chain_lane_guard_admission_compute.py tests/nodes/node_lane_placement_recovery_effect/test_golden_chain_lane_placement_recovery_effect.py tests/nodes/node_link_gate_compute/test_golden_chain_link_gate_compute.py tests/nodes/node_link_gate_compute/test_landing_link_loss.py tests/nodes/node_link_history_effect/test_golden_chain_link_history_effect.py -q"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21373-ac2-slice3-entry-points"
+    description: "AC2 contribution only: the five placement nodes are registered onex.nodes entry points that the plugin callers can be repointed to in the next slice. The per-host unit readback stays pending for the epic."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_market_node_runtime_dogfood.py::test_market_node_runtime_dogfood_inventory_classifies_all_entry_points -q"
+      - check_type: "command"
+        check_value: "uv run python -c \"from importlib.metadata import entry_points; names={e.name for e in entry_points(group='onex.nodes')}; need={'node_host_capability_compute','node_lane_guard_admission_compute','node_lane_placement_recovery_effect','node_link_gate_compute','node_link_history_effect'}; missing=need-names; assert not missing, missing\""
+    binds_ac: ["AC2"]
+  - id: "dod-omn21373-deploy-g1-import"
+    description: "Hosted deploy smoke, runnable on the hosted runner with no lab route, broker or database: dispatch the packaged node_host_memory_admission_compute through the in-process ONEX runtime and require a successful typed receipt whose refusals match the policy. The packaged-contract execution of all five nodes is bound to AC2 by tests/test_g1_local_invocation.py."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+          printf '%s' '{"mem_avail_gb": 1.0, "mem_psi_avg60": null, "swap_in_kb_s": 30000.0, "swap_out_kb_s": 0.0, "min_free_gb": 4.0, "max_mem_psi": 10.0, "max_swap_kb_s": 102400.0, "max_swap_in_kb_s": 20480.0}' > "$probe_dir/input.json";
+          env ONEX_LANE=omn21373-deploy-probe "$runtime_bin/onex" node node_host_memory_admission_compute --input "$probe_dir/input.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+          uv run --locked python -c '
+          import json
+          import sys
+          from pathlib import Path
+          receipt = json.loads(Path(sys.argv[1]).read_text())
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          refusals = receipt["result"]["refusals"]
+          assert refusals == ["mem_avail 1.0G < 4G", "swap-in 30000 KB/s > 20480 KB/s (paging)"], refusals
+          print(json.dumps({"run_id": receipt["run_id"], "refusals": refusals}))
+          ' "$probe_dir/receipt.json";
+  - id: "dod-omn21373-ac1-g3-nodes-in-omnimarket"
+    description: "AC1 contribution only: the five G3 nodes have a public home in omnimarket, so their copies can leave the internal repositories. The AC1 read on the private data repository itself stays pending for the epic."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_landing_placement_wait_effect/test_golden_chain_landing_placement_wait.py tests/nodes/node_landing_not_started_effect/test_golden_chain_landing_not_started.py tests/nodes/node_landing_lease_claim_close_effect/test_golden_chain_landing_lease_claim_close.py tests/nodes/node_install_superset_guard_effect/test_golden_chain_install_superset_guard.py tests/nodes/node_landing_tick_speed_effect/test_golden_chain_landing_tick_speed.py -q"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_g3_local_invocation.py tests/test_routing_sources_omn20601.py -q"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21373-ac2-g3-entry-points"
+    description: "AC2 contribution only: the five G3 nodes are registered onex.nodes entry points, which the callers that units run can be repointed to. The per-host unit readback stays pending for the epic."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_g3_local_invocation.py -q"
+      - check_type: "command"
+        check_value: "uv run python -c \"from importlib.metadata import entry_points; names={e.name for e in entry_points(group='onex.nodes')}; need={'node_landing_placement_wait_effect','node_landing_not_started_effect','node_landing_lease_claim_close_effect','node_install_superset_guard_effect','node_landing_tick_speed_effect'}; missing=need-names; assert not missing, missing\""
+    binds_ac: ["AC2"]
+  - id: "dod-omn21373-deploy-g3-not-started"
+    description: "Hosted deploy smoke for G3, runnable on the hosted runner with no lab route, broker or database: dispatch the packaged node_landing_not_started_effect through the in-process ONEX runtime with one refused and one started dispatch, and require a successful typed receipt with exactly one not-started row and its lease file written. It fails at the merge base, where the node does not exist."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          mkdir -p "$probe_dir/landing";
+          runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+          printf '{"state_dir": "%s/landing", "outcomes": [{"kind": "dispatch_worker", "outcome": "head-moved", "lease_id": 7, "subject": "example/repo#1", "detail": "head moved", "head_sha": "abc"}, {"kind": "dispatch_worker", "outcome": "spawned", "lease_id": 8, "subject": "example/repo#2"}], "refused": ["head-moved", "claim-refused"], "now": "2026-10-24T00:00:00Z", "tick": 1}' "$probe_dir" > "$probe_dir/input.json";
+          env ONEX_LANE=omn21373-g3-deploy-probe "$runtime_bin/onex" node node_landing_not_started_effect --input "$probe_dir/input.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+          uv run --locked python -c '
+          import json
+          import sys
+          from pathlib import Path
+          receipt = json.loads(Path(sys.argv[1]).read_text())
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          rows = receipt["result"]["rows"]
+          assert [(r["lease_id"], r["outcome"]) for r in rows] == [(7, "head-moved")], rows
+          assert (Path(sys.argv[2]) / "landing/workers/000007/not-started.json").is_file()
+          assert not (Path(sys.argv[2]) / "landing/workers/000008").exists()
+          print(json.dumps({"run_id": receipt["run_id"], "rows": len(rows)}))
+          ' "$probe_dir/receipt.json" "$probe_dir";
+  - id: "dod-omn21373-ac1-node-in-omnimarket"
+    description: "This pull request's share of AC1: the cloud placement logic lives in omnimarket as node_cloud_session_placement_effect and its moved tests pass (accounts file, consent, caps, pick protocol, routing refusal, session text). Fails at the merge base, which has no such node. It does not show that the private base repository holds no code."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_accounts.py tests/nodes/node_cloud_session_placement_effect/test_cloud_session.py tests/nodes/node_cloud_session_placement_effect/test_handler_cloud_session_placement.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21373-ac2-node-runs-through-onex-node"
+    description: "This pull request's share of AC2: the node is registered as an onex.nodes entry point and its contract resolves the handler and models, so a caller runs the omnimarket copy through onex node. Fails at the merge base. It does not show any launchd or systemd unit moved."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_cloud_session_placement_effect/test_handler_cloud_session_placement.py -q --no-cov -k contract_dispatch"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21373-deploy-probe"
+    description: "Deploy probe. Read the node's contract from GitHub at the checked-out commit and require its operation, with the contract test. It fails at the merge base, which has no such contract."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_cloud_session_placement_effect/test_handler_cloud_session_placement.py -q --no-cov -k contract_dispatch"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_cloud_session_placement_effect/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"decide_cloud_session_placement\" > /dev/null'"
+        cwd: "${OMNI_HOME}/omnimarket"
+
+  - id: "dod-omn21373-cloud-harness-boundary"
+    description: "The harness scan over the placement node's handler files admits no direct harness invocation and refuses a planted one, in a test that exists only with this change. The full-repository scan runs in the Golden Chain suite."
+    source: "manual"
+    binds_ac: ["AC1", "AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_cloud_session_placement_effect/test_harness_boundary.py -q --no-cov"
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run python -m omnimarket.nodes.node_harness_invocation_check_effect --repo-root . src/omnimarket/nodes/node_cloud_session_placement_effect/handlers/__init__.py src/omnimarket/nodes/node_cloud_session_placement_effect/handlers/cloud_accounts.py src/omnimarket/nodes/node_cloud_session_placement_effect/handlers/cloud_routing.py src/omnimarket/nodes/node_cloud_session_placement_effect/handlers/cloud_session.py src/omnimarket/nodes/node_cloud_session_placement_effect/handlers/handler_cloud_session_placement.py"
+  - id: "dod-omn21373-deploy-cloud-start-runtime"
+    description: "Hosted deploy smoke: dispatch cloud startup rendering through the packaged in-process ONEX runtime, require the delegation-owned renderer and its exact script output, and validate shell syntax. No cloud account, network, broker or database is required. This checks rendering only; no live cloud session is started."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          printf '%s' '{"action":"render_start_script","path_export":"export PATH=/usr/bin:$PATH","registry_root":"/registry","owner":"org_a","repo":"repo_a","landing_branch":"main","run_id":"probe","prompt_path":"/staged/prompt"}' > "$probe_dir/input.json";
+          env ONEX_LANE=cloud-start-deploy-probe uv run --locked onex node node_cloud_session_placement_effect --input "$probe_dir/input.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+          uv run --locked python -c '
+          import json
+          import subprocess
+          import sys
+          from pathlib import Path
+          from omnimarket.nodes.node_llm_delegation_call_effect import cloud_start_script
+          receipt = json.loads(Path(sys.argv[1]).read_text())
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          assert cloud_start_script.__module__ == "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_cloud_session_start"
+          expected = cloud_start_script("export PATH=/usr/bin:$PATH", "/registry", "org_a", "repo_a", "main", "probe", "/staged/prompt")
+          result = receipt["result"]
+          assert result["error"] is None and result["text"] == expected, result
+          subprocess.run(["bash", "-n"], input=result["text"], text=True, check=True)
+          print(json.dumps({"run_id": receipt["run_id"], "status": receipt["status"], "renderer": cloud_start_script.__module__}))
+          ' "$probe_dir/receipt.json";
+  - id: "dod-omn21373-ac1-g2-nodes-in-omnimarket"
+    description: "AC1 contribution only: the five G2 nodes have a public home in omnimarket, so their copies can leave the internal repositories. The AC1 read on the private data repository itself stays pending for the epic."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_pool_read_share_effect/test_golden_chain_pool_read_share_effect.py tests/nodes/node_brief_compact_compute/test_golden_chain_brief_compact_compute.py tests/nodes/node_standup_retrospective_compute/test_golden_chain_standup_retrospective_compute.py tests/nodes/node_lane_host_discovery_compute/test_golden_chain_lane_host_discovery_compute.py tests/nodes/node_umbrella_ticket_compute/test_golden_chain_umbrella_ticket_compute.py -q"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21373-ac2-g2-entry-points"
+    description: "AC2 contribution only: the five G2 nodes are registered onex.nodes entry points, which the callers that units run can be repointed to. The per-host unit readback stays pending for the epic."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_g2_local_invocation.py -q"
+      - check_type: "command"
+        check_value: "uv run python -c \"from importlib.metadata import entry_points; names={e.name for e in entry_points(group='onex.nodes')}; need={'node_pool_read_share_effect','node_brief_compact_compute','node_standup_retrospective_compute','node_lane_host_discovery_compute','node_umbrella_ticket_compute'}; missing=need-names; assert not missing, missing\""
+    binds_ac: ["AC2"]
+  - id: "dod-omn21373-deploy-g2-umbrella"
+    description: "Hosted deploy smoke, runnable on the hosted runner with no lab route, broker or database: dispatch the packaged node_umbrella_ticket_compute through the in-process ONEX runtime with an explicit umbrella ticket set and require a successful typed receipt carrying the one PR refusal. The packaged-contract execution of all five G2 nodes is bound to AC2 by tests/test_g2_local_invocation.py."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+          printf '%s' '{"tickets": ["OMN-1"], "text": "no evidence line", "opens_pr": true, "umbrella_tickets": ["OMN-1"], "surface": "pr"}' > "$probe_dir/input.json";
+          env ONEX_LANE=omn21373-g2-deploy-probe "$runtime_bin/onex" node node_umbrella_ticket_compute --input "$probe_dir/input.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+          uv run --locked python -c '
+          import json
+          import sys
+          from pathlib import Path
+          receipt = json.loads(Path(sys.argv[1]).read_text())
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          refusals = receipt["result"]["refusals"]
+          assert len(refusals) == 1 and refusals[0].startswith("the title\x27s only ticket OMN-1 is an umbrella ticket: "), refusals
+          print(json.dumps({"run_id": receipt["run_id"], "refusals": len(refusals)}))
+          ' "$probe_dir/receipt.json";
+  - id: "dod-omn21373-ac1-rsd-migration-orchestrator"
+    description: "AC1 contribution only: RSD can move one private-repository script into an omnimarket node. node_rsd_migration_orchestrator reads the code_generation task class from the task_class_authority registry entry before any model turn, refuses with no model turn when the entry is missing, runs one delegated code edit loop confined to the new node and its tests, registers the node's entry point and checks the canonical shape. The AC1 read on the private data repository itself stays pending for the epic."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_rsd_migration_orchestrator/test_handler_rsd_migration_orchestrator.py -q"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21373-ac2-rsd-migration-entry-point"
+    description: "AC2 contribution only: node_rsd_migration_orchestrator is a registered onex.nodes entry point in canonical shape, so migrated callers can be produced by it. The per-host unit readback stays pending for the epic."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_rsd_migration_orchestrator/test_handler_rsd_migration_orchestrator.py -q -k 'entry_point or check_shape'"
+      - check_type: "command"
+        check_value: "uv run python -m omnimarket.nodes.node_rsd_migration_orchestrator check-shape --worktree . --node node_rsd_migration_orchestrator --require-entry-point"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21373-ac1-rsd-migrated-tlc-summary"
+    description: "AC1 contribution only: one RSD migration run moved a private-repository TLC result summary script into node_tlc_result_summary_effect in canonical shape, with tests pinning its output. The script's removal from the private data repository and the AC1 read there stay pending for the epic."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_tlc_result_summary_effect/test_tlc_result_summary.py -q"
+      - check_type: "command"
+        check_value: "uv run python -m omnimarket.nodes.node_rsd_migration_orchestrator check-shape --worktree . --node node_tlc_result_summary_effect --require-entry-point"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21373-scm-local-state-node-id"
+    description: "This pull request's share of the PR node id change, and no acceptance criterion's whole: the local-state reader behind onex scm pr-view, pr-status and pr-list prints node_id from the watcher's per-PR facts, and prints null when the state predates the field. Fails at the merge base, whose reader carries no node_id. The watcher writer that records the id is a separate change."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -c node_id src/omnimarket/handlers/scm/handler_scm_local_state.py"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py -q -n 0 --no-cov"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21373-deploy-scm-node-id-reader"
+    description: "Hosted reader smoke: run the SCM command suite against a temporary watcher-state fixture, without a broker, credentials or live watcher. The pr-view, pr-status and pr-list cases require the producer's node_id; a state predating that field returns null. This fails against the base reader, which omits node_id. The epic's per-host unit readback remains pending."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py -q -n 0 --no-cov"

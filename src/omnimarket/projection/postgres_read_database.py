@@ -40,9 +40,11 @@ from __future__ import annotations
 import contextlib
 import logging
 from collections.abc import Iterator
+from typing import Any
 
 import psycopg2  # type: ignore[import-untyped]
 import psycopg2.extras  # type: ignore[import-untyped]
+from psycopg2 import sql
 
 from omnimarket.projection.tenant_isolation import (
     TENANT_GUC,
@@ -50,6 +52,9 @@ from omnimarket.projection.tenant_isolation import (
 )
 
 logger = logging.getLogger(__name__)
+
+# SQL composer for contract-named identifiers, exposed behind this read boundary (OMN-21099).
+read_sql_composer: Any = sql
 
 # Bounded connect timeout (seconds) so a routing read against an unreachable
 # projection host cannot hang the caller past this ceiling before failing open.

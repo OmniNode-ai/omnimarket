@@ -46,9 +46,6 @@ node_context_experiment_compute onex.evt.omnimarket.context-experiment-completed
 node_context_experiment_compute onex.evt.omnimarket.context-experiment-failed.v1
 node_context_exploration_policy_compute onex.evt.omnimarket.context-exploration-policy-completed.v1
 node_context_exploration_policy_compute selection_reason_class
-node_context_pack_builder_compute onex.evt.omnimarket.context-pack-build-completed.v1
-node_context_pack_builder_compute onex.evt.omnimarket.context-pack-build-failed.v1
-node_context_pack_builder_compute warnings
 node_context_roi_compute onex.evt.omnimarket.context-roi-score-completed.v1
 node_context_roi_compute onex.evt.omnimarket.context-roi-score-failed.v1
 node_contract_reducer reduced

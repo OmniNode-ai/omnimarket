@@ -7,6 +7,11 @@ is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
+  - id: req-fill-runs-dry
+    statement: "Green unlanded PRs provide one landing lane per repository while holds, owners and blocked outcomes stay gated; SCM reads the sibling clone."
+    acceptance:
+      - id: AC1742701
+        statement: "Green unlanded PRs provide one landing lane per repository while holds, owners and blocked outcomes stay gated; SCM reads the sibling clone."
   - id: "req-metering-envelope-context"
     statement: "The metering writer separates underscore-prefixed dispatch context from command payloads before validating either refresh or fold commands."
     acceptance:
@@ -1203,6 +1208,13 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: dod-fill-runs-dry
+    description: "Green unlanded PRs provide one landing lane per repository while holds, owners and blocked outcomes stay gated; SCM reads the sibling clone."
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/unit/handlers/scm/test_onex_scm_clone_reads.py tests/nodes/node_throughput_tick_decision_compute/test_pr_land_fallback_throughput_tick_decision_compute.py -q"
+    binds_ac: [AC1742701]
   - id: "dod-omn17427-metering-envelope-postgres"
     description: "AC161: drive both synchronous command entry points against real PostgreSQL and read back the tenant, windows, run count, token counts and timestamp. Refuse skips so an unavailable database cannot count as proof."
     source: manual
@@ -4035,3 +4047,10 @@ dod_evidence:
     - check_type: test_passes
       check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/test_ci_shard_plan_record_freshness_omn17427.py -q --no-cov -p no:randomly --refuse-skips
       cwd: ${OMNI_HOME}/omnimarket
+
+  - id: dod-fill-green-deploy-probe
+    description: Hosted-runner probe of the deployed rule entrypoints with fixtures, no lab access or credentials; the merge base lacks the green-repository rule and sibling-clone resolution.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/unit/handlers/scm/test_onex_scm_clone_reads.py tests/nodes/node_throughput_tick_decision_compute/test_pr_land_fallback_throughput_tick_decision_compute.py -q --no-cov -k 'registry_clone_can_be_a_sibling or green_unlanded'"

@@ -56,6 +56,23 @@ requirements:
       - id: "AC11"
         statement: |-
           AC11: given the caller's live admission facts, a host placement refuses (0.9% or 7.3% idle CPU, swap traffic, a shared admission bar) reports free Claude slots 0 and free Codex slots 0 as a NOTE with no FIX, a Claude or Codex limit refuses only its engine, an unreadable probe is UNKNOWN, and shared slots are never counted twice for the pr-land fallback -- falsifier: pytest tests/nodes/node_throughput_tick_decision_compute/test_live_admission_throughput_tick_decision_compute.py fails at the merge base, where the facts model rejects the live admission schema
+  - id: "req-lab-fill-sprint-tickets"
+    statement: "Lab-fill's ticket backlog admits open current or next sprint tickets that no live CLAIM or other assignee owns and that carry parseable criteria, and names the gate that drops every other ticket."
+    acceptance:
+      - id: "AC12"
+        statement: "AC12: omnimarket's plan_ticket_backlog admits an open unassigned ticket in project Sprint 2026-10-26 → 2026-11-01 with an unchecked AC1 criterion on 2026-10-25 as sprint-next, keeps the closed, other-owner, out-of-scope (RULING 2026-10-17T20:42:15Z), dashboard (RULING 2026-10-01T10:53:36Z), open-pr and claimed exclusions, and records one drop reason for every ticket it does not admit -- falsifier: uv run pytest tests/unit/handlers/test_rules_lab_fill_tickets_omn20864.py fails at the merge base, which has no rules_lab_fill_tickets module"
+  - id: "req-session-source-relation-inventory"
+    statement: "The generated application-relation inventory reflects the live session source's declared readers."
+    acceptance:
+      - id: "AC13"
+        statement: "AC13: the source-derived inventory lists node_session_context_sources_effect as an accessor and reader of session_content and work_ledger_rows, including its contract source, and the checked-in inventory matches the generator."
+  - id: "req-remote-lane-claim-reaches-lane-copy"
+    statement: "A remote lane starts only with its stamped CLAIM available to mirror, and no-claim handoffs retry while that CLAIM is still reaching the live ledger."
+    acceptance:
+      - id: "AC14"
+        statement: "AC14: a CLAIM the bus queued in the host bus outbox is found for the lane's copy, and a lane whose CLAIM is found nowhere is not started."
+      - id: "AC15"
+        statement: "AC15: a handoff refused no-claim while the lane's CLAIM has not reached the live ledger is retried, and a no-claim refusal with the CLAIM on the ledger is final."
 evidence_requirements:
   - kind: "tests"
     description: "AC1, AC3, AC-M1 and AC-M8: lab-fill selection and the dispatch plan."
@@ -66,11 +83,30 @@ evidence_requirements:
   - kind: "tests"
     description: "AC11: the throughput tick's live admission headroom."
     command: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_live_admission_throughput_tick_decision_compute.py -q -p no:randomly"
+  - kind: "tests"
+    description: "AC12: the lab-fill sprint ticket rule."
+    command: "uv run pytest tests/unit/handlers/test_rules_lab_fill_tickets_omn20864.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn20864-nc1"
+    description: "AC14: the queued CLAIM incident replay, ledger precedence, request identity and missing-CLAIM controls."
+    source: "manual"
+    binds_ac: ["AC14"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_remote_lane_handoff_compute/test_remote_lane_handoff.py -q -n 0 -p no:randomly -k claim_mirror"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20864-nc2"
+    description: "AC15: retry delayed no-claim handoffs, refuse when the CLAIM is live or the window is over, and classify all other exits."
+    source: "manual"
+    binds_ac: ["AC15"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_remote_lane_handoff_compute/test_remote_lane_handoff.py -q -n 0 -p no:randomly -k handoff_retry"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20864-contractgate-push"
     description: "AC7: missing contracts are refused and the outgoing SHA supplies the contract blob; CI and pre-push call the same module. A direct lab control also refuses an uncommitted repair at the real head."
     source: "manual"
@@ -177,3 +213,26 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_live_admission_throughput_tick_decision_compute.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC11"]
+  - id: "dod-omn20864-ac12-sprint-tickets"
+    description: "AC12: an open unassigned next-sprint ticket with an unchecked criterion is admitted; each kept exclusion drops with its reason and no ticket is dropped silently. Fails at the merge base, which has no rules_lab_fill_tickets module."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/test_rules_lab_fill_tickets_omn20864.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC12"]
+  - id: "dod-omn20864-ac13-relation-inventory"
+    description: "AC13: the checked-in inventory is rebuilt from the repository's ownership declarations and source readers and matches the generator. Scoped to the one test that runs the generator check, so the hosted runner finishes inside the per-check time budget."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q -p no:randomly -k test_checked_in_inventory_is_source_derived_and_current"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC13"]
+  - id: "dod-omn20864-deploy-relation-inventory"
+    description: "Pre-merge deploy check: rebuilding the application-relation inventory from the head's packaged node contracts and Python sources must match the checked-in artifact. No database or credentials are required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/generate_application_relation_inventory.py --check"
+        cwd: "."

@@ -4,16 +4,16 @@
 
 What this guards
 ----------------
-Eight omnimarket projection contracts write TENANT-domain tables, so their
+Thirteen omnimarket projection contracts write TENANT-domain tables, so their
 handlers resolve the ``tenant_projection`` binding. That binding's credential is
 a store-resolved ``secret_ref`` read through ``SecretResolver`` at the binding
 boundary, and exactly one process holds it: the consolidated writer that boots
-``RUNTIME_PROFILE=tenant-projection``. The eight therefore name that profile and
+``RUNTIME_PROFILE=tenant-projection``. The thirteen therefore name that profile and
 only that profile.
 
-Under OMN-17641 the same eight named the same profile for a DIFFERENT reason --
+Under OMN-17641 the same thirteen named the same profile for a DIFFERENT reason --
 ``tenant-projection`` was NOT registered, so ``runtime_profile_unregistered``
-fired on all eight and an interim block in
+fired on all thirteen and an interim block in
 ``validation/runtime_profiles_allowlist.yaml`` recorded the orphaning as
 intended. omnibase-core 0.47.3 registers the profile, which retires that block:
 an exemption for a rule that no longer fires is a stale exemption, and a stale
@@ -21,13 +21,13 @@ exemption is indistinguishable from a live one to the next reader.
 
 The load-bearing assertion here is the NEGATIVE one:
 ``test_no_contract_is_carried_by_an_allowlist_exemption``. Deleting the interim
-block is only safe if the eight survive WITHOUT it, which is true only while
+block is only safe if the thirteen survive WITHOUT it, which is true only while
 ``tenant-projection`` is in ``REGISTERED_RUNTIME_PROFILES``. If a future core
 floor ever drops back below 0.47.3, that test is what fails -- loudly, naming
-the profile -- instead of the eight silently reverting to unregistered orphans.
+the profile -- instead of the thirteen silently reverting to unregistered orphans.
 
 OMN-20558 then deleted the drained allowlist file itself, so the negative
-assertion now reads: the file is absent, and each of the eight passes the
+assertion now reads: the file is absent, and each of the thirteen passes the
 validator with an explicitly empty allowlist.
 
 Every zero this module asserts (zero allowlist entries, zero interim
@@ -62,12 +62,17 @@ TENANT_PROJECTION_CONTRACTS: Final[dict[str, str]] = {
     "node_hook_event_capture": "node_hook_event_capture",
     "node_projection_context_roi": "projection_context_roi",
     "node_projection_cost_summary": "node_projection_cost_summary",
+    "node_projection_delegation_disposition": "projection_delegation_disposition",
+    "node_projection_delegation_eval": "projection_delegation_eval",
     "node_projection_delegation_inference_response": (
         "node_projection_delegation_inference_response"
     ),
     "node_projection_dep_health": "node_projection_dep_health",
+    "node_projection_metering_summary": "projection_metering_summary",
     "node_projection_pattern_learning": "projection_pattern_learning",
+    "node_projection_provider_quota": "projection_provider_quota",
     "node_projection_routing_decision": "projection_routing_decision",
+    "node_projection_routing_feedback": "projection_routing_feedback",
 }
 
 # tests/unit/runtime/<this file> -> parents[3] == repo root.

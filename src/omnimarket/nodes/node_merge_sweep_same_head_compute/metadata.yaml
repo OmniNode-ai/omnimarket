@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_merge_sweep_same_head_compute
+version: "1.0.0"
+description: "Merge Sweep Same Head Compute — pure policy (OMN-20864)."
+pack: operator_tooling
+node_role: compute
+display_name: "Merge Sweep Same Head Compute"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_merge_sweep_same_head_compute: "omnimarket.nodes.node_merge_sweep_same_head_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ['compute', 'merge-sweep-same-head', 'OMN-20864']

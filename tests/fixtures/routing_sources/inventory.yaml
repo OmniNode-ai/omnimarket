@@ -133,6 +133,20 @@ not_routing_resolution_sites:
     reason: hosts and URLs a sweep probes; probe targets, not routes for delegated work
   - site: "src/omnimarket/handlers/lab_sli_pack_gate.py:load_node_overlay(LAB_SLI_PACK_OVERLAY)"
     reason: whether a deployment enables the lab SLI pack; an on or off switch for four nodes, not a route for delegated work
+  - site: "src/omnimarket/nodes/node_host_capability_compute/handlers/handler_host_capability.py:find_node_overlay('lab_hosts')"
+    reason: names the overlay file in an error message when the host registry root is not configured; it locates the host registry the capability reader reads and selects no route for delegated work
+  - site: "src/omnimarket/nodes/node_codex_sandbox_probe_compute/handlers/handler_codex_sandbox_probe.py:find_node_overlay('repos')"
+    reason: names the overlay file in an error message when repos.private_data is not configured; the clone name supplies sandbox writable roots and selects no route for delegated work
+  - site: "src/omnimarket/nodes/node_idle_slot_fill_effect/overlay.py:find_node_overlay(overlay_id)"
+    reason: names the overlay file in an error message when an idle_slot_fill or repos key is not configured; the keys supply repository names, a cloud backlog declaration and experiment designs and select no route for delegated work
+  - site: "src/omnimarket/nodes/node_install_superset_guard_effect/handlers/handler_install_superset_cli.py:resolve_setting(PLUGIN_INSTALL_OVERLAY)"
+    reason: the ticket id the installer's superset check writes into each intentional-drop ledger row; a ledger cell, not a route for delegated work
+  - site: "src/omnimarket/nodes/node_brief_compact_compute/handlers/handler_brief_compact.py:resolve_setting('node_brief_compact_compute')"
+    reason: the knowledge-base repository name a rendered lane brief names; brief text, not a route for delegated work
+  - site: "src/omnimarket/nodes/node_lane_host_discovery_compute/handlers/handler_lane_host_discovery.py:resolve_setting('node_lane_host_discovery_compute')"
+    reason: the knowledge-base clone name and the variable that holds its path, rendered into a lane's shell lines; a host-local input, not a route for delegated work
+  - site: "src/omnimarket/nodes/node_umbrella_ticket_compute/handlers/handler_umbrella_ticket.py:resolve_setting('node_umbrella_ticket_compute')"
+    reason: the umbrella ticket set a PR-opening lane is refused on; a ticket list, not a route for delegated work
 not_routing_configs:
   - path: src/omnimarket/configs/adk_invoke.yaml
     reason: one fixed provider invocation with no choice among routes

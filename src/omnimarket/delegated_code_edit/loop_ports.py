@@ -5,7 +5,7 @@
 * delegate -> the sanctioned ``onex`` wrapper, ``onex delegate --prompt-file
               <file> --task-type code_generation --response-contract
               <schema>`` with the caller's bus and locus flags, its lane and its ticket. Each
-              turn is one delegation run with its own receipt under
+              attempt is one delegation run with its own receipt under
               ``<state root>/runs/<run id>/``, exactly as any other caller's.
 * workspace -> the git worktree named by the request, every path resolved and
               checked to stay inside it (a symlink cannot carry a read or a
@@ -209,6 +209,7 @@ class _DelegateReceipt:
     tokens_in: int = 0
     tokens_out: int = 0
     failure: str = ""
+    retry_cause: str = ""
 
 
 def _read_delegate_receipt(path: Path) -> _DelegateReceipt:
@@ -241,8 +242,17 @@ def _read_delegate_receipt(path: Path) -> _DelegateReceipt:
         result.get("error"),
         result.get("runtime_error_type"),
     ]
-    if "terminal_payload" in result and result["terminal_payload"] is None:
+    null_terminal = "terminal_payload" in result and result["terminal_payload"] is None
+    if null_terminal:
         failures.append("terminal_payload is null")
+    retry_cause = ""
+    if (
+        receipt.get("status") == "timeout"
+        or receipt.get("terminal_failure_cause") == "timeout"
+    ):
+        retry_cause = "timed out"
+    elif receipt.get("terminal_failure_cause") == "no_terminal" or null_terminal:
+        retry_cause = "had no terminal"
     return _DelegateReceipt(
         model=str(receipt.get("model") or ""),
         tokens_in=tokens(metrics.get("input_tokens")),
@@ -252,6 +262,7 @@ def _read_delegate_receipt(path: Path) -> _DelegateReceipt:
             for value in failures
             if value and (text := " ".join(str(value).split()))
         ),
+        retry_cause=retry_cause,
     )
 
 
@@ -661,10 +672,9 @@ class DelegatedCodeEditPorts:
             request.task_type,
             "--response-contract",
             json.dumps(response_contract, separators=(",", ":")),
-            *self._delegate_flags,
-            "--state-root",
-            str(self._state_root),
         ]
+        flags_start = len(argv)
+        argv += [*self._delegate_flags, "--state-root", str(self._state_root)]
         if self._pin is not None:
             argv += ["--backend-id", self._pin.backend_id]
         if self._max_tokens is not None:
@@ -673,13 +683,45 @@ class DelegatedCodeEditPorts:
             argv += ["--caller-lane", request.caller_lane]
         if request.ticket:
             argv += ["--ticket", request.ticket]
+        reply, retry_cause = self._delegate_attempt(argv)
+        deployed_lane = any(
+            flag == "--locus" and value == "deployed-lane"
+            for flag, value in zip(
+                self._delegate_flags, self._delegate_flags[1:], strict=False
+            )
+        )
+        if not retry_cause or not deployed_lane:
+            return reply
+        # OMN-21396: deployed-lane retries succeeded 0/32 after timeout and
+        # 0/12 after no terminal; in-process retries succeeded 17/28 and 10/10.
+        retry_argv = [
+            *argv[:flags_start],
+            *IN_PROCESS_DELEGATE_FLAGS,
+            *argv[flags_start + len(self._delegate_flags) :],
+        ]
+        retry, _ = self._delegate_attempt(retry_argv)
+        if retry.ok:
+            return retry
+        return retry.model_copy(
+            update={
+                "invalid_reason": bound_error(
+                    f"deployed-lane {retry_cause} (run {reply.run_id or '?'}); "
+                    f"in-process retry: {retry.invalid_reason}"
+                )
+            }
+        )
+
+    def _delegate_attempt(self, argv: list[str]) -> tuple[ModelTurnReply, str]:
         try:
             result = self._run_delegate(argv)
         except subprocess.TimeoutExpired:
-            return ModelTurnReply(
-                run_id="",
-                ok=False,
-                invalid_reason=f"onex delegate ran past {_DELEGATE_TIMEOUT_SECONDS} s",
+            return (
+                ModelTurnReply(
+                    run_id="",
+                    ok=False,
+                    invalid_reason=f"onex delegate ran past {_DELEGATE_TIMEOUT_SECONDS} s",
+                ),
+                "timed out",
             )
         run_id = ""
         for line in reversed(result.stdout.splitlines()):
@@ -731,7 +773,7 @@ class DelegatedCodeEditPorts:
                 tokens_out=receipt.tokens_out,
                 model=receipt.model,
                 invalid_reason=bound_error(reason),
-            )
+            ), receipt.retry_cause
         actions, reason = parse_turn_reply(text)
         return ModelTurnReply(
             run_id=run_id,
@@ -742,7 +784,7 @@ class DelegatedCodeEditPorts:
             tokens_in=receipt.tokens_in,
             tokens_out=receipt.tokens_out,
             model=receipt.model,
-        )
+        ), ""
 
     # -- score ----------------------------------------------------------------
 

@@ -1,0 +1,122 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21288"
+title: "Host closeout archives a finished remote lane run and expires old reports before the working tree goes"
+summary: >
+  node_remote_lane_effect gains a retention step for the runner's host closeout
+  (lane h101-runs-retention-0530, from the h101 measurement that ~/lab-run/runs held
+  70 folders and 29 GB with none ever deleted). It copies a final run's receipt,
+  result and receipt-referenced report files to lab-run/reports/<lane>/<run>/ with a
+  manifest, removes the run folders only when the receipt is final, the lane's CLAIM is
+  closed in the ledger and no git metadata remains, and expires managed archives older
+  than N days (default 7). Unknown ownership, a symlink, a copy failure or git
+  metadata keep both folders. The PR does not implement the ticket's own AC1 or AC2
+  (the dev-stack compose check); those stay open on the ticket.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn21288-archive-before-delete"
+    statement: "A finished run's artifacts are copied and verified before any folder is removed."
+    acceptance:
+      - id: "DoD1"
+        statement: "DoD1: the retention step archives the receipt, result and receipt-referenced report files with a manifest before it deletes a run folder, and keeps both folders when the copy fails or ownership is unknown"
+  - id: "req-omn21288-keep-n-days"
+    statement: "Old archives expire after N days, and only archives this step wrote."
+    acceptance:
+      - id: "DoD2"
+        statement: "DoD2: archives older than the retention period are removed only when their own manifest and final receipt say so and their lane is not live"
+  - id: "req-omn21288-lane-stack-orphan-node"
+    statement: >-
+      The node exists in omnimarket with its tests, is registered as an
+      onex.nodes entry point, and judges a container inventory by the rules in
+      its handler.
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: a running container labelled with a finished lane is named for stopping with a restore command, and a container of a live lane is kept even when that lane also reads finished -- falsifier: uv run pytest tests/nodes/node_lane_stack_orphan_compute/test_lane_stack_orphans.py -q fails
+      - id: "AC2"
+        statement: >-
+          AC2: a lane label never claims a protected container, and an unlabelled container is reported unowned and never named for stopping -- falsifier: the same pytest run fails
+evidence_requirements:
+  - kind: "tests"
+    description: "Retention tests pass"
+    command: "uv run pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov"
+  - kind: "tests"
+    description: "The node's tests pass."
+    command: "uv run pytest tests/nodes/node_lane_stack_orphan_compute/test_lane_stack_orphans.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21288-r1-archive-first"
+    description: "A final run is archived with receipt, result and referenced report before removal; uncertain ownership, a changed ledger, a symlink, git metadata and a copy failure keep the folders. The tests fail at the merge base, which has no run_retention module."
+    source: "manual"
+    binds_ac: ["DoD1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov -k 'archives_report_result_receipt_before_deleting or uncertainty_preserves_both_trees or git_tree_is_kept or symlink_cannot_escape or archive_only_never_removes_work or copy_failure_keeps_work'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21288-r2-expiry"
+    description: "Only managed, closed-lane archives older than the period are pruned, using the archive's own final receipt after the ledger has rolled over."
+    source: "manual"
+    binds_ac: ["DoD2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov -k 'prunes_only_expired_managed_reports or expiration_uses_final_archive_receipt'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21288-deploy-probe"
+    description: "Deploy probe. Read the retention module from GitHub at the checked-out commit and require the archive-before-delete function in it, with the DoD1 test. It fails at the merge base, which has no module."
+    source: "manual"
+    binds_ac: ["DoD1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov -k archives_report_result_receipt_before_deleting"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_remote_lane_effect/run_retention.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"def retain_run\" > /dev/null'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21288-ac1-finished-lane-stop"
+    description: "This pull request's share only: the stop and keep verdicts for finished and live lanes. It fails at the merge base, which has no such node. It does not show that any lane labels its containers or that anything stops one."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lane_stack_orphan_compute/test_lane_stack_orphans.py -q --no-cov -k 'finished_lane or live_lane or exited or order'"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21288-ac2-protected-and-unowned"
+    description: "This pull request's share only: protected containers and unlabelled containers are never named for stopping. It fails at the merge base, which has no such node."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lane_stack_orphan_compute/test_lane_stack_orphans.py -q --no-cov -k 'protected or unowned or unknown_lane'"
+      - check_type: "command"
+        check_value: "uv run python -c \"from importlib.metadata import entry_points; names={e.name for e in entry_points(group='onex.nodes')}; assert 'node_lane_stack_orphan_compute' in names\""
+    binds_ac: ["AC2"]
+  - id: "dod-omn21288-orphan-deploy-probe"
+    description: "Hosted deploy smoke, runnable on the hosted runner with no lab route, broker or database: dispatch the packaged node_lane_stack_orphan_compute through the in-process ONEX runtime with one container of a finished lane and one protected container, and require a successful typed receipt that names only the first for stopping. It fails at the merge base, where the node does not exist."
+    source: "manual"
+    binds_ac: ["AC1", "AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_lane_stack_orphan_compute/test_lane_stack_orphans.py -q --no-cov"
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+          printf '%s' '{"containers": [{"name": "probe-pg", "state": "running", "lane": "probe-done"}, {"name": "omninode-runtime", "state": "running", "lane": "probe-done"}], "live_lanes": [], "finished_lanes": ["probe-done"]}' > "$probe_dir/input.json";
+          env ONEX_LANE=omn21288-deploy-probe "$runtime_bin/onex" node node_lane_stack_orphan_compute --input "$probe_dir/input.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+          uv run --locked python -c '
+          import json
+          import sys
+          from pathlib import Path
+          receipt = json.loads(Path(sys.argv[1]).read_text())
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          result = receipt["result"]
+          assert result["stop_names"] == ["probe-pg"], result
+          print(json.dumps({"run_id": receipt["run_id"], "stop_names": result["stop_names"]}))
+          ' "$probe_dir/receipt.json";

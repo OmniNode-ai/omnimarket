@@ -204,6 +204,23 @@ def test_a_matched_rule_names_the_task_kind_and_admits_its_factors() -> None:
     assert result.withheld_factors == ()
 
 
+@pytest.mark.parametrize(
+    "lane_kind", ["design-build", "red-test-fix", "review", "pr-land"]
+)
+def test_agent_spawn_named_lane_kind_admits_shapes_and_exemplar(lane_kind: str) -> None:
+    result = _evaluate(_profile("agent_spawn"), "agent_spawn", lane_kind=lane_kind)
+    assert result.status is EnumContextTaskKindRulesStatus.OK
+    assert result.task_kind == "lane_work"
+    assert [r.rule_id for r in result.matched_rules] == ["lane_kind_named"]
+    assert result.admitted_factors == (
+        F.LANE_RULES,
+        F.INVARIANTS,
+        F.CANONICAL_SHAPES,
+        F.EXEMPLAR,
+    )
+    assert result.withheld_factors == ()
+
+
 def test_equals_is_exact_not_a_substring() -> None:
     profile = _fixture_profile(_rule())
     for near in ("compute_node", "comp", "Compute", " compute"):

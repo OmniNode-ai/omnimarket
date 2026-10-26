@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_pool_read_share_effect
+version: 1.0.0
+description: Share one capture of each pool probe (a host's ssh probe, its ping read, the launching host's
+  own probe) between every placement for a short window, so the pool is read outside the placement lock
+  and 150 waiting placements cost one read of each host. The answer is kept per probe in a dot directory
+  of the placement directory, captured under that probe's own lock and written atomically; a failed capture
+  is shared too. Also recounts the slot markers on readings made before the lock.
+pack: pr_lifecycle
+node_role: effect
+display_name: Pool Read Share Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_pool_read_share_effect: omnimarket.nodes.node_pool_read_share_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem_write
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- pool-read-share-effect

@@ -67,6 +67,18 @@ def _routing_backends() -> list[dict[str, Any]]:
     return list(yaml.safe_load(_ROUTING_CONTRACT.read_text())["backends"])
 
 
+def _routing_backends_with_ordinary_judge() -> list[dict[str, Any]]:
+    """Supply an ordinary judge now that every committed judge is pin-only."""
+    backends = _routing_backends()
+    north_mini = next(
+        backend
+        for backend in backends
+        if backend["backend_id"] == "openrouter-north-mini-code"
+    )
+    north_mini["capabilities"].append("judge_adequacy")
+    return backends
+
+
 def _arm(monkeypatch: pytest.MonkeyPatch, classes: list[str]) -> None:
     config = dict(independent_judge_config())
     config["independent_judge"] = {"armed_task_classes": classes}
@@ -144,8 +156,12 @@ def test_json_reply_is_unchanged_for_other_classes() -> None:
 
 
 def test_ordinary_selection_skips_a_pin_only_backend_when_another_qualifies() -> None:
-    judge = select_independent_judge("Qwen3.8-27B", _routing_backends())
+    judge = select_independent_judge(
+        "Qwen3.8-27B", _routing_backends_with_ordinary_judge()
+    )
     assert judge is not None
+    assert judge["backend_id"] == "openrouter-north-mini-code"
+    assert judge["model_name"] == "cohere/north-mini-code:free"
     assert not judge.get("explicit_pin_only")
     assert "judge_adequacy" in judge["capabilities"]
 
@@ -282,7 +298,9 @@ def _dispatch_review(
     monkeypatch.setattr(hw, "next_eligible_tier", lambda *_a, **_k: None)
     monkeypatch.setattr(hw, "tier_max_retries", lambda _tier: 0)
     monkeypatch.setattr(hw, "is_free_tier", lambda _tier: False)
-    monkeypatch.setattr(port_mod, "load_bifrost_backends", _routing_backends)
+    monkeypatch.setattr(
+        port_mod, "load_bifrost_backends", _routing_backends_with_ordinary_judge
+    )
 
     def _effect(request: ModelLlmDelegationCallRequest) -> ModelLlmDelegationCallResult:
         return ModelLlmDelegationCallResult(
@@ -339,12 +357,13 @@ def test_review_with_the_flag_on_is_refused_when_the_judge_rejects(
     built = _install(
         monkeypatch,
         reply="Step 1. UNSUPPORTED\nVERDICT: REJECT",
-        resolved="nvidia/nemotron-3-super-120b-a12b:free",
+        resolved="cohere/north-mini-code:free",
     )
     result = _dispatch_review(tmp_path, monkeypatch, None)
     assert result["quality_gate_passed"] is False
     # a refusal climbs the ladder, so the same answer may be judged again
     assert built
+    assert built[0].backend_id == "openrouter-north-mini-code"
     assert "value = value or DEFAULT" in built[0].calls[0][1]
 
 
@@ -353,13 +372,14 @@ def test_review_with_the_flag_on_is_accepted_when_the_judge_accepts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _arm(monkeypatch, ["review"])
-    _install(
+    built = _install(
         monkeypatch,
         reply="Step 1. SUPPORTED\nStep 2. NONE\nVERDICT: ACCEPT",
-        resolved="nvidia/nemotron-3-super-120b-a12b:free",
+        resolved="cohere/north-mini-code:free",
     )
     result = _dispatch_review(tmp_path, monkeypatch, None)
     assert result["quality_gate_passed"] is True
+    assert built[0].backend_id == "openrouter-north-mini-code"
 
 
 @pytest.mark.usefixtures("stub_provider_quota_reader")

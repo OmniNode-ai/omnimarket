@@ -17,6 +17,9 @@ requirements:
       - id: "AC2"
         statement: |-
           AC2: the refusal's terminal is built through the same construction guard a dispatched run's terminal is, so an empty attempts list is carried rather than bypassed -- falsifier: a pytest asserting the published terminal carries attempts empty and is accepted by the OMN-19004 construction invariant, failing if the refusal path constructs a terminal outside that guard
+      - id: "AC3"
+        statement: |-
+          AC3: the keyless fresh-HOME run appears on `/runs?status=failed` with its correlation id and its cause
 evidence_requirements:
   - kind: "tests"
     description: "The refused run leaves one failed row with cause refused_before_dispatch and no model-call row (AC1); the projected terminal has no attempts, attempts_count 0 and passes the zero-attempt guard, which refuses the same terminal claiming another cause (AC2); a declared local model still writes its row (control)."
@@ -42,6 +45,30 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_routing_refusal_publishes_a_terminal_omn19919.py -q --no-cov -k zero_attempt"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn21305-ac1-publishes-one-terminal"
+    description: "AC1, the publish half: the refused run publishes exactly one delegate_skill.failed terminal on the node's declared failure topic for its correlation id, whose payload validates as a terminal with cause refused_before_dispatch, beside its one failed row. Shown on the lab host to fail when the refusal path's publish call is removed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_routing_refusal_publishes_a_terminal_omn19919.py -q -n 0 --no-cov -k test_ac1"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21305-ac3-refused-run-served-to-runs"
+    description: >-
+      AC3, the served half: a keyless run refused before dispatch, read back through the projection read
+      node with the shipped decisions.v1 exposure (the feed the Runs page lists status=failed from), is
+      served as exactly one row for its correlation id and the install tenant, terminal_ok 0, cause
+      refused_before_dispatch. At the fix's parent the read serves 0 rows. The page's own filtering and
+      rendering of that row is the dashboard's and is not run here.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: >-
+          uv run pytest
+          tests/unit/nodes/node_delegate_skill_orchestrator/test_routing_refusal_served_to_runs_omn21305.py
+          -q -n 0 --no-cov
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
   - id: "dod-omn21305-deploy-probe"
     description: "Hosted-runner deploy readback: dispatch the installed event emitter through the in-process ONEX runtime in its declared spool-only mode, require a successful typed receipt and exactly one persisted event for its session. The regression probe also checks refusal rows, safe YAML parsing and the terminal cleanup deadline. No lane services or credentials are required."
     source: "manual"

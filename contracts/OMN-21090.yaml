@@ -1,0 +1,196 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21090"
+title: "Claude Code context service and delegation adapter (compaction mod)"
+summary: "This repository change adds the per-session current-context fold of the plan's section 6 boundary algorithm, step 5 (TA.13): a pure handler in node_context_compaction_receipts_fold_compute that joins install-confirm results of one session in any order and with duplicates, keeps the maximal boundary chains and every boundary observation, and reads back the current boundary, what it installed, and each installed activation retired at the next boundary. It is not routed and has no table yet. The epic criteria are read through the Linear API on child tickets and are not bound by this contract. TC.4 additionally offers explicit ledger sequence watermarks: it refuses gaps, duplicates and legacy NULL sequences as stale and reports the contiguous prefix reached; timestamp-pinned replay remains supported. The ownership manifest also declares omninode_internal.compaction_current_context and its cursor sequence ahead of migration delivery; no writer node or SQL is added by the ownership stage."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21090-current-context-fold"
+    statement: |-
+      The per-session current context derived from install-confirm results is the same for every arrival order and duplicate set, and records an installed activation retired at the next boundary without revising its installation fact.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: every Track T0 ticket under this epic is Done with its own criteria met -- falsifier: a child ticket of this epic in track Shared not in state Done, read through the Linear API
+      - id: "AC2"
+        statement: |-
+          AC2: every Track A ticket under this epic is Done with its own criteria met -- falsifier: a child ticket of this epic in track A not in state Done, read through the Linear API
+      - id: "AC3"
+        statement: |-
+          AC3: every Track B ticket under this epic is Done with its own criteria met -- falsifier: a child ticket of this epic in track B not in state Done, read through the Linear API
+      - id: "AC4"
+        statement: |-
+          AC4: every Track C ticket under this epic is Done with its own criteria met -- falsifier: a child ticket of this epic in track C not in state Done, read through the Linear API
+      - id: "AC5"
+        statement: |-
+          AC5: every Track E ticket under this epic is Done with its own criteria met -- falsifier: a child ticket of this epic in track E not in state Done, read through the Linear API
+evidence_requirements:
+  - kind: "tests"
+    description: "The current-context fold tests pass."
+    command: "uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_current_context_fold.py -q -p no:randomly --no-cov"
+  - kind: "tests"
+    description: "The relation inventory tests pass with the new ownership rows and the regenerated inventory."
+    command: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21090-ac1-current-context-fold"
+    description: "Track T0 rides on the install-confirm compute and the adapter's capture. This repository's part here: results of the merged install-confirm compute over a growing P6-shaped capture fold to the custom activation retired at the native boundary. The test module fails at the merge base, where the fold does not exist. The child-ticket state this criterion names is read through the Linear API and is not bound here."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_current_context_fold.py -q -p no:randomly --no-cov -k 'growing_capture'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21090-ac2-current-context-fold"
+    description: "Track A (TA.13, boundary algorithm step 5): custom then native records the custom activation retired at the native boundary and makes the native boundary current; native then custom makes the custom activation current. The test module fails at the merge base, where the fold does not exist. The child-ticket state this criterion names is read through the Linear API and is not bound here."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_current_context_fold.py -q -p no:randomly --no-cov -k 'retires_the_custom_activation or native_then_custom'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21090-ac3-current-context-fold"
+    description: "Every arrival permutation of install-confirm results, with duplicates, folds to one state, and folding one at a time onto a stored state equals one batch. The test module fails at the merge base, where the fold does not exist. The child-ticket state this criterion names is read through the Linear API and is not bound here."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_current_context_fold.py -q -p no:randomly --no-cov -k 'every_permutation or incremental_fold'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21090-ac4-current-context-fold"
+    description: "A later boundary never changes an earlier retirement, and a re-folded duplicate reports unchanged. The test module fails at the merge base, where the fold does not exist. The child-ticket state this criterion names is read through the Linear API and is not bound here."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_current_context_fold.py -q -p no:randomly --no-cov -k 'never_changes_an_earlier_retirement or refolding_a_duplicate'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21090-ac5-current-context-fold"
+    description: "Diverging chains and differing decided readings of one boundary are conflicts in every order; undecided and unreadable readings are resolved by a fuller capture in any order. The test module fails at the merge base, where the fold does not exist. The child-ticket state this criterion names is read through the Linear API and is not bound here."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_current_context_fold.py -q -p no:randomly --no-cov -k 'diverging_chains or differing_decided or undecided_reading or unreadable_reading'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn21090-deploy-current-context-probe"
+    description: "Hosted-runner probe: run the packaged node_context_install_confirm_compute through `onex node` over an in-memory bus over a P6-shaped custom compaction and then the same capture grown by a native compaction, fold both results in both orders through the packaged current-context handler, and require the native boundary current with the custom activation retired there. At the merge base the handler module does not exist and the probe fails. No lane services or credentials are required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu
+          export PYTHONDONTWRITEBYTECODE=1
+          probe="$(mktemp -d)"
+          trap 'rm -rf "$probe"' EXIT
+          uv run --locked python - "$probe" <<'PY'
+          import sys
+          import uuid
+          from omnimarket.models.context_install_confirm import ModelCapturedTranscriptRecord as R, ModelInstallConfirmRequest as Q, ModelPublishedActivation as A
+          from omnimarket.models.context_pack_render import ModelContextPackRenderMessage as M
+          from omnimarket.nodes.node_context_install_confirm_compute.handlers.handler_context_install_confirm import observed_messages_hash as h
+          a = uuid.uuid4()
+          msgs = [("user", "legend"), ("assistant", "ok"), ("user", "trailer\nactivation_id: %s" % a)]
+          t = "2026-10-17T12:00:10Z"
+          rs = [R(uuid="p0", record_type="user", role="user", text="hi", prompt_source="sdk", timestamp="2026-10-17T12:00:00Z"),
+                R(uuid="b1", record_type="system", subtype="compact_boundary", logical_parent_uuid="p0", timestamp=t)]
+          p = "b1"
+          for i, (role, text) in enumerate(msgs):
+              rs.append(R(uuid="r%d" % i, parent_uuid=p, record_type=role, role=role, text=text, timestamp=t)); p = "r%d" % i
+          rs.append(R(uuid="c1", parent_uuid=p, record_type="user", role="user", text="<local-command-caveat>", is_meta=True, timestamp="2026-10-17T12:00:11Z"))
+          grown = rs + [R(uuid="u2", parent_uuid="c1", record_type="user", role="user", text="next", prompt_source="sdk", timestamp="2026-10-17T12:00:20Z"),
+                        R(uuid="b2", record_type="system", subtype="compact_boundary", logical_parent_uuid="u2", preserved_uuids=("k0",), timestamp="2026-10-17T12:00:30Z"),
+                        R(uuid="s2", parent_uuid="b2", record_type="user", role="user", text="native summary", is_compact_summary=True, timestamp="2026-10-17T12:00:30Z"),
+                        R(uuid="k0", parent_uuid="s2", record_type="user", role="user", text="kept", timestamp="2026-10-17T12:00:30Z")]
+          act = A(activation_id=a, installed_messages_hash=h(M(role=r, text=x) for r, x in msgs), published_at="2026-10-17T12:00:05Z")
+          for name, c in (("early", rs), ("late", grown)):
+              open("%s/%s.json" % (sys.argv[1], name), "w").write(Q(session_id="s", records=tuple(c), activations=(act,)).model_dump_json())
+          open("%s/activation" % sys.argv[1], "w").write(str(a))
+          PY
+          export PATH="$(uv run --locked python -c 'import sysconfig; print(sysconfig.get_path("scripts"))'):$PATH";
+          onex node node_context_install_confirm_compute --input "$probe/early.json" --backend event_bus=inmemory --output receipt > "$probe/early.out.json";
+          onex node node_context_install_confirm_compute --input "$probe/late.json" --backend event_bus=inmemory --output receipt > "$probe/late.out.json";
+          uv run --locked python - "$probe" <<'PY'
+          import json
+          import sys
+          import uuid
+          from omnimarket.models.context_install_confirm import ModelInstallConfirmResult as S
+          from omnimarket.nodes.node_context_compaction_receipts_fold_compute.handlers.handler_context_current_context_fold import HandlerContextCurrentContextFold as F
+          from omnimarket.models.context_compaction_fold import ModelCurrentContextProjectionRequest as P
+          d = sys.argv[1]
+          a = uuid.UUID(open("%s/activation" % d).read())
+          early, late = (S.model_validate(json.load(open("%s/%s.out.json" % (d, n)))["result"]) for n in ("early", "late"))
+          views = [F().handle(P(events=e)).current for e in ((early, late), (late, early), (late, early, late))]
+          assert views[0] == views[1] == views[2], views
+          v = views[0]
+          assert v.state.value == "current" and v.boundary_uuid == "b2" and v.kind.value == "native", v
+          [r] = v.retirements
+          assert (r.activation_id, r.installed_at_boundary_uuid, r.retired_at_boundary_uuid) == (a, "b1", "b2"), v
+          print(v.state.value, v.boundary_uuid, len(v.retirements))
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21090-ac1-current-context-ownership"
+    description: "This repository's part: the table and cursor sequence ownership rows are declared exactly once with the expected schema, migration path and access, the ownership loader resolves both, and no node SQL ships yet. Fails at the merge base, where neither row exists. The child-ticket state this criterion names is read through the Linear API and is not bound here."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q -p no:randomly --no-cov -k compaction_current_context_ownership_precedes_migration_delivery"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21090-ac2-current-context-census"
+    description: "Track A (TA.13, the current-context projection): the declared-table census moves to 118 with the new declaration and the source-created census is unchanged at 108. Fails at the merge base, where the census reads 117. The child-ticket state this criterion names is read through the Linear API and is not bound here."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q -p no:randomly --no-cov -k retained_live_census_gap_fails_closed"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21090-ac3-inventory-fresh"
+    description: "The checked-in relation inventory is regenerated from source and matches it. The new ownership declaration is also required, so the check fails where that declaration is absent. The child-ticket state this criterion names is read through the Linear API and is not bound here."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q -p no:randomly --no-cov -k 'checked_in_inventory_is_source_derived_and_current or compaction_current_context_ownership_precedes_migration_delivery'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21090-ac4-inventory-generator-check"
+    description: "The relation inventory generator's own freshness check exits 0 over the checked-in evidence. The new ownership declaration is also required, so the check fails where that declaration is absent. The child-ticket state this criterion names is read through the Linear API and is not bound here."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run python scripts/generate_application_relation_inventory.py --check"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q -p no:randomly --no-cov -k compaction_current_context_ownership_precedes_migration_delivery"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21090-ac5-receipts-ownership-unchanged"
+    description: "The compaction_receipts ownership and delivered migrations beside the new declaration are unchanged. The new ownership declaration is also required, so the check fails where that declaration is absent. The child-ticket state this criterion names is read through the Linear API and is not bound here."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q -p no:randomly --no-cov -k 'compaction_receipts_ownership_and_migration_delivery or compaction_current_context_ownership_precedes_migration_delivery'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+
+  - id: "dod-omn21090-ac4-sequence-watermark"
+    description: "Track C TC.4: sequence completeness is checked before authority folding; incomplete reads are stale with the contiguous watermark reached, never resolved with partial rulings. Epic completion still requires every child state to be verified through Linear."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_context_source_ledger_effect/test_ledger_sequence_watermark.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+
+  - id: "dod-omn21090-deploy-sequence-probe"
+    description: "Hosted-runner packaged-handler probe: a complete snapshot resolves, but a missing or duplicate sequence cannot expose partial authority. No dev services or credentials are required. The new test file fails against the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run --locked pytest tests/unit/nodes/node_context_source_ledger_effect/test_ledger_sequence_watermark.py -q -p no:randomly --no-cov -k 'complete_sequence or reached_prefix'"
+        cwd: "${OMNI_HOME}/omnimarket"

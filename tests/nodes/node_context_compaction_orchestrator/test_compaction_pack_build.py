@@ -36,6 +36,7 @@ from omnimarket.models.context_pack_orchestrator import (
     EnumContextPackOrchestratorStatus,
     ModelContextPackBuilt,
     ModelContextPackCommand,
+    ModelContextPackTierStatus,
 )
 from omnimarket.models.context_pack_render.model_context_pack_render_message import (
     ModelContextPackRenderMessage,
@@ -213,6 +214,39 @@ def test_model_outputs_hash_is_over_the_canonical_model_outputs() -> None:
     assert outcome.package is not None
     expected = _sha(json.dumps(list(outputs), separators=(",", ":")))
     assert outcome.package.model_outputs_hash == expected
+
+
+def _tier(
+    factor: EnumContextFactor, read_ms: float | None
+) -> ModelContextPackTierStatus:
+    return ModelContextPackTierStatus(
+        factor=factor,
+        required=False,
+        status=EnumContextSourceStatus.RESOLVED,
+        included=True,
+        read_ms=read_ms,
+    )
+
+
+def test_package_carries_the_model_written_section_time() -> None:
+    outcome = map_pack_built(
+        _ok_built(
+            tier_statuses=(
+                _tier(EnumContextFactor.OPERATOR_RULINGS, 7.0),
+                _tier(EnumContextFactor.TAIL_SUMMARY, 1234.5),
+            )
+        )
+    )
+    assert outcome.package is not None
+    assert outcome.package.model_section_ms == 1234.5
+
+
+def test_package_model_section_time_is_none_when_no_model_tier_was_read() -> None:
+    outcome = map_pack_built(
+        _ok_built(tier_statuses=(_tier(EnumContextFactor.OPERATOR_RULINGS, 7.0),))
+    )
+    assert outcome.package is not None
+    assert outcome.package.model_section_ms is None
 
 
 def test_sources_read_at_the_barrier_for_the_access_tenant() -> None:

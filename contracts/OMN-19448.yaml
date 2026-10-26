@@ -7,50 +7,20 @@ is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-  - id: "req-stop-reason-columns"
+  - id: "req-omn19448-terminal-copy"
     statement: |-
-      delegation_events must record the provider finish reason and whether the answer was truncated, written from the terminal.
+      delegation_events copies the terminal's own cause, operational outcome and content verdict, and stores the terminal's trace, routing,
+      stop reason and timing columns through a vendored migration, so no failed row is left without a cause.
     acceptance:
       - id: "AC1"
         statement: |-
-          AC1: migration 0053 adds the nullable finish_reason and truncated columns idempotently and ships a rollback -- falsifier: uv run pytest tests/unit/delegation/test_terminal_stop_reason_columns_omn19448.py -q -k "migration_adds_stop_reason_columns"
+          AC1: the projection writes the terminal's cause, operational_outcome and content_verdict unchanged
       - id: "AC2"
         statement: |-
-          AC2: the local dispatch payload and the canonical terminal carry the deciding rung's stop reason, and the projection writes both columns, keeps them across a later sparse terminal, and leaves them NULL for an unknown stop reason -- falsifier: uv run pytest tests/unit/delegation/test_terminal_stop_reason_columns_omn19448.py tests/unit/delegation/test_terminal_columns_omn19448.py -q
+          AC2: the new columns arrive through a vendored migration and are written from the terminal
       - id: "AC3"
         statement: |-
-          AC3: a failed ladder the gate decided, whose terminal declared no cause, derives terminal_failure_cause quality_gate_refused, and a declared cause, an accepted rung and a capacity-only ladder keep their previous result -- falsifier: uv run pytest tests/unit/delegation/test_gate_decided_cause_derived_omn19448.py -q
-  - id: "req-requested-model-and-timing-columns"
-    statement: |-
-      delegation_events must record the model the ladder first requested and the terminal's measured queue wait and execution time, written from the terminal, with NULL meaning not measured.
-    acceptance:
-      - id: "AC4"
-        statement: |-
-          AC4: migration 0058 adds the nullable requested_model, queue_wait_ms and execution_ms columns idempotently, ships a rollback, and no other migration adds them -- falsifier: uv run pytest tests/unit/delegation/test_terminal_columns_omn19448.py -q -k "only_migration_0058"
-      - id: "AC5"
-        statement: |-
-          AC5: the delegate-skill terminal and the canonical terminal write the three columns, a measured zero is stored as zero, an unmeasured value stays NULL, and a later sparse terminal does not erase them -- falsifier: uv run pytest tests/unit/delegation/test_terminal_timing_and_requested_model_omn19448.py -q
-  - id: "req-failed-run-attribution"
-    statement: "The terminal owns the run record, including routing attribution and measured duration; a rung verdict may only fill its blank score_source."
-    acceptance:
-      - id: "AC6"
-        statement: "AC6: a rung verdict arriving before its terminal creates no run row, and a late verdict does not replace the terminal's result -- falsifier: tests/test_rung_verdict_never_authors_run_row.py and the real PostgreSQL test_a_rung_verdict_creates_no_run_row"
-      - id: "AC7"
-        statement: "AC7: a failed run names the model, backend and host of its deciding rung and preserves that attribution whichever order sparse and routed terminals arrive -- falsifier: tests/test_failed_run_attribution.py -k 'deciding_rung or whatever_order'"
-      - id: "AC8"
-        statement: "AC8: a timeout or runtime shutdown before any try stores not routed (<cause>) for the model and not routed for backend and host through the real PostgreSQL writer -- falsifier: tests/test_omn19448_failed_run_attribution_real_postgres.py -k 'before_any_try'"
-      - id: "AC9"
-        statement: "AC9: when a model call was not timed, both the producer and projection report the measured execution duration; a measured call latency is preserved -- falsifier: tests/test_failed_run_attribution.py -k 'duration or latency'"
-  - id: "req-experiment-data-source-and-quarantine"
-    statement: |-
-      A run the caller declares synthetic through the request's own provenance is stored data_source experiment, and a poison terminal too large for the DLQ producer is still quarantined with a bounded envelope, so the delegate-skill terminals behind it reach delegation_events with their backend_id and host.
-    acceptance:
-      - id: "AC10"
-        statement: |-
-          AC10: a delegate-skill terminal whose provenance traffic_class is synthetic is written with data_source experiment by both projection writers, a terminal without it stays real, the lane name is never read, and migration 0064 admits the value -- falsifier: uv run pytest tests/unit/projection/test_delegation_data_source_experiment_omn19448.py -q
-      - id: "AC11"
-        statement: |-
-          AC11: a poison event whose serialized DLQ envelope exceeds the producer limit is published bounded with its correlation_id, the offset is committed, and the next recorded delegate-skill terminal is projected with its backend_id and host -- falsifier: uv run pytest tests/unit/projection/test_dlq_oversize_poison_omn19448.py tests/unit/projection/test_delegation_backend_host_after_quarantine_omn19448.py -q
+          AC3: on the lab, no failed row written after the deploy has a null cause
 evidence_requirements:
   - kind: "tests"
     description: "The stop reason column tests."
@@ -263,3 +233,77 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/projection/test_dlq_oversize_poison_omn19448.py tests/unit/projection/test_delegation_backend_host_after_quarantine_omn19448.py -q -p no:cacheprovider"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC11"]
+  - id: "dod-omn19448-ac3-producer-cause-fallback-control"
+    description: >-
+      Ticket AC3, projection side: a failed row whose terminal names no cause still gets one. A gate-decided ladder derives
+      quality_gate_refused, a pre-dispatch refusal keeps refused_before_dispatch on an empty ladder, and a one-rung ladder
+      refused for a missing or rejected provider credential falls back to the producer's own reading (provider_error).
+      The credential cases fail with merged fix b483d4369f2f216ba4928a792c76dd8828683fc6 reverted. The lab half of AC3
+      (no failed row with a NULL cause after the deploy) is the local-gate readback dod-omn19448-current-deploy-cause-readback.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: >-
+          uv run pytest tests/unit/delegation/test_credential_refusal_cause_derived_omn19448.py
+          tests/unit/delegation/test_gate_decided_cause_derived_omn19448.py
+          tests/unit/delegation/test_pre_dispatch_refusal_cause_omn19448.py -q -p no:cacheprovider
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn19448-retire-deleted-ac4-to-ac11"
+    description: >-
+      AC4 to AC11 were deleted from OMN-19448; the ticket now carries AC1 to AC3 only. This item retires the claim each
+      merged item made on a deleted criterion and binds no criterion. Its check keeps the terminal column tests running.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_terminal_columns_omn19448.py -q -p no:cacheprovider"
+        cwd: "${OMNI_HOME}/omnimarket"
+    supersedes_ac_binding:
+      - item: "dod-requested-model-and-timing-ac4"
+        label: "AC4"
+        reason_kind: "no_longer_applicable"
+        reason: "AC4 was deleted from the ticket, so the item that bound it no longer proves a criterion the ticket carries."
+        retired_by: "c16-closeout-lane"
+        retired_at: "2026-10-24T21:38:48Z"
+      - item: "dod-requested-model-and-timing-ac5"
+        label: "AC5"
+        reason_kind: "no_longer_applicable"
+        reason: "AC5 was deleted from the ticket, so the item that bound it no longer proves a criterion the ticket carries."
+        retired_by: "c16-closeout-lane"
+        retired_at: "2026-10-24T21:38:48Z"
+      - item: "dod-omn19448-failed-run-attribution"
+        label: "AC6"
+        reason_kind: "no_longer_applicable"
+        reason: "AC6 was deleted from the ticket, so the item that bound it no longer proves a criterion the ticket carries."
+        retired_by: "c16-closeout-lane"
+        retired_at: "2026-10-24T21:38:48Z"
+      - item: "dod-omn19448-failed-run-deciding-rung"
+        label: "AC7"
+        reason_kind: "no_longer_applicable"
+        reason: "AC7 was deleted from the ticket, so the item that bound it no longer proves a criterion the ticket carries."
+        retired_by: "c16-closeout-lane"
+        retired_at: "2026-10-24T21:38:48Z"
+      - item: "dod-omn19448-failed-run-before-any-try"
+        label: "AC8"
+        reason_kind: "no_longer_applicable"
+        reason: "AC8 was deleted from the ticket, so the item that bound it no longer proves a criterion the ticket carries."
+        retired_by: "c16-closeout-lane"
+        retired_at: "2026-10-24T21:38:48Z"
+      - item: "dod-omn19448-failed-run-measured-duration"
+        label: "AC9"
+        reason_kind: "no_longer_applicable"
+        reason: "AC9 was deleted from the ticket, so the item that bound it no longer proves a criterion the ticket carries."
+        retired_by: "c16-closeout-lane"
+        retired_at: "2026-10-24T21:38:48Z"
+      - item: "dod-omn19448-experiment-data-source"
+        label: "AC10"
+        reason_kind: "no_longer_applicable"
+        reason: "AC10 was deleted from the ticket, so the item that bound it no longer proves a criterion the ticket carries."
+        retired_by: "c16-closeout-lane"
+        retired_at: "2026-10-24T21:38:48Z"
+      - item: "dod-omn19448-oversize-poison-quarantine"
+        label: "AC11"
+        reason_kind: "no_longer_applicable"
+        reason: "AC11 was deleted from the ticket, so the item that bound it no longer proves a criterion the ticket carries."
+        retired_by: "c16-closeout-lane"
+        retired_at: "2026-10-24T21:38:48Z"

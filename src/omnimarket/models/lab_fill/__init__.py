@@ -19,12 +19,23 @@ from omnimarket.models.lab_fill.model_lab_fill_pr_land import (
     ModelLabFillPrLandOutcome,
     ModelLabFillPrLandPlan,
 )
+from omnimarket.models.lab_fill.model_lab_fill_ticket import (
+    EnumLabFillTicketDrop,
+    EnumLabFillTicketSource,
+    ModelLabFillTicketDrop,
+    ModelLabFillTicketFacts,
+    ModelLabFillTicketIssue,
+    ModelLabFillTicketItem,
+    ModelLabFillTicketPlan,
+)
 
 __all__ = [
     "EnumLabFillPrLandCause",
     "EnumLabFillPrLandClass",
     "EnumLabFillPrLandFailure",
     "EnumLabFillSkipReason",
+    "EnumLabFillTicketDrop",
+    "EnumLabFillTicketSource",
     "ModelLabFillApprovedRow",
     "ModelLabFillHoldSource",
     "ModelLabFillLaunch",
@@ -34,4 +45,9 @@ __all__ = [
     "ModelLabFillPrLandFacts",
     "ModelLabFillPrLandOutcome",
     "ModelLabFillPrLandPlan",
+    "ModelLabFillTicketDrop",
+    "ModelLabFillTicketFacts",
+    "ModelLabFillTicketIssue",
+    "ModelLabFillTicketItem",
+    "ModelLabFillTicketPlan",
 ]

@@ -1,0 +1,81 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21398"
+title: "Migration slice 2: move the five G2 nodes to omnimarket"
+summary: >-
+  Port group G2 of the internal-repos code migration moves five nodes into
+  omnimarket in its canonical node shape (contract, metadata, handlers, models)
+  with their tests under tests/nodes/: node_pool_read_share_effect,
+  node_brief_compact_compute, node_standup_retrospective_compute,
+  node_lane_host_discovery_compute and node_umbrella_ticket_compute. The
+  knowledge-base repository name, the variable that holds its clone path and
+  the umbrella ticket set are read from the environment or the node overlay,
+  and a node refuses with the setting named when neither supplies it. Each node
+  is registered as an onex.nodes entry point. The plugin callers are repointed
+  in a later slice.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn21398-g2-nodes"
+    statement: >-
+      The five G2 nodes exist in omnimarket with their tests, and each
+      overlay-reading node refuses with the setting named when neither its
+      environment variable nor its overlay supplies it.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the five G2 nodes and their tests live in omnimarket and pass"
+  - id: "req-omn21398-entry-points"
+    statement: "The five G2 nodes are registered onex.nodes entry points."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: node_pool_read_share_effect, node_brief_compact_compute, node_standup_retrospective_compute, node_lane_host_discovery_compute and node_umbrella_ticket_compute are onex.nodes entry points"
+evidence_requirements:
+  - kind: "tests"
+    description: "G2: the five nodes' tests pass in omnimarket."
+    command: "uv run pytest tests/nodes/node_pool_read_share_effect/test_golden_chain_pool_read_share_effect.py tests/nodes/node_brief_compact_compute/test_golden_chain_brief_compact_compute.py tests/nodes/node_standup_retrospective_compute/test_golden_chain_standup_retrospective_compute.py tests/nodes/node_lane_host_discovery_compute/test_golden_chain_lane_host_discovery_compute.py tests/nodes/node_umbrella_ticket_compute/test_golden_chain_umbrella_ticket_compute.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21398-ac1-g2-nodes"
+    description: "The five G2 nodes' golden-chain tests pass, including the overlay refusal and overlay resolution of the three overlay-reading nodes. Fails at the merge base, which has none of these nodes."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_pool_read_share_effect/test_golden_chain_pool_read_share_effect.py tests/nodes/node_brief_compact_compute/test_golden_chain_brief_compact_compute.py tests/nodes/node_standup_retrospective_compute/test_golden_chain_standup_retrospective_compute.py tests/nodes/node_lane_host_discovery_compute/test_golden_chain_lane_host_discovery_compute.py tests/nodes/node_umbrella_ticket_compute/test_golden_chain_umbrella_ticket_compute.py -q"
+  - id: "dod-omn21398-ac2-entry-points"
+    description: "The five G2 nodes are registered onex.nodes entry points and run from their packaged contracts."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_g2_local_invocation.py -q"
+      - check_type: "command"
+        check_value: "uv run python -c \"from importlib.metadata import entry_points; names={e.name for e in entry_points(group='onex.nodes')}; need={'node_pool_read_share_effect','node_brief_compact_compute','node_standup_retrospective_compute','node_lane_host_discovery_compute','node_umbrella_ticket_compute'}; missing=need-names; assert not missing, missing\""
+  - id: "dod-omn21398-deploy-umbrella"
+    description: "Hosted deploy smoke, runnable on the hosted runner with no lab route, broker or database: dispatch the packaged node_umbrella_ticket_compute through the in-process ONEX runtime with an explicit umbrella ticket set and require a successful typed receipt carrying the one PR refusal. The packaged-contract execution of all five G2 nodes is bound to AC2 by tests/test_g2_local_invocation.py."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+          printf '%s' '{"tickets": ["OMN-1"], "text": "no evidence line", "opens_pr": true, "umbrella_tickets": ["OMN-1"], "surface": "pr"}' > "$probe_dir/input.json";
+          env ONEX_LANE=omn21398-deploy-probe "$runtime_bin/onex" node node_umbrella_ticket_compute --input "$probe_dir/input.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+          uv run --locked python -c '
+          import json
+          import sys
+          from pathlib import Path
+          receipt = json.loads(Path(sys.argv[1]).read_text())
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          refusals = receipt["result"]["refusals"]
+          assert len(refusals) == 1 and refusals[0].startswith("the title\x27s only ticket OMN-1 is an umbrella ticket: "), refusals
+          print(json.dumps({"run_id": receipt["run_id"], "refusals": len(refusals)}))
+          ' "$probe_dir/receipt.json";

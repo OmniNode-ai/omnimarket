@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_idle_slot_fill_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: >
+  The lab is never idle (RULING 2026-10-14T21:46:25Z, operator 2026-10-18). fill: from the throughput tick's live
+  pool hosts, its own finding lines and the lanes the merge sweep places this tick, choose the lanes that fill the
+  free slots from the standing pillar backlog (unowned process-fix PRs, unowned shared reds, M4 board reds, queued
+  experiment designs), Claude lanes first, then Codex and declared low-risk GLM capacity, each with its brief; keys
+  sent inside the window are skipped. With the file backlog spent it generates items from live state: the operator's
+  open delegation-pillar and M4-carrier tickets with no live CLAIM and no open PR (the session's Linear snapshot),
+  tickets blocked on a missing readback (the ledger) and the experiment designs of the idle_slot_fill overlay in
+  rotation. turn-guard: refuse an orchestrator Stop turn whose tool output showed free lab headroom or an UNOWNED red
+  and whose tool calls dispatched nothing. The repository names, the cloud backlog declaration and the experiment
+  designs are read from the idle_slot_fill and repos overlays; a key no overlay supplies refuses naming the key.
+  Called in process through node.py by the throughput tick and the Stop hook.
+input_model:
+  name: ModelIdleSlotFillRequest
+  module: omnimarket.nodes.node_idle_slot_fill_effect.models.model_idle_slot_fill
+output_model:
+  name: ModelIdleSlotFillResult
+  module: omnimarket.nodes.node_idle_slot_fill_effect.models.model_idle_slot_fill
+handler:
+  module: omnimarket.nodes.node_idle_slot_fill_effect.handlers.handler_idle_slot_fill
+  class: HandlerIdleSlotFill
+  input_model: omnimarket.nodes.node_idle_slot_fill_effect.models.model_idle_slot_fill.ModelIdleSlotFillRequest
+  output_model: omnimarket.nodes.node_idle_slot_fill_effect.models.model_idle_slot_fill.ModelIdleSlotFillResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_idle_slot_fill_effect.handlers.handler_idle_slot_fill:HandlerIdleSlotFill
+  handlers:
+  - operation: fill
+    topic: onex.cmd.omnimarket.idle-slot-fill-requested.v1
+    handler:
+      name: HandlerIdleSlotFill
+      module: omnimarket.nodes.node_idle_slot_fill_effect.handlers.handler_idle_slot_fill
+  - operation: turn-guard
+    topic: onex.cmd.omnimarket.idle-turn-guard-requested.v1
+    handler:
+      name: HandlerIdleTurnGuard
+      module: omnimarket.nodes.node_idle_slot_fill_effect.handlers.handler_idle_slot_fill
+terminal_event: onex.evt.omnimarket.idle-slot-fill-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.idle-slot-fill-requested.v1
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: false
+  timeout_ms: 120000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: false
+metadata:
+  description: 'Fill free lab slots from the standing pillar backlog and refuse an idle Stop turn.'
+  author: OmniNode Team
+  created: '2026-10-25'
+  transport_type: inmemory
+  tags:
+  - effect
+  - idle-slot-fill-effect
+  - OMN-21409
+  related_tickets:
+  - OMN-17427
+  - OMN-21409

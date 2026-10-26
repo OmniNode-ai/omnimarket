@@ -142,7 +142,11 @@ def test_decision_completes_through_its_contract(
 def test_each_compute_contract_routes_one_operation_on_its_own_topic() -> None:
     """One command topic per decision: a shared topic leaves an operation unseeded."""
     topics: dict[str, str] = {}
-    for node in ("node_remote_lane_compute", "node_remote_lane_close_compute"):
+    for node in (
+        "node_remote_lane_compute",
+        "node_remote_lane_close_compute",
+        "node_remote_lane_handoff_compute",
+    ):
         contract = yaml.safe_load((_NODES / node / "contract.yaml").read_text())
         handlers = contract["handler_routing"]["handlers"]
         assert len(handlers) == 1, node

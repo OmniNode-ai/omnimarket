@@ -66,6 +66,7 @@ pytestmark = pytest.mark.unit
 
 REPO = "OmniNode-ai/omnimarket"
 HEAD = "a" * 40
+NODE_ID = "PR_kwDOAbCdEf4AAAABcDeFgH"
 MOVED = "b" * 40
 GATEWAY = load_topics(EnumScmNode.GATEWAY)
 WRITE = load_topics(EnumScmNode.WRITE)
@@ -350,6 +351,7 @@ def _watcher(tmp_path: Path, *, age: timedelta = timedelta(minutes=1)) -> Path:
                 },
                 "facts": {
                     "number": 77,
+                    "node_id": NODE_ID,
                     "title": "feat(OMN-20913): x",
                     "state": "OPEN",
                     "draft": False,
@@ -973,7 +975,160 @@ def test_failed_write_terminal_exits_one_on_the_failure_topic(
     assert answer["result"]["reason"] == "head_moved"
 
 
-def test_no_terminal_exits_75(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.fixture
+def retry_pauses(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    pauses: list[float] = []
+    monkeypatch.setattr("time.sleep", pauses.append)
+    return pauses
+
+
+def _install_bus_attempts(
+    monkeypatch: pytest.MonkeyPatch, attempts: list[FakeBus | Exception]
+) -> list[FakeBus | Exception]:
+    opened_attempts: list[FakeBus | Exception] = []
+
+    @contextlib.asynccontextmanager
+    async def opened(_: dict[str, object]) -> AsyncIterator[FakeBus]:
+        attempt = attempts[len(opened_attempts)]
+        opened_attempts.append(attempt)
+        if isinstance(attempt, Exception):
+            raise attempt
+        yield attempt
+
+    monkeypatch.setattr(scm_cli, "_open_bus", opened)
+    return opened_attempts
+
+
+def test_read_retries_timeout_with_a_fresh_correlation_id(
+    monkeypatch: pytest.MonkeyPatch, retry_pauses: list[float]
+) -> None:
+    unanswered, completed = FakeBus(answer=False), FakeBus()
+    opened = _install_bus_attempts(monkeypatch, [unanswered, completed])
+
+    result = _run(["pr-view", *_READ_ARGS["pr-view"], "--timeout-s", "0.01"])
+
+    assert result.exit_code == 0, result.output
+    answer = _answer(result)
+    assert answer["outcome"] == "completed"
+    assert answer["attempts"] == 2
+    assert len(result.stdout.strip().splitlines()) == 1
+    assert len(opened) == 2
+    envelopes = [bus.published[0][1] for bus in (unanswered, completed)]
+    ids = [envelope["correlation_id"] for envelope in envelopes]
+    assert len(set(ids)) == 2
+    for envelope in envelopes:
+        assert envelope["payload"]["correlation_id"] == envelope["correlation_id"]
+    assert answer["bus"]["correlation_id"] == ids[-1]
+    assert retry_pauses == [20]
+
+
+def test_read_exhausts_three_unanswered_attempts(
+    monkeypatch: pytest.MonkeyPatch, retry_pauses: list[float]
+) -> None:
+    bus = FakeBus(answer=False)
+    _install(monkeypatch, bus)
+
+    result = _run(["pr-view", *_READ_ARGS["pr-view"], "--timeout-s", "0.01"])
+
+    assert result.exit_code == scm_cli.EXIT_NO_TERMINAL, result.output
+    answer = _answer(result)
+    assert answer["status"] == "no_terminal"
+    assert answer["attempts"] == 3
+    assert len(result.stdout.strip().splitlines()) == 1
+    assert len(bus.published) == 3
+    ids = [envelope["correlation_id"] for _, envelope in bus.published]
+    assert len(set(ids)) == 3
+    assert answer["correlation_id"] == ids[-1]
+    assert retry_pauses == [20, 20]
+
+
+@pytest.mark.parametrize("error_type", [scm_cli.LabRunBusError, InfraConnectionError])
+def test_read_retries_when_the_bus_does_not_open(
+    monkeypatch: pytest.MonkeyPatch,
+    retry_pauses: list[float],
+    error_type: type[Exception],
+) -> None:
+    bus = FakeBus()
+    opened = _install_bus_attempts(monkeypatch, [error_type("unavailable"), bus])
+
+    result = _run(["pr-view", *_READ_ARGS["pr-view"]])
+
+    assert result.exit_code == 0, result.output
+    assert _answer(result)["attempts"] == 2
+    assert len(opened) == 2
+    assert len(bus.published) == 1
+    assert retry_pauses == [20]
+
+
+@pytest.mark.parametrize("error_type", [scm_cli.LabRunBusError, InfraConnectionError])
+def test_read_exhausts_three_bus_unavailable_attempts(
+    monkeypatch: pytest.MonkeyPatch,
+    retry_pauses: list[float],
+    error_type: type[Exception],
+) -> None:
+    opened = _install_bus_attempts(
+        monkeypatch, [error_type("unavailable") for _ in range(3)]
+    )
+
+    result = _run(["pr-view", *_READ_ARGS["pr-view"]])
+
+    assert result.exit_code == scm_cli.EXIT_BUS_UNAVAILABLE, result.output
+    assert len(opened) == 3
+    assert "bus:" in result.stderr
+    assert "unavailable" in result.stderr
+    assert retry_pauses == [20, 20]
+
+
+def test_read_failed_terminal_is_not_retried(
+    monkeypatch: pytest.MonkeyPatch, retry_pauses: list[float]
+) -> None:
+    class FailedReadBus(FakeBus):
+        def _respond(
+            self, topic: str, payload: dict[str, Any]
+        ) -> tuple[str, dict[str, Any]]:
+            assert topic == GATEWAY.command
+            return GATEWAY.success, {"outcome": "failed", "error": "read refused"}
+
+    bus = FailedReadBus()
+    opened = _install_bus_attempts(monkeypatch, [bus])
+
+    result = _run(["pr-view", *_READ_ARGS["pr-view"]])
+
+    assert result.exit_code == scm_cli.EXIT_FAILED, result.output
+    assert _answer(result)["outcome"] == "failed"
+    assert _answer(result)["attempts"] == 1
+    assert len(opened) == len(bus.published) == 1
+    assert retry_pauses == []
+
+
+def test_write_timeout_is_not_retried(
+    monkeypatch: pytest.MonkeyPatch, retry_pauses: list[float]
+) -> None:
+    bus = FakeBus(answer=False)
+    opened = _install_bus_attempts(monkeypatch, [bus])
+
+    result = _run(
+        [
+            "pr-create",
+            *_WRITE_ARGS["pr-create"],
+            "--lane",
+            "lane-x",
+            "--timeout-s",
+            "0.01",
+        ]
+    )
+
+    assert result.exit_code == scm_cli.EXIT_NO_TERMINAL, result.output
+    assert _answer(result)["status"] == "no_terminal"
+    assert _answer(result)["attempts"] == 1
+    assert len(opened) == len(bus.published) == 1
+    assert bus.published[0][0] == WRITE.command
+    assert retry_pauses == []
+
+
+def test_no_terminal_exits_75(
+    monkeypatch: pytest.MonkeyPatch, retry_pauses: list[float]
+) -> None:
     _install(monkeypatch, FakeBus(answer=False))
     result = _run(["release-list", REPO, "--timeout-s", "0.05"])
     assert result.exit_code == scm_cli.EXIT_NO_TERMINAL
@@ -982,6 +1137,7 @@ def test_no_terminal_exits_75(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_a_bus_refusal_exits_69_without_a_traceback(
     monkeypatch: pytest.MonkeyPatch,
+    retry_pauses: list[float],
 ) -> None:
     class RefusingBus(FakeBus):
         async def subscribe(self, topic: str, *args: Any, **kwargs: Any) -> Any:
@@ -1031,6 +1187,8 @@ def test_write_without_a_head_anywhere_is_a_usage_error(
         ("pr-view", f"{REPO}#77", "head_sha", HEAD),
         ("pr-status", f"{REPO}#77", "class", "pending"),
         ("pr-checks", f"{REPO}#77", "pending", ["CI Summary"]),
+        ("pr-view", f"{REPO}#77", "node_id", NODE_ID),
+        ("pr-status", f"{REPO}#77", "node_id", NODE_ID),
         ("pr-list", REPO, "count", 1),
         ("pr-merge-commit", f"{REPO}#70", "merge_commit_sha", "c" * 40),
     ],
@@ -1053,6 +1211,27 @@ def test_state_reads_are_answered_from_the_watcher_before_the_bus(
     assert answer["bus"] is None
     assert answer["result"][key] == value
     assert bus.published == []
+
+
+def test_pr_list_names_each_open_pr_node_id(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _install(monkeypatch, FakeBus())
+    state = _watcher(tmp_path)
+    answer = _answer(_run(["pr-list", REPO, "--watcher-state", str(state)]))
+    assert [pr["node_id"] for pr in answer["result"]["prs"]] == [NODE_ID]
+
+
+def test_a_watcher_state_without_node_ids_prints_null(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _install(monkeypatch, FakeBus())
+    state = _watcher(tmp_path)
+    raw = json.loads(state.read_text(encoding="utf-8"))
+    del raw["prs"]["omnimarket#77"]["facts"]["node_id"]
+    state.write_text(json.dumps(raw), encoding="utf-8")
+    answer = _answer(_run(["pr-view", f"{REPO}#77", "--watcher-state", str(state)]))
+    assert answer["result"]["node_id"] is None
 
 
 def test_pr_view_leaves_the_body_out_of_the_local_answer(
@@ -1426,3 +1605,145 @@ def test_check_run_retry_key_includes_head_and_output(
     keys = [envelope["payload"]["idempotency_key"] for _, envelope in bus.published]
     assert keys[0] == keys[1]
     assert len(set(keys)) == 3
+
+
+# The in-memory bus hosts the selected contract in process (OMN-21279, AC3): each
+# command below gets a real terminal envelope from the canonical node, not a fake bus.
+
+
+def test_pr_create_dry_run_returns_a_real_terminal_without_runtime_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("BIFROST_BASE_CONTRACT_PATH", raising=False)
+    result = CliRunner().invoke(
+        scm_cli.scm_group,
+        [
+            "pr-create",
+            "OmniNode-ai/omnimarket",
+            "--head",
+            "omn-21279-scm-inprocess-terminal",
+            "--base",
+            "dev",
+            "--title",
+            "In-process terminal probe",
+            "--body",
+            "Dry run",
+            "--lane",
+            "scm-inprocess-test",
+            "--bus",
+            "inmemory",
+            "--timeout-s",
+            "0.1",
+            "--dry-run",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    answer = json.loads(result.output)
+    assert answer["outcome"] == "completed"
+    assert answer["result"]["mode"] == "dry_run"
+    assert answer["bus"]["terminal_topic"].endswith("github-repo-write-completed.v1")
+    assert answer["bus"]["terminal_envelope_id"]
+    assert answer["bus"]["correlation_id"] == answer["result"]["correlation_id"]
+
+
+def test_pr_close_without_a_claim_returns_the_failure_terminal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ONEX_PR_CLAIMS_DIR", str(tmp_path))
+    result = CliRunner().invoke(
+        scm_cli.scm_group,
+        [
+            "pr-close",
+            "OmniNode-ai/omnimarket#4000",
+            "--head-sha",
+            "a" * 40,
+            "--run",
+            "inprocess-test",
+            "--lane",
+            "scm-inprocess-test",
+            "--bus",
+            "inmemory",
+            "--timeout-s",
+            "0.1",
+            "--dry-run",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1, result.output
+    answer = json.loads(result.stdout)
+    assert answer["outcome"] == "failed"
+    assert answer["result"]["reason"] == "claim_not_held"
+    assert answer["bus"]["terminal_topic"].endswith("github-repo-write-failed.v1")
+    assert answer["bus"]["terminal_envelope_id"]
+
+
+def test_pr_threads_uses_the_gateway_handler_and_returns_threads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from omnimarket.nodes.node_github_repo_gateway_effect.handlers import (
+        handler_github_repo_gateway as gateway,
+    )
+    from tests.nodes.node_github_repo_gateway_effect.test_github_repo_gateway_review_threads import (
+        _pages,
+        _transport,
+    )
+
+    transport = _transport(_pages())
+
+    async def token() -> str:
+        return "recorded-transport-token"
+
+    monkeypatch.setattr(gateway, "resolve_github_token_async", token)
+    monkeypatch.setattr(gateway, "RealGitHubReadTransport", lambda _token: transport)
+    result = CliRunner().invoke(
+        scm_cli.scm_group,
+        [
+            "pr-threads",
+            "OmniNode-ai/omnimarket#4000",
+            "--bus",
+            "inmemory",
+            "--timeout-s",
+            "0.1",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    answer = json.loads(result.stdout)
+    assert answer["outcome"] == "completed"
+    assert answer["result"]["operation"] == "pr_review_threads"
+    assert answer["result"]["total_count"] == 4
+    assert len(answer["result"]["threads"]) == 3
+    assert answer["bus"]["terminal_envelope_id"]
+    assert transport.exchanges == []
+
+
+def test_gateway_boundary_failure_is_reported_as_failed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from omnimarket.nodes.node_github_repo_gateway_effect.handlers import (
+        handler_github_repo_gateway as gateway,
+    )
+
+    async def token() -> str:
+        raise RuntimeError("credential unavailable")
+
+    monkeypatch.setattr(gateway, "resolve_github_token_async", token)
+    result = CliRunner().invoke(
+        scm_cli.scm_group,
+        [
+            "pr-threads",
+            "OmniNode-ai/omnimarket#4000",
+            "--bus",
+            "inmemory",
+            "--timeout-s",
+            "0.1",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 1, result.output
+    answer = json.loads(result.stdout)
+    assert answer["outcome"] == "failed"
+    assert answer["result"]["status"] == "failed"
+    assert answer["bus"]["terminal_envelope_id"]

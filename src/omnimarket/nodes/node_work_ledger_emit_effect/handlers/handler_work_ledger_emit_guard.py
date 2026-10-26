@@ -18,11 +18,12 @@ THE RULE. An emit is refused when BOTH hold:
    production write and, through SystemExit, restarted the runtime every few minutes
    (OMN-17427).
 2. The bus the emit would publish through is real: ``KAFKA_BOOTSTRAP_SERVERS`` names a
-   host that is not loopback, and the spool-only opt-out is not set (spool-only publishes
-   nothing).
+   host that is not loopback. Spool-only mode still persists the row before resolving
+   a publish adapter; a later invocation can drain that row to the shared broker.
+   It therefore cannot remove the test signal (OMN-21338).
 
 The handler judges this before it types the row, builds an emitter, connects or publishes.
-A test emits through a loopback or unset bootstrap, or the spool-only lane. There is no
+A test emits through a loopback or unset bootstrap with an isolated spool. There is no
 bypass flag and no allowlist. The command form,
 ``python -m omnimarket.nodes.node_work_ledger_emit_effect.handlers.handler_work_ledger_emit_guard``,
 exits 0 when the emit may proceed and 79 with the refusal on stderr when it may not.
@@ -37,10 +38,8 @@ import sys
 GUARD_NAME = "ledger-test-write-guard"
 TEST_CONTEXT_ENV = "ONEX_TEST_CONTEXT"
 BOOTSTRAP_ENV = "KAFKA_BOOTSTRAP_SERVERS"
-SPOOL_ONLY_ENV = "ONEX_EMIT_EFFECT_SPOOL_ONLY"
 EXIT_TEST_WRITE_REFUSED = 79
 _LOOPBACK_HOSTS = frozenset({"", "localhost", "127.0.0.1", "::1"})
-_SPOOL_ONLY_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 
 
 class LedgerTestWriteRefusedError(Exception):
@@ -69,11 +68,6 @@ class HandlerWorkLedgerEmitGuard:
     @classmethod
     def real_bus_host(cls) -> str | None:
         """The first non-loopback broker host the emit would publish to, else None."""
-        if (
-            os.environ.get(SPOOL_ONLY_ENV, "").strip().lower()
-            in _SPOOL_ONLY_TRUE_VALUES
-        ):
-            return None
         for server in os.environ.get(BOOTSTRAP_ENV, "").split(","):
             host = cls._server_host(server).lower()
             if host not in _LOOPBACK_HOSTS:
@@ -92,7 +86,7 @@ class HandlerWorkLedgerEmitGuard:
         return (
             f"{GUARD_NAME} REFUSED -- a test process ({signal}) tried to publish to the "
             f"real work-ledger topics (broker host {host}). Nothing was published. A test "
-            "emits through an in-memory bus, a loopback broker or the spool-only lane "
+            "emits through an in-memory bus or a loopback broker with an isolated spool "
             "(node_work_ledger_emit_effect, OMN-19513)."
         )
 

@@ -1,0 +1,68 @@
+name: node_exception_queue_effect
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >
+  The exception queue (OMN-17427, operator 2026-10-18): a detector or actor that cannot resolve its case in code
+  emits one typed row (class, key, evidence, what it tried, proposed fix); the operator reads only rows marked
+  decision and the orchestrator drains the rest. A class's second occurrence dispatches one lane through the
+  remote-lane runner to mechanize it (a detector, an actor and a friction replay scenario). queue_status.py reaches it
+  through --exception (HandlerExceptionCli) and prints its read (HandlerExceptionQueueRead) in every block.
+input_model:
+  name: ModelExceptionEmitRequest
+  module: omnimarket.nodes.node_exception_queue_effect.models
+output_model:
+  name: ModelExceptionEmitResult
+  module: omnimarket.nodes.node_exception_queue_effect.models
+handler:
+  module: omnimarket.nodes.node_exception_queue_effect.handler
+  class: HandlerExceptionEmit
+  input_model: omnimarket.nodes.node_exception_queue_effect.models.ModelExceptionEmitRequest
+  output_model: omnimarket.nodes.node_exception_queue_effect.models.ModelExceptionEmitResult
+entrypoint:
+  name: NodeExceptionQueueEffect
+  module: omnimarket.nodes.node_exception_queue_effect.node
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_exception_queue_effect.handler:HandlerExceptionEmit
+  handlers:
+    - operation: emit
+      topic: onex.cmd.omnimarket.exception-emit-requested.v1
+      handler:
+        name: HandlerExceptionEmit
+        module: omnimarket.nodes.node_exception_queue_effect.handler
+    - operation: list
+      topic: onex.cmd.omnimarket.exception-queue-requested.v1
+      handler:
+        name: HandlerExceptionQueue
+        module: omnimarket.nodes.node_exception_queue_effect.handler
+    - operation: resolve
+      topic: onex.cmd.omnimarket.exception-resolve-requested.v1
+      handler:
+        name: HandlerExceptionResolve
+        module: omnimarket.nodes.node_exception_queue_effect.handler
+    - operation: read
+      topic: onex.cmd.omnimarket.exception-queue-read-requested.v1
+      handler:
+        name: HandlerExceptionQueueRead
+        module: omnimarket.nodes.node_exception_queue_effect.handler
+terminal_event: onex.evt.omnimarket.exception-queued.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.exception-emit-requested.v1
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 120000
+  runtime_profiles:
+    - effects
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.exception-emit-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.exception-queued.v1
+metadata:
+  transport_type: inmemory
+  related_tickets: [OMN-17427]
+externally_consumed_topics:
+- onex.evt.omnimarket.exception-queued.v1

@@ -1,0 +1,22 @@
+name: node_rsd_migration_orchestrator
+version: "0.1.0"
+description: "Orchestrator for one RSD migration: reads the code_generation task class from the task_class_authority registry entry, runs one delegated code edit loop that moves a script into a new omnimarket node and its tests, registers the node's entry point when the loop is accepted, checks the canonical node shape and writes a migration receipt."
+pack: pipeline
+node_role: orchestrator
+display_name: "RSD Migration Orchestrator"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_rsd_migration_orchestrator: "omnimarket.nodes.node_rsd_migration_orchestrator"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "rsd", "migration", "delegated-code-edit"]

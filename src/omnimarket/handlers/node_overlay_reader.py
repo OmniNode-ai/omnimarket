@@ -18,6 +18,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 import yaml
+from pydantic import BaseModel, ValidationError
 
 OVERLAY_ROOTS_ENV = "ONEX_SKILL_OVERLAY_ROOTS"
 OVERLAY_FILE_NAME = "overlay.yaml"
@@ -81,6 +82,65 @@ def load_node_overlay(
             f"{OVERLAY_ROOTS_ENV}: overlay {path} fields {bad} must be non-empty strings"
         )
     return {key: value.strip() for key, value in raw.items()}
+
+
+def load_structured_overlay[ModelT: BaseModel](
+    overlay_id: str,
+    model: type[ModelT],
+    environ: Mapping[str, str] | None = None,
+    *,
+    explicit: object | None = None,
+    file_env: str | None = None,
+    missing_message: str | None = None,
+) -> ModelT:
+    """Validate an explicit document, a pinned file, or the first overlay, in order.
+
+    ``file_env`` names an environment variable containing a YAML file path. An
+    unset or blank variable defers to ``<root>/<overlay_id>/overlay.yaml`` under
+    ``ONEX_SKILL_OVERLAY_ROOTS``. ``environ`` defaults to the process environment.
+    An explicit model or document takes precedence without reading either file.
+
+    No source raises :class:`NodeOverlayError` naming the id and model fields.
+    ``missing_message`` lets a key reader name the requested field and its input variables.
+    A broken selected source refuses without trying a lower-priority source.
+    Errors name the source, exception type and invalid fields, never document
+    values or exception messages, which may contain private deployment facts.
+    """
+    if explicit is not None:
+        raw = explicit
+        source = f"explicit overlay {overlay_id}"
+    else:
+        env = os.environ if environ is None else environ
+        pinned = env.get(file_env, "").strip() if file_env else ""
+        path = Path(pinned) if pinned else find_node_overlay(overlay_id, env)
+        if path is None:
+            if missing_message is not None:
+                raise NodeOverlayError(missing_message)
+            settings = ", ".join(f"{overlay_id}.{name}" for name in model.model_fields)
+            raise NodeOverlayError(
+                not_configured_message(
+                    overlay_id, settings or overlay_id, (file_env,) if file_env else ()
+                )
+            )
+        source = f"{file_env if pinned else OVERLAY_ROOTS_ENV}: overlay {path}"
+        try:
+            raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, yaml.YAMLError) as exc:
+            raise NodeOverlayError(
+                f"{source} is unreadable ({type(exc).__name__})"
+            ) from None
+    try:
+        return model.model_validate(raw)
+    except ValidationError as exc:
+        fields = sorted(
+            {
+                ".".join(str(part) for part in err["loc"]) or "<document>"
+                for err in exc.errors(include_input=False, include_context=False)
+            }
+        )
+        raise NodeOverlayError(
+            f"{source} is invalid for {overlay_id} (ValidationError): fields {fields}"
+        ) from None
 
 
 def not_configured_message(

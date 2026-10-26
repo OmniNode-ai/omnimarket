@@ -3,8 +3,8 @@ ticket_id: "OMN-19998"
 title: "omnimarket dev binds every repo contract criterion to repo pytest evidence again"
 summary: "omnimarket#3783 added dod-omnimarket-pr-3775-deploy-probe to contracts/OMN-20074.yaml with binds_ac AC10, but the item's only check is a gh api deploy probe. tests/ci/test_repo_evidence_caller_workflow.py::test_every_repo_contract_binds_every_criterion requires every binds_ac item to carry uv run pytest evidence naming a repo test file, so that test fails on dev 6b43215db and turns Tests (Split 14/20) red on every pull request whose shard carries it. The deploy probe stays as deploy evidence without binds_ac, as the merged deploy probes in contracts/OMN-20676.yaml and others do, and AC10 stays bound by dod-omnimarket-pr-3775-rejection to its rejection test file."
 is_seam_ticket: false
-interface_change: false
-interfaces_touched: []
+interface_change: true
+interfaces_touched: ["public_api"]
 requirements:
   - id: "req-repo-contracts-bind-pytest-evidence"
     statement: "Every repo-owned contracts/OMN-*.yaml on dev binds each acceptance criterion only through dod_evidence items that name an existing repo pytest file, so the repo evidence test passes on dev."
@@ -181,6 +181,41 @@ requirements:
     acceptance:
       - id: "AC33"
         statement: "AC33: node_lane_queue_start_decision_compute, on the queue the ledger recorded on 2026-10-23 (nine lanes, 8 free slots over three hosts, one host full), starts eight lanes urgent class first and holds the ninth for no free slot; holds a lane pinned to the full host as pinned-host-full while 8 slots are free elsewhere; starts an other-class lane on the pool's last free slot when the queued process-fix lane cannot use it; and reopens a relaunch window after 300 s or when the relaunch ended no-host again -- falsifier: uv run pytest tests/nodes/node_lane_queue_start_decision_compute -q fails at the merge base, where the node does not exist"
+  - id: "req-running-vs-merged-honors-controller-branch-hold"
+    statement: "The running-vs-merged decision reads a live recorded controller branch hold (install.sh --branch-hours writes branch_until and branch_source into landing_install.json) as an expected difference: a note naming the hold and its expiry, no MISSING finding and no repair lane, and MISSING again once branch_until has passed."
+    acceptance:
+      - id: "AC34"
+        statement: "AC34: a controller item whose install record carries a branch_until ahead of now yields state OK with one note naming the source and expiry and no finding; the same item at or after branch_until, with an unparseable branch_until, or with no recorded hold yields MISSING; a hold on the controller never excuses another surface -- falsifier: uv run pytest tests/nodes/node_silent_failure_alarm_compute/test_running_vs_merged_branch_hold.py -q fails at the merge base"
+  - id: "req-tenant-projection-writers-off-main"
+    statement: "Every in-process writer whose tables resolve to the tenant_projection binding under the checked-in topology is owned by tenant-projection or a projection-writer-* profile, never by main, effects or workers, so a lab runtime-main, which has no tenant_projection credential, does not wire it at boot."
+    acceptance:
+      - id: "AC35"
+        statement: "AC35: projection_delegation_disposition, projection_delegation_eval, projection_metering_summary, projection_provider_quota and projection_routing_feedback declare runtime_profiles [tenant-projection], and the derived check over every node contract finds no in-process tenant_projection writer owned by a shared runtime -- falsifier: uv run pytest tests/unit/runtime/test_omn19998_tenant_projection_writers_leave_main.py -q fails at the merge base, naming those five"
+  - id: "req-draft-reviewer-slot"
+    statement: "Draft PR voter jobs consume no reviewer slots, including the recorded omnimarket#4409 draft."
+    acceptance:
+      - id: "AC36"
+        statement: "AC36: Draft PR voter jobs consume no reviewer slots, including the recorded omnimarket#4409 draft. -- falsifier: uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_reviewer_slot_count.py::test_draft_reviewer_does_not_hold_a_slot -q fails at the merge base"
+  - id: "req-stale-reviewer-slot"
+    statement: "Watcher CI reads older than the controller pending-CI bound of eight minutes consume no reviewer slots; fresh voters still count through the boundary."
+    acceptance:
+      - id: "AC37"
+        statement: "AC37: Watcher CI reads older than the controller pending-CI bound of eight minutes consume no reviewer slots; fresh voters still count through the boundary. -- falsifier: uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_reviewer_slot_count.py::test_stale_watcher_ci_read_does_not_hold_a_slot -q fails at the merge base"
+  - id: "req-summary-reviewer-slot"
+    statement: "Hostile Review Gate summary jobs consume no voter slots, while queued and active Hostile Reviewer jobs do."
+    acceptance:
+      - id: "AC38"
+        statement: "AC38: Hostile Review Gate summary jobs consume no voter slots, while queued and active Hostile Reviewer jobs do. -- falsifier: uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_reviewer_slot_count.py::test_hostile_review_gate_summary_does_not_hold_a_voter_slot -q fails at the merge base"
+  - id: "req-review-gateway-honours-reasoning-off"
+    statement: "The Claude review gateway turns a voter's explicit chat_template_kwargs.enable_thinking false into the native Messages thinking {type: disabled}, so a model that reasons by default no longer spends a review's whole max_tokens on reasoning and answers nothing; any other value sends no thinking key."
+    acceptance:
+      - id: "AC39"
+        statement: "AC39: translate_chat_request sets provider_request_options thinking {type: disabled} for enable_thinking false and the native payload carries it; absent, true, non-bool and non-mapping values send no thinking key; the dry run shows it -- falsifier: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway.py -q -k 'reasoning_off or reasoning_values' fails with the handler at the merge base"
+  - id: "req-lane-bound-jobs-stay-on-lan-runners"
+    statement: "The delegation workflows' lab-bound jobs (delegation regression nightly golden-tasks, terminal-join daily, rung-eval) require the arch-amd64 label beside self-hosted and omnibase-ci, so an off-LAN h203-light runner, which joined omnibase-ci on 2026-10-24 and lacks arch-amd64, can no longer take them; nightly run 40288891742 ran on h203-light-1, reached neither the lane bus nor its Postgres, and turned delegation-health-check / Delegation Health Check red on every runtime PR."
+    acceptance:
+      - id: "AC40"
+        statement: "AC40: every LANE_BOUND_JOBS job pins [self-hosted, omnibase-ci, arch-amd64] in its workflow, the h203-light label set does not satisfy any of them while the LAN amd64 label set does, and check_lane_job_placement.py passes -- falsifier: uv run pytest tests/test_delegation_nightly_placement.py -q fails at the merge base, where the nightly pins [self-hosted, omnibase-ci]"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -197,6 +232,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The lane queue start decision tests, built from the 2026-10-23 recorded queue."
     command: "uv run pytest tests/nodes/node_lane_queue_start_decision_compute -q"
+  - kind: "tests"
+    description: "In-process tenant_projection writers stay off the shared runtimes."
+    command: "uv run pytest tests/unit/runtime/test_omn19998_tenant_projection_writers_leave_main.py tests/unit/runtime/test_omn17556_tenant_projection_profile_is_permanent.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -782,4 +820,98 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           uv run python -c 'from importlib.metadata import entry_points; from omnimarket.nodes.node_lane_queue_start_decision_compute.models.model_lane_queue_start_decision import ModelLaneQueueStartRequest as R; e=next(e for e in entry_points(group="onex.nodes") if e.name == "node_lane_queue_start_decision_compute"); e.load(); from omnimarket.nodes.node_lane_queue_start_decision_compute.handlers.handler_lane_queue_start_decision import HandlerLaneQueueStartDecision as H; r=H().handle(R.model_validate({"now": "2026-10-23T14:13:00Z", "priority_classes": ["process-fix", "other"], "entries": [{"lane": "pinned", "model": "sonnet", "priority_class": "other", "enqueued_at": "2026-10-23T11:55:00Z", "updated_at": "2026-10-23T11:55:00Z", "pin": "h200", "pin_strict": True}], "hosts": [{"name": "h200"}, {"name": "h201", "claude_slots": 4}, {"name": "h202", "claude_slots": 4}]})); assert not r.starts and r.held[0].reason_code == "pinned-host-full"'
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19998-running-vs-merged-branch-hold"
+    description: "A live recorded controller branch hold is a note with its expiry and no MISSING line; the same difference is MISSING once branch_until has passed, when it does not parse, or when no hold is recorded."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_silent_failure_alarm_compute/test_running_vs_merged_branch_hold.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC34"]
+  - id: "dod-omn19998-branch-hold-deploy-probe"
+    description: "Hosted-runner probe executes the controller alarm with a live hold and the same hold at expiry; the previous handler reports the live hold as MISSING and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run python -c 'from datetime import datetime, timezone; from omnimarket.nodes.node_silent_failure_alarm_compute.handlers.handler_running_vs_merged_alarm import HandlerRunningVsMergedAlarm, request_from_fleet; item={"key": "controller:landing-controller", "kind": "controller", "observed": "behind", "verdict": "DRIFT", "first_seen_at": "2026-10-25T01:00:00Z", "install_record": {"branch_until": "2026-10-25T08:24:49Z", "branch_source": "probe"}}; fleet={"folded_at": "2026-10-25T08:24:48Z", "hosts": [{"host": "probe", "open": [item]}]}; h=HandlerRunningVsMergedAlarm(); live=h.handle(request_from_fleet(fleet, datetime(2026, 10, 25, 8, 24, 48, tzinfo=timezone.utc))); expired=h.handle(request_from_fleet(fleet, datetime(2026, 10, 25, 8, 24, 49, tzinfo=timezone.utc))); assert live.state == "OK" and not live.findings and live.acknowledged[0].level == "note"; assert expired.state == "MISSING" and expired.findings and not expired.acknowledged'
+  - id: "dod-omn19998-tenant-projection-writers-off-main"
+    description: "The derived check finds every in-process tenant_projection writer and requires a credential-holding profile; at the merge base it fails naming the five contracts owned by main."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/runtime/test_omn19998_tenant_projection_writers_leave_main.py tests/unit/runtime/test_omn17556_tenant_projection_profile_is_permanent.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC35"]
+  - id: "dod-omn19998-tenant-writers-deploy-probe"
+    description: "Hosted-runner readback loads the five installed contracts and requires runtime_profiles [tenant-projection] on each; the previous package declares main or nothing and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run python -c 'from importlib.resources import files; import yaml; names=["delegation_disposition", "delegation_eval", "metering_summary", "provider_quota", "routing_feedback"]; got={n: yaml.safe_load((files("omnimarket.nodes.node_projection_" + n) / "contract.yaml").read_text()).get("runtime_profiles") for n in names}; assert all(v == ["tenant-projection"] for v in got.values()), got'
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19998-draft-reviewer-slot"
+    description: "Draft PR voter jobs consume no reviewer slots, including the recorded omnimarket#4409 draft. The recorded regression fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_reviewer_slot_count.py::test_draft_reviewer_does_not_hold_a_slot -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC36"]
+  - id: "dod-omn19998-stale-reviewer-slot"
+    description: "Watcher CI reads older than the controller pending-CI bound of eight minutes consume no reviewer slots; fresh voters still count through the boundary. The recorded regression fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_reviewer_slot_count.py::test_stale_watcher_ci_read_does_not_hold_a_slot -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC37"]
+  - id: "dod-omn19998-summary-reviewer-slot"
+    description: "Hostile Review Gate summary jobs consume no voter slots, while queued and active Hostile Reviewer jobs do. The recorded regression fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_reviewer_slot_count.py::test_hostile_review_gate_summary_does_not_hold_a_voter_slot -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC38"]
+  - id: "dod-omn19998-reviewer-slot-deploy-probe"
+    description: "Hosted-runner readback invokes the installed pure counter on a stale voter, a draft voter and a summary job, then verifies a fresh voter still counts. The previous counter returns three for the first request and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run python -c 'from omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_count_reviewer_runs_in_flight import HandlerCountReviewerRunsInFlight as H; from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_reviewer_runs_facts import ModelReviewerRunsFacts as R; now="2026-10-26T00:47:00Z"; row=lambda draft,at,name: {"facts":{"state":"OPEN","draft":draft,"head_sha":"head"},"ci":{"sha":"head","read_at":at,"runs":[[name,"in_progress","",""]]}}; voter="Hostile Reviewer (adversarial gate)"; records={"draft":row(True,now,voter),"stale":row(False,"2026-10-25T15:15:35Z",voter),"summary":row(False,now,"Hostile Review Gate")}; h=H(); assert h.handle(R(records=records,now=now)).in_flight == 0; assert h.handle(R(records={"fresh":row(False,now,voter)},now=now)).in_flight == 1'
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19998-review-gateway-reasoning-off"
+    description: "The review gateway sends thinking {type: disabled} only for a voter's explicit enable_thinking false. The two new tests fail with the handler at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway.py -q --no-cov -k 'reasoning_off or reasoning_values'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC39"]
+  - id: "dod-omn19998-gateway-thinking-off-probe"
+    description: "Hosted-runner readback translates a voter call with enable_thinking false through the installed gateway and builds its native payload; the previous package sends no thinking key and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run python -c 'from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import translate_chat_request as t; from omnimarket.nodes.node_llm_delegation_call_effect.handlers.anthropic_messages import build_messages_payload as b; p={"messages":[{"role":"system","content":"s"},{"role":"user","content":"u"}],"max_tokens":64,"chat_template_kwargs":{"enable_thinking":False}}; r=t(p,model="claude-sonnet-5-5",endpoint_url="https://provider.invalid/v1/messages",secret_ref="ref",timeout_seconds=30.0); assert b(r)["thinking"] == {"type":"disabled"}, b(r); p.pop("chat_template_kwargs"); assert "thinking" not in b(t(p,model="claude-sonnet-5-5",endpoint_url="https://provider.invalid/v1/messages",secret_ref="ref",timeout_seconds=30.0))'
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19998-lane-bound-jobs-lan-runner"
+    description: "Every lane-bound delegation job pins arch-amd64, which the off-LAN h203-light runners lack. The nightly label test fails at the merge base, where the nightly pins [self-hosted, omnibase-ci]."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_delegation_nightly_placement.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC40"]
+  - id: "dod-omn19998-lane-bound-jobs-placement-probe"
+    description: "Hosted-runner readback runs the lane-bound placement checker over the checked-in workflows; it fails if any lane-bound job lacks arch-amd64."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python scripts/ci/check_lane_job_placement.py"
         cwd: "${OMNI_HOME}/omnimarket"

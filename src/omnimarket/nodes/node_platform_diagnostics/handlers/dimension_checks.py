@@ -27,6 +27,9 @@ from typing import Any
 import aiohttp
 
 from omnimarket.config.service_endpoints import GITHUB_REST_URL
+from omnimarket.handlers.handler_runtime_coverage_read import (
+    read_health_runtime_coverage,
+)
 from omnimarket.nodes.node_platform_diagnostics.models.model_diagnostics_result import (
     EnumDiagnosticDimension,
     ModelDiagnosticDimensionResult,
@@ -54,13 +57,15 @@ _GITHUB_REPOS = [
 class DiagnosticsCheckContext:
     """Shared context passed to all dimension check functions."""
 
-    omni_home: Path = field(default_factory=lambda: Path(os.environ["OMNI_HOME"]))
+    workspace_root: Path = field(default_factory=lambda: Path(os.environ["OMNI_HOME"]))
     dashboard_api: str = _DASHBOARD_API
     github_token: str = field(default_factory=lambda: _GITHUB_TOKEN)
     github_repos: list[str] = field(default_factory=lambda: list(_GITHUB_REPOS))
     http_timeout: float = 10.0
     freshness_threshold_hours: int = 4
     dry_run: bool = False
+    bus_lane: str = "dev"
+    coverage_config: Path | None = None
 
 
 def _wrap_exception(
@@ -88,7 +93,7 @@ async def check_contract_health(
     dimension = EnumDiagnosticDimension.CONTRACT_HEALTH
     evidence_source = "onex_change_control"
     try:
-        sweep_dir = ctx.omni_home / ".onex_state" / "contract-sweep"
+        sweep_dir = ctx.workspace_root / ".onex_state" / "contract-sweep"
         if not sweep_dir.exists():
             return ModelDiagnosticDimensionResult(
                 dimension=dimension,
@@ -186,7 +191,7 @@ async def check_golden_chain(
     dimension = EnumDiagnosticDimension.GOLDEN_CHAIN
     evidence_source = "golden_chain_sweep_artifact"
     try:
-        sweep_dir = ctx.omni_home / ".onex_state" / "golden-chain-sweep"
+        sweep_dir = ctx.workspace_root / ".onex_state" / "golden-chain-sweep"
         if not sweep_dir.exists():
             return ModelDiagnosticDimensionResult(
                 dimension=dimension,
@@ -260,6 +265,48 @@ async def check_golden_chain(
 async def check_runtime_nodes(
     ctx: DiagnosticsCheckContext,
 ) -> ModelDiagnosticDimensionResult:
+    """Combine registration evidence with live command-serving redundancy."""
+    registered = await _check_runtime_registration(ctx)
+    if ctx.dry_run:
+        # No broker read took place. Cached registration alone cannot prove
+        # that two runtimes are serving commands now.
+        return registered.model_copy(
+            update={
+                "status": EnumReadinessStatus.FAIL,
+                "actionable_items": [
+                    *registered.actionable_items,
+                    "runtime coverage unreadable: dry-run omitted live broker read",
+                ],
+            }
+        )
+    try:
+        coverage = await read_health_runtime_coverage(
+            ctx.workspace_root, ctx.bus_lane, ctx.coverage_config
+        )
+    except Exception as exc:
+        return _wrap_exception(
+            EnumDiagnosticDimension.RUNTIME_NODES, "broker_runtime_coverage", exc
+        )
+    failures = [row.detail for row in coverage.commands if row.status == "FAIL"]
+    if coverage.error:
+        failures.append(coverage.error)
+    failures.extend(coverage.registry_errors)
+    return registered.model_copy(
+        update={
+            "status": EnumReadinessStatus.FAIL
+            if coverage.status == "FAIL"
+            else registered.status,
+            "check_count": registered.check_count + len(coverage.commands),
+            "actionable_items": [*registered.actionable_items, *failures],
+            "evidence_source": "runtime_sweep_artifact+broker_runtime_coverage",
+            "raw_detail": coverage.model_dump_json(),
+        }
+    )
+
+
+async def _check_runtime_registration(
+    ctx: DiagnosticsCheckContext,
+) -> ModelDiagnosticDimensionResult:
     """Check runtime node registration from cached runtime sweep artifact.
 
     Evidence class: Cached sweep artifact (medium trust).
@@ -267,7 +314,7 @@ async def check_runtime_nodes(
     dimension = EnumDiagnosticDimension.RUNTIME_NODES
     evidence_source = "runtime_sweep_artifact"
     try:
-        sweep_dir = ctx.omni_home / ".onex_state" / "runtime-sweep"
+        sweep_dir = ctx.workspace_root / ".onex_state" / "runtime-sweep"
         if not sweep_dir.exists():
             return ModelDiagnosticDimensionResult(
                 dimension=dimension,
@@ -354,7 +401,7 @@ async def check_hook_health(
         evidence_source = "hooks_log_artifact"
         try:
             violations_file = (
-                ctx.omni_home / ".onex_state" / "hooks" / "logs" / "violations.log"
+                ctx.workspace_root / ".onex_state" / "hooks" / "logs" / "violations.log"
             )
             if not violations_file.exists():
                 return ModelDiagnosticDimensionResult(
@@ -444,10 +491,10 @@ async def check_database_projections(
     dimension = EnumDiagnosticDimension.DATABASE_PROJECTIONS
     evidence_source = "database_sweep_artifact"
     try:
-        sweep_dir = ctx.omni_home / ".onex_state" / "database-sweep"
+        sweep_dir = ctx.workspace_root / ".onex_state" / "database-sweep"
         if not sweep_dir.exists():
             # Try alternate directory name
-            sweep_dir = ctx.omni_home / ".onex_state" / "db-sweep"
+            sweep_dir = ctx.workspace_root / ".onex_state" / "db-sweep"
 
         if not sweep_dir.exists():
             return ModelDiagnosticDimensionResult(
@@ -605,7 +652,7 @@ async def check_coverage(
     dimension = EnumDiagnosticDimension.COVERAGE
     evidence_source = "coverage_sweep_artifact"
     try:
-        sweep_dir = ctx.omni_home / ".onex_state" / "coverage-sweep"
+        sweep_dir = ctx.workspace_root / ".onex_state" / "coverage-sweep"
         if not sweep_dir.exists():
             return ModelDiagnosticDimensionResult(
                 dimension=dimension,

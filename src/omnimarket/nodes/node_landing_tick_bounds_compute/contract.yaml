@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Landing Tick Bounds Compute
+# Direct invocation only: no event bus or terminal event.
+name: "node_landing_tick_bounds_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: >-
+  The landing controller tick's duration bounds: the budget past which a tick refuses before it acts
+  (LANDING_TICK_BUDGET_S, 720 s), the deadline at which a running tick ends itself (LANDING_TICK_DEADLINE_S, 1500 s),
+  and the target a tick should finish inside (LANDING_TICK_TARGET_S, 120 s). A finished tick's timing is judged against
+  the target: its total, whether it was over, and its three slowest leaf phases, which the receipt carries and the
+  TICK-SLOW line names. Pure: it reads the environment mapping it is given and writes nothing.
+input_model:
+  name: "ModelLandingTickTargetRequest"
+  module: "omnimarket.nodes.node_landing_tick_bounds_compute.models.model_landing_tick_bounds"
+  description: "Typed inputs for landing tick bounds."
+output_model:
+  name: "ModelLandingTickTarget"
+  module: "omnimarket.nodes.node_landing_tick_bounds_compute.models.model_landing_tick_bounds"
+  description: "Typed result of landing tick bounds."
+handler:
+  module: "omnimarket.nodes.node_landing_tick_bounds_compute.handlers.handler_landing_tick_bounds"
+  class: "HandlerLandingTickBounds"
+  input_model: "omnimarket.nodes.node_landing_tick_bounds_compute.models.model_landing_tick_bounds.ModelLandingTickTargetRequest"
+  output_model: "omnimarket.nodes.node_landing_tick_bounds_compute.models.model_landing_tick_bounds.ModelLandingTickTarget"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_landing_tick_bounds_compute.handlers.handler_landing_tick_bounds:HandlerLandingTickBounds"
+  handlers:
+    - operation: "target"
+      handler:
+        name: "HandlerLandingTickBounds"
+        module: "omnimarket.nodes.node_landing_tick_bounds_compute.handlers.handler_landing_tick_bounds"
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: "Direct Python invocation of the handler with phase timings and its duration target."
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local
+  description: "Landing Tick Bounds Compute — pure policy with no external transport."
+  author: "OmniNode Team"
+  created: "2026-10-24"
+  tags: ['compute', 'landing-tick-bounds', 'OMN-17427']
+  related_tickets: ['OMN-17427']

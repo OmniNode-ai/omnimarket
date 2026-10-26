@@ -34,6 +34,10 @@ answered failed, 2 usage or a refused verb, 3 ``--source local`` could not
 answer, 69 the bus could not be opened, 75 no terminal event in time (the
 outcome is unknown: read before retrying; a write retried with the same
 idempotency key is not written twice).
+Gateway reads retry on no terminal or bus unavailability for up to three total
+attempts, pausing 20 seconds between attempts; writes make one attempt (OMN-21396).
+With ``--bus inmemory``, the selected contract is hosted in this process by
+the runtime dispatcher before the command is published.
 
 Registered in ``[project.entry-points."onex.cli"]``; the CLI discovers it over
 installed distributions.
@@ -48,6 +52,7 @@ import inspect
 import json
 import re
 import sys
+import time
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -89,6 +94,7 @@ from omnimarket.models.scm import (
     ModelScmLocalAnswer,
     ModelScmLocalReadRequest,
     ModelScmLocalVerb,
+    ModelScmTerminal,
     ModelScmVerb,
 )
 from omnimarket.nodes.node_github_repo_write_effect.handlers.handler_pr_claim_lookup import (
@@ -105,6 +111,7 @@ EXIT_USAGE: Final[int] = 2
 EXIT_LOCAL_UNANSWERED: Final[int] = 3
 EXIT_BUS_UNAVAILABLE: Final[int] = 69
 EXIT_NO_TERMINAL: Final[int] = 75
+READ_RETRY_PAUSE_S: Final[float] = 20.0
 
 _TARGET = re.compile(
     r"^(?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)(?:#(?P<number>[1-9][0-9]*))?$"
@@ -125,8 +132,11 @@ def _target(text: str, *, pr: bool) -> tuple[str, int | None]:
     return match["repo"], int(number) if number is not None else None
 
 
-def _emit(answer: ModelScmAnswer) -> int:
-    click.echo(answer.model_dump_json())
+def _emit(answer: ModelScmAnswer, *, attempts: int | None = None) -> int:
+    payload = answer.model_dump(mode="json")
+    if attempts is not None:
+        payload["attempts"] = attempts
+    click.echo(json.dumps(payload, separators=(",", ":")))
     return EXIT_FAILED if answer.outcome == "failed" else 0
 
 
@@ -138,16 +148,22 @@ def _call_bus(
     bus_opts: dict[str, object],
     timeout_s: float,
 ) -> int:
-    async def main() -> int:
-        async with _open_bus(bus_opts) as opened:
-            try:
-                terminal = await ScmBusCaller(opened).call(
-                    node=spec.node,
-                    request=request,
-                    correlation_id=correlation_id,
-                    timeout_s=timeout_s,
-                )
-            except TimeoutError:
+    async def main() -> ModelScmTerminal:
+        async with _open_bus({**bus_opts, "scm_node": spec.node}) as opened:
+            return await ScmBusCaller(opened).call(
+                node=spec.node,
+                request=request,
+                correlation_id=correlation_id,
+                timeout_s=timeout_s,
+            )
+
+    max_attempts = 3 if spec.node is EnumScmNode.GATEWAY else 1
+    attempt = 1
+    while True:
+        try:
+            terminal = asyncio.run(main())
+        except TimeoutError:
+            if attempt == max_attempts:
                 click.echo(
                     json.dumps(
                         {
@@ -155,31 +171,40 @@ def _call_bus(
                             "status": "no_terminal",
                             "correlation_id": str(correlation_id),
                             "timeout_s": timeout_s,
+                            "attempts": attempt,
                         }
                     )
                 )
                 return EXIT_NO_TERMINAL
-        failed = terminal.failed or terminal.payload.get("outcome") == "failed"
-        result = terminal.payload.get("result", terminal.payload)
-        return _emit(
-            ModelScmAnswer(
-                verb=spec.verb,
-                node=spec.node,
-                operation=spec.operation,
-                repo=repo,
-                source="bus",
-                outcome="failed" if failed else "completed",
-                bus=terminal.receipt,
-                result=result if isinstance(result, dict) else terminal.payload,
+        except (LabRunBusError, InfraConnectionError) as exc:
+            # A broker that refuses this principal a topic (an ACL) lands here too.
+            click.echo(f"bus: {exc}", err=True)
+            if attempt == max_attempts:
+                return EXIT_BUS_UNAVAILABLE
+        else:
+            failed = (
+                terminal.failed
+                or terminal.payload.get("outcome") == "failed"
+                or terminal.payload.get("status") == "failed"
             )
-        )
-
-    try:
-        return asyncio.run(main())
-    except (LabRunBusError, InfraConnectionError) as exc:
-        # A broker that refuses this principal a topic (an ACL) lands here too.
-        click.echo(f"bus: {exc}", err=True)
-        return EXIT_BUS_UNAVAILABLE
+            result = terminal.payload.get("result", terminal.payload)
+            return _emit(
+                ModelScmAnswer(
+                    verb=spec.verb,
+                    node=spec.node,
+                    operation=spec.operation,
+                    repo=repo,
+                    source="bus",
+                    outcome="failed" if failed else "completed",
+                    bus=terminal.receipt,
+                    result=result if isinstance(result, dict) else terminal.payload,
+                ),
+                attempts=attempt,
+            )
+        time.sleep(READ_RETRY_PAUSE_S)
+        attempt += 1
+        correlation_id = uuid.uuid4()
+        request = request.model_copy(update={"correlation_id": correlation_id})
 
 
 def _open_bus(
@@ -205,7 +230,15 @@ def _open_bus(
         Callable[..., contextlib.AbstractAsyncContextManager[ProtocolLabRunBus]],
         open_lab_run_bus,
     )
-    return opener(**dict(zip(names, values, strict=True)))
+    opened = opener(**dict(zip(names, values, strict=True)))
+    if values[0] == "inmemory":
+        from omnimarket.handlers.scm.scm_inprocess import open_scm_inprocess
+
+        node = bus_opts["scm_node"]
+        if not isinstance(node, EnumScmNode):
+            raise LabRunBusError("the in-memory SCM bus requires a node")
+        return open_scm_inprocess(opened, node)
+    return opened
 
 
 def _bus_kind(value: object) -> BusKind:

@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_cloud_session_placement_effect
+version: "0.1.0"
+description: "Effect: local cloud account placement state and cloud session text; caller supplied overlay and probe verdicts."
+pack: operator_tooling
+node_role: effect
+display_name: "Cloud Session Placement Effect"
+omnibase_core_compat: ">=0.47.31,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_cloud_session_placement_effect: "omnimarket.nodes.node_cloud_session_placement_effect"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+- omnimarket.nodes.node_llm_delegation_call_effect
+license: "MIT"
+authors: ["OmniNode Team"]
+tags: ["effect", "lab", "cloud-session"]

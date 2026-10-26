@@ -1,8 +1,8 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-21119"
-title: "TA.18 Resume and delegation-payload profiles (profile data and task-class field slice)"
-summary: "The session_resume and delegation_payload_local context profiles ship as YAML under pack/profiles and resolve through node_context_profile_resolver_effect; task-class contract entries gain an optional context_profile field, a profile-name shape check, and resolve_task_class_context_profile. No production task class sets the field; a fixture task class exercises it. Not in this slice: the delegation orchestrator's pack request and budget computation, the session-resume wiring, the empty-hash refusal, the stable-prefix check on recorded requests and the sentinel topic check, which all call node_context_pack_orchestrator (TA.8) and wait for it to merge."
+title: "TA.18 Resume and delegation-payload profiles (profile data, task-class field and pack budget slices)"
+summary: "The session_resume and delegation_payload_local context profiles ship as YAML under pack/profiles and resolve through node_context_profile_resolver_effect; task-class contract entries gain an optional context_profile field, a profile-name shape check, and resolve_task_class_context_profile. No production task class sets the field; a fixture task class exercises it. Pack budget slice: node_delegation_context_pack_budget_compute decides, for a task class naming a profile, the pack budget (the routed backend's grounded-input ceiling minus the request composed without the pack, never above the profile budget), no_room when nothing is left (sent without a pack), and the refusal of a pack answer with an empty hash. Not yet: the delegation orchestrator calling it and requesting the pack from node_context_pack_orchestrator, the session-resume wiring, the stable-prefix check on recorded requests and the sentinel topic check."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -19,10 +19,22 @@ requirements:
       - id: "DoD2"
         statement: |-
           S2: a fixture task class naming `delegation_payload_local` validates and its profile resolves; a name that is not a profile name is refused; no production task class names a profile -- falsifier: test.
+  - id: "req-ta18-pack-budget"
+    statement: "The delegation orchestrator's context-pack budget and admission are a pure compute node it applies before dispatch."
+    acceptance:
+      - id: "DoD3"
+        statement: |-
+          S3 (AC1): for a task class naming a profile, the pack budget is the routed backend's grounded-input ceiling minus the request composed without the pack, never above the profile's budget; a request with no room left is sent without a pack and records `no_room`; the result names the estimator -- falsifier: test.
+      - id: "DoD4"
+        statement: |-
+          S4 (AC3): a pack answer with an empty or whitespace hash is refused and not dispatched; a non-empty hash is attached and dispatched; a class naming no profile is dispatched with no pack and no hash -- falsifier: test.
 evidence_requirements:
   - kind: "tests"
     description: "S1 and S2: the resolver tests and the task-class context_profile tests."
     command: "uv run pytest tests/nodes/node_context_profile_resolver_effect tests/unit/inference/test_task_class_context_profile_omn21119.py -q -p no:randomly --no-cov -n 0"
+  - kind: "tests"
+    description: "S3 and S4: the pack budget compute's table and golden-chain tests."
+    command: "uv run pytest tests/nodes/node_delegation_context_pack_budget_compute -q -p no:randomly --no-cov -n 0"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -48,4 +60,39 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "bash -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/pack/profiles/session_resume.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -Fq orchestration_state && gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/pack/profiles/delegation_payload_local.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -Fq architecture_patterns'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21119-s3-pack-budget"
+    description: "S3: the pack budget is the room under the ceiling, capped by the profile budget; no room is no_room and dispatches without a pack."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_context_pack_budget_compute/test_delegation_context_pack_budget.py -q -p no:randomly --no-cov -n 0 -k 'room or never_exceeds or estimator'"
+    binds_ac: ["DoD3"]
+  - id: "dod-omn21119-s4-empty-hash-refusal"
+    description: "S4: an empty pack hash is refused; a non-empty one is attached; a class naming no profile carries no hash; the bus golden chain answers."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_context_pack_budget_compute/test_delegation_context_pack_budget.py tests/nodes/node_delegation_context_pack_budget_compute/test_golden_chain_delegation_context_pack_budget_compute.py -q -p no:randomly --no-cov -n 0 -k 'hash or no_profile or chain'"
+    binds_ac: ["DoD4"]
+  - id: "dod-omn21119-deploy-pack-budget-probe"
+    description: "Hosted-runner probe: run the packaged node_delegation_context_pack_budget_compute through `onex node` over an in-memory bus for a profile-naming task class with 2500 of 8000 grounded-input tokens composed, and require request_pack with budget 5500 and no dispatch. At the merge base the node does not exist and the probe fails. No lane services or credentials are required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu
+          export PYTHONDONTWRITEBYTECODE=1
+          probe="$(mktemp -d)"
+          trap 'rm -rf "$probe"' EXIT
+          printf '%s' '{"correlation_id":"deploy-probe-omn21119","task_class":"fixture_delegation_payload","context_profile":"delegation_payload_local","profile_token_budget":8000,"composed_request_tokens":2500,"max_grounded_input_tokens":8000,"token_estimator":"conservative-estimate"}' > "$probe/in.json"
+          export PATH="$(uv run --locked python -c 'import sysconfig; print(sysconfig.get_path("scripts"))'):$PATH";
+          onex node node_delegation_context_pack_budget_compute --input "$probe/in.json" --backend event_bus=inmemory --output receipt > "$probe/out.json";
+          uv run --locked python - "$probe/out.json" <<'PY'
+          import json
+          import sys
+          r = json.load(open(sys.argv[1]))["result"]
+          assert (r["status"], r["token_budget_override"], r["dispatch_allowed"]) == ("request_pack", 5500, False), r
+          print(r["status"], r["token_budget_override"])
+          PY
         cwd: "${OMNI_HOME}/omnimarket"

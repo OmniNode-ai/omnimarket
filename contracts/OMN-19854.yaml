@@ -1,39 +1,39 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-19854"
-title: "A mechanism the ruling audit counts must write a row it can read: the operator capture rows carry the capture handler as actor"
+title: "The harness invocation check (OMN-21289) runs as a CI lint step and a pre-commit hook, so the ruling audit counts it as wired"
 summary: >-
-  The ruling audit (ruling_mechanisms.py) counts an installed mechanism as acting only when a ledger row of the last 24 hours carries an actor= that names it. The operator capture handlers append one STATUS row per decision, ask, idea or preference under lane=operator-capture, but no row carried an actor=, so the two rulings that name node_operator_capture_effect and node_operator_capture_compute read NOT-ACTING although rows were being written. HandlerCaptureRows now puts actor=script:handler-capture-process on every row it builds, drop rows included. No reader of these rows keys on the cell.
+  Operator RULING 2026-10-20T11:52:25Z (harness are adapters behind one delegation effect node) is enforced by node_harness_invocation_check_effect, which only a pytest ran. The ruling audit (ruling_mechanisms.py) counts a check as wired when a required CI job and a pre-commit hook both run it. The lint job of ci.yml now runs the check as the step Harness invocation gate, and .pre-commit-config.yaml carries the local hook harness-invocation-check running the same command. The check, its baseline and its contract are unchanged.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-  - id: "req-capture-rows-name-their-actor"
-    statement: "Every ledger row the capture rows handler builds carries actor=script:handler-capture-process, so the ruling audit reads the capture mechanism as acting when it writes a row."
+  - id: "req-harness-invocation-check-wired"
+    statement: "The harness invocation check runs in the lint job of ci.yml and as a pre-commit hook, with the same command."
     acceptance:
       - id: "AC1"
-        statement: "AC1: every row the capture rows handler builds, a decision, an ask and a drop, carries exactly one actor=script:handler-capture-process cell, and the rows readers of the capture and digest nodes still pass -- falsifier: uv run pytest tests/unit/nodes/node_operator_capture_compute tests/unit/nodes/node_operator_capture_effect -q -k 'actor or rows or digest or asks'"
+        statement: "AC1: ci.yml runs the harness invocation check in its lint job and .pre-commit-config.yaml runs it as the hook harness-invocation-check -- falsifier: uv run pytest tests/ci/test_harness_invocation_check_wired_omn21289.py"
 evidence_requirements:
   - kind: "tests"
-    description: "AC1: the capture rows carry the actor and the capture compute and effect suites pass."
-    command: "uv run pytest tests/unit/nodes/node_operator_capture_compute tests/unit/nodes/node_operator_capture_effect -q -p no:randomly"
+    description: "AC1: the wiring test reads ci.yml and .pre-commit-config.yaml and finds the step and the hook."
+    command: "uv run pytest tests/ci/test_harness_invocation_check_wired_omn21289.py -q -p no:randomly --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: "dod-omn19854-ac1-capture-rows-actor"
-    description: "AC1: every capture row carries actor=script:handler-capture-process; the test fails on the tree before this change."
+  - id: "dod-omn19854-ac1-check-wired"
+    description: "AC1: the lint job runs the harness invocation check and the pre-commit hook runs it; the test fails on the tree before this change."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_operator_capture_compute/test_operator_capture_decisions.py -q -p no:randomly -k actor"
+        check_value: "uv run pytest tests/ci/test_harness_invocation_check_wired_omn21289.py -q -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn19854-deploy-probe"
-    description: "Deploy probe. The capture rows handler's ACTOR constant is read from GitHub at the checked-out commit; the probe exits nonzero on a tree without it, so it fails at the merge base."
+    description: "Deploy probe. The hosted runner reads ci.yml at the checked-out commit through the GitHub contents API and requires the Harness invocation gate step; the probe exits nonzero on a tree without it, so it fails at the merge base. This is package evidence, not a live deployment readback."
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_operator_capture_compute/handlers/handler_capture_rows.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^ACTOR = \"script:handler-capture-process\"'"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/.github/workflows/ci.yml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'name: Harness invocation gate'"
         cwd: "${OMNI_HOME}/omnimarket"

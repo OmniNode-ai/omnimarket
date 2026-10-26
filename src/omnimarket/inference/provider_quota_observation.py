@@ -14,7 +14,11 @@ Three call paths make metered calls, and each delivers the same event:
   bus), so an observation made on a laptop reaches the same projection.
 
 "Metered" means the quota policy declares the endpoint's provider. A call to
-an undeclared host (a local model) has no quota and emits nothing.
+an undeclared host (a local model) has no quota and emits nothing, with one
+exception (OMN-20910): a connection-level failure (no route, refused, name not
+resolved) is observed as a timed block on the host's own key, so the host stops
+being offered to ordinary routing until the block lifts and the next attempt
+probes it. A host that answered, even with an error, is never blocked.
 """
 
 from __future__ import annotations
@@ -39,15 +43,32 @@ from omnimarket.inference.provider_quota_policy import (
     declared_quota_limit_for,
 )
 from omnimarket.inference.provider_quota_state import (
+    HOST_UNREACHABLE_DISPOSITION,
     endpoint_is_metered,
+    host_unreachable_domain_for_endpoint,
     quota_domain_for_endpoint,
     resolve_quota_tenant,
 )
 from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
     EnumQuotaDisposition,
+    EnumQuotaScope,
 )
 
 _logger = logging.getLogger(__name__)
+
+#: How long a connection-level failure keeps a host out of ordinary routing. When
+#: it ends, the next attempt is the health probe: a failure blocks the host again
+#: for another window, a success needs no event because the block has lapsed.
+HOST_UNREACHABLE_COOLDOWN = timedelta(minutes=5)
+
+# The host never answered. A read timeout is not here: a slow host is reachable.
+_CONNECTION_FAILURE_PATTERN = re.compile(
+    r"errno (?:111|113|101|-2|-3)\b"
+    r"|no route to host|connection refused|network is unreachable"
+    r"|name or service not known|temporary failure in name resolution"
+    r"|all connection attempts failed|connecterror|connecttimeout",
+    re.IGNORECASE,
+)
 
 #: The topic the projection subscribes. Declared by the projection node's
 #: contract and by the orchestrator's; the sink reads it from there.
@@ -164,9 +185,16 @@ def build_quota_observation(
     ``retryable`` (an unmapped code) is observed as a failed call, never as a
     block, which is the classifier's own fail direction.
     """
-    if not endpoint_is_metered(endpoint_url):
+    metered = endpoint_is_metered(endpoint_url)
+    if not metered and (
+        succeeded or _CONNECTION_FAILURE_PATTERN.search(error_message) is None
+    ):
         return None
-    provider_id = quota_domain_for_endpoint(endpoint_url)
+    provider_id = (
+        quota_domain_for_endpoint(endpoint_url)
+        if metered
+        else host_unreachable_domain_for_endpoint(endpoint_url)
+    )
     if provider_id is None or not model_name.strip():
         return None
     tenant = resolve_quota_tenant(tenant_id)
@@ -183,6 +211,15 @@ def build_quota_observation(
         "correlation_id": correlation_id,
         "source": source,
     }
+    if not metered:
+        return ModelProviderQuotaObserved(
+            outcome=EnumProviderQuotaOutcome.LIMIT_HIT,
+            disposition=HOST_UNREACHABLE_DISPOSITION,
+            block_scope=EnumQuotaScope.PROVIDER.value,
+            blocked_until=observed_at + HOST_UNREACHABLE_COOLDOWN,
+            reason=error_message[:2000],
+            **common,
+        )
     declared = declared_quota_limit_for(provider_id)
     if declared is not None:
         # The projection counts calls over the width this event names, so a
@@ -329,6 +366,7 @@ class EmitEffectQuotaObservationSink:
 
 
 __all__ = [
+    "HOST_UNREACHABLE_COOLDOWN",
     "EmitEffectQuotaObservationSink",
     "ModelParsedProviderError",
     "ProtocolProviderQuotaObservationSink",

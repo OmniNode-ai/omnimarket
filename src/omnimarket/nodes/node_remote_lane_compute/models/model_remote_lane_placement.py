@@ -16,7 +16,12 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from omnimarket.models.model_engine_experiment import (
+    ENGINE_LADDER,
+    ModelEngineExperimentRow,
+)
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
@@ -57,6 +62,61 @@ class ModelRemoteLaneHostReading(BaseModel):
     dispatch_venv_hash: str | None = Field(default=None, min_length=1)
 
 
+class ModelRemoteLaneAttempt(BaseModel):
+    """One finished attempt on the engine ladder (OMN-21396)."""
+
+    model_config = _FROZEN
+
+    engine: str
+    model: str
+    outcome: str
+    failure_cause: str = "none"
+    duration_s: int = Field(default=0, ge=0)
+
+    @field_validator("engine")
+    @classmethod
+    def validate_engine(cls, value: str) -> str:
+        if value not in ENGINE_LADDER:
+            raise ValueError("engine must be in ENGINE_LADDER")
+        return value
+
+
+class ModelRemoteLaneLadder(BaseModel):
+    """Route limits, local readiness and finished attempts for a lane (OMN-21396)."""
+
+    model_config = _FROZEN
+
+    lane: str = Field(min_length=1)
+    ticket: str | None = None
+    lane_kind: str | None = None
+    risk_class: str | None = None
+    # The lane's declared Required capabilities: values.
+    required_capabilities: tuple[str, ...] = ()
+    ceiling: str
+    claude_required: bool = False
+    pinned: bool = False
+    landing_worker: bool = False
+    code_edit_ready: bool = False
+    local_model_slots: int = Field(default=0, ge=0)
+    attempts: tuple[ModelRemoteLaneAttempt, ...] = ()
+
+    @field_validator("ceiling")
+    @classmethod
+    def validate_ceiling(cls, value: str) -> str:
+        if value not in ENGINE_LADDER:
+            raise ValueError("ceiling must be in ENGINE_LADDER")
+        return value
+
+
+class ModelRemoteLaneRungVerdict(BaseModel):
+    """Why one rung was refused or chosen (OMN-21396)."""
+
+    model_config = _FROZEN
+
+    engine: str
+    reason: str
+
+
 class ModelRemoteLanePlacementRequest(BaseModel):
     """The lane's engine, an optional pinned host, the live host marks and every reading."""
 
@@ -65,6 +125,7 @@ class ModelRemoteLanePlacementRequest(BaseModel):
     engine: str = Field(min_length=1)
     pinned_host: str | None = None
     limited_hosts: tuple[str, ...] = ()
+    codex_limited_hosts: tuple[str, ...] = ()
     auth_expired_hosts: tuple[str, ...] = ()
     readings: tuple[ModelRemoteLaneHostReading, ...] = ()
     # The launching host's dispatch-venv lock hash: the hash every host must hold. Drift is
@@ -72,6 +133,7 @@ class ModelRemoteLanePlacementRequest(BaseModel):
     # with none of them is an old producer's and places as before.
     launching_venv_hash: str | None = Field(default=None, min_length=1)
     dispatch_venv_required: bool = False
+    ladder: ModelRemoteLaneLadder | None = None
 
 
 class ModelRemoteLaneHostVerdict(BaseModel):
@@ -126,3 +188,6 @@ class ModelRemoteLanePlacementResult(BaseModel):
     outcome: EnumRemoteLaneOutcome = EnumRemoteLaneOutcome.NO_HOST
     venv_drift: ModelRemoteLaneVenvDrift | None = None
     reconcile: ModelRemoteLaneReconcileIntent | None = None
+    rung: str | None = None
+    rungs: tuple[ModelRemoteLaneRungVerdict, ...] = ()
+    experiment: ModelEngineExperimentRow | None = None
