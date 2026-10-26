@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""The nine session-start nodes are present, free of the old registry-root variable."""
+"""The eight session-start nodes are present, free of the old registry-root variable."""
 
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ NODES_ROOT = Path(__file__).resolve().parents[2] / "src" / "omnimarket" / "nodes
 SESSION_START_NODES = (
     "node_adoption_recovery_effect",
     "node_cause_claim_ownership_effect",
-    "node_stuck_owner_actor_effect",
     "node_host_pool_alarm_effect",
     "node_script_node_src_compute",
     "node_controller_fix_plan_compute",
@@ -27,20 +26,20 @@ SOURCE_FILES = ("contract.yaml", "handler.py", "models.py", "node.py")
 OLD_REGISTRY_ROOT_VARIABLE = "OMNI" + "_HOME"
 
 
-def test_the_nine_nodes_carry_their_36_source_files() -> None:
+def test_the_eight_nodes_carry_their_32_source_files() -> None:
     expected = [
         NODES_ROOT / node / name
         for node in SESSION_START_NODES
         for name in SOURCE_FILES
     ]
-    assert len(expected) == 36
+    assert len(expected) == 32
     missing = [
         str(path.relative_to(NODES_ROOT)) for path in expected if not path.is_file()
     ]
     assert missing == []
 
 
-def test_no_file_of_the_nine_nodes_names_the_old_registry_root_variable() -> None:
+def test_no_file_of_the_eight_nodes_names_the_old_registry_root_variable() -> None:
     offenders: list[str] = []
     for node in SESSION_START_NODES:
         node_dir = NODES_ROOT / node

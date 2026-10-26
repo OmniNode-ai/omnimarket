@@ -53,7 +53,6 @@ def descendant_repo(path: Path) -> tuple[str, str]:
     [
         "node_landing_placement_wait_effect",
         "node_landing_not_started_effect",
-        "node_landing_lease_claim_close_effect",
         "node_install_superset_guard_effect",
         "node_landing_tick_speed_effect",
     ],
@@ -118,25 +117,6 @@ def test_g3_local_invocation(node: str, tmp_path: Path) -> None:
             "tick": 1,
         }
         expected = {"rows": ()}
-    elif node == "node_landing_lease_claim_close_effect":
-        payload = {
-            "state_dir": tmp_path,
-            "claims": (),
-            "live_lease_ids": frozenset(),
-            "revoked_lease_ids": frozenset(),
-            "released_this_tick": frozenset(),
-            "read_at": "2030-01-01T01:00:00Z",
-            "writer": lambda _row: (True, ""),
-        }
-        expected = {
-            "rows": (),
-            "closed": (),
-            "failed": (),
-            "skipped_live": 0,
-            "skipped_recent": 0,
-            "skipped_closed": 0,
-            "left": 0,
-        }
     elif node == "node_install_superset_guard_effect":
         live, new = descendant_repo(tmp_path)
         payload = {

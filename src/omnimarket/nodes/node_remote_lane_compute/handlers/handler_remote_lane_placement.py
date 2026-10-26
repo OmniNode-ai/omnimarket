@@ -11,7 +11,8 @@ A port of the remote-lane runner's ``eligible``, ``choose_codex`` and the shared
   lab hosts come first and the launching host only when no lab host has a slot; the
   pick is the best spread key (an idle host, then the lowest fill, then free capacity,
   memory, the launching host, the name).
-- A Codex lane holds no Claude login, so no Claude mark keeps it off a host. It takes
+- A Codex lane holds no Claude login, so no Claude mark keeps it off a host. A
+  Codex-specific usage mark does keep it off that host. It takes
   the admitted host the Codex bar passes with the most free capacity, then memory,
   then the name.
 
@@ -109,7 +110,7 @@ def _select(
 ) -> tuple[ModelRemoteLaneHostReading | None, dict[str, str]]:
     """The pick and every host's reason for not being it, with ``blocked`` hosts kept off."""
     codex = request.engine == CODEX_ENGINE
-    limited = set() if codex else set(request.limited_hosts)
+    limited = set(request.codex_limited_hosts if codex else request.limited_hosts)
     expired = set() if codex else set(request.auth_expired_hosts)
     reasons: dict[str, str] = {}
     admitted: list[ModelRemoteLaneHostReading] = []
