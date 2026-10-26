@@ -203,10 +203,10 @@ _BIFROST_CONTRACT_CODE_GLM = (
     "  # now resolves through the same BIFROST_CONTRACT_PATH binding this fixture\n"
     "  # sets. Before that it escaped the binding and read the packaged contract\n"
     "  # instead -- the seam divergence OMN-18676 closed.\n"
-    "  - backend_id: openrouter-nemotron-super\n"
+    "  - backend_id: openrouter-nemotron-ultra\n"
     "    provider: openrouter\n"
     '    endpoint_url: "https://openrouter.ai/api/v1/chat/completions"\n'
-    '    model_name: "nvidia/nemotron-3-super-120b-a12b:free"\n'
+    '    model_name: "nvidia/nemotron-3-ultra-550b-a55b:free"\n'
     "    secret_ref: llm.openrouter.api_key\n"
     "    tier: judge\n"
     "    timeout_ms: 300000\n"
@@ -363,7 +363,7 @@ class TestJudgeResolvesConcreteModelNotTier:
         escalation_model = resolve_delegation_backend(
             "code_generation", backend_id="cloud-gemini-flash"
         ).model_id
-        assert judge_model == "nvidia/nemotron-3-super-120b-a12b:free"
+        assert judge_model == "nvidia/nemotron-3-ultra-550b-a55b:free"
         # The exact GLM id is incidental to this test, and pinning it here has
         # now invalidated this test twice on unrelated repoints (OMN-16891
         # glm-5-turbo -> glm-5.3, OMN-6790 glm-5.3 -> glm-5.3-flash). What is

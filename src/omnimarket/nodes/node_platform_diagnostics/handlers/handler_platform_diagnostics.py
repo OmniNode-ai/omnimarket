@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import time
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -45,6 +46,8 @@ class ModelDiagnosticsRequest(BaseModel):
     )
     dimensions: list[EnumDiagnosticDimension] = Field(default_factory=list)
     dry_run: bool = False
+    bus_lane: str = Field(default="dev", min_length=1)
+    coverage_config: str | None = None
     freshness_threshold_hours: int = Field(default=4, ge=1, le=168)
 
 
@@ -65,6 +68,10 @@ class HandlerPlatformDiagnostics:
         ctx = DiagnosticsCheckContext(
             freshness_threshold_hours=request.freshness_threshold_hours,
             dry_run=request.dry_run,
+            bus_lane=request.bus_lane,
+            coverage_config=Path(request.coverage_config)
+            if request.coverage_config
+            else None,
         )
 
         selected_dimensions = (

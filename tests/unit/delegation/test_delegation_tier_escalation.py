@@ -1232,24 +1232,39 @@ class TestTestResearchTierPolicyVerified:
         )
 
     def test_cloud_tier_reachable_when_configured(
-        self, register_local_secret: Callable[..., None]
+        self,
+        register_local_secret: Callable[..., None],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         # OMN-17427: the reachable cloud rung is the non-Gemini OpenRouter
         # cheap_frontier tier, declared in `test`'s closed tier_order. It is
         # selectable once its credential resolves and not before.
+        # OMN-20376: Ultra is pin-only; the ordinary rung is now north-mini's
+        # mirrored placement. Reload the committed ladder rather than reuse
+        # one cached by a synthetic bifrost fixture with no placements.
         from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
             handler_delegation_routing as routing,
         )
 
+        monkeypatch.setattr(routing, "_config", None)
+        monkeypatch.setattr(routing, "_config_spread_peers", None)
+        monkeypatch.setattr(routing, "_config_spread_weights", None)
         before = next_eligible_tier("local", frozenset(), task_type="test")
         register_local_secret("llm.openrouter.api_key", "test-openrouter-key")
         routing._load_bifrost_endpoints.cache_clear()
         try:
             after = next_eligible_tier("local", frozenset(), task_type="test")
+            without_north_mini = next_eligible_tier(
+                "local",
+                frozenset(),
+                task_type="test",
+                excluded_backend_refs=frozenset({"openrouter-north-mini-code"}),
+            )
         finally:
             routing._load_bifrost_endpoints.cache_clear()
         assert before != "cheap_frontier"
         assert after == "cheap_frontier"
+        assert without_north_mini != "cheap_frontier"
 
     @pytest.mark.parametrize("task_type", ["test", "research"])
     def test_claude_is_ceiling_no_higher_tier(self, task_type: str) -> None:

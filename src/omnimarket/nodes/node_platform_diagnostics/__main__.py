@@ -37,6 +37,12 @@ def _parse_args() -> argparse.Namespace:
         default=4,
         help="Freshness threshold in hours for cached artifacts",
     )
+    parser.add_argument(
+        "--bus-lane", default="dev", help="Declared bus lane for runtime coverage"
+    )
+    parser.add_argument(
+        "--coverage-config", help="Path to the deployment runtime coverage policy"
+    )
     return parser.parse_args()
 
 
@@ -56,12 +62,16 @@ async def _main() -> None:
     request = ModelDiagnosticsRequest(
         dimensions=dimensions,
         dry_run=args.dry_run,
+        bus_lane=args.bus_lane,
+        coverage_config=args.coverage_config,
         freshness_threshold_hours=args.freshness_threshold_hours,
     )
 
     handler = HandlerPlatformDiagnostics()
     result = await handler.handle(request)
     print(json.dumps(result.model_dump(mode="json"), indent=2))  # noqa: T201
+    if result.overall_status.value == "FAIL":
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
