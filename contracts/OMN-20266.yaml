@@ -74,7 +74,7 @@ dod_evidence:
     binds_ac: ["DOD1"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --locked pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -k dispatch_cli -q --no-cov --refuse-skips"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -k dispatch_cli -q --no-cov --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20266-closeout-deploy-probe"
     description: >-
