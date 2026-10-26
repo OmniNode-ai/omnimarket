@@ -80,6 +80,9 @@ dod_evidence:
       that concluded success; each run publishes a per-case job summary and the JUnit report as an artifact.
     source: "manual"
     checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/chains/fault_suite/test_five_faults_told_apart_omn19450.py -q -p no:randomly --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
         check_value: >-
           gh run list --repo OmniNode-ai/omnimarket --workflow delegation-fault-suite-nightly.yml --event schedule
