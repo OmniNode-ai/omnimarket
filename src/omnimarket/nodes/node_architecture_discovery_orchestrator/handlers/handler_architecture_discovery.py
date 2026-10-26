@@ -12,6 +12,10 @@ from uuid import uuid5
 import jsonschema
 import yaml
 
+from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
+    require_lane_model,
+)
+
 from ..models.model_discovery_contract import (
     ModelDiscoveryContract,
     ModelDiscoveryPhaseSpec,
@@ -119,7 +123,11 @@ class HandlerArchitectureDiscovery:
             task = ModelDiscoveryTask(
                 label=phase.label,
                 phase=phase.phase,
-                model=phase.model,
+                model=require_lane_model(
+                    requested_engine="claude",
+                    requested_tier=phase.model,
+                    lane_kind="architecture-discovery",
+                ),
                 effort=phase.effort,
                 prompt=_render(phase.prompt, values),
                 schema_definition=schemas[phase.phase],

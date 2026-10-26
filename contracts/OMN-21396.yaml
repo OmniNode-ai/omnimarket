@@ -273,3 +273,78 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/delegation/test_harness_eval.py tests/unit/delegation/test_harness_eval_fixtures.py tests/nodes/node_remote_lane_compute/test_engine_ladder_remote_lane_compute.py tests/nodes/node_remote_lane_compute/test_engine_experiment_rows.py -q --no-cov --refuse-skips -n 0"
         cwd: "."
+
+  - id: "dod-omn21396-model-policy-ac1"
+    description: >
+      The declared lane-model policy selects local code-edit when ready, GLM
+      for low-risk work, then Codex and Claude Sonnet, using supplied capacity
+      and never allowing a ROUTE or B4/B5 request to lift the packaged ceiling.
+      The new policy tests fail at the dispatched base, which has no policy node.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lane_model_policy_compute tests/nodes/node_remote_lane_compute/test_engine_ladder_remote_lane_compute.py -q --no-cov --refuse-skips"
+        cwd: "."
+  - id: "dod-omn21396-model-policy-ac2"
+    description: >
+      A failed local attempt escalates to GLM; required-Claude lanes stay on
+      Claude and failed Sonnet never escalates to Opus, including a requested
+      Opus ceiling. Exact Opus pins refuse before reserving a fill slot.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lane_model_policy_compute tests/nodes/node_remote_lane_compute/test_engine_ladder_remote_lane_compute.py tests/nodes/node_idle_slot_fill_effect/test_recorded_opus_fill.py -q --no-cov --refuse-skips"
+        cwd: "."
+  - id: "dod-omn21396-model-policy-ac3"
+    description: >
+      Replay two attempts and read exactly two kind=experiment STATUS rows
+      with all required cells; the same run verifies the declared policy
+      ceiling. The new policy probe refuses the dispatched base.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lane_model_policy_compute tests/nodes/node_remote_lane_compute/test_engine_experiment_rows.py -q --no-cov --refuse-skips"
+        cwd: "."
+  - id: "dod-omn21396-model-policy-ac4"
+    description: >
+      Replay AC3's rows into the 24-hour throughput report and require nonzero
+      attempts, successes and escalations while verifying the packaged policy
+      entry point; no live broker, lab account or production access is used.
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lane_model_policy_compute tests/nodes/node_remote_lane_compute/test_engine_experiment_rows.py -q --no-cov --refuse-skips"
+        cwd: "."
+  - id: "dod-omn21396-model-policy-deploy"
+    description: >
+      Hosted-runner deploy check against the checked-out installed package:
+      contract binding and the onex.nodes entry point resolve; exhausting the
+      declared input combinations yields no Opus; lowering the one declared
+      ceiling changes consumer refusals. Replaying the exact 2026-10-26
+      19:59 fill brief names and kinds extracted from the ledger plans Sonnet
+      instead of Opus; raw ledger rows remain unchanged in the private handoff.
+      The regression failed first at 509fa44ab with four planned Opus fills.
+      No credentials, remote host, live model, broker or deployment required.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lane_model_policy_compute tests/nodes/node_idle_slot_fill_effect/test_recorded_opus_fill.py -q --no-cov --refuse-skips"
+        cwd: "."
+  - id: "dod-omn21396-fill-policy-effect-deploy"
+    description: >
+      Hosted-runner check of the throughput fill effect: the packaged policy's
+      selected model reaches runner argv, brief ROUTE, sent state, ledger callback
+      and NOTE together. Lowering the declared ceiling below Claude prevents
+      dispatch and recording and preserves the free slot. Uses temporary state
+      and a captured runner boundary; no broker, credentials or live dispatch.
+      This synthetic boundary probe does not claim replay of the original NOTE.
+    source: "manual"
+    binds_ac: ["AC1", "AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_idle_slot_fill_effect/test_lab_fill_model_policy_effect.py -q --no-cov --refuse-skips"
+        cwd: "."

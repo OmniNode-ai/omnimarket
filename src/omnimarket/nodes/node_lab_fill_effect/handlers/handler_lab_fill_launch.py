@@ -21,6 +21,9 @@ from omnimarket.models.lab_fill import ModelLabFillApprovedRow, ModelLabFillLaun
 from omnimarket.models.model_internal_release_path_guard import (
     ModelInternalReleasePathGuardRequest,
 )
+from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
+    lane_model_refusal,
+)
 
 from ..models import (
     ModelLabFillLaunchRequest,
@@ -169,6 +172,11 @@ class HandlerLabFillLaunch:
                     if elapsed_s is not None
                     else int(self._clock.now_epoch_s() - started)
                 ),
+            )
+
+        if refusal := lane_model_refusal(launch.engine):
+            return result(
+                detached=False, skipped="model-policy-refused", detail=refusal
             )
 
         slice_s = self._slice(request, started)

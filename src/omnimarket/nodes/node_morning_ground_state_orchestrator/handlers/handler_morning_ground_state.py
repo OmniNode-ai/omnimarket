@@ -25,6 +25,10 @@ from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
 )
 from pydantic import JsonValue, ValidationError
 
+from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
+    require_lane_model,
+)
+
 from ..models.model_morning_ground_state import (
     DROPPED_HEADLINE_KEYS,
     DROPPED_SECTIONS,
@@ -202,7 +206,7 @@ class HandlerMorningGroundState:
             )
 
         async def invoke(
-            label: str, phase: str, model: str = "opus", effort: str = "high"
+            label: str, phase: str, model: str | None = None, effort: str = "high"
         ) -> dict[str, JsonValue] | None:
             nonlocal pr_inventory
             rendered = self._render(self.templates[label], values)
@@ -217,7 +221,11 @@ class HandlerMorningGroundState:
                 ModelMorningPhaseRequest(
                     label=label,
                     phase=phase,
-                    model=model,
+                    model=require_lane_model(
+                        requested_engine="claude",
+                        requested_tier=model,
+                        lane_kind="morning-phase",
+                    ),
                     effort=effort,
                     prompt=rendered,
                     schema_definition=self.schemas[label],
@@ -324,7 +332,7 @@ class HandlerMorningGroundState:
                 await invoke(
                     label,
                     name,
-                    "sonnet" if name in ("Integrate", "Goal") else "opus",
+                    "sonnet" if name in ("Integrate", "Goal") else None,
                     "medium" if name in ("Integrate", "Goal") else "high",
                 )
                 if runs(name)

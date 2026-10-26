@@ -69,6 +69,9 @@ from omnimarket.models.model_engine_experiment import (
     NO_ENGINE,
     SUCCESS_OUTCOME,
 )
+from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
+    require_lane_model,
+)
 from omnimarket.nodes.node_throughput_tick_decision_compute.models.model_throughput_tick_decision import (
     ModelCodexHeadroom,
     ModelLabAdmission,
@@ -111,7 +114,7 @@ FLOOR_FIX = (
 # has stopped landing is that case (OMN-20840: three repositories read as parked notes for 8 to 12 hours).
 PARK_FIX = (
     "nothing lands in {repo} until the park ends at {until}: under RULING 2026-10-09T04:10:56Z "
-    "lane=orchestrator-9f8a the orchestrator dispatches ONE Codex or Opus fix lane for cause {key} now "
+    "lane=orchestrator-9f8a the orchestrator dispatches ONE {model} fix lane for cause {key} now "
     "(read the cause through /omni:landing-controller status first, and pr_claim_registry_cli.py list for a "
     "peer already on it); gates still decide, no bypass; the tick dispatches nothing"
 )
@@ -743,7 +746,12 @@ def report_floors(
                 loop,
                 f"{rest.rpartition(' | FIX: ')[0]}; {cover.note()}, {left:.1f}h from now "
                 f"(> {park_max_hours:g}h)",
-                PARK_FIX.format(repo=repo, until=cover.parked_until, key=cover.key),
+                PARK_FIX.format(
+                    repo=repo,
+                    until=cover.parked_until,
+                    key=cover.key,
+                    model=require_lane_model(lane_kind="cause-red"),
+                ),
             )
         elif cover is not None:
             rep.note(f"{loop} | {rest.rpartition(' | FIX: ')[0]} | {cover.note()}")

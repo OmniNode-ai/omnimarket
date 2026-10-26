@@ -8,6 +8,11 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 
+from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
+    require_lane_model,
+    resolve_lane_model,
+)
+
 from .models import ModelControllerFixPlanRequest, ModelControllerFixPlanResult
 
 
@@ -21,6 +26,27 @@ def select_target(
     it is not evidence that Claude is exhausted. Both the brief's route and the runner's model must agree.
     """
     selected = dict(contract)
+
+    def select_model(model: str) -> None:
+        route = str(contract["controller_fix_route"])
+        for key, value in (
+            ("model", model),
+            ("dest", f"{model}-lane"),
+            ("effort", "high"),
+        ):
+            route = re.sub(rf"\b{key}=\S+", f"{key}={value}", route)
+        selected.update(
+            controller_fix_model=model,
+            controller_fix_effort="high",
+            controller_fix_route=route,
+        )
+
+    select_model(
+        require_lane_model(
+            requested_engine=str(contract["controller_fix_model"]),
+            lane_kind="controller-fix",
+        )
+    )
     pool = request.get("lab_headroom")
     if (
         not isinstance(pool, Mapping)
@@ -50,26 +76,17 @@ def select_target(
                 eligible.append((name == controller_host, slots, name))
         return max(eligible)[2] if eligible else None
 
-    preferred = "codex" if contract["controller_fix_model"] == "codex" else "claude"
-    host = pick(preferred)
-    if host:
+    targets = {engine: pick(engine) for engine in ("codex", "claude")}
+    decision = resolve_lane_model(
+        lane_kind="controller-fix",
+        available_engines=tuple(
+            engine for engine, host in targets.items() if host is not None
+        ),
+    )
+    if decision.model is not None and decision.engine is not None:
+        select_model(decision.model)
+        host = targets[decision.engine]
         if controller_host and host != controller_host:
-            selected["controller_evidence_host"] = controller_host
-        return selected, host, ""
-    if preferred == "claude" and (host := pick("codex")):
-        route = str(contract["controller_fix_route"])
-        for key, value in (
-            ("model", "codex"),
-            ("dest", "codex-lane"),
-            ("effort", "high"),
-        ):
-            route = re.sub(rf"\b{key}=\S+", f"{key}={value}", route)
-        selected.update(
-            controller_fix_model="codex",
-            controller_fix_effort="high",
-            controller_fix_route=route,
-        )
-        if controller_host:
             selected["controller_evidence_host"] = controller_host
         return selected, host, ""
     return (

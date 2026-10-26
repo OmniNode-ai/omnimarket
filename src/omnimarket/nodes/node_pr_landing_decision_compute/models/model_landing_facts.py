@@ -29,6 +29,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from omnimarket.models.review_finding_disposition.model_review_finding_disposition_event import (
     ModelReviewFindingDispositionEntry,
 )
+from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
+    lane_model_refusal,
+    load_policy,
+    require_lane_model,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing import (
     EnumLandingCi,
     EnumLandingEngine,
@@ -367,6 +372,30 @@ class ModelLandingRebuildAck(BaseModel):
     run_id: str = Field(..., min_length=1)
 
 
+def _worker_ladder(attempts: int = 3) -> tuple[EnumLandingEngine, ...]:
+    adapters = {
+        "codex": EnumLandingEngine.CODEX_HIGH,
+        "sonnet": EnumLandingEngine.CLAUDE_SONNET,
+    }
+    allowed = tuple(
+        adapters[model]
+        for model in load_policy().order
+        if model in adapters
+        and lane_model_refusal(model, lane_kind="landing-worker") is None
+    )
+    # Keep the controller's existing attempt budget; the ceiling applies on each attempt.
+    return (
+        (*allowed, *((allowed[-1],) * max(0, attempts - len(allowed))))
+        if allowed
+        else ()
+    )
+
+
+def _diagnosis_engine() -> EnumLandingEngine:
+    model = require_lane_model(requested_engine="claude", lane_kind="landing-worker")
+    return EnumLandingEngine(f"claude_{model}")
+
+
 class ModelLandingPolicy(BaseModel):
     """The fixed numbers the rules use. Declared, never inferred."""
 
@@ -408,11 +437,7 @@ class ModelLandingPolicy(BaseModel):
         ),
     )
     engine_ladder: tuple[EnumLandingEngine, ...] = Field(
-        default=(
-            EnumLandingEngine.CLAUDE_SONNET,
-            EnumLandingEngine.CLAUDE_OPUS,
-            EnumLandingEngine.CODEX_HIGH,
-        ),
+        default_factory=_worker_ladder,
         min_length=1,
     )
     cluster_min_members: int = Field(
@@ -457,14 +482,14 @@ class ModelLandingPolicy(BaseModel):
     cause_lease_seconds: int = Field(default=5400, ge=1)
     cause_park_hours: int = Field(default=12, ge=1)
     cause_diagnosis_engine: EnumLandingEngine = Field(
-        default=EnumLandingEngine.CLAUDE_OPUS,
+        default_factory=_diagnosis_engine,
         description=(
             "The engine of the one attempt after the budget is spent, with a "
             "diagnosis brief, before the cause parks."
         ),
     )
     cause_engine_ladder: tuple[EnumLandingEngine, ...] = Field(
-        default=(EnumLandingEngine.CLAUDE_OPUS, EnumLandingEngine.CLAUDE_OPUS),
+        default_factory=lambda: _worker_ladder(2),
         min_length=1,
     )
 

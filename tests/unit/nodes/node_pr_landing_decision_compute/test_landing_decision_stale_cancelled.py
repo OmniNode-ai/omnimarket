@@ -313,7 +313,7 @@ def test_stale_cancelled_real_red_failed_attempt_on_same_head_escalates() -> Non
     assert _record(decision).ladder_index == 1
     brief = decision.actions[0].brief
     assert brief is not None
-    assert brief.engine is EnumLandingEngine.CLAUDE_OPUS
+    assert brief.engine is EnumLandingEngine.CLAUDE_SONNET
 
 
 @pytest.mark.unit

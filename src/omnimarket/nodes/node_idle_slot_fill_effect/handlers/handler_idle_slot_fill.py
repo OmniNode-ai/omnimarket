@@ -83,7 +83,6 @@ from pathlib import Path
 from typing import Any
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
-from omnimarket.handlers.rules_background_lane_models import OPUS_REFUSAL, is_opus
 from omnimarket.handlers.rules_lab_fill_tickets import plan_ticket_backlog
 from omnimarket.handlers.rules_lane_requirements import claude_required, declarations
 from omnimarket.handlers.work_ledger_fixer_holds import fixer_hold_reasons
@@ -100,6 +99,10 @@ from omnimarket.nodes.node_idle_slot_fill_effect.models import (
     ModelLabFillRequest,
     ModelLabFillResult,
 )
+from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
+    load_policy,
+    resolve_lane_model,
+)
 
 from .handler_ruling_recovery import HandlerRulingRecovery
 
@@ -109,7 +112,7 @@ TICKET_ID = re.compile(r"OMN-[0-9]+")
 TICKET_RULE = "omnimarket.handlers.rules_lab_fill_tickets.plan_ticket_backlog (omnimarket#4384, RULING 2026-10-20T10:45:21Z)"
 FACT_MAX_AGE = timedelta(hours=48)
 EXPERIMENT_RERUN_AFTER = timedelta(hours=24)
-CLAUDE_MODEL, CODEX_MODEL, EFFORT = "sonnet", "codex", "high"
+EFFORT = "high"
 GENERATED_KINDS = ("ticket", "readback", "experiment-design")
 DASHBOARD_RULING = "RULING 2026-10-01T10:53:36Z lane=dashboard-stayout (OMN-19969)"
 DASHBOARD_CRITERIA = frozenset({"C31", "C32"})
@@ -813,17 +816,36 @@ class HandlerIdleSlotFill:
             required = (
                 str(item.get("required_engine") or "").strip().lower().replace("_", "-")
             )
-            opus_declaration = any(
-                is_opus(match[1])
+            requirements = [
+                (match[1].lower(), match[2])
                 for line in declarations(item.get("brief", ""))
                 if (
                     match := re.fullmatch(
-                        r"Required (?:engine|model):\s*(.*?)\s*", line, re.IGNORECASE
+                        r"Required (engine|model):\s*(.*?)\s*", line, re.IGNORECASE
                     )
                 )
+            ]
+            required_model = next(
+                (value for kind, value in requirements if kind == "model"), None
             )
-            if is_opus(required) or opus_declaration:
-                skipped.append({"key": item["key"], "why": OPUS_REFUSAL})
+            brief_engine = next(
+                (value for kind, value in requirements if kind == "engine"), None
+            )
+            policy_facts = {
+                "lane_kind": item["kind"],
+                "risk_class": item.get("risk_class"),
+                "required_engine": required or brief_engine,
+                "required_model": required_model,
+            }
+            preflights = [resolve_lane_model(**policy_facts)]
+            preflights.extend(
+                resolve_lane_model(**{**policy_facts, f"required_{kind}": value})
+                for kind, value in requirements
+            )
+            if refusal := next(
+                (answer.reason for answer in preflights if not answer.allowed), None
+            ):
+                skipped.append({"key": item["key"], "why": refusal})
                 continue
             pinned = required in (
                 "claude",
@@ -840,15 +862,7 @@ class HandlerIdleSlotFill:
                     )
                     continue
                 shared_left = min(shared_left, claude_left)
-                if codex_left > 0:
-                    model, codex_left = CODEX_MODEL, codex_left - 1
-                elif shared_left > 0:
-                    model, shared_left, claude_left = (
-                        CODEX_MODEL,
-                        shared_left - 1,
-                        claude_left - 1,
-                    )
-                else:
+                if codex_left <= 0 and shared_left <= 0:
                     skipped.append(
                         {
                             "key": item["key"],
@@ -871,8 +885,7 @@ class HandlerIdleSlotFill:
                         }
                     )
                     continue
-                pin, local_left = local_host, local_left - 1
-                model, claude_left = CLAUDE_MODEL, claude_left - 1
+                pin = local_host
             elif pinned and claude_left <= 0:
                 skipped.append(
                     {
@@ -881,20 +894,50 @@ class HandlerIdleSlotFill:
                     }
                 )
                 continue
-            elif claude_left > 0:
-                model, claude_left = CLAUDE_MODEL, claude_left - 1
-            elif codex_left > 0:
-                model, codex_left = CODEX_MODEL, codex_left - 1
-            elif glm_left > 0 and item.get("risk_class") in (
-                "doc",
-                "test",
-                "lint",
-                "small-fix",
-            ):
-                model, glm_left = "glm", glm_left - 1
-            else:
+            available = {
+                "claude": claude_left,
+                "codex": codex_left + (shared_left if required == "codex" else 0),
+                "glm": glm_left,
+            }
+            decision = resolve_lane_model(
+                **policy_facts,
+                requested_engine="claude" if pin or pinned else "auto",
+                available_engines=tuple(
+                    engine for engine, count in available.items() if count > 0
+                ),
+            )
+            if decision.model is None:
                 skipped.append({"key": item["key"], "why": "no free slot"})
                 continue
+            model = decision.model
+            constraints = [
+                resolve_lane_model(
+                    **{
+                        **policy_facts,
+                        "requested_engine": model,
+                        "available_models": (model,),
+                        f"required_{kind}": value,
+                    }
+                )
+                for kind, value in requirements
+            ]
+            if refusal := next(
+                (answer.reason for answer in constraints if not answer.allowed), None
+            ):
+                skipped.append({"key": item["key"], "why": refusal})
+                continue
+            if decision.engine == "claude":
+                claude_left -= 1
+                if pin:
+                    local_left -= 1
+            elif decision.engine == "codex":
+                if codex_left > 0:
+                    codex_left -= 1
+                else:
+                    shared_left -= 1
+                    claude_left -= 1
+            elif decision.engine == "glm":
+                glm_left -= 1
             lane = lane_name(item["kind"], item["name"], request.now)
             sends.append(
                 {
@@ -1100,7 +1143,9 @@ def remote_lane_dir(env: Mapping[str, str] | None = None) -> Path:
 
 
 def engine_of(model: str) -> str:
-    return "codex" if model == CODEX_MODEL else "glm" if model == "glm" else "claude"
+    policy = load_policy()
+    name = model.strip().lower().replace("_", "-")
+    return policy.engines.get(policy.aliases.get(name, name), "claude")
 
 
 def placing_lanes(
@@ -1185,7 +1230,10 @@ def queue_reservations(
         lane = str(entry["lane"])
         if lane.startswith("fill-"):
             continue
-        engine = "codex" if entry.get("model") == CODEX_MODEL else "claude"
+        # The queue snapshot reserves Claude/Codex pools; keep its existing client accounting.
+        engine = (
+            "codex" if engine_of(str(entry.get("model") or "")) == "codex" else "claude"
+        )
         pin = pin_of(entry)
         available = (
             free_slots(
@@ -1680,7 +1728,8 @@ def default_sources(now: str, env: Mapping[str, str]) -> ModelBacklogSources | N
         ]
         return next((p for p in paths if p.exists()), paths[0])
 
-    registry_root = Path(env[REGISTRY_ROOT_ENV]) if env.get(REGISTRY_ROOT_ENV) else None
+    registry_value = env.get(REGISTRY_ROOT_ENV) or env.get("OMNI_HOME")
+    registry_root = Path(registry_value) if registry_value else None
     ledger = (
         Path(env["ONEX_LEDGER_PATH"])
         if env.get("ONEX_LEDGER_PATH")
@@ -2051,7 +2100,7 @@ class HandlerLabFill:
         if decision.claude_free + decision.codex_only_free + decision.glm_only_free < 1:
             return ModelLabFillResult(found)
         names: list[str] = []
-        counts = {CLAUDE_MODEL: 0, CODEX_MODEL: 0, "glm": 0}
+        counts = {"claude": 0, "codex": 0, "glm": 0}
         for send in decision.sends:
             if request.read_only:
                 names.append(
@@ -2074,7 +2123,7 @@ class HandlerLabFill:
                     "kind": send["kind"],
                     "model": send["model"],
                 }
-                counts[send["model"]] += 1
+                counts[engine_of(send["model"])] += 1
                 names.append(
                     f"{send['lane']} ({send['kind']} {send['key']}, {send['model']})"
                 )
@@ -2115,7 +2164,7 @@ class HandlerLabFill:
                 "note",
                 "lab-fill",
                 (
-                    f"lab-fill | sent={n} (claude={counts[CLAUDE_MODEL]} codex={counts[CODEX_MODEL]}"
+                    f"lab-fill | sent={n} (claude={counts['claude']} codex={counts['codex']}"
                     + (f" glm={counts['glm']}" if decision.glm_only_free else "")
                     + ") "
                     f"free={decision.claude_free}+{decision.codex_only_free}"

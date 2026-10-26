@@ -12,7 +12,7 @@ ticks:
   - tla: [Dispatch]
     expect:
       actions: ["dispatch_worker acme/app#1 real_red"]
-      engine: {acme/app#1: claude_sonnet}
+      engine: {acme/app#1: codex_high}
   - tla: [WorkerResult, ProcessExit, RecordResult, ConfirmTerminated, Dispatch]
     events:
       - worker_result: {pr: acme/app#1, kind: fix_submitted, head: h2, evidence: none}
@@ -20,7 +20,7 @@ ticks:
     expect:
       actions: ["dispatch_worker acme/app#1 real_red"]
       recorded: ["acme/app#1 invalid head_mismatch"]
-      engine: {acme/app#1: claude_opus}
+      engine: {acme/app#1: claude_sonnet}
       violations: 1
 end:
   dispatches: {acme/app#1: 2}

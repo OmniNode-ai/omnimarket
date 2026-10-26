@@ -23,6 +23,9 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from omnimarket.nodes.node_idle_slot_fill_effect import overlay
+from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
+    require_lane_model,
+)
 
 RULING = "RULING 2026-10-21T21:14:58Z lane=cloud-backlog-2115 (OMN-17427)"
 _TICKET = re.compile(r"\bOMN-\d+\b", re.IGNORECASE)
@@ -241,7 +244,7 @@ def brief(item: Mapping[str, Any], lane: str, parent: str) -> str:
     )
     return (
         f"# Lane {lane}: cloud backlog ticket {tid} ({repo})\n"
-        "ROUTE: model=sonnet effort=high\n"
+        f"ROUTE: model={require_lane_model(requested_engine='claude', lane_kind='cloud-backlog')} effort=high\n"
         f"Parent: {parent}. Ticket: {tid}. Repo: {repo}.\n"
         f'Authority: {RULING}: operator, verbatim: "OK yeah I agree start sending backlog tickets to the cloud I mean '
         'they can use mocks right CI will catch issues."\n'

@@ -1030,6 +1030,7 @@ node_green_draft_clock_compute = "omnimarket.nodes.node_green_draft_clock_comput
 node_green_controller_read_compute = "omnimarket.nodes.node_green_controller_read_compute"
 node_exception_queue_effect = "omnimarket.nodes.node_exception_queue_effect"
 node_plugin_bump_stuck_compute = "omnimarket.nodes.node_plugin_bump_stuck_compute"
+node_lane_model_policy_compute = "omnimarket.nodes.node_lane_model_policy_compute"
 node_idle_slot_fill_effect = "omnimarket.nodes.node_idle_slot_fill_effect"
 node_landing_worker_engine_compute = "omnimarket.nodes.node_landing_worker_engine_compute"
 node_execution_attribution_compute = "omnimarket.nodes.node_execution_attribution_compute"

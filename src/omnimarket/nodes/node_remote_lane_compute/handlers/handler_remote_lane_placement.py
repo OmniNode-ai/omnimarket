@@ -34,7 +34,6 @@ legacy requests and pinned routes; failed Sonnet attempts stop with no next engi
 
 from __future__ import annotations
 
-from omnimarket.handlers.rules_background_lane_models import OPUS_REFUSAL, is_opus
 from omnimarket.models.model_engine_experiment import (
     CLAUDE_RUNGS,
     CODEX_UNGRANTABLE_CAPABILITIES,
@@ -46,6 +45,9 @@ from omnimarket.models.model_engine_experiment import (
     RUNG_GATES,
     RUNG_HOST_ENGINE,
     ModelEngineExperimentRow,
+)
+from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
+    lane_model_refusal,
 )
 
 from ..models import (
@@ -172,8 +174,8 @@ def _rung_reason(ladder: ModelRemoteLaneLadder, rung: str) -> str | None:
     """The first route or readiness rule that refuses a rung."""
     if ENGINE_LADDER.index(rung) > ENGINE_LADDER.index(ladder.ceiling):
         return "above-route-ceiling"
-    if is_opus(rung):
-        return OPUS_REFUSAL
+    if refusal := lane_model_refusal(rung):
+        return refusal
     if ladder.pinned and rung != ladder.ceiling:
         return "pinned-to-route"
     if ladder.claude_required and rung not in CLAUDE_RUNGS:
@@ -276,12 +278,12 @@ class HandlerRemoteLanePlacement:
     def _place(
         self, request: ModelRemoteLanePlacementRequest
     ) -> ModelRemoteLanePlacementResult:
-        if is_opus(request.engine):
+        if refusal := lane_model_refusal(request.engine):
             return ModelRemoteLanePlacementResult(
                 host=None,
                 engine=request.engine,
                 verdicts=tuple(
-                    ModelRemoteLaneHostVerdict(host=reading.name, reason=OPUS_REFUSAL)
+                    ModelRemoteLaneHostVerdict(host=reading.name, reason=refusal)
                     for reading in request.readings
                 ),
             )

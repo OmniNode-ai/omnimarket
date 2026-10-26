@@ -34,6 +34,9 @@ from omnimarket.nodes.node_dispatch_worker.models.model_dispatch_worker_command 
 from omnimarket.nodes.node_dispatch_worker.models.model_dispatch_worker_result import (
     ModelDispatchWorkerResult,
 )
+from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
+    lane_model_refusal,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -557,6 +560,15 @@ class HandlerDispatchWorker:
             state_dir: Explicit dispatch-record state directory.
             parent_session_id: Explicit parent session for dispatch-record provenance.
         """
+        if refusal := lane_model_refusal(command.model, lane_kind="claude-workflow"):
+            return ModelDispatchWorkerResult(
+                validated_task_description="",
+                validated_prompt_template="",
+                proposed_agent_spawn_args={},
+                collision_fence_embeds=[],
+                rejected_reason=refusal,
+            )
+
         # --- deduplication check ---
         if existing_task_subjects is not None:
             subjects = existing_task_subjects

@@ -169,7 +169,8 @@ def test_a_host_tick_repair_waits_for_a_free_launching_host_slot(slots, free, er
         "repo-private-data#812",
         "repo-status:omnimarket",
     ]
-    assert all("host" not in s and s["model"] == "sonnet" for s in result.sends)
+    expected_model = "codex" if slots == 0 and free and error is None else "sonnet"
+    assert all("host" not in s and s["model"] == expected_model for s in result.sends)
     assert result.skipped == [
         {
             "key": "repair:host-tick:minutes-watch",
@@ -222,6 +223,7 @@ def test_the_sweep_s_planned_lanes_take_their_slots_first():
 
 
 def test_codex_lanes_go_to_codex_only_hosts_after_claude_slots():
+    """Historical case: the current policy spends Codex capacity first."""
     result = fill(
         hosts=[host("host-a", 1, 1), host("host-d", 0, 2)],
         lines=[*headroom("host-a", "host-d"), PF_LINE, RED_LINE],
@@ -235,9 +237,9 @@ def test_codex_lanes_go_to_codex_only_hosts_after_claude_slots():
         ],
     )
     assert [(s["key"], s["model"]) for s in result.sends] == [
-        ("repo-private-data#812", "sonnet"),
+        ("repo-private-data#812", "codex"),
         ("repo-status:omnimarket", "codex"),
-        ("exp:cache-warm", "codex"),
+        ("exp:cache-warm", "sonnet"),
     ]
     assert result.codex_only_free == 2
     assert result.idle_after == 0
@@ -1804,3 +1806,51 @@ def test_no_opus_lab_fill_runner_gets_sonnet_and_reports_opus_skip(tmp_path: Pat
     missing = next(row for row in found if row[1] == "lab-fill-backlog")
     assert "opus-only" in missing[2]
     assert "RULING 2026-10-26T11:31:48Z lane=orchestrator-31d9" in missing[2]
+
+
+def test_retired_plugin_registry_environment_keeps_snapshot_sources(tmp_path):
+    root = tmp_path / "registry"
+    env = {
+        "OMNI_HOME": str(root),
+        "OMNI_PLUGIN_ROOT": str(tmp_path / "plugin"),
+        "HOME": str(tmp_path / "home"),
+    }
+    source = handler.default_sources(FILL_NOW, env)
+    assert source is not None
+    assert (
+        source.linear_snapshot
+        == root / ".claude_scratch/plans-today" / f"linear-{FILL_NOW[:10]}.json"
+    )
+    canonical = handler.default_sources(
+        FILL_NOW, {**env, "ONEX_REGISTRY_ROOT": str(root)}
+    )
+    assert canonical is not None
+    assert canonical.linear_snapshot == source.linear_snapshot
+
+
+def test_no_opus_brief_requirement_cannot_be_hidden_by_an_item_requirement():
+    result = fill(
+        lines=headroom("host-a"),
+        backlog=[
+            {
+                "kind": "ticket",
+                "key": "contradiction",
+                "ticket": "OMN-21396",
+                "required_engine": "claude",
+                "brief": "Required engine: opus",
+            }
+        ],
+    )
+    assert result.sends == []
+    assert result.idle_after == 2
+    assert "RULING 2026-10-26T11:31:48Z" in result.skipped[0]["why"]
+
+
+def test_glm_queue_entries_preserve_the_existing_claude_reservation_accounting():
+    reserved = handler.queue_reservations(
+        entries=[{"lane": "queued-glm", "model": "glm"}],
+        started=[],
+        request={"lab_headroom": {"hosts": [host("host-a", 2, 0)]}},
+        pin_of=lambda _entry: None,
+    )
+    assert reserved == {"claude": 1, "codex": 0}

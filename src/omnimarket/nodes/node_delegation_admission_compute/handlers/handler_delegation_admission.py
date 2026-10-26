@@ -24,6 +24,9 @@ from typing import Final
 
 from pydantic import JsonValue
 
+from omnimarket.handlers.handler_packaged_contract_loader import (
+    load_packaged_contract_section,
+)
 from omnimarket.nodes.node_delegation_admission_compute.handlers.agent_model_guard_checks import (
     guard_refusal,
 )
@@ -35,79 +38,56 @@ from omnimarket.nodes.node_delegation_admission_compute.handlers.task_intent_cla
 )
 from omnimarket.nodes.node_delegation_admission_compute.models.model_delegation_admission import (
     EnumAdmissionReason,
-    ModelCallOrigin,
     ModelDelegationAdmissionPolicy,
     ModelDelegationAdmissionRequest,
     ModelDelegationAdmissionResult,
-    ModelRouteBand,
-    ModelRouteHardFloor,
+)
+from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
+    resolve_lane_model,
 )
 
 _UNCLASSIFIED: Final[str] = "unknown"
 
-#: The admission policy. The node contract's ``admission_policy`` block states
-#: the same values, and a test holds the two equal; the handler reads no file.
+
+def effective_admission_policy(
+    policy: ModelDelegationAdmissionPolicy,
+) -> ModelDelegationAdmissionPolicy:
+    """The guard's score/effort rules survive; model recommendations obey the shared ceiling."""
+
+    def allowed(models: tuple[str, ...], band: str | None = None) -> tuple[str, ...]:
+        answers = [
+            resolve_lane_model(
+                requested_engine="claude",
+                requested_tier=model,
+                lane_kind="claude-workflow",
+                band=band,
+            )
+            for model in models
+        ]
+        return tuple(
+            dict.fromkeys(
+                answer.model for answer in answers if answer.model is not None
+            )
+        )
+
+    return policy.model_copy(
+        update={
+            "allowed_models": allowed(policy.allowed_models),
+            "route_bands": {
+                name: band.model_copy(update={"models": allowed(band.models, name)})
+                for name, band in policy.route_bands.items()
+            },
+        }
+    )
+
+
 DEFAULT_ADMISSION_POLICY: Final[ModelDelegationAdmissionPolicy] = (
-    ModelDelegationAdmissionPolicy(
-        policy_version="2026-10-17.1",
-        allowed_models=("opus", "sonnet"),
-        model_raised_origin=ModelCallOrigin(plugin="engine", tier="core"),
-        route_required=True,
-        route_bands={
-            "B0": ModelRouteBand(
-                score_min=None,
-                score_max=None,
-                models=(),
-                efforts=(),
-                destination="landing controller / deterministic node",
-            ),
-            "B1": ModelRouteBand(
-                score_min=0,
-                score_max=4,
-                models=(),
-                efforts=(),
-                destination="onex delegate",
-            ),
-            "B1c": ModelRouteBand(
-                score_min=0,
-                score_max=4,
-                models=(),
-                efforts=(),
-                destination="Jev (node_typed_decision_effect)",
-            ),
-            "B2": ModelRouteBand(
-                score_min=5,
-                score_max=8,
-                models=("sonnet",),
-                efforts=("medium", "high"),
-                destination="Codex drafts, Sonnet lane verifies",
-            ),
-            "B3": ModelRouteBand(
-                score_min=9,
-                score_max=13,
-                models=("sonnet",),
-                efforts=("high",),
-                destination="Sonnet lane",
-            ),
-            "B4": ModelRouteBand(
-                score_min=14,
-                score_max=17,
-                models=("opus",),
-                efforts=("high",),
-                destination="Opus lane",
-            ),
-            "B5": ModelRouteBand(
-                score_min=18,
-                score_max=21,
-                models=("opus",),
-                efforts=("xhigh",),
-                destination="Opus lane plus adversarial verify lane",
-            ),
-        },
-        route_hard_floors=(
-            ModelRouteHardFloor(dimension="R", value=3, min_band="B4"),
-            ModelRouteHardFloor(dimension="J", value=3, min_band="B4"),
-        ),
+    effective_admission_policy(
+        ModelDelegationAdmissionPolicy.model_validate(
+            load_packaged_contract_section(
+                "node_delegation_admission_compute", "admission_policy"
+            )
+        )
     )
 )
 
@@ -132,7 +112,11 @@ class HandlerDelegationAdmission:
     """Stateless, pure admission compute; the policy is fixed at composition."""
 
     def __init__(self, policy: ModelDelegationAdmissionPolicy | None = None) -> None:
-        self._policy = DEFAULT_ADMISSION_POLICY if policy is None else policy
+        self._policy = (
+            DEFAULT_ADMISSION_POLICY
+            if policy is None
+            else effective_admission_policy(policy)
+        )
         self._gate = SensitivityGate()
         self._classifier = TaskClassifier()
 
