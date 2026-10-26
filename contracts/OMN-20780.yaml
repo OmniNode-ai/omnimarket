@@ -151,8 +151,11 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/test_ruling_recovery.py -q -p no:randomly --no-cov --refuse-skips -k 'live_reading_changes or runtime_check or review_check or unread_live or packaged_checks or process_ruling_can_declare or live_reader'"
   - id: "dod-omn20780-ruling-deploy"
-    description: "Hosted deploy check: import the installed node entrypoint and exercise the packaged checks against a split runtime and wrong reviewer roster, with no Docker daemon, registry, credentials or lab network."
+    description: "Hosted deploy check: import the installed node entrypoint and exercise the packaged checks against a split runtime and wrong reviewer roster, with no Docker daemon, registry, credentials or lab network. Hosted deploy probe: gh api reads handler_idle_slot_fill.py at the checked-out commit and finds the HandlerRulingRecovery import; at the merge base the import is absent, so the grep finds nothing and the check exits nonzero."
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/test_ruling_recovery.py -q -p no:randomly --no-cov --refuse-skips -k packaged_node_deploy_behavior"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_idle_slot_fill_effect/handlers/handler_idle_slot_fill.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"from .handler_ruling_recovery import HandlerRulingRecovery\" > /dev/null'"
+        cwd: "${OMNI_HOME}/omnimarket"
