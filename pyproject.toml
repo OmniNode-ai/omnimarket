@@ -381,6 +381,7 @@ node_context_compaction_manifest_compute = "omnimarket.nodes.node_context_compac
 node_compaction_loss_compute = "omnimarket.nodes.node_compaction_loss_compute"
 node_context_round_one_eval_compute = "omnimarket.nodes.node_context_round_one_eval_compute"
 node_context_adr_select_compute = "omnimarket.nodes.node_context_adr_select_compute"
+node_context_doc_section_select_compute = "omnimarket.nodes.node_context_doc_section_select_compute"
 node_context_invariants_select_compute = "omnimarket.nodes.node_context_invariants_select_compute"
 node_context_replay_eval_compute = "omnimarket.nodes.node_context_replay_eval_compute"
 node_context_compaction_latency_compute = "omnimarket.nodes.node_context_compaction_latency_compute"
