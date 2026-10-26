@@ -40,7 +40,27 @@ class TestLaneBoundJobPlacement:
     def test_nightly_pins_the_literal_lab_labels(self) -> None:
         document = yaml.safe_load(NIGHTLY.read_text(encoding="utf-8"))
         runs_on = document["jobs"]["golden-tasks"]["runs-on"]
-        assert runs_on == ["self-hosted", "omnibase-ci"], runs_on
+        assert runs_on == ["self-hosted", "omnibase-ci", "arch-amd64"], runs_on
+
+    def test_every_lane_bound_job_needs_a_label_the_off_lan_runners_lack(
+        self,
+    ) -> None:
+        h203_labels = {"self-hosted", "omnibase-ci", "h203-light", "linux", "x64"}
+        lan_labels = {"self-hosted", "omnibase-ci", "arch-amd64", "linux", "x64"}
+        for workflow_rel, jobs in LANE_BOUND_JOBS.items():
+            document = yaml.safe_load(
+                (REPO_ROOT / workflow_rel).read_text(encoding="utf-8")
+            )
+            for job_id in jobs:
+                runs_on = document["jobs"][job_id]["runs-on"]
+                labels = {label.lower() for label in runs_on}
+                assert not h203_labels.issuperset(labels), (workflow_rel, job_id)
+                assert lan_labels.issuperset(labels), (workflow_rel, job_id)
+
+    def test_old_two_label_pin_is_satisfied_by_off_lan_runners(self) -> None:
+        """Falsification control: the old pin allowed the off-LAN runner."""
+        h203_labels = {"self-hosted", "omnibase-ci", "h203-light", "linux", "x64"}
+        assert h203_labels.issuperset(["self-hosted", "omnibase-ci"])
 
     def test_checker_rejects_a_routing_variable_read(self) -> None:
         """The exact regression: placement delegated to a shared variable.
