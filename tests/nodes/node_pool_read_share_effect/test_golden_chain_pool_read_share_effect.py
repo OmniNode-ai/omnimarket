@@ -152,3 +152,82 @@ def test_default_capture_runs_the_probe_live(tmp_path: Path) -> None:
     )
     assert missing.returncode == 255
     assert missing.stderr
+
+
+FAKE_REMOTE_TWO_STEPS_THEN_HANG = (
+    "echo 'PROBE-STEP capacity'; echo 'PROBE-STEP claude-login'; sleep 30"
+)
+
+
+def test_a_probe_that_times_out_names_the_step_it_stalled_in() -> None:
+    done = share.capture_live(
+        ["/bin/sh", "-c", FAKE_REMOTE_TWO_STEPS_THEN_HANG], timeout=1.0
+    )
+    assert done.returncode == 255
+    assert done.stderr == "timed out after 1s in step claude-login"
+    assert done.stdout == "PROBE-STEP capacity\nPROBE-STEP claude-login\n", (
+        "the partial stdout is kept, not thrown away"
+    )
+
+
+def test_a_probe_that_times_out_before_any_marker_says_so() -> None:
+    done = share.capture_live(["/bin/sh", "-c", "sleep 30"], timeout=1.0)
+    assert (done.returncode, done.stdout) == (255, "")
+    assert done.stderr == "timed out after 1s before any step marker"
+
+
+def test_a_shared_read_replays_the_step_a_timeout_named(tmp_path: Path) -> None:
+    now = [1000.0]
+    shared = share.shared(
+        tmp_path, share.capture_live, ttl_s=30.0, clock=lambda: now[0]
+    )
+    argv = ["/bin/sh", "-c", FAKE_REMOTE_TWO_STEPS_THEN_HANG]
+    first = shared(argv, timeout=1.0)
+    now[0] += 5.0
+    replay = shared(argv, timeout=1.0)
+    assert replay.returncode == 255
+    assert replay.stderr == first.stderr == "timed out after 1s in step claude-login"
+
+
+def test_the_pool_alarm_row_carries_the_step(tmp_path: Path) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from omnimarket.nodes.node_host_pool_alarm_effect.models import (
+        ModelHostPoolAlarmRequest,
+        ModelHostPoolReading,
+    )
+    from omnimarket.nodes.node_host_pool_alarm_effect.node import (
+        NodeHostPoolAlarmEffect,
+    )
+
+    done = share.capture_live(
+        ["/bin/sh", "-c", FAKE_REMOTE_TWO_STEPS_THEN_HANG], timeout=1.0
+    )
+    # read_pool's failed-read text: ``rc=<code> <stderr or stdout>``
+    error = f"rc={done.returncode} {(done.stderr or done.stdout).strip()[:100]}"
+    now = datetime(2026, 10, 26, 2, 23, tzinfo=UTC)
+    found: list[tuple[str, str, str, str]] = []
+    for minute in (0, 5):
+        found = (
+            NodeHostPoolAlarmEffect()
+            .handle(
+                ModelHostPoolAlarmRequest(
+                    [ModelHostPoolReading("h105", 16, error)],
+                    now + timedelta(minutes=minute),
+                    tmp_path / "state",
+                    tmp_path / "queue",
+                    True,
+                    plugin_repo="plugin-repo-a",
+                )
+            )
+            .found
+        )
+    ((_, loop, why, _),) = found
+    assert loop == "host-unreadable:h105"
+    assert "UNREADABLE" in why
+    assert "timed out after 1s in step claude-login" in why
+
+
+def test_a_marker_cut_off_before_its_newline_is_not_named() -> None:
+    assert share.last_step("PROBE-STEP capacity\nPROBE-STEP claude-lo") == "capacity"
+    assert share.last_step("PROBE 4 0.1 2048\n") is None

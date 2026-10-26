@@ -15,6 +15,7 @@ from collections.abc import Collection, Iterable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import PurePosixPath
 from typing import Any
+from uuid import UUID
 
 # ---- shared ----------------------------------------------------------------------------------------
 
@@ -217,6 +218,48 @@ CLOSES_RE = re.compile(r"closes[-_]claim=(" + STAMP + ")", re.I)
 RE_RE = re.compile(FIELD + r"re=(" + STAMP + ")")
 HANDED_RE = re.compile(r"handed[-_ ]off=([^\s|]+)", re.I)
 OMN_RE = re.compile(r"\bOMN-\d+\b")
+LANE_WORK_ACTOR = "script:node_projection_lease"
+
+
+def lane_work_lease(text: str) -> str | None:
+    """The lane-work lease UUID from a CLAIM's first-line cells; first occurrence wins."""
+    line = text.splitlines()[0] if text else ""
+    row = ROW_RE.match(line)
+    if row:
+        if row.group("type") != "CLAIM":
+            return None
+        line = row.group("rest")
+    cells: dict[str, str] = {}
+    for part in line.split("|"):
+        name, eq, value = part.strip().partition("=")
+        if eq:
+            cells.setdefault(name, value)
+    lease = cells.get("lease")
+    if (
+        cells.get("actor") != LANE_WORK_ACTOR
+        or cells.get("kind") != "lane-work"
+        or not lease
+    ):
+        return None
+    try:
+        UUID(lease)
+    except ValueError:
+        return None
+    return lease
+
+
+def leased_lanes(rows: Sequence[Mapping[str, Any]]) -> set[str]:
+    """Lanes with a lane-work lease CLAIM not followed by their TERMINAL, in ledger order."""
+    leased: set[str] = set()
+    for row in rows:
+        lane = row.get("lane")
+        if not lane:
+            continue
+        if row["type"] == "CLAIM" and lane_work_lease(row["text"]) is not None:
+            leased.add(lane)
+        elif row["type"] == "TERMINAL":
+            leased.discard(lane)
+    return leased
 
 
 def parse_rows(lines: Iterable[str]) -> list[dict[str, Any]]:
@@ -263,8 +306,10 @@ def claim_owner(
     horizon_days: int = CLAIM_HORIZON_DAYS,
     self_lane: str | None = None,
 ) -> dict[str, Any]:
-    """Who owns ``pr`` now: ``none``, ``live`` (lane wrote or pushed within the bar) or ``stale``.
+    """Who owns ``pr`` now: ``none``, ``live`` or ``stale``.
 
+    A lane must have written or pushed within the bar unless its lane holds a lane-work lease,
+    OMN-21428.
     A CLAIM names the PR by its ``pr=`` list or the PR's ticket by its ``ticket=`` field. It is closed
     by a later TERMINAL of its lane, a later row handing the PR off, a later CLAIM carrying
     ``supersedes-claim=<its ts>``, or ``closes-claim=`` / RELEASE ``re=<its ts>``. A stale owner is taken
@@ -315,10 +360,12 @@ def claim_owner(
     if not open_claims:
         return {"state": "none"}
     push = parse_ts(last_push_at)
+    leased = leased_lanes(rows)
     live = [
         c
         for c in open_claims
-        if (last_write.get(c.get("lane") or "") or at_min()) >= bar
+        if c.get("lane") in leased
+        or (last_write.get(c.get("lane") or "") or at_min()) >= bar
         or (push and push >= bar)
     ]
     if live:

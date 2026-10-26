@@ -190,6 +190,10 @@ class _ParityConnection:
         self.queries: list[str] = []
         self.closed = False
         self.rows, self.state = _project(_canonical(split_ledger_rows(LEDGER)))
+        self.raw_rows: dict[str, str] = {}
+        for raw in _canonical(split_ledger_rows(LEDGER)):
+            result = fold_row(ModelWorkLedgerFoldRequest(raw_row=raw))
+            self.raw_rows[result.row.row_id] = result.row.raw_row
 
     async def fetch(self, query: str, *args: object) -> list[dict[str, Any]]:
         self.queries.append(query)
@@ -198,6 +202,7 @@ class _ParityConnection:
             parity._SELECT_STATE: "state",
             parity._SELECT_LATER_ROWS: "later_rows",
             parity._SELECT_SOURCES: "sources",
+            parity._SELECT_RAW_ROWS: "raw_rows",
         }[query]
         if stage == self.fail_at:
             assert self.error is not None
@@ -221,6 +226,10 @@ class _ParityConnection:
                 for key, stamp in self.rows.items()
                 if datetime.fromisoformat(stamp) > horizon
             ]
+        if stage == "raw_rows":
+            return [
+                {"row_id": key, "raw_row": raw} for key, raw in self.raw_rows.items()
+            ]
         return [{"source": "onex-ledger", "n": len(self.rows)}]
 
     async def close(self) -> None:
@@ -240,7 +249,9 @@ def _database_args(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> list[str]
     ]  # fmt: skip
 
 
-@pytest.mark.parametrize("stage", ["connect", "rows", "state", "sources", "close"])
+@pytest.mark.parametrize(
+    "stage", ["connect", "rows", "state", "raw_rows", "sources", "close"]
+)
 @pytest.mark.parametrize(
     ("error_type", "message"),
     [
@@ -333,6 +344,7 @@ def test_parity_database_reads_state_live(
         parity._SELECT_ROWS,
         parity._SELECT_STATE,
         parity._SELECT_LATER_ROWS,
+        parity._SELECT_RAW_ROWS,
         parity._SELECT_SOURCES,
     ]
     assert connection.closed

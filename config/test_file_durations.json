@@ -2488,6 +2488,7 @@
   "tests/unit/handlers/scm/test_onex_scm_customer_surface.py": 0.16,
   "tests/unit/handlers/test_node_overlay_reader_omn20935.py": 0.09,
   "tests/unit/handlers/test_node_overlay_reader_structured.py": 0.01,
+  "tests/unit/handlers/test_overlay_keys.py": 1.04,
   "tests/unit/handlers/test_rules_lab_fill_tickets_omn20864.py": 0.08,
   "tests/unit/handlers/test_session_stream_barrier_omn21123.py": 0.12,
   "tests/unit/handlers/test_work_ledger_roll_boundary.py": 0.16,

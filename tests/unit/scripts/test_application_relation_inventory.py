@@ -147,6 +147,73 @@ def test_compaction_receipts_ownership_and_migration_delivery() -> None:
     assert generator.main(["--check"]) == 0
 
 
+def test_compaction_current_context_ownership_precedes_migration_delivery() -> None:
+    """The infra vendor can resolve both targets before the node ships SQL."""
+    generator = _load_generator()
+    manifest = yaml.safe_load(generator.SERVICE_MANIFEST.read_text())
+    tables = [
+        row
+        for row in manifest["db_io"]["db_tables"]
+        if row["name"] == "compaction_current_context"
+    ]
+    assert len(tables) == 1
+    assert tables[0] == {
+        "name": "compaction_current_context",
+        "database_ref": "application",
+        "schema": "omninode_internal",
+        "migration": (
+            "src/omnimarket/nodes/node_projection_compaction_current_context/"
+            "migrations/0000_create_compaction_current_context.sql"
+        ),
+        "access": "read_write",
+        "role": "compaction_current_context",
+    }
+    sequences = [
+        row
+        for row in manifest["database_objects"]
+        if row["name"] == "compaction_current_context_projection_cursor_seq"
+    ]
+    assert len(sequences) == 1
+    assert sequences[0] == {
+        "name": "compaction_current_context_projection_cursor_seq",
+        "kind": "sequence",
+        "database_ref": "application",
+        "schema": "omninode_internal",
+        "domain": "OMNINODE_INTERNAL",
+        "owner_declaration": generator.SERVICE_OWNER,
+        "writers": [],
+    }
+    identities = load_application_database_ownership_identities(
+        [generator.SERVICE_MANIFEST]
+    )
+    assert {
+        (row.schema, row.name, row.kind.value)
+        for row in identities
+        if row.name.startswith("compaction_current_context")
+    } == {
+        ("omninode_internal", "compaction_current_context", "table"),
+        (
+            "omninode_internal",
+            "compaction_current_context_projection_cursor_seq",
+            "sequence",
+        ),
+    }
+    migration_dir = generator.NODES_ROOT / "node_projection_compaction_current_context"
+    assert not list(migration_dir.rglob("*.sql"))
+    payload = generator.build_inventory()
+    current = [
+        row
+        for row in payload["relations"]
+        if row["name"] == "compaction_current_context" and row["kind"] == "table"
+    ]
+    assert len(current) == 1
+    assert current[0]["contract_sources"] == [
+        "scripts/application-relation-ownership.yaml"
+    ]
+    assert current[0]["authoritative_sources"] == []
+    assert generator.main(["--check"]) == 0
+
+
 def test_automation_liveness_relations_are_owned_and_source_created() -> None:
     payload = _load_generator().build_inventory()
     expected = {
@@ -737,7 +804,9 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # OMN-21336: ownership is declared before infra vendors the migration = 114.
     # +2 for delegation_lab_jobs and delegation_lab_job_outbox.
     # +1 for OMN-20169's delegation_capability_cells = 117.
-    assert census["source_declared_tables"] == 117
+    # OMN-21090: compaction_current_context is declared before infra vendors
+    # its migration, as compaction_receipts was = 118.
+    assert census["source_declared_tables"] == 118
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
