@@ -207,3 +207,93 @@ def test_expiration_uses_final_archive_receipt_after_ledger_rollover(run):
     result = retain_run(root, next_receipt, next_ledger, keep_days=1, now=1792972801)
     assert result["pruned"] == ["lane-1/run-1"]
     assert not (root / "reports/lane-1/run-1").exists()
+
+
+def test_dispatch_cli_replaces_recorded_launcher_import_failure(run, tmp_path):
+    """The launcher cannot import Market; its dispatch process must build the payload."""
+    import os
+    import subprocess
+    import sys
+
+    recorded = "REMOTE-LANE-RETENTION-KEPT lane=m4-board-read-mac-2342: No module named 'omnimarket'"
+    bare = subprocess.run(
+        [sys.executable, "-I", "-S", "-c", "import omnimarket"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert bare.returncode == 1
+    assert recorded.partition(": ")[2] in bare.stderr
+    root, tree, ctx, receipt, ledger = run
+    request = tmp_path / "request.json"
+    request.write_text(
+        json.dumps(
+            {"root": str(root), "receipt": receipt, "ledger": ledger, "delete": True}
+        )
+    )
+    env = {**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[3] / "src")}
+    built = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "omnimarket.nodes.node_remote_lane_effect.run_retention",
+            "--script",
+            str(request),
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert built.returncode == 0, built.stderr
+    assert built.stdout.startswith("python3 - <<'LANE_RETENTION_PY'\n"), (
+        recorded,
+        built.stdout,
+    )
+    # Building the payload has no cleanup effect.
+    assert tree.exists()
+    assert ctx.exists()
+    archived = subprocess.run(
+        ["/bin/sh", "-c", built.stdout], capture_output=True, text=True, timeout=30
+    )
+    assert archived.returncode == 0, archived.stderr
+    assert archived.stdout.startswith("LANE-RETENTION ")
+    assert not tree.exists()
+    assert not ctx.exists()
+
+
+@pytest.mark.parametrize(
+    "bad", [{"keep_days": True}, {"delete": "yes"}, {"unexpected": 1}]
+)
+def test_dispatch_cli_rejects_invalid_request_before_emitting_payload(
+    run, tmp_path, bad
+):
+    import os
+    import subprocess
+    import sys
+
+    root, tree, ctx, receipt, ledger = run
+    request = tmp_path / "request.json"
+    request.write_text(
+        json.dumps({"root": str(root), "receipt": receipt, "ledger": ledger, **bad})
+    )
+    done = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "omnimarket.nodes.node_remote_lane_effect.run_retention",
+            "--script",
+            str(request),
+        ],
+        env={
+            **os.environ,
+            "PYTHONPATH": str(Path(__file__).resolve().parents[3] / "src"),
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert done.returncode != 0
+    assert not done.stdout
+    assert tree.exists()
+    assert ctx.exists()
