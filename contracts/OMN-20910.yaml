@@ -112,6 +112,11 @@ requirements:
     acceptance:
       - id: "AC39"
         statement: "AC39: with every cell present on the night checked and gaps on two older nights, check-missing exits 0 and still prints a MISSING line for each older night; a gap on the night checked exits 1; --fail-window-days 3 exits 1 on the same table; --fail-window-days 0 is refused -- falsifier: env -u PYTHONPATH uv run pytest tests/unit/delegation/rung_eval/test_check_missing_fail_window.py -q -n 0 --no-cov -p no:randomly fails at the merge base"
+  - id: "req-fill-answered-item"
+    statement: "The lab fill drops a stored backlog item that a fill lane answered (its receipt final, done or handed-off) at or after the item's fact, so an answered item is not sent again until its fact is refreshed."
+    acceptance:
+      - id: "AC40"
+        statement: "AC40: a stored defect item whose fill lane receipt ended done or handed-off after its fact_at is dropped with an answered reason on NOTE lab-fill-dropped and in lab-fill.dropped.json, and is still sent when that receipt ended before the fact, was blocked, is not final, or belongs to a longer key sharing the lane prefix -- falsifier: env -u PYTHONPATH uv run pytest tests/nodes/node_idle_slot_fill_effect/test_idle_slot_fill_node.py -q -n 0 --no-cov -k answered_after_its_fact fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "The workflow reads the overlay at every roster site."
@@ -395,4 +400,23 @@ dod_evidence:
       - check_type: "command"
         check_value: |-
           env docker run --rm --user "$(id -u):$(id -g)" -v "${PWD}:/workspace:ro" -w /workspace -v "$(uv cache dir):/uv-cache" -v "$(command -v uv):/usr/local/bin/uv:ro" -e UV_LINK_MODE=copy -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0="*" -e PYTHONDONTWRITEBYTECODE=1 -e UV_PROJECT_ENVIRONMENT=/tmp/rung-eval-venv -e UV_CACHE_DIR=/uv-cache ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a uv run --frozen pytest tests/unit/delegation/rung_eval -q -n 0 -p no:randomly -p no:cacheprovider --no-cov --basetemp=/tmp/rung-eval-tests
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20910-ac40-fill-answered-item"
+    description: "A stored backlog item a fill lane answered after its fact is dropped, not sent again; an unanswered, blocked or older answer still sends it."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_idle_slot_fill_effect/test_idle_slot_fill_node.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC40"]
+  - id: "dod-omn20910-deploy-fill-answered-item-smoke"
+    description: "The check runs tests/nodes/node_idle_slot_fill_effect in a disposable Python container from a read-only checkout with no lab host, ledger or remote-lane receipts, verifying that the lab fill drops a stored item a fill lane answered after its fact and still sends the others for OMN-20910."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker pull -q ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: |-
+          env docker run --rm --user "$(id -u):$(id -g)" -v "${PWD}:/workspace:ro" -w /workspace -v "$(uv cache dir):/uv-cache" -v "$(command -v uv):/usr/local/bin/uv:ro" -e UV_LINK_MODE=copy -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0="*" -e PYTHONDONTWRITEBYTECODE=1 -e UV_PROJECT_ENVIRONMENT=/tmp/fill-answered-venv -e UV_CACHE_DIR=/uv-cache ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a uv run --frozen pytest tests/nodes/node_idle_slot_fill_effect -q -n 0 -p no:randomly -p no:cacheprovider --no-cov --basetemp=/tmp/fill-answered-tests
         cwd: "${OMNI_HOME}/omnimarket"

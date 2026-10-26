@@ -34,8 +34,10 @@ RULING 2026-10-20T10:45:21Z), called through the omnimarket checkout; every drop
 A lane carries its item's own ticket (a generated ticket or readback, a process-fix PR's title ticket, an item's ``ticket``)
 or its class's standing child declared in the backlog file (``standing_tickets``: {kind: ticket}), never the umbrella
 OMN-17427, which the runner refuses; an item with neither is skipped and says so. A stored item whose named PR is merged,
-closed or gone from the PR watcher state, or whose fact is older than 48 hours, and an experiment design with a completed
-receipt in the last 24 hours are dropped, each with its reason on ``NOTE lab-fill-dropped`` and in lab-fill.dropped.json.
+closed or gone from the PR watcher state, or whose fact is older than 48 hours, a stored item a fill lane answered
+(ended done or handed-off) at or after its fact until its fact is refreshed (OMN-20910), and an experiment design with a
+completed receipt in the last 24 hours are dropped, each with its reason on ``NOTE lab-fill-dropped`` and in
+lab-fill.dropped.json.
 
 ``HandlerLabFill`` is the tick's effect around that decision: it reads the backlog file (pillar-backlog.json in the
 lab fill's one state directory, ``lab_fill_state_dir()``) and the keys already sent (lab-fill.sent.json there), sends
@@ -347,6 +349,19 @@ def _fact_time(stamp: str) -> datetime | None:
     return _stamp(stamp)
 
 
+def _fact_newest(item: Mapping[str, Any]) -> tuple[datetime, str] | None:
+    explicit = str(item.get("fact_at") or "")
+    stamps = (
+        [explicit]
+        if explicit
+        else _FACT_TIME.findall(f"{item.get('fact') or ''} {item.get('title') or ''}")
+    )
+    return max(
+        ((at, stamp) for stamp in stamps if (at := _fact_time(stamp)) is not None),
+        default=None,
+    )
+
+
 def stale_reason(
     item: Mapping[str, Any],
     *,
@@ -355,8 +370,9 @@ def stale_reason(
     receipts: Mapping[str, str],
 ) -> str | None:
     """Why a stored item is no longer work, or None (OMN-20864): a PR it names merged, closed or no longer open in the PR watcher
-    state; its fact (``fact_at``, else the newest date stamp in its fact and title) older than 48 hours; an experiment design
-    with a completed receipt in the last 24 hours. A generated item (``_verify`` receipt) is checked for the receipt only. No I/O."""
+    state; its fact (``fact_at``, else the newest date stamp in its fact and title) older than 48 hours; a stored item a fill
+    lane answered (done or handed-off) at or after its fact; an experiment design with a completed receipt in the last
+    24 hours. A generated item (``_verify`` receipt) is checked for the receipt only. No I/O."""
     if item.get("_verify") == "stored" and watcher_state is not None:
         prs, repos = watcher_state.get("prs") or {}, watcher_state.get("repos") or {}
         text = " ".join(str(item.get(k) or "") for k in ("pr", "key", "title", "fact"))
@@ -370,22 +386,19 @@ def stale_reason(
             if ref not in prs and match["repo"] in repos:
                 return f"pr-not-open {ref} (absent from the PR watcher state, which holds every open PR of the repository)"
     now = now.astimezone(UTC).replace(tzinfo=None) if now.tzinfo else now
-    explicit = str(item.get("fact_at") or "")
-    stamps = (
-        [explicit]
-        if explicit
-        else _FACT_TIME.findall(f"{item.get('fact') or ''} {item.get('title') or ''}")
-    )
-    newest = max(
-        ((at, stamp) for stamp in stamps if (at := _fact_time(stamp)) is not None),
-        default=None,
-    )
+    newest = _fact_newest(item)
     if (
         item.get("_verify") == "stored"
         and newest is not None
         and now - newest[0] > FACT_MAX_AGE
     ):
         return f"fact-stale {newest[1]} (older than 48h)"
+    if (
+        item.get("_verify") == "stored"
+        and item.get("kind") != "experiment-design"
+        and item.get("key") in receipts
+    ):
+        return f"answered {receipts[item['key']]}"
     if item.get("kind") == "experiment-design" and item.get("key") in receipts:
         return f"experiment-done {receipts[item['key']]}"
     return None
@@ -446,6 +459,72 @@ def completed_experiments(
         if newest:
             completed[key] = newest[1]
     return completed
+
+
+def answered_items(
+    items: Collection[Mapping[str, Any]],
+    sent: Mapping[str, Any],
+    *,
+    lanes: Path,
+) -> dict[str, str]:
+    """Stored items other than experiment designs whose fill lane ended done or handed-off at or after their fact:
+    key -> "<lane dir name> at <ended_at>"; a refreshed fact sends the item again (OMN-20910)."""
+    answered: dict[str, str] = {}
+    try:
+        directories = [p for p in lanes.iterdir() if p.is_dir()]
+    except OSError:
+        directories = []
+    for item in items:
+        key, kind = item.get("key"), item.get("kind")
+        if (
+            not isinstance(key, str)
+            or not isinstance(kind, str)
+            or kind == "experiment-design"
+        ):
+            continue
+        fact = _fact_newest(item)
+        if fact is None:
+            continue
+        prefix = (
+            lane_name(kind, _slug(key.split(":", 1)[-1]), "2000-01-01T00:00:00Z")[:-15]
+            + "-"
+        )
+        recorded = str((sent.get(key) or {}).get("lane") or "")
+        paths = {
+            p
+            for p in directories
+            if p.name.startswith(prefix)
+            and re.fullmatch(r"\d{8}T\d{4}Z", p.name[len(prefix) :])
+        }
+        if LANE_TOKEN.fullmatch(recorded):
+            paths.add(lanes / recorded)
+        newest: tuple[datetime, str] | None = None
+        for path in sorted(paths):
+            try:
+                receipts = list(path.glob("*.json"))
+            except OSError:
+                continue
+            for receipt in receipts:
+                if receipt.name.endswith(".job.json"):
+                    continue
+                try:
+                    doc = _json(receipt)
+                except (OSError, ValueError):
+                    continue
+                if (
+                    not isinstance(doc, dict)
+                    or doc.get("final") is not True
+                    or doc.get("status") != "done"
+                    or doc.get("outcome", "done") not in ("done", "handed-off")
+                ):
+                    continue
+                ended = _stamp(str(doc.get("ended_at") or ""))
+                if ended is not None and ended >= fact[0]:
+                    candidate = (ended, f"{path.name} at {doc['ended_at']}")
+                    newest = max(newest, candidate) if newest else candidate
+        if newest:
+            answered[key] = newest[1]
+    return answered
 
 
 def brief(
@@ -1750,6 +1829,7 @@ class HandlerLabFill:
         watcher = request.request.get("watcher_state")
         lanes = request.lanes_dir or remote_lane_dir()
         completed = completed_experiments(backlog, sent, now=request.now, lanes=lanes)
+        completed.update(answered_items(backlog, sent, lanes=lanes))
         scope = request.out_of_scope
         scope_unread = scope if isinstance(scope, str) else ""
         decision = HandlerIdleSlotFill().handle(
