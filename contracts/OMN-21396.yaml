@@ -54,6 +54,25 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn21396-fill-fixer-holds"
+    description: >
+      Deploy check: the tick's lab-fill effect reads active scope=fixer HOLDs
+      from the declared ledger before dispatching dev-red, process-fix,
+      shared-red, stored backlog or generated work. Drops name the repository,
+      HOLD and RULING 2026-10-26T17:22:56Z in lab-fill-dropped and its receipt.
+      RELEASE restores admission; expiry, archived HOLDs, arbitrary repositories,
+      repo-less generated tickets and unread-ledger refusal are covered.
+      Eight regression cases failed before the change by actually reaching the
+      dispatch seam. Runs on the hosted runner using the checked-out package
+      and temporary ledger files, without credentials, network or lab services.
+      This is admission evidence for AC1; existing ladder and attempt evidence
+      for AC1 through AC4 is retained below.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --locked pytest tests/nodes/node_idle_slot_fill_effect/test_fixer_holds_fill_omn21396.py -q --no-cov -n 0 --refuse-skips"
+        cwd: "."
   - id: "dod-omn21396-background-no-opus"
     description: >
       Deploy check for RULING 2026-10-26T11:31:48Z lane=orchestrator-31d9:

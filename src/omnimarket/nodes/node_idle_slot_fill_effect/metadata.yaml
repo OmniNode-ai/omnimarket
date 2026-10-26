@@ -5,7 +5,8 @@ version: 1.0.0
 description: 'The lab is never idle: from the throughput tick''s live pool hosts and finding lines, choose the lanes that
   fill the free lab slots from the standing pillar backlog, and refuse an orchestrator Stop turn that left free
   headroom or an unowned red with nothing dispatched. Repository names, the cloud backlog declaration and the experiment
-  designs come from the idle_slot_fill and repos overlays.'
+  designs come from the idle_slot_fill and repos overlays. The fill reads active repository fixer HOLDs
+  from the declared ledger and its archives before selecting work; an unread ledger blocks repository work.'
 pack: distributed_validation
 node_role: effect
 display_name: Idle Slot Fill Effect
