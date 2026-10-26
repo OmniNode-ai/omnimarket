@@ -26,6 +26,9 @@ description: >
   row per labelled item and one delegation_eval_results row per task class,
   stratum and arm, keyed by the eval run id, so a redelivered run adds no row.
   The results table is served on the acceptance-eval projection snapshot topic.
+  OMN-19795 (EV.7). A run that carries repeated generations writes each class's
+  flip rate, its Wilson interval and the measuring backend on its results rows
+  (migration 0007).
 handler:
   module: omnimarket.nodes.node_projection_delegation_eval.handlers.handler_projection_delegation_eval
   class: HandlerProjectionDelegationEval
@@ -133,6 +136,10 @@ projection_api:
         - false_refusal_line_verdict
         - undetermined_n
         - undetermined_share
+        - flip_rate
+        - flip_rate_wilson_low
+        - flip_rate_wilson_high
+        - flip_measured_backend_id
         - observed_at
         - projection_cursor
       order_by: "observed_at DESC, projection_cursor DESC"

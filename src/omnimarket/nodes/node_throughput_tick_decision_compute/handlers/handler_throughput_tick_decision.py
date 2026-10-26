@@ -33,7 +33,8 @@ and the `.codex-sandbox-<host>` marks (landing workers only) are not judged.
 
 OMN-20864 (2026-10-13, h202 read 3 free slots while placement refused it on swap traffic): when the caller
 sets `live_admission`, each host's free slots are the runner's live pool admission (`admission`), per engine,
-and the receipts, marks and parses decide nothing. A refused engine is named with its rule and the other engine
+and the receipts and parses decide nothing. A current Codex usage mark still refuses Codex
+when the live reading preceded its write. A refused engine is named with its rule and the other engine
 keeps its slots; Claude and Codex lanes draw from one shared slot budget, so the pr-land fallback counts the
 host's slots once; a host the probe could not read is UNKNOWN.
 
@@ -827,6 +828,12 @@ def _codex_headroom(
     def none(why: str, **cells: Any) -> ModelCodexHeadroom:
         return ModelCodexHeadroom(host=host.name, free=0, refusal=why, **cells)
 
+    try:
+        until = _mark_until(host.codex_limited_mark)
+        if until is not None and until > now:
+            return none(f"Codex usage limit until {host.codex_limited_mark.until}")
+    except (ValueError, TypeError):
+        return none("Codex usage limit mark unreadable")
     cached = latest.get(host.name)
     if cached is None or not timedelta(0) <= now - cached[0] <= READING_WINDOW:
         return none(
@@ -920,8 +927,15 @@ def check_lab_headroom(
     if facts.placement_error is not None:
         rep.note(f"lab-headroom: cannot read placement state ({facts.placement_error})")
         return None
+    if facts.codex_429_counts:
+        counts = ",".join(
+            f"{host}:{count}" for host, count in sorted(facts.codex_429_counts.items())
+        )
+        rep.note(f"engines | codex_429={counts}")
     if facts.live_admission:
-        return _pr_land_fallback(rep, _check_live_admission(rep, facts), now, pr_land)
+        return _pr_land_fallback(
+            rep, _check_live_admission(rep, facts, now), now, pr_land
+        )
     free_lines: list[
         tuple[int, int]
     ] = []  # (index in rep.lines, free slots), host order
@@ -1032,7 +1046,7 @@ def _live_fix(host: str, admission: ModelLabAdmission) -> str:
 
 
 def _check_live_admission(
-    rep: Report, facts: ModelLabHeadroomFacts
+    rep: Report, facts: ModelLabHeadroomFacts, now: datetime
 ) -> list[tuple[int, int]]:
     """One finding per host from the runner's live admission (OMN-20864): free slots are what placement would
     admit now, per engine, never the cap minus the lanes a receipt shows. A refused engine is named with the rule
@@ -1050,6 +1064,19 @@ def _check_live_admission(
                 LIVE_UNREAD_FIX.format(host=host.name),
             )
             continue
+        try:
+            until = _mark_until(host.codex_limited_mark)
+            codex_refusal = (
+                f"Codex usage limit until {host.codex_limited_mark.until}"
+                if until is not None and until > now
+                else None
+            )
+        except (ValueError, TypeError):
+            codex_refusal = "Codex usage limit mark unreadable"
+        if codex_refusal:
+            adm = adm.model_copy(
+                update={"codex_slots": 0, "codex_refusal": codex_refusal}
+            )
         rep.codex.append(
             ModelCodexHeadroom(
                 host=host.name,

@@ -21,7 +21,10 @@ Two subcommands:
     results rows under the eval run id. Prints a content-free JSON receipt.
     ``--task-class`` (repeatable) keeps only the named classes, so a rubric change
     can be re-measured on the classes it touches; the label set, and so the eval
-    run id, is the subset's.
+    run id, is the subset's. ``--stability-groups <json>`` (OMN-19795, EV.7)
+    adds each prompt's three gated verdicts from repeated generation on one
+    backend, a list of ``{"task_class", "item_id", "backend_id", "verdicts"}``;
+    the results rows then carry each class's flip rate, interval and backend.
 
 DSNs come from environment variables named on the command line, with no default
 (root rule 8): ``--read-dsn-env`` reads ``delegation_events`` and
@@ -54,6 +57,9 @@ from omnimarket.events.delegation_gate_eval.model_gate_eval_item import (
     ModelGateEvalItem,
 )
 from omnimarket.lab_work.named_env import read_named_env
+from omnimarket.models.delegation_gate_eval.model_generation_stability_request import (
+    ModelGenerationStabilityRequest,
+)
 from omnimarket.nodes.node_delegation_eval_orchestrator.handlers.handler_delegation_eval_orchestrator import (
     HandlerDelegationEvalOrchestrator,
 )
@@ -202,6 +208,13 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
     if args.task_class is not None:
         rows = [row for row in rows if row["task_class"] in args.task_class]
     gate_version = args.gate_version or f"omnimarket=={metadata.version('omnimarket')}"
+    stability = (
+        ModelGenerationStabilityRequest.model_validate(
+            {"groups": json.loads(Path(args.stability_groups).read_text())}
+        )
+        if args.stability_groups
+        else None
+    )
     result = HandlerDelegationEvalRun(_PrefetchedLabelledItems(rows)).handle(
         ModelDelegationEvalRunRequest(
             tenant_id=UUID(tenant),
@@ -209,6 +222,7 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
             rater_role=args.rater_role,
             rubric_version=args.rubric_version,
             gate_version=gate_version,
+            generation_stability=stability,
         )
     )
     payload = result.payload.model_dump(mode="json")
@@ -246,6 +260,11 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         dest="task_class",
         help="Keep only labelled items of this task class; repeatable",
+    )
+    run.add_argument(
+        "--stability-groups",
+        default="",
+        help="JSON list of repeated-generation groups measured on one backend",
     )
     args = parser.parse_args(argv)
     receipt = _label_record(args) if args.command == "label-record" else _run(args)

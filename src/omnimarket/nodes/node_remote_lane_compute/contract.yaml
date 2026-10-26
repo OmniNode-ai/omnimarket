@@ -12,7 +12,7 @@ node_version:
   patch: 0
 description: >
   Decide which pool host takes a remote lane from supplied facts without I/O:
-  usage-limit and auth-expired marks, the admission bar, a pinned host, lab hosts
+  separate Claude and Codex usage-limit marks and Claude auth-expired marks, the admission bar, a pinned host, lab hosts
   before the launching host, the spread rank, the Codex bar. Host readings arrive
   evaluated by the placement reader. The launching host's and each host's dispatch-venv
   lock hash arrive with them: a lane that finds no host only because those hashes differ

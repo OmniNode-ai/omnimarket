@@ -8,6 +8,10 @@ from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, JsonValue
 
+from omnimarket.models.delegation_gate_eval.model_generation_stability_request import (
+    ModelGenerationStabilityRequest,
+)
+
 
 class ModelLabelRecordRequest(BaseModel):
     """One label of one delegation attempt, without a transport envelope."""
@@ -41,6 +45,10 @@ class ModelDelegationEvalRunRequest(BaseModel):
     The labels are selected by rater role and rubric version, so a run never
     mixes raters. ``gate_version`` names the installed gate the replayed arm
     exercises; it is part of the eval run id, so a gate change is a new run.
+    ``generation_stability`` (OMN-19795, EV.7) carries the three gated verdicts
+    of each repeated generation on one backend; when present, each class's
+    results rows carry its flip rate, the Wilson interval and that backend, and
+    the groups' digest is part of the eval run id.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -59,6 +67,7 @@ class ModelDelegationEvalRunRequest(BaseModel):
     configuration: str | None = Field(
         default=None, min_length=1, exclude_if=lambda value: value is None
     )
+    generation_stability: ModelGenerationStabilityRequest | None = None
 
 
 class ModelDelegationEvalItemVerdict(BaseModel):
@@ -115,6 +124,12 @@ class ModelDelegationEvalResultRow(BaseModel):
     false_refusal_line_verdict: str
     undetermined_n: int = Field(ge=0)
     undetermined_share: float
+    # OMN-19795: the class's generation flip rate, measured on one backend; None
+    # when the run carried no repeated generations for the class.
+    flip_rate: float | None = Field(default=None, ge=0.0, le=1.0)
+    flip_rate_wilson_low: float | None = Field(default=None, ge=0.0, le=1.0)
+    flip_rate_wilson_high: float | None = Field(default=None, ge=0.0, le=1.0)
+    flip_measured_backend_id: str | None = Field(default=None, min_length=1)
 
 
 class ModelDelegationEvalRunCompleted(BaseModel):
