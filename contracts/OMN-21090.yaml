@@ -163,7 +163,10 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run python scripts/generate_application_relation_inventory.py --check && env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q -p no:randomly --no-cov -k compaction_current_context_ownership_precedes_migration_delivery"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run python scripts/generate_application_relation_inventory.py --check"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q -p no:randomly --no-cov -k compaction_current_context_ownership_precedes_migration_delivery"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
   - id: "dod-omn21090-ac5-receipts-ownership-unchanged"
