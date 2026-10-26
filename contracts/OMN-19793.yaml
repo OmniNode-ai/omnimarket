@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-19793
+title: 'Delegation evals: the eval run on the dev lane writes per-item verdicts and per-class results as a projection exposed on a snapshot topic'
+summary: The eval run node, its verdict and results tables and the acceptance-eval snapshot exposure landed in omnimarket#3127 (f64c56dc59) and omnibase_infra#4371. This change commits the content-free verdicts of the EV.4 first run (manifest 4960f691...a5c6, eval run 735b18b8, blind opus labels under ev4-blind-v1) as tests/fixtures/delegation_eval/omn19793_first_run_verdicts.json, and tests that the run handler reproduces that run id and the per-class recorded-arm counts the committed first-run report publishes, and that the rule-7a writer writes the same rows on redelivery and never reports zero rows for it.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn19793-eval-run
+  statement: An eval run writes per-item verdicts and per-class results that reproduce the recorded baseline, idempotently.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: an eval run over manifest 4960f691154ce76a5293be5a1ea1007c1de9f33b5efd0aa0c4b549033596a5c6 on the dev lane writes results rows, and its recorded-verdict arm reproduces the per-class false-pass and false-refusal counts in reports/2026-09-30-delegation-gate-false-pass-first-run.md -- falsifier: select count(*) from delegation_eval_results for the run id on the dev lane returns 0 with a positive control on delegation_events, or a class count differs from that report'
+  - id: AC2
+    statement: 'AC2: a redelivered run command writes the same rows and no more -- falsifier: uv run pytest tests/test_golden_chain_projection_delegation_eval.py -k redelivered_run -v in omnimarket'
+  - id: AC3
+    statement: 'AC3: the writer never reports zero rows for a non-empty result -- falsifier: uv run pytest tests/test_golden_chain_projection_delegation_eval.py -k run_completed_row_count -v in omnimarket'
+evidence_requirements:
+- kind: tests
+  description: The first-run baseline tests pass at the head; this is a test-only binding of work merged in omnimarket#3127 (coverage-only, OMN-20070).
+  command: uv run pytest tests/nodes/node_delegation_eval_run_orchestrator/test_run_terminals.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn19793-ac1-first-run-baseline
+  description: 'AC1: the 270 first-run verdicts give back label-set sha256 2ee7c93f... and eval run id 735b18b8-734e-5c7d-bc00-47926ac70963, and the recorded arm gives, per class, the accepted n and false passes of the report table (60 of 178 in all) and 25 false refusals of 90 refused. The dev-lane delegation_eval_results rows of that run were read live with the same counts and are recorded on the ticket.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_eval_run_orchestrator/test_run_terminals.py -k "reproduces_the_label_set_and_run_id or recorded_arm_matches_the_report" -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn19793-ac2-redelivered-run
+  description: 'AC2: the first run written through the rule-7a writer and redelivered keeps the same verdict and results row keys and values, and no more rows.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_eval_run_orchestrator/test_run_terminals.py tests/test_golden_chain_projection_delegation_eval.py -k redelivered_run -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2
+- id: dod-omn19793-ac3-row-count
+  description: 'AC3: for the first run the writer reports every verdict and results row it upserted, and a duplicate reports zero upserted with all of them refused by the ordering guard, never zero handled.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_eval_run_orchestrator/test_run_terminals.py tests/test_golden_chain_projection_delegation_eval.py -k "run_completed_row_count" -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC3

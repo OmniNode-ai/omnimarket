@@ -1,0 +1,44 @@
+name: node_green_controller_read_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >
+  Read which open heads the landing controller's newest facts (last-facts.json) say are not green-landable, for the
+  throughput tick's CONTROLLER_DEFECT alarm: a head the controller read conflicting, or red on named checks, at the
+  head the PR watcher reads, in facts observed within the bound. Such a head is not listed green-unlanded. Pure: the
+  handler reads nothing and writes nothing.
+input_model:
+  name: ModelGreenControllerReadRequest
+  module: omnimarket.nodes.node_green_controller_read_compute.models
+output_model:
+  name: ModelGreenControllerReadResult
+  module: omnimarket.nodes.node_green_controller_read_compute.models
+handler:
+  module: omnimarket.nodes.node_green_controller_read_compute.handler
+  class: HandlerGreenControllerRead
+  input_model: omnimarket.nodes.node_green_controller_read_compute.models.ModelGreenControllerReadRequest
+  output_model: omnimarket.nodes.node_green_controller_read_compute.models.ModelGreenControllerReadResult
+entrypoint:
+  name: NodeGreenControllerReadCompute
+  module: omnimarket.nodes.node_green_controller_read_compute.node
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_green_controller_read_compute.handler:HandlerGreenControllerRead
+  handlers:
+    - operation: read
+      topic: onex.cmd.omnimarket.green-controller-read-requested.v1
+      handler:
+        name: HandlerGreenControllerRead
+        module: omnimarket.nodes.node_green_controller_read_compute.handler
+terminal_event: onex.evt.omnimarket.green-controller-read-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.green-controller-read-requested.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.green-controller-read-requested.v1]
+  publish_topics: [onex.evt.omnimarket.green-controller-read-completed.v1]
+metadata:
+  transport_type: inmemory
+  related_tickets: [OMN-19998]
+externally_consumed_topics:
+- onex.evt.omnimarket.green-controller-read-completed.v1

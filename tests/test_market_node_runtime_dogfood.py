@@ -367,7 +367,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # node_lane_placement_recovery_effect is called in process by the host
     # placement caller through its node.py, not by a bus command or a runtime,
     # so it is experimental with no handler_routing: 24 -> 25.
-    assert summary["skipped"] == 25
+    # node_adoption_recovery_effect is called in process by the throughput tick with an
+    # injected launcher, so it is experimental with no handler_routing: 25 -> 26.
+    assert summary["skipped"] == 26
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {

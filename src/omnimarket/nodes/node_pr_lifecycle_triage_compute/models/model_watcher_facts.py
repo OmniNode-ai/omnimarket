@@ -11,6 +11,7 @@ class ModelWatcherFacts(BaseModel):
     model_config = ConfigDict(frozen=True, extra="ignore")
 
     state: str | None = None
+    draft: bool = False
     head_sha: str | None = None
     evidence_companion: int | str | float | None = None
     merged_at: str | None = None

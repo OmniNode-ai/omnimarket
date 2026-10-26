@@ -426,3 +426,54 @@ class TestRequiredDelegationAcceptanceInventory:
             "summarization",
             "test",
         ]
+
+
+class TestEachUnderpoweredRangeIsRefusedByNameAC2:
+    """OMN-19794 AC2: underpowering one acceptance range is refused naming that check."""
+
+    @staticmethod
+    def _underpowered(check_id: str) -> tuple[dict[str, object], str]:
+        """Synthetic mutant of the register; no lab content enters the fixture."""
+        document = yaml.safe_load(
+            DEFAULT_CHECK_REGISTER_PATH.read_text(encoding="utf-8")
+        )
+        (entry,) = [e for e in document["checks"] if e["check_id"] == check_id]
+        line = entry["acceptance_line"]
+        method = line["method"]
+        required_n = required_sample_size(
+            floor=line["floor"],
+            margin=method["margin"],
+            confidence=method["confidence"],
+            power=method["power"],
+        )
+        method["sample_size"] = required_n - 1
+        return document, (
+            f"{check_id}: declared n={required_n - 1} was not sized by "
+            f"the power analysis: required n={required_n}"
+        )
+
+    @pytest.mark.parametrize(
+        "check_id",
+        [
+            f"{prefix}{name}"
+            for prefix in (FALSE_PASS_ID_PREFIX, FALSE_REFUSAL_ID_PREFIX)
+            for name in REQUIRED_FALSE_PASS_CLASSES
+        ],
+    )
+    def test_one_underpowered_range_is_refused_naming_only_itself(
+        self, check_id: str
+    ) -> None:
+        document, expected = self._underpowered(check_id)
+        assert validate_check_register(document, required=required_check_ids()) == [
+            expected
+        ]
+
+    def test_the_cli_refuses_one_underpowered_range_naming_it(
+        self, tmp_path: Path
+    ) -> None:
+        document, expected = self._underpowered(
+            f"{FALSE_REFUSAL_ID_PREFIX}{REQUIRED_FALSE_PASS_CLASSES[0]}"
+        )
+        completed = _cli(tmp_path, document)
+        assert completed.returncode != 0
+        assert expected in completed.stdout + completed.stderr

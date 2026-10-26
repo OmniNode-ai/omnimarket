@@ -1,0 +1,2172 @@
+{
+ "_comment": "OMN-19793: the content-free verdicts of the EV.4 first eval run (eval run 735b18b8-734e-5c7d-bc00-47926ac70963), read from delegation_eval_item_verdicts on the dev lane. Item keys, class, stratum, label and recorded gate verdict only; no prompt or answer.",
+ "items": [
+  {
+   "item_key": "0175b1e1-f6aa-4e43-aacb-0504ba5e3bad:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "review/accepted",
+   "task_class": "review"
+  },
+  {
+   "item_key": "02e47fd8-87a5-4b84-ac6b-5f10d99ec1e3:3",
+   "label": "inadequate",
+   "recorded_deciding_check": "provider HTTP 429 Too Many Requests for https://generativelanguage.googleapis.com/v1beta/openai/chat/completions; response_body=[{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash\\nPlease retry in 22.119137414s.\",\n    \"status\": \"RESOURCE_EXHAUSTED\",\n    \"details\": [\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.Help\",\n        \"links\": [\n          {\n            \"description\": \"Learn more about Gemini API quotas\",\n            \"url\": \"https://ai.google.dev/gemini-api/docs/rate-limits\"\n          }\n        ]\n      },\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.QuotaFailure\",\n        \"violations\": [\n          {\n            \"quotaMetric\": \"generativelanguage.googleapis.com/generate_content_free_tier_requests\",\n            \"quot...[truncated]",
+   "recorded_verdict": "refused",
+   "stratum": "planning/refused",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "02f27389-c64a-4211-a74e-9d882bf57802:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "reasoning/accepted",
+   "task_class": "reasoning"
+  },
+  {
+   "item_key": "042d080e-9183-43ba-8ffa-4af0fc8ae318:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_review/accepted",
+   "task_class": "code_review"
+  },
+  {
+   "item_key": "04a39088-b99a-4550-8bee-f3b4ba3ec75f:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "planning/accepted",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "04ac362b-8d9d-4208-b251-73a9a090d2a7:3",
+   "label": "inadequate",
+   "recorded_deciding_check": "provider HTTP 429 Too Many Requests for https://generativelanguage.googleapis.com/v1beta/openai/chat/completions; response_body=[{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash\\nPlease retry in 37.64097236s.\",\n    \"status\": \"RESOURCE_EXHAUSTED\",\n    \"details\": [\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.Help\",\n        \"links\": [\n          {\n            \"description\": \"Learn more about Gemini API quotas\",\n            \"url\": \"https://ai.google.dev/gemini-api/docs/rate-limits\"\n          }\n        ]\n      },\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.QuotaFailure\",\n        \"violations\": [\n          {\n            \"quotaMetric\": \"generativelanguage.googleapis.com/generate_content_free_tier_requests\",\n            \"quota...[truncated]",
+   "recorded_verdict": "refused",
+   "stratum": "test/refused",
+   "task_class": "test"
+  },
+  {
+   "item_key": "04b57f05-ab92-4ae2-834d-c1e1ff0229ac:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "document/accepted",
+   "task_class": "document"
+  },
+  {
+   "item_key": "04dcaad6-9626-40eb-86df-a178f6086cb2:5",
+   "label": "inadequate",
+   "recorded_deciding_check": "pre_filter_rejected: actual_score=0.267 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:document score_source=quality_gate_graded_score deciding_rules=response_non_empty,semantic_adequacy; failures=MALFORMED: empty response; WEAK_OUTPUT: response is empty, fails semantic_adequacy",
+   "recorded_verdict": "refused",
+   "stratum": "document/refused",
+   "task_class": "document"
+  },
+  {
+   "item_key": "057d45de-f73c-4005-9127-c7e786f7efa4:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "research/accepted",
+   "task_class": "research"
+  },
+  {
+   "item_key": "05cd5146-57ae-4095-ad4f-3dc1d1021b68:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "review/accepted",
+   "task_class": "review"
+  },
+  {
+   "item_key": "0688bd10-2fab-429b-b690-8e900a73fd3d:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "API returned empty message content",
+   "recorded_verdict": "refused",
+   "stratum": "review/refused",
+   "task_class": "review"
+  },
+  {
+   "item_key": "078759b7-c9da-481a-a826-5d7ddb192c94:3",
+   "label": "inadequate",
+   "recorded_deciding_check": "score_below_required_bar: actual_score=0.000 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:planning score_source=quality_gate_graded_score deciding_rules=covers_dependencies; failures=TASK_MISMATCH: failed covers_dependencies",
+   "recorded_verdict": "refused",
+   "stratum": "planning/refused",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "08229cb0-03e9-425f-ab07-0c2839b7d4de:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_review/accepted",
+   "task_class": "code_review"
+  },
+  {
+   "item_key": "0bc73fd4-5c76-4d09-a261-caadf9913165:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "research/accepted",
+   "task_class": "research"
+  },
+  {
+   "item_key": "0bdc4fc1-d065-41fc-8c73-8722e076fd4b:0",
+   "label": "adequate",
+   "recorded_deciding_check": null,
+   "recorded_verdict": "accepted",
+   "stratum": "summarization/accepted",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "0c0cd969-c799-45fb-a6ba-6b002d95f15f:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "document/accepted",
+   "task_class": "document"
+  },
+  {
+   "item_key": "0d630645-c661-4e50-a62d-3a76e4cbcffd:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "summarization/accepted",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "0ec1e759-389c-4665-afa3-491df836ec08:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "review/accepted",
+   "task_class": "review"
+  },
+  {
+   "item_key": "10dcf93d-f36a-4335-9c68-478163d5243f:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "document/accepted",
+   "task_class": "document"
+  },
+  {
+   "item_key": "10e9204e-b8a3-4f9e-8d03-2f5fecaa5406:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "reasoning/accepted",
+   "task_class": "reasoning"
+  },
+  {
+   "item_key": "117de409-2962-41e9-8c65-9ab65ed59a23:3",
+   "label": "inadequate",
+   "recorded_deciding_check": "provider HTTP 429 Too Many Requests for https://generativelanguage.googleapis.com/v1beta/openai/chat/completions; response_body=[{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash\\nPlease retry in 26.624506873s.\",\n    \"status\": \"RESOURCE_EXHAUSTED\",\n    \"details\": [\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.Help\",\n        \"links\": [\n          {\n            \"description\": \"Learn more about Gemini API quotas\",\n            \"url\": \"https://ai.google.dev/gemini-api/docs/rate-limits\"\n          }\n        ]\n      },\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.QuotaFailure\",\n        \"violations\": [\n          {\n            \"quotaMetric\": \"generativelanguage.googleapis.com/generate_content_free_tier_requests\",\n            \"quot...[truncated]",
+   "recorded_verdict": "refused",
+   "stratum": "review/refused",
+   "task_class": "review"
+  },
+  {
+   "item_key": "120869a4-394d-4b39-a302-5cc0dc7e6617:3",
+   "label": "adequate",
+   "recorded_deciding_check": "score_below_required_bar: actual_score=0.000 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:planning score_source=quality_gate_graded_score deciding_rules=structured_output,covers_dependencies; failures=TASK_MISMATCH: failed structured_output; TASK_MISMATCH: failed covers_dependencies",
+   "recorded_verdict": "refused",
+   "stratum": "planning/refused",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "13448c6d-de2e-4f1b-939e-4b387b891b27:0",
+   "label": "adequate",
+   "recorded_deciding_check": null,
+   "recorded_verdict": "accepted",
+   "stratum": "code_generation/accepted/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "1411d860-2936-4725-acc0-4b6af5d21030:0",
+   "label": "unlabelable",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "reasoning/accepted",
+   "task_class": "reasoning"
+  },
+  {
+   "item_key": "15243d45-0d04-47ac-a2dc-db442c03c7c6:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "review/accepted",
+   "task_class": "review"
+  },
+  {
+   "item_key": "1703f804-03af-484b-91c4-b04df5d44d88:1",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "test/accepted",
+   "task_class": "test"
+  },
+  {
+   "item_key": "1705e788-3a08-4c50-8b6d-5d90670ce198:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "document/accepted",
+   "task_class": "document"
+  },
+  {
+   "item_key": "179bc7c9-0a86-4b8c-9096-fe20c033da53:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "research/accepted",
+   "task_class": "research"
+  },
+  {
+   "item_key": "1843a481-03f1-4ae5-8e43-06182fecbe16:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_generation/accepted/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "19234b00-7a5d-47cb-96ac-ef301e5c447d:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "reasoning/accepted",
+   "task_class": "reasoning"
+  },
+  {
+   "item_key": "1b5c1d07-adc7-44c5-8adb-6eb5f04b4556:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "[REDACTED - potentially sensitive data]",
+   "recorded_verdict": "refused",
+   "stratum": "review/refused",
+   "task_class": "review"
+  },
+  {
+   "item_key": "1b6adf70-1244-45ec-bd90-5709b92008a6:1",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "planning/accepted",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "1c509585-1b91-44c6-aaf7-6401bdbda5a6:1",
+   "label": "inadequate",
+   "recorded_deciding_check": "provider HTTP 503 Service Unavailable for https://generativelanguage.googleapis.com/v1beta/openai/chat/completions; response_body=[{\n  \"error\": {\n    \"code\": 503,\n    \"message\": \"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.\",\n    \"status\": \"UNAVAILABLE\"\n  }\n}\n]",
+   "recorded_verdict": "refused",
+   "stratum": "code_review/refused",
+   "task_class": "code_review"
+  },
+  {
+   "item_key": "1c732080-7bed-470b-b745-b48cccbe654b:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "API returned empty message content",
+   "recorded_verdict": "refused",
+   "stratum": "code_review/refused",
+   "task_class": "code_review"
+  },
+  {
+   "item_key": "1e5a690a-902e-4e2e-831d-cb5856fb348c:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "review/accepted",
+   "task_class": "review"
+  },
+  {
+   "item_key": "1e9920e4-3687-4467-ab42-5f119359f3b7:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "planning/accepted",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "1f02277b-d533-4715-ad69-79a41d6d57dd:1",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_review/accepted",
+   "task_class": "code_review"
+  },
+  {
+   "item_key": "1f333edc-8724-4122-9505-6bb54354ee61:4",
+   "label": "inadequate",
+   "recorded_deciding_check": "pre_filter_rejected: actual_score=0.433 required_bar=0.850 score_vs_bar=below_bar authority_source=task_class:code_generation score_source=quality_gate_graded_score deciding_rules=compiles_without_errors,follows_codebase_conventions,no_obvious_regressions; failures=MALFORMED: response does not compile as Python: invalid syntax; TASK_MISMATCH: failed follows_codebase_conventions; TASK_MISMATCH: failed no_obvious_regressions",
+   "recorded_verdict": "refused",
+   "stratum": "code_generation/refused/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "1f72062c-2267-48aa-b06e-2ce062591a0d:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "planning/accepted",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "1fedccc4-f6d9-482e-a1aa-9567640edac8:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "reasoning/accepted",
+   "task_class": "reasoning"
+  },
+  {
+   "item_key": "21b98bbc-9a74-43a0-bbf9-9a828791cd67:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "reasoning/accepted",
+   "task_class": "reasoning"
+  },
+  {
+   "item_key": "21f6455d-31cc-486c-83d8-c7dcbde82067:4",
+   "label": "inadequate",
+   "recorded_deciding_check": "provider HTTP 429 Too Many Requests for https://generativelanguage.googleapis.com/v1beta/openai/chat/completions; response_body=[{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash\\nPlease retry in 36.053877105s.\",\n    \"status\": \"RESOURCE_EXHAUSTED\",\n    \"details\": [\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.Help\",\n        \"links\": [\n          {\n            \"description\": \"Learn more about Gemini API quotas\",\n            \"url\": \"https://ai.google.dev/gemini-api/docs/rate-limits\"\n          }\n        ]\n      },\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.QuotaFailure\",\n        \"violations\": [\n          {\n            \"quotaMetric\": \"generativelanguage.googleapis.com/generate_content_free_tier_requests\",\n            \"quot...[truncated]",
+   "recorded_verdict": "refused",
+   "stratum": "research/refused",
+   "task_class": "research"
+  },
+  {
+   "item_key": "228ee4a1-3314-4636-8eb9-4c3897a295ca:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "review/accepted",
+   "task_class": "review"
+  },
+  {
+   "item_key": "229dd0b7-d807-40fb-ac71-c47a92ccdfad:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "test/accepted",
+   "task_class": "test"
+  },
+  {
+   "item_key": "23726a9a-5a07-4e10-acd6-c7fc12348233:5",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_review/accepted",
+   "task_class": "code_review"
+  },
+  {
+   "item_key": "23ee3e8d-d870-4e25-bf8d-170872ce1795:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "reasoning/accepted",
+   "task_class": "reasoning"
+  },
+  {
+   "item_key": "23fe5987-d1f1-46e2-b6de-d4b95f0586d9:6",
+   "label": "inadequate",
+   "recorded_deciding_check": "pre_filter_rejected: actual_score=0.433 required_bar=0.850 score_vs_bar=below_bar authority_source=task_class:code_generation score_source=quality_gate_graded_score deciding_rules=compiles_without_errors,follows_codebase_conventions,no_obvious_regressions; failures=MALFORMED: response does not compile as Python: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers; TASK_MISMATCH: failed follows_codebase_conventions; TASK_MISMATCH: failed no_obvious_regressions",
+   "recorded_verdict": "refused",
+   "stratum": "code_generation/refused/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "241b70f7-937a-4add-9e35-6954a9f87b55:2",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "planning/accepted",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "252c337d-ac8e-4f25-815b-9e2bbbccb529:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_review/accepted",
+   "task_class": "code_review"
+  },
+  {
+   "item_key": "254a3058-7ecb-4e55-be1b-8ea10bdad96e:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_review/accepted",
+   "task_class": "code_review"
+  },
+  {
+   "item_key": "266d3f7f-156f-4eb8-9191-b08a7025c522:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "review/accepted",
+   "task_class": "review"
+  },
+  {
+   "item_key": "26761877-2fe7-4036-997c-6592bb95034e:0",
+   "label": "inadequate",
+   "recorded_deciding_check": null,
+   "recorded_verdict": "accepted",
+   "stratum": "summarization/accepted",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "2701f3be-4629-448d-ade4-1de00147be01:4",
+   "label": "inadequate",
+   "recorded_deciding_check": "The read operation timed out: provider call timed out after 120.229s against a resolved timeout of 120.000s (requested 300.0s, contract ceiling 120.000s) for model glm-5.3-flash [ReadTimeout]",
+   "recorded_verdict": "refused",
+   "stratum": "code_generation/refused/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "286f3a6c-80c9-409c-9f92-c0c8d3c19974:3",
+   "label": "adequate",
+   "recorded_deciding_check": "acceptance_criteria_failed: actual_score=0.800 required_bar=0.800 score_vs_bar=at_or_above_bar authority_source=task_class:code_review score_source=quality_gate_graded_score deciding_rules=cites_specific_lines; failures=TASK_MISMATCH: missing specific line citations",
+   "recorded_verdict": "refused",
+   "stratum": "code_review/refused",
+   "task_class": "code_review"
+  },
+  {
+   "item_key": "28f80210-df57-4e8c-8d34-77be997e7cec:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "[REDACTED - potentially sensitive data]",
+   "recorded_verdict": "refused",
+   "stratum": "review/refused",
+   "task_class": "review"
+  },
+  {
+   "item_key": "29d99541-3e36-4b73-a6d9-b4d0582ee57b:5",
+   "label": "adequate",
+   "recorded_deciding_check": "score_below_required_bar: actual_score=0.000 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:code_review score_source=quality_gate_graded_score deciding_rules=cites_specific_lines; failures=TASK_MISMATCH: missing specific line citations",
+   "recorded_verdict": "refused",
+   "stratum": "code_review/refused",
+   "task_class": "code_review"
+  },
+  {
+   "item_key": "2b8c465c-e293-411b-a623-a92c9c36b05e:3",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "summarization/accepted",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "2ba59e0a-8d8d-4e7b-8449-9dc3d6311cd8:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "review/accepted",
+   "task_class": "review"
+  },
+  {
+   "item_key": "2ba8dbca-cbb9-456e-9b73-f43cd51f8594:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "summarization/accepted",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "2e11ac75-4ce7-45cf-9d08-c445c3b27911:3",
+   "label": "inadequate",
+   "recorded_deciding_check": "provider HTTP 429 Too Many Requests for https://generativelanguage.googleapis.com/v1beta/openai/chat/completions; response_body=[{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash\\nPlease retry in 13.520420329s.\",\n    \"status\": \"RESOURCE_EXHAUSTED\",\n    \"details\": [\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.Help\",\n        \"links\": [\n          {\n            \"description\": \"Learn more about Gemini API quotas\",\n            \"url\": \"https://ai.google.dev/gemini-api/docs/rate-limits\"\n          }\n        ]\n      },\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.QuotaFailure\",\n        \"violations\": [\n          {\n            \"quotaMetric\": \"generativelanguage.googleapis.com/generate_content_free_tier_requests\",\n            \"quot...[truncated]",
+   "recorded_verdict": "refused",
+   "stratum": "planning/refused",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "30ebc194-ddd2-44c6-8826-2d34bc6e45af:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "summarization/accepted",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "311eeac4-0437-429a-adee-dd468b005ae1:3",
+   "label": "inadequate",
+   "recorded_deciding_check": "acceptance_criteria_failed: actual_score=0.867 required_bar=0.800 score_vs_bar=at_or_above_bar authority_source=task_class:planning score_source=quality_gate_graded_score deciding_rules=covers_dependencies; failures=TASK_MISMATCH: failed covers_dependencies",
+   "recorded_verdict": "refused",
+   "stratum": "planning/refused",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "31ffc76a-7854-4378-9673-64a2e91488c4:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "planning/accepted",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "3216086d-b2af-4c64-827e-23c96607f862:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "planning/accepted",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "32a4e9f7-36f0-452a-8a32-7853fd2e920a:2",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_review/accepted",
+   "task_class": "code_review"
+  },
+  {
+   "item_key": "336a977a-40b2-4791-89a9-c77dedff6a60:0",
+   "label": "inadequate",
+   "recorded_deciding_check": null,
+   "recorded_verdict": "accepted",
+   "stratum": "research/accepted",
+   "task_class": "research"
+  },
+  {
+   "item_key": "33d1cd61-abc8-4a0b-b5d0-f0ac83db40f9:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_review/accepted",
+   "task_class": "code_review"
+  },
+  {
+   "item_key": "34e8fa9b-88ad-43a1-b27e-614b7ba082b5:4",
+   "label": "inadequate",
+   "recorded_deciding_check": "pre_filter_rejected: actual_score=0.433 required_bar=0.850 score_vs_bar=below_bar authority_source=task_class:code_generation score_source=quality_gate_graded_score deciding_rules=compiles_without_errors,follows_codebase_conventions,no_obvious_regressions; failures=MALFORMED: response does not compile as Python: invalid character '\u2014' (U+2014); TASK_MISMATCH: failed follows_codebase_conventions; TASK_MISMATCH: failed no_obvious_regressions",
+   "recorded_verdict": "refused",
+   "stratum": "code_generation/refused/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "350f4781-809f-4a7a-961d-cab5a2e257d5:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "review/accepted",
+   "task_class": "review"
+  },
+  {
+   "item_key": "3645290f-2018-4229-936a-7a5be69c817e:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "research/accepted",
+   "task_class": "research"
+  },
+  {
+   "item_key": "3650586b-1eae-40e2-a758-681900091584:1",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "document/accepted",
+   "task_class": "document"
+  },
+  {
+   "item_key": "376e6024-3859-4bd4-9bfb-b6f8d8de2fd7:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_review/accepted",
+   "task_class": "code_review"
+  },
+  {
+   "item_key": "37d8366f-4329-4c1b-a844-4a9ab3ca52ac:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "planning/accepted",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "3c708904-c22a-4db8-83ec-06ebe6844d13:0",
+   "label": "adequate",
+   "recorded_deciding_check": "score_below_required_bar: actual_score=0.000 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:document score_source=quality_gate_graded_score deciding_rules=semantic_adequacy; failures=SHAPE_REFUSED: response is a bare single-word fragment, fails semantic_adequacy",
+   "recorded_verdict": "refused",
+   "stratum": "document/refused",
+   "task_class": "document"
+  },
+  {
+   "item_key": "3cb436a8-d3bd-4c23-acec-2ee431ec8f46:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "summarization/accepted",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "3cb59593-5f58-4fe4-97eb-19f1cf8225e5:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "test/accepted",
+   "task_class": "test"
+  },
+  {
+   "item_key": "3cbbf5ef-dd98-45cf-a2e9-ad2ee1c30d9e:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "reasoning/accepted",
+   "task_class": "reasoning"
+  },
+  {
+   "item_key": "3dfe989b-60a6-4039-af9f-40e0751d7610:0",
+   "label": "adequate",
+   "recorded_deciding_check": null,
+   "recorded_verdict": "accepted",
+   "stratum": "review/accepted",
+   "task_class": "review"
+  },
+  {
+   "item_key": "3ed275cf-804a-473b-ac4b-a2f158b3d912:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "research/accepted",
+   "task_class": "research"
+  },
+  {
+   "item_key": "3f728de9-6952-4eec-8212-6a9b3dc5b169:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "[REDACTED - potentially sensitive data]",
+   "recorded_verdict": "refused",
+   "stratum": "review/refused",
+   "task_class": "review"
+  },
+  {
+   "item_key": "409fe092-4b49-4e85-852f-ddf5a8a97b1d:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "summarization/accepted",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "40bc3e53-81d0-4a1b-b582-e8d3a5f5ad0d:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "test/accepted",
+   "task_class": "test"
+  },
+  {
+   "item_key": "43dc11f5-5b10-490b-847a-8617ddb6c9e8:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "test/accepted",
+   "task_class": "test"
+  },
+  {
+   "item_key": "457a9191-0f36-4092-8cb9-13e50d9882ed:1",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "test/accepted",
+   "task_class": "test"
+  },
+  {
+   "item_key": "45bfb8cc-4d01-47b6-a596-3e0455aae7fd:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "planning/accepted",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "4602edc5-c5d3-49c6-a92b-bdc6dc9fd084:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "research/accepted",
+   "task_class": "research"
+  },
+  {
+   "item_key": "470aa35c-fde8-43fb-a81d-878927e3f3f2:2",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "test/accepted",
+   "task_class": "test"
+  },
+  {
+   "item_key": "471896d4-263c-43f1-b7d8-2a5a9b6e77ef:0",
+   "label": "adequate",
+   "recorded_deciding_check": null,
+   "recorded_verdict": "accepted",
+   "stratum": "document/accepted",
+   "task_class": "document"
+  },
+  {
+   "item_key": "48074473-d893-4ea1-9bba-6467faae8c26:5",
+   "label": "adequate",
+   "recorded_deciding_check": "score_below_required_bar: actual_score=0.000 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:document score_source=quality_gate_graded_score deciding_rules=accurate; failures=TASK_MISMATCH: response explicitly disclaims accuracy: unverified@offset=554",
+   "recorded_verdict": "refused",
+   "stratum": "document/refused",
+   "task_class": "document"
+  },
+  {
+   "item_key": "485d8f29-920c-45f1-a483-0b983e5e6df1:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_generation/accepted/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "486fea39-faae-4617-abf0-fd346febc1eb:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "document/accepted",
+   "task_class": "document"
+  },
+  {
+   "item_key": "492fa860-173c-4a54-aa11-e0b13e982519:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "Timed out waiting for Pattern B broker terminal event.",
+   "recorded_verdict": "refused",
+   "stratum": "test/refused",
+   "task_class": "test"
+  },
+  {
+   "item_key": "4a034803-1612-4235-895a-558db34f377a:4",
+   "label": "inadequate",
+   "recorded_deciding_check": "acceptance_criteria_failed: actual_score=0.800 required_bar=0.800 score_vs_bar=at_or_above_bar authority_source=task_class:research score_source=quality_gate_graded_score; failures=TASK_MISMATCH: missing source citations or references; TASK_MISMATCH: failed methodical_analysis",
+   "recorded_verdict": "refused",
+   "stratum": "research/refused",
+   "task_class": "research"
+  },
+  {
+   "item_key": "4a5da61b-98a9-4112-86c0-6a85bb2154f0:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "reasoning/accepted",
+   "task_class": "reasoning"
+  },
+  {
+   "item_key": "4a90a21f-4163-477f-80ab-67a0d8601d55:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "test/accepted",
+   "task_class": "test"
+  },
+  {
+   "item_key": "4b2ae34a-fa34-4adc-897f-c95c9f05857f:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "review/accepted",
+   "task_class": "review"
+  },
+  {
+   "item_key": "4c195c54-1a7b-4c0d-b894-6f62cdf56814:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "[REDACTED - potentially sensitive data]",
+   "recorded_verdict": "refused",
+   "stratum": "review/refused",
+   "task_class": "review"
+  },
+  {
+   "item_key": "4caed696-6ef8-41ad-a864-caae2f0bdfb1:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "research/accepted",
+   "task_class": "research"
+  },
+  {
+   "item_key": "4cfb38eb-22b2-4a7b-83a9-667df013bd28:0",
+   "label": "adequate",
+   "recorded_deciding_check": "score_below_required_bar: actual_score=0.000 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:document score_source=quality_gate_graded_score deciding_rules=semantic_adequacy; failures=SHAPE_REFUSED: response is a bare single-word fragment, fails semantic_adequacy",
+   "recorded_verdict": "refused",
+   "stratum": "document/refused",
+   "task_class": "document"
+  },
+  {
+   "item_key": "4d121dff-4d57-4a4e-b27d-dd7908b4eaf5:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "[REDACTED - potentially sensitive data]",
+   "recorded_verdict": "refused",
+   "stratum": "review/refused",
+   "task_class": "review"
+  },
+  {
+   "item_key": "4d44f4e5-523f-46fd-a32a-ef3f96d23e58:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "reasoning/accepted",
+   "task_class": "reasoning"
+  },
+  {
+   "item_key": "4ddab3b2-feac-4272-b37d-a4ece22b0bd4:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_review/accepted",
+   "task_class": "code_review"
+  },
+  {
+   "item_key": "4e6e0e50-7688-47be-8240-9fefb2689b3f:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "research/accepted",
+   "task_class": "research"
+  },
+  {
+   "item_key": "4efc975f-5a37-460f-a049-d39c89e2b0c3:4",
+   "label": "inadequate",
+   "recorded_deciding_check": "provider HTTP 429 Too Many Requests for https://generativelanguage.googleapis.com/v1beta/openai/chat/completions; response_body=[{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash\\nPlease retry in 52.150070019s.\",\n    \"status\": \"RESOURCE_EXHAUSTED\",\n    \"details\": [\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.Help\",\n        \"links\": [\n          {\n            \"description\": \"Learn more about Gemini API quotas\",\n            \"url\": \"https://ai.google.dev/gemini-api/docs/rate-limits\"\n          }\n        ]\n      },\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.QuotaFailure\",\n        \"violations\": [\n          {\n            \"quotaMetric\": \"generativelanguage.googleapis.com/generate_content_free_tier_requests\",\n            \"quot...[truncated]",
+   "recorded_verdict": "refused",
+   "stratum": "code_review/refused",
+   "task_class": "code_review"
+  },
+  {
+   "item_key": "4f12884f-00c7-45f3-88c9-0802761c99e5:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "summarization/accepted",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "4feff269-23a8-4b07-aa65-75c5d7fe9291:3",
+   "label": "inadequate",
+   "recorded_deciding_check": "provider HTTP 429 Too Many Requests for https://generativelanguage.googleapis.com/v1beta/openai/chat/completions; response_body=[{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash\\nPlease retry in 31.674183144s.\",\n    \"status\": \"RESOURCE_EXHAUSTED\",\n    \"details\": [\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.Help\",\n        \"links\": [\n          {\n            \"description\": \"Learn more about Gemini API quotas\",\n            \"url\": \"https://ai.google.dev/gemini-api/docs/rate-limits\"\n          }\n        ]\n      },\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.QuotaFailure\",\n        \"violations\": [\n          {\n            \"quotaMetric\": \"generativelanguage.googleapis.com/generate_content_free_tier_requests\",\n            \"quot...[truncated]",
+   "recorded_verdict": "refused",
+   "stratum": "planning/refused",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "50039a37-c3f5-467f-b899-2270042a2b99:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "planning/accepted",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "52180c38-4bcc-4d13-bb22-cc93472649e6:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "research/accepted",
+   "task_class": "research"
+  },
+  {
+   "item_key": "52ef5571-352c-4a1f-9c4f-663dee0b7a94:1",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "test/accepted",
+   "task_class": "test"
+  },
+  {
+   "item_key": "556acd84-877e-431d-b141-8ebc100b04c3:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "reasoning/accepted",
+   "task_class": "reasoning"
+  },
+  {
+   "item_key": "57083dd1-bbb3-4bdb-ab99-46d6caede241:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "document/accepted",
+   "task_class": "document"
+  },
+  {
+   "item_key": "572858bb-b427-4abd-8dc5-6427fff61a69:3",
+   "label": "adequate",
+   "recorded_deciding_check": "pre_filter_rejected: actual_score=0.750 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:summarization score_source=quality_gate_graded_score; failures=MALFORMED: unsupported deterministic DoD check 'concise'",
+   "recorded_verdict": "refused",
+   "stratum": "summarization/refused",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "573f4f5f-5f9c-4837-8cac-a151080e83df:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "reasoning/accepted",
+   "task_class": "reasoning"
+  },
+  {
+   "item_key": "586700ba-9469-4a66-9f6c-7c35d91bccbd:2",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "planning/accepted",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "5a2a155b-204f-42c0-a63e-ba3385c3c51f:3",
+   "label": "inadequate",
+   "recorded_deciding_check": "provider HTTP 429 Too Many Requests for https://generativelanguage.googleapis.com/v1beta/openai/chat/completions; response_body=[{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash\\nPlease retry in 45.725234799s.\",\n    \"status\": \"RESOURCE_EXHAUSTED\",\n    \"details\": [\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.Help\",\n        \"links\": [\n          {\n            \"description\": \"Learn more about Gemini API quotas\",\n            \"url\": \"https://ai.google.dev/gemini-api/docs/rate-limits\"\n          }\n        ]\n      },\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.QuotaFailure\",\n        \"violations\": [\n          {\n            \"quotaMetric\": \"generativelanguage.googleapis.com/generate_content_free_tier_requests\",\n            \"quot...[truncated]",
+   "recorded_verdict": "refused",
+   "stratum": "test/refused",
+   "task_class": "test"
+  },
+  {
+   "item_key": "5aae96d5-9970-4569-8b87-a4c6719fc12f:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "research/accepted",
+   "task_class": "research"
+  },
+  {
+   "item_key": "5ac63830-f5f3-4c8a-879a-32e92288b470:1",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_generation/accepted/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "5af3fb9d-c3d2-4ae9-ab61-39949537b17a:5",
+   "label": "adequate",
+   "recorded_deciding_check": "pre_filter_rejected: actual_score=0.467 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:test score_source=quality_gate_graded_score deciding_rules=compiles_without_errors,uses_pytest_mark_unit,covers_error_paths; failures=MALFORMED: response does not compile as Python: unterminated string literal (detected at line 4); TASK_MISMATCH: missing @pytest.mark.unit; TASK_MISMATCH: failed covers_error_paths",
+   "recorded_verdict": "refused",
+   "stratum": "test/refused",
+   "task_class": "test"
+  },
+  {
+   "item_key": "5b199592-cc54-4a64-b05e-7e96cd92152d:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "research/accepted",
+   "task_class": "research"
+  },
+  {
+   "item_key": "5cf71077-bd50-4572-a34e-feaa00690186:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "reasoning/accepted",
+   "task_class": "reasoning"
+  },
+  {
+   "item_key": "5d2f4d1e-bc25-42a1-a31c-0187d6ebbf67:0",
+   "label": "unlabelable",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_generation/accepted/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "5eba3f07-9ccb-4aa3-bac5-f4111ebdc80e:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_generation/accepted/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "6047fb8e-85cd-48ed-aaea-0ebb68f1cc18:1",
+   "label": "inadequate",
+   "recorded_deciding_check": "acceptance_criteria_failed: actual_score=0.867 required_bar=0.800 score_vs_bar=at_or_above_bar authority_source=task_class:reasoning score_source=quality_gate_graded_score deciding_rules=step_by_step_explanation; failures=TASK_MISMATCH: failed step_by_step_explanation",
+   "recorded_verdict": "refused",
+   "stratum": "reasoning/refused",
+   "task_class": "reasoning"
+  },
+  {
+   "item_key": "60c683b7-4a5e-4576-8208-ef20511d3c70:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "planning/accepted",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "62e7c82d-9428-47f6-b581-3eab27db52be:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "document/accepted",
+   "task_class": "document"
+  },
+  {
+   "item_key": "6516bf93-7f42-449b-ab34-11010daac04a:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_review/accepted",
+   "task_class": "code_review"
+  },
+  {
+   "item_key": "66fd9000-db6e-406b-8a76-c84403e66c82:6",
+   "label": "inadequate",
+   "recorded_deciding_check": "pre_filter_rejected: actual_score=0.267 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:document score_source=quality_gate_graded_score deciding_rules=response_non_empty,semantic_adequacy; failures=MALFORMED: empty response; WEAK_OUTPUT: response is empty, fails semantic_adequacy",
+   "recorded_verdict": "refused",
+   "stratum": "document/refused",
+   "task_class": "document"
+  },
+  {
+   "item_key": "675bd94d-c45a-4c22-97bc-e4b0a00aa2a5:5",
+   "label": "adequate",
+   "recorded_deciding_check": "score_below_required_bar: actual_score=0.000 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:document score_source=quality_gate_graded_score deciding_rules=semantic_adequacy; failures=WEAK_OUTPUT: response truncated mid-token, fails semantic_adequacy",
+   "recorded_verdict": "refused",
+   "stratum": "document/refused",
+   "task_class": "document"
+  },
+  {
+   "item_key": "67c99108-f929-42de-a097-bbb683cc771d:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "planning/accepted",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "68d3a832-8998-4073-8098-cb8eb79e6f84:2",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "planning/accepted",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "6918912c-f4df-45bb-aae3-7424c0ac91f8:4",
+   "label": "adequate",
+   "recorded_deciding_check": "acceptance_criteria_failed: actual_score=0.800 required_bar=0.800 score_vs_bar=at_or_above_bar authority_source=task_class:research score_source=quality_gate_graded_score deciding_rules=cites_sources,methodical_analysis; failures=TASK_MISMATCH: missing source citations or references; TASK_MISMATCH: failed methodical_analysis",
+   "recorded_verdict": "refused",
+   "stratum": "research/refused",
+   "task_class": "research"
+  },
+  {
+   "item_key": "6935be4a-fd0b-494d-bf41-9c50d517e991:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "review/accepted",
+   "task_class": "review"
+  },
+  {
+   "item_key": "69c4839f-ab69-4fc2-babb-eb57e75a01bf:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_generation/accepted/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "6a9a6da5-6014-472b-b45b-a16927edda0d:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "document/accepted",
+   "task_class": "document"
+  },
+  {
+   "item_key": "6af4b484-115e-48c3-b6e4-0aff78473c75:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "document/accepted",
+   "task_class": "document"
+  },
+  {
+   "item_key": "6b182684-dc5a-4594-86a0-32a50b41ac7d:5",
+   "label": "inadequate",
+   "recorded_deciding_check": "provider HTTP 429 Too Many Requests for https://generativelanguage.googleapis.com/v1beta/openai/chat/completions; response_body=[{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash\\nPlease retry in 50.251089185s.\",\n    \"status\": \"RESOURCE_EXHAUSTED\",\n    \"details\": [\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.Help\",\n        \"links\": [\n          {\n            \"description\": \"Learn more about Gemini API quotas\",\n            \"url\": \"https://ai.google.dev/gemini-api/docs/rate-limits\"\n          }\n        ]\n      },\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.QuotaFailure\",\n        \"violations\": [\n          {\n            \"quotaMetric\": \"generativelanguage.googleapis.com/generate_content_free_tier_requests\",\n            \"quot...[truncated]",
+   "recorded_verdict": "refused",
+   "stratum": "test/refused",
+   "task_class": "test"
+  },
+  {
+   "item_key": "6d493b2b-7897-4a23-974c-044f67220e08:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_review/accepted",
+   "task_class": "code_review"
+  },
+  {
+   "item_key": "6f27abf2-2168-488f-ad73-caefc657d62c:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "test/accepted",
+   "task_class": "test"
+  },
+  {
+   "item_key": "6f8dbc26-15db-4bb2-8a94-25e2e288cc52:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_generation/accepted/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "6fa6ef52-8b2b-4158-82b0-c5c2fecbe4c7:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "document/accepted",
+   "task_class": "document"
+  },
+  {
+   "item_key": "70705f92-fc03-407b-91ad-4b967cf97e75:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "review/accepted",
+   "task_class": "review"
+  },
+  {
+   "item_key": "738dca30-9bb9-46eb-87c3-bfdd1fc571fd:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "planning/accepted",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "74a21adb-194b-4c90-a0c7-4187bd52dd53:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "research/accepted",
+   "task_class": "research"
+  },
+  {
+   "item_key": "75968164-358c-4bb1-a693-2dd6e5168bb6:3",
+   "label": "inadequate",
+   "recorded_deciding_check": "provider HTTP 429 Too Many Requests for https://generativelanguage.googleapis.com/v1beta/openai/chat/completions; response_body=[{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash\\nPlease retry in 35.734445109s.\",\n    \"status\": \"RESOURCE_EXHAUSTED\",\n    \"details\": [\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.Help\",\n        \"links\": [\n          {\n            \"description\": \"Learn more about Gemini API quotas\",\n            \"url\": \"https://ai.google.dev/gemini-api/docs/rate-limits\"\n          }\n        ]\n      },\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.QuotaFailure\",\n        \"violations\": [\n          {\n            \"quotaMetric\": \"generativelanguage.googleapis.com/generate_content_free_tier_requests\",\n            \"quot...[truncated]",
+   "recorded_verdict": "refused",
+   "stratum": "test/refused",
+   "task_class": "test"
+  },
+  {
+   "item_key": "75a9b6ab-ddd3-4bd7-94b4-46fc24284e09:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_review/accepted",
+   "task_class": "code_review"
+  },
+  {
+   "item_key": "75f5d333-5fce-4551-b451-d6db212b607a:6",
+   "label": "inadequate",
+   "recorded_deciding_check": "The read operation timed out: provider call timed out after 120.218s against a resolved timeout of 120.000s (requested 300.0s, contract ceiling 120.000s) for model glm-5.3-flash [ReadTimeout]",
+   "recorded_verdict": "refused",
+   "stratum": "code_generation/refused/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "76e4c1c4-b6dd-4c67-8d32-9fde12aac2c4:0",
+   "label": "adequate",
+   "recorded_deciding_check": "score_below_required_bar: actual_score=0.000 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:summarization score_source=quality_gate_graded_score deciding_rules=accurate; failures=TASK_MISMATCH: response explicitly disclaims accuracy: unverified@offset=1120",
+   "recorded_verdict": "refused",
+   "stratum": "summarization/refused",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "770523c3-c3d6-4f0c-a49a-d9f609a832f9:5",
+   "label": "inadequate",
+   "recorded_deciding_check": "pre_filter_rejected: actual_score=0.000 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:summarization score_source=quality_gate_graded_score; failures=MALFORMED: empty response fails response_contract validation",
+   "recorded_verdict": "refused",
+   "stratum": "summarization/refused",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "77aecbd5-13e8-4b3d-9d29-9da2157e9c3a:1",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "test/accepted",
+   "task_class": "test"
+  },
+  {
+   "item_key": "78ffee0d-a979-4fc8-85ab-31036712b621:3",
+   "label": "inadequate",
+   "recorded_deciding_check": "pre_filter_rejected: actual_score=0.267 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:document score_source=quality_gate_graded_score deciding_rules=response_non_empty,semantic_adequacy; failures=MALFORMED: empty response; WEAK_OUTPUT: response is empty, fails semantic_adequacy",
+   "recorded_verdict": "refused",
+   "stratum": "document/refused",
+   "task_class": "document"
+  },
+  {
+   "item_key": "79aab575-071a-421a-a6d2-b99ef321e316:1",
+   "label": "inadequate",
+   "recorded_deciding_check": "provider HTTP 429 Too Many Requests for https://generativelanguage.googleapis.com/v1beta/openai/chat/completions; response_body=[{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash\\nPlease retry in 45.803625529s.\",\n    \"status\": \"RESOURCE_EXHAUSTED\",\n    \"details\": [\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.Help\",\n        \"links\": [\n          {\n            \"description\": \"Learn more about Gemini API quotas\",\n            \"url\": \"https://ai.google.dev/gemini-api/docs/rate-limits\"\n          }\n        ]\n      },\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.QuotaFailure\",\n        \"violations\": [\n          {\n            \"quotaMetric\": \"generativelanguage.googleapis.com/generate_content_free_tier_requests\",\n            \"quot...[truncated]",
+   "recorded_verdict": "refused",
+   "stratum": "code_generation/refused/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "79af6e13-2228-4234-8ab7-c1f70a204a8b:3",
+   "label": "adequate",
+   "recorded_deciding_check": "acceptance_criteria_failed: actual_score=0.900 required_bar=0.800 score_vs_bar=at_or_above_bar authority_source=task_class:summarization score_source=quality_gate_graded_score deciding_rules=semantic_adequacy; failures=WEAK_OUTPUT: response is a bare single-word fragment, fails semantic_adequacy",
+   "recorded_verdict": "refused",
+   "stratum": "summarization/refused",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "7a7e0130-b16d-4398-9348-809334bbeee7:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "[REDACTED - potentially sensitive data]",
+   "recorded_verdict": "refused",
+   "stratum": "review/refused",
+   "task_class": "review"
+  },
+  {
+   "item_key": "7d7d86c4-1121-4e1c-8347-960539ee46da:3",
+   "label": "inadequate",
+   "recorded_deciding_check": "provider HTTP 429 Too Many Requests for https://generativelanguage.googleapis.com/v1beta/openai/chat/completions; response_body=[{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash\\nPlease retry in 6.53956977s.\",\n    \"status\": \"RESOURCE_EXHAUSTED\",\n    \"details\": [\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.Help\",\n        \"links\": [\n          {\n            \"description\": \"Learn more about Gemini API quotas\",\n            \"url\": \"https://ai.google.dev/gemini-api/docs/rate-limits\"\n          }\n        ]\n      },\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.QuotaFailure\",\n        \"violations\": [\n          {\n            \"quotaMetric\": \"generativelanguage.googleapis.com/generate_content_free_tier_requests\",\n            \"quotaI...[truncated]",
+   "recorded_verdict": "refused",
+   "stratum": "test/refused",
+   "task_class": "test"
+  },
+  {
+   "item_key": "7e44ece8-0dcf-4baa-b878-5c94f8968560:1",
+   "label": "inadequate",
+   "recorded_deciding_check": "provider HTTP 429 Too Many Requests for https://generativelanguage.googleapis.com/v1beta/openai/chat/completions; response_body=[{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash\\nPlease retry in 41.15054494s.\",\n    \"status\": \"RESOURCE_EXHAUSTED\",\n    \"details\": [\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.Help\",\n        \"links\": [\n          {\n            \"description\": \"Learn more about Gemini API quotas\",\n            \"url\": \"https://ai.google.dev/gemini-api/docs/rate-limits\"\n          }\n        ]\n      },\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.QuotaFailure\",\n        \"violations\": [\n          {\n            \"quotaMetric\": \"generativelanguage.googleapis.com/generate_content_free_tier_requests\",\n            \"quota...[truncated]",
+   "recorded_verdict": "refused",
+   "stratum": "test/refused",
+   "task_class": "test"
+  },
+  {
+   "item_key": "7ee3c423-2013-4ac3-8659-3b71b7941a8d:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "summarization/accepted",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "82e229d1-b501-4f46-a9cf-ff2970642ffe:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_generation/accepted/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "83bd09db-eb2f-4535-a64a-b8146e15e90b:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "review/accepted",
+   "task_class": "review"
+  },
+  {
+   "item_key": "84d7d530-d38f-4c1f-a348-54276c9ebab1:3",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_review/accepted",
+   "task_class": "code_review"
+  },
+  {
+   "item_key": "85147e71-b8b4-4a47-967b-70d2c2a76e8e:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "review/accepted",
+   "task_class": "review"
+  },
+  {
+   "item_key": "85719a8b-4c45-4fa9-adbc-cfbf6e42c08f:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "research/accepted",
+   "task_class": "research"
+  },
+  {
+   "item_key": "87135de0-cbf1-470f-92f7-61faf155307c:3",
+   "label": "inadequate",
+   "recorded_deciding_check": "score_below_required_bar: actual_score=0.000 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:planning score_source=quality_gate_graded_score deciding_rules=covers_dependencies; failures=TASK_MISMATCH: failed covers_dependencies",
+   "recorded_verdict": "refused",
+   "stratum": "planning/refused",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "87920185-a173-4c7f-9e66-6d701df704ce:2",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "test/accepted",
+   "task_class": "test"
+  },
+  {
+   "item_key": "884d371d-3f60-462a-bbcf-3f4b77b33098:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "document/accepted",
+   "task_class": "document"
+  },
+  {
+   "item_key": "8913b691-c0b5-4a5a-bd89-9cabe80d80e2:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "[REDACTED - potentially sensitive data]",
+   "recorded_verdict": "refused",
+   "stratum": "summarization/refused",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "89751d54-8d5d-47b7-b94f-7badb36d67ee:3",
+   "label": "adequate",
+   "recorded_deciding_check": "score_below_required_bar: actual_score=0.000 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:reasoning score_source=quality_gate_graded_score deciding_rules=step_by_step_explanation,semantic_adequacy; failures=TASK_MISMATCH: failed step_by_step_explanation; SHAPE_REFUSED: response is a bare single-word fragment, fails semantic_adequacy",
+   "recorded_verdict": "refused",
+   "stratum": "reasoning/refused",
+   "task_class": "reasoning"
+  },
+  {
+   "item_key": "8a830c13-15a2-4f8c-95c9-7c93ae145713:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "test/accepted",
+   "task_class": "test"
+  },
+  {
+   "item_key": "8c2d6257-20c3-4455-b572-c669a5d1ee89:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "summarization/accepted",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "8c577938-ca6a-4e71-8f43-aa6708783d92:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "reasoning/accepted",
+   "task_class": "reasoning"
+  },
+  {
+   "item_key": "8cac6f32-f773-4f2c-9950-d420d032afd8:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "score_below_required_bar: actual_score=0.000 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:reasoning score_source=quality_gate_graded_score deciding_rules=step_by_step_explanation; failures=TASK_MISMATCH: failed step_by_step_explanation",
+   "recorded_verdict": "refused",
+   "stratum": "reasoning/refused",
+   "task_class": "reasoning"
+  },
+  {
+   "item_key": "8f492a9d-65a6-4982-9a5b-0f772f763302:3",
+   "label": "inadequate",
+   "recorded_deciding_check": "pre_filter_rejected: actual_score=0.000 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:summarization score_source=quality_gate_graded_score; failures=MALFORMED: empty response fails response_contract validation",
+   "recorded_verdict": "refused",
+   "stratum": "summarization/refused",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "923a3ecf-b4fe-4e4d-a48f-b0a39d2c175d:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_review/accepted",
+   "task_class": "code_review"
+  },
+  {
+   "item_key": "9521b369-c1a4-43aa-b379-3c8e644b0f62:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "planning/accepted",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "9587a034-61c8-48a3-9c54-19465f05e016:2",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "reasoning/accepted",
+   "task_class": "reasoning"
+  },
+  {
+   "item_key": "9628f938-f84d-434f-a77e-c87bc52f2ccd:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_generation/accepted/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "96fb9e26-00c7-4365-99d0-eeb3fe9211cc:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "Timed out waiting for Pattern B broker terminal event.",
+   "recorded_verdict": "refused",
+   "stratum": "test/refused",
+   "task_class": "test"
+  },
+  {
+   "item_key": "9723ca21-1f83-4ff4-9722-c5961946ad69:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_generation/accepted/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "98915094-3e7c-4174-81ec-a1c04d094f27:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_generation/accepted/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "9a3f64f0-f0de-4f42-9b5e-442b0442f09c:5",
+   "label": "inadequate",
+   "recorded_deciding_check": "acceptance_criteria_failed: actual_score=1.000 required_bar=0.800 score_vs_bar=at_or_above_bar authority_source=task_class:document score_source=quality_gate_graded_score; failures=TASK_MISMATCH: no deterministic acceptance or judge adequacy authority; schema/length/no-refusal/marker checks are reject-only",
+   "recorded_verdict": "refused",
+   "stratum": "document/refused",
+   "task_class": "document"
+  },
+  {
+   "item_key": "9a4843e5-8880-4e90-912a-c85927e2ea0e:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "document/accepted",
+   "task_class": "document"
+  },
+  {
+   "item_key": "9ada1f92-b5e3-47be-a7b9-3581cea54aea:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_review/accepted",
+   "task_class": "code_review"
+  },
+  {
+   "item_key": "9b4d5ff7-3c6c-4420-bd72-ac1d8482983a:3",
+   "label": "inadequate",
+   "recorded_deciding_check": "pre_filter_rejected: actual_score=0.200 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:document score_source=quality_gate_graded_score deciding_rules=response_non_empty,short_form_adequacy; failures=MALFORMED: empty response; WEAK_OUTPUT: response is empty, fails short_form_adequacy",
+   "recorded_verdict": "refused",
+   "stratum": "document/refused",
+   "task_class": "document"
+  },
+  {
+   "item_key": "9b7bce69-903e-4fb9-9aee-95899c625944:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "document/accepted",
+   "task_class": "document"
+  },
+  {
+   "item_key": "9bbd77f2-0ab0-4c7f-9b1f-61d2f0eb3469:6",
+   "label": "adequate",
+   "recorded_deciding_check": "pre_filter_rejected: actual_score=0.333 required_bar=0.850 score_vs_bar=below_bar authority_source=task_class:code_generation score_source=quality_gate_graded_score deciding_rules=compiles_without_errors,code_artifact_present,follows_codebase_conventions,no_obvious_regressions; failures=MALFORMED: response does not compile as Python: unexpected indent; TASK_MISMATCH: code_generation response contains no code artifact; TASK_MISMATCH: failed follows_codebase_conventions; TASK_MISMATCH: failed no_obvious_regressions",
+   "recorded_verdict": "refused",
+   "stratum": "code_generation/refused/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "9df9c40a-710d-4f93-a801-2b75263c59ad:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_review/accepted",
+   "task_class": "code_review"
+  },
+  {
+   "item_key": "9e7d90e9-3ed4-4ee0-a3a3-40e11b9653b5:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "document/accepted",
+   "task_class": "document"
+  },
+  {
+   "item_key": "9efda338-1838-4775-9968-e5ca7570f47c:5",
+   "label": "adequate",
+   "recorded_deciding_check": "score_below_required_bar: actual_score=0.000 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:document score_source=quality_gate_graded_score deciding_rules=semantic_adequacy; failures=WEAK_OUTPUT: response truncated mid-clause (ends on 'at'), fails semantic_adequacy",
+   "recorded_verdict": "refused",
+   "stratum": "document/refused",
+   "task_class": "document"
+  },
+  {
+   "item_key": "a030d298-d60c-4e91-af59-9f9dbe7f56e1:3",
+   "label": "adequate",
+   "recorded_deciding_check": "acceptance_criteria_failed: actual_score=0.867 required_bar=0.800 score_vs_bar=at_or_above_bar authority_source=task_class:planning score_source=quality_gate_graded_score deciding_rules=covers_dependencies; failures=TASK_MISMATCH: failed covers_dependencies",
+   "recorded_verdict": "refused",
+   "stratum": "planning/refused",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "a1b0192d-cff3-42e9-b9d8-eb459b5df3c8:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "[REDACTED - potentially sensitive data]",
+   "recorded_verdict": "refused",
+   "stratum": "review/refused",
+   "task_class": "review"
+  },
+  {
+   "item_key": "a2fd61c0-caf2-4546-a8b7-65a99eb83903:1",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "test/accepted",
+   "task_class": "test"
+  },
+  {
+   "item_key": "a681d4fb-7eed-4441-8b33-07a5744996c9:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "Timed out waiting for Pattern B broker terminal event.",
+   "recorded_verdict": "refused",
+   "stratum": "test/refused",
+   "task_class": "test"
+  },
+  {
+   "item_key": "a74320f5-03e5-440e-b93d-133372148c60:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "review/accepted",
+   "task_class": "review"
+  },
+  {
+   "item_key": "a89dd9fc-5b16-4b4a-b48b-833ff31986ad:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "planning/accepted",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "b0ce75a1-f2a8-4e64-a6e6-0ec4aa059e74:3",
+   "label": "inadequate",
+   "recorded_deciding_check": "provider HTTP 429 Too Many Requests for https://generativelanguage.googleapis.com/v1beta/openai/chat/completions; response_body=[{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash\\nPlease retry in 11.210683474s.\",\n    \"status\": \"RESOURCE_EXHAUSTED\",\n    \"details\": [\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.Help\",\n        \"links\": [\n          {\n            \"description\": \"Learn more about Gemini API quotas\",\n            \"url\": \"https://ai.google.dev/gemini-api/docs/rate-limits\"\n          }\n        ]\n      },\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.QuotaFailure\",\n        \"violations\": [\n          {\n            \"quotaMetric\": \"generativelanguage.googleapis.com/generate_content_free_tier_requests\",\n            \"quot...[truncated]",
+   "recorded_verdict": "refused",
+   "stratum": "planning/refused",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "b0fc755f-6f91-4858-bfba-a23e60d0c0d9:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "document/accepted",
+   "task_class": "document"
+  },
+  {
+   "item_key": "b25603cc-7918-4135-be2d-7ecd872b6fb7:4",
+   "label": "inadequate",
+   "recorded_deciding_check": "pre_filter_rejected: actual_score=0.600 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:document score_source=quality_gate_graded_score deciding_rules=exactly_two_sentences,max_words_per_sentence_6; failures=TASK_MISMATCH: expected exactly 2 sentences, found 247; TASK_MISMATCH: sentences exceed 6 words: 1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 18, 19, 21, 22, 23, 25, 26, 29, 30, 31, 34, 35, 37, 39, 41, 42, 43, 44, 45, 47, 48, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 76, 77, 78, 79, 80, 81, 82, 84, 85, 86, 87, 88, 89, 90, 93, 96, 99, 100, 102, 106, 108, 109, 110, 111, 112, 117, 119, 121, 122, 123, 124, 125, 126, 127, 129, 130, 135, 136, 137, 138, 141, 142, 146, 150, 152, 153, 154, 155, 156, 158, 160, 161, 162, 163, 165, 166, 168, 169, 171, 172, 173, 175, 176, 178, 179, 180, 181, 184, 185, 186, 187, 189, 190, 193, 194, 195, 196, 199, 200, 201, 202, 204, 206, 207, 208, 209, 210, 211, 212, 213, 216, 217, 218, 219, 221, 222, 223, 224, 225, 227, 228, 229, 231, 233, 234, 235, 236, 237, 238, 239, 242, 244, 246, 247",
+   "recorded_verdict": "refused",
+   "stratum": "document/refused",
+   "task_class": "document"
+  },
+  {
+   "item_key": "b349a0a5-899f-4d04-bfd3-339811ada201:3",
+   "label": "adequate",
+   "recorded_deciding_check": "score_below_required_bar: actual_score=0.000 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:planning score_source=quality_gate_graded_score deciding_rules=covers_dependencies; failures=TASK_MISMATCH: failed covers_dependencies",
+   "recorded_verdict": "refused",
+   "stratum": "planning/refused",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "b3861748-91b1-4246-9dff-08d3b11d8836:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "Timed out waiting for Pattern B broker terminal event.",
+   "recorded_verdict": "refused",
+   "stratum": "test/refused",
+   "task_class": "test"
+  },
+  {
+   "item_key": "b4b30aae-918c-4d5f-b524-86ad991c81bb:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "research/accepted",
+   "task_class": "research"
+  },
+  {
+   "item_key": "b54958e6-c288-480d-98df-006951a3d807:2",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_generation/accepted/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "b6718b46-2f5e-4f4f-9414-3f333912f9a3:5",
+   "label": "inadequate",
+   "recorded_deciding_check": "pre_filter_rejected: actual_score=0.000 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:summarization score_source=quality_gate_graded_score; failures=MALFORMED: empty response fails response_contract validation",
+   "recorded_verdict": "refused",
+   "stratum": "summarization/refused",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "b6ff83f9-dd54-420b-ae74-48fe58e7fd2a:5",
+   "label": "inadequate",
+   "recorded_deciding_check": "provider HTTP 429 Too Many Requests for https://generativelanguage.googleapis.com/v1beta/openai/chat/completions; response_body=[{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash\\nPlease retry in 3.37665523s.\",\n    \"status\": \"RESOURCE_EXHAUSTED\",\n    \"details\": [\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.Help\",\n        \"links\": [\n          {\n            \"description\": \"Learn more about Gemini API quotas\",\n            \"url\": \"https://ai.google.dev/gemini-api/docs/rate-limits\"\n          }\n        ]\n      },\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.QuotaFailure\",\n        \"violations\": [\n          {\n            \"quotaMetric\": \"generativelanguage.googleapis.com/generate_content_free_tier_requests\",\n            \"quotaI...[truncated]",
+   "recorded_verdict": "refused",
+   "stratum": "test/refused",
+   "task_class": "test"
+  },
+  {
+   "item_key": "b7e33a4e-c429-4a8a-a346-a198bf22d36f:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "document/accepted",
+   "task_class": "document"
+  },
+  {
+   "item_key": "b7ea1752-bad4-4081-add7-618199f4407d:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "summarization/accepted",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "b83be57b-317a-4bb2-90e2-1648d82e0571:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "summarization/accepted",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "b8a6d7fb-15c2-4e8b-a544-53e1c1299ce4:1",
+   "label": "adequate",
+   "recorded_deciding_check": null,
+   "recorded_verdict": "accepted",
+   "stratum": "test/accepted",
+   "task_class": "test"
+  },
+  {
+   "item_key": "bb8dddc9-40db-4b85-bdd8-2d5e8078e95b:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_generation/accepted/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "be308b8c-2339-4734-81d9-d98ff5a8a679:4",
+   "label": "inadequate",
+   "recorded_deciding_check": "acceptance_criteria_failed: actual_score=0.800 required_bar=0.800 score_vs_bar=at_or_above_bar authority_source=task_class:research score_source=quality_gate_graded_score; failures=TASK_MISMATCH: missing source citations or references; TASK_MISMATCH: failed methodical_analysis",
+   "recorded_verdict": "refused",
+   "stratum": "research/refused",
+   "task_class": "research"
+  },
+  {
+   "item_key": "bf492066-fc64-42a6-809c-b2855a66f3c8:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "summarization/accepted",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "bf8c96b7-35c8-43f0-b3df-49e5b811f080:5",
+   "label": "adequate",
+   "recorded_deciding_check": "score_below_required_bar: actual_score=0.000 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:summarization score_source=quality_gate_graded_score deciding_rules=accurate; failures=TASK_MISMATCH: response explicitly disclaims accuracy: unverified@offset=1192",
+   "recorded_verdict": "refused",
+   "stratum": "summarization/refused",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "bfb97cca-a400-483e-95ba-d18821c4d2e6:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "[REDACTED - potentially sensitive data]",
+   "recorded_verdict": "refused",
+   "stratum": "review/refused",
+   "task_class": "review"
+  },
+  {
+   "item_key": "c113c7e1-50ea-42b4-a7f1-38176d5e332e:3",
+   "label": "inadequate",
+   "recorded_deciding_check": "provider HTTP 429 Too Many Requests for https://generativelanguage.googleapis.com/v1beta/openai/chat/completions; response_body=[{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash\\nPlease retry in 7.643913078s.\",\n    \"status\": \"RESOURCE_EXHAUSTED\",\n    \"details\": [\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.Help\",\n        \"links\": [\n          {\n            \"description\": \"Learn more about Gemini API quotas\",\n            \"url\": \"https://ai.google.dev/gemini-api/docs/rate-limits\"\n          }\n        ]\n      },\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.QuotaFailure\",\n        \"violations\": [\n          {\n            \"quotaMetric\": \"generativelanguage.googleapis.com/generate_content_free_tier_requests\",\n            \"quota...[truncated]",
+   "recorded_verdict": "refused",
+   "stratum": "planning/refused",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "c1e0de59-a2a7-44d7-8889-52919202ebb2:4",
+   "label": "adequate",
+   "recorded_deciding_check": "pre_filter_rejected: actual_score=0.700 required_bar=0.850 score_vs_bar=below_bar authority_source=task_class:code_generation score_source=quality_gate_graded_score deciding_rules=compiles_without_errors; failures=MALFORMED: response does not compile as Python: invalid syntax",
+   "recorded_verdict": "refused",
+   "stratum": "code_generation/refused/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "c2f14be4-e4f2-461a-92b0-633ea3871b24:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_review/accepted",
+   "task_class": "code_review"
+  },
+  {
+   "item_key": "c35f1a9b-5641-4f3a-81f2-8c273fe1f8ab:0",
+   "label": "inadequate",
+   "recorded_deciding_check": null,
+   "recorded_verdict": "accepted",
+   "stratum": "research/accepted",
+   "task_class": "research"
+  },
+  {
+   "item_key": "c49629ea-3a2c-42fc-8dcb-6d0b0ad310a8:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "summarization/accepted",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "c6c933a5-8e66-4d9e-8a67-50a310118281:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "[REDACTED - potentially sensitive data]",
+   "recorded_verdict": "refused",
+   "stratum": "review/refused",
+   "task_class": "review"
+  },
+  {
+   "item_key": "c80a3478-8148-4b48-a68e-fbe0f41b66ec:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_generation/accepted/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "c8352c19-ad9a-4acc-b1de-c89e1dd29a4f:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "reasoning/accepted",
+   "task_class": "reasoning"
+  },
+  {
+   "item_key": "c8b1244e-c769-403b-9dd8-2a87601b46c2:5",
+   "label": "inadequate",
+   "recorded_deciding_check": "score_below_required_bar: actual_score=0.000 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:summarization score_source=quality_gate_graded_score deciding_rules=accurate; failures=TASK_MISMATCH: response explicitly disclaims accuracy: not verified@offset=4740",
+   "recorded_verdict": "refused",
+   "stratum": "summarization/refused",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "c8f9360a-4011-46c4-a426-2f76a377c9ec:1",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "planning/accepted",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "c9f98ab6-196d-44be-94d7-6b8181966bbc:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "research/accepted",
+   "task_class": "research"
+  },
+  {
+   "item_key": "cb4d72be-9755-4908-bed7-b2cc7e8ec6ec:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "research/accepted",
+   "task_class": "research"
+  },
+  {
+   "item_key": "cfb2425e-9aa9-44cb-a058-42d3ed3ab9f9:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "[REDACTED - potentially sensitive data]",
+   "recorded_verdict": "refused",
+   "stratum": "review/refused",
+   "task_class": "review"
+  },
+  {
+   "item_key": "d2352391-2971-45b2-864e-855581e3804e:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "document/accepted",
+   "task_class": "document"
+  },
+  {
+   "item_key": "d3443e9b-01cb-4c09-80ea-51ccde0079b1:4",
+   "label": "adequate",
+   "recorded_deciding_check": "acceptance_criteria_failed: actual_score=0.800 required_bar=0.800 score_vs_bar=at_or_above_bar authority_source=task_class:research score_source=quality_gate_graded_score; failures=TASK_MISMATCH: missing source citations or references; TASK_MISMATCH: failed methodical_analysis",
+   "recorded_verdict": "refused",
+   "stratum": "research/refused",
+   "task_class": "research"
+  },
+  {
+   "item_key": "d4371c99-6c5d-4ca1-804a-0a6b59b06c9e:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "reasoning/accepted",
+   "task_class": "reasoning"
+  },
+  {
+   "item_key": "d4a307e1-3994-4dad-ba1a-9b4eeadbaf5f:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "test/accepted",
+   "task_class": "test"
+  },
+  {
+   "item_key": "d5fd75ec-1a7f-420a-bafd-204651c38f52:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "test/accepted",
+   "task_class": "test"
+  },
+  {
+   "item_key": "d6457a61-dccd-4231-98d9-139f82c13bcf:4",
+   "label": "adequate",
+   "recorded_deciding_check": "pre_filter_rejected: actual_score=0.433 required_bar=0.850 score_vs_bar=below_bar authority_source=task_class:code_generation score_source=quality_gate_graded_score deciding_rules=compiles_without_errors,follows_codebase_conventions,no_obvious_regressions; failures=MALFORMED: response does not compile as Python: invalid syntax; TASK_MISMATCH: failed follows_codebase_conventions; TASK_MISMATCH: failed no_obvious_regressions",
+   "recorded_verdict": "refused",
+   "stratum": "code_generation/refused/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "d6741ec8-f4ac-4003-945a-0ae07927b15f:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "planning/accepted",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "d77c47ed-ce2d-4949-853b-13db7736e2d4:2",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "planning/accepted",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "d93d9bf1-d873-4672-ba0d-3d87baf4a907:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_generation/accepted/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "d993cad0-bcb3-4795-8c0d-e11eb7c17c2e:4",
+   "label": "inadequate",
+   "recorded_deciding_check": "The read operation timed out: provider call timed out after 120.207s against a resolved timeout of 120.000s (requested 300.0s, contract ceiling 120.000s) for model glm-5.3-flash [ReadTimeout]",
+   "recorded_verdict": "refused",
+   "stratum": "code_generation/refused/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "da9cc7d3-eb2d-42e3-a7c8-d33918c4a55b:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "document/accepted",
+   "task_class": "document"
+  },
+  {
+   "item_key": "dcf2be89-a950-4429-8fa8-acd9be6b4138:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_generation/accepted/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "ddb88ff7-3919-44ec-a82b-d128a58fbab3:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "summarization/accepted",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "de42affe-76b0-43e9-afd5-ca8f4d8929b3:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "test/accepted",
+   "task_class": "test"
+  },
+  {
+   "item_key": "deb1fd48-f335-46fd-9535-f05362980a48:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_generation/accepted/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "dfb8231e-28d2-4450-af40-fff1c20fd902:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "research/accepted",
+   "task_class": "research"
+  },
+  {
+   "item_key": "e0c1dd0d-d705-43fa-8cdf-bdddb8342cd9:3",
+   "label": "adequate",
+   "recorded_deciding_check": "score_below_required_bar: actual_score=0.000 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:reasoning score_source=quality_gate_graded_score deciding_rules=step_by_step_explanation; failures=TASK_MISMATCH: failed step_by_step_explanation",
+   "recorded_verdict": "refused",
+   "stratum": "reasoning/refused",
+   "task_class": "reasoning"
+  },
+  {
+   "item_key": "e2269be2-8a6b-4f02-9351-65abb6bb7510:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "summarization/accepted",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "e2698d53-b94e-45aa-9fb3-352dfdd049f8:5",
+   "label": "adequate",
+   "recorded_deciding_check": "score_below_required_bar: actual_score=0.000 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:code_review score_source=quality_gate_graded_score deciding_rules=cites_specific_lines; failures=TASK_MISMATCH: missing specific line citations",
+   "recorded_verdict": "refused",
+   "stratum": "code_review/refused",
+   "task_class": "code_review"
+  },
+  {
+   "item_key": "e2ec880b-1f0b-4a08-962f-fd841b1d078f:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_review/accepted",
+   "task_class": "code_review"
+  },
+  {
+   "item_key": "e3888abf-af28-4c36-97e0-abaf49839045:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_generation/accepted/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "e3bd1f77-c580-418d-9b14-456631706fa7:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "reasoning/accepted",
+   "task_class": "reasoning"
+  },
+  {
+   "item_key": "e4419da3-2a52-48b3-8618-c557995f1529:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "score_below_required_bar: actual_score=0.000 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:summarization score_source=quality_gate_graded_score deciding_rules=accurate; failures=TASK_MISMATCH: response explicitly disclaims accuracy: unverified@offset=1618",
+   "recorded_verdict": "refused",
+   "stratum": "summarization/refused",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "e958d78d-3e0e-481e-b3fe-58410f4e92af:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "reasoning/accepted",
+   "task_class": "reasoning"
+  },
+  {
+   "item_key": "e9a26ea7-dfcd-4526-bab5-a0ec0f6a7bc0:5",
+   "label": "adequate",
+   "recorded_deciding_check": "score_below_required_bar: actual_score=0.000 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:document score_source=quality_gate_graded_score deciding_rules=semantic_adequacy; failures=WEAK_OUTPUT: response truncated mid-clause (ends on 'at'), fails semantic_adequacy",
+   "recorded_verdict": "refused",
+   "stratum": "document/refused",
+   "task_class": "document"
+  },
+  {
+   "item_key": "ea1d5e12-5de7-4d96-adde-0dc2f3914b18:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "review/accepted",
+   "task_class": "review"
+  },
+  {
+   "item_key": "ea2dbe08-3ad1-4ffd-aa7f-a6368338c63e:1",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "summarization/accepted",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "ea8c2229-bc8a-4ad3-98ef-eceed24e8ee9:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_generation/accepted/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "eb2d2b28-5bda-4602-ad6c-461ae555e4da:5",
+   "label": "inadequate",
+   "recorded_deciding_check": "pre_filter_rejected: actual_score=0.000 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:summarization score_source=quality_gate_graded_score; failures=MALFORMED: empty response fails response_contract validation",
+   "recorded_verdict": "refused",
+   "stratum": "summarization/refused",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "ec86d7c5-68af-4373-bde1-8485fbf73cd3:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "test/accepted",
+   "task_class": "test"
+  },
+  {
+   "item_key": "ecd0c067-11f5-476a-9871-94fb27b6c558:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "reasoning/accepted",
+   "task_class": "reasoning"
+  },
+  {
+   "item_key": "eda442ee-08a9-4a44-96c5-55f8502fcfcc:4",
+   "label": "inadequate",
+   "recorded_deciding_check": "acceptance_criteria_failed: actual_score=0.800 required_bar=0.800 score_vs_bar=at_or_above_bar authority_source=task_class:research score_source=quality_gate_graded_score; failures=TASK_MISMATCH: missing source citations or references; TASK_MISMATCH: failed methodical_analysis",
+   "recorded_verdict": "refused",
+   "stratum": "research/refused",
+   "task_class": "research"
+  },
+  {
+   "item_key": "f157a2d9-3c83-4df6-a7a4-11918f5730c5:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "review/accepted",
+   "task_class": "review"
+  },
+  {
+   "item_key": "f1e2a73d-0218-4c7d-b461-787c022b46c9:4",
+   "label": "inadequate",
+   "recorded_deciding_check": "The read operation timed out: provider call timed out after 120.124s against a resolved timeout of 120.000s (requested 300.0s, contract ceiling 120.000s) for model glm-5.3-flash [ReadTimeout]",
+   "recorded_verdict": "refused",
+   "stratum": "code_generation/refused/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "f22d8403-3537-4a59-bf03-d5fcee7799cd:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "review/accepted",
+   "task_class": "review"
+  },
+  {
+   "item_key": "f29500d1-0de6-471b-9e24-f7bea5180efa:4",
+   "label": "inadequate",
+   "recorded_deciding_check": "acceptance_criteria_failed: actual_score=0.800 required_bar=0.800 score_vs_bar=at_or_above_bar authority_source=task_class:research score_source=quality_gate_graded_score; failures=TASK_MISMATCH: missing source citations or references; TASK_MISMATCH: failed methodical_analysis",
+   "recorded_verdict": "refused",
+   "stratum": "research/refused",
+   "task_class": "research"
+  },
+  {
+   "item_key": "f2bb86b6-aea2-4d7e-a8b3-69cab3608857:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "code_review/accepted",
+   "task_class": "code_review"
+  },
+  {
+   "item_key": "f4960eb1-bf4c-49e0-a323-f6d1a6f6fa1c:4",
+   "label": "inadequate",
+   "recorded_deciding_check": "provider HTTP 429 Too Many Requests for https://generativelanguage.googleapis.com/v1beta/openai/chat/completions; response_body=[{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash\\nPlease retry in 17.45884162s.\",\n    \"status\": \"RESOURCE_EXHAUSTED\",\n    \"details\": [\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.Help\",\n        \"links\": [\n          {\n            \"description\": \"Learn more about Gemini API quotas\",\n            \"url\": \"https://ai.google.dev/gemini-api/docs/rate-limits\"\n          }\n        ]\n      },\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.QuotaFailure\",\n        \"violations\": [\n          {\n            \"quotaMetric\": \"generativelanguage.googleapis.com/generate_content_free_tier_requests\",\n            \"quota...[truncated]",
+   "recorded_verdict": "refused",
+   "stratum": "research/refused",
+   "task_class": "research"
+  },
+  {
+   "item_key": "f5dca979-e9f6-47c6-b121-502f90a74dca:0",
+   "label": "inadequate",
+   "recorded_deciding_check": "[REDACTED - potentially sensitive data]",
+   "recorded_verdict": "refused",
+   "stratum": "summarization/refused",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "f63ae513-c63e-4754-aa71-0e36fd524476:3",
+   "label": "adequate",
+   "recorded_deciding_check": "score_below_required_bar: actual_score=0.000 required_bar=0.800 score_vs_bar=below_bar authority_source=task_class:planning score_source=quality_gate_graded_score deciding_rules=covers_dependencies; failures=TASK_MISMATCH: failed covers_dependencies",
+   "recorded_verdict": "refused",
+   "stratum": "planning/refused",
+   "task_class": "planning"
+  },
+  {
+   "item_key": "f69c6320-7321-4764-85cd-c5dd365d12f9:1",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "test/accepted",
+   "task_class": "test"
+  },
+  {
+   "item_key": "f8b37a65-44e2-48bc-b8ec-782bb30f663c:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "review/accepted",
+   "task_class": "review"
+  },
+  {
+   "item_key": "f8e6d4c0-7d08-4a71-a0a9-aba8579fc2b6:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "summarization/accepted",
+   "task_class": "summarization"
+  },
+  {
+   "item_key": "f99d5485-1d18-476e-861b-0e81835752cf:0",
+   "label": "adequate",
+   "recorded_deciding_check": null,
+   "recorded_verdict": "accepted",
+   "stratum": "research/accepted",
+   "task_class": "research"
+  },
+  {
+   "item_key": "fb074619-93f0-4978-8983-0aa7f127cd93:2",
+   "label": "inadequate",
+   "recorded_deciding_check": "provider HTTP 429 Too Many Requests for https://generativelanguage.googleapis.com/v1beta/openai/chat/completions; response_body=[{\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 5, model: gemini-2.5-flash\\nPlease retry in 23.206516043s.\",\n    \"status\": \"RESOURCE_EXHAUSTED\",\n    \"details\": [\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.Help\",\n        \"links\": [\n          {\n            \"description\": \"Learn more about Gemini API quotas\",\n            \"url\": \"https://ai.google.dev/gemini-api/docs/rate-limits\"\n          }\n        ]\n      },\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.QuotaFailure\",\n        \"violations\": [\n          {\n            \"quotaMetric\": \"generativelanguage.googleapis.com/generate_content_free_tier_requests\",\n            \"quota...[truncated]",
+   "recorded_verdict": "refused",
+   "stratum": "code_generation/refused/none",
+   "task_class": "code_generation"
+  },
+  {
+   "item_key": "fd6981fb-273e-4a41-9196-85cb5c245865:0",
+   "label": "adequate",
+   "recorded_deciding_check": "completed",
+   "recorded_verdict": "accepted",
+   "stratum": "summarization/accepted",
+   "task_class": "summarization"
+  }
+ ],
+ "run": {
+  "gate_version": "omnimarket-dev@df56bf122 shadow-comparison grader",
+  "label_set_sha256": "2ee7c93fee74f8dde5271061efee0565da8e37a7b2d805df9710df99598897ce",
+  "manifest_id": "4960f691154ce76a5293be5a1ea1007c1de9f33b5efd0aa0c4b549033596a5c6",
+  "rater_role": "blind_model:claude-opus-5-5",
+  "rubric_version": "ev4-blind-v1"
+ }
+}

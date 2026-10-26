@@ -1,0 +1,29 @@
+name: node_adoption_recovery_effect
+node_type: EFFECT_GENERIC
+version: 1.0.0
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: Recover stopped adoption from the throughput tick using its durable journal and start marker.
+input_model:
+  name: ModelAdoptionRecoveryRequest
+  module: omnimarket.nodes.node_adoption_recovery_effect.models
+output_model:
+  name: list[tuple[str, str, str, str]]
+handler:
+  name: HandlerAdoptionRecovery
+  module: omnimarket.nodes.node_adoption_recovery_effect.handler
+entrypoint:
+  name: NodeAdoptionRecoveryEffect
+  module: omnimarket.nodes.node_adoption_recovery_effect.node
+freshness:
+  journal_tail_bytes: 65536
+  stale_minutes: 60
+  retry_minutes: 60
+  disabled_by: ONEX_ADOPT_ON_TICK=0
+  missing_state: UNKNOWN
+launch:
+  command: [python, -B, adopt_merged.py, run]
+  detached: true
+  stdout: throughput-tick.adopt-run.log
+  start_marker: throughput-tick.adopt-start.json
