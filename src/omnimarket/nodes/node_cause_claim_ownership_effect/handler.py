@@ -27,7 +27,8 @@ import os
 import re
 import sys
 import types
-from datetime import datetime, timedelta
+from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -619,6 +620,181 @@ class HandlerCauseClaimOwnership:
         )
 
 
+DECISIONS_TAIL_BYTES = 8 << 20
+# The controller is acting on an item only while its newest decision for it is a live lease or a dispatch this recent.
+ACTING_WINDOW = timedelta(minutes=30)
+# A worker result of one of these kinds (kind, reason or blocker_kind) is an attempt that never ran.
+NEVER_RAN = ("lab_capacity_unavailable", "host_tools_refused")
+
+
+def _stamp(at: datetime) -> str:
+    return at.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _when(value: object) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def _short(subject: str) -> str:
+    """``Owner/repo#n`` -> ``repo#n``; a cause key is its own name."""
+    return (
+        subject.rsplit("/", 1)[-1]
+        if "#" in subject and not subject.startswith("cause:")
+        else subject
+    )
+
+
+def _tail_lines(path: Path, size: int) -> list[str]:
+    with path.open("rb") as stream:
+        stream.seek(0, os.SEEK_END)
+        end = stream.tell()
+        stream.seek(max(0, end - size))
+        data = stream.read()
+    lines = data.decode("utf-8", errors="replace").splitlines()
+    return lines[1:] if end > size else lines
+
+
+def read_decisions(landing: Path) -> list[dict[str, Any]]:
+    """decisions.jsonl's tail rows in file (time) order; a missing file is a controller that decided nothing."""
+    try:
+        lines = _tail_lines(landing / "decisions.jsonl", DECISIONS_TAIL_BYTES)
+    except FileNotFoundError:
+        return []
+    rows = []
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict):
+            rows.append(row)
+    return rows
+
+
+def lease_released(lease: Mapping[str, Any], state_dir: Path) -> bool:
+    """A revoked lease whose release was confirmed (``released_at`` on the entry or on its lease.json). A revoked
+    lease still in state.json with no confirmed release may still have a live process: it still owns."""
+    if not lease.get("revoked"):
+        return False
+    if lease.get("released_at"):
+        return True
+    try:
+        data = json.loads(
+            (
+                state_dir / "workers" / str(lease.get("lease_id")) / "lease.json"
+            ).read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError):
+        return False
+    return bool(isinstance(data, dict) and data.get("released_at"))
+
+
+_READ: dict[
+    str, tuple[tuple[Any, ...], list[dict[str, Any]], dict[str, dict[str, Any]]]
+] = {}
+
+
+def acting(
+    landing: Path,
+    subject: str,
+    now: datetime | None = None,
+    lease_id: int | None = None,
+) -> tuple[bool, str]:
+    """``judge`` over the controller's files, read once per change of decisions.jsonl and state.json; files that cannot
+    be read are no acting owner, and the evidence says they were unread."""
+    try:
+        sign = tuple(
+            (p.stat().st_mtime_ns, p.stat().st_size) if p.exists() else None
+            for p in (landing / "decisions.jsonl", landing / "state.json")
+        )
+        if (_READ.get(str(landing)) or ((),))[0] != sign:
+            _READ[str(landing)] = (sign, read_decisions(landing), read_leases(landing))
+        _, rows, leases = _READ[str(landing)]
+    except (OSError, ValueError) as exc:
+        return False, f"the controller's files unread ({type(exc).__name__})"
+    return judge(rows, leases, landing, subject, now or datetime.now(UTC), lease_id)
+
+
+def read_leases(landing: Path) -> dict[str, dict[str, Any]]:
+    """state.json's leases by lease id; raises when it cannot be read, so an owner nobody read is never an answer."""
+    state = json.loads((landing / "state.json").read_text(encoding="utf-8"))
+    if not isinstance(state, dict) or not isinstance(state.get("leases"), list):
+        raise ValueError("state.json holds no leases list")
+    return {
+        str(le["lease_id"]): le
+        for le in state["leases"]
+        if isinstance(le, dict) and le.get("lease_id") is not None
+    }
+
+
+def worker_result(landing: Path, lease_id: object) -> dict[str, Any] | None:
+    try:
+        data = json.loads(
+            (landing / "workers" / str(lease_id) / "result.json").read_text(
+                encoding="utf-8"
+            )
+        )
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def judge(
+    rows: list[dict[str, Any]],
+    leases: Mapping[str, Mapping[str, Any]],
+    landing: Path,
+    subject: str,
+    now: datetime,
+    lease_id: int | None,
+    window: timedelta = ACTING_WINDOW,
+) -> tuple[bool, str]:
+    """(acting, evidence) from the controller's newest decision for ``subject`` (or, with none, for ``lease_id``)."""
+    key = _short(subject)
+    mine = [
+        r for r in rows if _short(str(r.get("subject") or r.get("cause") or "")) == key
+    ]
+    if not mine and lease_id is not None:
+        mine = [r for r in rows if str(r.get("lease_id")) == str(lease_id)]
+    if not mine:
+        return False, f"no decisions.jsonl row for {key}"
+    row = mine[-1]
+    at = _when(row.get("ts"))
+    age = None if at is None else int((now - at).total_seconds() // 60)
+    where = f"tick {row.get('tick', '?')} {row.get('ts', '?')} {row.get('kind', '?')} {row.get('outcome', '?')}"
+    if row.get("kind") == "dispatch_worker" and row.get("outcome") == "spawned":
+        lid = row.get("lease_id")
+        res = worker_result(landing, lid)
+        never = next(
+            (
+                str(v)
+                for v in (
+                    (res or {}).get(k) for k in ("kind", "reason", "blocker_kind")
+                )
+                if v in NEVER_RAN
+            ),
+            None,
+        )
+        if never:
+            return False, (
+                f"{where}: workers/{lid}/result.json kind={(res or {}).get('kind')} {never}: the attempt never ran"
+            )
+        lease = leases.get(str(lid))
+        if res is None and lease is not None and not lease.get("revoked"):
+            return True, f"{where}: live lease landing-L{lid}"
+        if age is not None and timedelta(minutes=age) <= window:
+            return True, f"{where} ({age}m ago)"
+        return False, (
+            f"{where} {'?' if age is None else age}m ago, "
+            f"{'result kind=' + str(res.get('kind')) if res else 'no live lease'}"
+        )
+    detail = " ".join(str(row.get("detail") or "").split())[:200]
+    return False, where + (f": {detail}" if detail else "")
+
+
 PROCESS_FIX_LOOP = "process-fix:"
 PROCESS_FIX_DRIVER = "driver lane pf-drive-"
 
@@ -637,9 +813,8 @@ def controller_lease_owners(qs: Any, landing: Path, now: Any) -> dict[str, list[
     if not isinstance(state, dict) or not isinstance(state.get("leases"), list):
         raise ValueError("state.json holds no leases list")
     # OMN-17427: a lease owns only while the controller acts on it (its newest decisions.jsonl row is a live lease or a
-    # dispatch in the last 30 minutes); claim-refused, held or an attempt that never ran is not acting. Imported here:
-    # the actor's handler imports this module.
-    from omnimarket.nodes.node_stuck_owner_actor_effect.handler import acting
+    # dispatch in the last 30 minutes); claim-refused, held or an attempt that never ran is not acting. The acting
+    # helper lives here.
 
     labels: dict[str, str] = {}
     owners: dict[str, set[str]] = {}
