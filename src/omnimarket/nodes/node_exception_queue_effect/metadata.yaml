@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_exception_queue_effect
+version: 1.0.0
+description: "Keep the exception queue: emit a row, list the decision and open rows, resolve a row, and start the mechanize runner once per case."
+pack: operator_tooling
+node_role: effect
+display_name: Exception Queue Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_exception_queue_effect: omnimarket.nodes.node_exception_queue_effect
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_write
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- exception-queue-effect
+- OMN-21411

@@ -1,0 +1,44 @@
+name: node_plugin_bump_stuck_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >
+  Judge the post-merge plugin version bump pull request (branch automation/omn-20497-plugin-version-bump) from the
+  PR watcher's records: one line per open bump with its age, CI verdict, head and push time, and a DEGRADED reason
+  and action for a bump open past the stuck bound (90 minutes), because a merged plugin change reaches no host until
+  the bump lands. Pure: it reads nothing and writes nothing.
+input_model:
+  name: ModelPluginBumpStuckRequest
+  module: omnimarket.nodes.node_plugin_bump_stuck_compute.models
+output_model:
+  name: ModelPluginBumpStuckResult
+  module: omnimarket.nodes.node_plugin_bump_stuck_compute.models
+handler:
+  module: omnimarket.nodes.node_plugin_bump_stuck_compute.handler
+  class: HandlerPluginBumpStuck
+  input_model: omnimarket.nodes.node_plugin_bump_stuck_compute.models.ModelPluginBumpStuckRequest
+  output_model: omnimarket.nodes.node_plugin_bump_stuck_compute.models.ModelPluginBumpStuckResult
+entrypoint:
+  name: NodePluginBumpStuckCompute
+  module: omnimarket.nodes.node_plugin_bump_stuck_compute.node
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_plugin_bump_stuck_compute.handler:HandlerPluginBumpStuck
+  handlers:
+    - operation: judge
+      topic: onex.cmd.omnimarket.plugin-bump-stuck-requested.v1
+      handler:
+        name: HandlerPluginBumpStuck
+        module: omnimarket.nodes.node_plugin_bump_stuck_compute.handler
+terminal_event: onex.evt.omnimarket.plugin-bump-stuck-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.plugin-bump-stuck-requested.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.plugin-bump-stuck-requested.v1]
+  publish_topics: [onex.evt.omnimarket.plugin-bump-stuck-completed.v1]
+metadata:
+  transport_type: inmemory
+  related_tickets: [OMN-20497]
+externally_consumed_topics:
+- onex.evt.omnimarket.plugin-bump-stuck-completed.v1

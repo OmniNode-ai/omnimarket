@@ -1,0 +1,67 @@
+name: node_stuck_owner_actor_effect
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >
+  A stall the throughput tick detects gets an actor. A controller-owned cause or item is OWNED only while the
+  landing controller's newest decisions.jsonl row for it is a live lease or a worker spawned in the last 30 minutes;
+  a claim-refused, held or refused row, or a spawn whose worker result never ran (lab_capacity_unavailable,
+  host_tools_refused), is UNOWNED-NOT-ACTING, and the tick's owned line says so as MISSING. A red base branch or a
+  stuck plugin version bump past two hours whose owner is not acting gets ONE cause lane per repository, dispatched
+  by the tick through the remote-lane runner with --cause, recorded by cause and base in the session-start state
+  directory so it is never dispatched twice. A process-fix driver lane is never named for a PR whose red is a
+  base-inherited pull_request_target check, or whose head an earlier driver already handed off
+  (HandlerDriverGate). queue-status's controller owner read takes the same verdict (HandlerOwnerActing). Reads the
+  controller's files, the PR watcher state, the ledger and the canonical clone's workflows (git, never GitHub);
+  writes its own state file and starts the runner.
+input_model:
+  name: ModelStuckOwnerRequest
+  module: omnimarket.nodes.node_stuck_owner_actor_effect.models
+output_model:
+  name: ModelStuckOwnerResult
+  module: omnimarket.nodes.node_stuck_owner_actor_effect.models
+handler:
+  module: omnimarket.nodes.node_stuck_owner_actor_effect.handler
+  class: HandlerStuckOwnerActor
+  input_model: omnimarket.nodes.node_stuck_owner_actor_effect.models.ModelStuckOwnerRequest
+  output_model: omnimarket.nodes.node_stuck_owner_actor_effect.models.ModelStuckOwnerResult
+entrypoint:
+  name: NodeStuckOwnerActorEffect
+  module: omnimarket.nodes.node_stuck_owner_actor_effect.node
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_stuck_owner_actor_effect.handler:HandlerStuckOwnerActor
+  handlers:
+    - operation: act
+      topic: onex.cmd.omnimarket.stuck-owner-actor-requested.v1
+      handler:
+        name: HandlerStuckOwnerActor
+        module: omnimarket.nodes.node_stuck_owner_actor_effect.handler
+    - operation: owner_acting
+      topic: onex.cmd.omnimarket.stuck-owner-actor-requested.v1
+      handler:
+        name: HandlerOwnerActing
+        module: omnimarket.nodes.node_stuck_owner_actor_effect.handler
+    - operation: gate_driver
+      topic: onex.cmd.omnimarket.stuck-owner-actor-requested.v1
+      handler:
+        name: HandlerDriverGate
+        module: omnimarket.nodes.node_stuck_owner_actor_effect.handler
+terminal_event: onex.evt.omnimarket.stuck-owner-actor-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.stuck-owner-actor-requested.v1
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 120000
+  runtime_profiles:
+    - effects
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.stuck-owner-actor-requested.v1]
+  publish_topics: [onex.evt.omnimarket.stuck-owner-actor-completed.v1]
+metadata:
+  transport_type: inmemory
+  related_tickets: [OMN-17427]
+externally_consumed_topics:
+- onex.evt.omnimarket.stuck-owner-actor-completed.v1
