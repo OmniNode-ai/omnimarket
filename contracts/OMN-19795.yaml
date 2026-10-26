@@ -7,6 +7,17 @@ is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 contract_completeness: STUB
+requirements:
+  - id: "req-omn19795-generation-stability"
+    statement: |-
+      Each class's generation flip rate, measured on one backend, reaches its eval results row, and the rollup's minimum sample cites it.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: a group of three verdicts with one disagreement counts as one flip -- falsifier: uv run pytest tests/nodes/node_delegation_gate_eval_compute -k flip_rate -v in omnimarket
+      - id: "AC2"
+        statement: |-
+          AC2: each class's results row carries its flip rate, its bound and the backend it was measured on, and the rollup contract's minimum sample cites the measured value -- falsifier: a class row on the dev lane without either field, or the contract value without a citation
 evidence_requirements:
   - kind: tests
     description: All tests pass
@@ -32,3 +43,19 @@ dod_evidence:
       - check_type: "command"
         check_value: |-
           gh api -H 'Accept: application/vnd.github.raw' "repos/OmniNode-ai/omnimarket/contents/tests/nodes/node_delegation_gate_eval_compute/test_flip_rate.py?ref=99fa7cf6f2645399f8b4eed737d204d178da266b" | grep -c 'def test_'
+  - id: "dod-omn19795-ac1-one-flip-per-disagreeing-group"
+    description: "AC1: a group of three verdicts with any disagreement counts as one flip. The flip-rate compute tests pass, and through the eval run two disagreeing groups of four give each summarization results row a flip rate of 0.5."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/nodes/node_delegation_gate_eval_compute tests/test_golden_chain_projection_delegation_eval.py -q -p no:randomly -k "flip_rate"'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19795-ac2-flip-rate-on-results-rows-and-cited"
+    description: "AC2: an eval run carrying repeated generations writes each measured class's flip rate, Wilson bounds and measuring backend on its results rows (None for an unmeasured class), the groups' digest joins the eval run id, migration 0007 and the snapshot carry the four columns, and the rollup's minimum sample cites the dev-lane measurement, whose committed groups give back the cited per-class flips, backend and digest."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/test_golden_chain_projection_delegation_eval.py tests/unit/delegation/test_roi_overlay_routing_omn14001.py -q -p no:randomly -k "generation_stability or min_samples_citation"'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]

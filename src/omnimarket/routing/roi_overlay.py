@@ -82,9 +82,11 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -104,7 +106,59 @@ CONTEXT_ROI_TABLE = "context_roi_scores"
 #: Minimum captured samples for a tier before its ROI signal is allowed to
 #: suppress routing. Below this, the signal is treated as too thin to act on and
 #: the tier is never suppressed (static order wins). Env-overridable.
+#: Measured basis: ``ROI_MIN_SAMPLES_GENERATION_STABILITY`` below (OMN-19795).
 DEFAULT_ROI_MIN_SAMPLES = 5
+
+
+#: OMN-19795 (plan task EV.7): the generation flip rate this minimum sample rests
+#: on. Each labelled prompt was generated three times on one local backend and
+#: gated each time; a class flips once per prompt whose three verdicts disagree.
+#: ``flips`` is (flips, prompts) per class; the 20 percent ``line`` is the upper
+#: Wilson bound past which one attempt is too unstable to stand for the next.
+#: The minimum sample stays 5: no class measured both clearly under the line and
+#: off it, and the three classes above it (one flip at 20 prompts already reads
+#: 23.6 percent) are left to the per-class routing read of OMN-20170 rather than
+#: raising the global value for every class. code_review is withheld from
+#: delegation, so it has no measurement.
+@dataclass(frozen=True)
+class ModelRoiMinSamplesCitation:
+    """The measurement a minimum sample rests on (OMN-19795)."""
+
+    measured_on: str
+    backend_id: str
+    groups_sha256: str
+    line: float
+    flips: Mapping[str, tuple[int, int]]
+    above_line: tuple[str, ...]
+    unmeasured: Mapping[str, str]
+
+
+ROI_MIN_SAMPLES_GENERATION_STABILITY: Final = ModelRoiMinSamplesCitation(
+    measured_on="2026-10-26",
+    backend_id="local-heavy-reasoning",
+    groups_sha256="6f451a2e77aa575508bf98756cf5a5c3d2263cd47476dfbc912b10663a855bc2",
+    line=0.20,
+    flips=MappingProxyType(
+        {
+            "code_generation": (0, 20),
+            "document": (0, 20),
+            "planning": (7, 20),
+            "reasoning": (1, 20),
+            "research": (0, 20),
+            "review": (0, 20),
+            "summarization": (1, 20),
+            "test": (0, 20),
+        }
+    ),
+    above_line=("planning", "reasoning", "summarization"),
+    unmeasured=MappingProxyType(
+        {
+            "code_review": (
+                "withheld from delegation, RULING 2026-10-02T19:33:51Z (OMN-17427)"
+            )
+        }
+    ),
+)
 
 #: Success-rate floor. A tier with >= MIN_SAMPLES captured rows whose observed
 #: ``final_success`` rate is strictly below this floor is ROI-suppressed.
