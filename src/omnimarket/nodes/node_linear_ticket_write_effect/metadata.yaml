@@ -19,5 +19,6 @@ dependencies:
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: [effect, linear, ticket]
+pack: "planning"
 display_name: "Linear Ticket Write"
 node_role: effect
