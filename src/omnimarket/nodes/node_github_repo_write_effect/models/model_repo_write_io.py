@@ -40,6 +40,9 @@ from omnimarket.events.pr_landing_github.model_github_quota_reading import (
 from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubHttpRequest,
 )
+from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_lease import (
+    ModelRepoWriteLease,
+)
 
 # GitHub's own limits: a PR or comment body holds at most 65536 characters and
 # a workflow_dispatch carries at most 10 inputs.
@@ -92,6 +95,9 @@ class EnumRepoWriteRefusal(StrEnum):
     QUOTA_FLOOR = "quota_floor"
     HEAD_MOVED = "head_moved"
     CLAIM_NOT_HELD = "claim_not_held"
+    LEASE_FENCE_STALE = "lease_fence_stale"
+    LEASE_EXPIRED = "lease_expired"
+    LEASE_UNREADABLE = "lease_unreadable"
     CONTRACT_REQUIRED = "contract_required"
     NOT_FOUND = "not_found"
     GITHUB_REFUSED = "github_refused"
@@ -202,6 +208,12 @@ class ModelRepoWriteRequest(BaseModel):
         description="pr_close: the claim the caller took, read from the caller's "
         "own registry and carried here because the effect cannot read that "
         "directory. Without one, the effect's own registry must hold the claim.",
+    )
+    lease: ModelRepoWriteLease | None = Field(
+        default=None,
+        description="The lease the command acts under; the effect refuses the "
+        "write unless the fence port answers ok and the lease outlives the "
+        "effect's deadline.",
     )
     pr_number: int | None = Field(default=None, gt=0)
     expected_head_sha: str | None = Field(
@@ -342,6 +354,8 @@ class ModelRepoWriteRequest(BaseModel):
     ) -> dict[str, Any]:
         """Serialize only the fields this request's operation can carry."""
         data: dict[str, Any] = handler(self)
+        if self.lease is None:
+            data.pop("lease", None)
         for owner, names in _OPERATION_ONLY_FIELDS.items():
             if owner is not self.operation:
                 for name in names:

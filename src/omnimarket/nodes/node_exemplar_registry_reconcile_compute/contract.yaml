@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_exemplar_registry_reconcile_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Pure TC.5 exemplar registry reconciliation (OMN-21128). Plans deterministic
+  create, revise, retain, deprecate and revoke operations from caller-supplied
+  admission evidence, content digests and current registry rows.
+input_model:
+  name: ModelExemplarRegistryReconcileRequest
+  module: omnimarket.nodes.node_exemplar_registry_reconcile_compute.models.model_exemplar_registry_reconcile
+output_model:
+  name: ModelExemplarRegistryReconcileResult
+  module: omnimarket.nodes.node_exemplar_registry_reconcile_compute.models.model_exemplar_registry_reconcile
+handler:
+  module: omnimarket.nodes.node_exemplar_registry_reconcile_compute.handlers.handler_exemplar_registry_reconcile
+  class: HandlerExemplarRegistryReconcile
+  input_model: omnimarket.nodes.node_exemplar_registry_reconcile_compute.models.model_exemplar_registry_reconcile.ModelExemplarRegistryReconcileRequest
+  output_model: omnimarket.nodes.node_exemplar_registry_reconcile_compute.models.model_exemplar_registry_reconcile.ModelExemplarRegistryReconcileResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_exemplar_registry_reconcile_compute.handlers.handler_exemplar_registry_reconcile:HandlerExemplarRegistryReconcile
+  handlers:
+    - operation: reconcile_exemplar_registry
+      handler:
+        name: HandlerExemplarRegistryReconcile
+        module: omnimarket.nodes.node_exemplar_registry_reconcile_compute.handlers.handler_exemplar_registry_reconcile
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+inputs:
+  repository: {type: str, required: true, description: Repository owning the registry.}
+  admission: {type: object, required: true, description: Admission evidence at the repository commit.}
+  content_sha256: {type: object, required: true, description: Content digests keyed by admitted node ID.}
+  current_rows: {type: list, required: false, description: Current registry rows for the repository.}
+  policy: {type: object, required: false, description: Versioned removal policy.}
+outputs:
+  operations: {type: list}
+  counts: {type: object}
+  current_count: {type: int}
+  admitted_count: {type: int}
+  reconciliation_hash: {type: str}
+terminal_event: onex.evt.omnimarket.exemplar-registry-reconciled.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.exemplar-registry-reconcile-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.exemplar-registry-reconcile-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.exemplar-registry-reconciled.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.exemplar-registry-reconciled.v1
+metadata:
+  transport_type: inmemory
+  description: TC.5 exemplar registry reconciliation
+  author: OmniNode Team
+  created: "2026-10-26"
+  related_tickets: [OMN-21128]

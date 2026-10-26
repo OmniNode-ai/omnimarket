@@ -708,7 +708,7 @@ repos:
         language: system
         entry: uv run python scripts/ci/check_lane_job_placement.py
         pass_filenames: false
-        files: ^(\.github/workflows/delegation-regression-nightly\.yml|scripts/ci/check_lane_job_placement\.py)$
+        files: ^(\.github/workflows/delegation-(regression-nightly|terminal-join-daily|rung-eval-nightly)\.yml|scripts/ci/check_lane_job_placement\.py)$
         stages: [pre-commit]
 
       # OMN-18349. The Layer-2 golden corpus is data the nightly publishes
