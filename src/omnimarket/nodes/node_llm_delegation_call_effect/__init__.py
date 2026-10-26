@@ -19,6 +19,7 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_cloud_ses
     cloud_start_script,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_delegation_target import (
+    HandlerAntigravityArguments,
     HandlerClaudeCodeArguments,
     HandlerClaudeGlmArguments,
     HandlerCodexArguments,
@@ -47,6 +48,7 @@ from omnimarket.nodes.node_llm_delegation_call_effect.node import (
 
 __all__ = [
     "HandlerAgentSession",
+    "HandlerAntigravityArguments",
     "HandlerClaudeCodeArguments",
     "HandlerClaudeGlmArguments",
     "HandlerCodexArguments",

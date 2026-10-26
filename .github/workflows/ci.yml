@@ -89,7 +89,7 @@ jobs:
   # (d) not lane-bound: `scripts/ci/check_lane_job_placement.py` refuses a
   # variable-driven placement for a job whose correctness depends on WHERE its
   # runner sits, and its LANE_BOUND_JOBS map names only
-  # delegation-regression-nightly.yml's `golden-tasks`, no job in this file.
+  # the delegation workflows' lab-bound jobs, no job in this file.
   # EVERY OTHER JOB HERE IS UNTOUCHED and keeps its existing placement
   # expression; a survey of the routing repos found no prior use of this wiring
   # at fan-out scale, so widening it in one step would put the whole fleet on

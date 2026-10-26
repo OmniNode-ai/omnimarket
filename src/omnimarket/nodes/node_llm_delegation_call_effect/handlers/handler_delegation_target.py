@@ -14,6 +14,8 @@ import hashlib
 import json
 import math
 import os
+import re
+import shutil
 import signal
 import time
 from importlib import resources
@@ -74,6 +76,32 @@ class HandlerCodexArguments:
 
     def argv(self, request: ModelDelegationTargetRequest, *, model: str) -> list[str]:
         return ["codex", "exec", "-s", "workspace-write", "--json", "-"]
+
+
+class HandlerAntigravityArguments:
+    """Antigravity session using the host's signed-in account."""
+
+    def argv(self, request: ModelDelegationTargetRequest, *, model: str) -> list[str]:
+        argv = [
+            "agy",
+            "-p",
+            request.brief,
+            "--output-format",
+            "text",
+            "--mode",
+            "accept-edits",
+        ]
+        if model:
+            argv.extend(["--model", model])
+        return argv
+
+
+class AntigravityRefusalError(ValueError):
+    """A refusal to run Antigravity with a stable, non-secret code."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code: str = code
 
 
 class HandlerDelegationModelCall:
@@ -196,6 +224,22 @@ def _agent_environment() -> dict[str, str]:
             "GIT_COMMON_DIR",
             "PYTHONPATH",
             "CLAUDECODE",
+        }
+    }
+
+
+def _antigravity_environment(env: dict[str, str]) -> dict[str, str]:
+    """Keep Antigravity on the host login instead of key or ADC credentials."""
+    return {
+        key: value
+        for key, value in env.items()
+        if key
+        not in {
+            "GEMINI_API_KEY",
+            "GOOGLE_API_KEY",
+            "ANTIGRAVITY_API_KEY",
+            "AGY_ADC_AUTH",
+            "GOOGLE_APPLICATION_CREDENTIALS",
         }
     }
 
@@ -349,10 +393,16 @@ class HandlerDelegationTarget:
         started = time.monotonic()
         result: ModelDelegationTargetResult
         env = _agent_environment()
-        adapters: dict[str, HandlerClaudeCodeArguments | HandlerCodexArguments] = {
+        adapters: dict[
+            str,
+            HandlerClaudeCodeArguments
+            | HandlerCodexArguments
+            | HandlerAntigravityArguments,
+        ] = {
             "codex": HandlerCodexArguments(),
             "claude-code": HandlerClaudeCodeArguments(),
             "claude-glm": HandlerClaudeGlmArguments(),
+            "antigravity": HandlerAntigravityArguments(),
         }
         adapter = adapters[request.target]
         session_config = site.get("agents", {}).get(request.target, {})
@@ -363,7 +413,7 @@ class HandlerDelegationTarget:
                 raise ValueError(
                     "agent profile must be declared by the call-site contract"
                 )
-        if request.target != "codex" and not model:
+        if request.target not in {"codex", "antigravity"} and not model:
             raise ValueError("agent model must be supplied by the call-site contract")
         if request.target == "claude-glm" and not session_config.get("secret_env"):
             raise ValueError(
@@ -376,17 +426,20 @@ class HandlerDelegationTarget:
                 )
             env.pop("ANTHROPIC_API_KEY", None)
             env.pop("ANTHROPIC_AUTH_TOKEN", None)
-        if any(
+        if request.target != "antigravity" and any(
             key.endswith(("_KEY", "_TOKEN", "_PASSWORD"))
             for key in session_config.get("env", {})
         ):
             raise ValueError("agent credentials must use secret_env references")
-        for key, ref in session_config.get("secret_env", {}).items():
-            secret = await resolve_api_key_async(ref, required=True)
-            if secret is None:
-                raise ValueError("agent credential reference did not resolve")
-            env[key] = secret.get_secret_value()
-        env.update(session_config.get("env", {}))
+        if request.target != "antigravity":
+            for key, ref in session_config.get("secret_env", {}).items():
+                secret = await resolve_api_key_async(ref, required=True)
+                if secret is None:
+                    raise ValueError("agent credential reference did not resolve")
+                env[key] = secret.get_secret_value()
+            env.update(session_config.get("env", {}))
+        else:
+            env = _antigravity_environment(env)
         # mkdir is the local duplicate barrier. The lab-job store provides the
         # durable cross-runtime claim before this method is called. A completed
         # direct target request can return its recorded receipt on redelivery.
@@ -406,6 +459,13 @@ class HandlerDelegationTarget:
                 "delegation request is already running or needs recovery"
             ) from None
         try:
+            if request.target == "antigravity":
+                if session_config.get("secret_env") or session_config.get("env"):
+                    raise AntigravityRefusalError("credential-config")
+                if len(request.brief) > 100_000:
+                    raise AntigravityRefusalError("brief-too-large")
+                if shutil.which("agy", path=env.get("PATH")) is None:
+                    raise AntigravityRefusalError("not-installed")
             sha = await _git(
                 "rev-parse",
                 "--verify",
@@ -423,7 +483,9 @@ class HandlerDelegationTarget:
                     *adapter.argv(request, model=model),
                     cwd=tree,
                     env=env,
-                    stdin=asyncio.subprocess.PIPE,
+                    stdin=asyncio.subprocess.DEVNULL
+                    if request.target == "antigravity"
+                    else asyncio.subprocess.PIPE,
                     stdout=stream,
                     stderr=asyncio.subprocess.STDOUT,
                     start_new_session=True,
@@ -431,7 +493,10 @@ class HandlerDelegationTarget:
                 timed_out = False
                 try:
                     await asyncio.wait_for(
-                        process.communicate(request.brief.encode()), timeout=timeout
+                        process.communicate()
+                        if request.target == "antigravity"
+                        else process.communicate(request.brief.encode()),
+                        timeout=timeout,
                     )
                 except (TimeoutError, asyncio.CancelledError):
                     if process.returncode is None:
@@ -441,7 +506,19 @@ class HandlerDelegationTarget:
                     if current is not None and current.cancelling():
                         raise
                     timed_out = True
-            content, session_id, failed = _read_agent_result(output, request.target)
+            if request.target == "antigravity":
+                output_text = output.read_text()
+                content = output_text[-262144:].strip()
+                session_id: str | None = f"agy-{request.request_id}"
+                failed = False
+                if (process.returncode or not content) and re.search(
+                    r"not logged in|log in|login|sign in|authenticat|unauthori[sz]ed",
+                    output_text,
+                    re.IGNORECASE,
+                ):
+                    raise AntigravityRefusalError("not-logged-in")
+            else:
+                content, session_id, failed = _read_agent_result(output, request.target)
             head = await _git("rev-parse", "HEAD", cwd=tree, env=env)
             result = ModelDelegationTargetResult(
                 request_id=request.request_id,
@@ -473,7 +550,9 @@ class HandlerDelegationTarget:
                 worktree=str(tree),
                 receipt_path=str(receipt_path),
                 duration_seconds=time.monotonic() - started,
-                detail=f"{type(exc).__name__}: session setup or execution failed",
+                detail=f"antigravity-refused: {exc.code}"
+                if isinstance(exc, AntigravityRefusalError)
+                else f"{type(exc).__name__}: session setup or execution failed",
                 request_digest=digest,
             )
         temporary = receipt_path.with_suffix(".tmp")
@@ -483,6 +562,7 @@ class HandlerDelegationTarget:
 
 
 __all__ = [
+    "HandlerAntigravityArguments",
     "HandlerClaudeCodeArguments",
     "HandlerClaudeGlmArguments",
     "HandlerCodexArguments",

@@ -107,6 +107,12 @@ class ModelRunAnswerCounts(_Frozen):
 
 
 class ModelAnswerComparisonResult(_Frozen):
+    """Quality parity requires available answers for both arms of every case.
+
+    Per-run ``package_at_least_native`` retains the numeric count comparison;
+    ``next_action_met`` also requires that no answer is unavailable.
+    """
+
     runs: tuple[ModelRunAnswerCounts, ...]
     next_action_met: bool
     determinism_checked: bool

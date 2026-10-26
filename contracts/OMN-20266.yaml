@@ -1,22 +1,35 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-20266"
-title: "Remote-lane closeout dispatch interpreter boundary"
+title: "Provision fast-forward reads the remote's current default branch, not a stale origin/HEAD"
 summary: >-
-  This pull request's share only: a typed dispatch-process entrypoint,
-  python -m omnimarket.nodes.node_remote_lane_effect.run_retention --script
-  <request.json>, that builds the existing guarded host retention payload so the
-  launcher no longer imports omnimarket into its system Python. The pull request
-  does not implement the ticket's own AC1, AC2 or AC3 (the per-host parity probe,
-  parity-aware placement and the DEGRADED queue-status line). This contract
-  declares and binds none of them; they stay open on the ticket. Its evidence
-  binds DOD1, this pull request's own deliverable and not a ticket criterion: the
-  entrypoint emits the host retention payload with no local cleanup while
-  building it, and an invalid request exits nonzero with no payload. Repointing
-  the launcher at this entrypoint is a separate plugin source release.
+  The remote-lane runner's provision fast-forward compared a clone's checked-out branch with
+  the default branch named by refs/remotes/origin/HEAD, a symref cut at clone time that
+  git fetch never refreshes. On 2026-10-26 it refused every omnimarket lane on h105 with
+  "checked out dev, not the default branch main" while the remote default was dev. The
+  provision script now re-reads the default with git remote set-head origin --auto (GitHub
+  remotes only) before it compares. The branch check itself is unchanged: a clone on a branch
+  that is not the remote default is still refused. Not in this change: the ticket's per-host
+  parity probe, placement refusal and queue-status line (the ticket's AC1 to AC3), which stay open.
+  This contract also carries a second pull request's share, bound to its own DOD1: a typed
+  dispatch-process entrypoint, python -m omnimarket.nodes.node_remote_lane_effect.run_retention
+  --script <request.json>, that builds the existing guarded host retention payload so the
+  launcher no longer imports omnimarket into its system Python.
 is_seam_ticket: false
 interface_change: true
 interfaces_touched: ["public_api"]
+requirements:
+  - id: "req-omn20266-refresh-origin-head"
+    statement: "The provision fast-forward compares a clone's branch with the remote's current default branch."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a clone cut while main was the default, now on dev after the remote default became dev, is provisioned (origin/HEAD is re-read as dev) and a clone on a branch that is not the remote default is still refused -- falsifier: uv run pytest tests/nodes/node_clone_parity_compute -q --no-cov -k provision_fast_forward"
 evidence_requirements:
+  - kind: "tests"
+    description: "Provision fast-forward regressions against fixture remotes."
+    command: "uv run pytest tests/nodes/node_clone_parity_compute -q --no-cov"
+  - kind: "manual"
+    description: "Deploy validation for the caller-contract deploy gate: the shipped provision script read at the checkout commit and a hosted import probe. No lab service is required."
+    command: "deploy: gh api contents of handler_clone_parity.py at HEAD and a hosted import probe"
   - kind: "tests"
     description: "Closeout dispatch CLI and existing ownership/archive safety checks. Does not claim the ticket's host-parity criteria."
     command: "uv run --locked pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov --refuse-skips"
@@ -25,6 +38,30 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn20266-ac1-refresh-origin-head"
+    description: "A clone on dev is provisioned once the remote default is dev although its origin/HEAD still names main, and a clone on a non-default branch is still refused. The first test fails at the merge base, where the script never re-reads the default."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_clone_parity_compute/test_clone_parity.py -q --no-cov -k provision_fast_forward"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20266-deploy-hosted-provision-script"
+    description: "Hosted source and import probes of the shipped provision script. The GitHub content read pins the live source to the checkout revision and requires the set-head refresh; the import probe requires the refresh to run before the script reads origin/HEAD. Both fail at the merge base. No lab service is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          bash -euo pipefail -c '
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_clone_parity_compute/handlers/handler_clone_parity.py?ref=$(git rev-parse HEAD)" --jq '\''.content | gsub("\n"; "") | @base64d | contains("remote set-head origin --auto")'\'' | grep -qx true'
+      - check_type: "command"
+        check_value: |-
+          uv run --frozen --no-dev python -c '
+          from omnimarket.nodes.node_clone_parity_compute.handlers.handler_clone_parity import PROVISION_FAST_FORWARD_SH as sh
+          refresh = sh.index("remote set-head origin --auto")
+          read = sh.index("symbolic-ref -q refs/remotes/origin/HEAD")
+          assert refresh < read, (refresh, read)
+          print("provision script refreshes origin/HEAD before it reads it")'
   - id: "dod-omn20266-closeout-dispatch-cli"
     description: >-
       Hosted check with no broker, database, host credentials or lab access: the

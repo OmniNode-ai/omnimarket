@@ -60,7 +60,7 @@ externally_consumed_topics:
   - onex.evt.omnimarket.harness-invocation-check-completed.v1
 harness_invocation_policy:
   sanctioned_handler_dir: src/omnimarket/nodes/node_llm_delegation_call_effect/handlers
-  cli_targets: [codex, claude]
+  cli_targets: [codex, claude, agy]
   http_hosts: [openrouter.ai, api.z.ai, bigmodel.cn]
   scan_suffixes: [.py, .sh, .bash]
   excluded_dir_names:

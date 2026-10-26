@@ -34,6 +34,8 @@ requirements:
           operator_span yields operator_words exactly that span and the rest labelled
           recorded framing, not operator words -- falsifier: the ruling without its
           correction, or a span other than the typed one
+      - id: "AC4"
+        statement: "AC4: a projection behind the requested watermark returns stale with the watermark it reached, never a partial set labelled resolved -- falsifier: resolved with rows missing."
 evidence_requirements:
   - kind: "tests"
     description: "AC1 and AC2: the ledger source's focused tests."
@@ -65,4 +67,21 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_context_source_ledger_effect/handlers/handler_context_source_ledger.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'class HandlerContextSourceLedger'"
+        cwd: "${OMNI_HOME}/omnimarket"
+
+  - id: "dod-omn21127-ac4-sequence-watermark"
+    description: "A requested sequence not reached contiguously returns stale with watermark_reached and no entries. Gaps, duplicate sequences and pre-cutover NULL sequences fail closed; the complete same-timestamp control resolves."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_context_source_ledger_effect/test_ledger_sequence_watermark.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+
+  - id: "dod-omn21127-deploy-sequence-probe"
+    description: "Hosted-runner packaged-handler probe: a complete snapshot resolves, but a missing or duplicate sequence cannot expose partial authority. No dev services or credentials are required. The new test file fails against the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run --locked pytest tests/unit/nodes/node_context_source_ledger_effect/test_ledger_sequence_watermark.py -q -p no:randomly --no-cov -k 'complete_sequence or reached_prefix'"
         cwd: "${OMNI_HOME}/omnimarket"

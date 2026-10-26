@@ -43,6 +43,7 @@ class EnumLabFillPrLandClass(StrEnum):
     ESCALATED = "escalated"
     PARKED = "parked"
     UNOWNED_RED = "unowned-red"
+    GREEN_UNLANDED = "green-unlanded"
 
 
 class EnumLabFillPrLandFailure(StrEnum):

@@ -10,6 +10,7 @@ from pathlib import Path
 from omnimarket.delegation.rung_eval.cases import load_cases
 from omnimarket.delegation.rung_eval.missing_nights import (
     detect_missing_nights,
+    failing_gaps,
     format_report,
 )
 from omnimarket.delegation.rung_eval.rows_store import read_rows, write_night
@@ -33,6 +34,15 @@ def main() -> int:
     missing.add_argument("--dir", type=Path, required=True)
     missing.add_argument("--through", type=date.fromisoformat, required=True)
     missing.add_argument("--window-days", type=int, required=True)
+    missing.add_argument(
+        "--fail-window-days",
+        type=int,
+        default=1,
+        help=(
+            "only gaps on the newest N nights set exit 1; "
+            "the report lists every gap in --window-days"
+        ),
+    )
     args = parser.parse_args()
     rungs, cases = load_rungs(), load_cases()
     if args.command == "run":
@@ -44,12 +54,14 @@ def main() -> int:
         return 0
     if args.window_days < 1:
         parser.error("--window-days must be positive")
+    if args.fail_window_days < 1:
+        parser.error("--fail-window-days must be positive")
     gaps = detect_missing_nights(
         read_rows(args.dir), rungs, cases, args.through, args.window_days
     )
     if gaps:
         print(format_report(gaps))
-        return 1
+        return 1 if failing_gaps(gaps, args.through, args.fail_window_days) else 0
     return 0
 
 

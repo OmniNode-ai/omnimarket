@@ -138,7 +138,9 @@ class TestHandlerContextPackBuilder:
         assert result.status == EnumContextPackBuilderStatus.FAILED
         assert result.failure_class == EnumContextPackFailure.TOKEN_BUDGET_EXCEEDED
 
-    def test_duplicate_chunk_ids_fail_typed(self) -> None:
+    def test_duplicate_content_is_deduped_not_failed(self) -> None:
+        # OMN-21125: equal content is deduped into one chunk and reported in
+        # dropped_duplicates; it no longer fails the build.
         result = HandlerContextPackBuilder().handle(
             _request(
                 (
@@ -148,8 +150,10 @@ class TestHandlerContextPackBuilder:
             )
         )
 
-        assert result.status == EnumContextPackBuilderStatus.FAILED
-        assert result.failure_class == EnumContextPackFailure.ARTIFACT_HASH_MISMATCH
+        assert result.status == EnumContextPackBuilderStatus.OK
+        assert result.context_pack is not None
+        assert len(result.context_pack.chunks) == 1
+        assert len(result.dropped_duplicates) == 1
 
     def test_invalid_profile_rejects_required_excluded_overlap(self) -> None:
         with pytest.raises(ValueError, match="required_factors"):

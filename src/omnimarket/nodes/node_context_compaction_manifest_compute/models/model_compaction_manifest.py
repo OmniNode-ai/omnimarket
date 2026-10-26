@@ -54,7 +54,7 @@ class ModelHookBoundaryEvent(_Frozen):
 
 
 class ModelCapturedRecord(_Frozen):
-    """One content-capture row (prompt, operator_prompt or assistant_reply), redacted text."""
+    """One content-capture chunk, including `compact` for the separate native arm."""
 
     event_id: str
     session_id: str

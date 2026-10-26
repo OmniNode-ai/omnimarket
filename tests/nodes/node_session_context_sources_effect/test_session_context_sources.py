@@ -390,6 +390,24 @@ def test_a_pinned_ruling_covering_a_whole_prompt_drops_it(tmp_path: Path) -> Non
     assert result.entry_counts["recorded"] == 1
 
 
+def test_pinned_quotes_apply_the_same_carry_coverage_as_live(tmp_path: Path) -> None:
+    ruled = (
+        b'2025-02-15T00:30:00Z | RULING | lane=synthetic-lane-a | "also keep the canary"\n'
+        b'2025-02-15T00:31:00Z | RULING | lane=synthetic-lane-a | "preserve the retry budget"\n'
+    )
+    result = read(tmp_path, write_bundle(tmp_path, ruled))
+    assert "also keep the canary" not in texts(result)
+    # Partial quote coverage must retain the entire original prompt.
+    assert UNRECORDED in texts(result)
+    assert result.entry_counts["recorded"] == 1
+
+
+def test_pinned_quote_after_the_boundary_cannot_remove_a_prompt(tmp_path: Path) -> None:
+    ruled = b'2025-02-15T01:01:00Z | RULING | lane=synthetic-lane-a | "also keep the canary"\n'
+    result = read(tmp_path, write_bundle(tmp_path, ruled))
+    assert "also keep the canary" in texts(result)
+
+
 def test_a_pinned_review_row_removes_its_range(tmp_path: Path) -> None:
     ruled = (
         b"2025-02-15T00:30:00Z | RULING | lane=synthetic-lane-a | "
