@@ -65,7 +65,8 @@ dod_evidence:
           probe_dir="$(mktemp -d)";
           trap 'rm -rf "$probe_dir"' EXIT;
           uv sync --locked;
+          runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
           printf '%s' '{"correlation_id": "00000000-0000-4000-8000-000000021425", "operation": "pr_comment", "repo": "OmniNode-ai/omnimarket", "idempotency_key": "omn21425-deploy-smoke", "requested_by_lane": "omn21425-deploy-probe", "pr_number": 1, "body": "fence smoke", "dry_run": true, "lease": {"kind": "landing-fix", "resource": "pr:OmniNode-ai/omnimarket#1", "fence": 1, "expires_at": "2099-01-01T00:00:00Z"}}' > "$probe_dir/input.json";
-          env -u PYTHONPATH PYTHONDONTWRITEBYTECODE=1 .venv/bin/onex node node_github_repo_write_effect --input "$probe_dir/input.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
-          .venv/bin/python -c 'import json, sys; r = json.load(open(sys.argv[1]))["result"]; assert r["outcome"] == "failed" and r["reason"] == "lease_unreadable" and r["requests"] == [], r' "$probe_dir/receipt.json"
+          env -u PYTHONPATH PYTHONDONTWRITEBYTECODE=1 "$runtime_bin/onex" node node_github_repo_write_effect --input "$probe_dir/input.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+          "$runtime_bin/python" -c 'import json, sys; r = json.load(open(sys.argv[1]))["result"]; assert r["outcome"] == "failed" and r["reason"] == "lease_unreadable" and r["requests"] == [], r' "$probe_dir/receipt.json"
         cwd: "${OMNI_HOME}/omnimarket"
