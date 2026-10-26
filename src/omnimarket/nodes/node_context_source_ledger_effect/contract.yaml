@@ -27,7 +27,12 @@ description: >
   cites it and, where a correction types operator_span, exactly that span as
   operator words with the rest labelled recorded framing. A tenant the binding
   does not list is denied; a failed read is unavailable, never an empty
-  resolved.
+  resolved. Explicit ledger_seq:<ledger_id>:<positive BIGINT> revisions read
+  one ledger through its requested sequence, without a timestamp cutoff. Gaps,
+  duplicates, a lagging prefix or any legacy NULL sequence return stale with
+  watermark_reached and no entries. NULL history requires a governed backfill;
+  the source never supplies synthetic sequence numbers. Timestamp revisions
+  remain the pinned replay read path; callers adopt sequence revisions explicitly.
 handler:
   module: omnimarket.nodes.node_context_source_ledger_effect.handlers.handler_context_source_ledger
   class: HandlerContextSourceLedger

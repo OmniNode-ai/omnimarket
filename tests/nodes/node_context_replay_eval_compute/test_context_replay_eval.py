@@ -214,6 +214,33 @@ class TestPresence:
 
 class TestAnswers:
     @pytest.mark.parametrize(
+        ("package", "native"),
+        [
+            (EnumAnswerGrade.UNAVAILABLE, EnumAnswerGrade.UNAVAILABLE),
+            (EnumAnswerGrade.UNAVAILABLE, EnumAnswerGrade.MISMATCH),
+            (EnumAnswerGrade.MATCH, EnumAnswerGrade.UNAVAILABLE),
+        ],
+    )
+    def test_missing_answers_cannot_pass_quality_comparison(
+        self, package: EnumAnswerGrade, native: EnumAnswerGrade
+    ) -> None:
+        result = HandlerAnswerComparison().handle(
+            ModelAnswerComparisonRequest(
+                runs=tuple(
+                    ModelEvaluationRun(
+                        run_id=rid,
+                        cases=(answer(package=package, native=native),),
+                    )
+                    for rid in ("r1", "r2")
+                )
+            )
+        )
+        # TA.9 requires asking the fixed question against both actual inputs.
+        # Zero matches against zero absent answers is not measured parity.
+        assert not result.next_action_met
+        assert any("unavailable" in failure for failure in result.falsifiers)
+
+    @pytest.mark.parametrize(
         ("package", "native", "met"),
         [
             (EnumAnswerGrade.MATCH, EnumAnswerGrade.MISMATCH, True),
@@ -260,6 +287,12 @@ class TestAnswers:
         assert counts.native_unavailable == counts.package_unavailable == 1
         assert counts.native_matches == 0
         assert counts.package_matches == 1
+        assert counts.package_at_least_native
+        assert not result.next_action_met
+        assert result.falsifiers == (
+            "run r1: answers unavailable: package 1, native 1",
+            "determinism not checked: fewer than two runs",
+        )
 
     def test_identical_candidates_across_runs(self) -> None:
         runs = tuple(
