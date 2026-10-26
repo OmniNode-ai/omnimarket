@@ -628,3 +628,127 @@ def test_invalid_overlay_private_data_is_refused(repos_overlay: dict[str, str]) 
     overlay.write_text("private_data: ../repo\n", encoding="utf-8")
     with pytest.raises(ValueError, match="private_data"):
         probe.codex_roots_lines(environ=repos_overlay)
+
+
+# OMN-21279: a lane in a clone must be able to run a git fetch there. The fetch writes FETCH_HEAD (and packed-refs, shallow, gc.pid)
+# at the top of the common git dir, which the objects/refs/logs/worktrees roots do not cover.
+def git(*args: str, cwd: Path | None = None) -> str:
+    done = subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        text=True,
+        env=scrub_git_location_env(os.environ),
+    )
+    return done.stdout.strip()
+
+
+def commit_repo(path: Path) -> Path:
+    git("init", "-q", str(path))
+    git("commit", "-q", "--allow-empty", "-m", "seed", cwd=path)
+    return path
+
+
+def lane_roots(tmp_path: Path, common: Path) -> list[str]:
+    """The roots the program prints for a lane whose worktree has ``common`` as its common git dir (no codex fit)."""
+    (tmp_path / "registry").mkdir(exist_ok=True)
+    done = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            probe.CODEX_GIT_ROOTS_PROGRAM,
+            str(tmp_path / "registry"),
+            str(common),
+        ],
+        env={
+            "PATH": "/usr/bin:/bin",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+        },
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=30,
+    )
+    return json.loads(done.stdout)
+
+
+def covered(path: Path, roots: list[str]) -> bool:
+    return any(path == Path(root) or Path(root) in path.parents for root in roots)
+
+
+def test_the_roots_cover_the_common_git_dir_of_a_worktree_in_another_clone(
+    tmp_path: Path,
+) -> None:
+    clone = commit_repo(tmp_path / "clone")
+    worktree = tmp_path / "lane" / "wt"
+    git("worktree", "add", "-q", "--detach", str(worktree), "HEAD", cwd=clone)
+    common = Path(
+        git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=worktree)
+    ).resolve()
+    assert common == (clone / ".git").resolve()
+    roots = lane_roots(tmp_path, common)
+    for written in ("FETCH_HEAD", "packed-refs", "shallow", "gc.pid"):
+        assert covered(common / written, roots), f"{written} is read-only in {roots}"
+    assert str(common) in roots
+    # Nothing wider: every root is the common dir or sits inside it, never the clone's source tree, a parent or $HOME.
+    assert all(Path(root) == common or common in Path(root).parents for root in roots)
+    assert not covered(clone / "README", roots)
+    assert not covered(Path.home() / ".bashrc", roots)
+
+
+def test_the_roots_do_not_grant_a_registry_peers_whole_git_dir(
+    tmp_path: Path,
+) -> None:
+    lane = commit_repo(tmp_path / "lane-clone")
+    peer = tmp_path / "registry" / "peer"
+    commit_repo(peer)
+    roots = lane_roots(tmp_path, lane / ".git")
+    assert str((lane / ".git").resolve()) in roots
+    assert not covered((peer / ".git").resolve() / "FETCH_HEAD", roots)
+    assert not covered((peer / ".git").resolve() / "HEAD", roots)
+    assert covered((peer / ".git").resolve() / "objects" / "x", roots)
+
+
+def test_the_roots_cover_the_objects_dir_a_clone_reaches_through_alternates(
+    tmp_path: Path,
+) -> None:
+    source = commit_repo(tmp_path / "source")
+    clone = commit_repo(tmp_path / "clone")
+    alternate = (source / ".git" / "objects").resolve()
+    info = clone / ".git" / "objects" / "info"
+    info.mkdir(parents=True, exist_ok=True)
+    (info / "alternates").write_text(
+        f"{alternate}\n../../../source/.git/objects\n", encoding="utf-8"
+    )
+    roots = lane_roots(tmp_path, clone / ".git")
+    assert str(alternate) in roots
+    assert covered(alternate / "pack" / "x", roots)
+    # The alternate's refs, HEAD and worktrees stay outside the grant.
+    assert not covered(source / ".git" / "refs" / "heads" / "main", roots)
+    assert not covered(source / ".git" / "HEAD", roots)
+    assert not covered(source / ".git" / "worktrees" / "x", roots)
+
+
+def test_alternates_that_are_not_objects_directories_are_not_granted(
+    tmp_path: Path,
+) -> None:
+    clone = commit_repo(tmp_path / "clone")
+    info = clone / ".git" / "objects" / "info"
+    info.mkdir(parents=True, exist_ok=True)
+    wide = tmp_path / "elsewhere"
+    wide.mkdir()
+    not_a_repository = tmp_path / "not-a-repository" / "objects"
+    not_a_repository.mkdir(parents=True)
+    (info / "alternates").write_text(
+        f"# a comment\n/\n{Path.home()}\n{wide}\n{tmp_path / 'missing' / 'objects'}\n{not_a_repository}\n",
+        encoding="utf-8",
+    )
+    roots = lane_roots(tmp_path, clone / ".git")
+    assert "/" not in roots
+    assert str(Path.home()) not in roots
+    assert str(wide) not in roots
+    assert str(not_a_repository) not in roots
+    assert not any(root.startswith(str(tmp_path / "missing")) for root in roots)
+    assert not covered(wide / "file", roots)
