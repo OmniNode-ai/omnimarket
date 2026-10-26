@@ -8,16 +8,24 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.nodes.node_idle_slot_fill_effect.handlers import handler_ruling_recovery
 from tests.nodes.node_idle_slot_fill_effect.overlay_fixture import ENV
 
 
 @pytest.fixture(autouse=True)
-def _overlay_roots(monkeypatch: pytest.MonkeyPatch) -> None:
+def _overlay_roots(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", ENV["ONEX_SKILL_OVERLAY_ROOTS"])
-
-
-@pytest.fixture(autouse=True)
-def _empty_fixer_ledger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    ledger = tmp_path / "empty-ledger.md"
-    ledger.write_text("", encoding="utf-8")
+    # The throughput effect now reads ruling history every tick. Older fill
+    # scenarios have no ruled work; never consult the developer's live ledger.
+    ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
+    ledger.write_text("")
     monkeypatch.setenv("ONEX_LEDGER_PATH", str(ledger))
+    monkeypatch.setattr(
+        handler_ruling_recovery,
+        "read_check",
+        lambda check: (
+            list(check["model_ids"])
+            if check["kind"] == "review-voters"
+            else [{"project": "fixture", "service": "runtime"}]
+        ),
+    )
