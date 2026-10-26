@@ -181,7 +181,8 @@ dod_evidence:
       subprocess exception's stdout and naming the last complete step.
       The merge base lacks these statements. This verifies published source;
       the pytest check below runs the subprocess tests that verify behavior,
-      not a live lane deployment.
+      not a live lane deployment. Its must-fail control is the merge base with
+      merged fix 015dafb91 reverted.
     source: generated
     binds_ac: [AC3]
     checks:
