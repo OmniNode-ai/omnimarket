@@ -9,7 +9,7 @@ Covers DoD:
   treated as "no grant" (node still writes it; semantics live in the model).
 - overwrite: a second invocation replaces the prior file contents.
 - atomic: the writer must never leave a partially-written file observable
-  (tempfile + os.replace pattern, as in node_session_bootstrap.dispatch_lease).
+  (tempfile + os.replace pattern).
 """
 
 from __future__ import annotations

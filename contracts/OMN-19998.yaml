@@ -206,6 +206,11 @@ requirements:
     acceptance:
       - id: "AC38"
         statement: "AC38: Hostile Review Gate summary jobs consume no voter slots, while queued and active Hostile Reviewer jobs do. -- falsifier: uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_reviewer_slot_count.py::test_hostile_review_gate_summary_does_not_hold_a_voter_slot -q fails at the merge base"
+  - id: "req-review-gateway-honours-reasoning-off"
+    statement: "The Claude review gateway turns a voter's explicit chat_template_kwargs.enable_thinking false into the native Messages thinking {type: disabled}, so a model that reasons by default no longer spends a review's whole max_tokens on reasoning and answers nothing; any other value sends no thinking key."
+    acceptance:
+      - id: "AC39"
+        statement: "AC39: translate_chat_request sets provider_request_options thinking {type: disabled} for enable_thinking false and the native payload carries it; absent, true, non-bool and non-mapping values send no thinking key; the dry run shows it -- falsifier: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway.py -q -k 'reasoning_off or reasoning_values' fails with the handler at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -873,4 +878,20 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           uv run python -c 'from omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_count_reviewer_runs_in_flight import HandlerCountReviewerRunsInFlight as H; from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_reviewer_runs_facts import ModelReviewerRunsFacts as R; now="2026-10-26T00:47:00Z"; row=lambda draft,at,name: {"facts":{"state":"OPEN","draft":draft,"head_sha":"head"},"ci":{"sha":"head","read_at":at,"runs":[[name,"in_progress","",""]]}}; voter="Hostile Reviewer (adversarial gate)"; records={"draft":row(True,now,voter),"stale":row(False,"2026-10-25T15:15:35Z",voter),"summary":row(False,now,"Hostile Review Gate")}; h=H(); assert h.handle(R(records=records,now=now)).in_flight == 0; assert h.handle(R(records={"fresh":row(False,now,voter)},now=now)).in_flight == 1'
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19998-review-gateway-reasoning-off"
+    description: "The review gateway sends thinking {type: disabled} only for a voter's explicit enable_thinking false. The two new tests fail with the handler at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway.py -q --no-cov -k 'reasoning_off or reasoning_values'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC39"]
+  - id: "dod-omn19998-gateway-thinking-off-probe"
+    description: "Hosted-runner readback translates a voter call with enable_thinking false through the installed gateway and builds its native payload; the previous package sends no thinking key and fails."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run python -c 'from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import translate_chat_request as t; from omnimarket.nodes.node_llm_delegation_call_effect.handlers.anthropic_messages import build_messages_payload as b; p={"messages":[{"role":"system","content":"s"},{"role":"user","content":"u"}],"max_tokens":64,"chat_template_kwargs":{"enable_thinking":False}}; r=t(p,model="claude-sonnet-5-5",endpoint_url="https://provider.invalid/v1/messages",secret_ref="ref",timeout_seconds=30.0); assert b(r)["thinking"] == {"type":"disabled"}, b(r); p.pop("chat_template_kwargs"); assert "thinking" not in b(t(p,model="claude-sonnet-5-5",endpoint_url="https://provider.invalid/v1/messages",secret_ref="ref",timeout_seconds=30.0))'
         cwd: "${OMNI_HOME}/omnimarket"

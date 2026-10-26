@@ -74,6 +74,7 @@ from omnimarket.inference.delegation_config_provenance import (
     resolve_path_config,
 )
 from omnimarket.inference.provider_quota_state import (
+    HOST_UNREACHABLE_DISPOSITION,
     ModelProviderQuotaBlock,
     ModelProviderQuotaSnapshot,
     quota_block_for_backend,
@@ -473,7 +474,13 @@ def _backend_routable(
         return False
     if require_credential and not _backend_secret_available(backend):
         return False
-    return _quota_block(backend, quota_state) is None
+    block = _quota_block(backend, quota_state)
+    if block is None:
+        return True
+    # OMN-20910: a host that refused the connection is skipped for ordinary
+    # work only. A pinned run (a smoke run is one) still reaches it, which is
+    # how the host is proved back; a quota refusal binds a pin as before.
+    return explicit_pin and block.disposition == HOST_UNREACHABLE_DISPOSITION
 
 
 def _select_model_for_task(
@@ -2700,8 +2707,14 @@ def _candidate_exclusion_reason(
         return (EnumRoutingExclusionReason.BACKEND_REQUIRES_EXPLICIT_PIN, backend)
     if not _backend_secret_available(backend):
         return (EnumRoutingExclusionReason.BACKEND_SECRET_REF_UNRESOLVED, backend)
-    if _quota_block(backend, quota_state) is not None:
-        return (EnumRoutingExclusionReason.BACKEND_QUOTA_DOMAIN_DISABLED, backend)
+    quota_block = _quota_block(backend, quota_state)
+    if quota_block is not None:
+        return (
+            EnumRoutingExclusionReason.BACKEND_HOST_UNREACHABLE
+            if quota_block.disposition == HOST_UNREACHABLE_DISPOSITION
+            else EnumRoutingExclusionReason.BACKEND_QUOTA_DOMAIN_DISABLED,
+            backend,
+        )
     if task_type not in model.use_for:
         return (EnumRoutingExclusionReason.TASK_TYPE_NOT_IN_USE_FOR, backend)
     if estimated_tokens > model.max_context_tokens:
@@ -2792,7 +2805,11 @@ def build_routing_exclusion_report(
             quota_block = (
                 _quota_block(backend, quota_state)
                 if backend is not None
-                and reason is EnumRoutingExclusionReason.BACKEND_QUOTA_DOMAIN_DISABLED
+                and reason
+                in (
+                    EnumRoutingExclusionReason.BACKEND_QUOTA_DOMAIN_DISABLED,
+                    EnumRoutingExclusionReason.BACKEND_HOST_UNREACHABLE,
+                )
                 else None
             )
             exceeds_context = (

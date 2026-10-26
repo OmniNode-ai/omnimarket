@@ -42,6 +42,9 @@ from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_
 from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway import (
     ModelClaudeReviewGatewayRequest,
 )
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
+    anthropic_messages,
+)
 from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_store import (
     apply_credential_registered,
 )
@@ -282,6 +285,45 @@ def _translate(payload: dict[str, Any]) -> ModelLlmDelegationCallRequest:
         secret_ref="cred_ref",
         timeout_seconds=30.0,
     )
+
+
+def test_explicit_reasoning_off_disables_native_thinking() -> None:
+    request = _translate(
+        _marked_payload(chat_template_kwargs={"enable_thinking": False})
+    )
+    assert request.provider_request_options == {"thinking": {"type": "disabled"}}
+    assert anthropic_messages.build_messages_payload(request)["thinking"] == {
+        "type": "disabled"
+    }
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {},
+        {"chat_template_kwargs": {"enable_thinking": True}},
+        {"chat_template_kwargs": {"enable_thinking": "false"}},
+        {"chat_template_kwargs": {"enable_thinking": 0}},
+        {"chat_template_kwargs": "x"},
+        {"chat_template_kwargs": {}},
+    ],
+)
+def test_other_reasoning_values_send_no_native_thinking(
+    extra: dict[str, object],
+) -> None:
+    request = _translate(_marked_payload(**extra))
+    assert request.provider_request_options == {}
+    assert "thinking" not in anthropic_messages.build_messages_payload(request)
+
+
+def test_dry_run_shows_the_explicit_reasoning_off_request() -> None:
+    gateway, _values, _call = _gateway([_row("key-a")])
+    plan = asyncio.run(
+        gateway.plan(_marked_payload(chat_template_kwargs={"enable_thinking": False}))
+    )
+    assert plan.translated_request["thinking"] == {"type": "disabled"}
+    default_plan = asyncio.run(gateway.plan(_PAYLOAD))
+    assert default_plan.translated_request["thinking"] is None
 
 
 def test_blocks_split_at_the_boundary_with_the_persona_last_and_uncached() -> None:
