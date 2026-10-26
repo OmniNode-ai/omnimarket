@@ -284,7 +284,7 @@ dod_evidence:
     binds_ac: ["AC1"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_lane_model_policy_compute tests/nodes/node_remote_lane_compute/test_engine_ladder_remote_lane_compute.py -q --no-cov --refuse-skips"
+        check_value: "uv run pytest tests/nodes/node_lane_model_policy_compute/test_golden_chain_lane_model_policy_compute.py tests/nodes/node_remote_lane_compute/test_engine_ladder_remote_lane_compute.py -q --no-cov --refuse-skips"
         cwd: "."
   - id: "dod-omn21396-model-policy-ac2"
     description: >
@@ -295,7 +295,7 @@ dod_evidence:
     binds_ac: ["AC2"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_lane_model_policy_compute tests/nodes/node_remote_lane_compute/test_engine_ladder_remote_lane_compute.py tests/nodes/node_idle_slot_fill_effect/test_recorded_opus_fill.py -q --no-cov --refuse-skips"
+        check_value: "uv run pytest tests/nodes/node_lane_model_policy_compute/test_golden_chain_lane_model_policy_compute.py tests/nodes/node_remote_lane_compute/test_engine_ladder_remote_lane_compute.py tests/nodes/node_idle_slot_fill_effect/test_recorded_opus_fill.py -q --no-cov --refuse-skips"
         cwd: "."
   - id: "dod-omn21396-model-policy-ac3"
     description: >
@@ -306,7 +306,7 @@ dod_evidence:
     binds_ac: ["AC3"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_lane_model_policy_compute tests/nodes/node_remote_lane_compute/test_engine_experiment_rows.py -q --no-cov --refuse-skips"
+        check_value: "uv run pytest tests/nodes/node_lane_model_policy_compute/test_golden_chain_lane_model_policy_compute.py tests/nodes/node_remote_lane_compute/test_engine_experiment_rows.py -q --no-cov --refuse-skips"
         cwd: "."
   - id: "dod-omn21396-model-policy-ac4"
     description: >
@@ -317,7 +317,7 @@ dod_evidence:
     binds_ac: ["AC4"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_lane_model_policy_compute tests/nodes/node_remote_lane_compute/test_engine_experiment_rows.py -q --no-cov --refuse-skips"
+        check_value: "uv run pytest tests/nodes/node_lane_model_policy_compute/test_golden_chain_lane_model_policy_compute.py tests/nodes/node_remote_lane_compute/test_engine_experiment_rows.py -q --no-cov --refuse-skips"
         cwd: "."
   - id: "dod-omn21396-model-policy-deploy"
     description: >
@@ -332,7 +332,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_lane_model_policy_compute tests/nodes/node_idle_slot_fill_effect/test_recorded_opus_fill.py -q --no-cov --refuse-skips"
+        check_value: "uv run pytest tests/nodes/node_lane_model_policy_compute/test_golden_chain_lane_model_policy_compute.py tests/nodes/node_idle_slot_fill_effect/test_recorded_opus_fill.py -q --no-cov --refuse-skips"
         cwd: "."
   - id: "dod-omn21396-fill-policy-effect-deploy"
     description: >

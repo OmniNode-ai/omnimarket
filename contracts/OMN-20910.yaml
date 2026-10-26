@@ -430,7 +430,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_lab_disk_hygiene_effect -q -n 0 -p no:randomly --no-cov"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_lab_disk_hygiene_effect/test_lab_disk_hygiene_ghosts.py -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC41"]
   - id: "dod-omn20910-deploy-lab-disk-hygiene-ghosts-smoke"
