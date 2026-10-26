@@ -19,6 +19,8 @@ from omnibase_core.enums.enum_context_span_unit import EnumContextSpanUnit
 from omnibase_core.enums.enum_context_supersession_status import (
     EnumContextSupersessionStatus,
 )
+from pydantic import ValidationError
+
 from omnimarket.nodes.node_context_doc_section_select_compute.handlers.handler_context_doc_section_select import (
     HandlerContextDocSectionSelect,
 )
@@ -32,7 +34,6 @@ from omnimarket.nodes.node_context_doc_section_select_compute.models.model_conte
     ModelDocSectionTier,
     ModelPlanLifecycleRow,
 )
-from pydantic import ValidationError
 
 pytestmark = pytest.mark.unit
 

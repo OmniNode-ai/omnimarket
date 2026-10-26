@@ -78,8 +78,12 @@ dod_evidence:
     description: >-
       AC2: the nightly workflow delegation-fault-suite-nightly.yml (cron, dev) has a scheduled run younger than 8 days
       that concluded success; each run publishes a per-case job summary and the JUnit report as an artifact.
+      The bus-path tests below exercise the five faults that workflow runs; the freshness command checks its published run.
     source: "manual"
     checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/chains/fault_suite/test_bus_path_faults_omn19450.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
         check_value: >-
           gh run list --repo OmniNode-ai/omnimarket --workflow delegation-fault-suite-nightly.yml --event schedule
