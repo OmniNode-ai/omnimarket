@@ -6,6 +6,11 @@ An ``unresolved`` row records that a rung's environment was unset, so no case
 was pinned to that rung. It is a placeholder, not an evaluation, and its cell is
 reported as a gap with the row's detail. An ``error`` row means the rung was
 called and failed, which is evidence, so it counts as present.
+
+The report covers the whole window. Only gaps on the newest nights (the fail
+window, default the night just run) decide the exit status, because an older gap
+cannot be back-filled and would otherwise keep the unit failed for the rest of
+the window.
 """
 
 from datetime import date, timedelta
@@ -54,6 +59,15 @@ def detect_missing_nights(
         )
         for cell in sorted(expected - present)
     ]
+
+
+def failing_gaps(
+    gaps: list[ModelMissingNight], through: date, fail_window_days: int
+) -> list[ModelMissingNight]:
+    if fail_window_days < 1:
+        raise ValueError("fail_window_days must be positive")
+    start = through - timedelta(days=fail_window_days - 1)
+    return [gap for gap in gaps if start <= gap.night <= through]
 
 
 def format_report(gaps: list[ModelMissingNight]) -> str:
