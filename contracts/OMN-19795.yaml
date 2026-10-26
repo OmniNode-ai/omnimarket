@@ -48,10 +48,10 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: 'uv run pytest tests/nodes/node_delegation_gate_eval_compute tests/test_golden_chain_projection_delegation_eval.py -q -p no:randomly -k "flip_rate"'
+        check_value: 'uv run pytest tests/nodes/node_delegation_gate_eval_compute/test_flip_rate.py tests/test_golden_chain_projection_delegation_eval.py -q -p no:randomly -k "flip_rate"'
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
-  - id: "dod-omn19795-ac2-flip-rate-on-results-rows-and-cited"
+  - id: "dod-omn19795-ac2-flip-rate-rows-cited"
     description: "AC2: an eval run carrying repeated generations writes each measured class's flip rate, Wilson bounds and measuring backend on its results rows (None for an unmeasured class), the groups' digest joins the eval run id, migration 0007 and the snapshot carry the four columns, and the rollup's minimum sample cites the dev-lane measurement, whose committed groups give back the cited per-class flips, backend and digest."
     source: "manual"
     checks:
