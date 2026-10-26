@@ -27,14 +27,14 @@ requirements:
       - id: "AC6"
         statement: "AC6 (ticket AC3 and AC13): two artifacts with equal normalised content yield one chunk and one dropped_duplicates entry, and when the two copies differ in tier the higher-authority copy is kept -- falsifier: uv run pytest tests/nodes/node_context_pack_builder_compute/test_builder_dedup_and_budget_omn21125.py -q -n 0 -k TestContentDedup"
       - id: "AC7"
-        statement: "AC7 (ticket AC1): node_context_roi_runner still reports budget_fail for an arm whose factors do not fit, and its tests pass unchanged -- falsifier: uv run pytest tests/nodes/node_context_roi_runner tests/nodes/node_context_pack_builder_compute/test_builder_dedup_and_budget_omn21125.py -q -n 0 -k 'roi_runner or context_roi'"
+        statement: "AC7 (ticket AC1): node_context_roi_runner still reports budget_fail for an arm whose factors do not fit, and its tests pass unchanged -- falsifier: uv run pytest tests/nodes/node_context_roi_runner/test_context_roi_runner_emits_runtime_observed_rows.py tests/nodes/node_context_roi_runner/test_dispatch_envelope_unwrap.py tests/nodes/node_context_roi_runner/test_extract_row_envelope_unwrap.py tests/nodes/node_context_roi_runner/test_failed_terminal_routing.py tests/nodes/node_context_roi_runner/test_golden_chain_context_roi_runner.py tests/nodes/node_context_roi_runner/test_handle_async_non_blocking.py tests/nodes/node_context_roi_runner/test_handler_context_roi_runner.py tests/nodes/node_context_roi_runner/test_register_before_publish.py tests/nodes/node_context_pack_builder_compute/test_builder_dedup_and_budget_omn21125.py -q -k 'roi_runner or context_roi'"
 evidence_requirements:
   - kind: "tests"
     description: "Selection-policy extensions for OMN-21125."
     command: "uv run pytest tests/nodes/node_context_selection_policy_compute/test_scope_rule_and_model_ranking.py tests/nodes/node_context_selection_policy_compute/test_handler_context_selection_policy.py tests/test_golden_chain_context_selection_policy.py -q -n 0"
   - kind: "tests"
     description: "Context-pack builder dedup and budget exclusion for OMN-21125."
-    command: "uv run pytest tests/nodes/node_context_pack_builder_compute tests/nodes/node_context_roi_runner -q -n 0"
+    command: "uv run pytest tests/nodes/node_context_pack_builder_compute/test_builder_dedup_and_budget_omn21125.py tests/nodes/node_context_pack_builder_compute/test_guidance_section_parser.py tests/nodes/node_context_pack_builder_compute/test_handler_context_pack_builder.py tests/nodes/node_context_roi_runner/test_context_roi_runner_emits_runtime_observed_rows.py tests/nodes/node_context_roi_runner/test_dispatch_envelope_unwrap.py tests/nodes/node_context_roi_runner/test_extract_row_envelope_unwrap.py tests/nodes/node_context_roi_runner/test_failed_terminal_routing.py tests/nodes/node_context_roi_runner/test_golden_chain_context_roi_runner.py tests/nodes/node_context_roi_runner/test_handle_async_non_blocking.py tests/nodes/node_context_roi_runner/test_handler_context_roi_runner.py tests/nodes/node_context_roi_runner/test_register_before_publish.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -100,7 +100,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_context_roi_runner tests/nodes/node_context_pack_builder_compute/test_builder_dedup_and_budget_omn21125.py -q -n 0 -k 'roi_runner or context_roi'"
+        check_value: "uv run pytest tests/nodes/node_context_roi_runner/test_context_roi_runner_emits_runtime_observed_rows.py tests/nodes/node_context_roi_runner/test_dispatch_envelope_unwrap.py tests/nodes/node_context_roi_runner/test_extract_row_envelope_unwrap.py tests/nodes/node_context_roi_runner/test_failed_terminal_routing.py tests/nodes/node_context_roi_runner/test_golden_chain_context_roi_runner.py tests/nodes/node_context_roi_runner/test_handle_async_non_blocking.py tests/nodes/node_context_roi_runner/test_handler_context_roi_runner.py tests/nodes/node_context_roi_runner/test_register_before_publish.py tests/nodes/node_context_pack_builder_compute/test_builder_dedup_and_budget_omn21125.py -q -k 'roi_runner or context_roi'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC7"]
   - id: "dod-omn21125-deploy-probe-builder"
