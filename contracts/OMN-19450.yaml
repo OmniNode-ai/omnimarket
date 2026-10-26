@@ -6,6 +6,22 @@ summary: "Hand-authored OCC evidence companion for OmniNode-ai/omnimarket#3239 (
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+requirements:
+  - id: "req-five-distinct-causes"
+    statement: "Each of the five injected faults ends in a terminal with a distinct cause and none reads provider_error."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: each of the five injected faults ends in a terminal with a distinct cause and none reads provider_error -- falsifier: env -u PYTHONPATH uv run pytest tests/chains/fault_suite -q -m 'not kafka' -k 'decides_its_own_cause or pairwise_distinct'"
+  - id: "req-scheduled-and-published"
+    statement: "The suite runs on a schedule and its result is published."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: the suite runs on a schedule and its result is published -- falsifier: the newest scheduled run is older than 8 days"
+  - id: "req-veto-and-truncation-told-apart"
+    statement: "The wrong-key, 429 and timeout faults end in auth_failed, provider_quota_exhausted and timeout; the gate-veto and truncation faults both end in quality_gate_refused and are told apart by typed evidence on the deciding attempt."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: the gate-veto and truncation faults are told apart by finish_reason length plus the truncated flag on the deciding attempt, on the canonical terminal and on the caller's attempt record, against the named vetoing rule -- falsifier: env -u PYTHONPATH uv run pytest tests/chains/fault_suite -q -m 'not kafka' -k 'told_apart or stop_reason_and_the_flag or finish_reason_length or pairwise_distinct'"
 evidence_requirements:
   - kind: "ci"
     description: "PR #3239 product diff scope present"
@@ -32,3 +48,76 @@ dod_evidence:
       - check_type: "command"
         check_value: |-
           gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_orchestrator/handlers/handler_delegation_workflow.py?ref=29b7dbf2f1fc55bf74bd23302f965e4142e40269' --jq '.content' | base64 -d | grep -cF 'provider http 401'
+  - id: "dod-omn19450-ac1-five-faults-told-apart"
+    description: >-
+      AC1, as the ticket's 2026-09-25 amendment reads it (no truncation cause exists, so AC3 supersedes the literal
+      five distinct causes): all five faults run through one bus-path rig, every canonical terminal names a cause, none
+      reads provider_error, and the five are told apart by cause or by the deciding attempt's truncated flag. Fails
+      with the fix's cause mapping removed (the wrong key, timeout and truncation then name no cause).
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/chains/fault_suite/test_five_faults_told_apart_omn19450.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19450-ac3-bus-path-causes"
+    description: >-
+      AC3 on the bus path: each fault's consumer and canonical terminal carry its expected cause (auth_failed,
+      provider_quota_exhausted, timeout, and quality_gate_refused for the veto and the truncation) and none reads
+      provider_error; the veto and truncation runs differ in finish_reason and the truncated flag on the deciding attempt.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: >-
+          uv run pytest tests/chains/fault_suite/test_bus_path_faults_omn19450.py -q -n 0 --no-cov
+          -k "each_fault_decides_its_own_cause or told_apart_by_their_deciding_attempt"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn19450-ac2-scheduled-run-published"
+    description: >-
+      AC2: the nightly workflow delegation-fault-suite-nightly.yml (cron, dev) has a scheduled run younger than 8 days
+      that concluded success; each run publishes a per-case job summary and the JUnit report as an artifact.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/chains/fault_suite/test_five_faults_told_apart_omn19450.py -q -p no:randomly --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: >-
+          gh run list --repo OmniNode-ai/omnimarket --workflow delegation-fault-suite-nightly.yml --event schedule
+          --branch dev --status success --limit 1 --json createdAt
+          --jq '.[0].createdAt | fromdateiso8601 | (now - .) < 691200' | grep -qx true
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: >-
+          uv run pytest tests/chains/fault_suite/test_five_faults_told_apart_omn19450.py
+          -q -k schedule_and_publishes
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19450-ac1-five-distinct-causes"
+    description: "The five faults end in auth_failed, provider_quota_exhausted, timeout and quality_gate_refused (twice) on the bus path and the local path, and none reads provider_error."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/chains/fault_suite/test_bus_path_faults_omn19450.py tests/chains/fault_suite/test_five_faults_told_apart_omn19450.py tests/chains/fault_suite/test_local_path_faults_omn19450.py -q -m 'not kafka' -k 'decides_its_own_cause or pairwise_distinct'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19450-ac2-scheduled-nightly"
+    description: "The suite's nightly workflow declares its schedule and publishes a per-case job summary and a JUnit artifact. The 8-day freshness of the newest scheduled run is read from the workflow's run list, not from this check."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/chains/fault_suite/test_five_faults_told_apart_omn19450.py -q -p no:randomly --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "grep -c -e \"cron: '45 6\" -e 'GITHUB_STEP_SUMMARY' -e 'name: delegation-fault-suite-junit' .github/workflows/delegation-fault-suite-nightly.yml"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19450-ac3-typed-evidence"
+    description: "The truncation's deciding attempt carries finish_reason length and truncated true on the canonical terminal and on the caller's attempt record; the veto's carries neither and names deciding_rules=no_refusal."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/chains/fault_suite/test_bus_path_faults_omn19450.py tests/chains/fault_suite/test_five_faults_told_apart_omn19450.py tests/chains/fault_suite/test_local_path_faults_omn19450.py -q -m 'not kafka' -k 'told_apart or stop_reason_and_the_flag or finish_reason_length or pairwise_distinct'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

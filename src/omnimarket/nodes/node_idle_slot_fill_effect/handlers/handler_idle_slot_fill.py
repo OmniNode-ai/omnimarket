@@ -34,8 +34,10 @@ RULING 2026-10-20T10:45:21Z), called through the omnimarket checkout; every drop
 A lane carries its item's own ticket (a generated ticket or readback, a process-fix PR's title ticket, an item's ``ticket``)
 or its class's standing child declared in the backlog file (``standing_tickets``: {kind: ticket}), never the umbrella
 OMN-17427, which the runner refuses; an item with neither is skipped and says so. A stored item whose named PR is merged,
-closed or gone from the PR watcher state, or whose fact is older than 48 hours, and an experiment design with a completed
-receipt in the last 24 hours are dropped, each with its reason on ``NOTE lab-fill-dropped`` and in lab-fill.dropped.json.
+closed or gone from the PR watcher state, or whose fact is older than 48 hours, a stored item a fill lane answered
+(ended done or handed-off) at or after its fact until its fact is refreshed (OMN-20910), and an experiment design with a
+completed receipt in the last 24 hours are dropped, each with its reason on ``NOTE lab-fill-dropped`` and in
+lab-fill.dropped.json.
 
 ``HandlerLabFill`` is the tick's effect around that decision: it reads the backlog file (pillar-backlog.json in the
 lab fill's one state directory, ``lab_fill_state_dir()``) and the keys already sent (lab-fill.sent.json there), sends
@@ -88,6 +90,8 @@ from omnimarket.nodes.node_lane_placement_recovery_effect.handlers.handler_lane_
     claude_required,
 )
 
+from .handler_ruling_recovery import HandlerRulingRecovery
+
 RULING = "RULING 2026-10-14T21:46:25Z lane=orchestrator-bb1a (OMN-17427)"
 UMBRELLA_TICKETS = frozenset({"OMN-17427"})
 TICKET_ID = re.compile(r"OMN-[0-9]+")
@@ -113,11 +117,12 @@ _DEV_RED = re.compile(
 )
 DEV_RED_RULING = "RULING 2026-10-14T03:57:46Z lane=orchestrator-31d9 (OMN-20730)"
 
-BACKLOG_ORDER = ("m4-board-red", "experiment-design")
+BACKLOG_ORDER = ("ruling-relaunch", "m4-board-red", "experiment-design")
 _REPAIR = re.compile(
     r"^(?:MISSING|UNKNOWN) (?P<loop>running-vs-merged:\S+|host-tick:\S+|throughput-node|dispatch-replace:\S+) \| "
 )
 KIND_SLUG = {
+    "ruling-relaunch": "ruled-retry",
     "lab-repair": "repair",
     "dev-red": "dev-red",
     "process-fix": "pf-drive",
@@ -211,7 +216,10 @@ def lane_name(kind: str, name: str, now: str) -> str:
 
 
 def _priority(kind: str, repo: str) -> str:
-    if kind in ("process-fix", "lab-repair") or repo in overlay.process_fix_repos():
+    if (
+        kind in ("process-fix", "lab-repair", "ruling-relaunch")
+        or repo in overlay.process_fix_repos()
+    ):
         return "process-fix"
     mvp = (
         kind in ("dev-red", "cause-red", "m4-board-red", "ticket", "readback")
@@ -286,14 +294,23 @@ def candidates(
         (i for i in backlog if isinstance(i, dict)),
         key=lambda i: rank.get(str(i.get("kind")), len(rank)),
     )
+    generated = list(generated)
     seen = {i["key"] for i in out}
     # what is re-verified before it is sent (OMN-20864): a stored item every rule, a generated design its receipts only
     for item, verify in [
+        # These are freshly derived from ledger state, including old staged
+        # work. A stored backlog row of this kind still passes every stored-row
+        # check; only the live detector's output takes the generated path.
+        *(
+            (i, "")
+            for i in generated
+            if isinstance(i, dict) and i.get("kind") == "ruling-relaunch"
+        ),
         *((i, "stored") for i in ordered),
         *(
             (i, "receipt" if i.get("kind") == "experiment-design" else "")
             for i in generated
-            if isinstance(i, dict)
+            if isinstance(i, dict) and i.get("kind") != "ruling-relaunch"
         ),
     ]:
         if (
@@ -332,6 +349,19 @@ def _fact_time(stamp: str) -> datetime | None:
     return _stamp(stamp)
 
 
+def _fact_newest(item: Mapping[str, Any]) -> tuple[datetime, str] | None:
+    explicit = str(item.get("fact_at") or "")
+    stamps = (
+        [explicit]
+        if explicit
+        else _FACT_TIME.findall(f"{item.get('fact') or ''} {item.get('title') or ''}")
+    )
+    return max(
+        ((at, stamp) for stamp in stamps if (at := _fact_time(stamp)) is not None),
+        default=None,
+    )
+
+
 def stale_reason(
     item: Mapping[str, Any],
     *,
@@ -340,8 +370,9 @@ def stale_reason(
     receipts: Mapping[str, str],
 ) -> str | None:
     """Why a stored item is no longer work, or None (OMN-20864): a PR it names merged, closed or no longer open in the PR watcher
-    state; its fact (``fact_at``, else the newest date stamp in its fact and title) older than 48 hours; an experiment design
-    with a completed receipt in the last 24 hours. A generated item (``_verify`` receipt) is checked for the receipt only. No I/O."""
+    state; its fact (``fact_at``, else the newest date stamp in its fact and title) older than 48 hours; a stored item a fill
+    lane answered (done or handed-off) at or after its fact; an experiment design with a completed receipt in the last
+    24 hours. A generated item (``_verify`` receipt) is checked for the receipt only. No I/O."""
     if item.get("_verify") == "stored" and watcher_state is not None:
         prs, repos = watcher_state.get("prs") or {}, watcher_state.get("repos") or {}
         text = " ".join(str(item.get(k) or "") for k in ("pr", "key", "title", "fact"))
@@ -355,22 +386,19 @@ def stale_reason(
             if ref not in prs and match["repo"] in repos:
                 return f"pr-not-open {ref} (absent from the PR watcher state, which holds every open PR of the repository)"
     now = now.astimezone(UTC).replace(tzinfo=None) if now.tzinfo else now
-    explicit = str(item.get("fact_at") or "")
-    stamps = (
-        [explicit]
-        if explicit
-        else _FACT_TIME.findall(f"{item.get('fact') or ''} {item.get('title') or ''}")
-    )
-    newest = max(
-        ((at, stamp) for stamp in stamps if (at := _fact_time(stamp)) is not None),
-        default=None,
-    )
+    newest = _fact_newest(item)
     if (
         item.get("_verify") == "stored"
         and newest is not None
         and now - newest[0] > FACT_MAX_AGE
     ):
         return f"fact-stale {newest[1]} (older than 48h)"
+    if (
+        item.get("_verify") == "stored"
+        and item.get("kind") != "experiment-design"
+        and item.get("key") in receipts
+    ):
+        return f"answered {receipts[item['key']]}"
     if item.get("kind") == "experiment-design" and item.get("key") in receipts:
         return f"experiment-done {receipts[item['key']]}"
     return None
@@ -433,6 +461,72 @@ def completed_experiments(
     return completed
 
 
+def answered_items(
+    items: Collection[Mapping[str, Any]],
+    sent: Mapping[str, Any],
+    *,
+    lanes: Path,
+) -> dict[str, str]:
+    """Stored items other than experiment designs whose fill lane ended done or handed-off at or after their fact:
+    key -> "<lane dir name> at <ended_at>"; a refreshed fact sends the item again (OMN-20910)."""
+    answered: dict[str, str] = {}
+    try:
+        directories = [p for p in lanes.iterdir() if p.is_dir()]
+    except OSError:
+        directories = []
+    for item in items:
+        key, kind = item.get("key"), item.get("kind")
+        if (
+            not isinstance(key, str)
+            or not isinstance(kind, str)
+            or kind == "experiment-design"
+        ):
+            continue
+        fact = _fact_newest(item)
+        if fact is None:
+            continue
+        prefix = (
+            lane_name(kind, _slug(key.split(":", 1)[-1]), "2000-01-01T00:00:00Z")[:-15]
+            + "-"
+        )
+        recorded = str((sent.get(key) or {}).get("lane") or "")
+        paths = {
+            p
+            for p in directories
+            if p.name.startswith(prefix)
+            and re.fullmatch(r"\d{8}T\d{4}Z", p.name[len(prefix) :])
+        }
+        if LANE_TOKEN.fullmatch(recorded):
+            paths.add(lanes / recorded)
+        newest: tuple[datetime, str] | None = None
+        for path in sorted(paths):
+            try:
+                receipts = list(path.glob("*.json"))
+            except OSError:
+                continue
+            for receipt in receipts:
+                if receipt.name.endswith(".job.json"):
+                    continue
+                try:
+                    doc = _json(receipt)
+                except (OSError, ValueError):
+                    continue
+                if (
+                    not isinstance(doc, dict)
+                    or doc.get("final") is not True
+                    or doc.get("status") != "done"
+                    or doc.get("outcome", "done") not in ("done", "handed-off")
+                ):
+                    continue
+                ended = _stamp(str(doc.get("ended_at") or ""))
+                if ended is not None and ended >= fact[0]:
+                    candidate = (ended, f"{path.name} at {doc['ended_at']}")
+                    newest = max(newest, candidate) if newest else candidate
+        if newest:
+            answered[key] = newest[1]
+    return answered
+
+
 def brief(
     item: dict[str, Any],
     lane: str,
@@ -480,7 +574,7 @@ class HandlerIdleSlotFill:
         free_hosts = {
             m["host"] for line in request.lines if (m := _HEADROOM.match(line))
         }
-        claude = codex_only = glm_only = 0
+        claude = codex_only = glm_only = codex_shared = 0
         local_host, local_left = (
             None,
             0,
@@ -506,6 +600,7 @@ class HandlerIdleSlotFill:
             local_left = c if host.get("local") else local_left
             claude += c
             codex_only += x if c == 0 else 0
+            codex_shared += min(c, x)
             glm_only += g if isinstance(g, int) and g > 0 and c == 0 and x == 0 else 0
         # OMN-17427 (2026-10-21): the pool read counts a lane only once it is placed, so a lane the fill sent that still waits for
         # placement reserves its slot here; without it each tick sent the free count again and ~150 runners queued on placement.
@@ -523,6 +618,16 @@ class HandlerIdleSlotFill:
             - placing.get("codex", 0)
             - request.queue_reserved.get("codex", 0),
         )
+        # A Codex-capable host can also admit Claude. Its slots are one budget:
+        # a ruled retry consumes a shared slot once, without inventing headroom.
+        shared_reserved = max(
+            0,
+            placing.get("codex", 0)
+            + request.queue_reserved.get("codex", 0)
+            - codex_only,
+        )
+        claude_left = max(0, claude_left - shared_reserved)
+        shared_left = min(claude_left, max(0, codex_shared - shared_reserved))
         glm_left = max(0, glm_only - placing.get("glm", 0))
         now = _stamp(request.now)
         window = timedelta(hours=request.window_hours)
@@ -535,6 +640,14 @@ class HandlerIdleSlotFill:
             request.generated,
             out_of_scope=request.out_of_scope,
         ):
+            if item["kind"] == "ruling-relaunch" and not item["repo"]:
+                skipped.append(
+                    {
+                        "key": item["key"],
+                        "why": "repo-unread: cannot judge the recovery item's repository scope",
+                    }
+                )
+                continue
             if (
                 item.get("_verify")
                 and now is not None
@@ -621,7 +734,33 @@ class HandlerIdleSlotFill:
                 "claude-opus",
                 "claude-sonnet",
             ) or claude_required(item.get("brief", ""))
-            if item["key"].startswith("repair:host-tick:"):
+            if required == "codex":
+                if pinned:
+                    skipped.append(
+                        {
+                            "key": item["key"],
+                            "why": "engine-conflict: Codex item carries a Claude-required brief",
+                        }
+                    )
+                    continue
+                shared_left = min(shared_left, claude_left)
+                if codex_left > 0:
+                    model, codex_left = CODEX_MODEL, codex_left - 1
+                elif shared_left > 0:
+                    model, shared_left, claude_left = (
+                        CODEX_MODEL,
+                        shared_left - 1,
+                        claude_left - 1,
+                    )
+                else:
+                    skipped.append(
+                        {
+                            "key": item["key"],
+                            "why": "codex-required: waiting for admitted Codex capacity",
+                        }
+                    )
+                    continue
+            elif item["key"].startswith("repair:host-tick:"):
                 if local_left <= 0 or claude_left <= 0:
                     skipped.append(
                         {
@@ -1618,6 +1757,9 @@ def tick_row_recorder(
 
 
 class HandlerLabFill:
+    def __init__(self, ruling_recovery: HandlerRulingRecovery | None = None) -> None:
+        self._ruling_recovery = ruling_recovery or HandlerRulingRecovery()
+
     def handle(self, request: ModelLabFillRequest) -> ModelLabFillResult:
         if request.read_only:
             return self._fill(request)
@@ -1647,6 +1789,36 @@ class HandlerLabFill:
         backlog, standing, unread = read_backlog(backlog_path)
         sent_path = state / SENT_FILE
         sent = read_sent(sent_path)
+        sent_error = ""
+        if sent_path.exists():
+            try:
+                if not isinstance(_json(sent_path), dict):
+                    raise ValueError("dispatch history must be a mapping")
+            except (OSError, ValueError) as exc:
+                sent_error = str(exc)
+        # Every tick reads the ruling checks, even with no headroom, a spent
+        # backlog, generation disabled, or a read-only caller. Recovery uses the
+        # same scope, capacity, brief validation and runner gates as other work.
+        recovery = self._ruling_recovery.handle(
+            now=request.now,
+            state_dir=state,
+            sent=sent,
+            parent=request.parent,
+            read_only=request.read_only,
+            record=request.record,
+        )
+        if sent_error:
+            return ModelLabFillResult(
+                [
+                    *recovery.found,
+                    (
+                        "unknown",
+                        "lab-fill-sent",
+                        f"dispatch history unread: {sent_error}; no lane sent",
+                        "restore the sent record before dispatch; unread history never proves an item unsent",
+                    ),
+                ]
+            )
         planned = sweep_planned(request.launch)
         placing = placing_lanes(
             sent,
@@ -1657,6 +1829,7 @@ class HandlerLabFill:
         watcher = request.request.get("watcher_state")
         lanes = request.lanes_dir or remote_lane_dir()
         completed = completed_experiments(backlog, sent, now=request.now, lanes=lanes)
+        completed.update(answered_items(backlog, sent, lanes=lanes))
         scope = request.out_of_scope
         scope_unread = scope if isinstance(scope, str) else ""
         decision = HandlerIdleSlotFill().handle(
@@ -1668,6 +1841,7 @@ class HandlerLabFill:
                 lines=list(request.lines),
                 sweep_planned=planned,
                 backlog=backlog,
+                generated=recovery.items,
                 dispatched=sent,
                 window_hours=request.window_hours,
                 parent=request.parent,
@@ -1680,7 +1854,7 @@ class HandlerLabFill:
                 completed=completed,
             )
         )
-        found: list[tuple[str, str, str, str]] = []
+        found: list[tuple[str, str, str, str]] = list(recovery.found)
         if unread is not None:
             found.append(
                 (
@@ -1723,7 +1897,7 @@ class HandlerLabFill:
                         dispatched=sent,
                         window_hours=request.window_hours,
                         parent=request.parent,
-                        generated=generated,
+                        generated=[*recovery.items, *generated],
                         out_of_scope=dict(scope) if isinstance(scope, Mapping) else {},
                         scope_unread=scope_unread,
                         placing=placing,
