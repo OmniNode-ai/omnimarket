@@ -2,10 +2,13 @@
 schema_version: 1.0.0
 ticket_id: OMN-20595
 title: Workers reach guarded Linear ticket operations over the event bus
-summary: 'Adds the Linear ticket write effect and onex ticket CLI. AC1-AC4 are covered by local tests. AC5 and the
-  scratch lifecycle need a lab consumer of the merged effect, so the live lab proof is a local Done gate item: it
-  fails until actual three-host remote receipts and a canceled scratch ticket are recorded. Hosted CI runs the proof
-  validator tests, which refuse the recorded ACL refusal.'
+summary: 'Adds the Linear ticket write effect and onex ticket CLI. The four node_create_ticket items are carried
+  unchanged from the earlier OMN-20595 pull requests. This pull request binds the ticket bus effect tests (AC1-AC3
+  through the effect), the hosted guard_unavailable probe (AC3) and the AC5 proof validator tests, each of which
+  fails at the merge base where the effect does not exist. The AC4 resolver behaviour lives in omnibase_infra; its
+  test is listed under evidence_requirements. The live three-host AC5 lab proof needs a lab consumer of the merged
+  effect, so it runs after merge from evidence_requirements and fails on the recorded ACL refusal until real receipts
+  and a canceled scratch ticket are recorded.'
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -38,6 +41,9 @@ evidence_requirements:
   command: uv run pytest tests/nodes/node_linear_ticket_write_effect tests/nodes/node_create_ticket tests/services/test_resolver.py
     -q
 - kind: tests
+  description: AC4 resolver behaviour, implemented in omnibase_infra.
+  command: uv run pytest tests/services/test_resolver.py -k fails_loud -q
+- kind: tests
   description: Required lab proof remains incomplete; this check must not pass on the recorded ACL refusal.
   command: uv run python -m omnimarket.nodes.node_linear_ticket_write_effect.handlers.handler_lab_proof docs/operations/OMN-20595-lab.json
 emergency_bypass:
@@ -46,38 +52,43 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn20595-ac1-operations
-  description: The original ticket operation and input model tests.
+  description: AC1 hosted probe. The node handles create, read and comment and its contract input model matches
+    handle().
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_create_ticket -k operations_and_contract_input_model -q
+    check_value: uv run pytest tests/nodes/node_create_ticket/test_ticket_operations.py -k operations_and_contract_input_model
+      -q
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC1
-- id: dod-omn20595-ac2-description
-  description: The exact stamped description reaches the guard and Linear unchanged.
+- id: dod-omn20595-ac2-description-pass-through
+  description: AC2 hosted probe. The caller's description reaches Linear and the guard payload unchanged.
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_create_ticket -k description_passes_through_unchanged -q
+    check_value: uv run pytest tests/nodes/node_create_ticket/test_ticket_operations.py -k description_passes_through
+      -q
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC2
-- id: dod-omn20595-ac3-guard
-  description: Refused, missing and undecidable guards block Linear calls.
+- id: dod-omn20595-ac3-guard-blocks-create
+  description: AC3 hosted probe. A guard refusal, an undecidable exit or a missing guard blocks the create before
+    any Linear call.
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_create_ticket -k guard_refusal_blocks_create -q
+    check_value: uv run pytest tests/nodes/node_create_ticket/test_ticket_operations.py -k guard -q
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC3
-- id: dod-omn20595-ac4-resolver
-  description: The pinned tracker resolver refuses missing credentials and requires explicit stub selection.
+- id: dod-omn20595-ac4-transition
+  description: AC4 hosted probe. operation=transition writes only after the guard accepts the exact payload and
+    raises with no write otherwise.
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/services/test_resolver.py -k fails_loud -q
+    check_value: uv run pytest tests/nodes/node_create_ticket/test_ticket_transition.py -q
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC4
@@ -88,18 +99,6 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_linear_ticket_write_effect/test_lab_proof.py -q
-    cwd: ${OMNI_HOME}/omnimarket
-  binds_ac:
-  - AC5
-- id: dod-omn20595-ac5-lab
-  description: INCOMPLETE. Validate actual three-host remote receipts and scratch lifecycle; the recorded ACL refusal
-    must fail this check. The lab pass runs on the merged dev sha, because no lab runtime consumes the effect's
-    command topic before merge; hosted CI has no lab, so the local Done gate executes this item.
-  source: manual
-  execution_scope: local_done_gate
-  checks:
-  - check_type: command
-    check_value: uv run python -m omnimarket.nodes.node_linear_ticket_write_effect.handlers.handler_lab_proof docs/operations/OMN-20595-lab.json
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC5
