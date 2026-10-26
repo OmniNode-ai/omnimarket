@@ -286,7 +286,11 @@ def _stub_gate(item: Any) -> Any:
 
 
 def _run_payload(
-    items: tuple[Any, ...], *, gate_version: str = "gate-1", at: datetime = _T0
+    items: tuple[Any, ...],
+    *,
+    gate_version: str = "gate-1",
+    at: datetime = _T0,
+    generation_stability: Any = None,
 ) -> dict[str, Any]:
     from omnimarket.events.delegation_eval import ModelDelegationEvalRunRequest
     from omnimarket.nodes.node_delegation_eval_run_orchestrator.handlers import (
@@ -305,6 +309,7 @@ def _run_payload(
         rater_role="blind_model",
         rubric_version="ev4-blind-v1",
         gate_version=gate_version,
+        generation_stability=generation_stability,
     )
     return handler.handle(request).payload.model_dump(mode="json")
 
@@ -492,3 +497,94 @@ def test_the_run_node_has_one_command_and_one_terminal() -> None:
     assert contract["event_bus"]["publish_topics"] == [_RUN_TOPIC]
     assert contract["terminal_event"] == _RUN_TOPIC
     assert contract["runtime_dispatch"]["terminal_events"]["success"] == _RUN_TOPIC
+
+
+# --- OMN-19795 (EV.7): each class's results rows carry its flip rate ---------
+
+
+def _stability(*groups: tuple[str, str, tuple[str, str, str]]) -> Any:
+    from omnimarket.models.delegation_gate_eval.model_generation_stability_request import (
+        ModelGenerationStabilityRequest,
+    )
+
+    return ModelGenerationStabilityRequest.model_validate(
+        {
+            "groups": [
+                {
+                    "task_class": task_class,
+                    "item_id": item_id,
+                    "backend_id": "local-heavy-reasoning",
+                    "verdicts": list(verdicts),
+                }
+                for task_class, item_id, verdicts in groups
+            ]
+        }
+    )
+
+
+def test_generation_stability_flip_rate_lands_on_each_class_results_row() -> None:
+    stability = _stability(
+        ("summarization", "call-0:0", ("accepted", "accepted", "refused")),
+        ("summarization", "call-1:0", ("accepted", "accepted", "accepted")),
+        ("summarization", "call-2:0", ("refused", "refused", "refused")),
+        ("summarization", "call-5:0", ("accepted", "refused", "refused")),
+    )
+    payload = _run_payload(_gate_items(), generation_stability=stability)
+    assert payload["status"] == "completed"
+    writer, store = _run_writer()
+    writer.handle(payload)
+    results = store.tables["delegation_eval_results"]
+    summarization = [row for key, row in results.items() if key[2] == "summarization"]
+    assert summarization
+    for row in summarization:
+        # Two of four groups disagree: two flips.
+        assert row["flip_rate"] == 0.5
+        assert 0.0 < row["flip_rate_wilson_low"] < 0.5 < row["flip_rate_wilson_high"]
+        assert row["flip_measured_backend_id"] == "local-heavy-reasoning"
+    planning = [row for key, row in results.items() if key[2] == "planning"]
+    assert planning
+    assert all(
+        row["flip_rate"] is None and row["flip_measured_backend_id"] is None
+        for row in planning
+    )
+
+
+def test_generation_stability_is_part_of_the_eval_run_id() -> None:
+    plain = _run_payload(_gate_items())
+    stability = _stability(
+        ("planning", "call-3:0", ("accepted", "refused", "accepted")),
+    )
+    measured = _run_payload(_gate_items(), generation_stability=stability)
+    again = _run_payload(
+        _gate_items(),
+        generation_stability=stability,
+        at=_T0 + timedelta(minutes=5),
+    )
+    assert measured["eval_run_id"] != plain["eval_run_id"]
+    assert again["eval_run_id"] == measured["eval_run_id"]
+    assert all(row["flip_rate"] is None for row in plain["results"])
+
+
+def test_generation_stability_migration_adds_the_four_columns() -> None:
+    migration = (
+        _NODE
+        / "migrations/0007_add_generation_stability_to_delegation_eval_results.sql"
+    ).read_text()
+    for column in (
+        "flip_rate DOUBLE PRECISION",
+        "flip_rate_wilson_low DOUBLE PRECISION",
+        "flip_rate_wilson_high DOUBLE PRECISION",
+        "flip_measured_backend_id TEXT",
+    ):
+        assert (
+            f"ALTER TABLE public.delegation_eval_results\n    ADD COLUMN IF NOT EXISTS {column};"
+            in migration
+        )
+    contract = yaml.safe_load((_NODE / "contract.yaml").read_text())
+    (exposure,) = contract["projection_api"]["exposures"]
+    assert {
+        "flip_rate",
+        "flip_rate_wilson_low",
+        "flip_rate_wilson_high",
+        "flip_measured_backend_id",
+    } <= set(exposure["columns"])
