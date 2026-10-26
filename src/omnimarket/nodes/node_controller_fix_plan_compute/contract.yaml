@@ -1,0 +1,50 @@
+name: node_controller_fix_plan_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: Plan a controller repair lane from the throughput tick's live engine admission and bounded PR evidence.
+input_model:
+  name: ModelControllerFixPlanRequest
+  module: omnimarket.nodes.node_controller_fix_plan_compute.models
+output_model:
+  name: ModelControllerFixPlanResult
+  module: omnimarket.nodes.node_controller_fix_plan_compute.models
+handler:
+  module: omnimarket.nodes.node_controller_fix_plan_compute.handler
+  class: HandlerControllerFixPlan
+  input_model: omnimarket.nodes.node_controller_fix_plan_compute.models.ModelControllerFixPlanRequest
+  output_model: omnimarket.nodes.node_controller_fix_plan_compute.models.ModelControllerFixPlanResult
+entrypoint:
+  name: NodeControllerFixPlanCompute
+  module: omnimarket.nodes.node_controller_fix_plan_compute.node
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_controller_fix_plan_compute.handler:HandlerControllerFixPlan
+  handlers:
+    - operation: target
+      topic: onex.cmd.omnimarket.controller-fix-plan-requested.v1
+      handler:
+        name: HandlerControllerFixPlan
+        module: omnimarket.nodes.node_controller_fix_plan_compute.handler
+    - operation: brief
+      topic: onex.cmd.omnimarket.controller-fix-plan-requested.v1
+      handler:
+        name: HandlerControllerFixPlan
+        module: omnimarket.nodes.node_controller_fix_plan_compute.handler
+    - operation: lanes
+      topic: onex.cmd.omnimarket.controller-fix-plan-requested.v1
+      handler:
+        name: HandlerControllerFixPlan
+        module: omnimarket.nodes.node_controller_fix_plan_compute.handler
+terminal_event: onex.evt.omnimarket.controller-fix-plan-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.controller-fix-plan-requested.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.controller-fix-plan-requested.v1]
+  publish_topics: [onex.evt.omnimarket.controller-fix-plan-completed.v1]
+metadata:
+  transport_type: inmemory
+  related_tickets: [OMN-19998]
+externally_consumed_topics:
+- onex.evt.omnimarket.controller-fix-plan-completed.v1

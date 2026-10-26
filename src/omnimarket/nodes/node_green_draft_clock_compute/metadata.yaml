@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_green_draft_clock_compute
+version: 1.0.0
+description: "Compute the green PR draft clock for the throughput tick."
+pack: operator_tooling
+node_role: compute
+display_name: Green Draft Clock Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_green_draft_clock_compute: omnimarket.nodes.node_green_draft_clock_compute
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- green-draft-clock-compute
+- OMN-21411

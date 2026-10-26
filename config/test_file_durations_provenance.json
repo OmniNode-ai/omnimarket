@@ -34,5 +34,19 @@
     "basis": "files the source runs did not record, each file's summed per-test seconds from one serial run of the CI shard's pytest flags (--store-durations, -m 'not kafka', --timeout=300) without coverage",
     "runner": "lab host h202, not a GitHub-hosted runner; the next refresh from source runs replaces these entries",
     "base_sha": "9978f18ad53d32e07d122e32d246b6e8c001d1be"
+  },
+  "supplement_omn21411": {
+    "recorded_on": "2026-10-25",
+    "files_added": 22,
+    "basis": "sum of each file's measured pytest setup, call and teardown durations from the 144 passing session-start node tests; --store-durations --no-cov",
+    "runner": "lab host h201, serial focused run; the next CI refresh replaces these entries",
+    "base_sha": "741a4bb1c0dc2be96e15db4bc67089a323a14fe0"
+  },
+  "supplement_omn21411_dev_merge": {
+    "recorded_on": "2026-10-25",
+    "files_added": 39,
+    "basis": "sum of each file's measured pytest setup, call and teardown durations from one serial run of the unrecorded files after merging dev a5d36b85e; --store-durations -m 'not kafka' --timeout=300 --no-cov",
+    "runner": "lab host h201, serial focused run; the next CI refresh replaces these entries",
+    "base_sha": "a5d36b85e0fb577db4555787d48af9a98a804139"
   }
 }

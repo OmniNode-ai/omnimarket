@@ -1,0 +1,43 @@
+name: node_green_draft_clock_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >
+  Compute when a green PR's unlanded clock starts for the throughput tick's CONTROLLER_DEFECT alarm: its newest
+  check-run completion (or first_seen when no run carries a stamp), never before the last tick that read it a draft;
+  and the per-PR draft record the tick keeps. Pure: it reads nothing and writes nothing.
+input_model:
+  name: ModelGreenDraftClockRequest
+  module: omnimarket.nodes.node_green_draft_clock_compute.models
+output_model:
+  name: ModelGreenDraftClockResult
+  module: omnimarket.nodes.node_green_draft_clock_compute.models
+handler:
+  module: omnimarket.nodes.node_green_draft_clock_compute.handler
+  class: HandlerGreenDraftClock
+  input_model: omnimarket.nodes.node_green_draft_clock_compute.models.ModelGreenDraftClockRequest
+  output_model: omnimarket.nodes.node_green_draft_clock_compute.models.ModelGreenDraftClockResult
+entrypoint:
+  name: NodeGreenDraftClockCompute
+  module: omnimarket.nodes.node_green_draft_clock_compute.node
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_green_draft_clock_compute.handler:HandlerGreenDraftClock
+  handlers:
+    - operation: clock
+      topic: onex.cmd.omnimarket.green-draft-clock-requested.v1
+      handler:
+        name: HandlerGreenDraftClock
+        module: omnimarket.nodes.node_green_draft_clock_compute.handler
+terminal_event: onex.evt.omnimarket.green-draft-clock-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.green-draft-clock-requested.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.green-draft-clock-requested.v1]
+  publish_topics: [onex.evt.omnimarket.green-draft-clock-completed.v1]
+metadata:
+  transport_type: inmemory
+  related_tickets: [OMN-19998]
+externally_consumed_topics:
+- onex.evt.omnimarket.green-draft-clock-completed.v1
