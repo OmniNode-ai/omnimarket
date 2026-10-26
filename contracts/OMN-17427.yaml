@@ -4054,4 +4054,3 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: "uv run pytest tests/unit/handlers/scm/test_onex_scm_clone_reads.py tests/nodes/node_throughput_tick_decision_compute/test_pr_land_fallback_throughput_tick_decision_compute.py -q --no-cov -k 'registry_clone_can_be_a_sibling or green_unlanded'"
-    binds_ac: [AC1742701]

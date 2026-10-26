@@ -61,7 +61,7 @@ requirements:
           lane's own common git dir and the objects directory of each of its
           alternates, never a registry peer's whole git dir, "/", $HOME or an
           alternate that is not a repository's objects directory -- falsifier:
-          uv run pytest tests/nodes/node_codex_sandbox_probe_compute -q --no-cov
+          uv run pytest tests/nodes/node_codex_sandbox_probe_compute/test_codex_sandbox_probe.py tests/nodes/node_codex_sandbox_probe_compute/test_golden_chain_codex_sandbox_probe_compute.py -q --no-cov
 evidence_requirements:
   - kind: tests
     description: >-
@@ -195,7 +195,6 @@ dod_evidence:
       The merge base lacks these statements. This verifies published source;
       the subprocess tests above verify behavior, not a live lane deployment.
     source: generated
-    binds_ac: [AC3]
     checks:
       - check_type: command
         check_value: >-
@@ -214,7 +213,7 @@ dod_evidence:
     binds_ac: [AC4]
     checks:
       - check_type: test_passes
-        check_value: uv run pytest tests/nodes/node_codex_sandbox_probe_compute -q --no-cov
+        check_value: uv run pytest tests/nodes/node_codex_sandbox_probe_compute/test_codex_sandbox_probe.py tests/nodes/node_codex_sandbox_probe_compute/test_golden_chain_codex_sandbox_probe_compute.py -q --no-cov
   - id: dod-omn-21279-codex-git-roots-deploy-readback
     description: >-
       AC4 hosted-runner deploy-scope source readback: the public raw endpoint
@@ -223,7 +222,6 @@ dod_evidence:
       statements. This verifies published source, not that a Codex lane has
       run with the new roots.
     source: generated
-    binds_ac: [AC4]
     checks:
       - check_type: command
         check_value: >-
