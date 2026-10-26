@@ -50,6 +50,15 @@ class ModelDelegationEvalRunRequest(BaseModel):
     rater_role: str = Field(min_length=1)
     rubric_version: str = Field(min_length=1)
     gate_version: str = Field(min_length=1)
+    harness: str | None = Field(
+        default=None, min_length=1, exclude_if=lambda value: value is None
+    )
+    model: str | None = Field(
+        default=None, min_length=1, exclude_if=lambda value: value is None
+    )
+    configuration: str | None = Field(
+        default=None, min_length=1, exclude_if=lambda value: value is None
+    )
 
 
 class ModelDelegationEvalItemVerdict(BaseModel):
@@ -66,6 +75,12 @@ class ModelDelegationEvalItemVerdict(BaseModel):
     replayed_verdict: str
     replayed_deciding_check: str | None
     replay_count: int = Field(ge=1)
+    duration_s: float | None = Field(
+        default=None, ge=0, allow_inf_nan=False, exclude_if=lambda value: value is None
+    )
+    failure_kind: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class ModelDelegationEvalResultRow(BaseModel):
@@ -119,3 +134,12 @@ class ModelDelegationEvalRunCompleted(BaseModel):
     item_verdicts: tuple[ModelDelegationEvalItemVerdict, ...] = ()
     results: tuple[ModelDelegationEvalResultRow, ...] = ()
     observed_at: AwareDatetime
+    harness: str | None = Field(
+        default=None, min_length=1, exclude_if=lambda value: value is None
+    )
+    model: str | None = Field(
+        default=None, min_length=1, exclude_if=lambda value: value is None
+    )
+    configuration: str | None = Field(
+        default=None, min_length=1, exclude_if=lambda value: value is None
+    )

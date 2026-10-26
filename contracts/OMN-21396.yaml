@@ -198,3 +198,21 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run --locked python -c 'from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_placement import HandlerRemoteLanePlacement as H; from omnimarket.nodes.node_remote_lane_compute.models import ModelRemoteLanePlacementRequest as R; r=H().handle(R.model_validate({\"engine\":\"codex\",\"readings\":[{\"name\":\"h201\",\"engines\":[\"codex\",\"claude_sonnet\"],\"lane_slots\":2,\"lane_cap\":4,\"rank_free\":10.0}],\"ladder\":{\"lane\":\"probe\",\"ceiling\":\"sonnet\",\"risk_class\":\"feature\",\"required_capabilities\":[\"nested-sandbox\"]}})); assert r.rung==\"sonnet\", r; assert [v.reason for v in r.rungs if v.engine==\"codex\"]==[\"sandbox-capability\"], r.rungs; print(\"ac6-probe ok\")'"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21396-harness-eval-extension"
+    description: >
+      Hosted preparation check for the harness measurement extension. The fixed
+      suite has three items per lane task type; all initial states are rejected
+      and known correct edits pass. A real conflicted linked worktree requires a
+      finished rebase on the expected upstream parent. Harness, model and
+      configuration separate eval run ids while legacy ids are unchanged; the
+      existing writer persists identity, duration and failure kind and refuses
+      redelivery. Existing capability-map bounds refuse three-item cells. Startup
+      unavailability is excluded from model pass rates. The original cheapest
+      placement, escalation and two-attempt ledger replay tests also run. This
+      check launches no subject model and claims no live database or runtime rollout.
+    source: "manual"
+    binds_ac: ["AC1", "AC2", "AC3", "AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_harness_eval.py tests/unit/delegation/test_harness_eval_fixtures.py tests/nodes/node_remote_lane_compute/test_engine_ladder_remote_lane_compute.py tests/nodes/node_remote_lane_compute/test_engine_experiment_rows.py -q --no-cov --refuse-skips -n 0"
+        cwd: "."

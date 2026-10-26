@@ -252,3 +252,44 @@ def test_tick_window_boundary_undated_rows_and_optional_facts() -> None:
         "NOTE engine-experiments:opus | 2h attempts=0 successes=0 escalations=0"
         in result.lines
     )
+
+
+def test_harness_experiment_identity_round_trips_without_changing_placement_order():
+    original = row(
+        engine="local-agent",
+        harness="crush",
+        task_class="docs-edit",
+        configuration="low90",
+        item_key="docs-1",
+    )
+    [parsed] = parse_experiment_rows(
+        format_experiment_line(original, "2026-10-26T12:00:00Z")
+    )
+    assert parsed.harness == "crush"
+    assert parsed.task_class == "docs-edit"
+    assert parsed.configuration == "low90"
+    assert parsed.item_key == "docs-1"
+    assert ENGINE_LADDER == ("code-edit", "glm", "codex", "sonnet", "opus")
+
+
+def test_throughput_includes_an_observed_local_agent_without_a_new_placement_rung():
+    from datetime import UTC, datetime
+
+    from omnimarket.nodes.node_throughput_tick_decision_compute.handlers.handler_throughput_tick_decision import (
+        Report,
+        check_engine_experiments,
+    )
+
+    report = Report()
+    request = ModelThroughputTickRequest(
+        now="2026-10-26T12:00:00Z",
+        launchctl="unavailable",
+        engine_experiments=[
+            row(engine="local-agent", outcome="done", failure_cause="none")
+        ],
+    )
+    check_engine_experiments(report, request, datetime(2026, 10, 26, tzinfo=UTC))
+    assert any(
+        "engine-experiments:local-agent | 24h attempts=1 successes=1" in line
+        for line in report.lines
+    )

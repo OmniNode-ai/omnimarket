@@ -151,6 +151,11 @@ def _verdict_args(observed_at: datetime) -> tuple[object, ...]:
         "semantic_adequacy",
         3,
         observed_at,
+        "codex",
+        "fixture-model",
+        "fixture-configuration",
+        60.0,
+        "checker-failed",
     )
 
 
@@ -185,6 +190,9 @@ def _result_args(observed_at: datetime) -> tuple[object, ...]:
         0,
         0.0,
         observed_at,
+        "codex",
+        "fixture-model",
+        "fixture-configuration",
     )
 
 
@@ -233,6 +241,11 @@ async def test_omn19793_redelivered_run_upserts_one_verdict_and_one_result_row()
         assert len(verdicts) == 1
         assert verdicts[0]["run_type"] == "uuid"
         assert verdicts[0]["eval_run_id"] == _RUN_ID
+        assert verdicts[0]["harness"] == "codex"
+        assert verdicts[0]["model"] == "fixture-model"
+        assert verdicts[0]["configuration"] == "fixture-configuration"
+        assert verdicts[0]["duration_s"] == 60
+        assert verdicts[0]["failure_kind"] == "checker-failed"
         assert verdicts[0]["replay_count"] == 3
         assert verdicts[0]["observed_at"] == _T0 + timedelta(seconds=1)
 

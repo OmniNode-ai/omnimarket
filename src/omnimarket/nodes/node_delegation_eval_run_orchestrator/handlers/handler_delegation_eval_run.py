@@ -99,11 +99,21 @@ def eval_run_id(
     label_sha: str,
     gate_version: str,
     class_rubric_version: str | None = None,
+    *,
+    harness: str | None = None,
+    model: str | None = None,
+    configuration: str | None = None,
 ) -> UUID:
     """Stable uuid5, extended by the class rubric version for rubric runs."""
     name = f"{manifest_id}\n{label_sha}\n{gate_version}"
     if class_rubric_version is not None:
         name += f"\n{class_rubric_version}"
+    if harness is not None:
+        name += "\n" + json.dumps(
+            {"harness": harness, "model": model, "configuration": configuration},
+            sort_keys=True,
+            separators=(",", ":"),
+        )
     return uuid5(EVAL_RUN_NAMESPACE, name)
 
 
@@ -178,8 +188,14 @@ class HandlerDelegationEvalRun:
         sha = label_set_sha256(
             items, rater_role=request.rater_role, rubric_version=request.rubric_version
         )
-        run_id = eval_run_id(request.manifest_id, sha, request.gate_version)
+        identity = {
+            "harness": request.harness,
+            "model": request.model,
+            "configuration": request.configuration,
+        }
+        run_id = eval_run_id(request.manifest_id, sha, request.gate_version, **identity)
         common = {
+            **identity,
             "tenant_id": request.tenant_id,
             "eval_run_id": run_id,
             "manifest_id": request.manifest_id,
@@ -218,6 +234,7 @@ class HandlerDelegationEvalRun:
             sha,
             request.gate_version,
             contract.rubric_version if rubric_classes else None,
+            **identity,
         )
         common["eval_run_id"] = run_id
         items = tuple(

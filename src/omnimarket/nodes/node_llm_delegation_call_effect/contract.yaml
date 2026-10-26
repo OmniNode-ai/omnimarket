@@ -36,6 +36,10 @@ description: |
   joins the brief on stdin and passes agent output and exit status back to the
   unit's receipt, retaining the agent's permission checks.
 
+  HandlerHarnessEvalProcess owns bounded operator fixture subprocesses, with
+  commands and environments supplied by the offline test runner. It has no
+  customer bus route.
+
   Endpoint authority is resolved by routing/contract configuration before this
   effect runs; the handler consumes the route-supplied endpoint URL.
 

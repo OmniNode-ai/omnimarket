@@ -10,6 +10,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 ENGINE_LADDER: tuple[str, ...] = ("code-edit", "glm", "codex", "sonnet", "opus")
+HARNESS_EXPERIMENT_ENGINES: tuple[str, ...] = ("local-agent", "antigravity")
 CLAUDE_RUNGS = ("sonnet", "opus")
 LOW_RISK_CLASSES = ("doc", "test", "lint", "small-fix")
 ESCALATING_OUTCOMES = ("failed", "blocked-own-work", "checks-red")
@@ -64,12 +65,24 @@ class ModelEngineExperimentRow(BaseModel):
     duration_s: int = Field(ge=0)
     next_engine: str = NO_ENGINE
     at: str | None = None
+    harness: str | None = Field(
+        default=None, min_length=1, exclude_if=lambda value: value is None
+    )
+    task_class: str | None = Field(
+        default=None, min_length=1, exclude_if=lambda value: value is None
+    )
+    configuration: str | None = Field(
+        default=None, min_length=1, exclude_if=lambda value: value is None
+    )
+    item_key: str | None = Field(
+        default=None, min_length=1, exclude_if=lambda value: value is None
+    )
 
     @field_validator("engine")
     @classmethod
     def validate_engine(cls, value: str) -> str:
-        if value not in ENGINE_LADDER:
-            raise ValueError("engine must be in ENGINE_LADDER")
+        if value not in (*ENGINE_LADDER, *HARNESS_EXPERIMENT_ENGINES):
+            raise ValueError("engine must be a placement or harness experiment engine")
         return value
 
     @field_validator("next_engine")
@@ -84,7 +97,16 @@ class ModelEngineExperimentRow(BaseModel):
     def sanitise_failure_cause(cls, value: str) -> str:
         return re.sub(r"\s+", "-", value.replace("|", "/"))
 
-    @field_validator("lane", "ticket", "model", "outcome")
+    @field_validator(
+        "lane",
+        "ticket",
+        "model",
+        "outcome",
+        "harness",
+        "task_class",
+        "configuration",
+        "item_key",
+    )
     @classmethod
     def validate_cell(cls, value: str | None) -> str | None:
         if value is not None and (" | " in value or "\n" in value or "\r" in value):
@@ -111,6 +133,10 @@ class ModelEngineExperimentRow(BaseModel):
             f"failure_cause={self.failure_cause}",
             f"duration_s={self.duration_s}",
             f"next_engine={self.next_engine}",
+        ] + [
+            f"{key}={getattr(self, key)}"
+            for key in ("harness", "task_class", "configuration", "item_key")
+            if getattr(self, key) is not None
         ]
 
     def text(self) -> str:
