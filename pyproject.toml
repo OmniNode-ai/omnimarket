@@ -411,6 +411,7 @@ node_retired_model_reference_check_effect = "omnimarket.nodes.node_retired_model
 node_harness_invocation_check_effect = "omnimarket.nodes.node_harness_invocation_check_effect"
 node_projection_pr_state = "omnimarket.nodes.node_projection_pr_state"
 node_house_routing_overlay_effect = "omnimarket.nodes.node_house_routing_overlay_effect"
+node_model_work_receipt_join_compute = "omnimarket.nodes.node_model_work_receipt_join_compute"
 node_metering_summary_compute = "omnimarket.nodes.node_metering_summary_compute"
 node_metering_summary_refresh_compute = "omnimarket.nodes.node_metering_summary_refresh_compute"
 node_savings_estimate_compute = "omnimarket.nodes.node_savings_estimate_compute"

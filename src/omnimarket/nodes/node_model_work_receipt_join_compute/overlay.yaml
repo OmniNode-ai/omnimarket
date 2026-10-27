@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+node: node_model_work_receipt_join_compute
+enabled: false
+runtime_profiles: []
+# Phase 1 intentionally has no bus consumer or projection writer.
+identity_authority: pre_dispatch_manifest
+conflict_policy: report_and_mark_unknown
+landing_policy: wall_cross_check_only
+unknown_marker: UNKNOWN
+legacy_codex_num_turns: excluded
+writer: caller_replace_by_contract_and_attempt
