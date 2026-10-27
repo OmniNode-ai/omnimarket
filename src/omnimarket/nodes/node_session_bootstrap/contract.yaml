@@ -18,8 +18,6 @@ handler:
 descriptor:
   node_archetype: orchestrator
   purity: impure
-  runtime_profiles:
-    - effects
   # idempotent with respect to scheduler-plan emission and optional cron shim
   # registration. State files are overwritten, not appended.
   idempotent: true

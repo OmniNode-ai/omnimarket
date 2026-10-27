@@ -171,3 +171,21 @@ def test_no_bare_hardcoded_external_service_urls() -> None:
         "If this is a legitimate one-off, append ``# url-authority-ok: <reason>``.\n\n"
         + "\n".join(violations)
     )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "reference", ["missing.graphql_url", "linear.missing", "linear", ""]
+)
+def test_endpoint_reference_fails_closed(reference: str) -> None:
+    with pytest.raises(KeyError):
+        _ep_module.service_endpoint_url(reference)
+
+
+@pytest.mark.unit
+def test_endpoint_reference_resolves_shared_authority() -> None:
+    assert _ep_module.service_endpoint_url("linear.graphql_url") == LINEAR_GRAPHQL_URL
+    assert (
+        _ep_module.service_endpoint_url("slack.auth_test_url")
+        == _ep_module.SLACK_AUTH_TEST_URL
+    )

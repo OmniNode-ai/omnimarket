@@ -8,6 +8,8 @@ from typing import Any
 import pytest
 import yaml
 
+from omnimarket.config.service_endpoints import service_endpoint_url
+
 pytestmark = pytest.mark.unit
 NODES = Path(__file__).resolve().parents[1] / "src/omnimarket/nodes"
 
@@ -41,7 +43,8 @@ def test_golden_chain_rides_heartbeat_and_reaches_slack() -> None:
     assert "SLACK_CHANNEL_ID" in alert["secrets"]
     assert "SLACK_BOT_TOKEN" in publish["secrets"]
     assert "https://slack.com/api/chat.postMessage" in {
-        endpoint["url"] for endpoint in publish["endpoints"].values()
+        service_endpoint_url(endpoint["url_ref"])
+        for endpoint in publish["endpoints"].values()
     }
 
 

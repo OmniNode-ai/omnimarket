@@ -264,7 +264,7 @@ def _resolve_installation_id(app_jwt: str, org: str) -> int:
     installation_id = info.get("id")
     if not isinstance(installation_id, int):
         raise GitHubAppIdentityError(
-            f"could not resolve the App installation id for org {org!r}: {info!r}"
+            f"could not resolve the App installation id for org {org!r}"
         )
     return installation_id
 
@@ -276,6 +276,7 @@ def mint_installation_token(
     org: str = _DEFAULT_ORG,
     repositories: Sequence[str] | None = None,
     private_key_ref: str = _DEFAULT_PRIVATE_KEY_SECRET_NAME,
+    installation_id: int | None = None,
 ) -> str:
     """Mint a short-lived GitHub App installation access token.
 
@@ -284,6 +285,8 @@ def mint_installation_token(
     installation access token — narrowed to ``repositories`` when given (the
     same narrowing ``call-occ-attestation-observe.yml`` applies with
     ``repositories: onex_change_control``).
+
+    ``installation_id`` skips organization discovery when explicitly supplied.
 
     Raises:
         GitHubApiError: on any GitHub API transport failure.
@@ -299,7 +302,10 @@ def mint_installation_token(
         private_key_pem, declared_ref=private_key_ref
     )
     app_jwt = _mint_app_jwt(app_id, private_key_pem)
-    installation_id = _resolve_installation_id(app_jwt, org)
+    if installation_id is None:
+        installation_id = _resolve_installation_id(app_jwt, org)
+    elif installation_id < 1:
+        raise GitHubAppIdentityError("App installation id must be positive")
     body: dict[str, object] = {}
     if repositories:
         body["repositories"] = list(repositories)
@@ -312,7 +318,7 @@ def mint_installation_token(
     token = resp.get("token")
     if not isinstance(token, str) or not token:
         raise GitHubAppIdentityError(
-            f"App installation-token exchange returned no token: {resp!r}"
+            "App installation-token exchange returned no token"
         )
     assert_is_app_installation_token(token)
     return token

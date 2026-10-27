@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_session_compaction_measurement_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: 1.0.0
+description: Measure frozen session wall time, API usage, boundary hashes and lexical survival of caller-labelled facts and decisions.
+input_model:
+  name: ModelMeasurementRequest
+  module: omnimarket.nodes.node_session_compaction_measurement_compute.models.model_measurement
+output_model:
+  name: ModelMeasurementResult
+  module: omnimarket.nodes.node_session_compaction_measurement_compute.models.model_measurement
+handler:
+  module: omnimarket.nodes.node_session_compaction_measurement_compute.handlers.handler_measurement
+  class: HandlerSessionCompactionMeasurement
+  input_model: omnimarket.nodes.node_session_compaction_measurement_compute.models.model_measurement.ModelMeasurementRequest
+  output_model: omnimarket.nodes.node_session_compaction_measurement_compute.models.model_measurement.ModelMeasurementResult
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerSessionCompactionMeasurement
+        module: omnimarket.nodes.node_session_compaction_measurement_compute.handlers.handler_measurement
+      event_model:
+        name: ModelMeasurementRequest
+        module: omnimarket.nodes.node_session_compaction_measurement_compute.models.model_measurement
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct invocation with frozen transcript bytes and audited labels.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local

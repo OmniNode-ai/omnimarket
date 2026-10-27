@@ -13,7 +13,8 @@ description: >
   The lab is never idle (RULING 2026-10-14T21:46:25Z, operator 2026-10-18). fill: from the throughput tick's live
   pool hosts, its own finding lines and the lanes the merge sweep places this tick, choose the lanes that fill the
   free slots from the standing pillar backlog (unowned process-fix PRs, unowned shared reds, M4 board reds, queued
-  experiment designs), Claude lanes first, then Codex and declared low-risk GLM capacity, each with its brief; keys
+  experiment designs), ranking all admitted engines through node_lane_model_policy_compute's declared policy
+  (Codex and low-risk GLM before Claude, Sonnet ceiling), each with its brief; keys
   sent inside the window are skipped. With the file backlog spent it generates items from live state: the operator's
   open delegation-pillar and M4-carrier tickets with no live CLAIM and no open PR (the session's Linear snapshot),
   tickets blocked on a missing readback (the ledger) and the experiment designs of the idle_slot_fill overlay in

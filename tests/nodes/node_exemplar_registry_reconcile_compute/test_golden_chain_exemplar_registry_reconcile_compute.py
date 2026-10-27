@@ -248,7 +248,11 @@ def test_refusal_with_revoke_code_revokes(code: str) -> None:
     for lifecycle in ("active", "deprecated"):
         row = current_row("node_a", lifecycle=lifecycle)
         refused = decision("node_a", admitted=False, codes=("in_baseline", code))
-        [op] = reconcile(request(refused, rows=[row])).operations
+        [op] = reconcile(
+            request(
+                refused, rows=[row], evaluation_counts={"node_a": {"true_positive": 3}}
+            )
+        ).operations
         assert (op.operation, op.lifecycle_after) == ("revoke", "revoked")
         assert op.reason_codes == ["in_baseline", code]
 
@@ -257,6 +261,7 @@ def test_revoke_codes_are_declared_policy_data() -> None:
     row = current_row("node_a")
     refused = decision("node_a", admitted=False, codes=("in_baseline",))
     payload = request(refused, rows=[row])
+    payload["evaluation_counts"] = {"node_a": {"true_positive": 3}}
     payload["policy"] = {"policy_version": "p.test", "revoke_on_codes": ["in_baseline"]}
     result = reconcile(payload)
     assert ops(result) == {"node_a": "revoke"}
@@ -305,6 +310,7 @@ def test_plan_is_ordered_by_logical_source_and_counts_bind_it() -> None:
         decision("node_e", admitted=False, codes=("deny_pickle",)),
         decision("node_a"),
         rows=rows,
+        evaluation_counts={"node_e": {"true_positive": 3}},
     )
     result = reconcile(payload)
     assert [op.node_id for op in result.operations] == [

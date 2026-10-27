@@ -88,6 +88,24 @@ requirements:
           unassigned or the operator's, and send nothing when the live read
           fails -- falsifier: uv run pytest
           tests/unit/handlers/test_lab_fill_live_gate.py -q --no-cov
+  - id: req-scm-consumer-timeout-diagnostic
+    statement: >-
+      Supplemental SCM diagnostics criterion declared by this PR, separate
+      from the ticket author's unchanged infra layering criteria AC1 and AC2.
+      This check does not claim that the dev runtime has recovered.
+    acceptance:
+      - id: AC7
+        statement: >-
+          AC7: after a command's terminal wait expires, the SCM caller reports
+          no_consumer_for_topic only when complete broker evidence proves no
+          serving runtime consumer, consumer_present_no_terminal for a serving
+          consumer, and consumer_evidence_unreadable for incomplete or unstable
+          evidence; it uses the producer's authenticated physical topic, keeps
+          exit 75, publishes the write once, and never changes transport --
+          falsifier: env UV_FROZEN=1 uv run pytest
+          tests/unit/handlers/scm/test_scm_consumer_diagnostics.py
+          tests/unit/handlers/scm/test_onex_scm_command.py
+          -q --no-cov -n 0 --refuse-skips --maxfail=1
 evidence_requirements:
   - kind: tests
     description: >-
@@ -100,6 +118,28 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn-21279-scm-consumer-timeout-diagnostic
+    description: >-
+      Supplemental runtime-health evidence: execute the SCM caller's timeout
+      path and the broker admin adapter with empty/missing runtime groups,
+      active assignments, another lane's topics, audit readers, unstable groups
+      and incomplete broker reads. A timeout names no_consumer_for_topic only
+      when complete evidence proves zero serving consumers; an unreadable
+      probe stays unknown. The opened producer supplies authentication and the
+      physical topic. Writes publish once, retain exit 75, and never select a
+      different transport. This is supporting diagnosis, not proof that the
+      dev runtime recovered or that infra's layering criteria are complete.
+      The new adapter tests fail at the merge base where the adapter is absent.
+    source: generated
+    execution_scope: hosted_and_local
+    binds_ac: [AC7]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          env UV_FROZEN=1 uv run pytest
+          tests/unit/handlers/scm/test_scm_consumer_diagnostics.py
+          tests/unit/handlers/scm/test_onex_scm_command.py
+          -q --no-cov -n 0 --refuse-skips --maxfail=1
   - id: dod-omn-21279-deploy-inprocess-scm-terminal
     description: >-
       Hosted deploy-scope smoke for the in-process SCM entrypoint: run the real

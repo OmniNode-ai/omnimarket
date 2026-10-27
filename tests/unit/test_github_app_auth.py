@@ -129,6 +129,56 @@ class TestMintInstallationToken:
         )
         assert decoded["iss"] == "148180820"
 
+    def test_explicit_installation_skips_discovery_and_narrows_repository(
+        self, rsa_keypair: tuple[str, str]
+    ) -> None:
+        private_pem, _ = rsa_keypair
+        with patch(
+            f"{_MOD}.rest_json", return_value={"token": "ghs_test_minted"}
+        ) as rest:
+            token = mint_installation_token(
+                app_id="1",
+                private_key_pem=private_pem,
+                installation_id=123,
+                repositories=["omnimarket"],
+            )
+        assert token == "ghs_test_minted"
+        rest.assert_called_once()
+        assert rest.call_args.args == ("POST", "/app/installations/123/access_tokens")
+        assert rest.call_args.kwargs["body"] == {"repositories": ["omnimarket"]}
+
+    @pytest.mark.parametrize("installation_id", [0, -1])
+    def test_invalid_explicit_installation_never_exchanges(
+        self, rsa_keypair: tuple[str, str], installation_id: int
+    ) -> None:
+        private_pem, _ = rsa_keypair
+        with (
+            patch(f"{_MOD}.rest_json") as rest,
+            pytest.raises(GitHubAppIdentityError, match="positive"),
+        ):
+            mint_installation_token(
+                app_id="1",
+                private_key_pem=private_pem,
+                installation_id=installation_id,
+            )
+        rest.assert_not_called()
+
+    def test_malformed_exchange_does_not_expose_response_secret(
+        self, rsa_keypair: tuple[str, str], caplog: pytest.LogCaptureFixture
+    ) -> None:
+        private_pem, _ = rsa_keypair
+        with (
+            patch(f"{_MOD}.rest_json", return_value={"sensitive": "test-secret-value"}),
+            pytest.raises(GitHubAppIdentityError, match="no token") as caught,
+        ):
+            mint_installation_token(
+                app_id="1",
+                private_key_pem=private_pem,
+                installation_id=123,
+            )
+        assert "test-secret-value" not in str(caught.value)
+        assert "test-secret-value" not in caplog.text
+
     def test_rejects_non_app_token_from_exchange(
         self, rsa_keypair: tuple[str, str]
     ) -> None:

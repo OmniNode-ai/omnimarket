@@ -45,7 +45,21 @@ requirements:
         statement: "AC11 (ticket AC9): every cited path in a doc-section excerpt is checked against a tree index built from the pinned commit's paths, and a path absent from the tree is reported ungrounded -- falsifier: uv run pytest tests/nodes/node_context_doc_section_select_compute/test_golden_chain_context_doc_section_select.py -q -n 0 -k ungrounded fails at the merge base"
       - id: "AC12"
         statement: "AC12 (ticket AC4): no file the doc-section change adds names a private repository -- falsifier: grep -rliE 'knowledge.base.internal|omninode.infra|omnibase.internal' over the doc-section node package and its tests lists a file"
+  - id: "req-pinned-git-source"
+    statement: "The context Git source reads configured repository paths at an exact overlay pin behind the canonical context-source request and result boundary."
+    acceptance:
+      - id: "AC13"
+        statement: "The source returns exact UTF-8 blob bytes, blob sha, commit sha and the pinned tree, ignoring dirty checkout files; unsafe paths, non-commit pins, symlinks and missing objects cannot produce resolved entries."
+      - id: "AC14"
+        statement: "A tenant absent from the tier overlay, a different repository or a different revision is denied before the injected object reader is called (ticket AC6)."
+      - id: "AC15"
+        statement: "Every entry carries the overlay policy_id and freshness flag; old or oversize documents remain whole, and source keys preserve distinct source parameters (ticket AC5, AC8 and AC10)."
+      - id: "AC16"
+        statement: "The same allowed and denied context exchange works through typed runtime dispatch and the in-memory bus; the packaged onex node CLI returns the exact pinned bytes."
 evidence_requirements:
+  - kind: "tests"
+    description: "Pinned Git source, access, provenance and local runtime tests."
+    command: "env UV_FROZEN=true uv run pytest tests/nodes/node_context_source_git_effect/test_golden_chain_context_source_git.py -q -n 0 --no-cov"
   - kind: "tests"
     description: "Invariants select compute for OMN-21126."
     command: "uv run pytest tests/nodes/node_context_invariants_select_compute/test_golden_chain_context_invariants_select.py -q -n 0"
@@ -60,6 +74,45 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn21126-ac13-pinned-git-source"
+    description: "Real Git objects prove exact bytes and stamps independently of a dirty checkout. Missing or unsupported objects return unavailable without partial entries. The new node is absent at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env UV_FROZEN=true uv run pytest tests/nodes/node_context_source_git_effect/test_golden_chain_context_source_git.py -q -n 0 --no-cov -k 'reads_pinned or missing or unsafe or symlink or invalid_utf8 or object_type or integrity'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC13"]
+  - id: "dod-omn21126-ac14-git-tenant-denial"
+    description: "Denied requests cannot reach the injected object reader. Missing or malformed deployment configuration fails closed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env UV_FROZEN=true uv run pytest tests/nodes/node_context_source_git_effect/test_golden_chain_context_source_git.py -q -n 0 --no-cov -k 'denied_before or overlay_file or policy_is_strict'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC14"]
+  - id: "dod-omn21126-ac15-git-freshness-no-budget"
+    description: "Age is reported without dropping authority text, oversize text is whole, and distinct source parameters do not collapse."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env UV_FROZEN=true uv run pytest tests/nodes/node_context_source_git_effect/test_golden_chain_context_source_git.py -q -n 0 --no-cov -k 'no_age_drop or oversize'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC15"]
+  - id: "dod-omn21126-ac16-git-runtime-bindings"
+    description: "The same resolved and denied requests traverse typed runtime dispatch and an in-memory bus, with a separate installed CLI probe. No external service or secret is required."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env UV_FROZEN=true uv run pytest tests/nodes/node_context_source_git_effect/test_golden_chain_context_source_git.py -q -n 0 --no-cov -k 'same_context_exchange or packaged_node_cli'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC16"]
+  - id: "dod-omn21126-git-deploy-probe"
+    description: "Hosted-runner probe invokes the packaged onex node CLI with event_bus=inmemory, a temporary repository and a strict temporary deployment overlay, and requires the runtime result to contain the exact pinned blob bytes. It fails at the merge base where the package and entry point do not exist."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run --frozen pytest tests/nodes/node_context_source_git_effect/test_golden_chain_context_source_git.py -q -n 0 --no-cov -k packaged_node_cli_inmemory"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21126-ac1-invariants-select"
     description: "The select tests pass at the head; at the merge base the node package does not exist and the file fails at collection."
     source: "manual"

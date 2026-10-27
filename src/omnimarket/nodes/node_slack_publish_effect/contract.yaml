@@ -65,10 +65,9 @@ secrets:
     required: true
 
 endpoints:
-  # Full, verbatim Slack Web API URL (honors "all URLs from contracts" +
-  # Bifrost complete-URL/fail-closed rule). Never appended-to at runtime.
+  # Reference to the complete URL in the service_endpoints authority.
   slack_chat_post_message:
-    url: https://slack.com/api/chat.postMessage
+    url_ref: slack.chat_post_message_url
     method: POST
     description: "Slack Web API chat.postMessage endpoint."
 

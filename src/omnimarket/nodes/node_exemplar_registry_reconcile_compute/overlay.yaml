@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Input policy injected by the caller; this file does not install a live binding.
+node: node_exemplar_registry_reconcile_compute
+policy:
+  policy_version: exemplar-registry-removal.v2
+  minimum_sample_size: 3
+  minimum_precision: 0.8
+  minimum_recall: 0.8
+  revoke_on_codes: [gate_failed, deny_secret_literal, deny_eval_exec, deny_pickle]

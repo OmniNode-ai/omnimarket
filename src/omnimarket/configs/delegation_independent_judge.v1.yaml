@@ -65,3 +65,28 @@ judge_prompt_by_task_class:
 
       REVIEW:
       {answer}
+
+# Model families, matched as lower-case substrings of the concrete model id, in
+# order. A judge is independent only when both the producer's and the judge's
+# family are known and differ.
+model_families:
+  - family: qwen
+    match: [qwen]
+  - family: glm
+    match: [glm]
+  - family: gemini
+    match: [gemini, gemma]
+  - family: nemotron
+    match: [nemotron]
+  - family: claude
+    match: [claude]
+  - family: gpt
+    match: [gpt-]
+  - family: llama
+    match: [llama]
+  - family: mistral
+    match: [mistral, codestral]
+  - family: deepseek
+    match: [deepseek]
+  - family: cohere
+    match: [cohere, north-mini]

@@ -3,8 +3,8 @@
 name: node_exemplar_registry_reconcile_compute
 node_type: compute
 runtime_profiles: [main]
-contract_version: {major: 1, minor: 0, patch: 0}
-node_version: "1.0.0"
+contract_version: {major: 1, minor: 1, patch: 0}
+node_version: "1.1.0"
 description: >-
   Pure TC.5 exemplar registry reconciliation (OMN-21128). Plans deterministic
   create, revise, retain, deprecate and revoke operations from caller-supplied
@@ -39,12 +39,22 @@ inputs:
   content_sha256: {type: object, required: true, description: Content digests keyed by admitted node ID.}
   current_rows: {type: list, required: false, description: Current registry rows for the repository.}
   policy: {type: object, required: false, description: Versioned removal policy.}
+  evaluation_counts: {type: object, required: false, description: Labelled confusion counts by node ID; missing counts mean unknown evidence.}
+configuration:
+  removal_policy:
+    model: omnimarket.nodes.node_exemplar_registry_reconcile_compute.models.model_exemplar_registry_reconcile.ModelExemplarRemovalPolicy
+    policy_version: exemplar-registry-removal.v2
+    minimum_sample_size: 3
+    minimum_precision: 0.8
+    minimum_recall: 0.8
+    revoke_on_codes: [gate_failed, deny_secret_literal, deny_eval_exec, deny_pickle]
 outputs:
   operations: {type: list}
   counts: {type: object}
   current_count: {type: int}
   admitted_count: {type: int}
   reconciliation_hash: {type: str}
+  policy: {type: object}
 terminal_event: onex.evt.omnimarket.exemplar-registry-reconciled.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.exemplar-registry-reconcile-requested.v1

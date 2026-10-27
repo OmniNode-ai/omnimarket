@@ -11,6 +11,7 @@ from omnimarket.models.exemplar_admission import (
     ModelAdmissionDecision,
 )
 from omnimarket.nodes.node_exemplar_registry_reconcile_compute.models.model_exemplar_registry_reconcile import (
+    ModelExemplarEvaluationCounts,
     ModelExemplarRegistryOperation,
     ModelExemplarRegistryReconcileRequest,
     ModelExemplarRegistryReconcileResult,
@@ -80,6 +81,25 @@ def _operation(
         prior_digest = current.version_digest
         version_digest = current.version_digest
         operation, lifecycle_after = "retain", current.lifecycle
+        evaluation = request.evaluation_counts.get(
+            node_id, ModelExemplarEvaluationCounts()
+        )
+        enough_samples = evaluation.sample_size >= request.policy.minimum_sample_size
+        quality_reasons = []
+        if (
+            evaluation.true_positive + evaluation.false_positive
+            >= request.policy.minimum_sample_size
+            and evaluation.precision is not None
+            and evaluation.precision < request.policy.minimum_precision
+        ):
+            quality_reasons.append("precision_below_threshold")
+        if (
+            evaluation.true_positive + evaluation.false_negative
+            >= request.policy.minimum_sample_size
+            and evaluation.recall is not None
+            and evaluation.recall < request.policy.minimum_recall
+        ):
+            quality_reasons.append("recall_below_threshold")
         if admitted:
             if (
                 current.lifecycle == "deprecated"
@@ -88,10 +108,20 @@ def _operation(
                 operation, lifecycle_after = "revise", "active"
                 version_digest = new_digest
         elif current.lifecycle != "revoked":
-            if any(code in request.policy.revoke_on_codes for code in reason_codes):
+            if enough_samples and any(
+                code in request.policy.revoke_on_codes for code in reason_codes
+            ):
                 operation, lifecycle_after = "revoke", "revoked"
             elif current.lifecycle == "active":
                 operation, lifecycle_after = "deprecate", "deprecated"
+        if current.lifecycle != "revoked":
+            if enough_samples and quality_reasons:
+                operation, lifecycle_after = "revoke", "revoked"
+                reason_codes.extend(quality_reasons)
+            elif not enough_samples and any(
+                code in request.policy.revoke_on_codes for code in reason_codes
+            ):
+                reason_codes.append("insufficient_evaluation_sample")
 
     return ModelExemplarRegistryOperation(
         operation_id=_hash(
@@ -101,6 +131,12 @@ def _operation(
                 "logical_source_id": logical_source_id,
                 "operation": operation,
                 "version_digest": version_digest,
+                "lifecycle_after": lifecycle_after,
+                "reason_codes": reason_codes,
+                "policy": request.policy.model_dump(mode="json"),
+                "evaluation": request.evaluation_counts.get(
+                    node_id, ModelExemplarEvaluationCounts()
+                ).model_dump(mode="json"),
             }
         ),
         logical_source_id=logical_source_id,
@@ -110,6 +146,9 @@ def _operation(
         prior_version_digest=prior_digest,
         version_digest=version_digest,
         reason_codes=reason_codes,
+        evaluation=request.evaluation_counts.get(
+            node_id, ModelExemplarEvaluationCounts()
+        ),
         receipt=decision.receipt
         if decision is not None and admitted and lifecycle_after == "active"
         else None,
@@ -159,6 +198,7 @@ class HandlerExemplarRegistryReconcile:
             repository=request.repository,
             commit=request.admission.commit,
             policy_version=request.policy.policy_version,
+            policy=request.policy,
             operations=operations,
             counts=counts,
             current_count=len(request.current_rows),
@@ -168,6 +208,7 @@ class HandlerExemplarRegistryReconcile:
                     "repository": request.repository,
                     "commit": request.admission.commit,
                     "policy_version": request.policy.policy_version,
+                    "policy": request.policy.model_dump(mode="json"),
                     "operations": [op.model_dump(mode="json") for op in operations],
                 }
             ),

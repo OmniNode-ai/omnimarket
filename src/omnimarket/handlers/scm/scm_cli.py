@@ -69,6 +69,7 @@ from omnimarket.delegated_test_loop.lane_bus import (
     LabRunBusError,
     open_lab_run_bus,
 )
+from omnimarket.handlers.scm.handler_scm_consumer_diagnostics import ScmNoTerminalError
 from omnimarket.handlers.scm.handler_scm_dispatch import (
     SCM_LOCAL_VERBS,
     SCM_REFUSED_VERBS,
@@ -162,7 +163,7 @@ def _call_bus(
     while True:
         try:
             terminal = asyncio.run(main())
-        except TimeoutError:
+        except TimeoutError as exc:
             if attempt == max_attempts:
                 click.echo(
                     json.dumps(
@@ -172,6 +173,11 @@ def _call_bus(
                             "correlation_id": str(correlation_id),
                             "timeout_s": timeout_s,
                             "attempts": attempt,
+                            **(
+                                exc.evidence.model_dump(mode="json")
+                                if isinstance(exc, ScmNoTerminalError)
+                                else {}
+                            ),
                         }
                     )
                 )

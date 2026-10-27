@@ -206,30 +206,77 @@ class WorkLedgerAppendHost:
     def landing_topics(self) -> tuple[str, ...]:
         return self._landing_topics
 
+    @property
+    def serving_topics(self) -> tuple[str, ...]:
+        """Every topic the host must hold a subscription on, whether or not it holds one now."""
+        topics = [
+            self._topics.command,
+            *(
+                self._topics.writer_command_topic(principal)
+                for principal in sorted(self._writer_principals)
+            ),
+        ]
+        if self._operator_principal is not None:
+            topics += [
+                *load_work_ledger_mirror_topics(),
+                *self._delegation_topics,
+                *self._landing_topics,
+            ]
+        return tuple(topics)
+
     async def start(self) -> None:
         if self._task is not None:
             return
         self._task = asyncio.create_task(self._worker())
-        self._unsubscribes.append(
-            await _subscribe(
-                self._bus,
-                self._topics.command,
-                partial(self._enqueue, writer_principal=None),
-                derive_service_group_id(WORK_LEDGER_APPEND_NODE, service=GROUP_SERVICE),
-                "earliest",
+        await self._subscribe_all()
+
+    async def resubscribe(self) -> None:
+        """Drop every subscription and take them again; the worker and its queue stay.
+
+        The bus client resumes each group from its committed offsets, so a command that was published
+        while the consumers were gone is delivered after this returns (OMN-20275). A subscribe that fails
+        leaves no half-built set behind: the ones already taken are released before the error escapes.
+        """
+        await self._unsubscribe_all()
+        try:
+            await self._subscribe_all()
+        except BaseException:
+            await self._unsubscribe_all()
+            raise
+
+    async def _unsubscribe_all(self) -> None:
+        unsubscribes, self._unsubscribes = self._unsubscribes, []
+        for unsubscribe in unsubscribes:
+            try:
+                await unsubscribe()
+            except Exception:  # a consumer the broker already dropped cannot be released; the new subscription replaces it
+                logger.warning(
+                    "work-ledger host: unsubscribe failed, continuing", exc_info=True
+                )
+
+    async def _subscribe_all(self) -> None:
+        async def take(
+            topic: str,
+            callback: Callable[[ProtocolBusMessage], Awaitable[None]],
+            group: str,
+        ) -> None:
+            self._unsubscribes.append(
+                await _subscribe(self._bus, topic, callback, group, "earliest")
             )
+
+        append_group = derive_service_group_id(
+            WORK_LEDGER_APPEND_NODE, service=GROUP_SERVICE
+        )
+        await take(
+            self._topics.command,
+            partial(self._enqueue, writer_principal=None),
+            append_group,
         )
         for principal in sorted(self._writer_principals):
-            self._unsubscribes.append(
-                await _subscribe(
-                    self._bus,
-                    self._topics.writer_command_topic(principal),
-                    partial(self._enqueue, writer_principal=principal),
-                    derive_service_group_id(
-                        WORK_LEDGER_APPEND_NODE, service=GROUP_SERVICE
-                    ),
-                    "earliest",
-                )
+            await take(
+                self._topics.writer_command_topic(principal),
+                partial(self._enqueue, writer_principal=principal),
+                append_group,
             )
         if self._operator_principal is None:
             logger.warning(
@@ -238,40 +285,24 @@ class WorkLedgerAppendHost:
             return
         group = derive_service_group_id(WORK_LEDGER_MIRROR_NODE, service=GROUP_SERVICE)
         for topic in load_work_ledger_mirror_topics():
-            self._unsubscribes.append(
-                await _subscribe(
-                    self._bus,
-                    topic,
-                    self._enqueue_mirror,
-                    group,
-                    "earliest",
-                )
-            )
+            await take(topic, self._enqueue_mirror, group)
         delegation_group = derive_service_group_id(
             WORK_LEDGER_DELEGATION_NODE, service=GROUP_SERVICE
         )
         for topic in self._delegation_topics:
-            self._unsubscribes.append(
-                await _subscribe(
-                    self._bus,
-                    topic,
-                    partial(self._enqueue_delegation, delegation_topic=topic),
-                    delegation_group,
-                    "earliest",
-                )
+            await take(
+                topic,
+                partial(self._enqueue_delegation, delegation_topic=topic),
+                delegation_group,
             )
         landing_group = derive_service_group_id(
             WORK_LEDGER_LANDING_NODE, service=GROUP_SERVICE
         )
         for topic in self._landing_topics:
-            self._unsubscribes.append(
-                await _subscribe(
-                    self._bus,
-                    topic,
-                    partial(self._enqueue_landing, landing_topic=topic),
-                    landing_group,
-                    "earliest",
-                )
+            await take(
+                topic,
+                partial(self._enqueue_landing, landing_topic=topic),
+                landing_group,
             )
 
     async def stop(self) -> None:
