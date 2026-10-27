@@ -1,0 +1,1 @@
+The change updates contracts/OMN-20275.yaml. It revises the implementation and its checks.

@@ -1,0 +1,83 @@
+Review this real public-source diff for correctness. Repository OmniNode-ai/omnibase_core, base c638a5c683ca4345fa646b535865bd16069e73a9^, proposed fix based on c638a5c683ca4345fa646b535865bd16069e73a9. The candidate includes one deliberately seeded correctness bug among the actual changes. Report the defect, location, concrete failure mechanism and a minimal correction. Review only; do not execute tools or change files.
+Requirements: Preserve typed UUID identities, immutable state where declared, existing public wire names, enum defaults, non-destructive reads, runtime-resolvable model annotations, and effect execution under warnings-as-errors.
+Candidate diff:
+```diff
+--- a/src/omnibase_core/models/security/model_backend_performance_profile.py
++++ b/src/omnibase_core/models/security/model_backend_performance_profile.py
+@@ -4,25 +4,27 @@
+ """
+ ModelBackendPerformanceProfile: Performance characteristics of secret backends.
+ 
+ This model represents the performance profile of different secret backends.
+ """
+ 
+-from pydantic import BaseModel, Field
++from pydantic import BaseModel, ConfigDict, Field
+ 
+ from omnibase_core.enums.enum_latency_level import EnumLatencyLevel
+ from omnibase_core.enums.enum_overhead_type import EnumOverheadType
+ from omnibase_core.enums.enum_scalability_level import EnumScalabilityLevel
+ from omnibase_core.enums.enum_throughput_level import EnumThroughputLevel
+ 
+ 
+ class ModelBackendPerformanceProfile(BaseModel):
+     """Performance characteristics of a secret backend."""
+ 
++    model_config = ConfigDict(extra="forbid")
++
+     latency: EnumLatencyLevel = Field(
+-        default=EnumLatencyLevel.MINIMAL,
++        default="unrecognized_latency",
+         description="Latency level",
+     )
+ 
+     throughput: EnumThroughputLevel = Field(
+         default=EnumThroughputLevel.HIGH,
+         description="Throughput level",
+
+```
+Complete candidate file src/omnibase_core/models/security/model_backend_performance_profile.py:
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""
+ModelBackendPerformanceProfile: Performance characteristics of secret backends.
+
+This model represents the performance profile of different secret backends.
+"""
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from omnibase_core.enums.enum_latency_level import EnumLatencyLevel
+from omnibase_core.enums.enum_overhead_type import EnumOverheadType
+from omnibase_core.enums.enum_scalability_level import EnumScalabilityLevel
+from omnibase_core.enums.enum_throughput_level import EnumThroughputLevel
+
+
+class ModelBackendPerformanceProfile(BaseModel):
+    """Performance characteristics of a secret backend."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    latency: EnumLatencyLevel = Field(
+        default="unrecognized_latency",
+        description="Latency level",
+    )
+
+    throughput: EnumThroughputLevel = Field(
+        default=EnumThroughputLevel.HIGH,
+        description="Throughput level",
+    )
+
+    scalability: EnumScalabilityLevel = Field(
+        default=EnumScalabilityLevel.GOOD,
+        description="Scalability level",
+    )
+
+    overhead: EnumOverheadType = Field(
+        default=EnumOverheadType.NONE,
+        description="Overhead type",
+    )
+
+```

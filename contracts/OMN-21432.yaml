@@ -7,7 +7,7 @@ summary: >-
   native files and reassembles projection chunks by their shared item hash; the
   verifier refuses a missing or tampered native file. Pinned-mode carry removes only
   prompts the ledger quote citations fully record before the boundary, as live mode
-  does. The answer comparison fails closed on unavailable answers. Not in this change:
+  does. The answer comparison fails closed on unavailable answers in both per-run and aggregate parity verdicts, while preserving numeric match counts. Not in this change:
   the TA.9 quality criteria (the recorded post-recovery replay still fails Q1 and
   cannot score Q2) and the TA.16 auto trigger, whose tickets stay open.
 is_seam_ticket: false
@@ -58,12 +58,20 @@ dod_evidence:
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_session_context_sources_effect/test_session_context_sources.py -q --no-cov -k pinned_quote"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21432-ac3-scorer-fails-closed"
-    description: "Missing answers cannot pass the quality comparison. The test fails at the merge base, where unavailable answers establish Q2 parity."
+    description: "Missing answers cannot pass either per-run or aggregate quality parity, including a run whose other successful cases mask unavailable answers in its numeric totals. The per-run assertions fail at the merge base."
     source: "manual"
     binds_ac: ["AC3"]
     checks:
       - check_type: "test_passes"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_context_replay_eval_compute/test_context_replay_eval.py -q --no-cov -k missing_answers_cannot_pass"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21432-ac3-parity-bus-bindings"
+    description: "The contract-selected compare_answers handler preserves the same counts and fail-closed parity through the in-memory and broker-semantics bindings, covering every package/native answer grade pair. Unavailable per-run verdict assertions fail at the merge base."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_context_replay_eval_compute/test_answer_comparison_bus.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21432-deploy-hosted-fail-closed"
     description: "Hosted source and behavioral probes of the shipped scorer. The GitHub content read pins the live source to the checkout revision and requires the unavailable-answer guards; the behavioral probe fails at the merge base where unavailable answers incorrectly establish Q2 parity. No lab service is required."
@@ -81,6 +89,7 @@ dod_evidence:
           request = ModelAnswerComparisonRequest.model_validate({"runs": [{"run_id": run_id, "cases": [{"case_id": f"case-{i}", "candidate_id": f"not-built:{i}", "package_answer": "UNAVAILABLE", "native_answer": "UNAVAILABLE"} for i in range(3)]} for run_id in ("a", "b")]})
           result = HandlerAnswerComparison().handle(request)
           assert not result.next_action_met, result
+          assert all(not run.package_at_least_native for run in result.runs), result
           assert all(run.package_unavailable == run.native_unavailable == 3 for run in result.runs), result
           assert len(result.falsifiers) == 2 and all("unavailable" in value for value in result.falsifiers), result
           print("unavailable answers fail closed")'

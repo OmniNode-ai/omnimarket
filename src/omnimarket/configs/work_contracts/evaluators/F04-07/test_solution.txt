@@ -1,0 +1,7 @@
+from solution import compute_vts_per_kloc as f
+
+def test_kloc():
+    for lines in [0,1,999,1000]: assert f(42.0,lines)==42.0
+    assert f(42.0,2000)==21.0
+    assert f(50.0,10000)==5.0
+    assert f(-4.0,2000)==-2.0

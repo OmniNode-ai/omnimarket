@@ -1,0 +1,10 @@
+{
+  "instruction": "Classify the public fixtures in order; labels are stated in the evidence.",
+  "rows": [
+    {
+      "evidence": "public fixture for question_guard",
+      "id": "L3677"
+    }
+  ],
+  "scenario": "F09-01"
+}

@@ -1,0 +1,1 @@
+{"diagnosis": "Names no_escalation=False and keyword-only parity, local forwarding, deployed bus wire boundary; system_prompt/temperature/response_format/model explicit values refused rather than dropped; identifies None preserves existing route. Receipt trace required.", "evidence_scope": "offline diagnosis; no live model escalation proven"}

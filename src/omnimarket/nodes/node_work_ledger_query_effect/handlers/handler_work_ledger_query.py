@@ -26,6 +26,9 @@ from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_work_ledger_query_effect.handlers import (
     work_ledger_query_replay as replay,
 )
+from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_history import (
+    history_answer,
+)
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_reader import (
     PostgresWorkLedgerQueryReader,
     ProtocolWorkLedgerQueryReader,
@@ -73,6 +76,24 @@ class HandlerWorkLedgerQuery:
             window_since=request.since,
             window_until=until,
         )
+        if request.history is not None:
+            try:
+                assert request.history is not None
+                records = self._reader.read_history(
+                    ledger_id=request.history.ledger_id,
+                    first_seq=request.history.first_seq,
+                    last_seq=request.history.last_seq,
+                    until=until,
+                )
+                return base.model_copy(update=history_answer(request, records))
+            except WorkLedgerReadError as exc:
+                return base.model_copy(update={"error": str(exc)})
+            except Exception as exc:
+                return base.model_copy(
+                    update={
+                        "error": f"{type(exc).__name__}: history acquisition failed"
+                    }
+                )
         try:
             records = self._reader.read_rows(since=request.since, until=until)
             newest_ts, newest_projected = self._reader.freshness(until=until)
@@ -100,7 +121,10 @@ class HandlerWorkLedgerQuery:
             parity = ModelWorkLedgerParity(
                 status=EnumWorkLedgerParityStatus.UNMEASURED, days=parity.days
             )
-        answer = self._answer(request, replay.parse_rows(records), now)
+        parsed = replay.parse_rows(records)
+        if request.principal is not None:
+            parsed = [r for r in parsed if r.token("principal") == request.principal]
+        answer = self._answer(request, parsed, now)
         return base.model_copy(
             update={
                 **answer,

@@ -1,0 +1,537 @@
+diff --git a/contracts/OMN-21090.yaml b/contracts/OMN-21090.yaml
+index 045413459d..6a5b3f3d6a 100644
+--- a/contracts/OMN-21090.yaml
++++ b/contracts/OMN-21090.yaml
+@@ -257,3 +257,19 @@ dod_evidence:
+       - check_type: "command"
+         check_value: "uv run --frozen pytest tests/nodes/node_session_compaction_measurement_compute/test_measurement.py -q --no-cov -k 'dropped_decision_negative_control or wall_time_and_usage_stream_dedup or node_contract_and_overlay'"
+         cwd: "${OMNI_HOME}/omnimarket"
++
++  - id: "dod-omn21090-ac4-sampled-exemplar-revocation"
++    description: "Track C TC.5 contribution: minimum-sample revocation and count-derived quality metrics. This does not assert every Track C child is Done; the epic criterion remains a Linear API check. All existing evidence entries for AC1 through AC5 are preserved."
++    source: "manual"
++    binds_ac: ["AC4"]
++    checks:
++      - check_type: "test_passes"
++        check_value: "uv run --frozen pytest tests/nodes/node_exemplar_registry_reconcile_compute/test_sampled_revocation.py -q -n 0 -p no:randomly --no-cov"
++        cwd: "${OMNI_HOME}/omnimarket"
++  - id: "dod-omn21090-deploy-sampled-exemplar-revocation"
++    description: "Hosted-runner probe executes the packaged exemplar reconcile handler and in-memory runtime against count-based revocation controls; a head without the change fails. No runtime host or credentials are used."
++    source: "manual"
++    checks:
++      - check_type: "command"
++        check_value: "uv run --frozen pytest tests/nodes/node_exemplar_registry_reconcile_compute/test_sampled_revocation.py -q -n 0 -p no:randomly --no-cov"
++        cwd: "${OMNI_HOME}/omnimarket"
+diff --git a/contracts/OMN-21128.yaml b/contracts/OMN-21128.yaml
+index 0d965e11ae..028d472fa9 100644
+--- a/contracts/OMN-21128.yaml
++++ b/contracts/OMN-21128.yaml
+@@ -15,6 +15,12 @@ is_seam_ticket: false
+ interface_change: false
+ interfaces_touched: []
+ requirements:
++  - id: "req-exemplar-sampled-revocation"
++    statement: "Revocation requires a declared minimum sample; precision and recall are derived from labelled confusion counts."
++    acceptance:
++      - id: "AC12"
++        statement: >-
++          AC12: an exemplar is not revoked on a single failure with no prior runs (a minimum sample is required), and precision and recall come from counts, not constants -- falsifier: a one-run revocation, or a recall figure that does not move with the counts.
+   - id: "req-exemplar-admission-refusals"
+     statement: "A candidate is refused, with every reason listed, when it is in its repository's baseline, comes from a repository where the gate does not run, fails the gate, or is one of the shape-valid negatives."
+     acceptance:
+@@ -92,6 +98,21 @@ emergency_bypass:
+   justification: ""
+   follow_up_ticket_id: ""
+ dod_evidence:
++  - id: "dod-omn21128-ac12-sampled-revocation"
++    description: "A first failure without history is deprecated rather than irrevocably revoked. Precision and recall derive from strict nonnegative confusion counts; each quality threshold requires enough denominator samples. Typed dispatch, RuntimeLocal in-memory dispatch and the packaged onex node CLI run the same cases. This slice does not complete the admission orchestrator or registry writer."
++    source: "manual"
++    binds_ac: ["AC12"]
++    checks:
++      - check_type: "test_passes"
++        check_value: "uv run --frozen pytest tests/nodes/node_exemplar_registry_reconcile_compute/test_sampled_revocation.py -q -n 0 -p no:randomly --no-cov"
++        cwd: "${OMNI_HOME}/omnimarket"
++  - id: "dod-omn21128-deploy-sampled-revocation"
++    description: "Hosted-runner packaged-handler and in-memory-runtime probe checks the sampled revocation behavior, strict evidence validation and checked-in contract/overlay parity. A head without this implementation fails these tests. No live services or credentials are required."
++    source: "manual"
++    checks:
++      - check_type: "command"
++        check_value: "uv run --frozen pytest tests/nodes/node_exemplar_registry_reconcile_compute/test_sampled_revocation.py -q -n 0 -p no:randomly --no-cov"
++        cwd: "${OMNI_HOME}/omnimarket"
+   - id: "dod-omn21128-refusals"
+     description: "Baseline, gate-absent, gate-failed and shape-valid negative candidates are refused with every reason."
+     source: "manual"
+diff --git a/src/omnimarket/nodes/node_exemplar_registry_reconcile_compute/contract.yaml b/src/omnimarket/nodes/node_exemplar_registry_reconcile_compute/contract.yaml
+index 812fc8c432..6e7e2bc1a0 100644
+--- a/src/omnimarket/nodes/node_exemplar_registry_reconcile_compute/contract.yaml
++++ b/src/omnimarket/nodes/node_exemplar_registry_reconcile_compute/contract.yaml
+@@ -3,8 +3,8 @@
+ name: node_exemplar_registry_reconcile_compute
+ node_type: compute
+ runtime_profiles: [main]
+-contract_version: {major: 1, minor: 0, patch: 0}
+-node_version: "1.0.0"
++contract_version: {major: 1, minor: 1, patch: 0}
++node_version: "1.1.0"
+ description: >-
+   Pure TC.5 exemplar registry reconciliation (OMN-21128). Plans deterministic
+   create, revise, retain, deprecate and revoke operations from caller-supplied
+@@ -39,12 +39,22 @@ inputs:
+   content_sha256: {type: object, required: true, description: Content digests keyed by admitted node ID.}
+   current_rows: {type: list, required: false, description: Current registry rows for the repository.}
+   policy: {type: object, required: false, description: Versioned removal policy.}
++  evaluation_counts: {type: object, required: false, description: Labelled confusion counts by node ID; missing counts mean unknown evidence.}
++configuration:
++  removal_policy:
++    model: omnimarket.nodes.node_exemplar_registry_reconcile_compute.models.model_exemplar_registry_reconcile.ModelExemplarRemovalPolicy
++    policy_version: exemplar-registry-removal.v2
++    minimum_sample_size: 3
++    minimum_precision: 0.8
++    minimum_recall: 0.8
++    revoke_on_codes: [gate_failed, deny_secret_literal, deny_eval_exec, deny_pickle]
+ outputs:
+   operations: {type: list}
+   counts: {type: object}
+   current_count: {type: int}
+   admitted_count: {type: int}
+   reconciliation_hash: {type: str}
++  policy: {type: object}
+ terminal_event: onex.evt.omnimarket.exemplar-registry-reconciled.v1
+ runtime_dispatch:
+   command_topic: onex.cmd.omnimarket.exemplar-registry-reconcile-requested.v1
+diff --git a/src/omnimarket/nodes/node_exemplar_registry_reconcile_compute/handlers/handler_exemplar_registry_reconcile.py b/src/omnimarket/nodes/node_exemplar_registry_reconcile_compute/handlers/handler_exemplar_registry_reconcile.py
+index 1ad6775c72..a643179a77 100644
+--- a/src/omnimarket/nodes/node_exemplar_registry_reconcile_compute/handlers/handler_exemplar_registry_reconcile.py
++++ b/src/omnimarket/nodes/node_exemplar_registry_reconcile_compute/handlers/handler_exemplar_registry_reconcile.py
+@@ -11,6 +11,7 @@
+     ModelAdmissionDecision,
+ )
+ from omnimarket.nodes.node_exemplar_registry_reconcile_compute.models.model_exemplar_registry_reconcile import (
++    ModelExemplarEvaluationCounts,
+     ModelExemplarRegistryOperation,
+     ModelExemplarRegistryReconcileRequest,
+     ModelExemplarRegistryReconcileResult,
+@@ -80,6 +81,25 @@ def _operation(
+         prior_digest = current.version_digest
+         version_digest = current.version_digest
+         operation, lifecycle_after = "retain", current.lifecycle
++        evaluation = request.evaluation_counts.get(
++            node_id, ModelExemplarEvaluationCounts()
++        )
++        enough_samples = evaluation.sample_size >= request.policy.minimum_sample_size
++        quality_reasons = []
++        if (
++            evaluation.true_positive + evaluation.false_positive
++            >= request.policy.minimum_sample_size
++            and evaluation.precision is not None
++            and evaluation.precision < request.policy.minimum_precision
++        ):
++            quality_reasons.append("precision_below_threshold")
++        if (
++            evaluation.true_positive + evaluation.false_negative
++            >= request.policy.minimum_sample_size
++            and evaluation.recall is not None
++            and evaluation.recall < request.policy.minimum_recall
++        ):
++            quality_reasons.append("recall_below_threshold")
+         if admitted:
+             if (
+                 current.lifecycle == "deprecated"
+@@ -88,10 +108,20 @@ def _operation(
+                 operation, lifecycle_after = "revise", "active"
+                 version_digest = new_digest
+         elif current.lifecycle != "revoked":
+-            if any(code in request.policy.revoke_on_codes for code in reason_codes):
++            if enough_samples and any(
++                code in request.policy.revoke_on_codes for code in reason_codes
++            ):
+                 operation, lifecycle_after = "revoke", "revoked"
+             elif current.lifecycle == "active":
+                 operation, lifecycle_after = "deprecate", "deprecated"
++        if current.lifecycle != "revoked":
++            if enough_samples and quality_reasons:
++                operation, lifecycle_after = "revoke", "revoked"
++                reason_codes.extend(quality_reasons)
++            elif not enough_samples and any(
++                code in request.policy.revoke_on_codes for code in reason_codes
++            ):
++                reason_codes.append("insufficient_evaluation_sample")
+ 
+     return ModelExemplarRegistryOperation(
+         operation_id=_hash(
+@@ -101,6 +131,12 @@ def _operation(
+                 "logical_source_id": logical_source_id,
+                 "operation": operation,
+                 "version_digest": version_digest,
++                "lifecycle_after": lifecycle_after,
++                "reason_codes": reason_codes,
++                "policy": request.policy.model_dump(mode="json"),
++                "evaluation": request.evaluation_counts.get(
++                    node_id, ModelExemplarEvaluationCounts()
++                ).model_dump(mode="json"),
+             }
+         ),
+         logical_source_id=logical_source_id,
+@@ -110,6 +146,9 @@ def _operation(
+         prior_version_digest=prior_digest,
+         version_digest=version_digest,
+         reason_codes=reason_codes,
++        evaluation=request.evaluation_counts.get(
++            node_id, ModelExemplarEvaluationCounts()
++        ),
+         receipt=decision.receipt
+         if decision is not None and admitted and lifecycle_after == "active"
+         else None,
+@@ -159,6 +198,7 @@ def handle(
+             repository=request.repository,
+             commit=request.admission.commit,
+             policy_version=request.policy.policy_version,
++            policy=request.policy,
+             operations=operations,
+             counts=counts,
+             current_count=len(request.current_rows),
+@@ -168,6 +208,7 @@ def handle(
+                     "repository": request.repository,
+                     "commit": request.admission.commit,
+                     "policy_version": request.policy.policy_version,
++                    "policy": request.policy.model_dump(mode="json"),
+                     "operations": [op.model_dump(mode="json") for op in operations],
+                 }
+             ),
+diff --git a/src/omnimarket/nodes/node_exemplar_registry_reconcile_compute/metadata.yaml b/src/omnimarket/nodes/node_exemplar_registry_reconcile_compute/metadata.yaml
+index f73336ecba..b0e8844242 100644
+--- a/src/omnimarket/nodes/node_exemplar_registry_reconcile_compute/metadata.yaml
++++ b/src/omnimarket/nodes/node_exemplar_registry_reconcile_compute/metadata.yaml
+@@ -1,8 +1,8 @@
+ # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+ # SPDX-License-Identifier: MIT
+ name: node_exemplar_registry_reconcile_compute
+-version: "1.0.0"
+-description: Pure TC.5 exemplar registry reconciliation and lifecycle planning
++version: "1.1.0"
++description: Pure TC.5 exemplar registry reconciliation with sampled quality evidence
+ omnibase_core_compat: ">=0.47.28,<0.48.0"
+ entry_points:
+   onex.nodes:
+diff --git a/src/omnimarket/nodes/node_exemplar_registry_reconcile_compute/models/model_exemplar_registry_reconcile.py b/src/omnimarket/nodes/node_exemplar_registry_reconcile_compute/models/model_exemplar_registry_reconcile.py
+index ce8e968a0e..02b6cbbcce 100644
+--- a/src/omnimarket/nodes/node_exemplar_registry_reconcile_compute/models/model_exemplar_registry_reconcile.py
++++ b/src/omnimarket/nodes/node_exemplar_registry_reconcile_compute/models/model_exemplar_registry_reconcile.py
+@@ -36,7 +36,10 @@ class ModelExemplarRemovalPolicy(BaseModel):
+ 
+     model_config = ConfigDict(frozen=True, extra="forbid")
+ 
+-    policy_version: str = "exemplar-registry-removal.v1"
++    policy_version: str = "exemplar-registry-removal.v2"
++    minimum_sample_size: int = Field(default=3, ge=2, strict=True)
++    minimum_precision: float = Field(default=0.8, ge=0.0, le=1.0)
++    minimum_recall: float = Field(default=0.8, ge=0.0, le=1.0)
+     revoke_on_codes: tuple[ViolationCode, ...] = (
+         "gate_failed",
+         "deny_secret_literal",
+@@ -45,6 +48,39 @@ class ModelExemplarRemovalPolicy(BaseModel):
+     )
+ 
+ 
++class ModelExemplarEvaluationCounts(BaseModel):
++    """Observed confusion counts; undefined ratios remain unknown."""
++
++    model_config = ConfigDict(frozen=True, extra="forbid")
++
++    true_positive: int = Field(default=0, ge=0, strict=True)
++    false_positive: int = Field(default=0, ge=0, strict=True)
++    true_negative: int = Field(default=0, ge=0, strict=True)
++    false_negative: int = Field(default=0, ge=0, strict=True)
++
++    @property
++    def sample_size(self) -> int:
++        """Every observed labelled outcome contributes one sample."""
++        return (
++            self.true_positive
++            + self.false_positive
++            + self.true_negative
++            + self.false_negative
++        )
++
++    @property
++    def precision(self) -> float | None:
++        """Share of predicted positives that were correct."""
++        denominator = self.true_positive + self.false_positive
++        return self.true_positive / denominator if denominator else None
++
++    @property
++    def recall(self) -> float | None:
++        """Share of actual positives recovered by the exemplar."""
++        denominator = self.true_positive + self.false_negative
++        return self.true_positive / denominator if denominator else None
++
++
+ class ModelExemplarRegistryReconcileRequest(BaseModel):
+     """Admission evidence and current registry rows supplied by the caller."""
+ 
+@@ -54,6 +90,9 @@ class ModelExemplarRegistryReconcileRequest(BaseModel):
+     admission: ModelExemplarAdmissionResult
+     content_sha256: dict[str, str]
+     current_rows: list[ModelExemplarRegistryRow] = Field(default_factory=list)
++    evaluation_counts: dict[str, ModelExemplarEvaluationCounts] = Field(
++        default_factory=dict
++    )
+     policy: ModelExemplarRemovalPolicy = Field(
+         default_factory=ModelExemplarRemovalPolicy
+     )
+@@ -82,6 +121,9 @@ class ModelExemplarRegistryOperation(BaseModel):
+     version_digest: str | None
+     reason_codes: list[str]
+     receipt: ModelGateReceipt | None
++    evaluation: ModelExemplarEvaluationCounts = Field(
++        default_factory=ModelExemplarEvaluationCounts
++    )
+ 
+ 
+ class ModelExemplarRegistryReconcileResult(BaseModel):
+@@ -92,6 +134,9 @@ class ModelExemplarRegistryReconcileResult(BaseModel):
+     repository: str
+     commit: str
+     policy_version: str
++    policy: ModelExemplarRemovalPolicy = Field(
++        default_factory=ModelExemplarRemovalPolicy
++    )
+     operations: list[ModelExemplarRegistryOperation]
+     counts: dict[str, int]
+     current_count: int
+diff --git a/src/omnimarket/nodes/node_exemplar_registry_reconcile_compute/overlay.yaml b/src/omnimarket/nodes/node_exemplar_registry_reconcile_compute/overlay.yaml
+new file mode 100644
+index 0000000000..401d798fae
+--- /dev/null
++++ b/src/omnimarket/nodes/node_exemplar_registry_reconcile_compute/overlay.yaml
+@@ -0,0 +1,10 @@
++# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
++# SPDX-License-Identifier: MIT
++# Input policy injected by the caller; this file does not install a live binding.
++node: node_exemplar_registry_reconcile_compute
++policy:
++  policy_version: exemplar-registry-removal.v2
++  minimum_sample_size: 3
++  minimum_precision: 0.8
++  minimum_recall: 0.8
++  revoke_on_codes: [gate_failed, deny_secret_literal, deny_eval_exec, deny_pickle]
+diff --git a/tests/nodes/node_exemplar_registry_reconcile_compute/test_golden_chain_exemplar_registry_reconcile_compute.py b/tests/nodes/node_exemplar_registry_reconcile_compute/test_golden_chain_exemplar_registry_reconcile_compute.py
+index b0602164ac..126c13986d 100644
+--- a/tests/nodes/node_exemplar_registry_reconcile_compute/test_golden_chain_exemplar_registry_reconcile_compute.py
++++ b/tests/nodes/node_exemplar_registry_reconcile_compute/test_golden_chain_exemplar_registry_reconcile_compute.py
+@@ -248,7 +248,11 @@ def test_refusal_with_revoke_code_revokes(code: str) -> None:
+     for lifecycle in ("active", "deprecated"):
+         row = current_row("node_a", lifecycle=lifecycle)
+         refused = decision("node_a", admitted=False, codes=("in_baseline", code))
+-        [op] = reconcile(request(refused, rows=[row])).operations
++        [op] = reconcile(
++            request(
++                refused, rows=[row], evaluation_counts={"node_a": {"true_positive": 3}}
++            )
++        ).operations
+         assert (op.operation, op.lifecycle_after) == ("revoke", "revoked")
+         assert op.reason_codes == ["in_baseline", code]
+ 
+@@ -257,6 +261,7 @@ def test_revoke_codes_are_declared_policy_data() -> None:
+     row = current_row("node_a")
+     refused = decision("node_a", admitted=False, codes=("in_baseline",))
+     payload = request(refused, rows=[row])
++    payload["evaluation_counts"] = {"node_a": {"true_positive": 3}}
+     payload["policy"] = {"policy_version": "p.test", "revoke_on_codes": ["in_baseline"]}
+     result = reconcile(payload)
+     assert ops(result) == {"node_a": "revoke"}
+@@ -305,6 +310,7 @@ def test_plan_is_ordered_by_logical_source_and_counts_bind_it() -> None:
+         decision("node_e", admitted=False, codes=("deny_pickle",)),
+         decision("node_a"),
+         rows=rows,
++        evaluation_counts={"node_e": {"true_positive": 3}},
+     )
+     result = reconcile(payload)
+     assert [op.node_id for op in result.operations] == [
+diff --git a/tests/nodes/node_exemplar_registry_reconcile_compute/test_sampled_revocation.py b/tests/nodes/node_exemplar_registry_reconcile_compute/test_sampled_revocation.py
+new file mode 100644
+index 0000000000..22a2826043
+--- /dev/null
++++ b/tests/nodes/node_exemplar_registry_reconcile_compute/test_sampled_revocation.py
+@@ -0,0 +1,181 @@
++# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
++# SPDX-License-Identifier: MIT
++"""TC.5 AC12: count-derived metrics and minimum-sample revocation."""
++
++from __future__ import annotations
++
++import json
++import subprocess
++import sys
++from pathlib import Path
++from typing import Any
++
++import pytest
++import yaml
++from pydantic import ValidationError
++
++from omnimarket.nodes.node_exemplar_registry_reconcile_compute.models.model_exemplar_registry_reconcile import (
++    ModelExemplarRegistryReconcileResult,
++)
++from tests.nodes.node_exemplar_registry_reconcile_compute.test_golden_chain_exemplar_registry_reconcile_compute import (
++    NODE_DIR,
++    _run,
++    current_row,
++    decision,
++    reconcile,
++    request,
++)
++
++pytestmark = pytest.mark.unit
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize("binding", ["typed", "inmemory", "cli"])
++@pytest.mark.parametrize(
++    ("counts", "admitted", "expected", "precision", "recall"),
++    [
++        ({}, False, "deprecate", None, None),
++        ({"false_positive": 1}, False, "deprecate", 0.0, None),
++        ({"false_positive": 3}, False, "revoke", 0.0, None),
++        ({"true_positive": 9, "false_positive": 1}, True, "retain", 0.9, 1.0),
++        ({"true_positive": 1, "false_positive": 3}, True, "revoke", 0.25, 1.0),
++        ({"true_positive": 1, "false_negative": 3}, True, "revoke", 1.0, 0.25),
++        ({"true_negative": 10}, True, "retain", None, None),
++        ({"true_negative": 10, "false_positive": 1}, True, "retain", 0.0, None),
++        ({"true_negative": 10, "false_negative": 1}, True, "retain", None, 0.0),
++    ],
++)
++async def test_revocation_uses_counts_on_each_dispatch_binding(
++    tmp_path: Path,
++    binding: str,
++    counts: dict[str, int],
++    admitted: bool,
++    expected: str,
++    precision: float | None,
++    recall: float | None,
++) -> None:
++    candidate = decision(
++        "node_a", admitted=admitted, codes=() if admitted else ("gate_failed",)
++    )
++    payload = request(candidate, rows=[current_row("node_a")])
++    payload["evaluation_counts"] = {"node_a": counts}
++    if binding == "typed":
++        result = reconcile(payload)
++    elif binding == "inmemory":
++        result = (await _run(tmp_path, payload)).handler_result
++    else:
++        input_path = tmp_path / "input.json"
++        input_path.write_text(json.dumps(payload))
++        state = tmp_path / "cli-state"
++        completed = subprocess.run(
++            [
++                str(Path(sys.executable).parent / "onex"),
++                "node",
++                "node_exemplar_registry_reconcile_compute",
++                "--input",
++                str(input_path),
++                "--state-root",
++                str(state),
++                "--backend",
++                "event_bus=inmemory",
++                "--timeout",
++                "10",
++            ],
++            capture_output=True,
++            text=True,
++            timeout=30,
++            check=False,
++        )
++        assert completed.returncode == 0, completed.stdout + completed.stderr
++        saved = json.loads((state / "workflow_result.json").read_text())
++        assert saved["handler_locus"] == "in_process"
++        result = ModelExemplarRegistryReconcileResult.model_validate(
++            saved["handler_result"]
++        )
++    assert result == reconcile(payload)
++    [operation] = result.operations
++    assert operation.operation == expected
++    assert operation.evaluation.sample_size == sum(counts.values())
++    assert operation.evaluation.precision == precision
++    assert operation.evaluation.recall == recall
++    if expected == "revoke":
++        assert operation.lifecycle_after == "revoked"
++        assert operation.receipt is None
++
++
++def test_missing_history_does_not_revoke_a_first_failure() -> None:
++    payload = request(
++        decision("node_a", admitted=False, codes=("gate_failed",)),
++        rows=[current_row("node_a")],
++    )
++    [operation] = reconcile(payload).operations
++    assert operation.operation == "deprecate"
++    assert operation.evaluation.sample_size == 0
++    assert "insufficient_evaluation_sample" in operation.reason_codes
++
++
++def test_overlay_policy_controls_minimum_sample_and_thresholds() -> None:
++    payload = request(decision("node_a"), rows=[current_row("node_a")])
++    payload["evaluation_counts"] = {"node_a": {"true_positive": 1, "false_positive": 3}}
++    payload["policy"] = {
++        "minimum_sample_size": 5,
++        "minimum_precision": 0.8,
++        "minimum_recall": 0.8,
++    }
++    [operation] = reconcile(payload).operations
++    assert operation.operation == "retain"
++    payload["policy"]["minimum_sample_size"] = 4
++    [operation] = reconcile(payload).operations
++    assert operation.operation == "revoke"
++    assert "precision_below_threshold" in operation.reason_codes
++    payload["policy"]["minimum_precision"] = 0.25
++    [operation] = reconcile(payload).operations
++    assert operation.operation == "retain"
++
++
++@pytest.mark.parametrize(
++    "counts",
++    [
++        {"false_positive": -1},
++        {"true_positive": True},
++        {"true_positive": 1.5},
++        {"recall": 0.5},
++    ],
++)
++def test_evidence_refuses_negative_noninteger_or_asserted_metrics(
++    counts: dict[str, Any],
++) -> None:
++    payload = request(decision("node_a"), rows=[current_row("node_a")])
++    payload["evaluation_counts"] = {"node_a": counts}
++    with pytest.raises(ValidationError):
++        reconcile(payload)
++
++
++@pytest.mark.parametrize(
++    "policy",
++    [{"minimum_sample_size": 1}, {"minimum_precision": 1.1}, {"minimum_recall": -0.1}],
++)
++def test_invalid_policy_is_refused(policy: dict[str, Any]) -> None:
++    with pytest.raises(ValidationError):
++        reconcile(request(decision("node_a"), policy=policy))
++
++
++def test_evidence_and_policy_bind_the_reconciliation_hash() -> None:
++    payload = request(decision("node_a"), rows=[current_row("node_a")])
++    payload["evaluation_counts"] = {"node_a": {"true_positive": 4}}
++    first = reconcile(payload)
++    payload["evaluation_counts"]["node_a"]["true_positive"] = 5
++    second = reconcile(payload)
++    assert first.reconciliation_hash != second.reconciliation_hash
++    payload["policy"] = {"minimum_sample_size": 6}
++    assert reconcile(payload).reconciliation_hash != second.reconciliation_hash
++
++
++def test_contract_overlay_and_model_agree_on_policy() -> None:
++    contract = yaml.safe_load((NODE_DIR / "contract.yaml").read_text())
++    overlay = yaml.safe_load((NODE_DIR / "overlay.yaml").read_text())
++    declared = dict(contract["configuration"]["removal_policy"])
++    declared.pop("model")
++    assert declared == overlay["policy"]
++    payload = request(decision("node_a"), policy=overlay["policy"])
++    assert reconcile(payload).policy.model_dump(mode="json") == declared

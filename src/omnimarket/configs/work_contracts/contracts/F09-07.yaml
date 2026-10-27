@@ -1,0 +1,65 @@
+contract_id: F09-07
+task_kind: classification
+inputs:
+- path: src/omnimarket/configs/work_contracts/inputs/F09-07.json
+  sha256: c226667c516c4f873f1a4a30d90320b3d1f171c525287a6df7ad4701cf4b1219
+acceptance:
+  kind: schema
+  spec:
+    schema:
+      type: object
+      additionalProperties: false
+      required:
+      - scenario
+      - rows
+      properties:
+        scenario:
+          const: F09-07
+        rows:
+          type: array
+          minItems: 4
+          maxItems: 4
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - id
+            - label
+            properties:
+              id:
+                type: string
+              label:
+                enum:
+                - handed-off
+                - partial
+                - done
+                - failed
+                - blocked
+                - DELIVERED
+                - skipped-owned
+                - ended-waiting
+                - unknown
+    expected_json: '{"rows": [{"id": "L3722", "label": "handed-off"}, {"id": "L3634",
+      "label": "partial"}, {"id": "L3606", "label": "done"}, {"id": "L3461", "label":
+      "failed"}], "scenario": "F09-07"}'
+budgets:
+  max_output_tokens: 8192
+  max_wall_s: 180
+  max_turns: 8
+  max_usd: 5
+controls:
+  positive:
+    path: src/omnimarket/configs/work_contracts/controls/F09-07.positive.txt
+    sha256: 79d59f7a6b70f7992ce8e822b2c715480d0a02b69a97308d860f27da2351436b
+  negative:
+    path: src/omnimarket/configs/work_contracts/controls/F09-07.negative.txt
+    sha256: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+evaluators:
+- path: src/omnimarket/handlers/work_contracts/control_evaluator.py
+  sha256: 35beec5a332b646a0c1a696407f0b4a1f5a683269b19e9f782af9df0ee662d7d
+provenance:
+  source: 2026-10-27-deleg-sc-b-1100.md
+  source_sha256: 0483ba868fbaa3852282cf543dd824bc2f79fc946515bdc8769ed581bdffde0a
+  adaptation: Frozen JSON ground truth and schema. F03 summary constrained to a known-good
+    reference. F09 uses deidentified fixture rows with original ids and labels; historical
+    inputs are not equivalent.

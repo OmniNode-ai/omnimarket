@@ -3,8 +3,8 @@
 ---
 name: work_ledger_query_effect
 node_type: effect
-contract_version: {major: 1, minor: 0, patch: 0}
-node_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 1, patch: 0}
+node_version: {major: 1, minor: 1, patch: 0}
 # The main runtime declares ONEX_RUNTIME_LANE and carries OMNINODE_INTERNAL_DB_URL;
 # effects lacks the lane, so lane-scoped discovery fails closed there (OMN-19408).
 runtime_profiles: [main]
@@ -22,6 +22,12 @@ description: >
   row per lane; rulings and consents). Every answer carries freshness and the
   window's parity status from the daily parity receipts. A database error is
   an error answer, never an empty one.
+  A rows query carrying history reads an explicit ledger_seq interval using an exclusive
+  database-ingest cutoff. It retains raw rows and source names, checks source
+  coverage before discovery filters, and binds cursors to the request and the
+  source snapshot hash. Missing sequence/time authority, gaps, duplicates,
+  missing sources or a truncated page report incomplete. It never certifies
+  archive extents the caller has not supplied from a sealed source manifest.
 handler:
   module: omnimarket.nodes.node_work_ledger_query_effect.handlers.handler_work_ledger_query
   class: HandlerWorkLedgerQuery
@@ -61,6 +67,10 @@ golden_path:
   - "Replay the rows with the markdown read rules"
   - "Return the typed answer on terminal_event"
 dod_evidence:
+  - test: tests/test_work_ledger_history_query.py::test_history_returns_both_rolls_in_canonical_order_with_authoritative_time
+    description: "History preserves sequence order, raw sources and database ingest authority"
+  - test: tests/test_work_ledger_history_postgres.py::test_postgres_history_returns_both_sources_and_rejects_truncation_and_gaps
+    description: "Production PostgreSQL reader reports gaps and truncation as incomplete"
   - test: tests/test_golden_chain_work_ledger_query.py::test_work_ledger_query_golden_chain
     description: "Every query returns the rows the markdown read verbs return over the fixture"
   - test: tests/test_golden_chain_work_ledger_query.py::test_work_ledger_query_golden_chain_real_runtime_typed_dispatch

@@ -1,0 +1,3 @@
+from solution import convert_error_details_to_typed_dict as f
+def test_value():
+ assert f({"error_code":42})["error_code"]=="42", "seeded mutation survived"

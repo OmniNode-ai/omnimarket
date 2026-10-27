@@ -1,0 +1,6 @@
+{
+  "mode": "module_tests",
+  "module": "omnimarket.nodes.node_session_compaction_measurement_compute.handlers.handler_measurement",
+  "nodeid": "test_invalid_inputs_fail_loudly[duplicate_uuid]",
+  "test": "tests/nodes/node_session_compaction_measurement_compute/test_measurement.py"
+}

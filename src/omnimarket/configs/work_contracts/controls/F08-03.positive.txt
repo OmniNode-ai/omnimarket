@@ -1,0 +1,1 @@
+{"diagnosis": "Ruff format refuses six files, first model_generic_collection.py:181; distinguish formatter/dependency refresh from CHANGELOG."}

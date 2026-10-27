@@ -1,0 +1,8 @@
+{
+  "mode": "phrases",
+  "required": [
+    "Route a customer's work to the local model they declared (OMN-19442).",
+    "Resolve the effective output-token budget for one delegation call.",
+    "Convert the contract-resolved per-backend timeout (ms) to seconds."
+  ]
+}

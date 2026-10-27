@@ -1,0 +1,18 @@
+{
+  "instruction": "Classify the public fixtures in order; labels are stated in the evidence.",
+  "rows": [
+    {
+      "evidence": "public fixture for question_guard",
+      "id": "L3677"
+    },
+    {
+      "evidence": "public fixture for judge_touch",
+      "id": "L3675"
+    },
+    {
+      "evidence": "public fixture for shell_shape",
+      "id": "L3670"
+    }
+  ],
+  "scenario": "F09-02"
+}

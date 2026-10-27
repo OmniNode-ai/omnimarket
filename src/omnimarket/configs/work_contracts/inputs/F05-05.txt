@@ -1,0 +1,10 @@
+Write pytest unit tests for the untested public function scope_covers_repo. Public source: omnibase_core/src/omnibase_core/nodes/node_work_ledger_state_compute/scope_math.py:32. Return ONLY a complete test module, no explanation or Markdown. Import the function and any support types from solution. Do not redefine or monkeypatch the target function. Use meaningful assertions and edge cases. Tests run in isolation on this host. Required behavior to cover: Repo coverage, case normalization, all_repos and unrelated repo.
+
+Exact public source slice including required support:
+from __future__ import annotations
+
+from omnibase_core.models.events.work.model_hold_scope import ModelHoldScope
+
+def scope_covers_repo(scope: ModelHoldScope, repo: str) -> bool:
+    """True when ``scope`` covers every pull request of ``repo``."""
+    return scope.all_repos or repo.lower() in scope.repos

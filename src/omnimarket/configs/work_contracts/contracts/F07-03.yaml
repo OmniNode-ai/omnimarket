@@ -1,0 +1,55 @@
+contract_id: F07-03
+task_kind: code_review
+inputs:
+- path: src/omnimarket/configs/work_contracts/inputs/F07-03.txt
+  sha256: 479515fce26f5cd1c41bb94755d029d7f17f085fc36a090ffafd20e15a51f76e
+acceptance:
+  kind: schema
+  spec:
+    schema:
+      type: object
+      required:
+      - source
+      - old
+      - new
+      - defect
+      properties:
+        source:
+          type: string
+          const: src/omnibase_core/models/nodes/sprint_roll/model_sprint_roll_plan.py
+        old:
+          type: string
+          const: 'refused: dict[str, str] = Field(default_factory=dict)'
+        new:
+          type: string
+          const: 'refused: dict[str, str] = Field(default_factory=list)'
+        defect:
+          type: string
+          const: refused is declared dict but defaults to a list; default construction
+            has the wrong runtime type and mapping operations fail.
+      additionalProperties: false
+    expected_json: '{"defect": "refused is declared dict but defaults to a list; default
+      construction has the wrong runtime type and mapping operations fail.", "new":
+      "refused: dict[str, str] = Field(default_factory=list)", "old": "refused: dict[str,
+      str] = Field(default_factory=dict)", "source": "src/omnibase_core/models/nodes/sprint_roll/model_sprint_roll_plan.py"}'
+budgets:
+  max_output_tokens: 8192
+  max_wall_s: 180
+  max_turns: 8
+  max_usd: 5
+controls:
+  positive:
+    path: src/omnimarket/configs/work_contracts/controls/F07-03.positive.txt
+    sha256: 6d49e3ab337f90cc51ebde35c0ef30c49a48894f37f51ec2185811991120bacc
+  negative:
+    path: src/omnimarket/configs/work_contracts/controls/F07-03.negative.txt
+    sha256: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+evaluators:
+- path: src/omnimarket/handlers/work_contracts/control_evaluator.py
+  sha256: 35beec5a332b646a0c1a696407f0b4a1f5a683269b19e9f782af9df0ee662d7d
+provenance:
+  source: 2026-10-27-deleg-sc-d-1100.md
+  source_sha256: e9ea31b55d2bedfed466bc0d2d3a9761081d1150c30ecc2426454cc8d0740f8f
+  adaptation: Manual seeded review rubric converted to exact structured defect and
+    consequence fields. The contract requires a JSON finding; historical free text
+    is not equivalent.

@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_model_work_receipt_join_compute
+version: 1.0.0
+description: Pure manifest-backed model attempt receipt normalization and join.
+pack: core
+node_role: compute
+display_name: Model Work Receipt Join Compute
+omnibase_core_compat: '>=0.47.53,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_model_work_receipt_join_compute: omnimarket.nodes.node_model_work_receipt_join_compute
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - omnibase_core>=0.47.53
+  - pydantic>=2.11.0
+license: MIT
+tags: [compute, receipts, measurement]

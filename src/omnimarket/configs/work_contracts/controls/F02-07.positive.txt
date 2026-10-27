@@ -1,0 +1,3 @@
+Validate a single topic segment (prefix or base segment).
+Return the canonical topic name after validation.
+Return the directed agent inbox topic for a specific agent.

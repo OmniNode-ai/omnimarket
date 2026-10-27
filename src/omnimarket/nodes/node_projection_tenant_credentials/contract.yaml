@@ -2,13 +2,7 @@
 name: projection_tenant_credentials
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: reducer
-# OMN-17985: this contract is owned by its OWN standalone writer Deployment
-# (RUNTIME_PROFILE=projection-writer-tenant-credentials on onex-dev), not by the shared main runtime it
-# fell to while it declared nothing. The name became declarable when
-# omnibase_core 0.47.5 registered it in REGISTERED_RUNTIME_PROFILES and
-# CONSUMER_ATTACHED_RUNTIME_PROFILES; the writer is consumer-attached as
-# measured fact -- it joined its group and the coordinator issued it
-# partitions. Declaring it here is what makes ownership single-valued.
+# Logical subscription ownership; the composing runtime activates this profile.
 runtime_profiles:
   - projection-writer-tenant-credentials
 node_version: {major: 1, minor: 0, patch: 0}
@@ -32,29 +26,27 @@ description: >
   is the exact split this closes.
 
 handler:
-  module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_projection
-  class: HandlerTenantCredentialsProjectionRunner
+  module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_runtime_writer
+  class: TenantCredentialsProjectionWriter
 
 # OMN-18013 / OMN-16939: one entry per topic, each declaring its own message_category.
 handler_routing:
-  routing_strategy: topic_match
+  routing_strategy: operation_match
   handlers:
-    - operation: credential_registered
-      topic: onex.evt.omnimarket.credential-registered.v1
+    - topic: onex.evt.omnimarket.credential-registered.v1
       message_category: event
+      operation: tenant_credentials_projection_writer
       handler:
-        name: HandlerTenantCredentialsProjectionRunner
-        module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_projection
-      handler_module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_projection
-      event_model: omnimarket.projection.credential_publisher.ModelCredentialRegisteredEvent
-    - operation: credential_revoked
-      topic: onex.evt.omnimarket.credential-revoked.v1
+        name: TenantCredentialsProjectionWriter
+        module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_runtime_writer
+      handler_module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_runtime_writer
+    - topic: onex.evt.omnimarket.credential-revoked.v1
       message_category: event
+      operation: tenant_credentials_projection_writer
       handler:
-        name: HandlerTenantCredentialsProjectionRunner
-        module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_projection
-      handler_module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_projection
-      event_model: omnimarket.projection.credential_publisher.ModelCredentialRevokedEvent
+        name: TenantCredentialsProjectionWriter
+        module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_runtime_writer
+      handler_module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_runtime_writer
 
 terminal_event: onex.evt.omnimarket.tenant-credential-projection-applied.v1
 

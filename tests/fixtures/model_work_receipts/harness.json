@@ -1,0 +1,14 @@
+{
+  "model": "glm-5.3-flash",
+  "duration_s": 9.254,
+  "usage": {
+    "input_tokens": 4416,
+    "output_tokens": 382,
+    "num_turns": 1
+  },
+  "rubric_verdict": {
+    "measured": {
+      "tool_calls": 0
+    }
+  }
+}

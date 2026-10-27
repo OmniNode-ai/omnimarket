@@ -1,0 +1,11 @@
+from __future__ import annotations
+
+def is_omnimarket_v0(raw: dict[str, object]) -> bool:
+    """Return True iff ``raw`` carries the omnimarket v0 contract shape.
+
+    The v0 shape is identified by a top-level ``handler`` dict that
+    declares a ``class`` field. This is the legacy shape used by the
+    82-file omnimarket cohort prior to the canonical contract layout.
+    """
+    handler = raw.get("handler")
+    return isinstance(handler, dict) and "class" in handler

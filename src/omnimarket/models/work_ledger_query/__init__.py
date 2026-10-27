@@ -5,7 +5,9 @@
 from omnimarket.models.work_ledger_query.model_work_ledger_query import (
     EnumWorkLedgerParityStatus,
     EnumWorkLedgerQueryKind,
+    ModelWorkLedgerCompleteness,
     ModelWorkLedgerFreshness,
+    ModelWorkLedgerHistoryRange,
     ModelWorkLedgerHoldCounts,
     ModelWorkLedgerHoldInForce,
     ModelWorkLedgerInbox,
@@ -21,7 +23,9 @@ from omnimarket.models.work_ledger_query.model_work_ledger_query import (
 __all__ = [
     "EnumWorkLedgerParityStatus",
     "EnumWorkLedgerQueryKind",
+    "ModelWorkLedgerCompleteness",
     "ModelWorkLedgerFreshness",
+    "ModelWorkLedgerHistoryRange",
     "ModelWorkLedgerHoldCounts",
     "ModelWorkLedgerHoldInForce",
     "ModelWorkLedgerInbox",

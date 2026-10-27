@@ -1,0 +1,8 @@
+{
+  "mode": "phrases",
+  "required": [
+    "Supervise :meth:`_run_consume_loop` (OMN-15876).",
+    "Zero-RPC bootstrap catch-up check (OMN-15876).",
+    "Resume what this cache has already applied."
+  ]
+}

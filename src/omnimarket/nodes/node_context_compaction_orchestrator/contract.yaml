@@ -7,8 +7,9 @@ lifecycle: experimental
 description: >
   Answers a compaction command by publishing a context-pack command on the bus
   for the compaction_orchestrator profile. The command's id correlates the
-  completed or failed reply, awaited within the compaction deadline with native
-  fallback. A built package is published as prepared, receives a fresh activation_id
+  completed or failed reply. One monotonic deadline covers the barrier, request
+  publication and reply wait; late packages fall back natively without activation.
+  The revision probe must match the requested session and barrier before publishing. A built package is published as prepared, receives a fresh activation_id
   on its identity trailer, and is replied as install after the activated receipt.
   An unset tenant or unwired transport falls back pack_builder_unavailable.
   The existing barrier wait reads committed sequence stamps from both session

@@ -1,0 +1,1 @@
+{"diagnosis": "Fewer reviewer models succeeded than cross-model agreement requires, no verdict; zero blocking findings does not establish a pass."}

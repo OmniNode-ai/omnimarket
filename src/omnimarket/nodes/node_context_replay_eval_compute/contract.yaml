@@ -12,6 +12,8 @@ node_version: {major: 1, minor: 0, patch: 0}
 description: >
   Score expected ruling presence, compare package and native answers and candidate
   identities, and size review rows and capacity from caller-supplied replay inputs.
+  Per-run and aggregate answer parity require available answers in both arms of
+  every case; numeric match counts alone cannot establish parity.
 handler_routing:
   routing_strategy: operation_match
   handlers:

@@ -1,0 +1,9 @@
+from solution import normalize_event_bus as f
+
+def test_bus():
+    raw={'event_bus':{},'subscribe_topics':['a'],'publish_topics':['b'],'topics':[],'name':'n','x':1}
+    assert f(raw)=={'name':'n','x':1}
+    assert len(raw)==6
+    out=f({'name':'n'})
+    assert f(out)==out
+    assert f({})=={}

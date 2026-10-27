@@ -1,0 +1,1 @@
+{"source": "src/omnibase_core/models/core/model_extracted_block.py", "old": "metadata: ModelNodeMetadataBlock | None", "new": "metadata: str | None", "defect": "ExtractedBlock.metadata is a string rather than canonical ModelNodeMetadataBlock, so actual metadata model/dict payloads cannot parse or roundtrip."}

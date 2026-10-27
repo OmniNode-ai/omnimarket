@@ -113,7 +113,7 @@ dependencies = [
     # verdict). Migration 0045 filters on exactly that pair and omnibase_infra
     # vendors it from here. Raised in BOTH places in lockstep.
     # OMN-19961: floor raised 0.47.23 -> 0.47.24, the first release that
-    # registers the per-host dev lane compose-dev-202 (core#1771).
+    # registers the per-host dev lane the configured runtime profile (core#1771).
     # node_projection_lab_container_memory scopes itself to that lane, and an
     # older core refuses the contract at discovery. Raised in BOTH places.
     # OMN-20025: floor raised 0.47.24 -> 0.47.25, the first release with the
@@ -313,6 +313,7 @@ Homepage = "https://github.com/OmniNode-ai/omnimarket"
 Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
+node_model_work_contract_compute = "omnimarket.nodes.node_model_work_contract_compute"
 node_brief_prerequisites_compute = "omnimarket.nodes.node_brief_prerequisites_compute"
 node_codex_gitlink_compute = "omnimarket.nodes.node_codex_gitlink_compute"
 node_codex_landing_compute = "omnimarket.nodes.node_codex_landing_compute"
@@ -412,6 +413,7 @@ node_retired_model_reference_check_effect = "omnimarket.nodes.node_retired_model
 node_harness_invocation_check_effect = "omnimarket.nodes.node_harness_invocation_check_effect"
 node_projection_pr_state = "omnimarket.nodes.node_projection_pr_state"
 node_house_routing_overlay_effect = "omnimarket.nodes.node_house_routing_overlay_effect"
+node_model_work_receipt_join_compute = "omnimarket.nodes.node_model_work_receipt_join_compute"
 node_metering_summary_compute = "omnimarket.nodes.node_metering_summary_compute"
 node_metering_summary_refresh_compute = "omnimarket.nodes.node_metering_summary_refresh_compute"
 node_savings_estimate_compute = "omnimarket.nodes.node_savings_estimate_compute"
@@ -1203,7 +1205,8 @@ omnimarket = "omnimarket.nodes"
 # 0000-0002 and grants tenant_projection_writer on delegation_capability_cells.
 # OMN-21396: infra#5389 vendors node_projection_delegation_eval 0008
 # (harness eval identity columns) byte-identical.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261026171930-8b6a1d173584" }
+# OMN-21386: infra#5407 vendors the work-ledger 0006 first-ingest migration.
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261027104820-3540659c6633" }
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
 # their git-source overrides). The version-range overrides below already target
 # the released artifacts: core>=0.46.7,<0.47.0 and
@@ -1235,7 +1238,7 @@ omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", ta
 # (non-fatal "clone_ahead") — the failure mode that keeps recurring for a
 # git-rev pin (fatal when the immutable rev falls behind), so registry
 # resolution is the steady-state fix here, not another rev bump. Reintroduce a
-# git-rev override only for an unreleased fix the onex-dev deploy needs ahead
+# git-rev override only for an unreleased fix the the configured runtime deploy needs ahead
 # of the next PyPI publish (matching the OMN-16077/16086/16089 pattern), and
 # document the specific unreleased commit's justification in the same edit.
 # omninode-memory git-rev override REMOVED (OMN-16191 repin, 2026-08-20): the
@@ -1325,7 +1328,7 @@ override-dependencies = [
     # verdict). Migration 0045 filters on exactly that pair and omnibase_infra
     # vendors it from here. Raised in BOTH places in lockstep.
     # OMN-19961: floor raised 0.47.23 -> 0.47.24, the first release that
-    # registers the per-host dev lane compose-dev-202 (core#1771).
+    # registers the per-host dev lane the configured runtime profile (core#1771).
     # node_projection_lab_container_memory scopes itself to that lane, and an
     # older core refuses the contract at discovery. Raised in BOTH places.
     # OMN-20025: raised in lockstep so the override also resolves the published

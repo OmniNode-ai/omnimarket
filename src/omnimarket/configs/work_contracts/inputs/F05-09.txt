@@ -1,0 +1,24 @@
+Write pytest unit tests for the untested public function parse_labels. Public source: omnibase_infra/src/omnibase_infra/nodes/node_ci_runner_route_compute/handlers/handler_ci_runner_route.py:82. Return ONLY a complete test module, no explanation or Markdown. Import the function and any support types from solution. Do not redefine or monkeypatch the target function. Use meaningful assertions and edge cases. Tests run in isolation on this host. Required behavior to cover: JSON valid array preserves order, malformed/empty/non-list/non-string entries rejected.
+
+Exact public source slice including required support:
+from __future__ import annotations
+
+def parse_labels(raw: str) -> tuple[str, ...] | None:
+    """Parse a runner-variable JSON array. ``None`` on anything unusable.
+
+    An unusable seam is a config fault, not a licence to pick: the caller turns
+    ``None`` into a hosted placement with a named reason.
+    """
+    import json
+
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(parsed, list) or not parsed:
+        return None
+    if not all(isinstance(item, str) for item in parsed):
+        return None
+    return tuple(str(item) for item in parsed)

@@ -1,0 +1,49 @@
+from __future__ import annotations
+
+_DOD_KIND_TO_TYPE: dict[str, str] = {
+    "test": "unit_test",
+    "unit_test": "unit_test",
+    "integration_test": "integration_test",
+    "pr_merged": "pr_merged",
+    "file_exists": "file_exists",
+}
+
+def normalize_dod_evidence(raw: dict[str, object]) -> dict[str, object]:
+    """Map legacy ``kind`` -> ``type`` on dod_evidence entries.
+
+    Legacy contracts spelled the discriminator on each dod_evidence entry
+    as ``kind``; the canonical schema names it ``type``. Per-entry rules:
+
+    - String entries (``"test_passes"``) pass through unchanged.
+    - Dict entries with ``kind`` and no ``type`` are rewritten:
+      ``kind`` is removed, ``type`` is set via :data:`_DOD_KIND_TO_TYPE`
+      (or copied verbatim if no mapping is registered).
+    - Dict entries that already carry ``type`` are left alone (no double
+      mapping; pre-canonical entries win).
+
+    The input dict is not mutated; a new dict is returned. Idempotent:
+    running twice yields the same result. No-op when ``dod_evidence`` is
+    absent.
+
+    Corpus context: 8 files in the audited corpus carry legacy ``kind``.
+    """
+    if "dod_evidence" not in raw:
+        return raw
+    result = dict(raw)
+    items_raw = result.get("dod_evidence")
+    if not isinstance(items_raw, list):
+        return result
+    new_items: list[object] = []
+    for item in items_raw:
+        if isinstance(item, dict) and "kind" in item and "type" not in item:
+            normalized: dict[str, object] = dict(item)
+            kind_value = normalized.pop("kind")
+            if isinstance(kind_value, str):
+                normalized["type"] = _DOD_KIND_TO_TYPE.get(kind_value, kind_value)
+            else:
+                normalized["type"] = kind_value
+            new_items.append(normalized)
+        else:
+            new_items.append(item)
+    result["dod_evidence"] = new_items
+    return result

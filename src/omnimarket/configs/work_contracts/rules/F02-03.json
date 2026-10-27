@@ -1,0 +1,8 @@
+{
+  "mode": "phrases",
+  "required": [
+    "Turn one native Messages reply into the typed result (OMN-20910).",
+    "Emit escalation event when quality gate fails or call fails mid-tier.",
+    "Build the typed, non-retryable credential refusal (OMN-18696)."
+  ]
+}
