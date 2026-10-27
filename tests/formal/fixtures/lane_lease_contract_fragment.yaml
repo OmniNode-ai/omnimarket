@@ -1,0 +1,102 @@
+state_machine:
+  version: {major: 1, minor: 0, patch: 0}
+  state_machine_name: lane_lease_fsm
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: 'Lifecycle of one lane lease: claimed, spawning, uncertain after a starter crash, active, expired and fenced, replaced or released.'
+  initial_state: claimed
+  terminal_states: [replaced, released]
+  error_states: []
+  persistence_enabled: false
+  states:
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: claimed
+    state_type: operational
+    description: The key is claimed; no process has been registered.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: spawning
+    state_type: operational
+    description: A keyed process token is registered and the lane is being created.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: uncertain
+    state_type: operational
+    description: The starter died while spawning; whether a process exists is not known and the host pool must reconcile it.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: active
+    state_type: operational
+    description: The lane holds the lease and may write.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: expired
+    state_type: operational
+    description: The lease ran out or the start never completed; write authority is gone and a live old process is fenced.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: replaced
+    state_type: terminal
+    description: The next generation started.
+    is_terminal: true
+    is_recoverable: false
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: released
+    state_type: terminal
+    description: The lane finished and released its lease.
+    is_terminal: true
+    is_recoverable: false
+  transitions:
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: claimed_to_spawning_on_spawn_started
+    from_state: claimed
+    to_state: spawning
+    trigger: spawn_started
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: claimed_to_expired_on_pending_window_elapsed
+    from_state: claimed
+    to_state: expired
+    trigger: pending_window_elapsed
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: spawning_to_active_on_receipt_recorded
+    from_state: spawning
+    to_state: active
+    trigger: receipt_recorded
+    conditions:
+    - {condition_name: receipt_started, condition_type: expression, expression: receipt_started == True}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: spawning_to_expired_on_launch_failed
+    from_state: spawning
+    to_state: expired
+    trigger: launch_failed
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: spawning_to_uncertain_on_launch_timed_out
+    from_state: spawning
+    to_state: uncertain
+    trigger: launch_timed_out
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: spawning_to_uncertain_on_starter_died
+    from_state: spawning
+    to_state: uncertain
+    trigger: starter_died
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: uncertain_to_active_on_process_found
+    from_state: uncertain
+    to_state: active
+    trigger: process_found
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: uncertain_to_expired_on_pending_window_elapsed
+    from_state: uncertain
+    to_state: expired
+    trigger: pending_window_elapsed
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: active_to_expired_on_lease_expired
+    from_state: active
+    to_state: expired
+    trigger: lease_expired
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: active_to_released_on_lane_finished
+    from_state: active
+    to_state: released
+    trigger: lane_finished
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: expired_to_replaced_on_next_generation_started
+    from_state: expired
+    to_state: replaced
+    trigger: next_generation_started
+    conditions:
+    - {condition_name: no_unexpired_lease, condition_type: expression, expression: unexpired_leases == 0}

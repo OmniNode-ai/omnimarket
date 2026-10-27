@@ -1,0 +1,262 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 129 and seed -1620323838322568956 with 12 workers on 32 cores with 7282MB heap and 64MB offheap memory [pid: 1] (Linux 7.0.0-34-generic amd64, Eclipse Adoptium 17.0.20.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file AndonStop.tla
+Parsing file /tmp/Integers.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Integers
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module AndonStop
+Starting... (2026-10-27 18:12:39)
+Computing initial states...
+Finished computing initial states: 2 distinct states generated at 2026-10-27 18:12:39.
+Error: Invariant NeverClearedByCountermeasure is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ canaryUsed = 0
+/\ ls = <<"none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "enforce"
+/\ cons = 0
+/\ cm = FALSE
+/\ cross = 0
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = FALSE
+/\ lgen = 0
+/\ handFixBad = FALSE
+/\ st = "absent"
+/\ used = 0
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 0
+/\ occ = 0
+/\ humanCleared = FALSE
+/\ goodPost = 0
+/\ boundGen = 0
+/\ evid = FALSE
+/\ replTotal = 0
+/\ cache = "absent"
+/\ age = 0
+
+State 2: <DetectorFires line 158, col 3 to line 163, col 49 of module AndonStop>
+/\ canaryUsed = 0
+/\ ls = <<"none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "enforce"
+/\ cons = 0
+/\ cm = FALSE
+/\ cross = 0
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = FALSE
+/\ lgen = 0
+/\ handFixBad = FALSE
+/\ st = "open"
+/\ used = 0
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 0
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 0
+/\ boundGen = 0
+/\ evid = FALSE
+/\ replTotal = 0
+/\ cache = "open"
+/\ age = 0
+
+State 3: <RecordEvidence line 173, col 3 to line 177, col 49 of module AndonStop>
+/\ canaryUsed = 0
+/\ ls = <<"none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "enforce"
+/\ cons = 0
+/\ cm = FALSE
+/\ cross = 0
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = FALSE
+/\ lgen = 0
+/\ handFixBad = FALSE
+/\ st = "open"
+/\ used = 0
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 0
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 0
+/\ boundGen = 0
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "open"
+/\ age = 0
+
+State 4: <CountermeasureMerged line 214, col 3 to line 220, col 95 of module AndonStop>
+/\ canaryUsed = 0
+/\ ls = <<"none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "enforce"
+/\ cons = 0
+/\ cm = TRUE
+/\ cross = 0
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = TRUE
+/\ lgen = 0
+/\ handFixBad = FALSE
+/\ st = "fixed"
+/\ used = 0
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 1
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 0
+/\ boundGen = 0
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "fixed"
+/\ age = 0
+
+State 5: <CanaryDispatch line 350, col 3 to line 355, col 81 of module AndonStop>
+/\ canaryUsed = 1
+/\ ls = <<"none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "enforce"
+/\ cons = 0
+/\ cm = TRUE
+/\ cross = 1
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = TRUE
+/\ lgen = 0
+/\ handFixBad = FALSE
+/\ st = "fixed"
+/\ used = 0
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 1
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 0
+/\ boundGen = 0
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "fixed"
+/\ age = 0
+
+State 6: <ReadbackFixed line 272, col 3 to line 273, col 37 of module AndonStop>
+/\ canaryUsed = 0
+/\ ls = <<"none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "enforce"
+/\ cons = 1
+/\ cm = TRUE
+/\ cross = 0
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = TRUE
+/\ lgen = 0
+/\ handFixBad = FALSE
+/\ st = "fixed"
+/\ used = 0
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 1
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 1
+/\ boundGen = 0
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "fixed"
+/\ age = 0
+
+State 7: <CanaryDispatch line 350, col 3 to line 355, col 81 of module AndonStop>
+/\ canaryUsed = 1
+/\ ls = <<"none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "enforce"
+/\ cons = 1
+/\ cm = TRUE
+/\ cross = 1
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = TRUE
+/\ lgen = 0
+/\ handFixBad = FALSE
+/\ st = "fixed"
+/\ used = 0
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 1
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 1
+/\ boundGen = 0
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "fixed"
+/\ age = 0
+
+State 8: <ReadbackFixed line 272, col 3 to line 273, col 37 of module AndonStop>
+/\ canaryUsed = 0
+/\ ls = <<"none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "enforce"
+/\ cons = 2
+/\ cm = TRUE
+/\ cross = 0
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = TRUE
+/\ lgen = 0
+/\ handFixBad = FALSE
+/\ st = "cleared"
+/\ used = 0
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 1
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 2
+/\ boundGen = 0
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "cleared"
+/\ age = 0
+
+9197 states generated, 2745 distinct states found, 1468 states left on queue.
+The depth of the complete state graph search is 9.
+The average outdegree of the complete state graph is 2 (minimum is 0, the maximum 9 and the 95th percentile is 5).
+Finished in 00s at (2026-10-27 18:12:39)
+exit=12

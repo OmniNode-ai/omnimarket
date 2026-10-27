@@ -1813,6 +1813,19 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-21442: the andon stop and lane lease model passes its design configs, each
+      # property fails on a one-knob mutation, the TLC results match the committed
+      # model, configs and outputs, the model's states, triggers and constants are its
+      # contracts', and VERDICT.txt approves the model's digest. Check-only. SYNC with
+      # the ci.yml lint step "Andon stop model and verdict (OMN-21442)".
+      - id: andon-stop-model
+        name: Andon stop model and verdict (OMN-21442)
+        language: system
+        entry: uv run pytest tests/formal/test_andon_stop_model.py -q -n 0 -p no:randomly --no-cov
+        files: ^(formal/andon_stop/|src/omnimarket/nodes/node_(andon_stop|lane_lease)_reducer/contract\.yaml$|tests/formal/(test_andon_stop_model\.py|andon_stop_tlc\.sh|fixtures/(andon_stop|lane_lease)_contract_fragment\.yaml)$)
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-20601: routing decisions come from overlays, never from omnimarket code.
       # Check-only. SYNC with the ci.yml lint step "Routing sources, overlay
       # precedence and routing-in-code ratchet (OMN-20601)".

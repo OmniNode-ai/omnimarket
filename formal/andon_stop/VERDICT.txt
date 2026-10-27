@@ -1,0 +1,45 @@
+AndonStop model verdict (OMN-21442)
+===================================
+
+Reviewer: Codex (codex-cli, its configured default model, reasoning effort high), run
+read-only in the lane's worktree as an adversarial reviewer of the model, its configs, the
+README and the TLC results, against the plan's task T-A1 and its sections 5.4, 5.5, 5.8 and
+0d.7. The rule given to the reviewer: APPROVE only with no BLOCKER and no MAJOR finding.
+
+Rounds
+------
+
+round 1  model sha256=b4f21aef5ef84855d7c5eb8ef3007568cb80ca2100b3dd633838022db47799bd  REJECT  2 MAJOR, 1 MINOR
+         (the open-PR exemption guard of 5.4 not modelled; liveness depended on guaranteed
+         repair success beyond the fair-readback requirement; the ReleaseGuard restriction
+         absent from the 0d.7 transition)
+round 2  model sha256=c4ddb23ea41a2918f35f3c18363cd2ef3b5c379c6aca7045930694659a75133a  APPROVE 0 MAJOR, 1 MINOR
+
+Between the rounds: request kind openpr_forged and its dispatcher-bound refusal were added to
+OnlyBoundExemptionsAdmitted (mutant M21 admits it); the FailForever knob and mutant M34 show that
+unbounded failing countermeasures defeat the liveness claim (README finding F3, handed to the
+plan's owner: the model does not add a reopen bound to the plan's machine); README findings F1
+and F3 state the added assumptions. The round 2 MINOR (README line 60 attributed StopResolves to
+fairness alone) was answered by rewording that sentence to name ReleaseGuard (F1) and finitely
+many failing countermeasures (F3). The model and every config are unchanged since round 2; the
+reviewer ran while the TLC matrix was finishing and judged the model and configs, so the results
+are the lane's own readback of results/SUMMARY.txt, checked by tests/formal/test_andon_stop_model.py.
+
+Round 2 review, as returned (paths made repo-relative)
+-------------------------------------------------------
+
+1. MINOR - formal/andon_stop/README.txt:60: "Under this assumption" attributes `StopResolves`
+to fairness alone. Cross-reference F1/F3 here: it also requires `ReleaseGuard` and finitely many
+failing countermeasures. These assumptions are otherwise disclosed, have dedicated mutants, and
+are handed to the plan owner. Full TLC matrix results remain pending because `SUMMARY.txt` is
+absent.
+
+Open items handed to the plan's owner (neither blocks the model's own checks)
+------------------------------------------------------------------------------
+
+F1  carry ReleaseGuard into the lane lease contract or the swarm lane's trigger requirements, or
+    add an exit from swarming to the stop contract.
+F3  decide a reopen bound (a reopen count in the guard context sending the stop to stale) or amend
+    the liveness claim.
+
+verdict: APPROVE model=AndonStop.tla sha256=c4ddb23ea41a2918f35f3c18363cd2ef3b5c379c6aca7045930694659a75133a

@@ -1,0 +1,412 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 79 and seed 2636277743885026814 with 12 workers on 32 cores with 7282MB heap and 64MB offheap memory [pid: 1] (Linux 7.0.0-34-generic amd64, Eclipse Adoptium 17.0.20.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file AndonStop.tla
+Parsing file /tmp/Integers.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Integers
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module AndonStop
+Starting... (2026-10-27 18:10:41)
+Computing initial states...
+Finished computing initial states: 2 distinct states generated at 2026-10-27 18:10:41.
+Error: Invariant ReplacementsBounded is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ canaryUsed = 0
+/\ ls = <<"none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "observe"
+/\ cons = 0
+/\ cm = FALSE
+/\ cross = 0
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = FALSE
+/\ lgen = 0
+/\ handFixBad = FALSE
+/\ st = "absent"
+/\ used = 0
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 0
+/\ occ = 0
+/\ humanCleared = FALSE
+/\ goodPost = 0
+/\ boundGen = 0
+/\ evid = FALSE
+/\ replTotal = 0
+/\ cache = "absent"
+/\ age = 0
+
+State 2: <DetectorFires line 158, col 3 to line 163, col 49 of module AndonStop>
+/\ canaryUsed = 0
+/\ ls = <<"none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "observe"
+/\ cons = 0
+/\ cm = FALSE
+/\ cross = 0
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = FALSE
+/\ lgen = 0
+/\ handFixBad = FALSE
+/\ st = "open"
+/\ used = 0
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 0
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 0
+/\ boundGen = 0
+/\ evid = FALSE
+/\ replTotal = 0
+/\ cache = "open"
+/\ age = 0
+
+State 3: <RecordEvidence line 173, col 3 to line 177, col 49 of module AndonStop>
+/\ canaryUsed = 0
+/\ ls = <<"none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "observe"
+/\ cons = 0
+/\ cm = FALSE
+/\ cross = 0
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = FALSE
+/\ lgen = 0
+/\ handFixBad = FALSE
+/\ st = "open"
+/\ used = 0
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 0
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 0
+/\ boundGen = 0
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "open"
+/\ age = 0
+
+State 4: <LeaseGranted line 181, col 3 to line 186, col 59 of module AndonStop>
+/\ canaryUsed = 0
+/\ ls = <<"claimed", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "observe"
+/\ cons = 0
+/\ cm = FALSE
+/\ cross = 0
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = FALSE
+/\ lgen = 1
+/\ handFixBad = FALSE
+/\ st = "swarming"
+/\ used = 0
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 0
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 0
+/\ boundGen = 1
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "swarming"
+/\ age = 0
+
+State 5: <ClaimedWindowElapsed line 374, col 3 to line 375, col 71 of module AndonStop>
+/\ canaryUsed = 0
+/\ ls = <<"expired", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "observe"
+/\ cons = 0
+/\ cm = FALSE
+/\ cross = 0
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = FALSE
+/\ lgen = 1
+/\ handFixBad = FALSE
+/\ st = "swarming"
+/\ used = 0
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 0
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 0
+/\ boundGen = 1
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "swarming"
+/\ age = 0
+
+State 6: <LeaseExpiredTrigger line 189, col 3 to line 202, col 88 of module AndonStop>
+/\ canaryUsed = 0
+/\ ls = <<"replaced", "claimed", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "observe"
+/\ cons = 0
+/\ cm = FALSE
+/\ cross = 0
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = FALSE
+/\ lgen = 2
+/\ handFixBad = FALSE
+/\ st = "swarming"
+/\ used = 1
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 0
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 0
+/\ boundGen = 2
+/\ evid = TRUE
+/\ replTotal = 1
+/\ cache = "swarming"
+/\ age = 0
+
+State 7: <ClaimedWindowElapsed line 374, col 3 to line 375, col 71 of module AndonStop>
+/\ canaryUsed = 0
+/\ ls = <<"replaced", "expired", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "observe"
+/\ cons = 0
+/\ cm = FALSE
+/\ cross = 0
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = FALSE
+/\ lgen = 2
+/\ handFixBad = FALSE
+/\ st = "swarming"
+/\ used = 1
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 0
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 0
+/\ boundGen = 2
+/\ evid = TRUE
+/\ replTotal = 1
+/\ cache = "swarming"
+/\ age = 0
+
+State 8: <LeaseExpiredTrigger line 189, col 3 to line 202, col 88 of module AndonStop>
+/\ canaryUsed = 0
+/\ ls = <<"replaced", "replaced", "claimed", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "observe"
+/\ cons = 0
+/\ cm = FALSE
+/\ cross = 0
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = FALSE
+/\ lgen = 3
+/\ handFixBad = FALSE
+/\ st = "swarming"
+/\ used = 2
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 0
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 0
+/\ boundGen = 3
+/\ evid = TRUE
+/\ replTotal = 2
+/\ cache = "swarming"
+/\ age = 0
+
+State 9: <ClaimedWindowElapsed line 374, col 3 to line 375, col 71 of module AndonStop>
+/\ canaryUsed = 0
+/\ ls = <<"replaced", "replaced", "expired", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "observe"
+/\ cons = 0
+/\ cm = FALSE
+/\ cross = 0
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = FALSE
+/\ lgen = 3
+/\ handFixBad = FALSE
+/\ st = "swarming"
+/\ used = 2
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 0
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 0
+/\ boundGen = 3
+/\ evid = TRUE
+/\ replTotal = 2
+/\ cache = "swarming"
+/\ age = 0
+
+State 10: <LeaseExpiredTrigger line 189, col 3 to line 202, col 88 of module AndonStop>
+/\ canaryUsed = 0
+/\ ls = <<"replaced", "replaced", "replaced", "claimed", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "observe"
+/\ cons = 0
+/\ cm = FALSE
+/\ cross = 0
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = FALSE
+/\ lgen = 4
+/\ handFixBad = FALSE
+/\ st = "swarming"
+/\ used = 3
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 0
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 0
+/\ boundGen = 4
+/\ evid = TRUE
+/\ replTotal = 3
+/\ cache = "swarming"
+/\ age = 0
+
+State 11: <ClaimedWindowElapsed line 374, col 3 to line 375, col 71 of module AndonStop>
+/\ canaryUsed = 0
+/\ ls = <<"replaced", "replaced", "replaced", "expired", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "observe"
+/\ cons = 0
+/\ cm = FALSE
+/\ cross = 0
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = FALSE
+/\ lgen = 4
+/\ handFixBad = FALSE
+/\ st = "swarming"
+/\ used = 3
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 0
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 0
+/\ boundGen = 4
+/\ evid = TRUE
+/\ replTotal = 3
+/\ cache = "swarming"
+/\ age = 0
+
+State 12: <LeaseExpiredTrigger line 189, col 3 to line 202, col 88 of module AndonStop>
+/\ canaryUsed = 0
+/\ ls = <<"replaced", "replaced", "replaced", "expired", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "observe"
+/\ cons = 0
+/\ cm = FALSE
+/\ cross = 0
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = FALSE
+/\ lgen = 4
+/\ handFixBad = FALSE
+/\ st = "stale"
+/\ used = 3
+/\ decisions = 1
+/\ histCounted = FALSE
+/\ cmCount = 0
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 0
+/\ boundGen = 4
+/\ evid = TRUE
+/\ replTotal = 3
+/\ cache = "stale"
+/\ age = 0
+
+State 13: <LeaseGranted line 181, col 3 to line 186, col 59 of module AndonStop>
+/\ canaryUsed = 0
+/\ ls = <<"replaced", "replaced", "replaced", "replaced", "claimed", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "observe"
+/\ cons = 0
+/\ cm = FALSE
+/\ cross = 0
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = FALSE
+/\ lgen = 5
+/\ handFixBad = FALSE
+/\ st = "swarming"
+/\ used = 4
+/\ decisions = 1
+/\ histCounted = FALSE
+/\ cmCount = 0
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 0
+/\ boundGen = 5
+/\ evid = TRUE
+/\ replTotal = 4
+/\ cache = "swarming"
+/\ age = 0
+
+174181 states generated, 37753 distinct states found, 13097 states left on queue.
+The depth of the complete state graph search is 14.
+The average outdegree of the complete state graph is 2 (minimum is 0, the maximum 9 and the 95th percentile is 4).
+Finished in 01s at (2026-10-27 18:10:42)
+exit=12
