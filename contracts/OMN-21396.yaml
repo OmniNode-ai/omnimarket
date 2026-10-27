@@ -367,3 +367,16 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_idle_slot_fill_effect/test_lab_fill_model_policy_effect.py -q --no-cov --refuse-skips"
         cwd: "."
+  - id: "dod-omn21396-codex-measurement"
+    description: >
+      Hosted-runner check of the committed Codex cohort measurement taken on a
+      lab host where Codex starts: each of the seven task types has three fixed
+      and one receipt-derived Codex observation, every row is available and
+      carries a pass or a failure kind, and the proposed experiment rows number
+      twenty-eight. Reads committed JSON only; no login, credentials, broker or
+      lab service.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "python3 -c \"import json,pathlib;b=pathlib.Path('benchmarks/harness_evals/results/2026-10-27-h201-codex');f=json.loads((b/'fixed/summary.json').read_text());r=json.loads((b/'recent/summary.json').read_text());assert len(f)==7 and len(r)==7;assert all(c['harness']=='codex' and c['n']==3 and c['unavailable']==0 for c in f);assert all(c['n']==1 and c['unavailable']==0 for c in r);assert len(json.loads((b/'fixed/experiment-rows.json').read_text()))+len(json.loads((b/'recent/experiment-rows.json').read_text()))==28\""
+        cwd: "."
