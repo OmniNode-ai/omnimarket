@@ -89,8 +89,8 @@ def fill(**changes) -> models.ModelIdleSlotFillResult:
 def test_free_slots_are_filled_from_the_tick_lines_in_pillar_order():
     result = fill()
     assert [(s["kind"], s["key"], s["model"]) for s in result.sends] == [
-        ("process-fix", "repo-private-data#812", "sonnet"),
-        ("cause-red", "repo-status:omnimarket", "sonnet"),
+        ("process-fix", "repo-private-data#812", "codex"),
+        ("cause-red", "repo-status:omnimarket", "codex"),
     ]
     first, second = result.sends
     assert first["lane"] == "fill-pf-drive-repo-private-data-812-20261018T2130Z"
@@ -239,7 +239,7 @@ def test_codex_lanes_go_to_codex_only_hosts_after_claude_slots():
     assert [(s["key"], s["model"]) for s in result.sends] == [
         ("repo-private-data#812", "codex"),
         ("repo-status:omnimarket", "codex"),
-        ("exp:cache-warm", "sonnet"),
+        ("exp:cache-warm", "codex"),
     ]
     assert result.codex_only_free == 2
     assert result.idle_after == 0
@@ -1654,7 +1654,7 @@ def test_dropped_items_are_not_sent_and_recording_is_read_only_safe_and_failure_
 
 
 def test_no_opus_claude_fill_brief_routes_sonnet():
-    result = fill()
+    result = fill(hosts=[host("host-a", 2, 0)])
     assert result.sends
     for send in result.sends:
         assert send["model"] == "sonnet"
@@ -1770,7 +1770,7 @@ def test_no_opus_quoted_requirement_is_not_a_pin(fence):
         ],
     )
     assert len(result.sends) == 1
-    assert result.sends[0]["model"] == "sonnet"
+    assert result.sends[0]["model"] == "codex"
     assert result.skipped == []
 
 
