@@ -34,9 +34,9 @@ from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_delegation_config import (
     ModelDelegationConfig,
-    parse_delegation_config_yaml,
 )
 from tests.delegation_golden.corpus_loader import ModelCorpus, load_corpus
+from tests.placed_routing_config import placed_routing_config
 
 pytestmark = pytest.mark.unit
 
@@ -147,9 +147,8 @@ class TestU2EveryTierResolvesCompleteBackend:
     def tiers_and_backends(
         self,
     ) -> tuple[ModelDelegationConfig, dict[str, ModelDelegationBackendConfig]]:
-        delegation_config = parse_delegation_config_yaml(
-            _ROUTING_TIERS_CONFIG.read_text()
-        )
+        # The free tier's rung is declared by a bifrost placement (OMN-20376).
+        delegation_config = placed_routing_config()
         raw = yaml.safe_load(_BIFROST_CONFIG.read_text())
         # The ollama block is read by load_ollama_config, not the wire model.
         raw.pop("ollama", None)
