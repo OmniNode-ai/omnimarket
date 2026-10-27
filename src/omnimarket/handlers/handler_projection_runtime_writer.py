@@ -53,6 +53,16 @@ class RuntimeProjectionWriter:
             ),
         )
         projected = asyncio.run(
-            self.runner_type().project_runtime_event(topic, data, meta)
+            self.runner_type().project_runtime_event(
+                topic, self.event_payload(data), meta
+            )
         )
         return {"projected": projected}
+
+    def event_payload(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Return the payload ``project_event`` receives, unchanged by default.
+
+        A subclass narrows the payload here rather than overriding ``handle``,
+        so every writer reads the source coordinates in one place.
+        """
+        return data

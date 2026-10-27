@@ -18,6 +18,6 @@ class LiveEventsProjectionWriter(RuntimeProjectionWriter):
 
     runner_type = HandlerLiveEventsProjectionRunner
 
-    def handle(self, request: dict[str, Any]) -> dict[str, Any]:
+    def event_payload(self, data: dict[str, Any]) -> dict[str, Any]:
         """Keep runtime bookkeeping out of the stored raw event payload."""
-        return super().handle(strip_runner_injected_keys(request))
+        return strip_runner_injected_keys(data)
