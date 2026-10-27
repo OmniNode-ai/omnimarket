@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-21438
+title: 'T-W1: WIP gate reducer, overlay limits, reader and admission audit'
+summary: New reducer node node_wip_gate_reducer with its contract state machine, shared rule rules_wip_gate,
+  models wip_gate, wip_limits overlay model, read_wip and audit_admissions. Pure; no deploy step.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-wip-gate
+  statement: WIP gate reducer, reader and admission audit.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: The reader counts drafts and prints both counts'
+  - id: AC2
+    statement: 'AC2: The line prints exempt=<n>'
+  - id: AC3
+    statement: 'AC3: The contract state_machine equals the fragment of section 6.7 and passes analyze_fsm
+      with no finding'
+  - id: AC4
+    statement: 'AC4: Every dispatchable repository in the overlay has a limit entry with its evidence;
+      a missing entry refuses naming the key'
+  - id: AC5
+    statement: 'AC5: With enforce_ruling empty wip_gate never refuses; with it set, a stale or unreadable
+      reading or a missing limit refuses naming the reason'
+  - id: AC6
+    statement: 'AC6: A watcher state that cannot be read prints UNKNOWN, never a count of 0'
+  - id: AC7
+    statement: 'AC7: Valid override evidence admits as admitted_override; six kinds of invalid evidence
+      refuse at the limit'
+  - id: AC8
+    statement: 'AC8: Valid override evidence with a stale, unreadable or missing reading refuses when
+      enforcing and warns otherwise'
+  - id: AC9
+    statement: 'AC9: audit_admissions counts CLAIM rows that opened a PR after the limit; valid exemptions
+      read 0, forged and expired read 1'
+  - id: AC10
+    statement: 'AC10: No repository or host name is in the package'
+  - id: AC11
+    statement: 'AC11: Configuration values come from config.wip_gate and the wip_limits overlay'
+  - id: AC12
+    statement: 'AC12: Depends on no protocol'
+evidence_requirements:
+- kind: tests
+  description: Focused WIP gate tests.
+  command: uv run pytest tests/nodes/node_wip_gate_reducer/test_wip_gate.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21438-tests
+  description: All twelve acceptance criteria are covered by the focused test file.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  - AC4
+  - AC5
+  - AC6
+  - AC7
+  - AC8
+  - AC9
+  - AC10
+  - AC11
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_wip_gate_reducer/test_wip_gate.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket

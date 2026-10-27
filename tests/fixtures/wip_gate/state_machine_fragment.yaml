@@ -1,0 +1,100 @@
+state_machine:
+  version: {major: 1, minor: 0, patch: 0}
+  state_machine_name: wip_gate_fsm
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: 'Decision on one PR-opening dispatch request: admit, warn or refuse, from a repository''s open-PR count against its limit.'
+  initial_state: requested
+  terminal_states: [admitted, admitted_exempt, admitted_override, warned, refused]
+  error_states: []
+  persistence_enabled: false
+  states:
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: requested
+    state_type: operational
+    description: A PR-opening dispatch asks to enter a repository.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: admitted
+    state_type: terminal
+    description: The repository is under its limit.
+    is_terminal: true
+    is_recoverable: false
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: admitted_exempt
+    state_type: terminal
+    description: The dispatch reduces work in progress and its exemption validated.
+    is_terminal: true
+    is_recoverable: false
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: admitted_override
+    state_type: terminal
+    description: The slot reducer chose a last-resort PR-opening item for an at-limit repository (the no-idle rule) and its dispatcher-written evidence validated; the audit counts it.
+    is_terminal: true
+    is_recoverable: false
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: warned
+    state_type: terminal
+    description: Enforcement is off, or the reading is unusable and enforcement is off; the dispatch proceeds and the line prints the warning.
+    is_terminal: true
+    is_recoverable: false
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: refused
+    state_type: terminal
+    description: Enforcement is on and the repository is at its limit or its reading is unusable; the fill diverts the slot.
+    is_terminal: true
+    is_recoverable: false
+  transitions:
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: requested_to_admitted_override_on_facts_evaluated
+    from_state: requested
+    to_state: admitted_override
+    trigger: facts_evaluated
+    priority: 6
+    conditions:
+    - {condition_name: override_valid, condition_type: expression, expression: override_valid == True}
+    - {condition_name: reading_usable, condition_type: expression, expression: reading_usable == True}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: requested_to_admitted_exempt_on_facts_evaluated
+    from_state: requested
+    to_state: admitted_exempt
+    trigger: facts_evaluated
+    priority: 5
+    conditions:
+    - {condition_name: exemption_valid, condition_type: expression, expression: exemption_valid == True}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: requested_to_refused_on_facts_evaluated_unusable
+    from_state: requested
+    to_state: refused
+    trigger: facts_evaluated
+    priority: 4
+    conditions:
+    - {condition_name: reading_unusable, condition_type: expression, expression: reading_usable == False}
+    - {condition_name: enforcing, condition_type: expression, expression: enforcement_on == True}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: requested_to_warned_on_facts_evaluated_unusable
+    from_state: requested
+    to_state: warned
+    trigger: facts_evaluated
+    priority: 3
+    conditions:
+    - {condition_name: reading_unusable, condition_type: expression, expression: reading_usable == False}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: requested_to_admitted_on_facts_evaluated
+    from_state: requested
+    to_state: admitted
+    trigger: facts_evaluated
+    priority: 2
+    conditions:
+    - {condition_name: under_limit, condition_type: expression, expression: repo_under_limit == True}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: requested_to_refused_on_facts_evaluated_at_limit
+    from_state: requested
+    to_state: refused
+    trigger: facts_evaluated
+    priority: 1
+    conditions:
+    - {condition_name: enforcing, condition_type: expression, expression: enforcement_on == True}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: requested_to_warned_on_facts_evaluated_at_limit
+    from_state: requested
+    to_state: warned
+    trigger: facts_evaluated
