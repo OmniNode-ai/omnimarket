@@ -273,3 +273,11 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run --frozen pytest tests/nodes/node_exemplar_registry_reconcile_compute/test_sampled_revocation.py -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21090-ac3-client-receipt-verdict"
+    description: "Track B repository contribution: core-enveloped delegation receipts are checked before mapping the section 7.2 verdict to a hook output. The child and epic remain incomplete; the existing evidence for every epic criterion is preserved, and their completion remains a Linear API check."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/nodes/node_delegation_receipt_verdict_compute -q -n 0 --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

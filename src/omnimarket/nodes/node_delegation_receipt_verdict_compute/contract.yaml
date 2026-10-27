@@ -1,0 +1,68 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_delegation_receipt_verdict_compute
+node_type: compute
+runtime_profiles:
+- main
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Verify core-enveloped delegation admission and terminal receipts, then
+  apply the shared client verdict table. This compute performs no publish, wait or
+  cohort activation.
+input_model:
+  name: ModelReceiptVerdictRequest
+  module: omnimarket.nodes.node_delegation_receipt_verdict_compute.models.model_receipt_verdict_request
+output_model:
+  name: ModelReceiptVerdictResult
+  module: omnimarket.nodes.node_delegation_receipt_verdict_compute.models.model_receipt_verdict_result
+handler:
+  module: omnimarket.nodes.node_delegation_receipt_verdict_compute.handlers.handler_receipt_verdict
+  class: HandlerReceiptVerdict
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - event_model:
+      name: ModelReceiptVerdictRequest
+      module: omnimarket.nodes.node_delegation_receipt_verdict_compute.models.model_receipt_verdict_request
+    operation: delegation_receipt_verdict
+    handler:
+      name: HandlerReceiptVerdict
+      module: omnimarket.nodes.node_delegation_receipt_verdict_compute.handlers.handler_receipt_verdict
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.delegation-receipt-verdict-requested.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.delegation-receipt-verdict-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.delegation-receipt-verdict-decided.v1
+terminal_event: onex.evt.omnimarket.delegation-receipt-verdict-decided.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.delegation-receipt-verdict-decided.v1
+receipt_policy:
+  admission_topic: onex.evt.omnimarket.delegate-skill-admission-decided.v1
+  completed_topic: onex.evt.omnimarket.delegate-skill-completed.v1
+  failed_topic: onex.evt.omnimarket.delegate-skill-failed.v1
+deployment_overlay:
+  name: node_delegation_receipt_verdict_compute
+  required: true
+  fields:
+  - allowlisted_task_types
+  description: Installed client task allowlist. Missing or invalid configuration refuses;
+    no cohort is activated.
+cross_repo_dependencies:
+- repo: omnimarket
+  node: node_delegation_client_verdict_compute
+  contract_name: node_delegation_client_verdict_compute
+  compatibility: '>=1.0.0'
+metadata:
+  author: OmniNode Team
+  related_tickets:
+  - OMN-21099
