@@ -9,7 +9,8 @@ judgement:
 
 ``HandlerIdleSlotFill`` (operation fill) is what the throughput tick sends by itself. The free slots are the Claude
 slots of every host the tick's node reported as ``MISSING lab-headroom:<host>`` and whose probe read, less the lanes
-the merge sweep places this tick, then the Codex slots of hosts that admit Codex and not Claude. They are filled from
+the merge sweep places this tick, with Codex sharing that budget and dedicated Codex capacity counted separately.
+The contract's model policy ranks all admitted engines. Slots are filled from
 the standing pillar backlog, in this order: a repair lane for each broken lab piece the tick names
 (``running-vs-merged:``, ``host-tick:``, ``throughput-node``, ``dispatch-replace:``), a fix-forward lane for each red
 landing branch (``repo-status:<repo>`` naming base_branch_red, or merge_queue_ejecting with no controller owner: RULING
@@ -636,6 +637,31 @@ def brief(
     )
 
 
+def admitted_slots(host: Mapping[str, Any], engine: str, now: str) -> int:
+    """Honor the pool admission and its engine marks without reading account secrets."""
+    admission = host.get("admission") or {}
+    if admission.get("probe_error") or admission.get(f"{engine}_refusal"):
+        return 0
+    marks = (
+        ("limited_mark", "auth_mark") if engine == "claude" else ("codex_limited_mark",)
+    )
+    for key in marks:
+        mark = host.get(key) or {}
+        if mark.get("state", "absent") == "absent":
+            continue
+        until = _stamp(str(mark.get("until") or ""))
+        observed = _stamp(now)
+        if (
+            mark.get("state") != "present"
+            or until is None
+            or observed is None
+            or until > observed
+        ):
+            return 0
+    slots = admission.get(f"{engine}_slots")
+    return slots if isinstance(slots, int) and slots > 0 else 0
+
+
 class HandlerIdleSlotFill:
     def handle(self, request: ModelIdleSlotFillRequest) -> ModelIdleSlotFillResult:
         free_hosts = {
@@ -661,9 +687,10 @@ class HandlerIdleSlotFill:
                 host.get("name") not in free_hosts and not glm_headroom
             ) or admission.get("probe_error"):
                 continue
-            c, x = (admission.get(k) for k in ("claude_slots", "codex_slots"))
-            c = c if isinstance(c, int) and c > 0 else 0
-            x = x if isinstance(x, int) and x > 0 else 0
+            c, x = (
+                admitted_slots(host, engine, request.now)
+                for engine in ("claude", "codex")
+            )
             local_left = c if host.get("local") else local_left
             claude += c
             codex_only += x if c == 0 else 0
@@ -894,9 +921,12 @@ class HandlerIdleSlotFill:
                     }
                 )
                 continue
+            # Both engines can spend a shared host's one budget. Let the declared
+            # policy rank them even when the item has no explicit engine pin.
+            shared_left = min(shared_left, claude_left)
             available = {
                 "claude": claude_left,
-                "codex": codex_left + (shared_left if required == "codex" else 0),
+                "codex": codex_left + shared_left,
                 "glm": glm_left,
             }
             decision = resolve_lane_model(
