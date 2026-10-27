@@ -88,7 +88,9 @@ def test_one_token_of_room_still_requests_a_pack() -> None:
 
 
 def test_a_built_pack_with_a_hash_is_attached_and_dispatched() -> None:
-    result = _decide(context_pack_hash="sha256:" + "a" * 64)
+    result = _decide(
+        context_pack_hash="sha256:" + "a" * 64, assembled_request_tokens=7500
+    )
     assert result.status is EnumDelegationContextPackStatus.ATTACH
     assert result.dispatch_allowed is True
     assert result.context_pack_hash == "sha256:" + "a" * 64
@@ -187,3 +189,49 @@ def test_no_production_task_class_requests_a_pack_yet() -> None:
             profile_token_budget=None,
         )
         assert result.status is EnumDelegationContextPackStatus.NOT_REQUESTED
+
+
+def test_pack_hash_requires_a_full_input_measurement() -> None:
+    result = _decide(context_pack_hash="sha256:" + "d" * 64)
+    assert result.status.value == "refuse_unmeasured_input"
+    assert result.dispatch_allowed is False
+    assert result.context_pack_hash == ""
+
+
+@pytest.mark.parametrize("assembled", [8001, 12000])
+def test_a_pack_cannot_authorize_an_outbound_input_above_the_routed_ceiling(
+    assembled: int,
+) -> None:
+    result = _decide(
+        context_pack_hash="sha256:" + "e" * 64,
+        assembled_request_tokens=assembled,
+    )
+    assert result.status.value == "refuse_input_overflow"
+    assert result.dispatch_allowed is False
+    assert result.context_pack_hash == ""
+    assert result.assembled_request_tokens == assembled
+
+
+def test_an_assembled_input_at_the_ceiling_is_admitted_and_records_its_count() -> None:
+    result = _decide(
+        context_pack_hash="sha256:" + "f" * 64,
+        assembled_request_tokens=8000,
+    )
+    assert result.status is EnumDelegationContextPackStatus.ATTACH
+    assert result.dispatch_allowed is True
+    assert result.assembled_request_tokens == 8000
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"assembled_request_tokens": -1},
+        {"assembled_request_tokens": 2999, "context_pack_hash": "hash"},
+        {"assembled_request_tokens": 4000},
+    ],
+)
+def test_an_inconsistent_full_input_measurement_is_refused(
+    overrides: dict[str, Any],
+) -> None:
+    with pytest.raises(ValidationError):
+        ModelDelegationContextPackBudgetRequest.model_validate({**BASE, **overrides})

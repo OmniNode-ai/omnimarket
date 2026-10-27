@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 name: node_delegation_context_pack_budget_compute
-version: "1.0.0"
+version: "1.1.0"
 description: Context-pack budget and admission for the delegation orchestrator
 omnibase_core_compat: ">=0.47.28,<0.48.0"
 entry_points:
