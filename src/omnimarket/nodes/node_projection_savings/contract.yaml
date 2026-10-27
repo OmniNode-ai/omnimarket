@@ -16,8 +16,8 @@ description: >
   context_compaction).
 
 handler:
-  module: omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings
-  class: HandlerProjectionSavings
+  module: omnimarket.nodes.node_projection_savings.handlers.handler_runtime_writer
+  class: SavingsProjectionWriter
 
 handler_routing:
   routing_strategy: operation_match

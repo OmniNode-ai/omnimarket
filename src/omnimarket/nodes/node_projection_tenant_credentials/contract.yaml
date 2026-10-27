@@ -26,8 +26,8 @@ description: >
   is the exact split this closes.
 
 handler:
-  module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_projection
-  class: HandlerTenantCredentialsProjectionRunner
+  module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_runtime_writer
+  class: TenantCredentialsProjectionWriter
 
 # OMN-18013 / OMN-16939: one entry per topic, each declaring its own message_category.
 handler_routing:
