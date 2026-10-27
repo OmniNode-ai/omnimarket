@@ -1,0 +1,595 @@
+{
+  "assignments": [
+    {
+      "backend_id": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+      "configuration_id": "cfg-41245a030ba610ba",
+      "identity": {
+        "backend": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "claude-glm:058f13b95786f96431b1d35ebd1fe627de8ea2c1382d63bafd47e68ed300a590",
+        "inference_configuration": "cfg-41245a030ba610ba",
+        "model_revision": "glm-5.3",
+        "suite_revision": "9d59328a396486c1b5bbffbf11f3e2e219e95b1985e453eaef878f2ac0f8ec64"
+      },
+      "model_key": "glm-5.3"
+    }
+  ],
+  "line": {
+    "confidence": 0.95,
+    "floor": 0.9,
+    "margin": 0.07,
+    "power": 0.8
+  },
+  "map_run_id": "a82486fc-0c08-5a75-bb17-9dc05076a40e",
+  "observed_at": "2026-10-27T16:55:28.090157Z",
+  "rows": [
+    {
+      "backend_id": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+      "configuration": {
+        "parameters": {
+          "context_strategy_id": "full_context",
+          "max_tokens": null,
+          "reasoning_effort": "low",
+          "temperature": null,
+          "top_p": null
+        }
+      },
+      "identity": {
+        "backend": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "claude-glm:058f13b95786f96431b1d35ebd1fe627de8ea2c1382d63bafd47e68ed300a590",
+        "inference_configuration": "cfg-41245a030ba610ba",
+        "model_revision": "glm-5.3",
+        "suite_revision": "9d59328a396486c1b5bbffbf11f3e2e219e95b1985e453eaef878f2ac0f8ec64"
+      },
+      "item_key": "ci-log-diagnosis-1",
+      "model_key": "glm-5.3",
+      "passed": true,
+      "size_band": "S",
+      "source": "labelled_item",
+      "task_class": "ci-log-diagnosis",
+      "tenant_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "backend_id": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+      "configuration": {
+        "parameters": {
+          "context_strategy_id": "full_context",
+          "max_tokens": null,
+          "reasoning_effort": "low",
+          "temperature": null,
+          "top_p": null
+        }
+      },
+      "identity": {
+        "backend": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "claude-glm:058f13b95786f96431b1d35ebd1fe627de8ea2c1382d63bafd47e68ed300a590",
+        "inference_configuration": "cfg-41245a030ba610ba",
+        "model_revision": "glm-5.3",
+        "suite_revision": "9d59328a396486c1b5bbffbf11f3e2e219e95b1985e453eaef878f2ac0f8ec64"
+      },
+      "item_key": "ci-log-diagnosis-2",
+      "model_key": "glm-5.3",
+      "passed": true,
+      "size_band": "S",
+      "source": "labelled_item",
+      "task_class": "ci-log-diagnosis",
+      "tenant_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "backend_id": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+      "configuration": {
+        "parameters": {
+          "context_strategy_id": "full_context",
+          "max_tokens": null,
+          "reasoning_effort": "low",
+          "temperature": null,
+          "top_p": null
+        }
+      },
+      "identity": {
+        "backend": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "claude-glm:058f13b95786f96431b1d35ebd1fe627de8ea2c1382d63bafd47e68ed300a590",
+        "inference_configuration": "cfg-41245a030ba610ba",
+        "model_revision": "glm-5.3",
+        "suite_revision": "9d59328a396486c1b5bbffbf11f3e2e219e95b1985e453eaef878f2ac0f8ec64"
+      },
+      "item_key": "ci-log-diagnosis-3",
+      "model_key": "glm-5.3",
+      "passed": true,
+      "size_band": "S",
+      "source": "labelled_item",
+      "task_class": "ci-log-diagnosis",
+      "tenant_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "backend_id": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+      "configuration": {
+        "parameters": {
+          "context_strategy_id": "full_context",
+          "max_tokens": null,
+          "reasoning_effort": "low",
+          "temperature": null,
+          "top_p": null
+        }
+      },
+      "identity": {
+        "backend": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "claude-glm:058f13b95786f96431b1d35ebd1fe627de8ea2c1382d63bafd47e68ed300a590",
+        "inference_configuration": "cfg-41245a030ba610ba",
+        "model_revision": "glm-5.3",
+        "suite_revision": "9d59328a396486c1b5bbffbf11f3e2e219e95b1985e453eaef878f2ac0f8ec64"
+      },
+      "item_key": "docs-edit-1",
+      "model_key": "glm-5.3",
+      "passed": true,
+      "size_band": "S",
+      "source": "labelled_item",
+      "task_class": "docs-edit",
+      "tenant_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "backend_id": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+      "configuration": {
+        "parameters": {
+          "context_strategy_id": "full_context",
+          "max_tokens": null,
+          "reasoning_effort": "low",
+          "temperature": null,
+          "top_p": null
+        }
+      },
+      "identity": {
+        "backend": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "claude-glm:058f13b95786f96431b1d35ebd1fe627de8ea2c1382d63bafd47e68ed300a590",
+        "inference_configuration": "cfg-41245a030ba610ba",
+        "model_revision": "glm-5.3",
+        "suite_revision": "9d59328a396486c1b5bbffbf11f3e2e219e95b1985e453eaef878f2ac0f8ec64"
+      },
+      "item_key": "docs-edit-2",
+      "model_key": "glm-5.3",
+      "passed": false,
+      "size_band": "S",
+      "source": "labelled_item",
+      "task_class": "docs-edit",
+      "tenant_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "backend_id": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+      "configuration": {
+        "parameters": {
+          "context_strategy_id": "full_context",
+          "max_tokens": null,
+          "reasoning_effort": "low",
+          "temperature": null,
+          "top_p": null
+        }
+      },
+      "identity": {
+        "backend": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "claude-glm:058f13b95786f96431b1d35ebd1fe627de8ea2c1382d63bafd47e68ed300a590",
+        "inference_configuration": "cfg-41245a030ba610ba",
+        "model_revision": "glm-5.3",
+        "suite_revision": "9d59328a396486c1b5bbffbf11f3e2e219e95b1985e453eaef878f2ac0f8ec64"
+      },
+      "item_key": "docs-edit-3",
+      "model_key": "glm-5.3",
+      "passed": true,
+      "size_band": "S",
+      "source": "labelled_item",
+      "task_class": "docs-edit",
+      "tenant_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "backend_id": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+      "configuration": {
+        "parameters": {
+          "context_strategy_id": "full_context",
+          "max_tokens": null,
+          "reasoning_effort": "low",
+          "temperature": null,
+          "top_p": null
+        }
+      },
+      "identity": {
+        "backend": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "claude-glm:058f13b95786f96431b1d35ebd1fe627de8ea2c1382d63bafd47e68ed300a590",
+        "inference_configuration": "cfg-41245a030ba610ba",
+        "model_revision": "glm-5.3",
+        "suite_revision": "9d59328a396486c1b5bbffbf11f3e2e219e95b1985e453eaef878f2ac0f8ec64"
+      },
+      "item_key": "failing-test-fix-1",
+      "model_key": "glm-5.3",
+      "passed": true,
+      "size_band": "S",
+      "source": "labelled_item",
+      "task_class": "failing-test-fix",
+      "tenant_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "backend_id": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+      "configuration": {
+        "parameters": {
+          "context_strategy_id": "full_context",
+          "max_tokens": null,
+          "reasoning_effort": "low",
+          "temperature": null,
+          "top_p": null
+        }
+      },
+      "identity": {
+        "backend": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "claude-glm:058f13b95786f96431b1d35ebd1fe627de8ea2c1382d63bafd47e68ed300a590",
+        "inference_configuration": "cfg-41245a030ba610ba",
+        "model_revision": "glm-5.3",
+        "suite_revision": "9d59328a396486c1b5bbffbf11f3e2e219e95b1985e453eaef878f2ac0f8ec64"
+      },
+      "item_key": "failing-test-fix-2",
+      "model_key": "glm-5.3",
+      "passed": true,
+      "size_band": "S",
+      "source": "labelled_item",
+      "task_class": "failing-test-fix",
+      "tenant_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "backend_id": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+      "configuration": {
+        "parameters": {
+          "context_strategy_id": "full_context",
+          "max_tokens": null,
+          "reasoning_effort": "low",
+          "temperature": null,
+          "top_p": null
+        }
+      },
+      "identity": {
+        "backend": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "claude-glm:058f13b95786f96431b1d35ebd1fe627de8ea2c1382d63bafd47e68ed300a590",
+        "inference_configuration": "cfg-41245a030ba610ba",
+        "model_revision": "glm-5.3",
+        "suite_revision": "9d59328a396486c1b5bbffbf11f3e2e219e95b1985e453eaef878f2ac0f8ec64"
+      },
+      "item_key": "failing-test-fix-3",
+      "model_key": "glm-5.3",
+      "passed": true,
+      "size_band": "S",
+      "source": "labelled_item",
+      "task_class": "failing-test-fix",
+      "tenant_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "backend_id": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+      "configuration": {
+        "parameters": {
+          "context_strategy_id": "full_context",
+          "max_tokens": null,
+          "reasoning_effort": "low",
+          "temperature": null,
+          "top_p": null
+        }
+      },
+      "identity": {
+        "backend": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "claude-glm:058f13b95786f96431b1d35ebd1fe627de8ea2c1382d63bafd47e68ed300a590",
+        "inference_configuration": "cfg-41245a030ba610ba",
+        "model_revision": "glm-5.3",
+        "suite_revision": "9d59328a396486c1b5bbffbf11f3e2e219e95b1985e453eaef878f2ac0f8ec64"
+      },
+      "item_key": "host-read-only-1",
+      "model_key": "glm-5.3",
+      "passed": false,
+      "size_band": "S",
+      "source": "labelled_item",
+      "task_class": "host-read-only",
+      "tenant_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "backend_id": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+      "configuration": {
+        "parameters": {
+          "context_strategy_id": "full_context",
+          "max_tokens": null,
+          "reasoning_effort": "low",
+          "temperature": null,
+          "top_p": null
+        }
+      },
+      "identity": {
+        "backend": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "claude-glm:058f13b95786f96431b1d35ebd1fe627de8ea2c1382d63bafd47e68ed300a590",
+        "inference_configuration": "cfg-41245a030ba610ba",
+        "model_revision": "glm-5.3",
+        "suite_revision": "9d59328a396486c1b5bbffbf11f3e2e219e95b1985e453eaef878f2ac0f8ec64"
+      },
+      "item_key": "host-read-only-2",
+      "model_key": "glm-5.3",
+      "passed": false,
+      "size_band": "S",
+      "source": "labelled_item",
+      "task_class": "host-read-only",
+      "tenant_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "backend_id": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+      "configuration": {
+        "parameters": {
+          "context_strategy_id": "full_context",
+          "max_tokens": null,
+          "reasoning_effort": "low",
+          "temperature": null,
+          "top_p": null
+        }
+      },
+      "identity": {
+        "backend": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "claude-glm:058f13b95786f96431b1d35ebd1fe627de8ea2c1382d63bafd47e68ed300a590",
+        "inference_configuration": "cfg-41245a030ba610ba",
+        "model_revision": "glm-5.3",
+        "suite_revision": "9d59328a396486c1b5bbffbf11f3e2e219e95b1985e453eaef878f2ac0f8ec64"
+      },
+      "item_key": "host-read-only-3",
+      "model_key": "glm-5.3",
+      "passed": false,
+      "size_band": "S",
+      "source": "labelled_item",
+      "task_class": "host-read-only",
+      "tenant_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "backend_id": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+      "configuration": {
+        "parameters": {
+          "context_strategy_id": "full_context",
+          "max_tokens": null,
+          "reasoning_effort": "low",
+          "temperature": null,
+          "top_p": null
+        }
+      },
+      "identity": {
+        "backend": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "claude-glm:058f13b95786f96431b1d35ebd1fe627de8ea2c1382d63bafd47e68ed300a590",
+        "inference_configuration": "cfg-41245a030ba610ba",
+        "model_revision": "glm-5.3",
+        "suite_revision": "9d59328a396486c1b5bbffbf11f3e2e219e95b1985e453eaef878f2ac0f8ec64"
+      },
+      "item_key": "rebase-conflict-1",
+      "model_key": "glm-5.3",
+      "passed": false,
+      "size_band": "S",
+      "source": "labelled_item",
+      "task_class": "rebase-conflict",
+      "tenant_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "backend_id": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+      "configuration": {
+        "parameters": {
+          "context_strategy_id": "full_context",
+          "max_tokens": null,
+          "reasoning_effort": "low",
+          "temperature": null,
+          "top_p": null
+        }
+      },
+      "identity": {
+        "backend": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "claude-glm:058f13b95786f96431b1d35ebd1fe627de8ea2c1382d63bafd47e68ed300a590",
+        "inference_configuration": "cfg-41245a030ba610ba",
+        "model_revision": "glm-5.3",
+        "suite_revision": "9d59328a396486c1b5bbffbf11f3e2e219e95b1985e453eaef878f2ac0f8ec64"
+      },
+      "item_key": "rebase-conflict-2",
+      "model_key": "glm-5.3",
+      "passed": false,
+      "size_band": "S",
+      "source": "labelled_item",
+      "task_class": "rebase-conflict",
+      "tenant_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "backend_id": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+      "configuration": {
+        "parameters": {
+          "context_strategy_id": "full_context",
+          "max_tokens": null,
+          "reasoning_effort": "low",
+          "temperature": null,
+          "top_p": null
+        }
+      },
+      "identity": {
+        "backend": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "claude-glm:058f13b95786f96431b1d35ebd1fe627de8ea2c1382d63bafd47e68ed300a590",
+        "inference_configuration": "cfg-41245a030ba610ba",
+        "model_revision": "glm-5.3",
+        "suite_revision": "9d59328a396486c1b5bbffbf11f3e2e219e95b1985e453eaef878f2ac0f8ec64"
+      },
+      "item_key": "rebase-conflict-3",
+      "model_key": "glm-5.3",
+      "passed": false,
+      "size_band": "S",
+      "source": "labelled_item",
+      "task_class": "rebase-conflict",
+      "tenant_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "backend_id": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+      "configuration": {
+        "parameters": {
+          "context_strategy_id": "full_context",
+          "max_tokens": null,
+          "reasoning_effort": "low",
+          "temperature": null,
+          "top_p": null
+        }
+      },
+      "identity": {
+        "backend": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "claude-glm:058f13b95786f96431b1d35ebd1fe627de8ea2c1382d63bafd47e68ed300a590",
+        "inference_configuration": "cfg-41245a030ba610ba",
+        "model_revision": "glm-5.3",
+        "suite_revision": "9d59328a396486c1b5bbffbf11f3e2e219e95b1985e453eaef878f2ac0f8ec64"
+      },
+      "item_key": "review-thread-reply-1",
+      "model_key": "glm-5.3",
+      "passed": true,
+      "size_band": "S",
+      "source": "labelled_item",
+      "task_class": "review-thread-reply",
+      "tenant_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "backend_id": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+      "configuration": {
+        "parameters": {
+          "context_strategy_id": "full_context",
+          "max_tokens": null,
+          "reasoning_effort": "low",
+          "temperature": null,
+          "top_p": null
+        }
+      },
+      "identity": {
+        "backend": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "claude-glm:058f13b95786f96431b1d35ebd1fe627de8ea2c1382d63bafd47e68ed300a590",
+        "inference_configuration": "cfg-41245a030ba610ba",
+        "model_revision": "glm-5.3",
+        "suite_revision": "9d59328a396486c1b5bbffbf11f3e2e219e95b1985e453eaef878f2ac0f8ec64"
+      },
+      "item_key": "review-thread-reply-2",
+      "model_key": "glm-5.3",
+      "passed": true,
+      "size_band": "S",
+      "source": "labelled_item",
+      "task_class": "review-thread-reply",
+      "tenant_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "backend_id": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+      "configuration": {
+        "parameters": {
+          "context_strategy_id": "full_context",
+          "max_tokens": null,
+          "reasoning_effort": "low",
+          "temperature": null,
+          "top_p": null
+        }
+      },
+      "identity": {
+        "backend": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "claude-glm:058f13b95786f96431b1d35ebd1fe627de8ea2c1382d63bafd47e68ed300a590",
+        "inference_configuration": "cfg-41245a030ba610ba",
+        "model_revision": "glm-5.3",
+        "suite_revision": "9d59328a396486c1b5bbffbf11f3e2e219e95b1985e453eaef878f2ac0f8ec64"
+      },
+      "item_key": "review-thread-reply-3",
+      "model_key": "glm-5.3",
+      "passed": true,
+      "size_band": "S",
+      "source": "labelled_item",
+      "task_class": "review-thread-reply",
+      "tenant_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "backend_id": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+      "configuration": {
+        "parameters": {
+          "context_strategy_id": "full_context",
+          "max_tokens": null,
+          "reasoning_effort": "low",
+          "temperature": null,
+          "top_p": null
+        }
+      },
+      "identity": {
+        "backend": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "claude-glm:058f13b95786f96431b1d35ebd1fe627de8ea2c1382d63bafd47e68ed300a590",
+        "inference_configuration": "cfg-41245a030ba610ba",
+        "model_revision": "glm-5.3",
+        "suite_revision": "9d59328a396486c1b5bbffbf11f3e2e219e95b1985e453eaef878f2ac0f8ec64"
+      },
+      "item_key": "ticket-evidence-fix-1",
+      "model_key": "glm-5.3",
+      "passed": false,
+      "size_band": "S",
+      "source": "labelled_item",
+      "task_class": "ticket-evidence-fix",
+      "tenant_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "backend_id": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+      "configuration": {
+        "parameters": {
+          "context_strategy_id": "full_context",
+          "max_tokens": null,
+          "reasoning_effort": "low",
+          "temperature": null,
+          "top_p": null
+        }
+      },
+      "identity": {
+        "backend": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "claude-glm:058f13b95786f96431b1d35ebd1fe627de8ea2c1382d63bafd47e68ed300a590",
+        "inference_configuration": "cfg-41245a030ba610ba",
+        "model_revision": "glm-5.3",
+        "suite_revision": "9d59328a396486c1b5bbffbf11f3e2e219e95b1985e453eaef878f2ac0f8ec64"
+      },
+      "item_key": "ticket-evidence-fix-2",
+      "model_key": "glm-5.3",
+      "passed": true,
+      "size_band": "S",
+      "source": "labelled_item",
+      "task_class": "ticket-evidence-fix",
+      "tenant_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "backend_id": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+      "configuration": {
+        "parameters": {
+          "context_strategy_id": "full_context",
+          "max_tokens": null,
+          "reasoning_effort": "low",
+          "temperature": null,
+          "top_p": null
+        }
+      },
+      "identity": {
+        "backend": "harness:claude-glm:fixture-v1:effort-low:timeout-90s:adapter-delegate",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "claude-glm:058f13b95786f96431b1d35ebd1fe627de8ea2c1382d63bafd47e68ed300a590",
+        "inference_configuration": "cfg-41245a030ba610ba",
+        "model_revision": "glm-5.3",
+        "suite_revision": "9d59328a396486c1b5bbffbf11f3e2e219e95b1985e453eaef878f2ac0f8ec64"
+      },
+      "item_key": "ticket-evidence-fix-3",
+      "model_key": "glm-5.3",
+      "passed": true,
+      "size_band": "S",
+      "source": "labelled_item",
+      "task_class": "ticket-evidence-fix",
+      "tenant_id": "00000000-0000-0000-0000-000000000001"
+    }
+  ],
+  "tenant_id": "00000000-0000-0000-0000-000000000001"
+}

@@ -1,0 +1,834 @@
+{
+  "excluded_instrumentation_attempts": 5,
+  "no_capability_promotion": true,
+  "observations_verified": 56,
+  "rows": [
+    {
+      "adapter_checker_passed": true,
+      "available": true,
+      "cohort": "fixed",
+      "final_checker_passed": true,
+      "fixture_file_sha256": {
+        "answer.json": "ebb7095ecee4295323db610d261f9cafd6d6d7e84f40a395968239d4b93ac858",
+        "ci.log": "ac733a5c7156166d51ec05d7ea1c069430317c036e4b98564c9d659006f819e5"
+      },
+      "harness": "claude-glm",
+      "harness_rc": 0,
+      "item_key": "ci-log-diagnosis-1",
+      "receipt_sha256": "add3c469e86fd6801026ab2180b4db66e0c1c0c1c9a8a10cd998667d76f12ea8",
+      "recorded_passed": true
+    },
+    {
+      "adapter_checker_passed": true,
+      "available": true,
+      "cohort": "fixed",
+      "final_checker_passed": true,
+      "fixture_file_sha256": {
+        "answer.json": "c259d16795f63d99805326b3d7006a5e7a5dffc435e07005388fee23f1890512",
+        "ci.log": "51627c0626ef93afe630938db0dfd05aadcaefaa92a0e2c6646134100c1caae0"
+      },
+      "harness": "claude-glm",
+      "harness_rc": 0,
+      "item_key": "ci-log-diagnosis-2",
+      "receipt_sha256": "66df83bb5e7eb734be6bc7e132e5cdbe09758542f06b8d5f66a65bd72ed2b7b2",
+      "recorded_passed": true
+    },
+    {
+      "adapter_checker_passed": true,
+      "available": true,
+      "cohort": "fixed",
+      "final_checker_passed": true,
+      "fixture_file_sha256": {
+        "answer.json": "3d6b629afc39529817f64dea1e88e71e22d293333f73acb7dbf4bc7cabdb0728",
+        "ci.log": "8fc197760d26266db9e5f46c0533a4d8f17577731073ed2f93ee79d8bb121b6f"
+      },
+      "harness": "claude-glm",
+      "harness_rc": 0,
+      "item_key": "ci-log-diagnosis-3",
+      "receipt_sha256": "821fded9c5ca3cc9e098d8f61a6c9935dabbbf261af099f4590bc78ec3bb45ca",
+      "recorded_passed": true
+    },
+    {
+      "adapter_checker_passed": true,
+      "available": true,
+      "cohort": "fixed",
+      "final_checker_passed": true,
+      "fixture_file_sha256": {
+        "brief.md": "287ed1d885c58615a000b02839c5b97c33e831aa95bf83f388dd33cf13caab6a"
+      },
+      "harness": "claude-glm",
+      "harness_rc": 0,
+      "item_key": "docs-edit-1",
+      "receipt_sha256": "862ebfb6ca8d945b91bf5d241cd2e335f4a83607b3aa20139440a9aa9c40124d",
+      "recorded_passed": true
+    },
+    {
+      "adapter_checker_passed": false,
+      "available": true,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "brief.md": "df98e1dcc3fb363cb886538fcfd93dc1ba185f3939746e1fb06e9b47ec37255f"
+      },
+      "harness": "claude-glm",
+      "harness_rc": 0,
+      "item_key": "docs-edit-2",
+      "receipt_sha256": "b13e35f99d5581fee762d0ab6294956779014ff9441e08d45f55302e7f7ca521",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": true,
+      "available": true,
+      "cohort": "fixed",
+      "final_checker_passed": true,
+      "fixture_file_sha256": {
+        "brief.md": "287ed1d885c58615a000b02839c5b97c33e831aa95bf83f388dd33cf13caab6a"
+      },
+      "harness": "claude-glm",
+      "harness_rc": 0,
+      "item_key": "docs-edit-3",
+      "receipt_sha256": "cef440db919de54ebf42545773d3988d9a57ab51fb06718d15b088ce898ba9c8",
+      "recorded_passed": true
+    },
+    {
+      "adapter_checker_passed": true,
+      "available": true,
+      "cohort": "fixed",
+      "final_checker_passed": true,
+      "fixture_file_sha256": {
+        "__pycache__/subject.cpython-313.pyc": "1eebb44898e21c7d6262b61670ceafda9988712eb2bc057a1a437648280dba04",
+        "subject.py": "9b4527b319c8186316a12af4ddc42171c1ccbc447ad50ca7428b2c20f0ee0f61",
+        "test_subject.py": "4cdce21449c76d591a4433cf37ae75cbee7b3ddb99f2fb96518af79b6172103b"
+      },
+      "harness": "claude-glm",
+      "harness_rc": 0,
+      "item_key": "failing-test-fix-1",
+      "receipt_sha256": "53cfd983f39699065d5771f4b60cc2bf9bcbcc0956bca6498e1ad080c545738e",
+      "recorded_passed": true
+    },
+    {
+      "adapter_checker_passed": true,
+      "available": true,
+      "cohort": "fixed",
+      "final_checker_passed": true,
+      "fixture_file_sha256": {
+        "__pycache__/subject.cpython-313.pyc": "47cf8de23b188d8f4e68bd5898eba59a9eb5eeedfb6689040664e848a8e9e5ce",
+        "subject.py": "a2d964764bb70207315d8a4829b77801c82bcebedb5de2c35b0daceac953723c",
+        "test_subject.py": "9e456de563c06936e380a1daea1ccc9d306d5bf56d0d04676c8d75d12d98283e"
+      },
+      "harness": "claude-glm",
+      "harness_rc": 0,
+      "item_key": "failing-test-fix-2",
+      "receipt_sha256": "261bfabe69e6c43e10c3e22519b9a7e2da900c0520e4eea91b96affc3239bc98",
+      "recorded_passed": true
+    },
+    {
+      "adapter_checker_passed": true,
+      "available": true,
+      "cohort": "fixed",
+      "final_checker_passed": true,
+      "fixture_file_sha256": {
+        "__pycache__/subject.cpython-313.pyc": "0deeda4db6984c62e3d4bcaf194839dc327698a46eb43e12ff9d3ee474b6f05d",
+        "subject.py": "00d5f6676c66c69ba0ba3b1f313f3708913410d29c6092372ce016e9b511360d",
+        "test_subject.py": "dc2eae03146c214851a52a5f3627e7fccc2c45f25f2081db557b06670b85e900"
+      },
+      "harness": "claude-glm",
+      "harness_rc": 0,
+      "item_key": "failing-test-fix-3",
+      "receipt_sha256": "9d762f640905d437c1e542a0365afc7e983a5d5846c2112b362e05931ae80e35",
+      "recorded_passed": true
+    },
+    {
+      "adapter_checker_passed": false,
+      "available": true,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "host-request.json": "88be86dcfb1a8d61cf2aeb8ab56d0dd2cf393f09158893a151cfe5085689fe49"
+      },
+      "harness": "claude-glm",
+      "harness_rc": 0,
+      "item_key": "host-read-only-1",
+      "receipt_sha256": "2c786ef9e0784eaa3e84cfccf3f2b1e86b68f51f5f80b1cc210f4ff1700b3e75",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": false,
+      "available": true,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "host-request.json": "88be86dcfb1a8d61cf2aeb8ab56d0dd2cf393f09158893a151cfe5085689fe49"
+      },
+      "harness": "claude-glm",
+      "harness_rc": 0,
+      "item_key": "host-read-only-2",
+      "receipt_sha256": "1c28c37403f6d744db1ee196196b5ec17aa5315d9d3dfdadf918e745eb6b26a9",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": true,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "get_host_info.py": "8f1fe3cd186f585aab167e9f6052762ec70de060658affd7cb506be94be48b96",
+        "host-request.json": "88be86dcfb1a8d61cf2aeb8ab56d0dd2cf393f09158893a151cfe5085689fe49"
+      },
+      "harness": "claude-glm",
+      "harness_rc": 143,
+      "item_key": "host-read-only-3",
+      "receipt_sha256": "224e20bee9cf05abc6900ce4ee8660aa1a8083ca60191c5de2cdfdb04c008f78",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": false,
+      "available": true,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "README.md": "ee904a6b1883c1fee148df6da97920ac081a935057798b7ebe3a5b62e8037d2d",
+        "limits.py": "cf63940570db199d57620f7a22b6c11376370bb2029a2b2a7701a43b75a7c4f8"
+      },
+      "harness": "claude-glm",
+      "harness_rc": 0,
+      "item_key": "rebase-conflict-1",
+      "receipt_sha256": "0b8126e639fcb20c192a88c1017ae5aaf4497d449d23319a2865caf5bf9556c7",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": false,
+      "available": true,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "README.md": "55e38559f6f01556b9b70b2c78df84a0e351421f37ca99bb5bffe008a66f0ee2",
+        "limits.py": "2a4749fecd62919ff66b15e8fe322b022dddf97da0922c1ddd52b9d54b8859f8"
+      },
+      "harness": "claude-glm",
+      "harness_rc": 0,
+      "item_key": "rebase-conflict-2",
+      "receipt_sha256": "6f7f32de5ab72ab134c6d92d64f3e4709e4897049ac2b4c08713fe51e4fb117b",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": false,
+      "available": true,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "README.md": "160ba2cfc18c8853dd243e2132c1ba56b0b2209cecde5d0dd5efc3bfb2f1d942",
+        "limits.py": "5068da86ad60bb334d3324fb0dbb1153509e44945dfc75f94dc30e8d5c32f73f"
+      },
+      "harness": "claude-glm",
+      "harness_rc": 0,
+      "item_key": "rebase-conflict-3",
+      "receipt_sha256": "d0da6c50fee1414382920739ef7c85c06ddcdd6f2b6740928de67d4bec4fe193",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": true,
+      "available": true,
+      "cohort": "fixed",
+      "final_checker_passed": true,
+      "fixture_file_sha256": {
+        "answer.json": "0fc69791f90ad148d85ba17f9079b5d489e37feee6adb3fa4f64856261cdb8ac",
+        "thread.json": "92250e814598115610e71ca8f9b71724a8ceaa22b1118e559b357a29f13b2f88"
+      },
+      "harness": "claude-glm",
+      "harness_rc": 0,
+      "item_key": "review-thread-reply-1",
+      "receipt_sha256": "2fd7f2252f68f1b013a9fd05b082906bc4e120cf2ed0961381fc2ef7cfabfc91",
+      "recorded_passed": true
+    },
+    {
+      "adapter_checker_passed": true,
+      "available": true,
+      "cohort": "fixed",
+      "final_checker_passed": true,
+      "fixture_file_sha256": {
+        "answer.json": "674e1e5948cc4dd3f2e746e00ad7e49ea096d9ce0258318fa3f2cb9071cc8035",
+        "thread.json": "8c7cea128d048a4cbd321dce0739b5c1dd7c8802e03ac4669595572510c712ec"
+      },
+      "harness": "claude-glm",
+      "harness_rc": 0,
+      "item_key": "review-thread-reply-2",
+      "receipt_sha256": "cf0abefe7b95fac3cee09b33fac1034979c61e106bf2eb1e56ca511a7338918c",
+      "recorded_passed": true
+    },
+    {
+      "adapter_checker_passed": true,
+      "available": true,
+      "cohort": "fixed",
+      "final_checker_passed": true,
+      "fixture_file_sha256": {
+        "answer.json": "87c4f58491a35c754a0f03fa6cfaf6458133adebbe765b5b5502a98b96b3b4d9",
+        "thread.json": "b481c02d0223d1ba38c71abfe1d77d36db1ef05164da204fc522fbe27cfe90f2"
+      },
+      "harness": "claude-glm",
+      "harness_rc": 0,
+      "item_key": "review-thread-reply-3",
+      "receipt_sha256": "b624169a782b729afa0c8827a73db265c67637e3464cb0d8c9971a4b8a43ccdd",
+      "recorded_passed": true
+    },
+    {
+      "adapter_checker_passed": false,
+      "available": true,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "contract.json": "738afb8bb5907104e3d32393cbdea9933586ed8af56614a6f5b2289d0621a2af",
+        "test_subject.py": "c1e1b370e89c6e997633cf4a98e52060b5c5d9aa9beb3a7dc3e8522dacf8f9e5"
+      },
+      "harness": "claude-glm",
+      "harness_rc": 0,
+      "item_key": "ticket-evidence-fix-1",
+      "receipt_sha256": "0ab360cf8843d43e968d9c93e1d0b39cbcc4cb6469237be6ecb181a979593c21",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": true,
+      "available": true,
+      "cohort": "fixed",
+      "final_checker_passed": true,
+      "fixture_file_sha256": {
+        "contract.json": "98ce6404819d8c8d273ea7189a11e01092f53236a394e6424de6c3a70b5d17c9",
+        "test_subject.py": "c1e1b370e89c6e997633cf4a98e52060b5c5d9aa9beb3a7dc3e8522dacf8f9e5"
+      },
+      "harness": "claude-glm",
+      "harness_rc": 0,
+      "item_key": "ticket-evidence-fix-2",
+      "receipt_sha256": "03fd4ee53d4a55e56a0e59fe11580d451e245cd4544c09b428767da3aad774e9",
+      "recorded_passed": true
+    },
+    {
+      "adapter_checker_passed": true,
+      "available": true,
+      "cohort": "fixed",
+      "final_checker_passed": true,
+      "fixture_file_sha256": {
+        "contract.json": "e53d2758d36e166ef76f6357dbc853acc79439d1388ec10304637f94591249b3",
+        "test_subject.py": "c1e1b370e89c6e997633cf4a98e52060b5c5d9aa9beb3a7dc3e8522dacf8f9e5"
+      },
+      "harness": "claude-glm",
+      "harness_rc": 0,
+      "item_key": "ticket-evidence-fix-3",
+      "receipt_sha256": "df69fa5cd51f97e2db8682734b5e8e7a5b17113f5297942637d18c5b30dcb248",
+      "recorded_passed": true
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": false,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "ci.log": "ac733a5c7156166d51ec05d7ea1c069430317c036e4b98564c9d659006f819e5"
+      },
+      "harness": "codex",
+      "harness_rc": 1,
+      "item_key": "ci-log-diagnosis-1",
+      "receipt_sha256": "f71872c1b60575d24a023099cfcf1f4604de1eac2a91bb3ad073acf5633fec56",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": false,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "ci.log": "51627c0626ef93afe630938db0dfd05aadcaefaa92a0e2c6646134100c1caae0"
+      },
+      "harness": "codex",
+      "harness_rc": 1,
+      "item_key": "ci-log-diagnosis-2",
+      "receipt_sha256": "d2f144c24086ff178aa29226559bcc53823fb66525ee01a48187ca7ca8ae5aec",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": false,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "ci.log": "8fc197760d26266db9e5f46c0533a4d8f17577731073ed2f93ee79d8bb121b6f"
+      },
+      "harness": "codex",
+      "harness_rc": 1,
+      "item_key": "ci-log-diagnosis-3",
+      "receipt_sha256": "19f22da19e07545d6cd3f0d90efb88930335f21aedf75972f1149ee9f5b7d8ce",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": false,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "brief.md": "13c2d29d16b369d6b72ba1f27d03acfc6205a181407920036dffff271aa61b36"
+      },
+      "harness": "codex",
+      "harness_rc": 1,
+      "item_key": "docs-edit-1",
+      "receipt_sha256": "88c92ab5e8f601937f87dd69e09529304323d4c7b22872b8d87c9a6c064279f8",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": false,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "brief.md": "df98e1dcc3fb363cb886538fcfd93dc1ba185f3939746e1fb06e9b47ec37255f"
+      },
+      "harness": "codex",
+      "harness_rc": 1,
+      "item_key": "docs-edit-2",
+      "receipt_sha256": "4a4181192b0f4edbe3cce47e8b0d39c3a19e344b825e9ab349d9d8a4733ea3ab",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": false,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "brief.md": "37af72011424980c3a87a68690a27218f947cee104408200a7bc43bf4b1fdf55"
+      },
+      "harness": "codex",
+      "harness_rc": 1,
+      "item_key": "docs-edit-3",
+      "receipt_sha256": "7ac387bd523d41ba5ef6e82d47e4176a84b81bffe706df9a8588c2160802fb7c",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": false,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "__pycache__/subject.cpython-313.pyc": "027b2c61813d8b55553038aa59d2fc6d9c28b8911cf550bb730442bdf7d47727",
+        "subject.py": "cda4209fc2331b15f96e3b285f14125c6061c04df6e2a4f39165ade54129b745",
+        "test_subject.py": "4cdce21449c76d591a4433cf37ae75cbee7b3ddb99f2fb96518af79b6172103b"
+      },
+      "harness": "codex",
+      "harness_rc": 1,
+      "item_key": "failing-test-fix-1",
+      "receipt_sha256": "50f8cd2f6f55ec45935df6b8aa14e8cdc138ffffaceabb08b3ceae9a9e9c83ad",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": false,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "__pycache__/subject.cpython-313.pyc": "8d4e264c264f2c3b441539f65e6ee20ab8d17fe35bee64e86b0f2825c2a8cbd8",
+        "subject.py": "85d14ce7438658f3d6d35ddb1cd4eb2a1b9327d5ebe5dd07d9bfc0f5d244164e",
+        "test_subject.py": "9e456de563c06936e380a1daea1ccc9d306d5bf56d0d04676c8d75d12d98283e"
+      },
+      "harness": "codex",
+      "harness_rc": 1,
+      "item_key": "failing-test-fix-2",
+      "receipt_sha256": "722cc3a7751628bd5454430d59745a987640258f906261566918462ef1207f99",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": false,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "__pycache__/subject.cpython-313.pyc": "af5c73fe8741ea550e2ba5c25b75ae3b57d672727e38707f5fc94a75e8330c52",
+        "subject.py": "a16c43a4f6e2c4ebff3df98b6cbffafa3fc169f784d67bbdea76617447fe3f57",
+        "test_subject.py": "dc2eae03146c214851a52a5f3627e7fccc2c45f25f2081db557b06670b85e900"
+      },
+      "harness": "codex",
+      "harness_rc": 1,
+      "item_key": "failing-test-fix-3",
+      "receipt_sha256": "c26baf371758c0cc581df1b7d26aee1fe01c18f6ce5d1172891ba704c9aaaca0",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": false,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "host-request.json": "88be86dcfb1a8d61cf2aeb8ab56d0dd2cf393f09158893a151cfe5085689fe49"
+      },
+      "harness": "codex",
+      "harness_rc": 1,
+      "item_key": "host-read-only-1",
+      "receipt_sha256": "bea688317db36d3c0f5f1ee320b26a69bef0131804c76a5f9f601c7b5c887fec",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": false,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "host-request.json": "88be86dcfb1a8d61cf2aeb8ab56d0dd2cf393f09158893a151cfe5085689fe49"
+      },
+      "harness": "codex",
+      "harness_rc": 1,
+      "item_key": "host-read-only-2",
+      "receipt_sha256": "c0e8301a912b31b9845197e294ac33479e4fbd1565e4bcdd08d0045e02848c8b",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": false,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "host-request.json": "88be86dcfb1a8d61cf2aeb8ab56d0dd2cf393f09158893a151cfe5085689fe49"
+      },
+      "harness": "codex",
+      "harness_rc": 1,
+      "item_key": "host-read-only-3",
+      "receipt_sha256": "8ec78045ae32027848243c354a5c52122e203e235346d6a4598c0198d5d80d58",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": false,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "README.md": "ee904a6b1883c1fee148df6da97920ac081a935057798b7ebe3a5b62e8037d2d",
+        "limits.py": "cf63940570db199d57620f7a22b6c11376370bb2029a2b2a7701a43b75a7c4f8"
+      },
+      "harness": "codex",
+      "harness_rc": 1,
+      "item_key": "rebase-conflict-1",
+      "receipt_sha256": "8e58361442eb5b0f764a551d585e27603daa6f52ce8dff43cdafce3ec3b66311",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": false,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "README.md": "55e38559f6f01556b9b70b2c78df84a0e351421f37ca99bb5bffe008a66f0ee2",
+        "limits.py": "a16cb45975d3b71a91a639bffa6617b491ce2a476ad10554b56879b828eb1038"
+      },
+      "harness": "codex",
+      "harness_rc": 1,
+      "item_key": "rebase-conflict-2",
+      "receipt_sha256": "79d027baa33fac4710313bed42a841bc1296ab9b0b192f4870d43900e9e64916",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": false,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "README.md": "160ba2cfc18c8853dd243e2132c1ba56b0b2209cecde5d0dd5efc3bfb2f1d942",
+        "limits.py": "5068da86ad60bb334d3324fb0dbb1153509e44945dfc75f94dc30e8d5c32f73f"
+      },
+      "harness": "codex",
+      "harness_rc": 1,
+      "item_key": "rebase-conflict-3",
+      "receipt_sha256": "6aff04fe0d0a367e9f2685dafdec6bc07c112f43e92fdb97c612491365b02880",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": false,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "thread.json": "92250e814598115610e71ca8f9b71724a8ceaa22b1118e559b357a29f13b2f88"
+      },
+      "harness": "codex",
+      "harness_rc": 1,
+      "item_key": "review-thread-reply-1",
+      "receipt_sha256": "b60d24666ecc8e1f28e0cbc41262b4bfcd417568d7d908f9782b69eb215e0a06",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": false,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "thread.json": "8c7cea128d048a4cbd321dce0739b5c1dd7c8802e03ac4669595572510c712ec"
+      },
+      "harness": "codex",
+      "harness_rc": 1,
+      "item_key": "review-thread-reply-2",
+      "receipt_sha256": "4ee9d54a9b2853f9ddb6990e84c256b4b014e340b50316724ee87f160878a341",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": false,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "thread.json": "b481c02d0223d1ba38c71abfe1d77d36db1ef05164da204fc522fbe27cfe90f2"
+      },
+      "harness": "codex",
+      "harness_rc": 1,
+      "item_key": "review-thread-reply-3",
+      "receipt_sha256": "28cbf5011807ac6a7058dbf5ac581bdc506c7f0901683929d57c18c70d4afb7c",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": false,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "contract.json": "738afb8bb5907104e3d32393cbdea9933586ed8af56614a6f5b2289d0621a2af",
+        "test_subject.py": "c1e1b370e89c6e997633cf4a98e52060b5c5d9aa9beb3a7dc3e8522dacf8f9e5"
+      },
+      "harness": "codex",
+      "harness_rc": 1,
+      "item_key": "ticket-evidence-fix-1",
+      "receipt_sha256": "6a814498ac14372f1deb039e510ad8fff46e7a90bf62c7d25bbb3ea4fbdb644c",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": false,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "contract.json": "59dfa50595253028b3fba0453ff18668b3adb2266ae56adbc99a84b87ecd5e0e",
+        "test_subject.py": "c1e1b370e89c6e997633cf4a98e52060b5c5d9aa9beb3a7dc3e8522dacf8f9e5"
+      },
+      "harness": "codex",
+      "harness_rc": 1,
+      "item_key": "ticket-evidence-fix-2",
+      "receipt_sha256": "e7a8f88974b82cf4301222a2d23c11be93e1c42929729d9274b4274f467abec1",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": false,
+      "cohort": "fixed",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "contract.json": "57861baa6010214daa13e859cf925fd8f8337ae5f743b9c7913532c4057a82d2",
+        "test_subject.py": "c1e1b370e89c6e997633cf4a98e52060b5c5d9aa9beb3a7dc3e8522dacf8f9e5"
+      },
+      "harness": "codex",
+      "harness_rc": 1,
+      "item_key": "ticket-evidence-fix-3",
+      "receipt_sha256": "6111327398f4b9c8e1dad1fb1f48b9813f6709be5ef9f18ddc074f78f95f2f76",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": true,
+      "available": true,
+      "cohort": "recent",
+      "final_checker_passed": true,
+      "fixture_file_sha256": {
+        "answer.json": "4860137dbe1e89d15f46e1df858f32932710948a82d3679d8863af4d19af91d7",
+        "ci.log": "7e4ee3ffb856a8d02f4ace2ef9588ead2062ad85e642e383dfd7722ed3821361"
+      },
+      "harness": "claude-glm",
+      "harness_rc": 0,
+      "item_key": "ci-log-diagnosis-recent-1",
+      "receipt_sha256": "8422c534c3f802a092265f9b61a1d5a76fb7b6e72a13ebcb55d809f0f68dc0f1",
+      "recorded_passed": true
+    },
+    {
+      "adapter_checker_passed": true,
+      "available": true,
+      "cohort": "recent",
+      "final_checker_passed": true,
+      "fixture_file_sha256": {
+        "brief.md": "ff9d63b8a56f03d63e32012f5a32f000a4f4e7f890fa4564567ccc56f7c6926b"
+      },
+      "harness": "claude-glm",
+      "harness_rc": 0,
+      "item_key": "docs-edit-recent-1",
+      "receipt_sha256": "2f410c4e74349cea13741c054250f4f0be9c51cac99d62422a4a5f104da40f8d",
+      "recorded_passed": true
+    },
+    {
+      "adapter_checker_passed": true,
+      "available": true,
+      "cohort": "recent",
+      "final_checker_passed": true,
+      "fixture_file_sha256": {
+        "__pycache__/subject.cpython-313.pyc": "e4e2c32d0b834cdab05d9f554042178e6b4f4a11a11d8c32f5f1b7ec93958dbf",
+        "subject.py": "9c87b97538df6e8ac1a9523301245c70f31bedbae6cd8bd10765ed5c778b40bf",
+        "test_subject.py": "76c86c5a7cfa15a897d0b64535f3685734c7fbdf758d59c30c35bf65eba28f37"
+      },
+      "harness": "claude-glm",
+      "harness_rc": 0,
+      "item_key": "failing-test-fix-recent-1",
+      "receipt_sha256": "c0871b246a39c7a67c5dda6758e1fa71252a00a77c1c96daaf1d886f23217f5c",
+      "recorded_passed": true
+    },
+    {
+      "adapter_checker_passed": false,
+      "available": true,
+      "cohort": "recent",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "host-request.json": "7e2126337588271d35a4c4eddb0dbfdf27f3a7e2c676974765d923f10398e8e5"
+      },
+      "harness": "claude-glm",
+      "harness_rc": 0,
+      "item_key": "host-read-only-recent-1",
+      "receipt_sha256": "9af0be1de4fec2638bda495032bf89ae4ae64ebef9fac4cfc353fcdbcea27a39",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": true,
+      "cohort": "recent",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "README.md": "541dbb0b8176983079560d7c1bd169478465d966c1051b7606dbf1abfecb78b4",
+        "limits.py": "a52d07a403fd7129294c63137d0789c182ffa3bc2acc870ace80cbf86b986d7e"
+      },
+      "harness": "claude-glm",
+      "harness_rc": 143,
+      "item_key": "rebase-conflict-recent-1",
+      "receipt_sha256": "0f453b3061a0236f3b4401ece0247178c33ac036091d72e20e190dcb7cba3cb6",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": true,
+      "available": true,
+      "cohort": "recent",
+      "final_checker_passed": true,
+      "fixture_file_sha256": {
+        "reply.txt": "57e4511f85337e8ce690dbcbc917001a4333b14ddd6ebfd4f303fdbf0e3e53ed",
+        "thread.json": "e207c53616b6dedb8c39c9247089482355d8b0df667afeff1391d157c80ae1c2"
+      },
+      "harness": "claude-glm",
+      "harness_rc": 0,
+      "item_key": "review-thread-reply-recent-1",
+      "receipt_sha256": "66b339f51610b82820cbc2a3b7ff19752d341f94671d98f037a2f1344d068ab1",
+      "recorded_passed": true
+    },
+    {
+      "adapter_checker_passed": false,
+      "available": true,
+      "cohort": "recent",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "contract.json": "af1f7d554f07c528a2689c16d5969d19f59a202c7451f855cc1d3b90974385ff",
+        "test_subject.py": "c1e1b370e89c6e997633cf4a98e52060b5c5d9aa9beb3a7dc3e8522dacf8f9e5"
+      },
+      "harness": "claude-glm",
+      "harness_rc": 0,
+      "item_key": "ticket-evidence-fix-recent-1",
+      "receipt_sha256": "fae9629e8be3830e293bbb50cef6ed0d13d6338a5e3055a7fa100c9e15b01a6a",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": false,
+      "cohort": "recent",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "ci.log": "7e4ee3ffb856a8d02f4ace2ef9588ead2062ad85e642e383dfd7722ed3821361"
+      },
+      "harness": "codex",
+      "harness_rc": 1,
+      "item_key": "ci-log-diagnosis-recent-1",
+      "receipt_sha256": "3b3823680ee438f31b03eba92a268ccf964e53241aa13bb037fa66a6a47ce380",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": false,
+      "cohort": "recent",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "brief.md": "ce55cb1e49147663934dc76fbd5989ce91b43bb9ad8fca32bac40f9419ba08fc"
+      },
+      "harness": "codex",
+      "harness_rc": 1,
+      "item_key": "docs-edit-recent-1",
+      "receipt_sha256": "96596603c734a1645e085d9301d354526ef2b48e535c41c0e56a54b33dd97d67",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": false,
+      "cohort": "recent",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "__pycache__/subject.cpython-313.pyc": "72bf1b7a9038a61beadf34e4069651835937d7140cea028a6ef920e890593abc",
+        "subject.py": "8f289fb4a49c12d9792ffc3710fa4370304b224b1d4520d1173ab15737958c9d",
+        "test_subject.py": "76c86c5a7cfa15a897d0b64535f3685734c7fbdf758d59c30c35bf65eba28f37"
+      },
+      "harness": "codex",
+      "harness_rc": 1,
+      "item_key": "failing-test-fix-recent-1",
+      "receipt_sha256": "0e45bdb785db09334cde0886f11ba6c3fd163556ebdc8d93dd8eee892994eb18",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": false,
+      "cohort": "recent",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "host-request.json": "7e2126337588271d35a4c4eddb0dbfdf27f3a7e2c676974765d923f10398e8e5"
+      },
+      "harness": "codex",
+      "harness_rc": 1,
+      "item_key": "host-read-only-recent-1",
+      "receipt_sha256": "9d422f35d848a4d6b2733671fbceac1d39336f7acd5c02a991a7bfc9b64400b7",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": false,
+      "cohort": "recent",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "README.md": "541dbb0b8176983079560d7c1bd169478465d966c1051b7606dbf1abfecb78b4",
+        "limits.py": "a52d07a403fd7129294c63137d0789c182ffa3bc2acc870ace80cbf86b986d7e"
+      },
+      "harness": "codex",
+      "harness_rc": 1,
+      "item_key": "rebase-conflict-recent-1",
+      "receipt_sha256": "2a35d5d3eb5589cc10e4405e60aee06bc6be2c3b1e53c3a18a8ad9e11d8695a3",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": false,
+      "cohort": "recent",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "thread.json": "e207c53616b6dedb8c39c9247089482355d8b0df667afeff1391d157c80ae1c2"
+      },
+      "harness": "codex",
+      "harness_rc": 1,
+      "item_key": "review-thread-reply-recent-1",
+      "receipt_sha256": "aaecfa4bfb346b013e9f57fa6e481902428850358cadd36882f88011d7e86d44",
+      "recorded_passed": false
+    },
+    {
+      "adapter_checker_passed": null,
+      "available": false,
+      "cohort": "recent",
+      "final_checker_passed": false,
+      "fixture_file_sha256": {
+        "contract.json": "af1f7d554f07c528a2689c16d5969d19f59a202c7451f855cc1d3b90974385ff",
+        "test_subject.py": "c1e1b370e89c6e997633cf4a98e52060b5c5d9aa9beb3a7dc3e8522dacf8f9e5"
+      },
+      "harness": "codex",
+      "harness_rc": 1,
+      "item_key": "ticket-evidence-fix-recent-1",
+      "receipt_sha256": "abf1f94b6d7fa221f8929350e03416161dd9c5b8dd93b70edfb072fb46625580",
+      "recorded_passed": false
+    }
+  ],
+  "unique_all_proposed_attempts": 61,
+  "unique_effective_proposed_attempts": 56
+}

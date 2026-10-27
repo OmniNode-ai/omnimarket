@@ -144,7 +144,8 @@ def test_capability_projection_reuses_bounds_and_never_pools_harnesses():
     assert result.best_configurations == ()
 
 
-def test_startup_failure_is_unavailable_but_tool_refusal_is_an_attempt():
+@pytest.mark.parametrize("cause", ["Read-only file system", "Operation not permitted"])
+def test_startup_failure_is_unavailable_but_tool_refusal_is_an_attempt(cause):
     from omnimarket.handlers.handler_harness_eval import normalize_observation
 
     failed = observation().model_copy(
@@ -156,7 +157,7 @@ def test_startup_failure_is_unavailable_but_tool_refusal_is_an_attempt():
     )
     startup = normalize_observation(
         failed,
-        diagnostic="Error: failed to initialize in-process app-server client: Read-only file system (os error 30)",
+        diagnostic=f"Error: failed to initialize in-process app-server client: {cause}",
     )
     assert not startup.available
     assert startup.failure_kind == "sandbox-initialization"

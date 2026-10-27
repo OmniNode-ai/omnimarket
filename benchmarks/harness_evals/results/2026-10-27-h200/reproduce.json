@@ -1,0 +1,18 @@
+{
+  "collection": "Collect fixed cohort with --replace for the explicitly excluded items. Collect recent cohort separately with --attempt-offset 42 so proposed attempt identifiers do not overlap.",
+  "purpose": "Reproduction commands; RUN_ROOT must be a writable private lab directory and HARNESS_DELEGATE_SCRIPT the installed adapter matching harness-versions.json. Raw transcripts are not committed.",
+  "replacement_items": [
+    "rebase-conflict-3",
+    "failing-test-fix-1",
+    "failing-test-fix-2",
+    "failing-test-fix-3",
+    "ci-log-diagnosis-1"
+  ],
+  "replacement_reason": "invalid standalone-checker import; originals retained in source proofs",
+  "runs": {
+    "codex-fixed": "uv run --frozen python -m tests.harness_evals.run --harness codex --cohort fixed --delegate-script \"$HARNESS_DELEGATE_SCRIPT\" --output \"$RUN_ROOT/codex-fixed\" --tenant-id 00000000-0000-0000-0000-000000000001 --lane cx-exp-harness-evals-1835 --ticket OMN-21396 --timeout-s 90",
+    "codex-recent": "uv run --frozen python -m tests.harness_evals.run --harness codex --cohort recent --delegate-script \"$HARNESS_DELEGATE_SCRIPT\" --output \"$RUN_ROOT/codex-recent\" --tenant-id 00000000-0000-0000-0000-000000000001 --lane cx-exp-harness-evals-1835 --ticket OMN-21396 --timeout-s 90",
+    "glm-fixed": "uv run --frozen python -m tests.harness_evals.run --harness claude-glm --cohort fixed --delegate-script \"$HARNESS_DELEGATE_SCRIPT\" --output \"$RUN_ROOT/glm-fixed\" --tenant-id 00000000-0000-0000-0000-000000000001 --lane cx-exp-harness-evals-1835 --ticket OMN-21396 --timeout-s 90",
+    "glm-recent": "uv run --frozen python -m tests.harness_evals.run --harness claude-glm --cohort recent --delegate-script \"$HARNESS_DELEGATE_SCRIPT\" --output \"$RUN_ROOT/glm-recent\" --tenant-id 00000000-0000-0000-0000-000000000001 --lane cx-exp-harness-evals-1835 --ticket OMN-21396 --timeout-s 90"
+  }
+}

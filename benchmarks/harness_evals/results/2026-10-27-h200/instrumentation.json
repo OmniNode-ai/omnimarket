@@ -1,0 +1,7 @@
+{
+  "explanation": "The original runner computed its digest at completion with an already-imported checker while source line positions changed. Reproducing its code against the edited file yields the raw run digest. The original fixed suite and final fixed suite have the same canonical digest. Effective trials are independently checked again; invalid standalone-checker invocations are replaced, and raw provenance is retained.",
+  "final_fixed_digest": "9d59328a396486c1b5bbffbf11f3e2e219e95b1985e453eaef878f2ac0f8ec64",
+  "old_code_current_source": "e559f356da3f41b929b80dedff92dbaa40df18d14a71df9d4c6ab5cf3f2f2688",
+  "old_code_original_source": "9d59328a396486c1b5bbffbf11f3e2e219e95b1985e453eaef878f2ac0f8ec64",
+  "recent_startup_probe_note": "Codex recent startup probes preceded final checker formatting and produced no model task trials; their original provenance hashes are retained."
+}
