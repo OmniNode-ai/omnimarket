@@ -54,7 +54,7 @@ import re
 import sys
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, cast
@@ -230,15 +230,64 @@ def _open_bus(
         Callable[..., contextlib.AbstractAsyncContextManager[ProtocolLabRunBus]],
         open_lab_run_bus,
     )
+    node = bus_opts.get("scm_node")
     opened = opener(**dict(zip(names, values, strict=True)))
     if values[0] == "inmemory":
         from omnimarket.handlers.scm.scm_inprocess import open_scm_inprocess
 
-        node = bus_opts["scm_node"]
         if not isinstance(node, EnumScmNode):
             raise LabRunBusError("the in-memory SCM bus requires a node")
         return open_scm_inprocess(opened, node)
-    return opened
+    return _open_scm_bound(
+        opened,
+        opener,
+        values,
+        node if isinstance(node, EnumScmNode) else None,
+    )
+
+
+@contextlib.asynccontextmanager
+async def _open_scm_bound(
+    durable: contextlib.AbstractAsyncContextManager[ProtocolLabRunBus],
+    opener: Callable[..., contextlib.AbstractAsyncContextManager[ProtocolLabRunBus]],
+    values: tuple[object, ...],
+    node: EnumScmNode | None,
+) -> AsyncIterator[ProtocolLabRunBus]:
+    """The durable bus, or the in-memory bus hosting this node when the lane overlay orders a fallback
+    and the durable bus fails its bounded health read (OMN-20275)."""
+    from omnimarket.handlers.bus_binding.select import open_bound_bus, positional_opener
+    from omnimarket.handlers.scm.scm_inprocess import open_scm_inprocess
+
+    elsewhere = positional_opener(opener)
+    used: list[bool] = []
+
+    def adapter(
+        bus: str, lane: str | None, bootstrap: str | None, root: Path | None
+    ) -> contextlib.AbstractAsyncContextManager[ProtocolLabRunBus]:
+        if bus == "kafka" and not used:
+            used.append(True)
+            return durable
+        return elsewhere(bus, lane, bootstrap, root)
+
+    async with open_bound_bus(
+        open_bus=adapter,
+        bus=_bus_kind(values[0]),
+        lane=_optional_str(values[1]),
+        kafka_bootstrap=_optional_str(values[2]),
+        workspace_root=_optional_path(values[3]),
+    ) as bound:
+        if not bound.decision.degraded:
+            yield bound.bus
+            return
+        if node is None:
+            raise LabRunBusError("the in-memory SCM fallback requires a node")
+
+        @contextlib.asynccontextmanager
+        async def borrowed() -> AsyncIterator[ProtocolLabRunBus]:
+            yield bound.bus
+
+        async with open_scm_inprocess(borrowed(), node) as hosted:
+            yield hosted
 
 
 def _bus_kind(value: object) -> BusKind:

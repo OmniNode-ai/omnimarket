@@ -468,6 +468,7 @@ node_claude_review_budget_reducer = "omnimarket.nodes.node_claude_review_budget_
 node_claude_review_budget_admission_effect = "omnimarket.nodes.node_claude_review_budget_admission_effect"
 node_review_defect_catalog_compute = "omnimarket.nodes.node_review_defect_catalog_compute"
 node_review_quota_reducer = "omnimarket.nodes.node_review_quota_reducer"
+node_bus_binding_reducer = "omnimarket.nodes.node_bus_binding_reducer"
 node_glm_usage_record_compute = "omnimarket.nodes.node_glm_usage_record_compute"
 node_delegation_eval_sample_compute = "omnimarket.nodes.node_delegation_eval_sample_compute"
 node_delegation_acceptance_judge_compute = "omnimarket.nodes.node_delegation_acceptance_judge_compute"
@@ -1120,6 +1121,9 @@ code-edit = "omnimarket.cli.cli_code_edit:code_edit_group"
 lab-work = "omnimarket.lab_work.cli:lab_work_group"
 # OMN-20275: `onex work-ledger` -- serve ledger appends and send exact rows over the bus.
 work-ledger = "omnimarket.work_ledger_bus.cli:work_ledger_group"
+# OMN-20275: `onex bus-binding` -- the binding a command used (durable or the in-memory fallback) and the
+# ledger outbox it holds while degraded.
+bus-binding = "omnimarket.handlers.bus_binding.cli:bus_binding_group"
 # OMN-18695: `onex secret` — the write half of local secret-reference
 # resolution. Registered here for the same reason `cloud` is: the CLI
 # discovers this group over installed distributions, so installing the market

@@ -1,0 +1,128 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeBusBindingReducer (OMN-20275)
+#
+# Operator ruling 2026-10-27: when the durable bus is not working the runtime degrades, falls back to the
+# in-memory event bus with an alarm, and recovers on its own. This is the FSM of that binding.
+name: "node_bus_binding_reducer"
+contract_name: "node_bus_binding_reducer"
+node_name: "node_bus_binding_reducer"
+lifecycle: experimental
+node_type: "REDUCER_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure reducer for the bus binding: from the prior state and one bounded health read of the durable bus,
+  the next state, the binding it serves on (durable, or inmemory while DEGRADED), whether to raise the
+  alarm (the first failed read of an episode) and whether to replay the local outbox (the bus is back).
+input_model:
+  name: "ModelBusBindingRequest"
+  module: "omnimarket.nodes.node_bus_binding_reducer.models.model_bus_binding"
+  description: "The prior state and whether the durable bus passed its health read."
+output_model:
+  name: "ModelBusBindingResult"
+  module: "omnimarket.nodes.node_bus_binding_reducer.models.model_bus_binding"
+  description: "The next state, the binding, the alarm and the replay flags."
+handler:
+  module: "omnimarket.nodes.node_bus_binding_reducer.handlers.handler_bus_binding_reducer"
+  class: "HandlerBusBindingReducer"
+  input_model: "omnimarket.nodes.node_bus_binding_reducer.models.model_bus_binding.ModelBusBindingRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_bus_binding_reducer.handlers.handler_bus_binding_reducer:HandlerBusBindingReducer"
+  handlers:
+    - operation: "bus_binding_decide"
+      handler:
+        name: "HandlerBusBindingReducer"
+        module: "omnimarket.nodes.node_bus_binding_reducer.handlers.handler_bus_binding_reducer"
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.bus-binding-decide-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.bus-binding-decided.v1"
+    failure: "onex.evt.omnimarket.bus-binding-decide-failed.v1"
+externally_consumed_topics:
+  - "onex.evt.omnimarket.bus-binding-decided.v1"
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+replay:
+  deterministic: true
+
+state_machine:
+  version: {major: 1, minor: 0, patch: 0}
+  state_machine_name: bus_binding_fsm
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "bus_binding_fsm"
+  initial_state: healthy
+  terminal_states: []
+  error_states: [degraded]
+  persistence_enabled: true
+  states:
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: healthy
+      state_type: operational
+      description: "The durable bus passes its health read; commands run on it."
+      required_data: []
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: degraded
+      state_type: error
+      description: "The durable bus failed its health read; commands run on the in-memory bus, ledger appends queue to the local outbox, an alarm is raised once."
+      required_data: []
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: recovering
+      state_type: operational
+      description: "The durable bus passed its health read after a degraded episode; the outbox is replayed on it."
+      required_data: []
+  transitions:
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: healthy_to_healthy_on_durable_health_ok
+      from_state: healthy
+      to_state: healthy
+      trigger: durable_health_ok
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: healthy_to_degraded_on_durable_health_failed
+      from_state: healthy
+      to_state: degraded
+      trigger: durable_health_failed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: degraded_to_degraded_on_durable_health_failed
+      from_state: degraded
+      to_state: degraded
+      trigger: durable_health_failed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: degraded_to_recovering_on_durable_health_ok
+      from_state: degraded
+      to_state: recovering
+      trigger: durable_health_ok
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: recovering_to_healthy_on_durable_health_ok
+      from_state: recovering
+      to_state: healthy
+      trigger: durable_health_ok
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: recovering_to_degraded_on_durable_health_failed
+      from_state: recovering
+      to_state: degraded
+      trigger: durable_health_failed
+
+metadata:
+  description: "The bus binding FSM: healthy, degraded on the in-memory bus with an alarm, recovering."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-10-27"
+  tags:
+    - reducer
+    - bus
+    - fallback
+    - fsm
+    - pure
