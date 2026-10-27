@@ -215,7 +215,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/nodes/node_session_compaction_measurement_compute/test_measurement.py -q --no-cov -k invalid_inputs"
+        check_value: "uv run pytest tests/nodes/node_session_compaction_measurement_compute/test_measurement.py -q --no-cov -k invalid_inputs"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn21090-ac2-measurement-boundaries"
@@ -223,7 +223,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/nodes/node_session_compaction_measurement_compute/test_measurement.py -q --no-cov -k 'dropped_decision or missing_summary or two_boundaries'"
+        check_value: "uv run pytest tests/nodes/node_session_compaction_measurement_compute/test_measurement.py -q --no-cov -k 'dropped_decision or missing_summary or two_boundaries'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn21090-ac3-measurement-canonical-node"
@@ -231,7 +231,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/nodes/node_session_compaction_measurement_compute/test_measurement.py -q --no-cov -k node_contract_and_overlay"
+        check_value: "uv run pytest tests/nodes/node_session_compaction_measurement_compute/test_measurement.py -q --no-cov -k node_contract_and_overlay"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-omn21090-ac4-measurement-labelled-facts"
@@ -239,7 +239,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/nodes/node_session_compaction_measurement_compute/test_measurement.py -q --no-cov -k positive_control_and_dropped_fact"
+        check_value: "uv run pytest tests/nodes/node_session_compaction_measurement_compute/test_measurement.py -q --no-cov -k positive_control_and_dropped_fact"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
   - id: "dod-omn21090-ac5-measurement-accounting"
@@ -247,7 +247,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/nodes/node_session_compaction_measurement_compute/test_measurement.py -q --no-cov -k 'wall_time or missing_usage or boundary_sizes or disabled_mutant'"
+        check_value: "uv run pytest tests/nodes/node_session_compaction_measurement_compute/test_measurement.py -q --no-cov -k 'wall_time or missing_usage or boundary_sizes or disabled_mutant'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
   - id: "dod-omn21090-deploy-session-measurement-probe"
