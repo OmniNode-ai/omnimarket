@@ -2,13 +2,7 @@
 name: projection_registration
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: reducer
-# OMN-17985: this contract is owned by its OWN standalone writer Deployment
-# (RUNTIME_PROFILE=projection-writer-registration on onex-dev), not by the shared main runtime it
-# fell to while it declared nothing. The name became declarable when
-# omnibase_core 0.47.5 registered it in REGISTERED_RUNTIME_PROFILES and
-# CONSUMER_ATTACHED_RUNTIME_PROFILES; the writer is consumer-attached as
-# measured fact -- it joined its group and the coordinator issued it
-# partitions. Declaring it here is what makes ownership single-valued.
+# Logical subscription ownership; the composing runtime activates this profile.
 runtime_profiles:
   - projection-writer-registration
 node_version: {major: 1, minor: 0, patch: 0}
@@ -22,23 +16,33 @@ description: >
   Nodes not seen for >5 min are transitioned to health_status='stale'.
 
 handler:
-  module: omnimarket.nodes.node_projection_registration.handlers.handler_projection_registration
-  class: HandlerProjectionRegistration
+  module: omnimarket.nodes.node_projection_registration.handlers.handler_runtime_writer
+  class: RegistrationProjectionWriter
 
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - operation: projection_registration
+    - topic: onex.evt.platform.node-introspection.v1
+      message_category: event
+      operation: registration_projection_writer
       handler:
-        name: HandlerProjectionRegistration
-        module: omnimarket.nodes.node_projection_registration.handlers.handler_projection_registration
-      handler_module: omnimarket.nodes.node_projection_registration.handlers.handler_projection_registration
-      event_model: omnibase_infra.models.registration.model_node_introspection_event.ModelNodeIntrospectionEvent
-    - operation: registration_projection_runner
+        name: RegistrationProjectionWriter
+        module: omnimarket.nodes.node_projection_registration.handlers.handler_runtime_writer
+      handler_module: omnimarket.nodes.node_projection_registration.handlers.handler_runtime_writer
+    - topic: onex.evt.platform.node-heartbeat.v1
+      message_category: event
+      operation: registration_projection_writer
       handler:
-        name: RegistrationProjectionRunner
-        module: omnimarket.nodes.node_projection_registration.handlers.handler_registration
-      handler_module: omnimarket.nodes.node_projection_registration.handlers.handler_registration
+        name: RegistrationProjectionWriter
+        module: omnimarket.nodes.node_projection_registration.handlers.handler_runtime_writer
+      handler_module: omnimarket.nodes.node_projection_registration.handlers.handler_runtime_writer
+    - topic: onex.evt.platform.node-state-change.v1
+      message_category: event
+      operation: registration_projection_writer
+      handler:
+        name: RegistrationProjectionWriter
+        module: omnimarket.nodes.node_projection_registration.handlers.handler_runtime_writer
+      handler_module: omnimarket.nodes.node_projection_registration.handlers.handler_runtime_writer
 
 terminal_event: onex.evt.omnimarket.projection-registration-applied.v1
 

@@ -1,0 +1,580 @@
+Fix the failing test from its log. Public repository OmniNode-ai/omnibase_core, snapshot 52b978165d2bf19e080518dc8b24317855c2cc73.
+Return only a unified diff for src/omnibase_core/models/security/model_signature_chain.py; do not change any test, contract, configuration, dependency or other file. The regression was seeded by restoring this product source file to the parent of a recent fix commit. Do not assume access to a workspace. Preserve existing behavior and strong UUID types.
+The unchanged test command is: pytest tests/unit/models/security/test_omn17716_signature_chain_hash_uuid_boundary.py -q --tb=short
+Failing test log:
+[1m============================= test session starts ==============================[0m
+platform darwin -- Python 3.13.12, pytest-9.0.3, pluggy-1.6.0
+rootdir: fixture-root
+configfile: pytest.ini
+plugins: hypothesis-6.151.6, mock-3.15.1, locust-2.43.3, xdist-3.8.0, split-0.11.0, timeout-2.4.0, cov-6.3.0, anyio-4.14.2, pytest_httpserver-1.1.5, asyncio-1.3.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 2 items
+
+tests/unit/models/security/test_omn17716_signature_chain_hash_uuid_boundary.py [31mF[0m[31m [ 50%]
+[0m[31mF[0m[31m                                                                        [100%][0m
+
+=================================== FAILURES ===================================
+[31m[1m_ test_add_signature_hashes_uuid_boundary_deterministically_without_coercing_models _[0m
+[1m[31msrc/omnibase_core/models/security/model_signature_chain.py[0m:135: in add_signature
+    [0m[96mself[39;49;00m._update_chain_hash()[90m[39;49;00m
+[1m[31msrc/omnibase_core/models/security/model_signature_chain.py[0m:199: in _update_chain_hash
+    [0mchain_json = json.dumps(chain_data, sort_keys=[94mTrue[39;49;00m)[90m[39;49;00m
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31m/opt/homebrew/Cellar/python@3.13/3.13.12_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/__init__.py[0m:242: in dumps
+    [0m**kw).encode(obj)[90m[39;49;00m
+          ^^^^^^^^^^^[90m[39;49;00m
+[1m[31m/opt/homebrew/Cellar/python@3.13/3.13.12_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py[0m:202: in encode
+    [0mchunks = [96mself[39;49;00m.iterencode(o, _one_shot=[94mTrue[39;49;00m)[90m[39;49;00m
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31m/opt/homebrew/Cellar/python@3.13/3.13.12_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py[0m:263: in iterencode
+    [0m[94mreturn[39;49;00m _iterencode(o, [94m0[39;49;00m)[90m[39;49;00m
+           ^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31m/opt/homebrew/Cellar/python@3.13/3.13.12_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py[0m:182: in default
+    [0m[94mraise[39;49;00m [96mTypeError[39;49;00m([33mf[39;49;00m[33m'[39;49;00m[33mObject of type [39;49;00m[33m{[39;49;00mo.[91m__class__[39;49;00m.[91m__name__[39;49;00m[33m}[39;49;00m[33m [39;49;00m[33m'[39;49;00m[90m[39;49;00m
+[1m[31mE   TypeError: Object of type UUID is not JSON serializable[0m
+
+[33mThe above exception was the direct cause of the following exception:[0m
+[1m[31mtests/unit/models/security/test_omn17716_signature_chain_hash_uuid_boundary.py[0m:48: in test_add_signature_hashes_uuid_boundary_deterministically_without_coercing_models
+    [0m[94massert[39;49;00m first_chain.add_signature(first_signature) [95mis[39;49;00m [94mTrue[39;49;00m[90m[39;49;00m
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31msrc/omnibase_core/models/security/model_signature_chain.py[0m:156: in add_signature
+    [0m[94mraise[39;49;00m ModelOnexError([90m[39;49;00m
+[1m[31mE   omnibase_core.errors.model_onex_error.ModelOnexError: [ONEX_CORE_222_SECURITY_VIOLATION] Failed to add signature to chain: Object of type UUID is not JSON serializable[0m
+----------------------------- Captured stderr call -----------------------------
+ERROR:omnibase_core.models.security.model_signature_chain:Failed to add signature to chain 5177a0d1-5c5b-45b1-81b9-c0fa41bc95cf: Object of type UUID is not JSON serializable
+Traceback (most recent call last):
+  File "fixture-root", line 135, in add_signature
+    self._update_chain_hash()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "fixture-root", line 199, in _update_chain_hash
+    chain_json = json.dumps(chain_data, sort_keys=True)
+  File "/opt/homebrew/Cellar/python@3.13/3.13.12_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/__init__.py", line 242, in dumps
+    **kw).encode(obj)
+          ~~~~~~^^^^^
+  File "/opt/homebrew/Cellar/python@3.13/3.13.12_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py", line 202, in encode
+    chunks = self.iterencode(o, _one_shot=True)
+  File "/opt/homebrew/Cellar/python@3.13/3.13.12_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+  File "/opt/homebrew/Cellar/python@3.13/3.13.12_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py", line 182, in default
+    raise TypeError(f'Object of type {o.__class__.__name__} '
+                    f'is not JSON serializable')
+TypeError: Object of type UUID is not JSON serializable
+------------------------------ Captured log call -------------------------------
+[1m[31mERROR   [0m omnibase_core.models.security.model_signature_chain:model_signature_chain.py:149 Failed to add signature to chain 5177a0d1-5c5b-45b1-81b9-c0fa41bc95cf: Object of type UUID is not JSON serializable
+Traceback (most recent call last):
+  File "fixture-root", line 135, in add_signature
+    self._update_chain_hash()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "fixture-root", line 199, in _update_chain_hash
+    chain_json = json.dumps(chain_data, sort_keys=True)
+  File "/opt/homebrew/Cellar/python@3.13/3.13.12_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/__init__.py", line 242, in dumps
+    **kw).encode(obj)
+          ~~~~~~^^^^^
+  File "/opt/homebrew/Cellar/python@3.13/3.13.12_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py", line 202, in encode
+    chunks = self.iterencode(o, _one_shot=True)
+  File "/opt/homebrew/Cellar/python@3.13/3.13.12_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+  File "/opt/homebrew/Cellar/python@3.13/3.13.12_1/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/encoder.py", line 182, in default
+    raise TypeError(f'Object of type {o.__class__.__name__} '
+                    f'is not JSON serializable')
+TypeError: Object of type UUID is not JSON serializable
+[31m[1m_________________ test_signature_chain_rejects_unknown_fields __________________[0m
+[1m[31mtests/unit/models/security/test_omn17716_signature_chain_hash_uuid_boundary.py[0m:60: in test_signature_chain_rejects_unknown_fields
+    [0m[94mwith[39;49;00m pytest.raises(ValidationError, match=[33m"[39;49;00m[33mextra_forbidden[39;49;00m[33m"[39;49;00m):[90m[39;49;00m
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mE   Failed: DID NOT RAISE <class 'pydantic_core._pydantic_core.ValidationError'>[0m
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m tests/unit/models/security/test_omn17716_signature_chain_hash_uuid_boundary.py::[1mtest_add_signature_hashes_uuid_boundary_deterministically_without_coercing_models[0m - omnibase_core.errors.model_onex_error.ModelOnexError: [ONEX_CORE_222_SECURI...
+[31mFAILED[0m tests/unit/models/security/test_omn17716_signature_chain_hash_uuid_boundary.py::[1mtest_signature_chain_rejects_unknown_fields[0m - Failed: DID NOT RAISE <class 'pydantic_core._pydantic_core.ValidationError'>
+[31m============================== [31m[1m2 failed[0m[31m in 0.64s[0m[31m ===============================[0m
+
+
+Current faulty source src/omnibase_core/models/security/model_signature_chain.py:
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+from typing import Any
+from uuid import UUID, uuid4
+
+from pydantic import Field
+
+from omnibase_core.enums.enum_chain_validation_status import EnumChainValidationStatus
+from omnibase_core.enums.enum_compliance_framework import EnumComplianceFramework
+from omnibase_core.enums.enum_trust_level import EnumTrustLevel
+from omnibase_core.models.errors.model_onex_error import ModelOnexError
+
+"\nModelSignatureChain: Tamper-evident signature chain for secure envelopes\n\nThis model manages a collection of cryptographic signatures from multiple nodes,\nproviding comprehensive audit trails and tamper detection for event routing.\n"
+import hashlib
+import json
+import logging
+from datetime import UTC, datetime, timedelta
+
+from pydantic import BaseModel, ConfigDict, field_validator
+
+from omnibase_core.enums.enum_core_error_code import EnumCoreErrorCode
+from omnibase_core.enums.enum_node_operation import EnumNodeOperation
+from omnibase_core.models.security.model_chain_metrics import ModelChainMetrics
+from omnibase_core.models.security.model_node_signature import ModelNodeSignature
+from omnibase_core.models.security.model_signing_policy import ModelSigningPolicy
+
+logger = logging.getLogger(__name__)
+
+
+class ModelSignatureChain(BaseModel):
+    """
+    Tamper-evident signature chain for secure envelope routing.
+
+    Manages an ordered collection of cryptographic signatures from nodes
+    that have processed an envelope, providing comprehensive audit trails
+    and tamper detection capabilities.
+
+    Note:
+        This model uses from_attributes=True to support pytest-xdist parallel
+        execution where class identity may differ between workers.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    chain_id: UUID = Field(
+        default=...,
+        description="Unique identifier for this signature chain",
+    )
+    envelope_id: UUID = Field(
+        default=...,
+        description="ID of the envelope this chain belongs to",
+    )
+    signatures: list[ModelNodeSignature] = Field(
+        default_factory=list, description="Ordered list[Any]of signatures in the chain"
+    )
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="When the chain was created (UTC)",
+    )
+    last_modified: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description="When the chain was last modified (UTC)",
+    )
+    chain_hash: str = Field(
+        default="",
+        description="SHA-256 hash of the complete signature chain",
+        min_length=0,
+    )
+    content_hash: str = Field(
+        default=...,
+        description="SHA-256 hash of the original envelope content",
+        min_length=1,
+    )
+    validation_status: EnumChainValidationStatus = Field(
+        default=EnumChainValidationStatus.INCOMPLETE,
+        description="Current validation status of the chain",
+    )
+    trust_level: EnumTrustLevel = Field(
+        default=EnumTrustLevel.UNTRUSTED, description="Overall trust level of the chain"
+    )
+    signing_policy: ModelSigningPolicy | None = Field(
+        default=None, description="Signing policy requirements for this chain"
+    )
+    compliance_frameworks: list[EnumComplianceFramework] = Field(
+        default_factory=list,
+        description="Compliance frameworks this chain must satisfy",
+    )
+    chain_metrics: ModelChainMetrics | None = Field(
+        default=None, description="Performance metrics for chain operations"
+    )
+
+    @field_validator("signatures")
+    @classmethod
+    def validate_signature_order(cls, v: Any) -> Any:
+        """Validate signatures are in correct hop order."""
+        if not v:
+            return v
+        for i, signature in enumerate(v):
+            if signature.hop_index != i:
+                raise ModelOnexError(
+                    message=f"Signature hop_index mismatch: expected {i} at position {i}, but got {signature.hop_index}",
+                    error_code=EnumCoreErrorCode.VALIDATION_ERROR,
+                    context={
+                        "position": i,
+                        "expected_hop_index": i,
+                        "actual_hop_index": signature.hop_index,
+                    },
+                )
+        return v
+
+    def add_signature(
+        self, signature: ModelNodeSignature, validate_chain: bool = True
+    ) -> bool:
+        """Add a new signature to the chain.
+
+        Args:
+            signature: Signature to add
+            validate_chain: Whether to validate chain integrity after adding
+
+        Returns:
+            True if signature was successfully added
+        """
+        try:
+            if not self._can_add_signature(signature):
+                return False
+            signature.hop_index = len(self.signatures)
+            if self.signatures:
+                previous_signature = self.signatures[-1]
+                signature.previous_signature_hash = (
+                    previous_signature.get_signature_hash()
+                )
+            self.signatures.append(signature)
+            self.last_modified = datetime.now(UTC)
+            self._update_chain_hash()
+            if validate_chain:
+                self.validate_chain_integrity()
+            return True
+        except ModelOnexError:
+            raise
+        except (
+            AttributeError,
+            ValueError,
+            TypeError,
+            KeyError,
+            RuntimeError,
+            OSError,
+        ) as e:
+            logger.exception(
+                f"Failed to add signature to chain {self.chain_id}: {e!s}",
+                extra={
+                    "chain_id": self.chain_id,
+                    "signature_node_id": signature.node_id,
+                },
+            )
+            raise ModelOnexError(
+                message=f"Failed to add signature to chain: {e!s}",
+                error_code=EnumCoreErrorCode.SECURITY_VIOLATION,
+                context={
+                    "chain_id": str(self.chain_id),
+                    "signature_node_id": str(signature.node_id),
+                    "operation": "add_signature",
+                },
+            ) from e
+
+    def _can_add_signature(self, signature: ModelNodeSignature) -> bool:
+        """Check if signature can be added to the chain."""
+        existing_signers = {sig.node_id for sig in self.signatures}
+        if signature.node_id in existing_signers:
+            return False
+        if self.signatures:
+            last_operation = self.signatures[-1].operation
+            if not signature.is_valid_operation_sequence(last_operation):
+                return False
+        elif signature.operation != EnumNodeOperation.SOURCE:
+            return False
+        return signature.envelope_state_hash == self.content_hash
+
+    def _update_chain_hash(self) -> None:
+        """Update the chain hash based on current signatures."""
+        if not self.signatures:
+            self.chain_hash = ""
+            return
+        chain_data = {
+            "chain_id": self.chain_id,
+            "envelope_id": self.envelope_id,
+            "content_hash": self.content_hash,
+            "signatures": [
+                {
+                    "node_id": sig.node_id,
+                    "signature": sig.signature,
+                    "timestamp": sig.timestamp.isoformat(),
+                    "hop_index": sig.hop_index,
+                    "operation": sig.operation.value,
+                }
+                for sig in self.signatures
+            ],
+        }
+        chain_json = json.dumps(chain_data, sort_keys=True)
+        self.chain_hash = hashlib.sha256(chain_json.encode()).hexdigest()
+
+    def validate_chain_integrity(self) -> bool:
+        """Validate the integrity of the signature chain.
+
+        Returns:
+            True if chain integrity is valid
+        """
+        try:
+            if not self.signatures:
+                self.validation_status = EnumChainValidationStatus.INCOMPLETE
+                return False
+            for i, signature in enumerate(self.signatures):
+                if signature.hop_index != i:
+                    self.validation_status = EnumChainValidationStatus.INVALID
+                    return False
+                if i == 0:
+                    if signature.previous_signature_hash is not None:
+                        self.validation_status = EnumChainValidationStatus.INVALID
+                        return False
+                else:
+                    previous_signature = self.signatures[i - 1]
+                    expected_hash = previous_signature.get_signature_hash()
+                    if signature.previous_signature_hash != expected_hash:
+                        self.validation_status = EnumChainValidationStatus.TAMPERED
+                        return False
+                previous_operation = self.signatures[i - 1].operation if i > 0 else None
+                if not signature.is_valid_operation_sequence(previous_operation):
+                    self.validation_status = EnumChainValidationStatus.INVALID
+                    return False
+            if not self._validate_signing_policy():
+                self.validation_status = EnumChainValidationStatus.INCOMPLETE
+                return False
+            self.validation_status = EnumChainValidationStatus.VALID
+            return True
+        except ModelOnexError:
+            raise
+        except (
+            AttributeError,
+            ValueError,
+            TypeError,
+            KeyError,
+            RuntimeError,
+            OSError,
+        ) as e:
+            logger.exception(
+                f"Chain integrity validation failed for chain {self.chain_id}: {e!s}",
+                extra={
+                    "chain_id": self.chain_id,
+                    "signatures_count": len(self.signatures),
+                },
+            )
+            self.validation_status = EnumChainValidationStatus.INVALID
+            raise ModelOnexError(
+                message=f"Chain integrity validation failed: {e!s}",
+                error_code=EnumCoreErrorCode.SECURITY_VIOLATION,
+                context={
+                    "chain_id": str(self.chain_id),
+                    "signatures_count": len(self.signatures),
+                    "operation": "validate_chain_integrity",
+                },
+            ) from e
+
+    def _validate_signing_policy(self) -> bool:
+        """Validate chain meets signing policy requirements."""
+        if not self.signing_policy:
+            return True
+        policy = self.signing_policy
+        if len(self.signatures) < policy.minimum_signatures:
+            return False
+        chain_operations = {sig.operation.value for sig in self.signatures}
+        for required_op in policy.required_operations:
+            if required_op not in chain_operations:
+                return False
+        trusted_count = len(
+            [sig for sig in self.signatures if sig.node_id in policy.trusted_nodes]
+        )
+        return not trusted_count < policy.minimum_trusted_signatures
+
+    def get_unique_signers(self) -> set[str]:
+        """Get set of unique node IDs that signed this chain."""
+        return {str(signature.node_id) for signature in self.signatures}
+
+    def get_signature_by_node(self, node_id: UUID) -> ModelNodeSignature | None:
+        """Get signature from specific node."""
+        for signature in self.signatures:
+            if signature.node_id == node_id:
+                return signature
+        return None
+
+    def get_signatures_by_operation(
+        self, operation: EnumNodeOperation
+    ) -> list[ModelNodeSignature]:
+        """Get all signatures for specific operation type."""
+        return [sig for sig in self.signatures if sig.operation == operation]
+
+    def has_complete_route(self) -> bool:
+        """Check if chain has complete routing from source to destination."""
+        operations = {sig.operation for sig in self.signatures}
+        return (
+            EnumNodeOperation.SOURCE in operations
+            and EnumNodeOperation.DESTINATION in operations
+        )
+
+    def calculate_trust_score(self, trusted_nodes: set[str]) -> float:
+        """Calculate trust score based on trusted node participation.
+
+        Args:
+            trusted_nodes: Set of trusted node IDs
+
+        Returns:
+            Trust score between 0.0 and 1.0
+        """
+        if not self.signatures:
+            return 0.0
+        trusted_signatures = 0
+        for signature in self.signatures:
+            if signature.node_id in trusted_nodes:
+                trusted_signatures += 1
+        return trusted_signatures / len(self.signatures)
+
+    def get_routing_path(self) -> list[tuple[str, EnumNodeOperation]]:
+        """Get the routing path as list[Any]of (node_id, operation) tuples."""
+        return [(str(sig.node_id), sig.operation) for sig in self.signatures]
+
+    def get_chain_summary(self) -> dict[str, str | int | float | bool | list[str]]:
+        """Get summary information about the signature chain."""
+        operations = [sig.operation for sig in self.signatures]
+        algorithms = {sig.signature_algorithm for sig in self.signatures}
+        return {
+            "chain_id": str(self.chain_id),
+            "envelope_id": str(self.envelope_id),
+            "signature_count": len(self.signatures),
+            "unique_signers": len(self.get_unique_signers()),
+            "operations": [op.value for op in operations],
+            "algorithms": list[Any](algorithms),
+            "has_complete_route": self.has_complete_route(),
+            "validation_status": self.validation_status.value,
+            "trust_level": self.trust_level.value,
+            "created_at": self.created_at.isoformat(),
+            "last_modified": self.last_modified.isoformat(),
+            "chain_hash": self.chain_hash[:16] + "..." if self.chain_hash else "",
+            "compliance_frameworks": [fw.value for fw in self.compliance_frameworks],
+        }
+
+    def verify_timestamp_sequence(self) -> bool:
+        """Verify signatures have valid timestamp sequence."""
+        if len(self.signatures) < 2:
+            return True
+        for i in range(1, len(self.signatures)):
+            prev_time = self.signatures[i - 1].timestamp
+            curr_time = self.signatures[i].timestamp
+            if curr_time < prev_time - timedelta(seconds=5):
+                return False
+        return True
+
+    def get_signature_age_stats(self) -> dict[str, str | int | float]:
+        """Get statistics about signature ages."""
+        if not self.signatures:
+            return {}
+        now = datetime.now(UTC)
+        ages = [(now - sig.timestamp).total_seconds() for sig in self.signatures]
+        return {
+            "oldest_signature_seconds": max(ages),
+            "newest_signature_seconds": min(ages),
+            "average_age_seconds": sum(ages) / len(ages),
+            "total_routing_time_seconds": max(ages) - min(ages) if len(ages) > 1 else 0,
+        }
+
+    def detect_anomalies(self) -> list[str]:
+        """Detect potential anomalies in the signature chain."""
+        anomalies = []
+        signers = [sig.node_id for sig in self.signatures]
+        if len(signers) != len(set(signers)):
+            anomalies.append("Duplicate signatures from same node detected")
+        if not self.verify_timestamp_sequence():
+            anomalies.append("Invalid timestamp sequence detected")
+        if len(self.signatures) > 20:
+            anomalies.append(
+                f"Unusually long routing chain: {len(self.signatures)} hops"
+            )
+        operations = {sig.operation for sig in self.signatures}
+        if EnumNodeOperation.SOURCE not in operations:
+            anomalies.append("Missing SOURCE operation")
+        for i, signature in enumerate(self.signatures):
+            if signature.hop_index != i:
+                anomalies.append(f"Gap in signature sequence at hop {i}")
+        return anomalies
+
+    @classmethod
+    def create_new_chain(
+        cls,
+        envelope_id: UUID,
+        content_hash: str,
+        signing_policy: ModelSigningPolicy | None = None,
+        compliance_frameworks: list[EnumComplianceFramework] | None = None,
+    ) -> "ModelSignatureChain":
+        """Create a new signature chain for an envelope."""
+
+        return cls(
+            chain_id=uuid4(),
+            envelope_id=envelope_id,
+            content_hash=content_hash,
+            signing_policy=signing_policy,
+            compliance_frameworks=compliance_frameworks
+            if compliance_frameworks is not None
+            else [],
+            validation_status=EnumChainValidationStatus.INCOMPLETE,
+            trust_level=EnumTrustLevel.UNTRUSTED,
+        )
+
+    def __str__(self) -> str:
+        """Human-readable representation."""
+        return f"SignatureChain[{str(self.chain_id)[:8]}] {len(self.signatures)} signatures, status: {self.validation_status.value}"
+
+```
+Unchanged test source:
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""Deterministic UUID boundary regressions for signature-chain hashing."""
+
+from datetime import UTC, datetime
+from uuid import UUID, uuid4
+
+import pytest
+from pydantic import ValidationError
+
+from omnibase_core.enums.enum_node_operation import EnumNodeOperation
+from omnibase_core.models.security.model_node_signature import ModelNodeSignature
+from omnibase_core.models.security.model_signature_chain import ModelSignatureChain
+
+
+def _chain_and_signature() -> tuple[ModelSignatureChain, ModelNodeSignature]:
+    chain = ModelSignatureChain(
+        chain_id=uuid4(),
+        envelope_id=uuid4(),
+        content_hash="a" * 64,
+    )
+    signature = ModelNodeSignature(
+        node_id=uuid4(),
+        signature="c2ln",
+        timestamp=datetime.now(UTC),
+        operation=EnumNodeOperation.SOURCE,
+        key_id=uuid4(),
+        hop_index=0,
+        envelope_state_hash=chain.content_hash,
+    )
+    return chain, signature
+
+
+@pytest.mark.unit
+def test_add_signature_hashes_uuid_boundary_deterministically_without_coercing_models() -> (
+    None
+):
+    """UUIDs cross only the JSON hashing boundary; typed model fields stay UUIDs."""
+    first_chain, first_signature = _chain_and_signature()
+    second_chain = ModelSignatureChain(
+        chain_id=first_chain.chain_id,
+        envelope_id=first_chain.envelope_id,
+        content_hash=first_chain.content_hash,
+    )
+    second_signature = first_signature.model_copy(deep=True)
+
+    assert first_chain.add_signature(first_signature) is True
+    assert second_chain.add_signature(second_signature) is True
+
+    assert first_chain.chain_hash == second_chain.chain_hash
+    assert isinstance(first_chain.chain_id, UUID)
+    assert isinstance(first_chain.envelope_id, UUID)
+    assert isinstance(first_chain.signatures[0].node_id, UUID)
+
+
+@pytest.mark.unit
+def test_signature_chain_rejects_unknown_fields() -> None:
+    """The chain is a closed wire contract: an unknown field is refused, not dropped."""
+    with pytest.raises(ValidationError, match="extra_forbidden"):
+        ModelSignatureChain.model_validate(
+            {
+                "chain_id": str(uuid4()),
+                "envelope_id": str(uuid4()),
+                "content_hash": "a" * 64,
+                "unexpected_field": "dropped silently before OMN-17711",
+            }
+        )
+
+```

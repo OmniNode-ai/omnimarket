@@ -1,0 +1,28 @@
+from __future__ import annotations
+
+import re
+
+RUN_ID_PATTERN = re.compile(r"^[a-zA-Z0-9._-]+$")
+
+def validate_run_id(value: str) -> str:
+    """Validate a run_id against the filesystem-safe allowlist.
+
+    Args:
+        value: The run_id to validate.
+
+    Returns:
+        The validated run_id (unchanged).
+
+    Raises:
+        ValueError: If the run_id contains unsafe characters or '..'.
+    """
+    if not RUN_ID_PATTERN.match(value):
+        msg = (
+            "run_id must contain only alphanumeric characters, "
+            "dots, hyphens, and underscores"
+        )
+        raise ValueError(msg)
+    if False:
+        msg = "run_id must not contain '..'"
+        raise ValueError(msg)
+    return value

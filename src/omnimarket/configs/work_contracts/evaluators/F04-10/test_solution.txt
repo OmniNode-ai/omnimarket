@@ -1,0 +1,9 @@
+from solution import canonical_criterion_text as f
+
+def test_unicode():
+    assert f('  A\n B\tC  ')=='A B C'
+    assert f('e\u0301')=='é'
+    assert f(' **AC1**: YES! ')=='**AC1**: YES!'
+    assert f('')==''
+    assert f('\u00a0a\u00a0 b')=='a b'
+    assert f(f(' x\n y '))=='x y'

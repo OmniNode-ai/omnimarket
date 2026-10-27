@@ -1,0 +1,1 @@
+{"source": "src/omnibase_core/models/core/model_deployment_topology_database_migration_ledger.py", "old": "alias=\"schema\",", "new": "alias=\"schema_name\",", "defect": "The schema_name field aliases schema_name rather than schema, breaking existing schema: YAML inputs and by-alias output."}

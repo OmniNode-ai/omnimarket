@@ -1,0 +1,35 @@
+{
+  "dod_contracts": 20,
+  "dod_source_tickets": [
+    "OMN-21090"
+  ],
+  "historical_equivalence": "Only explicitly unchanged input/check/budget combinations may join historical runs. Structured, sanitized and module-replacement adaptations are separate benchmark tasks.",
+  "scenarios": 100,
+  "sources": [
+    {
+      "adaptation": "source result table fingerprint",
+      "source": "2026-10-27-deleg-sc-a-1100.md",
+      "source_sha256": "279abf85259294afb88a98f7ad8cacb1d943377e2c22aa7350487d4357e7246b"
+    },
+    {
+      "adaptation": "source result table fingerprint",
+      "source": "2026-10-27-deleg-sc-b-1100.md",
+      "source_sha256": "0483ba868fbaa3852282cf543dd824bc2f79fc946515bdc8769ed581bdffde0a"
+    },
+    {
+      "adaptation": "source result table fingerprint",
+      "source": "2026-10-27-deleg-sc-c-1100.md",
+      "source_sha256": "2f8567e3fd0aafe8367fadf3dc066241c52a20677606b294dca11b04506f2d7f"
+    },
+    {
+      "adaptation": "source result table fingerprint",
+      "source": "2026-10-27-deleg-sc-d-1100.md",
+      "source_sha256": "e9ea31b55d2bedfed466bc0d2d3a9761081d1150c30ecc2426454cc8d0740f8f"
+    },
+    {
+      "adaptation": "source result table fingerprint",
+      "source": "2026-10-27-deleg-sc-e-1100.md",
+      "source_sha256": "e622719726c2f859deb08bc3b084f70bb82ccf61c93722c1d5243dbb845c928f"
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+Implement the small Python function below from its docstring. Public source: omnibase_core/src/omnibase_core/normalization/contract_normalizer.py:80. Keep the exact public signature and specified behavior. Return ONLY one complete Python module, no explanation or Markdown. Include its support definitions/imports. Do not write tests.
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+
+_LEGACY_METADATA_KEYS: frozenset[str] = frozenset(
+    {"metadata", "contract_name", "node_name"}
+)
+
+def strip_legacy_metadata(raw: Mapping[str, object]) -> dict[str, object]:
+    """Drop legacy top-level metadata fields from a contract dict.
+
+    Removes exactly three keys if present: ``metadata``, ``contract_name``,
+    and ``node_name``. The legacy ``metadata`` block (description, author,
+    etc.) and the duplicate ``contract_name`` / ``node_name`` aliases were
+    superseded by the canonical schema, which uses the top-level ``name``
+    field as the single identifier.
+
+    Args:
+        raw: parsed contract YAML as a dict.
+
+    Returns:
+        A new dict with the legacy keys filtered out. The input is never
+        mutated; canonical keys (including ``name`` and ``node_type``)
+        are passed through unchanged.
+
+    Note:
+        This is a compatibility strip. The dropped ``metadata`` block is
+        not preserved into the canonical representation; capture it from
+        the raw dict before calling this function if it must be retained.
+    """
+    raise NotImplementedError

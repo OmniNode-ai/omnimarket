@@ -1,0 +1,10 @@
+from solution import normalize_io_model_ref as f
+
+def test_io():
+    raw={'input_model':{'name':'A','module':'p.q'},'output_model':{'name':'B','module':'r'}}
+    assert f(raw)=={'input_model':'p.q.A','output_model':'r.B'}
+    assert isinstance(raw['input_model'],dict)
+    assert f({'input_model':'x.Y'})=={'input_model':'x.Y'}
+    assert f({'output_model':{'name':'X'}})=={'output_model':{'name':'X'}}
+    assert f({'x':3})=={'x':3}
+    assert f(f(raw))==f(raw)

@@ -1,0 +1,51 @@
+contract_id: F06-08
+task_kind: code_edit
+inputs:
+- path: src/omnimarket/configs/work_contracts/inputs/F06-08.txt
+  sha256: 773d45920ad88daf96cc6c5d3ecca2bca08ef94c08e104d4cdac22729adeb8aa
+- path: src/omnimarket/configs/work_contracts/evaluators/F06-08/test_frozen.txt
+  sha256: d401af7ec1f0e482691a21408d8e4e996063743c7df883873e2ee80140b616df
+- path: src/omnimarket/configs/work_contracts/rules/F06-08.json
+  sha256: 6ad98cd107e2dbc2c441dbd826f7eabb4a6f076b760a497df17c8aa0d218dd49
+acceptance:
+  kind: seeded_bug
+  spec:
+    argv:
+    - python
+    - -m
+    - omnimarket.handlers.work_contracts.control_evaluator
+    - --root
+    - '{root}'
+    - --case
+    - src/omnimarket/configs/work_contracts/rules/F06-08.json
+    - --answer
+    - '{answer}'
+    environment:
+      path: uv.lock
+      sha256: cc8b0d6926212d86056ae768b5c3d30112085039ad5a829f3dc92469bbcf629e
+    expected_exit: 0
+    target: src/omnibase_core/models/security/model_signature_chain.py
+    patch:
+      path: src/omnimarket/configs/work_contracts/evaluators/F06-08/seed.patch
+      sha256: 82f7f43df4c5e279a39c3c41bfd5e20ce5dcbe02497bd7d182511c3b1d3b80e5
+budgets:
+  max_output_tokens: 8192
+  max_wall_s: 180
+  max_turns: 8
+  max_usd: 5
+controls:
+  positive:
+    path: src/omnimarket/configs/work_contracts/controls/F06-08.positive.txt
+    sha256: 81f93159f28191f347bac414371c7106d31b6af1fe5da40e22d16d0c896ab408
+  negative:
+    path: src/omnimarket/configs/work_contracts/controls/F06-08.negative.txt
+    sha256: ab5033914da790f834e986e6579e180762420e55cae1c51fce3834935cd8e4c4
+evaluators:
+- path: src/omnimarket/handlers/work_contracts/control_evaluator.py
+  sha256: 35beec5a332b646a0c1a696407f0b4a1f5a683269b19e9f782af9df0ee662d7d
+provenance:
+  source: 2026-10-27-deleg-sc-d-1100.md
+  source_sha256: e9ea31b55d2bedfed466bc0d2d3a9761081d1150c30ecc2426454cc8d0740f8f
+  adaptation: Deidentified fixed/seeded public module and entire frozen original pytest
+    file. Runner accepts a complete replacement module; patch-only historical outputs
+    are not equivalent.

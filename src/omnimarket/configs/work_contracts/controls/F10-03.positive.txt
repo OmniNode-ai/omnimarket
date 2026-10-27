@@ -1,0 +1,1 @@
+{"diagnosis": "Use F08-03 semantic check plus timeout evidence and each attempted rung/move. A pre-dispatch transport failure is not a model timeout escalation.", "evidence_scope": "offline diagnosis; no live model escalation proven"}

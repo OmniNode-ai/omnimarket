@@ -1,0 +1,55 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_model_work_receipt_join_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: 1.0.0
+description: >-
+  Normalize four already-read receipt families against pre-dispatch identities.
+  Compute verdicts from separately supplied lab acceptance executions and pinned
+  contract expectations; quarantine missing checks and unmapped history.
+input_model:
+  name: ModelReceiptJoinRequest
+  module: omnimarket.nodes.node_model_work_receipt_join_compute.models.model_work_attempt_receipt
+output_model:
+  name: ModelReceiptJoinResult
+  module: omnimarket.nodes.node_model_work_receipt_join_compute.models.model_work_attempt_receipt
+handler:
+  module: omnimarket.nodes.node_model_work_receipt_join_compute.handlers.handler_model_work_receipt_join
+  class: HandlerModelWorkReceiptJoin
+  input_model: omnimarket.nodes.node_model_work_receipt_join_compute.models.model_work_attempt_receipt.ModelReceiptJoinRequest
+  output_model: omnimarket.nodes.node_model_work_receipt_join_compute.models.model_work_attempt_receipt.ModelReceiptJoinResult
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerModelWorkReceiptJoin
+        module: omnimarket.nodes.node_model_work_receipt_join_compute.handlers.handler_model_work_receipt_join
+      event_model:
+        name: ModelReceiptJoinRequest
+        module: omnimarket.nodes.node_model_work_receipt_join_compute.models.model_work_attempt_receipt
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Comparison run passes frozen receipt documents and lab check executions.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+configuration:
+  identity_authority: pre_dispatch_manifest
+  unknown_marker: UNKNOWN
+  conflict_policy: report_and_mark_unknown
+  landing_policy: wall_cross_check_only
+  legacy_codex_num_turns: excluded
+  writer: caller_replace_by_contract_and_attempt
+replay:
+  deterministic: true
+  timestamp_authority: pre_dispatch_manifest
+metadata:
+  transport_type: local

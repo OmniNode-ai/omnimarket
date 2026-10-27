@@ -1,0 +1,50 @@
+contract_id: F10-07
+task_kind: reasoning
+inputs:
+- path: src/omnimarket/configs/work_contracts/inputs/F10-07.txt
+  sha256: e0b6386f4dd77306eb3c5abde815271dee3de1e3828182d4e74121fc38140af0
+acceptance:
+  kind: schema
+  spec:
+    schema:
+      type: object
+      required:
+      - diagnosis
+      - evidence_scope
+      properties:
+        diagnosis:
+          type: string
+          const: Explicit inmemory wins; absent explicit, configured kafka wins; ONEX_EVENT_BUS_TYPE
+            ignored with warning; ONEX_CONTRACTS_DIR only points to config; core template
+            uses ./contracts fallback; onboarding removes stale env. Cite core, infra,
+            omniclaude. Receipt trace required.
+        evidence_scope:
+          type: string
+          const: offline diagnosis; no live model escalation proven
+      additionalProperties: false
+    expected_json: '{"diagnosis": "Explicit inmemory wins; absent explicit, configured
+      kafka wins; ONEX_EVENT_BUS_TYPE ignored with warning; ONEX_CONTRACTS_DIR only
+      points to config; core template uses ./contracts fallback; onboarding removes
+      stale env. Cite core, infra, omniclaude. Receipt trace required.", "evidence_scope":
+      "offline diagnosis; no live model escalation proven"}'
+budgets:
+  max_output_tokens: 8192
+  max_wall_s: 180
+  max_turns: 8
+  max_usd: 5
+controls:
+  positive:
+    path: src/omnimarket/configs/work_contracts/controls/F10-07.positive.txt
+    sha256: 438282997174f92396c3a7ccb70c33b4234b1929e97af958b7c60da932ffa77d
+  negative:
+    path: src/omnimarket/configs/work_contracts/controls/F10-07.negative.txt
+    sha256: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+evaluators:
+- path: src/omnimarket/handlers/work_contracts/control_evaluator.py
+  sha256: 35beec5a332b646a0c1a696407f0b4a1f5a683269b19e9f782af9df0ee662d7d
+provenance:
+  source: 2026-10-27-deleg-sc-e-1100.md
+  source_sha256: e622719726c2f859deb08bc3b084f70bb82ccf61c93722c1d5243dbb845c928f
+  adaptation: Frozen prose rubric converted to complete structured diagnosis. F10
+    is offline diagnosis only; no fabricated live attempt/transition proof. Historical
+    outputs are not equivalent.

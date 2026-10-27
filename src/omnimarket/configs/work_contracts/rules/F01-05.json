@@ -1,0 +1,27 @@
+{
+  "cues": [
+    "contracts/OMN-17427.yaml",
+    "pyproject.toml",
+    "src/omnibase_core/decorators/decorator_effect_boundary.py",
+    "src/omnibase_core/decorators/decorator_enforce_execution_shape.py",
+    "src/omnibase_core/decorators/decorator_error_handling.py",
+    "src/omnibase_core/mixins/mixin_node_executor.py",
+    "src/omnibase_core/mixins/mixin_node_service.py",
+    "src/omnibase_core/models/infrastructure/model_effect_transaction.py",
+    "src/omnibase_core/models/infrastructure/model_transaction.py",
+    "tests/unit/decorators/test_error_handling_extended.py",
+    "tests/unit/decorators/test_no_asyncio_iscoroutinefunction.py",
+    "tests/unit/examples/demo/handlers/support_assistant/test_handler_support_assistant.py",
+    "tests/unit/protocols/compute/test_protocol_circuit_breaker.py",
+    "tests/unit/protocols/infrastructure/test_protocol_database_connection.py",
+    "tests/unit/protocols/infrastructure/test_protocol_service_discovery.py",
+    "uv.lock",
+    "_asyncio_iscoroutinefunction_calls",
+    "test_src_has_no_asyncio_iscoroutinefunction",
+    "test_error_handling_decorators_emit_no_deprecation_warning",
+    "async_op",
+    "sync_op"
+  ],
+  "mode": "summary",
+  "prompt": "src/omnimarket/configs/work_contracts/inputs/F01-05.txt"
+}

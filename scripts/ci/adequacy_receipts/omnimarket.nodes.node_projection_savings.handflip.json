@@ -1,0 +1,20 @@
+{
+  "node_id": "omnimarket.nodes.node_projection_savings",
+  "receipt_schema": "handflip_proof.v1",
+  "canonical_handler_module": "omnimarket.nodes.node_projection_savings.handlers.handler_savings",
+  "legacy_handler_module": "omnimarket.nodes.node_projection_savings.handlers.handler_savings",
+  "base_ref": "a075858c136228cd4a6b09e266ea660084848bee",
+  "preserved_symbols": [
+    "SavingsProjectionRunner.project_event"
+  ],
+  "parity": {
+    "status": "pass",
+    "test_ids": [
+      "tests/test_omn21288_projection_writer_handflip_parity.py::test_bound_handler_wraps_the_existing_runner[node_projection_savings]",
+      "tests/test_omn21288_projection_writer_handflip_parity.py::test_bound_handler_delivers_one_event_to_the_runner[node_projection_savings]"
+    ],
+    "selected_input_hashes": [
+      "sha256:ef5de9c395f445d35995a230e1d1b6e60d80e8bc7bf71bd15b8e644e2d61e292"
+    ]
+  }
+}

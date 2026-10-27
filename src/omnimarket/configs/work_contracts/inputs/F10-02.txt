@@ -1,0 +1,37 @@
+Diagnose this real failed GitHub Actions job. Name the job and the failing step, identify the direct cause, and distinguish the direct failure from any downstream symptom or misleading successful output. Cite the supplied evidence. Propose a bounded remedy without executing it; do not change checks, rerun CI, or assume a newer head is still red.
+Source: https://github.com/OmniNode-ai/omnimarket/actions/runs/40256265686/job/121359139102
+Failing step from GitHub job metadata: Every node migration this change adds is in the pinned omnibase_infra release
+The log download labels steps UNKNOWN STEP; the exact name above is authoritative.
+Log excerpt (original timestamps, with gaps):
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:03.8266854Z ^[[36;1m  if [[ -n "$first_release" ]]; then^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:03.8268411Z ^[[36;1m    echo "::error::$file $relation the pinned omnibase_infra revision $INFRA_REF_NAME (omnibase-infra $INFRA_VERSION in uv.lock). The first omnibase_infra release that vendors it byte-identical is $first_release: bump omnibase-infra to >=${first_release#v} in pyproject.toml ([project].dependencies and [tool.uv] override-dependencies) and uv.lock in this change."^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:03.8269774Z ^[[36;1m  else^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:03.8271562Z ^[[36;1m    echo "::error::$file $relation the pinned omnibase_infra revision $INFRA_REF_NAME (omnibase-infra $INFRA_VERSION in uv.lock), and no omnibase_infra release vendors it yet (missing sibling release: omnibase_infra with $vendored). Vendor it in omnibase_infra with scripts/sync-node-migrations.sh, release omnibase_infra, then bump the omnibase-infra pin here. Code that writes this migration's columns must not merge before that release."^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:03.8273169Z ^[[36;1m  fi^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:03.8273522Z ^[[36;1m  echo "| $file | $status | ${first_release:-not released} |" >> "$GITHUB_STEP_SUMMARY"^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:03.8273944Z ^[[36;1m  failed=1^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:03.8274157Z ^[[36;1mdone <<< "$files"^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:03.8339066Z   BASE_SHA: 3efbf03f29a0bf4beb9f3f6bb57aba5fa1d23ebf
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:03.8339460Z   HEAD_SHA: ccf679f800b22f0899401017e34c9c72465ab857
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:03.8339749Z ##[endgroup]
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:04.3983692Z ##[error]src/omnimarket/nodes/node_projection_work_ledger/migrations/0006_work_ledger_ingested_at.sql is not in the pinned omnibase_infra revision dev-20261025152318-03ea9377f87c (omnibase-infra 0.38.77 in uv.lock), and no omnibase_infra release vendors it yet (missing sibling release: omnibase_infra with docker/migrations/forward/nodes/node_projection_work_ledger/0006_work_ledger_ingested_at.sql). Vendor it in omnibase_infra with scripts/sync-node-migrations.sh, release omnibase_infra, then bump the omnibase-infra pin here. Code that writes this migration's columns must not merge before that release.
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:04.3994259Z ##[error]Process completed with exit code 1.
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:04.4058329Z ##[group]Run set -euo pipefail
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:04.4058656Z ^[[36;1mset -euo pipefail^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:04.4058959Z ^[[36;1muv build --wheel --out-dir "$RUNNER_TEMP/dist"^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:07.5127872Z ^[[36;1muv venv --no-config --python 3.12 "$RUNNER_TEMP/pinned-venv"^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:07.5128372Z ^[[36;1mif ! uv pip install --no-config --python "$RUNNER_TEMP/pinned-venv/bin/python" \^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:07.5128839Z ^[[36;1m  "$wheel" "$INFRA_SPEC" "$CORE_SPEC"; then^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:07.5129764Z ^[[36;1m  echo "::error::this head does not install against the omnibase-infra $INFRA_REF_NAME and omnibase-core $CORE_REF_NAME its uv.lock pins; the missing sibling release is whatever this head requires beyond those pins"^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:07.5130611Z ^[[36;1m  exit 1^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:07.5130807Z ^[[36;1mfi^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:07.5131445Z ^[[36;1m"$RUNNER_TEMP/pinned-venv/bin/python" - <<'PY'^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:07.5131787Z ^[[36;1mimport importlib.metadata^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:17.7028015Z ^[[36;1m    message = (^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:17.7028390Z ^[[36;1m        f"{len(failures)} omnimarket modules do not import against the released "^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:17.7029024Z ^[[36;1m        f"omnibase-infra=={os.environ['INFRA_VERSION']} / omnibase-core=={os.environ['CORE_VERSION']}. "^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:17.7029672Z ^[[36;1m        "This head needs a sibling release newer than its pins (missing sibling release): "^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:17.7030291Z ^[[36;1m        "land and release the sibling change, then bump the pin in pyproject.toml and uv.lock. "^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:17.7030772Z ^[[36;1m        f"First failure: {failures[0]}"^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:17.7031273Z ^[[36;1m    )^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:17.7031619Z ^[[36;1m    message = message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")^[[0m

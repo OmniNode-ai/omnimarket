@@ -1,0 +1,102 @@
+{
+  "instruction": "Classify the public fixtures in order; labels are stated in the evidence.",
+  "rows": [
+    {
+      "evidence": "public fixture for handed-off",
+      "id": "L3722"
+    },
+    {
+      "evidence": "public fixture for partial",
+      "id": "L3634"
+    },
+    {
+      "evidence": "public fixture for done",
+      "id": "L3606"
+    },
+    {
+      "evidence": "public fixture for failed",
+      "id": "L3461"
+    },
+    {
+      "evidence": "public fixture for blocked",
+      "id": "L3333"
+    },
+    {
+      "evidence": "public fixture for DELIVERED",
+      "id": "L3171"
+    },
+    {
+      "evidence": "public fixture for skipped-owned",
+      "id": "L2538"
+    },
+    {
+      "evidence": "public fixture for ended-waiting",
+      "id": "L1705"
+    },
+    {
+      "evidence": "public fixture for unknown",
+      "id": "L1351"
+    },
+    {
+      "evidence": "public fixture for handed-off",
+      "id": "L3721"
+    },
+    {
+      "evidence": "public fixture for partial",
+      "id": "L3620"
+    },
+    {
+      "evidence": "public fixture for done",
+      "id": "L3519"
+    },
+    {
+      "evidence": "public fixture for failed",
+      "id": "L3225"
+    },
+    {
+      "evidence": "public fixture for blocked",
+      "id": "L3112"
+    },
+    {
+      "evidence": "public fixture for skipped-owned",
+      "id": "L2249"
+    },
+    {
+      "evidence": "public fixture for unknown",
+      "id": "L1349"
+    },
+    {
+      "evidence": "public fixture for handed-off",
+      "id": "L3697"
+    },
+    {
+      "evidence": "public fixture for partial",
+      "id": "L3472"
+    },
+    {
+      "evidence": "public fixture for done",
+      "id": "L3503"
+    },
+    {
+      "evidence": "public fixture for failed",
+      "id": "L3208"
+    },
+    {
+      "evidence": "public fixture for blocked",
+      "id": "L3048"
+    },
+    {
+      "evidence": "public fixture for skipped-owned",
+      "id": "L1633"
+    },
+    {
+      "evidence": "public fixture for handed-off",
+      "id": "L3672"
+    },
+    {
+      "evidence": "public fixture for partial",
+      "id": "L3363"
+    }
+  ],
+  "scenario": "F09-09"
+}

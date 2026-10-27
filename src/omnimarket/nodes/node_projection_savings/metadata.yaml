@@ -6,7 +6,7 @@ description: >
   SOW WARN blocker for cost attribution.
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 capabilities:
-  standalone: true
+  standalone: false
   full_runtime: true
   requires_network: true
   requires_secrets: true

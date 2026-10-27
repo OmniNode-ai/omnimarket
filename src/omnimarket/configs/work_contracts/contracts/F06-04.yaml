@@ -1,0 +1,51 @@
+contract_id: F06-04
+task_kind: code_edit
+inputs:
+- path: src/omnimarket/configs/work_contracts/inputs/F06-04.txt
+  sha256: 5c15289e34f1df7bb89f2f45873fae385e88ec48b1e3b457072997123f2e2f17
+- path: src/omnimarket/configs/work_contracts/evaluators/F06-04/test_frozen.txt
+  sha256: 476ecb87755bc837ce76b0f15850a3c895ed3caa983678bc92a7e2cda8192fa4
+- path: src/omnimarket/configs/work_contracts/rules/F06-04.json
+  sha256: b7a817731892d68563c10b477517ecb49c902a6cc336246fc2a03e3f43263bb8
+acceptance:
+  kind: seeded_bug
+  spec:
+    argv:
+    - python
+    - -m
+    - omnimarket.handlers.work_contracts.control_evaluator
+    - --root
+    - '{root}'
+    - --case
+    - src/omnimarket/configs/work_contracts/rules/F06-04.json
+    - --answer
+    - '{answer}'
+    environment:
+      path: uv.lock
+      sha256: cc8b0d6926212d86056ae768b5c3d30112085039ad5a829f3dc92469bbcf629e
+    expected_exit: 0
+    target: src/omnibase_core/models/node_metadata/model_node_core_metadata_class.py
+    patch:
+      path: src/omnimarket/configs/work_contracts/evaluators/F06-04/seed.patch
+      sha256: 101726ad1760b8edfe91d7c2837be9dc5827a6fa3143f689593adb88b3372f25
+budgets:
+  max_output_tokens: 8192
+  max_wall_s: 180
+  max_turns: 8
+  max_usd: 5
+controls:
+  positive:
+    path: src/omnimarket/configs/work_contracts/controls/F06-04.positive.txt
+    sha256: 8c4efbd0f2b8ac291166e028766361996197ec404fea93efd111341faa896b22
+  negative:
+    path: src/omnimarket/configs/work_contracts/controls/F06-04.negative.txt
+    sha256: 38a9b48e0ed50d2edbbfe732bb63b96ca80404715fb98eb34690ec2735a80dc7
+evaluators:
+- path: src/omnimarket/handlers/work_contracts/control_evaluator.py
+  sha256: 35beec5a332b646a0c1a696407f0b4a1f5a683269b19e9f782af9df0ee662d7d
+provenance:
+  source: 2026-10-27-deleg-sc-d-1100.md
+  source_sha256: e9ea31b55d2bedfed466bc0d2d3a9761081d1150c30ecc2426454cc8d0740f8f
+  adaptation: Deidentified fixed/seeded public module and entire frozen original pytest
+    file. Runner accepts a complete replacement module; patch-only historical outputs
+    are not equivalent.

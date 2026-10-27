@@ -1,0 +1,29 @@
+Implement the small Python function below from its docstring. Public source: omnibase_core/src/omnibase_core/normalization/contract_normalizer.py:130. Keep the exact public signature and specified behavior. Return ONLY one complete Python module, no explanation or Markdown. Include its support definitions/imports. Do not write tests.
+
+from __future__ import annotations
+
+def _normalize_single_io_ref(value: dict[str, object] | str | None) -> str | None:
+    if value is None or isinstance(value, str):
+        return value
+    module = value.get("module")
+    name = value.get("name")
+    if isinstance(module, str) and isinstance(name, str) and module and name:
+        return f"{module}.{name}"
+    return None
+
+def normalize_io_model_ref(raw: dict[str, object]) -> dict[str, object]:
+    """Convert dict-shaped ``input_model``/``output_model`` refs to strings.
+
+    Legacy contracts often expressed model references as
+    ``{"name": "ModelFooRequest", "module": "foo.bar.models"}``. The canonical
+    typed contract model expects a single dotted string
+    ``"foo.bar.models.ModelFooRequest"``.
+
+    Behavior:
+    - ``{name: X, module: Y}`` -> ``"Y.X"``
+    - String passthrough unchanged
+    - Missing field not injected
+    - Incomplete dict refs preserved
+    - Does not mutate input; idempotent
+    """
+    raise NotImplementedError

@@ -1,0 +1,2690 @@
+Review this real public-source diff for correctness. Repository OmniNode-ai/omnibase_core, base c48f898b6eb5bc2427a3ee2898591bed69cafc8b^, proposed fix based on c48f898b6eb5bc2427a3ee2898591bed69cafc8b. The candidate includes one deliberately seeded correctness bug among the actual changes. Report the defect, location, concrete failure mechanism and a minimal correction. Review only; do not execute tools or change files.
+Requirements: Preserve typed UUID identities, immutable state where declared, existing public wire names, enum defaults, non-destructive reads, runtime-resolvable model annotations, and effect execution under warnings-as-errors.
+Candidate diff:
+```diff
+--- a/src/omnibase_core/models/core/model_custom_filters.py
++++ b/src/omnibase_core/models/core/model_custom_filters.py
+@@ -4,13 +4,13 @@
+ """Collection of custom filters model."""
+ 
+ from __future__ import annotations
+ 
+ from typing import Any, cast
+ 
+-from pydantic import BaseModel, Field
++from pydantic import BaseModel, ConfigDict, Field
+ 
+ from omnibase_core.enums.enum_core_error_code import EnumCoreErrorCode
+ from omnibase_core.models.common.model_schema_value import ModelSchemaValue
+ from omnibase_core.models.errors.model_onex_error import ModelOnexError
+ from omnibase_core.types.type_serializable_value import SerializedDict
+ 
+@@ -26,12 +26,14 @@
+ class ModelCustomFilters(BaseModel):
+     """
+     Collection of custom filters.
+ 
+     Replaces Dict[str, Any] for custom_filters fields with typed filters.
+     """
++
++    model_config = ConfigDict(extra="forbid")
+ 
+     # union-ok: discriminated_model_union - All filter types share filter_type discriminator field
+     filters: dict[
+         str,
+         ModelStringFilter
+         | ModelNumericFilter
+@@ -93,13 +95,13 @@
+         | ModelMetadataFilter
+         | ModelStatusFilter
+         | ModelComplexFilter
+         | None
+     ):
+         """Get a filter by name."""
+-        return self.filters.get(name)
++        return self.filters.pop(name, None)
+ 
+     def remove_filter(self, name: str) -> None:
+         """Remove a filter by name."""
+         self.filters.pop(name, None)
+ 
+     def to_dict(self) -> SerializedDict:
+
+```
+Complete candidate file src/omnibase_core/models/core/model_custom_filters.py:
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""Collection of custom filters model."""
+
+from __future__ import annotations
+
+from typing import Any, cast
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from omnibase_core.enums.enum_core_error_code import EnumCoreErrorCode
+from omnibase_core.models.common.model_schema_value import ModelSchemaValue
+from omnibase_core.models.errors.model_onex_error import ModelOnexError
+from omnibase_core.types.type_serializable_value import SerializedDict
+
+from .model_complex_filter import ModelComplexFilter
+from .model_datetime_filter import ModelDateTimeFilter
+from .model_list_filter import ModelListFilter
+from .model_metadata_filter import ModelMetadataFilter
+from .model_numeric_filter import ModelNumericFilter
+from .model_status_filter import ModelStatusFilter
+from .model_string_filter import ModelStringFilter
+
+
+class ModelCustomFilters(BaseModel):
+    """
+    Collection of custom filters.
+
+    Replaces Dict[str, Any] for custom_filters fields with typed filters.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    # union-ok: discriminated_model_union - All filter types share filter_type discriminator field
+    filters: dict[
+        str,
+        ModelStringFilter
+        | ModelNumericFilter
+        | ModelDateTimeFilter
+        | ModelListFilter
+        | ModelMetadataFilter
+        | ModelStatusFilter
+        | ModelComplexFilter,
+    ] = Field(default_factory=dict, description="Named custom filters")
+
+    def add_string_filter(self, name: str, pattern: str, **kwargs: Any) -> None:
+        """Add a string filter."""
+        self.filters[name] = ModelStringFilter(pattern=pattern, **kwargs)
+
+    def add_numeric_filter(self, name: str, **kwargs: Any) -> None:
+        """Add a numeric filter."""
+        self.filters[name] = ModelNumericFilter(**kwargs)
+
+    def add_datetime_filter(self, name: str, **kwargs: Any) -> None:
+        """Add a datetime filter."""
+        self.filters[name] = ModelDateTimeFilter(**kwargs)
+
+    def add_list_filter(
+        self,
+        name: str,
+        values: list[object] | list[ModelSchemaValue],
+        **kwargs: Any,
+    ) -> None:
+        """Add a list filter.
+
+        Values are automatically converted to ModelSchemaValue for type safety.
+        """
+        self.filters[name] = ModelListFilter(
+            values=cast(list[ModelSchemaValue], values), **kwargs
+        )
+
+    def add_metadata_filter(
+        self, name: str, key: str, value: object, **kwargs: Any
+    ) -> None:
+        """Add a metadata filter."""
+        self.filters[name] = ModelMetadataFilter(
+            metadata_key=key,
+            metadata_value=value,
+            **kwargs,
+        )
+
+    def add_status_filter(self, name: str, allowed: list[str], **kwargs: Any) -> None:
+        """Add a status filter."""
+        self.filters[name] = ModelStatusFilter(allowed_statuses=allowed, **kwargs)
+
+    # union-ok: discriminated_model_union - All filter types share filter_type discriminator field
+    def get_filter(
+        self, name: str
+    ) -> (
+        ModelStringFilter
+        | ModelNumericFilter
+        | ModelDateTimeFilter
+        | ModelListFilter
+        | ModelMetadataFilter
+        | ModelStatusFilter
+        | ModelComplexFilter
+        | None
+    ):
+        """Get a filter by name."""
+        return self.filters.pop(name, None)
+
+    def remove_filter(self, name: str) -> None:
+        """Remove a filter by name."""
+        self.filters.pop(name, None)
+
+    def to_dict(self) -> SerializedDict:
+        """Convert to dictionary (for current standards)."""
+        # Custom transformation logic for filters dictionary
+        return {name: filter_obj.to_dict() for name, filter_obj in self.filters.items()}
+
+    @classmethod
+    def from_dict(cls, data: SerializedDict) -> ModelCustomFilters:
+        """Create from dictionary (for migration)."""
+        # union-ok: discriminated_model_union - All filter types share filter_type discriminator field
+        filters: dict[
+            str,
+            ModelStringFilter
+            | ModelNumericFilter
+            | ModelDateTimeFilter
+            | ModelListFilter
+            | ModelMetadataFilter
+            | ModelStatusFilter
+            | ModelComplexFilter,
+        ] = {}
+
+        for name, filter_data in data.items():
+            if isinstance(filter_data, dict) and "filter_type" in filter_data:
+                filter_type = filter_data["filter_type"]
+
+                if filter_type == "string":
+                    filters[name] = ModelStringFilter.model_validate(filter_data)
+                elif filter_type == "numeric":
+                    filters[name] = ModelNumericFilter.model_validate(filter_data)
+                elif filter_type == "datetime":
+                    filters[name] = ModelDateTimeFilter.model_validate(filter_data)
+                elif filter_type == "list" or filter_type == "list[Any]":
+                    filters[name] = ModelListFilter.model_validate(filter_data)
+                elif filter_type == "metadata":
+                    filters[name] = ModelMetadataFilter.model_validate(filter_data)
+                elif filter_type == "status":
+                    filters[name] = ModelStatusFilter.model_validate(filter_data)
+                elif filter_type == "complex":
+                    filters[name] = ModelComplexFilter.model_validate(filter_data)
+                else:
+                    raise ModelOnexError(
+                        message=f"Unknown filter_type '{filter_type}' for filter '{name}'",
+                        error_code=EnumCoreErrorCode.VALIDATION_ERROR,
+                    )
+            else:
+                raise ModelOnexError(
+                    message=f"Filter '{name}' must be a dict with 'filter_type' key",
+                    error_code=EnumCoreErrorCode.VALIDATION_ERROR,
+                )
+
+        return cls(filters=filters)
+
+```
+
+Companion source src/omnibase_core/models/common/model_numeric_value.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""
+Numeric value model.
+
+Type-safe numeric value container that replaces int | float unions
+with structured validation and proper type handling.
+
+IMPORT ORDER CONSTRAINTS (Critical - Do Not Break):
+-----------------------------------------------
+This module is part of a carefully managed import chain to avoid circular dependencies.
+To avoid circular imports with error_codes, we use TYPE_CHECKING for type hints
+and runtime imports in validators that need to raise errors.
+"""
+
+from collections.abc import Mapping
+from math import isfinite
+from typing import NoReturn
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, model_validator
+
+from omnibase_core.enums.enum_core_error_code import EnumCoreErrorCode
+from omnibase_core.enums.enum_numeric_type import EnumNumericType
+
+
+def _raise_numeric_validation_error(
+    message: str,
+    *,
+    raw_value: object,
+    raw_value_type: object,
+    assignment_field: str | None,
+) -> NoReturn:
+    """Raise the canonical validation error without widening the import graph."""
+    from omnibase_core.errors.model_onex_error import ModelOnexError
+
+    raise ModelOnexError(
+        message=message,
+        error_code=EnumCoreErrorCode.VALIDATION_ERROR,
+        raw_value=repr(raw_value),
+        raw_value_python_type=type(raw_value).__name__,
+        raw_value_type=repr(raw_value_type),
+        assignment_field=assignment_field,
+    )
+
+
+class ModelNumericValue(BaseModel):
+    """
+    Type-safe numeric value container.
+
+    Replaces int | float unions with structured value storage
+    that maintains type information for numeric validation.
+    Implements Core protocols:
+    - Serializable: Data serialization/deserialization
+    - Validatable: Validation and verification
+    """
+
+    # Value storage with type tracking
+    value: float = Field(
+        description="The numeric value",
+    )
+
+    value_type: EnumNumericType = Field(
+        description="Type of the numeric value",
+    )
+
+    # Validation metadata
+    is_validated: bool = Field(
+        default=False,
+        description="Whether value has been validated",
+    )
+
+    source: str | None = Field(
+        default=None,
+        description="Source of the numeric value",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_numeric_contract(cls, data: object, info: ValidationInfo) -> object:
+        """
+        Validate raw numeric value and discriminator before Pydantic coercion.
+
+        The complete candidate mapping is also supplied during assignment validation,
+        so invalid value changes and discriminator retags fail before object mutation.
+        """
+        if not isinstance(data, Mapping):
+            return data
+        if "value" not in data or "value_type" not in data:
+            return data
+
+        raw_value = data["value"]
+        raw_value_type = data["value_type"]
+        assignment_field = info.field_name
+
+        if isinstance(raw_value_type, EnumNumericType):
+            numeric_type = raw_value_type
+        elif isinstance(raw_value_type, str):
+            if raw_value_type == EnumNumericType.INTEGER.value:
+                numeric_type = EnumNumericType.INTEGER
+            elif raw_value_type == EnumNumericType.FLOAT.value:
+                numeric_type = EnumNumericType.FLOAT
+            elif raw_value_type == EnumNumericType.NUMERIC.value:
+                numeric_type = EnumNumericType.NUMERIC
+            else:
+                _raise_numeric_validation_error(
+                    "Unsupported numeric value discriminator",
+                    raw_value=raw_value,
+                    raw_value_type=raw_value_type,
+                    assignment_field=assignment_field,
+                )
+        else:
+            _raise_numeric_validation_error(
+                "Numeric value discriminator must be an EnumNumericType or canonical string",
+                raw_value=raw_value,
+                raw_value_type=raw_value_type,
+                assignment_field=assignment_field,
+            )
+
+        if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
+            _raise_numeric_validation_error(
+                "Numeric value must be an int or float; coercion is not permitted",
+                raw_value=raw_value,
+                raw_value_type=raw_value_type,
+                assignment_field=assignment_field,
+            )
+
+        if isinstance(raw_value, int):
+            try:
+                canonical_value = float(raw_value)
+            except OverflowError:
+                _raise_numeric_validation_error(
+                    "Integer value cannot be represented by canonical float storage",
+                    raw_value=raw_value,
+                    raw_value_type=raw_value_type,
+                    assignment_field=assignment_field,
+                )
+            if not isfinite(canonical_value) or int(canonical_value) != raw_value:
+                _raise_numeric_validation_error(
+                    "Integer value cannot be represented exactly by canonical float storage",
+                    raw_value=raw_value,
+                    raw_value_type=raw_value_type,
+                    assignment_field=assignment_field,
+                )
+        elif not isfinite(raw_value):
+            _raise_numeric_validation_error(
+                "Numeric value must be finite",
+                raw_value=raw_value,
+                raw_value_type=raw_value_type,
+                assignment_field=assignment_field,
+            )
+
+        if numeric_type is EnumNumericType.INTEGER:
+            if isinstance(raw_value, float) and not raw_value.is_integer():
+                _raise_numeric_validation_error(
+                    "INTEGER values must be integral and cannot be truncated",
+                    raw_value=raw_value,
+                    raw_value_type=raw_value_type,
+                    assignment_field=assignment_field,
+                )
+        elif numeric_type is EnumNumericType.FLOAT and not isinstance(raw_value, float):
+            _raise_numeric_validation_error(
+                "FLOAT values require an explicit float and cannot coerce integers",
+                raw_value=raw_value,
+                raw_value_type=raw_value_type,
+                assignment_field=assignment_field,
+            )
+
+        return data
+
+    @classmethod
+    def from_int(cls, value: int, source: str | None = None) -> "ModelNumericValue":
+        """Create numeric value from integer."""
+        return cls(
+            value=value,
+            value_type=EnumNumericType.INTEGER,
+            source=source,
+            is_validated=True,
+        )
+
+    @classmethod
+    def from_float(cls, value: float, source: str | None = None) -> "ModelNumericValue":
+        """Create numeric value from float."""
+        return cls(
+            value=value,
+            value_type=EnumNumericType.FLOAT,
+            source=source,
+            is_validated=True,
+        )
+
+    @classmethod
+    def from_numeric(
+        cls,
+        value: int | float,
+        source: str | None = None,
+    ) -> "ModelNumericValue":
+        """Create numeric value from int or float, preserving original type."""
+        # Detect the original type and use appropriate method
+        if isinstance(value, int):
+            return cls.from_int(value, source)
+        return cls.from_float(value, source)
+
+    def as_int(self) -> int:
+        """Get value as integer."""
+        return int(self.value)
+
+    def as_float(self) -> float:
+        """Get value as float."""
+        return self.value
+
+    @property
+    def integer_value(self) -> int:
+        """Get value as integer (property access)."""
+        return int(self.value)
+
+    @property
+    def float_value(self) -> float:
+        """Get value as float (property access)."""
+        return self.value
+
+    def to_python_value(self) -> int | float:
+        """Get the underlying Python value preserving original type."""
+        if self.value_type == EnumNumericType.INTEGER:
+            return int(self.value)
+        return self.value
+
+    def to_original_type(self) -> float:
+        """Get the value respecting the original type flag."""
+        if self.value_type == EnumNumericType.INTEGER:
+            return float(
+                int(self.value),
+            )  # Ensure integer precision but return as float
+        return self.value
+
+    def compare_value(self, other: "ModelNumericValue") -> bool:
+        """Compare with another numeric value."""
+        return self.value == other.value
+
+    def compare_with_float(self, other: float) -> bool:
+        """Compare with a float value."""
+        return self.value == other
+
+    def __eq__(self, other: object) -> bool:
+        """Equality comparison."""
+        if isinstance(other, ModelNumericValue):
+            return self.value == other.value
+        if isinstance(other, (int, float)):
+            return self.value == float(other)
+        return False
+
+    def __lt__(self, other: "ModelNumericValue") -> bool:
+        """Less than comparison."""
+        return self.value < other.value
+
+    def __le__(self, other: "ModelNumericValue") -> bool:
+        """Less than or equal comparison."""
+        return self.value <= other.value
+
+    def __gt__(self, other: "ModelNumericValue") -> bool:
+        """Greater than comparison."""
+        return self.value > other.value
+
+    def __ge__(self, other: "ModelNumericValue") -> bool:
+        """Greater than or equal comparison."""
+        return self.value >= other.value
+
+    model_config = ConfigDict(
+        extra="forbid",
+        use_enum_values=False,
+        validate_assignment=True,
+    )
+
+    # Note: Previously had type alias (NumericInput = ModelNumericValue)
+    # Removed to comply with ONEX strong typing standards.
+    # Use explicit type: ModelNumericValue
+
+    # Protocol method implementations
+
+    def serialize(self) -> dict[str, object]:
+        """Serialize to dictionary (Serializable protocol)."""
+        return self.model_dump(mode="json", exclude_none=False, by_alias=True)
+
+    def validate_instance(self) -> bool:
+        """
+        Validate instance integrity (ProtocolValidatable protocol).
+
+        Note: This is a pure validation method that does NOT throw exceptions
+        to avoid circular dependencies. Use validation layer for exception-based validation.
+
+        Returns:
+            bool: True if validation passes, False otherwise
+        """
+        # Basic validation - Pydantic already ensures value and value_type are set
+        # This method always returns True for properly constructed instances
+        return True
+
+
+__all__ = ["ModelNumericValue"]
+
+```
+
+Companion source src/omnibase_core/models/core/model_advanced_params.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""
+Model for representing advanced parameters with proper type safety.
+
+This model replaces dictionary usage in CLI tool execution by providing
+a structured representation of advanced parameters.
+"""
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from omnibase_core.models.common.model_schema_value import ModelSchemaValue
+from omnibase_core.types import SerializedDict
+
+
+class ModelAdvancedParams(BaseModel):
+    """
+    Type-safe representation of advanced parameters for CLI tool execution.
+
+    This model provides structured fields for common advanced parameters
+    while maintaining flexibility through typed dictionaries.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Common advanced parameters
+    parallel_execution: bool | None = Field(
+        default=None,
+        description="Enable parallel execution",
+    )
+    max_workers: int | None = Field(
+        default=None,
+        description="Maximum number of parallel workers",
+    )
+    retry_count: int | None = Field(
+        default=None, description="Number of retry attempts"
+    )
+    retry_delay: float | None = Field(
+        default=None,
+        description="Delay between retries in seconds",
+    )
+
+    # Resource limits
+    memory_limit_mb: int | None = Field(
+        default=None,
+        description="Memory limit in megabytes",
+    )
+    cpu_limit: float | None = Field(
+        default=None,
+        description="CPU limit as fraction (0.5 = 50%)",
+    )
+    time_limit_seconds: float | None = Field(
+        default=None,
+        description="Time limit for execution in seconds",
+    )
+
+    # Debugging and logging
+    debug_mode: bool | None = Field(default=None, description="Enable debug mode")
+    log_level: str | None = Field(
+        default=None,
+        description="Log level (DEBUG, INFO, WARNING, ERROR)",
+    )
+    trace_enabled: bool | None = Field(
+        default=None, description="Enable execution tracing"
+    )
+
+    # Environment and context
+    environment_vars: dict[str, str] = Field(
+        default_factory=dict,
+        description="Environment variables to set",
+    )
+    working_directory: str | None = Field(
+        default=None, description="Working directory path"
+    )
+
+    # Feature flags
+    feature_flags: dict[str, bool] = Field(
+        default_factory=dict,
+        description="Feature flags for enabling/disabling features",
+    )
+
+    # Configuration overrides
+    config_overrides: dict[str, ModelSchemaValue] = Field(
+        default_factory=dict,
+        description="Configuration value overrides",
+    )
+
+    # Tool-specific string parameters
+    string_params: dict[str, str] = Field(
+        default_factory=dict,
+        description="Tool-specific string parameters",
+    )
+
+    # Tool-specific numeric parameters
+    numeric_params: dict[str, int | float] = Field(
+        default_factory=dict,
+        description="Tool-specific numeric parameters",
+    )
+
+    # Tool-specific list parameters
+    list_params: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description="Tool-specific list parameters",
+    )
+
+    def to_dict(self) -> SerializedDict:
+        """
+        Convert to dictionary format for current standards.
+
+        Returns:
+            Dictionary representation of advanced parameters
+        """
+        # Custom reconstruction logic for advanced parameters format
+        result = {}
+
+        # Add non-None simple fields
+        for field_name in [
+            "parallel_execution",
+            "max_workers",
+            "retry_count",
+            "retry_delay",
+            "memory_limit_mb",
+            "cpu_limit",
+            "time_limit_seconds",
+            "debug_mode",
+            "log_level",
+            "trace_enabled",
+            "working_directory",
+        ]:
+            value = getattr(self, field_name)
+            if value is not None:
+                result[field_name] = value
+
+        # Add non-empty dictionaries
+        if self.environment_vars:
+            result["environment_vars"] = self.environment_vars
+        if self.feature_flags:
+            result["feature_flags"] = self.feature_flags
+        if self.config_overrides:
+            result["config_overrides"] = self.config_overrides
+        if self.string_params:
+            result.update(self.string_params)
+        if self.numeric_params:
+            result.update(self.numeric_params)
+        if self.list_params:
+            result.update(self.list_params)
+
+        return result
+
+    @classmethod
+    def from_dict(cls, data: SerializedDict) -> "ModelAdvancedParams":
+        """
+        Create from dictionary, intelligently categorizing parameters.
+
+        Args:
+            data: Dictionary of parameters
+
+        Returns:
+            ModelAdvancedParams instance
+        """
+        # Known field mappings
+        known_fields = {
+            "parallel_execution",
+            "max_workers",
+            "retry_count",
+            "retry_delay",
+            "memory_limit_mb",
+            "cpu_limit",
+            "time_limit_seconds",
+            "debug_mode",
+            "log_level",
+            "trace_enabled",
+            "working_directory",
+            "environment_vars",
+            "feature_flags",
+            "config_overrides",
+        }
+
+        # Extract known fields
+        kwargs = {}
+        remaining = {}
+
+        for key, value in data.items():
+            if key in known_fields:
+                kwargs[key] = value
+            else:
+                remaining[key] = value
+
+        # Categorize remaining parameters by type
+        string_params = {}
+        numeric_params = {}
+        list_params = {}
+
+        for key, value in remaining.items():
+            if isinstance(value, str):
+                string_params[key] = value
+            elif isinstance(value, int | float):
+                numeric_params[key] = value
+            elif isinstance(value, list) and all(
+                isinstance(item, str) for item in value
+            ):
+                list_params[key] = value
+            # Skip complex types that don't fit our categories
+
+        # Cast to appropriate types for model validation
+        # These are validated by Pydantic at runtime
+        final_kwargs: dict[str, object] = dict(kwargs)
+        final_kwargs["string_params"] = string_params
+        final_kwargs["numeric_params"] = numeric_params
+        final_kwargs["list_params"] = list_params
+
+        return cls.model_validate(final_kwargs)
+
+```
+
+Companion source src/omnibase_core/models/core/model_cli_command.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""
+CLI command model for node command specification.
+"""
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from omnibase_core.models.core.model_cli_argument import ModelCLIArgument
+from omnibase_core.models.core.model_event_type import ModelEventType
+
+
+class ModelCLICommand(BaseModel):
+    """Model for CLI command specification."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    command_name: str = Field(
+        default=...,
+        description="CLI command name (e.g., 'validate', 'health-check')",
+    )
+    action: str = Field(
+        default=..., description="Node action to execute for this command"
+    )
+    description: str = Field(
+        default=..., description="Command description for help text"
+    )
+    event_type: ModelEventType = Field(
+        default=...,
+        description="Event type to publish when command is invoked",
+    )
+    target_node: str = Field(
+        default=..., description="Target node that handles this command"
+    )
+    required_args: list[ModelCLIArgument] = Field(
+        default_factory=list,
+        description="Required arguments for this command",
+    )
+    optional_args: list[ModelCLIArgument] = Field(
+        default_factory=list,
+        description="Optional arguments for this command",
+    )
+    examples: list[str] = Field(
+        default_factory=list,
+        description="Usage examples for this command",
+    )
+
+```
+
+Companion source src/omnibase_core/models/core/model_cli_interface.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""
+CLI interface model for node CLI specification.
+"""
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from omnibase_core.models.core.model_cli_command import ModelCLICommand
+
+
+class ModelCLIInterface(BaseModel):
+    """Model for CLI interface specification."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    entrypoint: str = Field(default=..., description="CLI entrypoint command")
+    commands: list[ModelCLICommand] = Field(
+        default_factory=list,
+        description="CLI commands this node provides",
+    )
+    exit_codes: list[int] = Field(default=..., description="Possible exit codes")
+    supports_introspect: bool = Field(
+        default=True,
+        description="Whether node supports --introspect",
+    )
+
+```
+
+Companion source src/omnibase_core/models/core/model_cli_output.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""
+Pydantic model for CLI output.
+
+Structured output model for CLI command results.
+"""
+
+from pydantic import BaseModel, ConfigDict
+
+
+class ModelCLIOutput(BaseModel):
+    """Structured output for CLI commands."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Define fields as appropriate for your CLI output
+    value: str | None = None
+    # Add more fields as needed
+
+```
+
+Companion source src/omnibase_core/models/core/model_complex_filter.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""Complex composite filter model."""
+
+from __future__ import annotations
+
+from pydantic import Field
+
+from .model_custom_filter_base import ModelCustomFilterBase
+from .model_datetime_filter import ModelDateTimeFilter
+from .model_list_filter import ModelListFilter
+from .model_metadata_filter import ModelMetadataFilter
+from .model_numeric_filter import ModelNumericFilter
+from .model_status_filter import ModelStatusFilter
+from .model_string_filter import ModelStringFilter
+
+
+class ModelComplexFilter(ModelCustomFilterBase):
+    """Complex composite filter."""
+
+    filter_type: str = Field(default="complex", description="Filter type identifier")
+    sub_filters: list[
+        # union-ok: Composite filter pattern legitimately needs union of all filter types
+        ModelStringFilter
+        | ModelNumericFilter
+        | ModelDateTimeFilter
+        | ModelListFilter
+        | ModelMetadataFilter
+        | ModelStatusFilter
+    ] = Field(default=..., description="List of sub-filters to apply")
+    logic: str = Field(default="AND", description="Logical operator (AND/OR)")
+    negate: bool = Field(default=False, description="Negate the entire filter result")
+
+```
+
+Companion source src/omnibase_core/models/core/model_custom_filter.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""
+Custom Filter Models - Re-exports for current standards.
+
+All models have been split into individual files following one-model-per-file standard.
+This file maintains compatibility by re-exporting all models.
+"""
+
+# Import all models from their individual files
+from .model_complex_filter import ModelComplexFilter
+from .model_custom_filter_base import ModelCustomFilterBase
+from .model_datetime_filter import ModelDateTimeFilter
+from .model_list_filter import ModelListFilter
+from .model_metadata_filter import ModelMetadataFilter
+from .model_numeric_filter import ModelNumericFilter
+from .model_status_filter import ModelStatusFilter
+from .model_string_filter import ModelStringFilter
+
+# Re-export all models for current standards
+__all__ = [
+    "ModelComplexFilter",
+    "ModelCustomFilterBase",
+    "ModelDateTimeFilter",
+    "ModelListFilter",
+    "ModelMetadataFilter",
+    "ModelNumericFilter",
+    "ModelStatusFilter",
+    "ModelStringFilter",
+]
+
+```
+
+Companion source src/omnibase_core/models/core/model_custom_filter_base.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""
+Base class for all custom filters.
+
+Provides common fields and functionality for typed filter models.
+"""
+
+from abc import ABC
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from omnibase_core.types.type_serializable_value import SerializedDict
+
+
+class ModelCustomFilterBase(BaseModel, ABC):
+    """Base class for all custom filters."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    filter_type: str = Field(default=..., description="Type of custom filter")
+    enabled: bool = Field(default=True, description="Whether filter is active")
+    priority: int = Field(
+        default=0, description="Filter priority (higher = applied first)"
+    )
+
+    def to_dict(self) -> SerializedDict:
+        """Convert filter to dictionary representation."""
+        return self.model_dump()
+
+```
+
+Companion source src/omnibase_core/models/core/model_custom_settings.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""
+Custom settings model.
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from omnibase_core.models.primitives.model_semver import (
+    ModelSemVer,
+    parse_semver_from_string,
+)
+from omnibase_core.types.type_serializable_value import (
+    SerializableValue,
+    SerializedDict,
+)
+
+
+class ModelCustomSettings(BaseModel):
+    """
+    Custom settings with typed fields and validation.
+    Replaces Dict[str, Any] for custom_settings fields.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Settings categories
+    general_settings: SerializedDict = Field(
+        default_factory=dict,
+        description="General settings",
+    )
+
+    advanced_settings: SerializedDict = Field(
+        default_factory=dict,
+        description="Advanced settings",
+    )
+
+    experimental_settings: SerializedDict = Field(
+        default_factory=dict,
+        description="Experimental settings",
+    )
+
+    # Metadata
+    version: ModelSemVer | None = Field(default=None, description="Settings version")
+
+    @field_validator("version", mode="before")
+    @classmethod
+    def parse_version(cls, v: object) -> object:
+        """Convert string versions to ModelSemVer."""
+        if isinstance(v, str):
+            return parse_semver_from_string(v)
+        return v
+
+    last_modified: datetime | None = Field(
+        default=None,
+        description="Last modification time",
+    )
+
+    # Validation
+    validate_on_set: bool = Field(
+        default=False,
+        description="Validate settings on modification",
+    )
+    allow_unknown: bool = Field(default=True, description="Allow unknown settings")
+
+    def to_dict(self) -> SerializedDict:
+        """Convert to dictionary for current standards."""
+        # Custom flattening logic for current standards
+        result: SerializedDict = {}
+        result.update(self.general_settings)
+        result.update(self.advanced_settings)
+        result.update(self.experimental_settings)
+        return result
+
+    @classmethod
+    def from_dict(
+        cls,
+        data: SerializedDict | None,
+    ) -> ModelCustomSettings | None:
+        """Create from dictionary.
+
+        Data must be in the structured format with general_settings,
+        advanced_settings, and experimental_settings keys.
+
+        Uses Pydantic's model_validate() for proper type coercion and validation
+        of JSON-serializable input data.
+        """
+        if data is None:
+            return None
+
+        return cls.model_validate(data)
+
+    def get_setting(
+        self, key: str, default: SerializableValue = None
+    ) -> SerializableValue:
+        """Get a setting value."""
+        # Check all categories
+        for settings in [
+            self.general_settings,
+            self.advanced_settings,
+            self.experimental_settings,
+        ]:
+            if key in settings:
+                return settings[key]
+        return default
+
+    def set_setting(
+        self, key: str, value: SerializableValue, category: str = "general"
+    ) -> None:
+        """Set a setting value."""
+        if category == "advanced":
+            self.advanced_settings[key] = value
+        elif category == "experimental":
+            self.experimental_settings[key] = value
+        else:
+            self.general_settings[key] = value
+
+        self.last_modified = datetime.now(UTC)
+
+```
+
+Companion source src/omnibase_core/models/core/model_dependencies.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+from pydantic import Field
+
+from omnibase_core.models.primitives.model_semver import ModelSemVer
+
+"\nDependencies model for node introspection.\n"
+from pydantic import BaseModel, ConfigDict
+
+
+class ModelDependencies(BaseModel):
+    """Model for node dependencies specification."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    runtime: list[str] = Field(
+        default_factory=list, description="Required runtime dependencies"
+    )
+    optional: list[str] = Field(
+        default_factory=list, description="Optional dependencies"
+    )
+    python_version: ModelSemVer = Field(
+        default=..., description="Required Python version"
+    )
+    external_tools: list[str] = Field(
+        default_factory=list, description="Required external tools"
+    )
+
+```
+
+Companion source src/omnibase_core/models/core/model_entrypoint.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+from pydantic import BaseModel, ConfigDict
+
+from omnibase_core.enums.enum_core_error_code import EnumCoreErrorCode
+from omnibase_core.models.errors.model_onex_error import ModelOnexError
+
+
+class ModelEntrypointBlock(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    type: str
+    target: str  # Always the filename stem (no extension)
+    # No URI string logic, only type/target
+
+    @classmethod
+    def from_uri(cls, uri: str) -> "ModelEntrypointBlock":
+        """
+        Parse a URI string (e.g., 'python://main') into type/target and return ModelEntrypointBlock.
+        The target is always the filename stem (no extension).
+        """
+        if "://" not in uri:
+            msg = f"Invalid entrypoint URI: {uri}"
+            raise ModelOnexError(
+                error_code=EnumCoreErrorCode.VALIDATION_ERROR,
+                message=msg,
+            )
+        type_, target = uri.split("://", 1)
+        return cls(type=type_, target=target)
+
+    def to_uri(self) -> str:
+        """
+        Return the entrypoint as a URI string (e.g., 'python://main') for display/CLI only.
+        The target is always the filename stem (no extension).
+        """
+        return f"{self.type}://{self.target}"
+
+
+# Compatibility alias
+EntrypointBlock = ModelEntrypointBlock
+
+```
+
+Companion source src/omnibase_core/models/core/model_event_type.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""
+Dynamic Event Type Model.
+
+enables plugin extensibility and contract-driven event type registration.
+"""
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from omnibase_core.models.core.model_json_schema import ModelJsonSchema
+from omnibase_core.models.primitives.model_semver import ModelSemVer
+
+
+class ModelEventType(BaseModel):
+    """
+    Dynamic event type model enabling plugin extensibility.
+
+    to register their own event types dynamically.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_name: str = Field(
+        default=...,
+        description="Event type identifier",
+        pattern="^[A-Z][A-Z0-9_]*$",
+    )
+    namespace: str = Field(
+        default="onex",
+        description="Event namespace to avoid conflicts",
+    )
+    description: str = Field(default=..., description="Human-readable description")
+    schema_version: ModelSemVer = Field(
+        ...,  # REQUIRED - specify in contract
+        description="Event schema version",
+    )
+    payload_schema: ModelJsonSchema | None = Field(
+        default=None,
+        description="Expected payload schema",
+    )
+    deprecated: bool = Field(
+        default=False,
+        description="Whether event type is deprecated",
+    )
+    category: str | None = Field(
+        default=None, description="Event category for grouping"
+    )
+    severity: str | None = Field(
+        default=None,
+        description="Event severity level",
+        pattern="^(info|warning|error|critical)$",
+    )
+
+    @classmethod
+    def from_contract_data(
+        cls,
+        event_name: str,
+        namespace: str = "onex",
+        description: str | None = None,
+        **kwargs: object,
+    ) -> "ModelEventType":
+        """
+        ONEX-compatible factory method using Pydantic model_validate.
+
+        Replaces from_contract_event() with proper validation.
+        """
+        validated_data = {
+            "event_name": event_name,
+            "namespace": namespace,
+            "description": description or f"{event_name} event",
+            **kwargs,
+        }
+        return cls.model_validate(validated_data)
+
+    @property
+    def qualified_name(self) -> str:
+        """Fully qualified event name."""
+        return f"{self.namespace}:{self.event_name}"
+
+    def matches(self, event_name: str) -> bool:
+        """Check if this event type matches the given event name."""
+        return self.event_name == event_name
+
+    def is_compatible_with(self, other: "ModelEventType") -> bool:
+        """Check if this event type is compatible with another."""
+        return (
+            self.event_name == other.event_name
+            and self.namespace == other.namespace
+            and self.schema_version.major == other.schema_version.major
+        )
+
+    def __str__(self) -> str:
+        """String representation for current standards."""
+        return self.event_name
+
+    def __eq__(self, other: object) -> bool:
+        """Enable comparison with strings for current standards."""
+        if isinstance(other, str):
+            return self.event_name == other
+        return super().__eq__(other)
+
+
+# Compatibility utilities
+def get_event_type_value(event_type: str | ModelEventType) -> str:
+    """Get string value from event type for current standards."""
+    if isinstance(event_type, str):
+        return event_type
+    return event_type.event_name
+
+
+def create_event_type_from_registry(
+    event_name: str,
+    namespace: str = "onex",
+    description: str | None = None,
+) -> ModelEventType:
+    """
+    ONEX-compatible event type creation with registry lookup.
+
+    Replaces create_event_type_from_string() with proper validation.
+    Uses Pydantic validation throughout.
+
+    If event type is not registered, creates a new one with default schema_version 1.0.0.
+    """
+    from .model_event_type_registry import get_event_type_registry
+
+    registry = get_event_type_registry()
+    existing = registry.get_event_type(event_name)
+    if existing:
+        return existing
+
+    # Create event type using ONEX-compatible validation
+    # schema_version is required - use default 1.0.0 for unregistered event types
+    validated_data = {
+        "event_name": event_name,
+        "namespace": namespace,
+        "description": description or f"Registry event type: {event_name}",
+        "schema_version": ModelSemVer(major=1, minor=0, patch=0),
+    }
+    return ModelEventType.model_validate(validated_data)
+
+
+def is_event_equal(
+    event_type: str | ModelEventType,
+    other: str | ModelEventType,
+) -> bool:
+    """Compare event types for equality (supports mixed types)."""
+    event_name1 = get_event_type_value(event_type)
+    event_name2 = get_event_type_value(other)
+    return event_name1 == event_name2
+
+```
+
+Companion source src/omnibase_core/models/core/model_feature_flags.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""
+Feature Flags Model
+
+Type-safe feature flag configuration model for enabling/disabling
+features across different environments and contexts.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from .model_feature_flag_metadata import ModelFeatureFlagMetadata
+from .model_feature_flag_summary import ModelFeatureFlagSummary
+
+if TYPE_CHECKING:
+    from omnibase_core.models.contracts.model_contract_feature_flag import (
+        ModelContractFeatureFlag,
+    )
+
+# Re-export from split modules
+__all__ = ["ModelFeatureFlags", "ModelFeatureFlagMetadata", "ModelFeatureFlagSummary"]
+
+
+class ModelFeatureFlags(BaseModel):
+    """
+    Type-safe feature flag configuration model.
+
+    This model provides a structured way to manage feature flags
+    across different environments and contexts.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    flags: dict[str, bool] = Field(
+        default_factory=dict,
+        description="Feature flag states (name -> enabled)",
+    )
+
+    flag_metadata: dict[str, ModelFeatureFlagMetadata] = Field(
+        default_factory=dict,
+        description="Metadata for each feature flag",
+    )
+
+    default_enabled: bool = Field(
+        default=False,
+        description="Default state for undefined flags",
+    )
+
+    def is_enabled(self, flag: str, default: bool | None = None) -> bool:
+        """
+        Check if a feature flag is enabled.
+
+        Args:
+            flag: Feature flag name
+            default: Default value if flag not found (uses default_enabled if None)
+
+        Returns:
+            True if flag is enabled, False otherwise
+        """
+        if flag in self.flags:
+            return self.flags[flag]
+        return default if default is not None else self.default_enabled
+
+    def enable(
+        self, flag: str, metadata: ModelFeatureFlagMetadata | None = None
+    ) -> None:
+        """Enable a feature flag with optional metadata."""
+        self.flags[flag] = True
+        if metadata:
+            self.flag_metadata[flag] = metadata
+
+    def disable(
+        self, flag: str, metadata: ModelFeatureFlagMetadata | None = None
+    ) -> None:
+        """Disable a feature flag with optional metadata."""
+        self.flags[flag] = False
+        if metadata:
+            self.flag_metadata[flag] = metadata
+
+    def toggle(self, flag: str) -> bool:
+        """Toggle a feature flag and return the new state."""
+        current_state = self.is_enabled(flag)
+        new_state = not current_state
+        self.flags[flag] = new_state
+        return new_state
+
+    def set_flag(
+        self,
+        flag: str,
+        enabled: bool,
+        metadata: ModelFeatureFlagMetadata | None = None,
+    ) -> None:
+        """Set a feature flag to a specific state."""
+        self.flags[flag] = enabled
+        if metadata:
+            self.flag_metadata[flag] = metadata
+
+    def remove_flag(self, flag: str) -> bool:
+        """Remove a feature flag and return whether it existed."""
+        existed = flag in self.flags
+        self.flags.pop(flag, None)
+        self.flag_metadata.pop(flag, None)
+        return existed
+
+    def get_enabled_flags(self) -> list[str]:
+        """Get list[Any]of all enabled feature flags."""
+        return [flag for flag, enabled in self.flags.items() if enabled]
+
+    def get_disabled_flags(self) -> list[str]:
+        """Get list[Any]of all disabled feature flags."""
+        return [flag for flag, enabled in self.flags.items() if not enabled]
+
+    def get_all_flags(self) -> list[str]:
+        """Get list[Any]of all defined feature flags."""
+        return list(self.flags.keys())
+
+    def get_flag_metadata(self, flag: str) -> ModelFeatureFlagMetadata | None:
+        """Get metadata for a specific flag."""
+        return self.flag_metadata.get(flag)
+
+    def set_flag_metadata(self, flag: str, metadata: ModelFeatureFlagMetadata) -> None:
+        """Set metadata for a specific flag."""
+        self.flag_metadata[flag] = metadata
+
+    def has_flag(self, flag: str) -> bool:
+        """Check if a flag is defined (regardless of state)."""
+        return flag in self.flags
+
+    def get_flag_count(self) -> int:
+        """Get total number of defined flags."""
+        return len(self.flags)
+
+    def get_enabled_count(self) -> int:
+        """Get number of enabled flags."""
+        return len(self.get_enabled_flags())
+
+    def get_disabled_count(self) -> int:
+        """Get number of disabled flags."""
+        return len(self.get_disabled_flags())
+
+    def clear_all_flags(self) -> None:
+        """Clear all feature flags and metadata."""
+        self.flags.clear()
+        self.flag_metadata.clear()
+
+    def merge_flags(self, other: ModelFeatureFlags, override: bool = True) -> None:
+        """
+        Merge flags from another ModelFeatureFlags instance.
+
+        Args:
+            other: Other feature flags to merge
+            override: Whether to override existing flags (default: True)
+        """
+        for flag, enabled in other.flags.items():
+            if override or flag not in self.flags:
+                self.flags[flag] = enabled
+
+        for flag, metadata in other.flag_metadata.items():
+            if override or flag not in self.flag_metadata:
+                self.flag_metadata[flag] = metadata
+
+    def to_environment_dict(self, prefix: str = "ONEX_FEATURE_") -> dict[str, str]:
+        """Convert to environment variables dictionary."""
+        env_dict = {}
+        for flag, enabled in self.flags.items():
+            env_var_name = f"{prefix}{flag.upper()}"
+            env_dict[env_var_name] = str(enabled).lower()
+        return env_dict
+
+    def get_summary(self) -> ModelFeatureFlagSummary:
+        """Get summary of feature flag state."""
+        return ModelFeatureFlagSummary(
+            total_flags=self.get_flag_count(),
+            enabled_flags=self.get_enabled_count(),
+            disabled_flags=self.get_disabled_count(),
+            default_enabled=self.default_enabled,
+            enabled_flag_names=self.get_enabled_flags(),
+            disabled_flag_names=self.get_disabled_flags(),
+        )
+
+    @classmethod
+    def from_contract_declarations(
+        cls, declarations: list[ModelContractFeatureFlag]
+    ) -> ModelFeatureFlags:
+        """Build a ModelFeatureFlags from contract-declared feature flag definitions.
+
+        Populates flag values from ``default_value`` only -- no env or Infisical
+        resolution happens here.  That is the responsibility of the infra/service
+        layer.
+
+        Metadata (description, owner, category-as-tag) is preserved so downstream
+        consumers can inspect provenance without re-parsing the contract.
+        """
+        flags: dict[str, bool] = {}
+        metadata: dict[str, ModelFeatureFlagMetadata] = {}
+        for decl in declarations:
+            flags[decl.name] = decl.default_value
+            metadata[decl.name] = ModelFeatureFlagMetadata(
+                description=decl.description,
+                owner=decl.owner,
+                tags=[decl.category.value] if decl.category else [],
+            )
+        return cls(flags=flags, flag_metadata=metadata)
+
+    @classmethod
+    def create_development(cls) -> ModelFeatureFlags:
+        """Create feature flags for development environment."""
+        flags = cls(default_enabled=False)
+        flags.enable("debug_mode")
+        flags.enable("verbose_logging")
+        flags.enable("hot_reload")
+        flags.enable("development_tools")
+        flags.disable("rate_limiting")
+        flags.disable("caching")
+        return flags
+
+    @classmethod
+    def create_staging(cls) -> ModelFeatureFlags:
+        """Create feature flags for staging environment."""
+        flags = cls(default_enabled=False)
+        flags.enable("monitoring")
+        flags.enable("rate_limiting")
+        flags.enable("caching")
+        flags.disable("debug_mode")
+        flags.disable("development_tools")
+        return flags
+
+    @classmethod
+    def create_production(cls) -> ModelFeatureFlags:
+        """Create feature flags for production environment."""
+        flags = cls(default_enabled=False)
+        flags.enable("monitoring")
+        flags.enable("rate_limiting")
+        flags.enable("caching")
+        flags.enable("security_hardening")
+        flags.enable("performance_optimization")
+        flags.disable("debug_mode")
+        flags.disable("verbose_logging")
+        flags.disable("development_tools")
+        return flags
+
+    @classmethod
+    def from_environment_dict(
+        cls,
+        env_dict: dict[str, str],
+        prefix: str = "ONEX_FEATURE_",
+    ) -> ModelFeatureFlags:
+        """Create feature flags from environment variables."""
+        flags = cls()
+        for key, value in env_dict.items():
+            if key.startswith(prefix):
+                flag_name = key[len(prefix) :].lower()
+                enabled = value.lower() in ("true", "1", "yes", "on")
+                flags.set_flag(flag_name, enabled)
+        return flags
+
+```
+
+Companion source src/omnibase_core/models/core/model_filter_condition.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""
+FilterCondition model.
+"""
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from .model_filter_operator import ModelFilterOperator
+
+
+class ModelFilterCondition(BaseModel):
+    """Individual filter condition."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    field: str = Field(default=..., description="Field to filter on")
+    operator: ModelFilterOperator = Field(default=..., description="Filter operator")
+    negate: bool = Field(default=False, description="Negate the condition")
+
+
+# Compatibility alias
+FilterCondition = ModelFilterCondition
+
+```
+
+Companion source src/omnibase_core/models/core/model_filter_criteria.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""
+Filter criteria model to replace Dict[str, Any] usage for filter fields.
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, Field
+
+logger = logging.getLogger(__name__)
+
+from omnibase_core.types.type_serializable_value import SerializedDict
+
+from .model_custom_filters import ModelCustomFilters
+from .model_filter_condition import ModelFilterCondition
+from .model_filter_operator import ModelFilterOperator
+
+# Compatibility aliases
+FilterOperator = ModelFilterOperator
+FilterCondition = ModelFilterCondition
+
+
+class ModelFilterCriteria(BaseModel):
+    """
+    Filter criteria with typed fields.
+    Replaces Dict[str, Any] for filter_criteria fields.
+    """
+
+    # Basic filters
+    conditions: list[ModelFilterCondition] = Field(
+        default_factory=list,
+        description="Filter conditions",
+    )
+
+    # Logical operators
+    logic: str = Field(default="AND", description="Logical operator (AND/OR)")
+
+    # Time-based filters
+    time_range: dict[str, datetime] | None = Field(
+        default=None,
+        description="Time range filter with 'start' and 'end'",
+    )
+
+    # Field selection
+    include_fields: list[str] | None = Field(
+        default=None,
+        description="Fields to include in results",
+    )
+    exclude_fields: list[str] | None = Field(
+        default=None,
+        description="Fields to exclude from results",
+    )
+
+    # Sorting
+    sort_by: str | None = Field(default=None, description="Field to sort by")
+    sort_order: str = Field(default="asc", description="Sort order (asc/desc)")
+
+    # Pagination
+    limit: int | None = Field(default=None, description="Maximum results to return")
+    offset: int | None = Field(
+        default=None, description="Results offset for pagination"
+    )
+
+    # Advanced filters
+    tags: list[str] | None = Field(default=None, description="Tag filters")
+    categories: list[str] | None = Field(default=None, description="Category filters")
+    severity_levels: list[str] | None = Field(
+        default=None,
+        description="Severity level filters",
+    )
+
+    # Custom filters (for extensibility)
+    custom_filters: ModelCustomFilters = Field(
+        default_factory=ModelCustomFilters,
+        description="Custom filter extensions",
+    )
+
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    def to_dict(self) -> SerializedDict:
+        """Convert to dictionary for current standards."""
+        # Use model_dump() as base and transform custom filters
+        data = self.model_dump(exclude_none=True)
+        # Convert custom filters to SerializedDict if present
+        if self.custom_filters and self.custom_filters.filters:
+            data["custom_filters"] = self.custom_filters.to_dict()
+        return data
+
+    @classmethod
+    def from_dict(
+        cls,
+        data: SerializedDict | None,
+    ) -> ModelFilterCriteria | None:
+        """Create from dictionary for easy migration."""
+        if data is None:
+            return None
+
+        # Use mutable dict for type-safe modifications
+        mutable_data: dict[str, object] = dict(data)
+
+        # Handle legacy format conversion
+        if "conditions" not in mutable_data and mutable_data:
+            # Convert simple key-value filters to conditions
+            conditions: list[ModelFilterCondition] = []
+            for key, value in data.items():
+                if key not in [
+                    "logic",
+                    "time_range",
+                    "include_fields",
+                    "exclude_fields",
+                    "sort_by",
+                    "sort_order",
+                    "limit",
+                    "offset",
+                ]:
+                    # Coerce value to acceptable type for ModelFilterOperator
+                    if isinstance(value, (str, int, float, bool)):
+                        coerced_value: (
+                            str | int | float | bool | list[str | int | float | bool]
+                        ) = value
+                    elif isinstance(value, list):
+                        # Filter list items to acceptable types
+                        coerced_value = [
+                            v for v in value if isinstance(v, (str, int, float, bool))
+                        ]
+                    else:
+                        # fallback-ok: skip unsupported types during legacy migration
+                        logger.debug(
+                            "Skipping filter field '%s' with unsupported type %s",
+                            key,
+                            type(value).__name__,
+                        )
+                        continue
+                    conditions.append(
+                        ModelFilterCondition(
+                            field=key,
+                            operator=ModelFilterOperator(
+                                operator="eq", value=coerced_value
+                            ),
+                        ),
+                    )
+            mutable_data["conditions"] = conditions
+
+        # Convert custom_filters if present
+        custom_filters_raw = mutable_data.get("custom_filters")
+        if custom_filters_raw is not None and isinstance(custom_filters_raw, dict):
+            mutable_data["custom_filters"] = ModelCustomFilters.from_dict(
+                custom_filters_raw,
+            )
+
+        return cls.model_validate(mutable_data)
+
+    def add_condition(
+        self,
+        field: str,
+        operator: str,
+        value: str | int | float | bool | list[str | int | float | bool],
+    ) -> None:
+        """Add a filter condition."""
+        self.conditions.append(
+            ModelFilterCondition(
+                field=field,
+                operator=ModelFilterOperator(operator=operator, value=value),
+            ),
+        )
+
+    def to_query_string(self) -> str:
+        """Convert to query string format."""
+        parts = []
+        for condition in self.conditions:
+            op = condition.operator.operator
+            val = condition.operator.value
+            parts.append(f"{condition.field}__{op}={val}")
+
+        if self.sort_by:
+            parts.append(f"sort={self.sort_by}:{self.sort_order}")
+
+        if self.limit:
+            parts.append(f"limit={self.limit}")
+
+        if self.offset:
+            parts.append(f"offset={self.offset}")
+
+        return "&".join(parts)
+
+
+# Compatibility alias
+FilterCriteria = ModelFilterCriteria
+
+```
+
+Companion source src/omnibase_core/models/core/model_filter_operator.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""
+FilterOperator model.
+"""
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class ModelFilterOperator(BaseModel):
+    """Filter operator configuration."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    operator: str = Field(
+        default=...,
+        description="Operator type (eq/ne/gt/lt/gte/lte/in/nin/like/regex)",
+    )
+    value: str | int | float | bool | list[str | int | float | bool] = Field(
+        default=...,
+        description="Filter value",
+    )
+    case_sensitive: bool = Field(
+        default=True,
+        description="Case sensitivity for string operations",
+    )
+
+```
+
+Companion source src/omnibase_core/models/core/model_introspection_node_info.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+from pydantic import Field, field_validator
+
+from omnibase_core.models.primitives.model_semver import ModelSemVer
+
+"""
+Model for node information in introspection metadata.
+"""
+
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict
+
+from omnibase_core.models.primitives.model_semver import parse_semver_from_string
+
+
+class ModelIntrospectionNodeInfo(BaseModel):
+    """Node information for introspection metadata."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    node_name: str = Field(description="Name of the node")
+    node_version: ModelSemVer = Field(
+        ...,  # REQUIRED - specify in contract
+        description="Version of the node as ModelSemVer",
+    )
+    description: str = Field(description="Description of the node")
+    author: str = Field(default="ONEX System", description="Author of the node")
+    tool_type: str = Field(description="Type of tool")
+    created_at: str = Field(
+        default_factory=lambda: datetime.now().isoformat(),
+        description="Creation timestamp",
+    )
+
+    @field_validator("node_version", mode="before")
+    @classmethod
+    def validate_node_version(cls, value: object) -> ModelSemVer:
+        """Validate the required version without inventing missing authority."""
+        if isinstance(value, ModelSemVer):
+            return value
+        if isinstance(value, dict):
+            return ModelSemVer.model_validate(value)
+        if isinstance(value, str):
+            # Parse string version to ModelSemVer
+            return parse_semver_from_string(value)
+        raise ValueError(
+            "node_version must be a ModelSemVer, complete mapping, or SemVer string; "
+            f"got {type(value).__name__}"
+        )
+
+```
+
+Companion source src/omnibase_core/models/core/model_introspection_result.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""
+Model for introspection command results.
+"""
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from omnibase_core.models.core.model_introspection_metadata import (
+    ModelIntrospectionMetadata,
+)
+from omnibase_core.models.core.model_tool_health_status import ModelToolHealthStatus
+from omnibase_core.models.core.model_usage_example import ModelUsageExample
+
+
+class ModelIntrospectionResult(BaseModel):
+    """Complete introspection result containing all introspection data."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    metadata: ModelIntrospectionMetadata = Field(description="Tool metadata")
+    health: ModelToolHealthStatus = Field(description="Tool health status")
+    examples: list["ModelUsageExample[object, object]"] = Field(
+        description="Usage examples"
+    )
+
+
+ModelIntrospectionResult.model_rebuild()
+
+```
+
+Companion source src/omnibase_core/models/core/model_introspection_runtime_info.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""
+Model for runtime information in introspection metadata.
+"""
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class ModelIntrospectionRuntimeInfo(BaseModel):
+    """Runtime information for introspection metadata."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    python_path: str = Field(description="Python path of the module")
+    module_path: str = Field(description="Module import path")
+    command_pattern: str = Field(description="Command pattern for execution")
+    supports_hub: bool = Field(
+        default=False,
+        description="Whether supports hub execution",
+    )
+    available_modes: list[str] = Field(
+        default_factory=list,
+        description="Available execution modes",
+    )
+    memory_usage_mb: float | None = Field(
+        default=None,
+        description="Memory usage in MB",
+    )
+
+```
+
+Companion source src/omnibase_core/models/core/model_list_filter.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""List/collection-based custom filter model."""
+
+from __future__ import annotations
+
+from math import isfinite
+from typing import Any, cast
+
+from pydantic import Field, field_validator
+
+from omnibase_core.models.common.model_numeric_value import ModelNumericValue
+from omnibase_core.models.common.model_schema_value import ModelSchemaValue
+
+from .model_custom_filter_base import ModelCustomFilterBase
+
+_VALUE_FIELD_BY_TYPE = {
+    "string": "string_value",
+    "number": "number_value",
+    "boolean": "boolean_value",
+    "null": "null_value",
+    "array": "array_value",
+    "object": "object_value",
+}
+_VALUE_FIELDS = frozenset(_VALUE_FIELD_BY_TYPE.values())
+_SCHEMA_VALUE_FIELDS = frozenset(ModelSchemaValue.model_fields)
+_NUMERIC_VALUE_FIELDS = frozenset(ModelNumericValue.model_fields)
+_NUMERIC_TYPES = frozenset({"integer", "float", "numeric"})
+
+
+def _invalid_wire(reason: str) -> ValueError:
+    return ValueError(f"Invalid ModelSchemaValue wire value: {reason}")
+
+
+def _validate_numeric_wire(value: object) -> None:
+    numeric_value: object
+    numeric_type: object
+    if isinstance(value, ModelNumericValue):
+        numeric_value = value.value
+        numeric_type = value.value_type.value
+    else:
+        if not isinstance(value, dict):
+            raise _invalid_wire("number_value must be a ModelNumericValue mapping")
+
+        wire = cast(dict[object, object], value)
+        unknown_fields = set(wire) - _NUMERIC_VALUE_FIELDS
+        if unknown_fields:
+            raise _invalid_wire("number_value contains unknown fields")
+        if "value" not in wire or "value_type" not in wire:
+            raise _invalid_wire("number_value is missing a required field")
+
+        numeric_value = wire["value"]
+        numeric_type = wire["value_type"]
+        if "is_validated" in wire and not isinstance(wire["is_validated"], bool):
+            raise _invalid_wire("number_value.is_validated must be a bool")
+        if (
+            "source" in wire
+            and wire["source"] is not None
+            and not isinstance(wire["source"], str)
+        ):
+            raise _invalid_wire("number_value.source must be a string or null")
+
+    if isinstance(numeric_value, bool) or not isinstance(numeric_value, (int, float)):
+        raise _invalid_wire("number_value.value must be an int or float")
+    if not isinstance(numeric_type, str) or numeric_type not in _NUMERIC_TYPES:
+        raise _invalid_wire("number_value.value_type is invalid")
+    if isinstance(numeric_value, float) and not isfinite(numeric_value):
+        raise _invalid_wire("number_value.value must be finite")
+
+    if isinstance(numeric_value, int):
+        if numeric_type == "float":
+            raise _invalid_wire("float number_value must contain a float")
+        # ModelNumericValue owns canonical float storage. INTEGER restores an int
+        # on read; NUMERIC intentionally retains the canonical float value.
+        try:
+            stored_value = float(numeric_value)
+        except OverflowError as exc:
+            raise _invalid_wire(
+                f"{numeric_type} value exceeds canonical storage"
+            ) from exc
+        if not isfinite(stored_value) or int(stored_value) != numeric_value:
+            raise _invalid_wire(f"{numeric_type} value loses precision in storage")
+    elif numeric_type == "integer" and not numeric_value.is_integer():
+        # Canonical integer JSON contains an integral float because the owned
+        # ModelNumericValue storage field is float; fractions remain invalid.
+        raise _invalid_wire("integer number_value cannot contain a fraction")
+
+
+def _validate_schema_value_wire(value: object) -> None:
+    if isinstance(value, ModelSchemaValue):
+        wire = cast(dict[object, object], value.model_dump())
+    elif isinstance(value, dict):
+        wire = cast(dict[object, object], value)
+    else:
+        raise _invalid_wire("nested values must be ModelSchemaValue mappings")
+
+    unknown_fields = set(wire) - _SCHEMA_VALUE_FIELDS
+    if unknown_fields:
+        raise _invalid_wire("unknown fields are not allowed")
+
+    value_type = wire.get("value_type")
+    if not isinstance(value_type, str) or value_type not in _VALUE_FIELD_BY_TYPE:
+        raise _invalid_wire("value_type is missing or unknown")
+
+    selected_field = _VALUE_FIELD_BY_TYPE[value_type]
+    if selected_field not in wire:
+        raise _invalid_wire(f"{selected_field} is required for {value_type}")
+    if any(
+        wire.get(field_name) is not None
+        for field_name in _VALUE_FIELDS - {selected_field}
+    ):
+        raise _invalid_wire("non-selected value fields must be absent or null")
+
+    selected_value = wire[selected_field]
+    if value_type == "string":
+        if not isinstance(selected_value, str):
+            raise _invalid_wire("string_value must be a string")
+    elif value_type == "number":
+        _validate_numeric_wire(selected_value)
+    elif value_type == "boolean":
+        if not isinstance(selected_value, bool):
+            raise _invalid_wire("boolean_value must be a bool")
+    elif value_type == "null":
+        if selected_value is not True:
+            raise _invalid_wire("null_value must be true")
+    elif value_type == "array":
+        if not isinstance(selected_value, list):
+            raise _invalid_wire("array_value must be a list")
+        for item in cast(list[object], selected_value):
+            _validate_schema_value_wire(item)
+    else:
+        if not isinstance(selected_value, dict):
+            raise _invalid_wire("object_value must be a mapping")
+        object_value = cast(dict[object, object], selected_value)
+        if any(not isinstance(key, str) for key in object_value):
+            raise _invalid_wire("object_value keys must be strings")
+        for item in object_value.values():
+            _validate_schema_value_wire(item)
+
+
+class ModelListFilter(ModelCustomFilterBase):
+    """List/collection-based custom filter.
+
+    Uses ModelSchemaValue for type-safe list values.
+    """
+
+    filter_type: str = Field(default="list", description="Filter type identifier")
+    values: list[ModelSchemaValue] = Field(
+        default=..., description="List of values to match (type-safe)"
+    )
+    match_all: bool = Field(default=False, description="Must match all values (vs any)")
+    exclude: bool = Field(default=False, description="Exclude matching items")
+
+    @field_validator("values", mode="before")
+    @classmethod
+    def convert_values_to_schema(cls, v: Any) -> object:
+        """Convert values to ModelSchemaValue for type safety."""
+        if not isinstance(v, list):
+            return v
+
+        converted: list[ModelSchemaValue] = []
+        for item in cast(list[object], v):
+            if isinstance(item, ModelSchemaValue):
+                _validate_schema_value_wire(item)
+                converted.append(item)
+                continue
+
+            if isinstance(item, dict) and "value_type" in item:
+                _validate_schema_value_wire(item)
+                converted.append(ModelSchemaValue.model_validate(item))
+                continue
+
+            converted.append(ModelSchemaValue.from_value(item))
+
+        return converted
+
+```
+
+Companion source src/omnibase_core/models/core/model_masked_connection_properties.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""
+MaskedConnectionProperties model.
+"""
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class ModelMaskedConnectionProperties(BaseModel):
+    """
+    Masked connection properties with typed fields.
+    Replaces Dict[str, Any] for get_masked_connection_properties() returns.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    connection_string: str | None = Field(
+        default=None,
+        description="Masked connection string",
+    )
+    driver: str | None = Field(default=None, description="Driver name")
+    protocol: str | None = Field(default=None, description="Connection protocol")
+    host: str | None = Field(default=None, description="Server host")
+    port: int | None = Field(default=None, description="Server port")
+    database: str | None = Field(default=None, description="Database name")
+    username: str | None = Field(default=None, description="Username (may be masked)")
+    password: str = Field(default="***MASKED***", description="Always masked")
+    auth_mechanism: str | None = Field(
+        default=None, description="Authentication mechanism"
+    )
+    pool_size: int | None = Field(default=None, description="Connection pool size")
+    use_ssl: bool | None = Field(default=None, description="Use SSL/TLS")
+    masked_fields: list[str] = Field(
+        default_factory=list,
+        description="List of masked field names",
+    )
+    masking_algorithm: str = Field(
+        default="sha256", description="Masking algorithm used"
+    )
+
+```
+
+Companion source src/omnibase_core/models/core/model_mixin_mapping_collection.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""ModelMixinMappingCollection — collection of mixin-to-handler mappings.
+
+Serialized as ``mixin_mappings.yaml`` for review and migration tracking.
+"""
+
+from __future__ import annotations
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from omnibase_core.models.core.model_mixin_mapping import ModelMixinMapping
+
+__all__ = ["ModelMixinMappingCollection"]
+
+
+class ModelMixinMappingCollection(BaseModel):
+    """Collection of mixin-to-handler mappings.
+
+    Serialized as ``mixin_mappings.yaml`` for review and migration tracking.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    mixins: list[ModelMixinMapping] = Field(
+        default_factory=list,
+        description="List of mixin-to-handler mappings",
+    )
+
+```
+
+Companion source src/omnibase_core/models/core/model_mixin_performance.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""Pydantic model for mixin performance characteristics.
+
+The ModelMixinPerformance class for defining
+performance characteristics and recommendations for mixins.
+"""
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from omnibase_core.models.core.model_mixin_performance_use_case import (
+    ModelMixinPerformanceUseCase,
+)
+
+
+class ModelMixinPerformance(BaseModel):
+    """Performance characteristics and recommendations.
+
+    Attributes:
+        overhead_per_call: Overhead per call description
+        memory_per_instance: Memory per instance description
+        recommended_max_retries: Recommended maximum retries (if applicable)
+        typical_use_cases: Performance data per use case
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    overhead_per_call: str | None = Field(None, description="Overhead per call")
+    memory_per_instance: str | None = Field(None, description="Memory per instance")
+    recommended_max_retries: int | None = Field(None, description="Max retries")
+    typical_use_cases: list[ModelMixinPerformanceUseCase] = Field(
+        default_factory=list, description="Use case performance data"
+    )
+
+```
+
+Companion source src/omnibase_core/models/core/model_mixin_performance_use_case.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""Pydantic model for mixin performance use case data.
+
+The ModelMixinPerformanceUseCase class for defining
+performance characteristics for specific use cases.
+"""
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class ModelMixinPerformanceUseCase(BaseModel):
+    """Performance data for specific use case.
+
+    Attributes:
+        use_case: Use case name
+        recommended_config: Recommended preset name
+        expected_overhead: Expected overhead description
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    use_case: str = Field(..., description="Use case name")
+    recommended_config: str = Field(..., description="Recommended preset")
+    expected_overhead: str = Field(..., description="Expected overhead")
+
+```
+
+Companion source src/omnibase_core/models/core/model_mixin_preset.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""Pydantic model for mixin preset configurations.
+
+The ModelMixinPreset class for defining
+preset configurations for common use cases.
+"""
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from omnibase_core.types.type_serializable_value import SerializedDict
+
+
+class ModelMixinPreset(BaseModel):
+    """Preset configuration for common use cases.
+
+    Attributes:
+        description: Preset description
+        config: Configuration values
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    description: str = Field(..., description="Preset description")
+    config: SerializedDict = Field(default_factory=dict, description="Config values")
+
+```
+
+Companion source src/omnibase_core/models/core/model_mixin_property.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""Pydantic model for mixin property definitions.
+
+The ModelMixinProperty class for defining
+properties in mixin code patterns.
+"""
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class ModelMixinProperty(BaseModel):
+    """Property definition in code patterns.
+
+    Attributes:
+        name: Property name
+        type: Property type annotation
+        description: Property description
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(..., description="Property name")
+    type: str = Field(..., description="Property type annotation")
+    description: str = Field("", description="Property description")
+
+```
+
+Companion source src/omnibase_core/models/core/model_namespace.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""
+Namespace model.
+"""
+
+from typing import TYPE_CHECKING, Any, ClassVar
+
+from pydantic import BaseModel, ConfigDict
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+class ModelNamespace(BaseModel):
+    """
+    Canonical ONEX namespace type. Handles normalization, validation, and construction from file paths.
+    Always enforces the canonical prefix from project.onex.yaml.
+    Pattern: <filetype>://<prefix>.<subdirs>.<stem> (filetype is the extension, e.g., python, yaml, json, md)
+    Serializes as a single-line URI string, never as a mapping.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    value: str
+
+    CANONICAL_SCHEME_MAP: ClassVar[dict[str, str]] = {
+        "py": "python",
+        "python": "python",
+        "md": "markdown",
+        "markdown": "markdown",
+        "yml": "yaml",
+        "yaml": "yaml",
+        "json": "json",
+        "cli": "cli",
+        "docker": "docker",
+    }
+
+    @classmethod
+    def normalize_scheme(cls, scheme: str) -> str:
+        return cls.CANONICAL_SCHEME_MAP.get(scheme.lower(), scheme.lower())
+
+    @classmethod
+    def from_path(cls, path: "Path") -> "ModelNamespace":
+        from omnibase_core.models.core.model_project_metadata import (
+            get_canonical_namespace_prefix,
+        )
+
+        # Always use Path for safety
+        if not hasattr(path, "parts"):
+            from pathlib import Path as _Path
+
+            path = _Path(path)
+        raw_ext = path.suffix[1:] if path.suffix.startswith(".") else path.suffix
+        # Canonical extension mapping
+        ext_map = {
+            "py": "python",
+            "md": "markdown",
+            "markdown": "markdown",
+            "yaml": "yaml",
+            "yml": "yaml",
+            "log": "log",
+            "txt": "text",
+        }
+        ext = ext_map.get(raw_ext.lower(), raw_ext.lower() or "file")
+        parts = list(path.parts)
+        # Remove any leading '.' from parts
+        if parts and parts[0] == ".":
+            parts = parts[1:]
+        canonical_prefix = get_canonical_namespace_prefix()
+        # Find the canonical prefix in the path and slice from there
+        if canonical_prefix in parts:
+            idx = parts.index(canonical_prefix)
+            ns_parts = parts[idx:]
+        else:
+            ns_parts = parts
+        # Remove any leading '.' from ns_parts again (paranoia)
+        if ns_parts and ns_parts[0].startswith("."):
+            ns_parts[0] = ns_parts[0].lstrip(".")
+        # For all files, include the extension in the last segment for uniqueness, unless already present
+        if ext and ext != "python":
+            if not ns_parts[-1].endswith(f"_{ext}"):
+                # Remove extension from last part if present
+                if ns_parts[-1].endswith(f".{raw_ext}"):
+                    ns_parts[-1] = ns_parts[-1][: -(len(raw_ext) + 1)]
+                ns_parts[-1] = f"{ns_parts[-1]}_{ext}"
+        # For python files, strip the extension
+        elif raw_ext and ns_parts[-1].endswith(f".{raw_ext}"):
+            ns_parts[-1] = ns_parts[-1][: -(len(raw_ext) + 1)]
+        # Remove any accidental double dots
+        ns = f"{ext}://{'.'.join(ns_parts)}"
+        return cls(value=ns)
+
+    def to_serializable_dict(self) -> str:
+        return self.value
+
+    def __str__(self) -> str:
+        return self.value
+
+    # Why: Runtime API intentionally narrows or widens the inherited signature.
+    def model_dump(self, *args: Any, **kwargs: Any) -> str:  # type: ignore[override]  # Returns str instead of dict for namespace string serialization
+        # Always dump as a string for YAML/JSON
+        return self.value
+
+    @classmethod
+    def __get_pydantic_json_schema__(cls, core_schema: Any, handler: Any) -> Any:
+        # Ensure schema is string, not object
+        return {"type": "string"}
+
+```
+
+Companion source src/omnibase_core/models/core/model_naming_convention.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# === OmniNode:Metadata ===
+# author: OmniNode Team
+# copyright: OmniNode.ai
+# created_at: '2025-05-28T13:24:07.975262'
+# description: Stamped by ToolPython
+# entrypoint: python://model_naming_convention
+# hash: 2380ec00b3b6aecd0b647124d46ce06f40652cb46e77b561d9a7f7f9aef83177
+# last_modified_at: '2025-05-29T14:13:58.819013+00:00'
+# lifecycle: active
+# meta_type: tool
+# metadata_version: 0.1.0
+# name: model_naming_convention.py
+# namespace: python://omnibase.model.model_naming_convention
+# owner: OmniNode Team
+# protocol_version: 0.1.0
+# runtime_language_hint: python>=3.11
+# schema_version: 0.1.0
+# state_contract: state_contract://default
+# tools: {}
+# uuid: b3e9593b-73d2-4fa8-bd77-f8faf952fd07
+# version: 1.0.0
+# === /OmniNode:Metadata ===
+
+
+from pydantic import BaseModel, ConfigDict
+
+
+class ModelNamingConventionResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    valid: bool
+    reason: str = ""
+
+```
+
+Companion source src/omnibase_core/models/core/model_node_data.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""
+Node Data Model.
+
+Detailed node information data structure.
+"""
+
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class ModelNodeData(BaseModel):
+    """Detailed node information data."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Basic info
+    node_id: UUID | None = Field(default=None, description="Node identifier")
+    display_name: str | None = Field(default=None, description="Display name")
+    description: str | None = Field(default=None, description="Node description")
+    author: str | None = Field(default=None, description="Node author")
+
+    # Status
+    status: str | None = Field(default=None, description="Current status")
+    health: str | None = Field(default=None, description="Health status")
+    enabled: bool = Field(default=True, description="Whether node is enabled")
+
+    # Metadata
+    created_at: str | None = Field(default=None, description="Creation timestamp")
+    updated_at: str | None = Field(default=None, description="Last update timestamp")
+    tags: list[str] = Field(default_factory=list, description="Node tags")
+
+    # Performance
+    execution_count: int | None = Field(default=None, description="Total executions")
+    success_rate: float | None = Field(
+        default=None, description="Success rate percentage"
+    )
+    avg_execution_time_ms: float | None = Field(
+        default=None,
+        description="Average execution time",
+    )
+
+    # Custom metadata
+    custom_metadata: dict[str, str] | None = Field(
+        default=None,
+        description="Custom metadata",
+    )
+
+```
+
+Companion source src/omnibase_core/models/core/model_node_info.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""
+Pydantic model for node information.
+
+Information about a discovered ONEX node, used in node discovery results.
+"""
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from omnibase_core.models.primitives.model_semver import ModelSemVer
+
+
+class ModelNodeInfo(BaseModel):
+    """Information about a discovered ONEX node."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(default=..., description="Node name")
+    version: ModelSemVer = Field(
+        ...,  # REQUIRED - specify in contract
+        description="Node version",
+    )
+    description: str = Field(default=..., description="Node description")
+    status: str = Field(default=..., description="Node status")
+    trust_level: str = Field(default=..., description="Node trust level")
+    capabilities: list[str] = Field(
+        default_factory=list,
+        description="Node capabilities",
+    )
+    namespace: str = Field(default=..., description="Node namespace")
+
+```
+
+Companion source src/omnibase_core/models/core/model_node_status.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""Centralized ModelNodeStatus implementation."""
+
+from pydantic import BaseModel, ConfigDict
+
+
+class ModelNodeStatus(BaseModel):
+    """Generic nodestatus model for common use."""
+
+    model_config = ConfigDict(extra="forbid")
+
+```
+
+Companion source src/omnibase_core/models/core/model_object_data.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""Centralized ModelObjectData implementation."""
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from omnibase_core.types.type_serializable_value import SerializedDict
+
+
+class ModelObjectData(BaseModel):
+    """Generic objectdata model for common use."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    data: SerializedDict | None = Field(
+        default_factory=dict,
+        description="Arbitrary object data for flexible field content",
+    )
+
+```
+
+Companion source src/omnibase_core/models/core/model_onex_ignore_section.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""
+OnexIgnoreSection model.
+"""
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class ModelOnexIgnoreSection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    patterns: list[str] = Field(
+        default_factory=list,
+        description="Glob patterns to ignore for this tool/type.",
+    )
+
+```
+
+Companion source src/omnibase_core/models/core/model_performance_profile_info.py
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""
+PerformanceProfileInfo model for node introspection.
+"""
+
+from pydantic import BaseModel, ConfigDict
+
+
+class ModelPerformanceProfileInfo(BaseModel):
+    """Model for performance profile information."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    cpu: float | None = None
+    memory: float | None = None
+    disk: float | None = None
+    throughput: float | None = None
+    latency_ms: float | None = None
+    notes: str | None = None
+    # Add more fields as needed for protocol
+
+```

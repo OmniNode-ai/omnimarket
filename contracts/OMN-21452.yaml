@@ -1,0 +1,900 @@
+schema_version: 1.0.0
+ticket_id: OMN-21452
+title: Typed pinned model work contracts and executable acceptance corpus
+summary: Pure Phase 1 compute verdicts, read-only file/lab-runner bindings, four acceptance
+  kinds and a frozen 100-scenario plus 20-DoD corpus.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-model-work-ac1
+  statement: 'AC1: ModelWorkContract is a frozen pydantic model with contract_id,
+    task_kind, inputs (path and sha256 each), acceptance (kind one of command, schema,
+    dod_evidence, seeded_bug, plus spec) and budgets (max_output_tokens, max_wall_s,
+    max_turns, max_usd), extra keys forbidden -- falsifier: uv run pytest tests/nodes/test_model_work_contract.py
+    -q, red at the merge base where the module is absent, including a case that a
+    contract with an unknown key is refused'
+  acceptance:
+  - id: AC1
+    statement: 'AC1: ModelWorkContract is a frozen pydantic model with contract_id,
+      task_kind, inputs (path and sha256 each), acceptance (kind one of command, schema,
+      dod_evidence, seeded_bug, plus spec) and budgets (max_output_tokens, max_wall_s,
+      max_turns, max_usd), extra keys forbidden -- falsifier: uv run pytest tests/nodes/test_model_work_contract.py
+      -q, red at the merge base where the module is absent, including a case that
+      a contract with an unknown key is refused'
+- id: req-model-work-ac2
+  statement: 'AC2: the loader refuses a contract whose input sha256 differs from the
+    bytes of the file it names -- falsifier: uv run pytest tests/nodes/test_model_work_contract.py
+    -q -k input_pin_mismatch'
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the loader refuses a contract whose input sha256 differs from
+      the bytes of the file it names -- falsifier: uv run pytest tests/nodes/test_model_work_contract.py
+      -q -k input_pin_mismatch'
+- id: req-model-work-ac3
+  statement: 'AC3: 100 scenario contracts (ids F01-01 to F10-10, from the five result
+    tables the deleg-sc lanes write) and at least 20 DoD-derived contracts load, and
+    every one carries an acceptance check that runs in code -- falsifier: uv run pytest
+    tests/nodes/test_work_contract_corpus.py -q asserting 100 scenario ids and at
+    least 20 dod ids'
+  acceptance:
+  - id: AC3
+    statement: 'AC3: 100 scenario contracts (ids F01-01 to F10-10, from the five result
+      tables the deleg-sc lanes write) and at least 20 DoD-derived contracts load,
+      and every one carries an acceptance check that runs in code -- falsifier: uv
+      run pytest tests/nodes/test_work_contract_corpus.py -q asserting 100 scenario
+      ids and at least 20 dod ids'
+- id: req-model-work-ac4
+  statement: 'AC4: every acceptance kind has a negative control: the check run on
+    a deliberately wrong answer returns fail, and run twice on the same answer returns
+    the same verdict -- falsifier: uv run pytest tests/nodes/test_work_contract_checks.py
+    -q -k negative_control_and_determinism'
+  acceptance:
+  - id: AC4
+    statement: 'AC4: every acceptance kind has a negative control: the check run on
+      a deliberately wrong answer returns fail, and run twice on the same answer returns
+      the same verdict -- falsifier: uv run pytest tests/nodes/test_work_contract_checks.py
+      -q -k negative_control_and_determinism'
+- id: req-model-work-ac5
+  statement: 'AC5: no scenario or DoD input names private knowledge-base text, customer
+    data or a secret -- falsifier: uv run pytest tests/nodes/test_work_contract_corpus.py
+    -q -k public_inputs_only'
+  acceptance:
+  - id: AC5
+    statement: 'AC5: no scenario or DoD input names private knowledge-base text,
+      customer data or a secret -- falsifier: uv run pytest tests/nodes/test_work_contract_corpus.py
+      -q -k public_inputs_only'
+- id: req-model-work-ac6
+  statement: 'AC6: the acceptance spec is a discriminated union per kind with bounded
+    numeric budgets, every contract has a positive control that passes and a negative
+    control that fails, a DoD-derived contract fails at its recorded base commit and
+    passes on the known repair, and an attempt that edits the evaluator files is failed
+    -- falsifier: uv run pytest tests/nodes/test_work_contract_checks.py -q -k controls_and_evaluator_immutability'
+  acceptance:
+  - id: AC6
+    statement: 'AC6: the acceptance spec is a discriminated union per kind with bounded
+      numeric budgets, every contract has a positive control that passes and a negative
+      control that fails, a DoD-derived contract fails at its recorded base commit
+      and passes on the known repair, and an attempt that edits the evaluator files
+      is failed -- falsifier: uv run pytest tests/nodes/test_work_contract_checks.py
+      -q -k controls_and_evaluator_immutability'
+evidence_requirements:
+- kind: tests
+  description: Focused model work acceptance controls
+  command: uv run pytest tests/nodes/test_model_work_contract.py tests/nodes/test_work_contract_corpus.py
+    tests/nodes/test_work_contract_checks.py tests/nodes/test_work_contract_bindings.py
+    -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21452-ac1
+  description: 'AC1: ModelWorkContract is a frozen pydantic model with contract_id,
+    task_kind, inputs (path and sha256 each), acceptance (kind one of command, schema,
+    dod_evidence, seeded_bug, plus spec) and budgets (max_output_tokens, max_wall_s,
+    max_turns, max_usd), extra keys forbidden -- falsifier: uv run pytest tests/nodes/test_model_work_contract.py
+    -q, red at the merge base where the module is absent, including a case that a
+    contract with an unknown key is refused'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/test_model_work_contract.py -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21452-ac2
+  description: 'AC2: the loader refuses a contract whose input sha256 differs from
+    the bytes of the file it names -- falsifier: uv run pytest tests/nodes/test_model_work_contract.py
+    -q -k input_pin_mismatch'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/test_model_work_contract.py -q --no-cov
+      -k input_pin_mismatch
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21452-ac3
+  description: 'AC3: 100 scenario contracts (ids F01-01 to F10-10, from the five result
+    tables the deleg-sc lanes write) and at least 20 DoD-derived contracts load, and
+    every one carries an acceptance check that runs in code -- falsifier: uv run pytest
+    tests/nodes/test_work_contract_corpus.py -q asserting 100 scenario ids and at
+    least 20 dod ids'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/test_work_contract_corpus.py -q --no-cov
+      -k corpus_loads
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21452-ac4
+  description: 'AC4: every acceptance kind has a negative control: the check run on
+    a deliberately wrong answer returns fail, and run twice on the same answer returns
+    the same verdict -- falsifier: uv run pytest tests/nodes/test_work_contract_checks.py
+    -q -k negative_control_and_determinism'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F01-01]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F01-02]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F01-03]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F01-04]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F01-05]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F01-06]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F01-07]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F01-08]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F01-09]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F01-10]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F02-01]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F02-02]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F02-03]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F02-04]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F02-05]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F02-06]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F02-07]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F02-08]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F02-09]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F02-10]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F03-01]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F03-02]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F03-03]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F03-04]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F03-05]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F03-06]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F03-07]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F03-08]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F03-09]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F03-10]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F04-01]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F04-02]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F04-03]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F04-04]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F04-05]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F04-06]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F04-07]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F04-08]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F04-09]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F04-10]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F05-01]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F05-02]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F05-03]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F05-04]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F05-05]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F05-06]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F05-07]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F05-08]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F05-09]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F05-10]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F06-01]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F06-02]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F06-03]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F06-04]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F06-05]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F06-06]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F06-07]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F06-08]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F06-09]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F06-10]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F07-01]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F07-02]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F07-03]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F07-04]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F07-05]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F07-06]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F07-07]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F07-08]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F07-09]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F07-10]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F08-01]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F08-02]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F08-03]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F08-04]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F08-05]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F08-06]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F08-07]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F08-08]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F08-09]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F08-10]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F09-01]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F09-02]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F09-03]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F09-04]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F09-05]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F09-06]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F09-07]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F09-08]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F09-09]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F09-10]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F10-01]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F10-02]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F10-03]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F10-04]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F10-05]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F10-06]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F10-07]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F10-08]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F10-09]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[F10-10]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[dod-OMN-21090-01]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[dod-OMN-21090-02]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[dod-OMN-21090-03]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[dod-OMN-21090-04]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[dod-OMN-21090-05]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[dod-OMN-21090-06]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[dod-OMN-21090-07]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[dod-OMN-21090-08]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[dod-OMN-21090-09]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[dod-OMN-21090-10]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[dod-OMN-21090-11]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[dod-OMN-21090-12]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[dod-OMN-21090-13]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[dod-OMN-21090-14]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[dod-OMN-21090-15]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[dod-OMN-21090-16]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[dod-OMN-21090-17]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[dod-OMN-21090-18]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[dod-OMN-21090-19]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_negative_control_and_determinism[dod-OMN-21090-20]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21452-ac5
+  description: 'AC5: no scenario or DoD input names private knowledge-base text,
+    customer data or a secret -- falsifier: uv run pytest tests/nodes/test_work_contract_corpus.py
+    -q -k public_inputs_only'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/test_work_contract_corpus.py -q --no-cov
+      -k public_inputs_only
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21452-ac6
+  description: 'AC6: the acceptance spec is a discriminated union per kind with bounded
+    numeric budgets, every contract has a positive control that passes and a negative
+    control that fails, a DoD-derived contract fails at its recorded base commit and
+    passes on the known repair, and an attempt that edits the evaluator files is failed
+    -- falsifier: uv run pytest tests/nodes/test_work_contract_checks.py -q -k controls_and_evaluator_immutability'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F01-01]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F01-02]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F01-03]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F01-04]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F01-05]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F01-06]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F01-07]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F01-08]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F01-09]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F01-10]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F02-01]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F02-02]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F02-03]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F02-04]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F02-05]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F02-06]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F02-07]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F02-08]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F02-09]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F02-10]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F03-01]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F03-02]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F03-03]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F03-04]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F03-05]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F03-06]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F03-07]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F03-08]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F03-09]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F03-10]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F04-01]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F04-02]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F04-03]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F04-04]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F04-05]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F04-06]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F04-07]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F04-08]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F04-09]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F04-10]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F05-01]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F05-02]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F05-03]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F05-04]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F05-05]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F05-06]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F05-07]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F05-08]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F05-09]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F05-10]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F06-01]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F06-02]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F06-03]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F06-04]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F06-05]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F06-06]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F06-07]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F06-08]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F06-09]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F06-10]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F07-01]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F07-02]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F07-03]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F07-04]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F07-05]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F07-06]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F07-07]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F07-08]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F07-09]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F07-10]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F08-01]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F08-02]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F08-03]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F08-04]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F08-05]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F08-06]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F08-07]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F08-08]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F08-09]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F08-10]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F09-01]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F09-02]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F09-03]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F09-04]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F09-05]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F09-06]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F09-07]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F09-08]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F09-09]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F09-10]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F10-01]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F10-02]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F10-03]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F10-04]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F10-05]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F10-06]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F10-07]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F10-08]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F10-09]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[F10-10]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[dod-OMN-21090-01]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[dod-OMN-21090-02]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[dod-OMN-21090-03]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[dod-OMN-21090-04]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[dod-OMN-21090-05]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[dod-OMN-21090-06]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[dod-OMN-21090-07]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[dod-OMN-21090-08]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[dod-OMN-21090-09]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[dod-OMN-21090-10]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[dod-OMN-21090-11]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[dod-OMN-21090-12]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[dod-OMN-21090-13]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[dod-OMN-21090-14]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[dod-OMN-21090-15]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[dod-OMN-21090-16]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[dod-OMN-21090-17]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[dod-OMN-21090-18]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[dod-OMN-21090-19]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability[dod-OMN-21090-20]' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability_tampering' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest 'tests/nodes/test_work_contract_checks.py::test_controls_and_evaluator_immutability_historical_dod' -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21452-deploy-offline-package-probe
+  description: 'Hosted-runner deploy probe: resolves the packaged pure node contract
+    and disabled overlay and sends a typed contract/check through a real in-memory
+    bus and a file binding. No services or credentials. A base without the node fails
+    imports.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: uv run --frozen pytest tests/nodes/test_work_contract_bindings.py
+      -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket

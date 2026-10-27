@@ -1,0 +1,27 @@
+{
+  "cues": [
+    "contracts/OMN-21090.yaml",
+    "contracts/OMN-21128.yaml",
+    "src/omnimarket/nodes/node_exemplar_registry_reconcile_compute/contract.yaml",
+    "src/omnimarket/nodes/node_exemplar_registry_reconcile_compute/handlers/handler_exemplar_registry_reconcile.py",
+    "src/omnimarket/nodes/node_exemplar_registry_reconcile_compute/metadata.yaml",
+    "src/omnimarket/nodes/node_exemplar_registry_reconcile_compute/models/model_exemplar_registry_reconcile.py",
+    "src/omnimarket/nodes/node_exemplar_registry_reconcile_compute/overlay.yaml",
+    "tests/nodes/node_exemplar_registry_reconcile_compute/test_golden_chain_exemplar_registry_reconcile_compute.py",
+    "tests/nodes/node_exemplar_registry_reconcile_compute/test_sampled_revocation.py",
+    "ModelExemplarEvaluationCounts",
+    "sample_size",
+    "precision",
+    "recall",
+    "ModelExemplarRegistryReconcileRequest",
+    "test_revocation_uses_counts_on_each_dispatch_binding",
+    "test_missing_history_does_not_revoke_a_first_failure",
+    "test_overlay_policy_controls_minimum_sample_and_thresholds",
+    "test_evidence_refuses_negative_noninteger_or_asserted_metrics",
+    "test_invalid_policy_is_refused",
+    "test_evidence_and_policy_bind_the_reconciliation_hash",
+    "test_contract_overlay_and_model_agree_on_policy"
+  ],
+  "mode": "summary",
+  "prompt": "src/omnimarket/configs/work_contracts/inputs/F01-02.txt"
+}

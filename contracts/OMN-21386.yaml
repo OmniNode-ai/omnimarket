@@ -1,0 +1,139 @@
+schema_version: 1.0.0
+ticket_id: OMN-21386
+title: The ledger query boundary G3b needs
+summary: Add bounded, sequence-ordered history acquisition with exclusive database-ingest cutoffs, source
+  coverage and snapshot-bound cursors. Existing historical rows retain unknown time authority. Installed-runtime
+  archive provenance and exact-head green CI remain release obligations; fixture tests do not certify
+  deployment.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-history-query-boundary
+  statement: Acquire complete ordered ledger history through the declared query node; uncertainty must
+    remain visible.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the query returns every row of both rolls in file order with a sequence and an append
+      time, and a deliberately truncated range reads `incomplete` -- falsifier: the row-for-row comparison.'
+  - id: AC2
+    statement: 'AC2: the change is one pull request in OmniNode-ai/omnimarket and its required `OmniNode-ai/omnimarket`
+      CI check-runs are green on that pull request''s head -- falsifier: the check-runs API for that head
+      commit in OmniNode-ai/omnimarket'
+evidence_requirements:
+- kind: tests
+  description: History query behavior and existing read regressions.
+  command: uv run pytest tests/test_work_ledger_history_query.py tests/test_golden_chain_work_ledger_query.py
+    tests/test_work_ledger_query_inmemory_bus.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-history-ac1-boundary
+  description: 'AC1 implementation proof: two labelled archive fixtures retain raw rows, source, sequence
+    and ingest time; missing sources, gaps, duplicates, missing authority and truncated pages are incomplete.
+    The production PostgreSQL reader is separately exercised below. Installed-release comparison with
+    the actual archive rolls is still required before closing AC1.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_work_ledger_history_query.py -q
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_work_ledger_history_verification.py -q --refuse-skips
+- id: dod-history-ac2-hosted-suite
+  description: 'AC2 hosted leg: the history query tests and the existing work-ledger query regressions
+    this pull request changes pass at its head and fail at the merge base, where the history API is absent.
+    The exact-head green read is the local_done_gate item dod-history-ac2-exact-head-ci.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_work_ledger_history_query.py tests/test_golden_chain_work_ledger_query.py
+      tests/test_work_ledger_query_inmemory_bus.py -q
+- id: dod-history-ac2-exact-head-ci
+  description: 'AC2 release proof: a fresh authoritative watcher snapshot must report every required check
+    green at this worktree head for ONEX_PR_NUMBER. This runs after CI finishes; it cannot truthfully
+    certify its own in-progress hosted job. Missing or stale evidence fails. It binds no criterion because
+    the hosted must-fail control never runs a local_done_gate item; AC2 is bound by dod-history-ac2-hosted-suite.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'python - <<''PYCI''
+
+      import json, os, subprocess
+
+      from datetime import UTC, datetime
+
+      from pathlib import Path
+
+      state = json.loads(Path(os.environ["ONEX_PR_WATCHER_STATE"]).read_text())
+
+      tick = datetime.fromisoformat(state["last_tick"].replace("Z", "+00:00"))
+
+      assert 0 <= (datetime.now(UTC) - tick).total_seconds() <= 480, "watcher snapshot is stale"
+
+      number = os.environ["ONEX_PR_NUMBER"]
+
+      head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+
+      ci = state["prs"]["omnimarket#" + number]["ci"]
+
+      assert ci["sha"] == head, "CI belongs to another head"
+
+      assert ci["verdict"] == "GREEN", ci["verdict"]
+
+      assert not ci["red"] and not ci["pending"] and not ci["cancelled"]
+
+      print("Required checks green at exact PR head:", head)
+
+      PYCI'
+- id: dod-history-deploy-postgres
+  description: 'Hosted deployment preparation: on an ephemeral loopback-only PostgreSQL instance, apply
+    the shipped migrations and production writer SQL, then run the production read-only query handler.
+    Require original first-ingest time across replay, NULL legacy authority, ledger isolation, both source
+    rolls in sequence order and incomplete for truncation or gaps. Fails at the merge base where the history
+    API and migration are absent. This does not claim live deployment or backfill provenance. It binds
+    no criterion because a command-only probe is not a binding; AC1 is bound by dod-history-ac1-boundary.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: "set -eu\nledger_probe=$(docker run --detach --rm --label onex.deploy-probe=ledger-history\
+      \ --env POSTGRES_HOST_AUTH_METHOD=trust --publish 127.0.0.1::5432 postgres:16-alpine)\ntrap 'docker\
+      \ rm --force \"$ledger_probe\" >/dev/null' EXIT\nledger_ready=0\nfor ledger_attempt in 1 2 3 4 5\
+      \ 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do\n  if docker exec \"$ledger_probe\" pg_isready --username\
+      \ postgres >/dev/null; then\n    ledger_ready=1\n    break\n  fi\n  sleep 1\ndone\ntest \"$ledger_ready\"\
+      \ = 1\nledger_port=$(docker port \"$ledger_probe\" 5432/tcp | awk -F: '$1 == \"127.0.0.1\" { print\
+      \ $2 }')\ntest -n \"$ledger_port\"\nONEX_TEST_LEDGER_HISTORY_DSN=\"host=127.0.0.1 port=$ledger_port\
+      \ user=postgres dbname=postgres\" uv run pytest tests/test_work_ledger_history_postgres.py -q --refuse-skips"
+- id: dod-history-ci-database-inputs
+  description: The PostgreSQL proof consumes the suite's ephemeral integration service inputs,
+    prefers an explicit probe DSN, and never falls through to the runtime DSN. It binds no criterion
+    because these tests exercise only the test module's own DSN resolution, so they also pass at the
+    merge base and cannot serve as a must-fail control; AC2 is bound by dod-history-ac2-hosted-suite.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_work_ledger_history_postgres.py -q -k 'environment or ambient' --refuse-skips
+- id: dod-history-installed-archive-comparison
+  description: Compare the full and deliberately truncated terminal payloads exported from the installed
+    lab release against both archive files using the operator-supplied acquisition manifest. Input files
+    stay private. Fixture replay is not installed-release proof. The release owner supplies the manifest
+    with authoritative source labels, sequence bounds and exclusive ingest cutoff, then captures both
+    answers after the migration is vendored, released and deployed.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: >-
+      uv run python -m omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_history_verification
+      --request "$ONEX_HISTORY_REQUEST"
+      --response "$ONEX_HISTORY_RESPONSE"
+      --truncated-response "$ONEX_HISTORY_TRUNCATED_RESPONSE"
+      --archive "$ONEX_HISTORY_ARCHIVE_ONE"
+      --archive "$ONEX_HISTORY_ARCHIVE_TWO"

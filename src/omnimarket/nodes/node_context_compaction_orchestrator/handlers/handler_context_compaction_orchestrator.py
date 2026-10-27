@@ -119,6 +119,7 @@ class HandlerContextCompactionOrchestrator:
                 topics.request_topic,
                 topics.completed_topic,
                 topics.failed_topic,
+                monotonic=monotonic,
             )
         self._deadline_s = binding.barrier_deadline_s
         self._monotonic = monotonic
@@ -153,6 +154,12 @@ class HandlerContextCompactionOrchestrator:
                 or EnumContextCompactionFailureClass.PACK_BUILD_FAILED,
                 build_ms=build_ms,
             )
+        if self._monotonic() >= deadline:
+            return self._native(
+                request,
+                EnumContextCompactionFailureClass.PACK_BUILDER_UNAVAILABLE,
+                build_ms=build_ms,
+            )
         return self._install(request, outcome.package, build_ms=build_ms)
 
     def _build(
@@ -167,6 +174,11 @@ class HandlerContextCompactionOrchestrator:
                 failure_class=EnumContextCompactionFailureClass.SOURCE_INCOMPLETE
             )
         probe = self._probe_source.read(request.session_id, request.barrier_id)
+        if (
+            probe.session_id != request.session_id
+            or probe.barrier_id != request.barrier_id
+        ):
+            raise ValueError("session barrier probe identity does not match request")
         if HandlerSessionStreamBarrier().handle(probe).outcome != "met":
             return ModelContextCompactionBuildOutcome(
                 failure_class=EnumContextCompactionFailureClass.SOURCE_NOT_CAUGHT_UP
@@ -181,7 +193,7 @@ class HandlerContextCompactionOrchestrator:
                 failure_class=EnumContextCompactionFailureClass.PACK_BUILDER_UNAVAILABLE
             )
         return self._pack_build.build(
-            request, source_revision=probe.source_revision, timeout_s=remaining
+            request, source_revision=probe.source_revision, deadline=deadline
         )
 
     async def handle_async(

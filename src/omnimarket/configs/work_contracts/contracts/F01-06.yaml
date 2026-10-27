@@ -1,0 +1,46 @@
+contract_id: F01-06
+task_kind: summarization
+inputs:
+- path: src/omnimarket/configs/work_contracts/inputs/F01-06.txt
+  sha256: b5db73dbbcbe8ce0192b5e85804e834f76f709bf96952552a22e264d68ba0221
+- path: src/omnimarket/configs/work_contracts/inputs/F01-06.diff
+  sha256: 336cfdfdcb227994b2aefe8139ec5f60460ddc5763190d2f6c4992edaeefae7e
+- path: src/omnimarket/configs/work_contracts/rules/F01-06.json
+  sha256: b78f7a52a7a75d0a7af2f870424ce28a39030784fe8362dd359b6f8a0ee8ff2f
+acceptance:
+  kind: command
+  spec:
+    argv:
+    - python
+    - -m
+    - omnimarket.handlers.work_contracts.control_evaluator
+    - --root
+    - '{root}'
+    - --case
+    - src/omnimarket/configs/work_contracts/rules/F01-06.json
+    - --answer
+    - '{answer}'
+    environment:
+      path: uv.lock
+      sha256: cc8b0d6926212d86056ae768b5c3d30112085039ad5a829f3dc92469bbcf629e
+    expected_exit: 0
+budgets:
+  max_output_tokens: 8192
+  max_wall_s: 180
+  max_turns: 8
+  max_usd: 5
+controls:
+  positive:
+    path: src/omnimarket/configs/work_contracts/controls/F01-06.positive.txt
+    sha256: d97f49fd4595655873e4248d807258a9b34d14a8d5a832fbb5b17e3f486ed2ac
+  negative:
+    path: src/omnimarket/configs/work_contracts/controls/F01-06.negative.txt
+    sha256: 410a5d0ce771c8192aaece7fed4a3ebfde30e9887df9117d7e377458e69e105a
+evaluators:
+- path: src/omnimarket/handlers/work_contracts/control_evaluator.py
+  sha256: 35beec5a332b646a0c1a696407f0b4a1f5a683269b19e9f782af9df0ee662d7d
+provenance:
+  source: 2026-10-27-deleg-sc-a-1100.md
+  source_sha256: 279abf85259294afb88a98f7ad8cacb1d943377e2c22aa7350487d4357e7246b
+  adaptation: Deidentified public diff, prompt, and prewritten deterministic summary/grounding/limit
+    checks.

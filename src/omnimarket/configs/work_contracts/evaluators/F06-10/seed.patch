@@ -1,0 +1,11 @@
+--- a/src/omnibase_core/models/delegation/model_remote_task_state.py
++++ b/src/omnibase_core/models/delegation/model_remote_task_state.py
+@@ -23,7 +23,7 @@
+     Used to resume unfinished remote tasks after service restart.
+     """
+ 
+-    model_config = ConfigDict(frozen=True)
++    model_config = ConfigDict(frozen=True, extra="forbid")
+ 
+     task_id: UUID
+     invocation_kind: EnumInvocationKind

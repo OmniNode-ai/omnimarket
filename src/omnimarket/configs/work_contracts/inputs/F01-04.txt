@@ -1,0 +1,542 @@
+Summarize the merged PR diff below in at most 3 sentences and at most 90 words. State the concrete behavior changed, including a changed file or symbol from the diff. Use only facts from this input; do not introduce any number or identifier absent from it. Return only the summary.
+
+Public repository: OmniNode-ai/omnibase_infra
+Merged PR: omnibase_infra#5399
+Title: fix(OMN-20827): replace the ~/.onex files atomically so a crash cannot strand a bus login
+Merged at: 2026-10-27T05:31:39Z
+Merge SHA: cad9aececb48b387f09921cadd50da5d4b934105
+
+BEGIN PUBLIC SOURCE
+diff --git a/contracts/OMN-20827.yaml b/contracts/OMN-20827.yaml
+new file mode 100644
+index 0000000000..fdebb09db7
+--- /dev/null
++++ b/contracts/OMN-20827.yaml
+@@ -0,0 +1,65 @@
++schema_version: "1.0.0"
++ticket_id: "OMN-20827"
++title: "The ~/.onex credential files are replaced atomically so a crash cannot strand a stored bus login"
++summary: >-
++  StoreOnexHomeFiles.write_config and write_secrets no longer write their target with write_text. Each writes a temporary file in the same directory, created at 0600 whatever the umask, flushes it, renames it over the target, and flushes the directory entry; on any failure the temporary file is removed and the target is left byte-identical. StoreLaneCredential.save keeps its order (config, then secrets), so a crash between the two leaves either a config naming a missing secret (first login), which load refuses naming lane-login, or the previous secret under the fixed reference (rotation); a rerun of onex auth lane-login repairs both. config.yaml is now 0600 as well, because it is written the same way.
++is_seam_ticket: false
++interface_change: false
++interfaces_touched: []
++requirements:
++  - id: "req-omn20827-atomic-replace"
++    statement: "Both ~/.onex files are replaced atomically, so a crash cannot leave a file a rerun of lane-login cannot repair."
++    acceptance:
++      - id: "AC1"
++        statement: "AC1: each file is written to a temporary file in the same directory at mode 0600 and moved over the target with an atomic rename, with the directory entry flushed -- falsifier: `uv run pytest tests/unit/cli/test_store_onex_home_files_atomic.py -k atomic_replace -q` shows a direct write to the target path"
++      - id: "AC2"
++        statement: "AC2: a crash injected during either write leaves the previous file byte-identical; a crash between the config write and the secrets write on a first login leaves a config naming a missing secret, which `load` refuses loudly, and on a rotation (the fixed reference `local-lane-sasl` already holds the previous secret) leaves the previous secret readable, which then fails to authenticate; a rerun of `lane-login` repairs both -- falsifier: the crash-injection test, run separately for first creation and for rotation, finds a changed or truncated previous file or a rerun that refuses"
++      - id: "AC3"
++        statement: "AC3: the temporary file never exists at a mode wider than 0600 and none remains after a successful or failed write -- falsifier: the test finds a wider mode or a leftover temporary file"
++      - id: "AC4"
++        statement: "AC4: every existing test of the two store classes passes unchanged -- falsifier: `uv run pytest tests/unit/cli -k \"store\" -q` fails on a test this task did not touch"
++evidence_requirements:
++  - kind: "tests"
++    description: "The atomic-replace, crash-injection and temporary-file tests pass, with the existing store tests unchanged."
++    command: "uv run pytest -q --no-cov tests/unit/cli/test_store_onex_home_files_atomic.py tests/unit/cli/test_omn18432_lane_credential_store.py tests/unit/cli/test_omn18432_lane_login_command.py tests/unit/cli/test_omn18432_delegate_lane_credentials.py"
++emergency_bypass:
++  enabled: false
++  justification: ""
++  follow_up_ticket_id: ""
++dod_evidence:
++  - id: "dod-omn20827-ac1-atomic-replace"
++    description: >-
++      write_config and write_secrets each rename one 0600 temporary file from the target's own directory over the target and flush a directory descriptor, and neither opens the target for writing nor calls write_text on it. Fails at the parent, which writes the target directly.
++    source: "manual"
++    binds_ac: ["AC1"]
++    checks:
++      - check_type: "test_passes"
++        check_value: "uv run pytest -q --no-cov tests/unit/cli/test_store_onex_home_files_atomic.py -k atomic_replace"
++        cwd: "${OMNI_HOME}/omnibase_infra"
++  - id: "dod-omn20827-ac2-crash-injection"
++    description: >-
++      A crash at the flush or at the rename of either write leaves the previous file byte-identical with no leftover. A crash between the config and secrets writes on a first login leaves the lane declared and load refusing with CONFIGURATION_NOT_FOUND naming lane-login; on a rotation of the local lane it leaves the previous secret under local-lane-sasl, byte-identical and readable. A rerun of onex auth lane-login repairs both. Fails at the parent, whose direct writes leave no temporary file to rename.
++    source: "manual"
++    binds_ac: ["AC2"]
++    checks:
++      - check_type: "test_passes"
++        check_value: "uv run pytest -q --no-cov tests/unit/cli/test_store_onex_home_files_atomic.py tests/integration/cli/test_lane_login_crash_repair_omn20827.py -k crash"
++        cwd: "${OMNI_HOME}/omnibase_infra"
++  - id: "dod-omn20827-ac3-temporary-file"
++    description: >-
++      Under a 000 umask, every write lands in a file descriptor at mode 0600, and no temporary file remains after a successful write or after a failure at the write, the flush or the rename. Fails at the parent.
++    source: "manual"
++    binds_ac: ["AC3"]
++    checks:
++      - check_type: "test_passes"
++        check_value: "uv run pytest -q --no-cov tests/unit/cli/test_store_onex_home_files_atomic.py -k 'never_wider_than_0600 or leaves_no_temporary_file'"
++        cwd: "${OMNI_HOME}/omnibase_infra"
++  - id: "dod-omn20827-ac4-existing-store-tests"
++    description: >-
++      The new atomic tests run together with the untouched existing suites of the two store classes and the lane-login command, which all pass. Fails at the parent, which has no atomic test file.
++    source: "manual"
++    binds_ac: ["AC4"]
++    checks:
++      - check_type: "test_passes"
++        check_value: "uv run pytest -q --no-cov tests/unit/cli/test_store_onex_home_files_atomic.py tests/unit/cli/test_omn18432_lane_credential_store.py tests/unit/cli/test_omn18432_lane_login_command.py tests/unit/cli/test_omn18432_delegate_lane_credentials.py"
++        cwd: "${OMNI_HOME}/omnibase_infra"
+diff --git a/src/omnibase_infra/cli/store_onex_home_files.py b/src/omnibase_infra/cli/store_onex_home_files.py
+index 371897413c..abfd61dee3 100644
+--- a/src/omnibase_infra/cli/store_onex_home_files.py
++++ b/src/omnibase_infra/cli/store_onex_home_files.py
+@@ -14,6 +14,14 @@
+ the file actually being loaded (OMN-15922 established this and the reasoning is
+ unchanged).
+ 
++Both files are replaced atomically (OMN-20827). A direct ``write_text``
++truncates the target before writing it, so a crash in between leaves a short or
++empty file, and an empty ``credentials.json`` is refused by the next
++``load_secrets`` -- the refusal that would stop a rerun of ``lane-login`` from
++repairing the machine. Each write goes to a temporary file in the same
++directory, created at 0600, flushed, renamed over the target, and the directory
++entry is flushed after the rename.
++
+ ``StoreGatewayCredential`` still carries its own copy of this plumbing. It is
+ not migrated here in the same change: its refusals are load-bearing for the
+ cloud credential path and re-homing them needs its own proof, not a rider on a
+@@ -22,8 +30,11 @@
+ 
+ from __future__ import annotations
+ 
++import contextlib
+ import json
++import os
+ import stat
++import tempfile
+ from pathlib import Path
+ 
+ import yaml
+@@ -73,8 +84,7 @@ def load_config(self, *, must_exist: bool) -> dict[str, object]:
+ 
+     def write_config(self, document: dict[str, object]) -> None:
+         """Re-dump the WHOLE document, so every other writer's keys survive."""
+-        self._onex_home.mkdir(parents=True, exist_ok=True)
+-        self.config_path.write_text(yaml.safe_dump(document, sort_keys=False))
++        self._replace(self.config_path, yaml.safe_dump(document, sort_keys=False))
+ 
+     def load_secrets(self) -> dict[str, str]:
+         if not self.credentials_path.exists():
+@@ -97,14 +107,41 @@ def load_secrets(self) -> dict[str, str]:
+     def write_secrets(self, secrets: dict[str, str]) -> None:
+         """Write the secret file so it is never briefly world-readable.
+ 
+-        ``touch`` + ``chmod`` before ``write_text``: creating the file at the
+-        umask default and tightening it afterwards leaves a window in which the
+-        value is on disk at 0644.
++        The temporary file is created at 0600 whatever the umask, so the value
++        is never on disk at a wider mode, and the rename keeps that mode.
++        """
++        self._replace(
++            self.credentials_path, json.dumps(secrets, indent=2, sort_keys=True)
++        )
++
++    def _replace(self, target: Path, text: str) -> None:
++        """Write ``text`` to a 0600 temporary file and rename it over ``target``.
++
++        On any failure the temporary file is removed and ``target`` is left as
++        it was, byte for byte.
+         """
+         self._onex_home.mkdir(parents=True, exist_ok=True)
+-        self.credentials_path.touch(mode=0o600, exist_ok=True)
+-        self.credentials_path.chmod(0o600)
+-        self.credentials_path.write_text(json.dumps(secrets, indent=2, sort_keys=True))
++        fd, temporary = tempfile.mkstemp(
++            dir=self._onex_home, prefix=f".{target.name}.", suffix=".tmp"
++        )
++        try:
++            try:
++                data = text.encode("utf-8")
++                while data:
++                    data = data[os.write(fd, data) :]
++                os.fsync(fd)
++            finally:
++                os.close(fd)
++            Path(temporary).replace(target)
++        except BaseException:
++            with contextlib.suppress(FileNotFoundError):
++                Path(temporary).unlink()
++            raise
++        directory = os.open(self._onex_home, os.O_RDONLY)
++        try:
++            os.fsync(directory)
++        finally:
++            os.close(directory)
+ 
+     def read_secret(self, ref: str, remediation: str) -> str:
+         """Resolve one reference, refusing a file anyone but the owner can read."""
+diff --git a/tests/integration/cli/test_lane_login_crash_repair_omn20827.py b/tests/integration/cli/test_lane_login_crash_repair_omn20827.py
+new file mode 100644
+index 0000000000..192d7b89a1
+--- /dev/null
++++ b/tests/integration/cli/test_lane_login_crash_repair_omn20827.py
+@@ -0,0 +1,128 @@
++# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
++# SPDX-License-Identifier: MIT
++
++"""OMN-20827 AC2: a crash between the two ~/.onex writes is repaired by a rerun of lane-login.
++
++``StoreLaneCredential.save`` writes ``config.yaml`` and then ``credentials.json``.
++A crash after the first and before the second leaves either a config naming a
++secret the 0600 file does not hold yet (a first login), which ``load`` refuses
++naming ``lane-login``, or the previous secret still filed under the lane's fixed
++reference (a rotation), which is readable and stale. These tests drive the real
++``onex auth lane-login`` command against a real directory, crash the store
++between the two writes, and check that a rerun of the command repairs both.
++"""
++
++from __future__ import annotations
++
++from pathlib import Path
++
++import pytest
++from click.testing import CliRunner
++
++from omnibase_core.enums.enum_core_error_code import EnumCoreErrorCode
++from omnibase_core.errors.model_onex_error import ModelOnexError
++from omnibase_infra.cli.cli_auth import auth_group
++from omnibase_infra.cli.store_lane_credential import StoreLaneCredential
++from omnibase_infra.cli.store_onex_home_files import StoreOnexHomeFiles
++
++pytestmark = pytest.mark.integration
++
++_LANE = "local"
++_PASSWORD_REF = StoreLaneCredential.password_ref(_LANE)
++
++
++class _InjectedCrashError(RuntimeError):
++    """Stands in for the process dying between the two writes."""
++
++
++@pytest.fixture
++def onex_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
++    """Point ``lane-login`` at a real directory instead of the operator's own."""
++    home = tmp_path / "home"
++    home.mkdir()
++    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
++    return home / ".onex"
++
++
++def _lane_login(username: str, password: str) -> None:
++    result = CliRunner().invoke(
++        auth_group,
++        [
++            "lane-login",
++            "--lane",
++            _LANE,
++            "--sasl-username",
++            username,
++            "--sasl-password-stdin",
++        ],
++        input=f"{password}\n",
++    )
++    assert result.exit_code == 0, result.output
++
++
++def _leftovers(directory: Path) -> list[str]:
++    return sorted(
++        path.name
++        for path in directory.iterdir()
++        if path.name not in {"config.yaml", "credentials.json"}
++    )
++
++
++def test_a_crash_between_the_two_writes_on_a_first_login_is_refused_then_repaired(
++    onex_home: Path, monkeypatch: pytest.MonkeyPatch
++) -> None:
++    with monkeypatch.context() as patch:
++        patch.setattr(
++            StoreOnexHomeFiles,
++            "write_secrets",
++            lambda self, secrets: (_ for _ in ()).throw(_InjectedCrashError("secrets")),
++        )
++        with pytest.raises(_InjectedCrashError):
++            StoreLaneCredential(onex_home=onex_home).save(
++                lane=_LANE,
++                sasl_username="local-developer",
++                sasl_password="first-secret",
++            )
++
++    store = StoreLaneCredential(onex_home=onex_home)
++    assert store.declared_lanes() == (_LANE,)
++    with pytest.raises(ModelOnexError) as caught:
++        store.load(_LANE)
++    assert caught.value.error_code == EnumCoreErrorCode.CONFIGURATION_NOT_FOUND
++    assert "lane-login" in str(caught.value)
++
++    _lane_login("local-developer", "first-secret")
++    credential = StoreLaneCredential(onex_home=onex_home).load(_LANE)
++    assert credential.sasl_password.get_secret_value() == "first-secret"
++    assert _leftovers(onex_home) == []
++
++
++def test_a_crash_between_the_two_writes_on_a_rotation_keeps_the_previous_secret(
++    onex_home: Path, monkeypatch: pytest.MonkeyPatch
++) -> None:
++    _lane_login("local-developer", "first-secret")
++    secrets_before = (onex_home / "credentials.json").read_bytes()
++
++    with monkeypatch.context() as patch:
++        patch.setattr(
++            StoreOnexHomeFiles,
++            "write_secrets",
++            lambda self, secrets: (_ for _ in ()).throw(_InjectedCrashError("secrets")),
++        )
++        with pytest.raises(_InjectedCrashError):
++            StoreLaneCredential(onex_home=onex_home).save(
++                lane=_LANE,
++                sasl_username="local-developer",
++                sasl_password="second-secret",
++            )
++
++    # The fixed reference still holds the previous secret: readable, and stale.
++    assert (onex_home / "credentials.json").read_bytes() == secrets_before
++    stale = StoreLaneCredential(onex_home=onex_home).load(_LANE)
++    assert stale.sasl_password_ref == _PASSWORD_REF
++    assert stale.sasl_password.get_secret_value() == "first-secret"
++
++    _lane_login("local-developer", "second-secret")
++    rotated = StoreLaneCredential(onex_home=onex_home).load(_LANE)
++    assert rotated.sasl_password.get_secret_value() == "second-secret"
++    assert _leftovers(onex_home) == []
+diff --git a/tests/unit/cli/test_store_onex_home_files_atomic.py b/tests/unit/cli/test_store_onex_home_files_atomic.py
+new file mode 100644
+index 0000000000..120fc067ee
+--- /dev/null
++++ b/tests/unit/cli/test_store_onex_home_files_atomic.py
+@@ -0,0 +1,231 @@
++# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
++# SPDX-License-Identifier: MIT
++
++"""OMN-20827: the two ``~/.onex`` files are replaced atomically.
++
++A direct ``write_text`` truncates the target before it writes it, so a crash
++in the middle leaves a short or empty file. An empty ``credentials.json`` is
++refused by the next ``load_secrets`` as not valid JSON, and that refusal is
++exactly what stops a rerun of ``lane-login`` from repairing the machine. Each
++file is now written to a temporary file in the same directory, created at
++0600, flushed, and renamed over the target, and the directory entry is
++flushed after the rename.
++
++A crash is injected by making one step of the write raise: the flush before
++the rename, or the rename itself. Between the two files, a crash after the
++config write and before the secrets write leaves a config naming a secret the
++0600 file does not hold yet (first login) or still holding the previous one
++(rotation). Both are states a rerun of ``lane-login`` repairs.
++"""
++
++from __future__ import annotations
++
++import os
++import stat
++from collections.abc import Callable
++from pathlib import Path
++
++import pytest
++from click.testing import CliRunner
++
++from omnibase_core.enums.enum_core_error_code import EnumCoreErrorCode
++from omnibase_core.errors.model_onex_error import ModelOnexError
++from omnibase_infra.cli import store_onex_home_files
++from omnibase_infra.cli.cli_auth import auth_group
++from omnibase_infra.cli.store_lane_credential import StoreLaneCredential
++from omnibase_infra.cli.store_onex_home_files import StoreOnexHomeFiles
++
++pytestmark = pytest.mark.unit
++
++_LANE = "local"
++_PASSWORD_REF = StoreLaneCredential.password_ref(_LANE)
++
++
++class _InjectedCrashError(RuntimeError):
++    """Stands in for the process dying at the patched step."""
++
++
++@pytest.fixture
++def onex_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
++    """Point ``lane-login`` at a real directory instead of the operator's own."""
++    home = tmp_path / "home"
++    home.mkdir()
++    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
++    return home / ".onex"
++
++
++def _lane_login(username: str, password: str) -> None:
++    result = CliRunner().invoke(
++        auth_group,
++        [
++            "lane-login",
++            "--lane",
++            _LANE,
++            "--sasl-username",
++            username,
++            "--sasl-password-stdin",
++        ],
++        input=f"{password}\n",
++    )
++    assert result.exit_code == 0, result.output
++
++
++def _leftovers(directory: Path) -> list[str]:
++    return sorted(
++        path.name
++        for path in directory.iterdir()
++        if path.name not in {"config.yaml", "credentials.json"}
++    )
++
++
++def _crash_at(monkeypatch: pytest.MonkeyPatch, step: str) -> None:
++    """Make one OS step of the store's write raise, as a crash there would."""
++
++    def crash(*args: object, **kwargs: object) -> None:
++        raise _InjectedCrashError(step)
++
++    monkeypatch.setattr(store_onex_home_files.os, step, crash)
++
++
++# --- AC1: a temporary file in the same directory, renamed over the target ----
++
++
++@pytest.mark.parametrize("target", ["config", "secrets"])
++def test_atomic_replace_writes_a_temporary_file_and_renames_it(
++    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target: str
++) -> None:
++    files = StoreOnexHomeFiles(tmp_path)
++    renames: list[tuple[Path, Path]] = []
++    flushed_dirs: list[int] = []
++    real_replace = os.replace
++    real_fsync = os.fsync
++
++    def recording_replace(
++        src: str | os.PathLike[str], dst: str | os.PathLike[str]
++    ) -> None:
++        source = Path(src)
++        assert stat.S_IMODE(source.stat().st_mode) == 0o600
++        renames.append((source, Path(dst)))
++        real_replace(src, dst)
++
++    def recording_fsync(fd: int) -> None:
++        if stat.S_ISDIR(os.fstat(fd).st_mode):
++            flushed_dirs.append(fd)
++        real_fsync(fd)
++
++    monkeypatch.setattr(store_onex_home_files.os, "replace", recording_replace)
++    monkeypatch.setattr(store_onex_home_files.os, "fsync", recording_fsync)
++
++    if target == "config":
++        files.write_config({"lanes": {}})
++        expected = files.config_path
++    else:
++        files.write_secrets({_PASSWORD_REF: "value"})
++        expected = files.credentials_path
++
++    ((source, destination),) = renames
++    assert destination == expected
++    assert source.parent == expected.parent
++    assert source != expected
++    assert flushed_dirs, "the directory entry was not flushed after the rename"
++    assert stat.S_IMODE(expected.stat().st_mode) == 0o600
++
++
++@pytest.mark.parametrize("target", ["config", "secrets"])
++def test_atomic_replace_never_writes_the_target_path_directly(
++    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target: str
++) -> None:
++    """Opening the target itself for writing is the truncate-then-write this removes."""
++    files = StoreOnexHomeFiles(tmp_path)
++    files.write_config({"lanes": {}})
++    files.write_secrets({_PASSWORD_REF: "old"})
++    targets = {str(files.config_path), str(files.credentials_path)}
++    real_open = os.open
++
++    def guarded_open(path: str | os.PathLike[str], flags: int, *args: int) -> int:
++        if str(path) in targets and flags & (os.O_WRONLY | os.O_RDWR):
++            raise AssertionError(f"direct write to {path}")
++        return real_open(path, flags, *args)
++
++    monkeypatch.setattr(store_onex_home_files.os, "open", guarded_open)
++    monkeypatch.setattr(
++        Path,
++        "write_text",
++        lambda self, *a, **k: pytest.fail(f"write_text on {self}"),
++    )
++
++    if target == "config":
++        files.write_config({"lanes": {"dev": {}}})
++    else:
++        files.write_secrets({_PASSWORD_REF: "new"})
++
++
++# --- AC2: a crash leaves the previous file byte-identical, and a rerun repairs -
++
++
++@pytest.mark.parametrize("step", ["fsync", "replace"])
++@pytest.mark.parametrize("target", ["config", "secrets"])
++def test_a_crash_inside_one_write_leaves_the_previous_file_byte_identical(
++    onex_home: Path, monkeypatch: pytest.MonkeyPatch, step: str, target: str
++) -> None:
++    _lane_login("local-developer", "first-secret")
++    files = StoreOnexHomeFiles(onex_home)
++    path = files.config_path if target == "config" else files.credentials_path
++    before = path.read_bytes()
++
++    write: Callable[[], None] = (
++        (lambda: files.write_config({"lanes": {}}))
++        if target == "config"
++        else (lambda: files.write_secrets({_PASSWORD_REF: "second-secret"}))
++    )
++    with monkeypatch.context() as patch:
++        _crash_at(patch, step)
++        with pytest.raises(_InjectedCrashError):
++            write()
++
++    assert path.read_bytes() == before
++    assert _leftovers(onex_home) == []
++
++
++# --- AC3: the temporary file is 0600 from creation, and never left behind -----
++
++
++@pytest.mark.parametrize("target", ["config", "secrets"])
++def test_the_temporary_file_is_never_wider_than_0600(
++    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target: str
++) -> None:
++    files = StoreOnexHomeFiles(tmp_path)
++    modes: list[int] = []
++    real_write = os.write
++    real_umask = os.umask(0)  # the widest umask a caller could run under
++
++    def recording_write(fd: int, data: bytes) -> int:
++        modes.append(stat.S_IMODE(os.fstat(fd).st_mode))
++        return real_write(fd, data)
++
++    try:
++        monkeypatch.setattr(store_onex_home_files.os, "write", recording_write)
++        if target == "config":
++            files.write_config({"lanes": {}})
++        else:
++            files.write_secrets({_PASSWORD_REF: "value"})
++    finally:
++        os.umask(real_umask)
++
++    assert modes, "the store did not write through a file descriptor"
++    assert all(mode == 0o600 for mode in modes), [f"{m:04o}" for m in modes]
++    assert _leftovers(tmp_path) == []
++
++
++@pytest.mark.parametrize("step", ["write", "fsync", "replace"])
++def test_a_failed_write_leaves_no_temporary_file(
++    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, step: str
++) -> None:
++    files = StoreOnexHomeFiles(tmp_path)
++    _crash_at(monkeypatch, step)
++
++    with pytest.raises(_InjectedCrashError):
++        files.write_secrets({_PASSWORD_REF: "value"})
++
++    assert _leftovers(tmp_path) == []
++    assert not files.credentials_path.exists()
+
+END PUBLIC SOURCE

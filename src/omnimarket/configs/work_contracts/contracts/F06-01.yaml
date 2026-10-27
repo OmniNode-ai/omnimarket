@@ -1,0 +1,51 @@
+contract_id: F06-01
+task_kind: code_edit
+inputs:
+- path: src/omnimarket/configs/work_contracts/inputs/F06-01.txt
+  sha256: dce7b58cfc1e6ef38aa4af33ea073bd84a9ce11fccedea376218237bee2b3ab4
+- path: src/omnimarket/configs/work_contracts/evaluators/F06-01/test_frozen.txt
+  sha256: d0c74b42fbd3627ecc272e19167dc39671debaa99b9dd54fd44cfd00aa737652
+- path: src/omnimarket/configs/work_contracts/rules/F06-01.json
+  sha256: 1510f5602c2b496e6e187ce0575f1c9cd4b6b17c6f1ec9496379bee227b7a399
+acceptance:
+  kind: seeded_bug
+  spec:
+    argv:
+    - python
+    - -m
+    - omnimarket.handlers.work_contracts.control_evaluator
+    - --root
+    - '{root}'
+    - --case
+    - src/omnimarket/configs/work_contracts/rules/F06-01.json
+    - --answer
+    - '{answer}'
+    environment:
+      path: uv.lock
+      sha256: cc8b0d6926212d86056ae768b5c3d30112085039ad5a829f3dc92469bbcf629e
+    expected_exit: 0
+    target: src/omnibase_core/models/orchestrator/payloads/model_action_typed_payload.py
+    patch:
+      path: src/omnimarket/configs/work_contracts/evaluators/F06-01/seed.patch
+      sha256: 1119441f4120699eb558539a3ab343bc22aa6a8447124c6560cedeea96e10462
+budgets:
+  max_output_tokens: 8192
+  max_wall_s: 180
+  max_turns: 8
+  max_usd: 5
+controls:
+  positive:
+    path: src/omnimarket/configs/work_contracts/controls/F06-01.positive.txt
+    sha256: df19e2cb65888febb13e22990954fbf1104870b00ea8a9adc0ee844b82b21559
+  negative:
+    path: src/omnimarket/configs/work_contracts/controls/F06-01.negative.txt
+    sha256: 62c99803330f59ee7199a9ce5fa03d56d4cb2271d38c9d6fe5b9b5aac2f0606c
+evaluators:
+- path: src/omnimarket/handlers/work_contracts/control_evaluator.py
+  sha256: 35beec5a332b646a0c1a696407f0b4a1f5a683269b19e9f782af9df0ee662d7d
+provenance:
+  source: 2026-10-27-deleg-sc-d-1100.md
+  source_sha256: e9ea31b55d2bedfed466bc0d2d3a9761081d1150c30ecc2426454cc8d0740f8f
+  adaptation: Deidentified fixed/seeded public module and entire frozen original pytest
+    file. Runner accepts a complete replacement module; patch-only historical outputs
+    are not equivalent.

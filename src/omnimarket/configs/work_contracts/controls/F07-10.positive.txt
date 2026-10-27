@@ -1,0 +1,1 @@
+{"source": "src/omnibase_core/models/delegation/model_remote_task_state.py", "old": "ConfigDict(frozen=True, extra=\"forbid\")", "new": "ConfigDict(frozen=False, extra=\"forbid\")", "defect": "Remote task state loses frozen immutability: persisted identity/state fields become assignable after validation."}

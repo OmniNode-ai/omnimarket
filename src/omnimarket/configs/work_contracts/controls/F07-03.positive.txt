@@ -1,0 +1,1 @@
+{"source": "src/omnibase_core/models/nodes/sprint_roll/model_sprint_roll_plan.py", "old": "refused: dict[str, str] = Field(default_factory=dict)", "new": "refused: dict[str, str] = Field(default_factory=list)", "defect": "refused is declared dict but defaults to a list; default construction has the wrong runtime type and mapping operations fail."}

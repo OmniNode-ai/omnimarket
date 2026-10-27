@@ -1,0 +1,61 @@
+contract_id: dod-OMN-21090-18
+task_kind: code_edit
+inputs:
+- path: src/omnimarket/nodes/node_exemplar_registry_reconcile_compute/handlers/handler_exemplar_registry_reconcile.py
+  sha256: 9f9251ddf97b4b075770859047c3e54f21d3d6c8bfa7b3c4885088d8ed953374
+- path: tests/nodes/node_exemplar_registry_reconcile_compute/test_sampled_revocation.py
+  sha256: 016df6727e5be50c40d470d0409ef0a7ed8fbf38768c28141601b6750438f215
+- path: src/omnimarket/configs/work_contracts/history/dod-OMN-21090-18.json
+  sha256: 9e2ae0929243cc51fd3a4cbff4407438436dc209ac5ec7580318e602c5af6ae0
+- path: src/omnimarket/configs/work_contracts/history/dod-OMN-21090-18.base.txt
+  sha256: 6c3635e2a3848b9fd11ce6f42c5c55cb2c511c196c3db250392c2365e7e42201
+- path: src/omnimarket/configs/work_contracts/history/dod-OMN-21090-18.repair.txt
+  sha256: 9f9251ddf97b4b075770859047c3e54f21d3d6c8bfa7b3c4885088d8ed953374
+- path: tests/nodes/node_session_compaction_measurement_compute/fixtures/session.jsonl
+  sha256: 7fdfd4e668d08ac8ba6e66db042b588962cd7274f80e177464699f558ce2a9e0
+- path: src/omnimarket/nodes/node_session_compaction_measurement_compute/models/model_measurement.py
+  sha256: c50fa41a8ddf8289d8dac977af8a412fdb44b1a15a7f7f62083bf57b4aac9716
+- path: src/omnimarket/configs/work_contracts/rules/dod-OMN-21090-18.json
+  sha256: f54ba03fd53bc9cf75e131ad254e1b8dd89a2b4be0acd306e8ca8ecffffe8308
+acceptance:
+  kind: dod_evidence
+  spec:
+    argv:
+    - python
+    - -m
+    - omnimarket.handlers.work_contracts.control_evaluator
+    - --root
+    - '{root}'
+    - --case
+    - src/omnimarket/configs/work_contracts/rules/dod-OMN-21090-18.json
+    - --answer
+    - '{answer}'
+    environment:
+      path: uv.lock
+      sha256: cc8b0d6926212d86056ae768b5c3d30112085039ad5a829f3dc92469bbcf629e
+    expected_exit: 0
+    ticket: OMN-21090
+    evidence_id: dod-omn21090-ac4-sampled-exemplar-revocation
+    base_commit: bef39a6bdac60fc24cc6ac2c2e8b0fe0b1c0a20b
+    repair_commit: 8ea4f7a0bc9794e48d6fe7d2a99d075f8c93a22a
+budgets:
+  max_output_tokens: 8192
+  max_wall_s: 180
+  max_turns: 8
+  max_usd: 5
+controls:
+  positive:
+    path: src/omnimarket/configs/work_contracts/controls/dod-OMN-21090-18.positive.txt
+    sha256: 9f9251ddf97b4b075770859047c3e54f21d3d6c8bfa7b3c4885088d8ed953374
+  negative:
+    path: src/omnimarket/configs/work_contracts/controls/dod-OMN-21090-18.negative.txt
+    sha256: d67527bb4215278ba91ef1c08493b89ac71b739b65ddff150bac6286fabe34e4
+evaluators:
+- path: src/omnimarket/handlers/work_contracts/control_evaluator.py
+  sha256: 35beec5a332b646a0c1a696407f0b4a1f5a683269b19e9f782af9df0ee662d7d
+provenance:
+  source: OMN-21090.yaml
+  source_sha256: 1bc846f97fc9100681fc314e5d3c092311fdaa2246962205f82ed394cc8c4e48
+  adaptation: Individual frozen pytest check derived from the ticket measurement test_passes
+    evidence. Base predates this module; absence is a failing control. Twenty contracts
+    from one ticket; no claim of twenty independent tickets.

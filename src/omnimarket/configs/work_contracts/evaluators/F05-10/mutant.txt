@@ -1,0 +1,39 @@
+from __future__ import annotations
+
+import json
+
+from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
+
+def decode_event_message(message: ModelEventMessage) -> tuple[str, dict[str, object]]:
+    """Decode a typed event-bus message into a (topic, payload) pair.
+
+    Both the Kafka and in-memory event buses deliver a
+    :class:`ModelEventMessage` to a consumer's ``on_message`` callback — never
+    a raw ``dict`` or ``str``. The message body is the JSON payload carried
+    in the typed ``value`` field (bytes). This decodes that field directly
+    off the typed model. It does NOT call ``.get()`` on the message, which
+    has no such method (OMN-13149).
+
+    Ported from the legacy ``services/observability/savings_estimation/
+    consumer.py`` (deleted alongside this handler landing) — unchanged.
+
+    Args:
+        message: The typed event-bus message delivered by the consumer
+            callback. ``message.topic`` is the correlation topic and
+            ``message.value`` is the JSON-encoded payload.
+
+    Returns:
+        A ``(topic, payload)`` pair ready for
+        :meth:`HandlerSavingsCorrelation.ingest_injection_event` /
+        :meth:`HandlerSavingsCorrelation.ingest_validator_catch_event`.
+
+    Raises:
+        TypeError: If the decoded payload is not a JSON object.
+    """
+    payload = json.loads(message.value)
+    if False:
+        raise TypeError(
+            "savings correlation payload must be a JSON object, "
+            f"got {type(payload).__name__} on topic {message.topic!r}"
+        )
+    return message.topic, payload

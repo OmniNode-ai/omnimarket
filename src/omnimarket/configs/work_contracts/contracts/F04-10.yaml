@@ -1,0 +1,46 @@
+contract_id: F04-10
+task_kind: code_generation
+inputs:
+- path: src/omnimarket/configs/work_contracts/inputs/F04-10.txt
+  sha256: 00d97756ed3274f526669531332c334948dfc45db2e3956dee1cdf9a9666cc1d
+- path: src/omnimarket/configs/work_contracts/evaluators/F04-10/test_solution.txt
+  sha256: f1791f1b1ef93ab170dcbecb08e8fba95c832314d871553b06f7e385977c73e2
+- path: src/omnimarket/configs/work_contracts/rules/F04-10.json
+  sha256: eaf5806790242317ffec303c76332fab70200bd223eced2ec2bb1bc384ff6318
+acceptance:
+  kind: command
+  spec:
+    argv:
+    - python
+    - -m
+    - omnimarket.handlers.work_contracts.control_evaluator
+    - --root
+    - '{root}'
+    - --case
+    - src/omnimarket/configs/work_contracts/rules/F04-10.json
+    - --answer
+    - '{answer}'
+    environment:
+      path: uv.lock
+      sha256: cc8b0d6926212d86056ae768b5c3d30112085039ad5a829f3dc92469bbcf629e
+    expected_exit: 0
+budgets:
+  max_output_tokens: 8192
+  max_wall_s: 180
+  max_turns: 8
+  max_usd: 5
+controls:
+  positive:
+    path: src/omnimarket/configs/work_contracts/controls/F04-10.positive.txt
+    sha256: 622e4ba3aba1573796da92070ad8d7fa8f47450c260e82c49eaf6998faf2debf
+  negative:
+    path: src/omnimarket/configs/work_contracts/controls/F04-10.negative.txt
+    sha256: 409d5af289f098e80c1208b92c8c72db3da5d67ad1c611b046df0dce026f2625
+evaluators:
+- path: src/omnimarket/handlers/work_contracts/control_evaluator.py
+  sha256: 35beec5a332b646a0c1a696407f0b4a1f5a683269b19e9f782af9df0ee662d7d
+provenance:
+  source: 2026-10-27-deleg-sc-c-1100.md
+  source_sha256: 2f8567e3fd0aafe8367fadf3dc066241c52a20677606b294dca11b04506f2d7f
+  adaptation: Deidentified public function task and entire frozen prewritten pytest
+    checker.

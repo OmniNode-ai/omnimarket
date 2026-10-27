@@ -1,0 +1,7 @@
+from __future__ import annotations
+
+from omnibase_core.models.events.work.model_hold_scope import ModelHoldScope
+
+def scope_covers_repo(scope: ModelHoldScope, repo: str) -> bool:
+    """True when ``scope`` covers every pull request of ``repo``."""
+    return scope.all_repos or repo.lower() in scope.repos

@@ -1,0 +1,47 @@
+contract_id: F10-03
+task_kind: reasoning
+inputs:
+- path: src/omnimarket/configs/work_contracts/inputs/F10-03.txt
+  sha256: d9f1dc0cd27980feb0fda1def21720bfaf083b844c2d03a01335a30a50c8c176
+acceptance:
+  kind: schema
+  spec:
+    schema:
+      type: object
+      required:
+      - diagnosis
+      - evidence_scope
+      properties:
+        diagnosis:
+          type: string
+          const: Use F08-03 semantic check plus timeout evidence and each attempted
+            rung/move. A pre-dispatch transport failure is not a model timeout escalation.
+        evidence_scope:
+          type: string
+          const: offline diagnosis; no live model escalation proven
+      additionalProperties: false
+    expected_json: '{"diagnosis": "Use F08-03 semantic check plus timeout evidence
+      and each attempted rung/move. A pre-dispatch transport failure is not a model
+      timeout escalation.", "evidence_scope": "offline diagnosis; no live model escalation
+      proven"}'
+budgets:
+  max_output_tokens: 8192
+  max_wall_s: 180
+  max_turns: 8
+  max_usd: 5
+controls:
+  positive:
+    path: src/omnimarket/configs/work_contracts/controls/F10-03.positive.txt
+    sha256: f918ae777dc0bb2e920624e5a02ab09658933b4dbcbd47dc451bc28518fc9c1e
+  negative:
+    path: src/omnimarket/configs/work_contracts/controls/F10-03.negative.txt
+    sha256: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+evaluators:
+- path: src/omnimarket/handlers/work_contracts/control_evaluator.py
+  sha256: 35beec5a332b646a0c1a696407f0b4a1f5a683269b19e9f782af9df0ee662d7d
+provenance:
+  source: 2026-10-27-deleg-sc-e-1100.md
+  source_sha256: e622719726c2f859deb08bc3b084f70bb82ccf61c93722c1d5243dbb845c928f
+  adaptation: Frozen prose rubric converted to complete structured diagnosis. F10
+    is offline diagnosis only; no fabricated live attempt/transition proof. Historical
+    outputs are not equivalent.

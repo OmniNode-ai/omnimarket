@@ -1,0 +1,7 @@
+from solution import is_omnimarket_v0 as f
+
+def test_shape():
+    assert f({'handler':{'class':'A'}}) is True
+    assert f({'handler':{'class':None}}) is True
+    for raw in [{},{'handler':None},{'handler':'A'},{'handler':{}},{'class':'A'}]:
+        assert f(raw) is False

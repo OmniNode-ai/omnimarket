@@ -1,0 +1,55 @@
+contract_id: F07-08
+task_kind: code_review
+inputs:
+- path: src/omnimarket/configs/work_contracts/inputs/F07-08.txt
+  sha256: cfbbd66786947cee6ba1d4bb32ec820a97dc2888f46a37e8cc8520a65597cdb5
+acceptance:
+  kind: schema
+  spec:
+    schema:
+      type: object
+      required:
+      - source
+      - old
+      - new
+      - defect
+      properties:
+        source:
+          type: string
+          const: src/omnibase_core/models/security/model_signature_chain.py
+        old:
+          type: string
+          const: '"envelope_id": str(self.envelope_id),'
+        new:
+          type: string
+          const: '"envelope_id": self.envelope_id,'
+        defect:
+          type: string
+          const: Signature chain hash passes a UUID envelope_id into json.dumps without
+            converting it to a string, raising TypeError during hashing.
+      additionalProperties: false
+    expected_json: '{"defect": "Signature chain hash passes a UUID envelope_id into
+      json.dumps without converting it to a string, raising TypeError during hashing.",
+      "new": "\"envelope_id\": self.envelope_id,", "old": "\"envelope_id\": str(self.envelope_id),",
+      "source": "src/omnibase_core/models/security/model_signature_chain.py"}'
+budgets:
+  max_output_tokens: 8192
+  max_wall_s: 180
+  max_turns: 8
+  max_usd: 5
+controls:
+  positive:
+    path: src/omnimarket/configs/work_contracts/controls/F07-08.positive.txt
+    sha256: 41abb1320ae434286d00ff93ef0fb1bfff8cf4b936824f0022857b7c9343515a
+  negative:
+    path: src/omnimarket/configs/work_contracts/controls/F07-08.negative.txt
+    sha256: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+evaluators:
+- path: src/omnimarket/handlers/work_contracts/control_evaluator.py
+  sha256: 35beec5a332b646a0c1a696407f0b4a1f5a683269b19e9f782af9df0ee662d7d
+provenance:
+  source: 2026-10-27-deleg-sc-d-1100.md
+  source_sha256: e9ea31b55d2bedfed466bc0d2d3a9761081d1150c30ecc2426454cc8d0740f8f
+  adaptation: Manual seeded review rubric converted to exact structured defect and
+    consequence fields. The contract requires a JSON finding; historical free text
+    is not equivalent.

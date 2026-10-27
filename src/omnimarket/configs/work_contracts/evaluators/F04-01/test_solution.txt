@@ -1,0 +1,10 @@
+from solution import strip_legacy_metadata as f
+
+def test_strip():
+    raw={'metadata':{'x':1},'contract_name':'old','node_name':'old','name':'ok','node_type':'COMPUTE','other':None}
+    expected={'name':'ok','node_type':'COMPUTE','other':None}
+    assert f(raw)==expected
+    assert 'metadata' in raw
+    assert f({})=={}
+    assert f(expected)==expected
+    assert f(expected) is not expected

@@ -1,0 +1,1 @@
+{"id": "F03-06", "kind": "implementation", "symbols": ["schema_violation_reasons", "locate_schema_conforming_json"], "count": 2, "summary": "Public module symbols."}

@@ -1,0 +1,51 @@
+contract_id: F06-03
+task_kind: code_edit
+inputs:
+- path: src/omnimarket/configs/work_contracts/inputs/F06-03.txt
+  sha256: de203becea488e3a331cf99a686331cdb79635bc3a44917bb63fdcef7911e64d
+- path: src/omnimarket/configs/work_contracts/evaluators/F06-03/test_frozen.txt
+  sha256: 46878cd8c7e847d3e1c540985095db1a159ca92b75ea3abe73123389b4738b4d
+- path: src/omnimarket/configs/work_contracts/rules/F06-03.json
+  sha256: 219dabd998f7f15d4929cfe71defbdb8674ccf88b52e904512025ceb803c8431
+acceptance:
+  kind: seeded_bug
+  spec:
+    argv:
+    - python
+    - -m
+    - omnimarket.handlers.work_contracts.control_evaluator
+    - --root
+    - '{root}'
+    - --case
+    - src/omnimarket/configs/work_contracts/rules/F06-03.json
+    - --answer
+    - '{answer}'
+    environment:
+      path: uv.lock
+      sha256: cc8b0d6926212d86056ae768b5c3d30112085039ad5a829f3dc92469bbcf629e
+    expected_exit: 0
+    target: src/omnibase_core/models/nodes/sprint_roll/model_sprint_roll_plan.py
+    patch:
+      path: src/omnimarket/configs/work_contracts/evaluators/F06-03/seed.patch
+      sha256: ca8461fff2d948c12c17530ee31e969ae11282d6e16fa858f7a8c4f1b46c50b8
+budgets:
+  max_output_tokens: 8192
+  max_wall_s: 180
+  max_turns: 8
+  max_usd: 5
+controls:
+  positive:
+    path: src/omnimarket/configs/work_contracts/controls/F06-03.positive.txt
+    sha256: 1f85e8fe4b8e738af2249fa240717bdd1a72d147f1d98b1dc629c142d8c35f39
+  negative:
+    path: src/omnimarket/configs/work_contracts/controls/F06-03.negative.txt
+    sha256: 9452d4a17f3760b38aa7be16a9653bbe8a0f6381f27eca695e7417b1b386ab9f
+evaluators:
+- path: src/omnimarket/handlers/work_contracts/control_evaluator.py
+  sha256: 35beec5a332b646a0c1a696407f0b4a1f5a683269b19e9f782af9df0ee662d7d
+provenance:
+  source: 2026-10-27-deleg-sc-d-1100.md
+  source_sha256: e9ea31b55d2bedfed466bc0d2d3a9761081d1150c30ecc2426454cc8d0740f8f
+  adaptation: Deidentified fixed/seeded public module and entire frozen original pytest
+    file. Runner accepts a complete replacement module; patch-only historical outputs
+    are not equivalent.
