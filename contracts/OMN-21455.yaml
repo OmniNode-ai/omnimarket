@@ -145,3 +145,8 @@ dod_evidence:
   - check_type: command
     check_value: uv run python -m omnimarket.nodes.node_llm_delegation_call_effect --help
     cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: |
+      set -eu;
+      curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_codex_harness_attempt.py" | grep -q "class HandlerCodexHarnessAttempt"
+    cwd: .
