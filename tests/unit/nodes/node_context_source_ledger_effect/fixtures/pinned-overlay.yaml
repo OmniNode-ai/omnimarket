@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+context_source_ledger:
+  ledger_source:
+    mode: pinned
+    manifest_root: "${env.ONEX_LEDGER_MANIFEST_ROOT:}"
+    ledger_paths: [archive/day.md]
+    tenant_ids: [fixture]

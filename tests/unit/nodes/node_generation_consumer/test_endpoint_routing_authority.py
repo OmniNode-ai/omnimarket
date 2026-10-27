@@ -27,6 +27,7 @@ from typing import Any
 import pytest
 import yaml
 
+from omnimarket.handlers.handler_contract_routing_overlay import load_routing_contract
 from omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer import (
     HandlerGenerationConsumer,
     resolve_generation_endpoint,
@@ -558,7 +559,7 @@ def test_production_contract_drops_endpoint_env_and_mode() -> None:
         _CONTRACT_PATH,
     )
 
-    contract = yaml.safe_load(_CONTRACT_PATH.read_text())
+    contract = load_routing_contract(_CONTRACT_PATH)
     model_routing = contract.get("model_routing", {})
     assert "endpoint_env" not in model_routing
     assert "endpoint_mode" not in model_routing

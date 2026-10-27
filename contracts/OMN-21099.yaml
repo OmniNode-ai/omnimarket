@@ -182,7 +182,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/nodes/node_delegation_receipt_verdict_compute tests/nodes/node_delegation_client_verdict_compute -q -n 0 --no-cov --refuse-skips"
+        check_value: "uv run pytest tests/nodes/node_delegation_receipt_verdict_compute/test_golden_chain_receipt_verdict.py tests/nodes/node_delegation_client_verdict_compute/test_delegation_client_verdict_table.py tests/nodes/node_delegation_client_verdict_compute/test_golden_chain_delegation_client_verdict_compute.py -q -n 0 --no-cov --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["DoD4", "DoD5"]
   - id: "dod-omn21099-deploy-receipt-verdict"

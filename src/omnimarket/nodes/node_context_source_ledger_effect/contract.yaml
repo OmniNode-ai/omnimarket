@@ -26,13 +26,15 @@ description: >
   projection's relationship rules, each entry carrying every CORRECTION that
   cites it and, where a correction types operator_span, exactly that span as
   operator words with the rest labelled recorded framing. A tenant the binding
-  does not list is denied; a failed read is unavailable, never an empty
+  does not list is denied; each entry is labelled recorded, linked only when
+  both prompt_id and covers cells are present, otherwise recorded, unlinked; a failed read is unavailable, never an empty
   resolved. Explicit ledger_seq:<ledger_id>:<positive BIGINT> revisions read
   one ledger through its requested sequence, without a timestamp cutoff. Gaps,
   duplicates, a lagging prefix or any legacy NULL sequence return stale with
   watermark_reached and no entries. NULL history requires a governed backfill;
   the source never supplies synthetic sequence numbers. Timestamp revisions
-  remain the pinned replay read path; callers adopt sequence revisions explicitly.
+  remain the pinned replay read path; pinned files are opened beneath the explicit
+  manifest_root without following symlinks; callers adopt sequence revisions explicitly.
 handler:
   module: omnimarket.nodes.node_context_source_ledger_effect.handlers.handler_context_source_ledger
   class: HandlerContextSourceLedger
@@ -54,6 +56,11 @@ event_bus:
   dlq_topics: [onex.dlq.omnimarket.context-source-ledger-malformed.v1]
 context_source_ledger:
   ledger_source:
+    # A pinned replay overlay must supply an absolute root and named relative paths.
+    # Projection remains the live binding; no launching-host default is allowed.
+    mode: projection
+    manifest_root: null
+    ledger_paths: []
     relation: omninode_internal.work_ledger_rows
     binding_ref: omninode_runtime_service
     dsn_env: OMNINODE_INTERNAL_DB_URL
@@ -73,6 +80,8 @@ golden_path:
   - "Fold through the projection's relationship rules"
   - "Return each ruling and consent with its corrections on terminal_event"
 dod_evidence:
+  - test: tests/unit/nodes/node_context_source_ledger_effect/test_ledger_pinned_root.py
+    description: "Pinned overlays require a root; traversal and symlinks cannot escape it"
   - test: tests/test_golden_chain_context_source_ledger_effect.py::test_context_source_ledger_golden_chain_real_runtime_typed_dispatch
     description: "Command reaches the node through real runtime typed dispatch and the terminal event carries the D1 ruling with its correction"
   - test: tests/unit/nodes/node_context_source_ledger_effect/test_context_source_ledger.py::test_entry_text_equals_markdown_row_text_for_every_authority_row_of_a_day
