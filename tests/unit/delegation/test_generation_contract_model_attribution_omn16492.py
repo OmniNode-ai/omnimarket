@@ -24,6 +24,7 @@ import yaml
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     load_bifrost_delegation_config,
 )
+from omnimarket.handlers.handler_contract_routing_overlay import load_routing_contract
 
 _SRC_ROOT = Path(__file__).resolve().parents[3] / "src" / "omnimarket"
 
@@ -35,7 +36,7 @@ _COST_PRICING_PATH = _SRC_ROOT / "cost" / "cost_pricing.yaml"
 
 
 def _generation_model_routing() -> dict[str, object]:
-    contract = yaml.safe_load(_GENERATION_CONTRACT_PATH.read_text(encoding="utf-8"))
+    contract = load_routing_contract(_GENERATION_CONTRACT_PATH)
     model_routing = contract["model_routing"]
     assert isinstance(model_routing, dict)
     return model_routing
