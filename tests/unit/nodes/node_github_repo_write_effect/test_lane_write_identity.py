@@ -39,7 +39,9 @@ _REPO = "OmniNode-ai/omnibase_spi"
 
 
 def _stub_token(monkeypatch: pytest.MonkeyPatch, token: str) -> None:
-    async def _resolve(ref: str, *, env_var_fallback: str) -> SecretStr:
+    async def _resolve(
+        ref: str, *, env_var_fallback: str, required: bool = True
+    ) -> SecretStr:
         del ref, env_var_fallback
         return SecretStr(token)
 

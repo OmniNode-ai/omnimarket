@@ -101,6 +101,7 @@ class EnumRepoWriteRefusal(StrEnum):
     CONTRACT_REQUIRED = "contract_required"
     NOT_FOUND = "not_found"
     GITHUB_REFUSED = "github_refused"
+    CREDENTIAL_UNAVAILABLE = "credential_unavailable"
     TRANSPORT_ERROR = "transport_error"
 
 

@@ -24,6 +24,8 @@ from typing import Any
 import pytest
 import yaml
 
+from omnimarket.config.service_endpoints import service_endpoint_url
+
 pytestmark = pytest.mark.unit
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -113,7 +115,7 @@ def test_the_retired_webhook_is_declared_nowhere_in_this_chain() -> None:
         contract = _contract(path)
         assert "SLACK_WEBHOOK_URL" not in contract["secrets"]
         for spec in contract["endpoints"].values():
-            assert "hooks.slack.com" not in spec["url"]
+            assert "hooks.slack.com" not in service_endpoint_url(spec["url_ref"])
 
 
 def test_every_declared_endpoint_is_read_only() -> None:
@@ -126,7 +128,7 @@ def test_every_declared_endpoint_is_read_only() -> None:
     liveness = _contract(_LIVENESS_CONTRACT)
     for name, spec in liveness["endpoints"].items():
         assert spec["method"] == "GET", f"{name} is not a read-only probe"
-        assert "chat.postMessage" not in spec["url"]
+        assert "chat.postMessage" not in service_endpoint_url(spec["url_ref"])
 
 
 def test_the_contract_endpoints_match_the_service_endpoint_authority() -> None:
@@ -137,7 +139,9 @@ def test_the_contract_endpoints_match_the_service_endpoint_authority() -> None:
     )
 
     liveness = _contract(_LIVENESS_CONTRACT)
-    declared = {spec["url"] for spec in liveness["endpoints"].values()}
+    declared = {
+        service_endpoint_url(spec["url_ref"]) for spec in liveness["endpoints"].values()
+    }
     assert declared == {SLACK_AUTH_TEST_URL, SLACK_CONVERSATIONS_INFO_URL}
 
 

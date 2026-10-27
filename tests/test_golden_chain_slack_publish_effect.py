@@ -26,6 +26,7 @@ import yaml
 from omnibase_core.runtime.runtime_local import RuntimeLocal
 from pydantic import ValidationError
 
+from omnimarket.config.service_endpoints import service_endpoint_url
 from omnimarket.nodes.node_slack_publish_effect.handlers.handler_slack_publish_effect import (
     HandlerSlackPublishEffect,
 )
@@ -155,7 +156,7 @@ class TestSlackPublishContractShape:
         raw = _contract()
         endpoints = raw.get("endpoints", {})
         assert endpoints, "contract must declare an endpoints block"
-        urls = [ep.get("url", "") for ep in endpoints.values()]
+        urls = [service_endpoint_url(ep["url_ref"]) for ep in endpoints.values()]
         assert any("https://slack.com/api/chat.postMessage" in u for u in urls), (
             "endpoints block must declare the complete Slack Web API URL verbatim"
         )

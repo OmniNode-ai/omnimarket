@@ -56,7 +56,7 @@ golden_path:
   - "For each key the node reads its own trailing window history from windows_source.relation, under windows_source.binding_ref"
   - "decide_stall_alert classifies the trailing run against the contract-declared alert_policy -- a pure function of (history, policy)"
   - "A confirmed FAIL publishes onex.cmd.omnimarket.slack-publish.v1 carrying consumer_group, topic, in/out/dlq counts and the consecutive-window count"
-  - "node_slack_publish_effect posts it via https://slack.com/api/chat.postMessage and its idempotency ledger collapses a repeat inside the renotify window"
+  - "node_slack_publish_effect posts it via the service-endpoint authority's Slack chat.postMessage endpoint and its idempotency ledger collapses a repeat inside the renotify window"
   - "Emit one batch evaluation -- every decision plus every delivery record, including the ones that failed -- to onex.evt.omnimarket.consumer-flow-stall-alert-evaluated.v1"
 
 # ---------------------------------------------------------------------------

@@ -89,16 +89,15 @@ secrets:
     required: true
 
 endpoints:
-  # Complete, verbatim Slack Web API URLs (all-URLs-from-contracts + the
-  # Bifrost bare-base fail-closed rule). Mirrored by the service_endpoints
-  # authority, which is what the prober imports. BOTH are read-only: this node
+  # References to the service_endpoints authority the prober imports.
+  # Both are read-only: this node
   # must not be able to post a canary into the channel it is judging.
   slack_auth_test:
-    url: https://slack.com/api/auth.test
+    url_ref: slack.auth_test_url
     method: GET
     description: "Read-only: is the bot token still valid?"
   slack_conversations_info:
-    url: https://slack.com/api/conversations.info
+    url_ref: slack.conversations_info_url
     method: GET
     description: "Read-only: does the channel exist and is the bot a member?"
 

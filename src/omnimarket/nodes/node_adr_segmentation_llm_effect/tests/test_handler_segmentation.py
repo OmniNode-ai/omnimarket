@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -670,11 +671,18 @@ def test_document_segment_confidence_bounds() -> None:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_from_contract_reads_config_defaults() -> None:
+async def test_from_contract_reads_config_defaults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """from_contract wires config correctly — verified via evidence on success."""
+    (tmp_path / "custom.yaml").write_text("segmentation_model_key: custom-model\n")
+    monkeypatch.setattr(
+        segmentation_handler_module, "_SEGMENTATION_CONFIG_ROOT", tmp_path
+    )
     contract = {
         "config": {
-            "segmentation_model_key": {"default": "custom-model"},
+            "segmentation_model_key": {"default_ref": "custom.yaml"},
             "segmentation_timeout_seconds": {"default": 60.0},
             "low_confidence_threshold": {"default": 0.5},
             "prompt_template_id": {"default": "my_template_v2"},

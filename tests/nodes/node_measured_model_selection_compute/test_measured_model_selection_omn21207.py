@@ -21,6 +21,12 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.handlers.handler_measured_selection_config import (
+    CONTRACT_PATH,
+    MeasuredSelectionContractError,
+    load_measured_selection_contract,
+    read_selection_contract,
+)
 from omnimarket.models.delegation.model_measured_selection import (
     ModelMeasuredSelectionContract,
     ModelPricedModel,
@@ -32,18 +38,24 @@ from omnimarket.models.delegation.wire.model_measured_selection_decided_event im
     ModelMeasuredSelectionRequest,
 )
 from omnimarket.nodes.node_measured_model_selection_compute.handlers.handler_measured_model_selection import (
-    CONTRACT_PATH,
     HandlerMeasuredModelSelection,
-    MeasuredSelectionContractError,
     MeasureMissingError,
     candidates_from_routing_tiers,
-    load_measured_selection_contract,
-    read_selection_contract,
     recorded_runs_from_rows,
-    routing_contract_candidates,
     select_by_measure,
 )
 from omnimarket.routing.routing_tiers_path import resolve_routing_tiers_path
+
+
+def routing_contract_candidates() -> tuple[ModelSelectionCandidate, ...]:
+    """The shipped rule applied to the routing contract in force."""
+    routing_tiers: Any = yaml.safe_load(
+        resolve_routing_tiers_path().read_text(encoding="utf-8")
+    )
+    return candidates_from_routing_tiers(
+        load_measured_selection_contract().candidates, routing_tiers
+    )
+
 
 pytestmark = pytest.mark.unit
 
@@ -243,7 +255,9 @@ def test_ac3_the_decision_records_measure_values_and_captured_at() -> None:
     assert selection.decided_at == NOW
 
 
-def test_ac3_the_decided_event_carries_the_measures_and_round_trips() -> None:
+def test_ac3_the_decided_event_carries_the_measures_and_round_trips(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     candidates = routing_contract_candidates()
     pricing = tuple(
         ModelPricedModel(
@@ -274,7 +288,14 @@ def test_ac3_the_decided_event_carries_the_measures_and_round_trips() -> None:
         runs=runs,
         decided_at=NOW,
     )
-    event = HandlerMeasuredModelSelection().handle(request)
+    handler = HandlerMeasuredModelSelection(load_measured_selection_contract())
+
+    def forbid_file_read(*args: object, **kwargs: object) -> str:
+        raise AssertionError("COMPUTE attempted a file read")
+
+    with monkeypatch.context() as guard:
+        guard.setattr(Path, "read_text", forbid_file_read)
+        event = handler.handle(request)
 
     assert event.task_type == request.task_type
     assert event.selection.selected_model == "Qwen3.8-27B"

@@ -301,12 +301,23 @@ class ScmBusCaller:
         timeout_s: float,
     ) -> ModelScmTerminal:
         """Raises ``TimeoutError`` when no terminal names the command in time."""
-        return await self.call_topics(
-            topics=load_topics(node),
-            request=request,
-            correlation_id=correlation_id,
-            timeout_s=timeout_s,
+        from omnimarket.handlers.scm.handler_scm_consumer_diagnostics import (
+            ScmNoTerminalError,
+            diagnose_scm_timeout,
         )
+
+        topics = load_topics(node)
+        try:
+            return await self.call_topics(
+                topics=topics,
+                request=request,
+                correlation_id=correlation_id,
+                timeout_s=timeout_s,
+            )
+        except TimeoutError:
+            raise ScmNoTerminalError(
+                await diagnose_scm_timeout(self._bus, node, topics.command)
+            ) from None
 
     async def call_topics(
         self,

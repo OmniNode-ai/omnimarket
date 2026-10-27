@@ -17,6 +17,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from omnimarket.nodes.contract_topics import contract_section
 from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_io import (
     EnumRepoWriteMode,
 )
@@ -67,4 +68,25 @@ class ModelRepoWriteConfig(BaseModel):
         return self.github_mode
 
 
-__all__: list[str] = ["ModelRepoWriteConfig"]
+class ModelRepoWriteAppRefs(BaseModel):
+    """Names declared under secrets, never credential values."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    app_id_secret: str = Field(min_length=1)
+    private_key_secret: str = Field(min_length=1)
+    installation_id_secret: str = Field(min_length=1)
+
+
+class ModelRepoWriteCredentialChoice(BaseModel):
+    """A token takes precedence over the fallback App on every binding."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    token_secret: str = Field(min_length=1)
+    fallback_app: ModelRepoWriteAppRefs
+
+    @classmethod
+    def from_contract(cls, path: Path) -> ModelRepoWriteCredentialChoice:
+        return cls.model_validate(contract_section(path, "credential_choice"))
+
+
+__all__: list[str] = ["ModelRepoWriteConfig", "ModelRepoWriteCredentialChoice"]

@@ -45,6 +45,7 @@ Rules this handler enforces:
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import logging
@@ -58,10 +59,17 @@ from pathlib import Path
 from urllib.parse import quote
 
 import yaml
+from pydantic import SecretStr
 
 from omnimarket.events.pr_landing_github.model_github_quota_reading import (
     ModelGithubQuotaHeadersMissingError,
     ModelGithubQuotaReading,
+)
+from omnimarket.github_api import GitHubApiError
+from omnimarket.github_app_auth import (
+    GitHubAppCredentialMissingError,
+    GitHubAppIdentityError,
+    mint_installation_token,
 )
 from omnimarket.github_landing.github_landing_requests import (
     LIST_PAGE_SIZE,
@@ -115,6 +123,9 @@ from omnimarket.nodes.node_github_repo_write_effect.models import (
     ModelRepoWriteFailed,
     ModelRepoWriteRequest,
 )
+from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_config import (
+    ModelRepoWriteCredentialChoice,
+)
 from omnimarket.nodes.node_github_repo_write_effect.protocols import (
     ProtocolGithubRepoWriteTransport,
     ProtocolLeaseFence,
@@ -134,6 +145,18 @@ _MARKER_SCAN_PAGES = 3
 _PLANNED_NODE_ID = "<node id read from the pull request>"
 
 Result = ModelRepoWriteCompleted | ModelRepoWriteFailed
+
+
+async def _credential_from_store(ref: str) -> SecretStr | None:
+    """Absence permits the next choice; a broken resolver refuses safely."""
+    try:
+        return await resolve_api_key_async(ref, env_var_fallback=ref, required=False)
+    except Exception:
+        # A store/SDK error may carry a secret. Do not expose its message or cause.
+        raise GitHubAppCredentialMissingError(
+            f"GitHub write: credential lookup failed for declared ref {ref!r}; "
+            "check the secret resolver configuration and read permission"
+        ) from None
 
 
 def idempotency_marker(key: str) -> str:
@@ -408,7 +431,12 @@ class HandlerGithubRepoWriteEffect:
                 pr_number=request.pr_number,
                 requests=planned_requests(request),
             )
-        transport = self._transport or await self._live_transport()
+        try:
+            transport = self._transport or await self._live_transport(request.repo)
+        except (GitHubAppCredentialMissingError, GitHubAppIdentityError) as exc:
+            return self._preflight_refusal(
+                request, EnumRepoWriteRefusal.CREDENTIAL_UNAVAILABLE, str(exc)
+            )
         run = _Run(self, request, transport)
         try:
             result: Result = await self._run(run)
@@ -540,21 +568,75 @@ class HandlerGithubRepoWriteEffect:
             return f"no live claim on {request.pr_key}; pr_close needs one"
         return carried_claim_refusal(request.claim, request, now)
 
-    async def _live_transport(self) -> UrllibGithubLandingTransport:
-        ref = contract_secret_ref(_CONTRACT_PATH, _SECRET_NAME)
-        # env_var_fallback (OMN-14452): the lane resolver does not serve the
-        # GitHub token from the store; the literal container env var does.
-        secret = await resolve_api_key_async(ref, env_var_fallback=ref)
+    async def _live_transport(
+        self, repo: str | None = None
+    ) -> UrllibGithubLandingTransport:
+        choice = ModelRepoWriteCredentialChoice.from_contract(_CONTRACT_PATH)
+        ref = contract_secret_ref(_CONTRACT_PATH, choice.token_secret)
+        secret = await _credential_from_store(ref)
         if secret is None:
-            raise RuntimeError(
-                f"api_key_ref {ref!r} resolved to None; set it in the secret store"
-            )
-        # OMN-20355: once an actor is configured, a person's token is refused.
+            secret = await self._app_token(choice, repo)
+        # A resolved but refused token never changes identities by taking the App path.
         assert_github_token_is_actor(
             ModelLaneWriteIdentity.from_env(os.environ),
             token=secret.get_secret_value(),
         )
         return UrllibGithubLandingTransport(secret)
+
+    async def _app_token(
+        self, choice: ModelRepoWriteCredentialChoice, repo: str | None
+    ) -> SecretStr:
+        app = choice.fallback_app
+        resolved: list[SecretStr | None] = []
+        for name in (
+            app.app_id_secret,
+            app.private_key_secret,
+            app.installation_id_secret,
+        ):
+            ref = contract_secret_ref(_CONTRACT_PATH, name)
+            value = await _credential_from_store(ref)
+            if value is None and name != app.installation_id_secret:
+                raise GitHubAppCredentialMissingError(
+                    f"GitHub write: {choice.token_secret} is absent and App ref "
+                    f"{ref!r} is unreadable or missing from the secret store/environment"
+                )
+            resolved.append(value)
+        app_id, private_key, installation = resolved
+        assert app_id is not None
+        assert private_key is not None
+        installation_id = None
+        if installation is not None:
+            try:
+                installation_id = int(installation.get_secret_value())
+                if installation_id < 1:
+                    raise ValueError
+            except ValueError:
+                raise GitHubAppIdentityError(
+                    f"GitHub write: {app.installation_id_secret} must be a positive integer"
+                ) from None
+        owner, _, name = (repo or "OmniNode-ai").partition("/")
+        try:
+            # The existing synchronous minter must not block the runtime event loop.
+            token = await asyncio.to_thread(
+                mint_installation_token,
+                app_id=app_id.get_secret_value(),
+                private_key_pem=private_key.get_secret_value(),
+                private_key_ref=app.private_key_secret,
+                installation_id=installation_id,
+                org=owner,
+                repositories=[name] if name else None,
+            )
+        except Exception as exc:
+            # SDK/HTTP exceptions can contain response bodies or credential values.
+            # Never forward their text or chained traceback to runtime logging.
+            status = exc.status_code if isinstance(exc, GitHubApiError) else None
+            detail = f" (HTTP {status})" if status is not None else ""
+            raise GitHubAppIdentityError(
+                f"GitHub write App token mint refused{detail}; check permissions and "
+                f"declared refs {app.app_id_secret}, {app.private_key_secret}, "
+                f"{app.installation_id_secret}"
+            ) from None
+        return SecretStr(token)
 
     async def _run(self, run: _Run) -> ModelRepoWriteCompleted:
         op = run.command.operation

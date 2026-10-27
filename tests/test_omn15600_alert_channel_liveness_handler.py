@@ -26,6 +26,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.config.service_endpoints import service_endpoint_url
 from omnimarket.nodes.node_alert_channel_liveness_effect.handlers.handler_alert_channel_liveness import (
     HandlerAlertChannelLiveness,
 )
@@ -159,7 +160,7 @@ def test_the_probe_never_posts_to_the_channel_it_is_judging() -> None:
     assert not [topic for topic in publish_topics if "slack-publish" in topic]
     endpoints = contract["endpoints"]
     for spec in endpoints.values():
-        assert "chat.postMessage" not in spec["url"]
+        assert "chat.postMessage" not in service_endpoint_url(spec["url_ref"])
 
 
 # ---------------------------------------------------------------------------

@@ -390,6 +390,7 @@ node_exemplar_registry_reconcile_compute = "omnimarket.nodes.node_exemplar_regis
 node_external_deadman_check_compute = "omnimarket.nodes.node_external_deadman_check_compute"
 node_context_compaction_manifest_compute = "omnimarket.nodes.node_context_compaction_manifest_compute"
 node_compaction_loss_compute = "omnimarket.nodes.node_compaction_loss_compute"
+node_session_compaction_measurement_compute = "omnimarket.nodes.node_session_compaction_measurement_compute"
 node_context_round_one_eval_compute = "omnimarket.nodes.node_context_round_one_eval_compute"
 node_context_adr_select_compute = "omnimarket.nodes.node_context_adr_select_compute"
 node_context_doc_section_select_compute = "omnimarket.nodes.node_context_doc_section_select_compute"

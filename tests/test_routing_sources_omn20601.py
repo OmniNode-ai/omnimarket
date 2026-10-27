@@ -526,7 +526,29 @@ def _probe_inference_bridge_endpoints(
     assert configured["model_id"] == "deployment-model"
 
 
+def _adr_segmentation_bridge_key(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from omnimarket.nodes.node_adr_segmentation_llm_effect.handlers import (
+        handler_segmentation as segmentation,
+    )
+
+    config = tmp_path / "measured-route.yaml"
+    config.write_text("segmentation_model_key: measured-route\n", encoding="utf-8")
+    monkeypatch.setattr(segmentation, "_SEGMENTATION_CONFIG_ROOT", tmp_path)
+    handler = segmentation.HandlerSegmentation.from_contract(
+        {"config": {"segmentation_model_key": {"default_ref": config.name}}}
+    )
+    assert handler._model_key == "measured-route"
+    injected = segmentation.HandlerSegmentation(segmentation_model_key="explicit-route")
+    assert injected._model_key == "explicit-route"
+    config.write_text("segmentation_model_key: ''\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="must declare segmentation_model_key"):
+        segmentation._segmentation_model_key(config.name)
+
+
 PROBES: dict[str, Probe] = {
+    "adr_segmentation_bridge_key": _adr_segmentation_bridge_key,
     "routing_tiers_ladder": _probe_routing_tiers_ladder,
     "harness_routing_overlay": _probe_harness_routing_overlay,
     "bifrost_backend_contract": _probe_bifrost_backend_contract,
