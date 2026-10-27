@@ -467,9 +467,12 @@ def test_deploy_registration_and_policy():
         == ModelReceiptJoinPolicy()
     )
     overlay = yaml.safe_load((node / "overlay.yaml").read_text())
-    assert not overlay.pop("enabled")
-    assert overlay.pop("runtime_profiles") == []
-    assert overlay.pop("node") == node.name
+    enabled = overlay.pop("enabled")
+    runtime_profiles = overlay.pop("runtime_profiles")
+    overlay_node = overlay.pop("node")
+    assert not enabled
+    assert runtime_profiles == []
+    assert overlay_node == node.name
     assert ModelReceiptJoinPolicy.model_validate(overlay) == ModelReceiptJoinPolicy()
     assert registered[0].load() is importlib.import_module(registered[0].value)
 
