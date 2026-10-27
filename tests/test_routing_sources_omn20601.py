@@ -547,7 +547,60 @@ def _adr_segmentation_bridge_key(
         segmentation._segmentation_model_key(config.name)
 
 
+def _probe_context_profile_model_roles(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from omnimarket.models.context_profile_resolve.model_context_profile_resolve_request import (
+        ModelContextProfileResolveRequest,
+    )
+    from omnimarket.nodes.node_context_profile_resolver_effect.handlers.handler_context_profile_resolver import (
+        HandlerContextProfileResolver,
+    )
+    from omnimarket.routing.task_class_contract_path import (
+        TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
+    )
+
+    routing = tmp_path / "routing.yaml"
+    routing.write_text(
+        yaml.safe_dump(
+            {
+                "task_classes": {
+                    "measured_extractor": {
+                        "gateway_exposure": "internal",
+                        "selection": {"priority": 0, "phrases": []},
+                        "transitions": yaml.safe_load(
+                            TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH.read_text(
+                                encoding="utf-8"
+                            )
+                        )["transitions_default"],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "lane_brief.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "model_id": "fixture-model",
+                "optional_factors": ["transcript_extracts"],
+                "extraction_task_class": "measured_extractor",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CONTEXT_PROFILES_DIR", str(tmp_path))
+    monkeypatch.setenv("TASK_CLASS_CONTRACT_PATH", str(routing))
+    result = HandlerContextProfileResolver().handle(
+        ModelContextProfileResolveRequest(profile_name="lane_brief")
+    )
+    assert result.profile is not None, result.errors
+    assert result.profile.extraction_task_class == "measured_extractor"
+    assert result.profile_content_hash == result.profile.content_hash()
+
+
 PROBES: dict[str, Probe] = {
+    "context_profile_model_roles": _probe_context_profile_model_roles,
     "adr_segmentation_bridge_key": _adr_segmentation_bridge_key,
     "routing_tiers_ladder": _probe_routing_tiers_ladder,
     "harness_routing_overlay": _probe_harness_routing_overlay,

@@ -10,25 +10,15 @@ from omnibase_core.enums.enum_context_factor import EnumContextFactor
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.enums.enum_context_binding_kind import EnumContextBindingKind
+from omnimarket.models.context_pack.model_context_factor_policy import (
+    MODEL_WRITTEN_FACTORS,
+    STABLE_TIER_FACTORS,
+    reject_required_model_role_factors,
+)
 from omnimarket.models.context_pack.model_context_task_kind_rule import (
     ModelContextTaskKindRule,
 )
 
-#: Factors of plan section 4.2 rows 1 to 5: bytes depend only on the pinned commit.
-STABLE_TIER_FACTORS: frozenset[EnumContextFactor] = frozenset(
-    {
-        EnumContextFactor.LANE_RULES,
-        EnumContextFactor.INVARIANTS,
-        EnumContextFactor.ADRS,
-        EnumContextFactor.CANONICAL_SHAPES,
-        EnumContextFactor.ARCHITECTURE_PATTERNS,
-        EnumContextFactor.EXEMPLAR,
-    }
-)
-#: Factors a model writes (row 10); they render last and are trimmed first.
-MODEL_WRITTEN_FACTORS: frozenset[EnumContextFactor] = frozenset(
-    {EnumContextFactor.TAIL_SUMMARY}
-)
 _TASK_CLASS_SHAPE = re.compile(r"^[a-z]+(_[a-z]+)*$")
 _TASK_CLASS_FIELDS = (
     "selection_task_class",
@@ -81,6 +71,10 @@ class ModelContextProfile(BaseModel):
             raise ValueError("required_factors cannot also be excluded")
         if optional & excluded:
             raise ValueError("optional_factors cannot also be excluded")
+        reject_required_model_role_factors(
+            required,
+            {f: getattr(self, f) for f in _TASK_CLASS_FIELDS},
+        )
         if not set(self.empty_allowed_factors) <= required:
             raise ValueError("empty_allowed_factors must all be in required_factors")
         selected = required | optional

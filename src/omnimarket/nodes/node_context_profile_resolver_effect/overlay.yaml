@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Deployment supplies paths through these environment bindings. An absent
+# override uses packaged data; an unreadable override never falls back.
+node: node_context_profile_resolver_effect
+configuration:
+  profiles_directory:
+    environment_variable: CONTEXT_PROFILES_DIR
+    packaged_default: omnimarket/pack/profiles
+  task_class_contract:
+    environment_variable: TASK_CLASS_CONTRACT_PATH
+    packaged_default: omnimarket/configs/task_class_contracts.v1.yaml

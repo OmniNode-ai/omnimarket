@@ -1,15 +1,22 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-21145"
-title: "TE.8 model-role routing admission in profile resolution"
+title: "TE.8 model-role routing admission and optional authority boundary"
 summary: >-
-  First slice: AC1 only. The existing context profile resolver checks each
+  The context profile resolver checks each
   named extraction, selection and summary task class against the existing
   task-class routing authority on every resolution. Missing entries, declared
   unavailable classes and unreadable authority data return INVALID_PROFILE
   without a resolved profile or hash. Profiles without model roles remain
-  independent of the routing contract. AC2, AC3 and AC4 remain pending;
-  this slice does not execute model roles or assert their runtime evidence.
+  independent of the routing contract. Profiles cannot require factors produced
+  by declared extraction or summary roles. A deployment can bind its profile
+  directory through CONTEXT_PROFILES_DIR, with explicit constructor injection
+  taking precedence and no fallback from an unreadable overlay. Optional
+  unbound, unavailable and timed-out sources preserve required authority on
+  typed dispatch and the in-memory bus. AC2's boundary is covered; production
+  model-role execution, verifier/fold composition, AC3's lab session and AC4's
+  recording and topic qualification remain pending. This change does not
+  claim that this child or its parent epic is complete.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -20,15 +27,49 @@ requirements:
       - id: "AC1"
         statement: >-
           AC1: a profile naming a model-role task class that has no routing-contract entry (TE.5 or TE.6 has not promoted a rung) fails resolution with `INVALID_PROFILE` -- falsifier: such a profile resolves.
+  - id: "req-model-role-optional-authority"
+    statement: "Declared extraction and summary roles enrich optional factors only."
+    acceptance:
+      - id: "AC2"
+        statement: >-
+          AC2: with a role's rung unreachable, the build completes without that role's factor and records its status `unavailable`, and no required factor is ever produced by a model role -- falsifier: a failed build for an optional role, or a required factor sourced from a model.
 evidence_requirements:
   - kind: "tests"
     description: "Missing-role refusals, promoted-role controls, rollback and invalid authority data."
     command: "uv run --frozen pytest tests/nodes/node_context_profile_resolver_effect/test_model_role_routing.py -q -p no:randomly --no-cov -n 0"
+  - kind: "tests"
+    description: "Authority guard across typed, in-memory and CLI bindings, plus optional source outages."
+    command: "uv run --frozen pytest tests/nodes/node_context_profile_resolver_effect/test_model_role_authority.py tests/nodes/node_context_pack_orchestrator/test_model_role_outages.py -q -p no:randomly --no-cov -n 0"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn21145-ac2-optional-authority"
+    description: >-
+      Boundary proof: declared model-role factors cannot be required; the same
+      invalid profiles are refused by typed dispatch, the in-memory runtime and
+      the packaged CLI. Optional unbound, unavailable and timeout sources are
+      omitted with unavailable status while deterministic authority still builds
+      on typed dispatch and the in-memory bus. Model execution and live lab
+      evidence remain pending; no promoted rung or ledger append is asserted.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/nodes/node_context_profile_resolver_effect/test_model_role_authority.py tests/nodes/node_context_pack_orchestrator/test_model_role_outages.py -q -p no:randomly --no-cov -n 0"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21145-deploy-optional-authority"
+    description: >-
+      Hosted-runner artifact probe: the packaged profile resolver is dispatched
+      by onex node over an in-memory backend, with explicit profile and routing
+      overlays. Required model-role factors must fail and optional controls
+      must resolve. Fails against the merge base. No network or live runtime.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run --frozen pytest tests/nodes/node_context_profile_resolver_effect/test_model_role_authority.py -q -p no:randomly --no-cov -n 0 -k 'role_factor_is_optional_on_every_binding and cli'"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21145-ac1-routing-admission"
     description: >-
       All three role fields reject a missing routing entry. Promoted internal
