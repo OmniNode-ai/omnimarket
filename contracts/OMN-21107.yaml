@@ -129,7 +129,7 @@ dod_evidence:
     binds_ac: ["AC3", "AC4"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity_required_text.py -q -n 0 --no-cov"
+        check_value: "env UV_FROZEN=true uv run pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity_required_text.py -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
 
   - id: "dod-omn21107-deploy-required-parity-evidence"
