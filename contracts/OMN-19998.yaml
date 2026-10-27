@@ -216,6 +216,11 @@ requirements:
     acceptance:
       - id: "AC40"
         statement: "AC40: every LANE_BOUND_JOBS job pins [self-hosted, omnibase-ci, arch-amd64] in its workflow, the h203-light label set does not satisfy any of them while the LAN amd64 label set does, and check_lane_job_placement.py passes -- falsifier: uv run pytest tests/test_delegation_nightly_placement.py -q fails at the merge base, where the nightly pins [self-hosted, omnibase-ci]"
+  - id: "req-retire-unlisted-withdrawn-backend"
+    statement: "The already-withdrawn Nemotron Super backend has no live declaration, rule or default reference after its provider catalogue removal; the catalogue and tier bindability checks retain their full enforcement."
+    acceptance:
+      - id: "AC41"
+        statement: "AC41: catalogue validation passes with Super present in the historical capture or absent as on 2026-10-27; Super is absent from backend declarations, rules, defaults and tiers and cannot be pinned; edited packaged rule orders are neutral local defaults; an unlisted new rung, placement peer or onboarding default still fails -- falsifier: uv run pytest tests/validators/test_provider_model_catalogue.py tests/unit/delegation/test_openrouter_review_reasoning_omn19432.py -q fails at the merge base when Super is removed from the captured catalogue"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -914,4 +919,20 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run python scripts/ci/check_lane_job_placement.py"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19998-retired-provider-declaration"
+    description: "Regression with the provider's withdrawn model removed from the historical catalogue fails before the config retirement. The remaining tests retain refusal of missing new rungs, placement peers and defaults, assert retirement from every live routing surface, and refuse an explicit pin."
+    source: "manual"
+    binds_ac: ["AC41"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validators/test_provider_model_catalogue.py tests/unit/delegation/test_openrouter_review_reasoning_omn19432.py tests/unit/routing/test_cheap_frontier_smoke_evidence_omn20376.py tests/nodes/node_provider_model_catalogue_effect/test_golden_chain_provider_model_catalogue.py -q --no-cov -n 0 -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19998-retired-provider-deploy-probe"
+    description: "Hosted-runner readback fetches the packaged backend config at the checked-out head from GitHub and requires Super's declaration, rule and default references to be absent. The merge-base config fails. No lab service or credential is used. The separate provider catalogue effect still checks the live public catalogue."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/bifrost_delegation.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | uv run python -c '\''import sys, yaml; c=yaml.safe_load(sys.stdin.read()); dead="openrouter-nemotron-super"; assert dead not in {b["backend_id"] for b in c["backends"]}; assert all(dead not in r["backend_ids"] for r in c["routing_rules"]); assert dead not in c["default_backends"]'\'''
         cwd: "${OMNI_HOME}/omnimarket"
