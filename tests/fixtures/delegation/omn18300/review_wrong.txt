@@ -1,0 +1,1 @@
+Line 116: the new optional return type is consistent with missing filters. The lookup handles unknown names safely, and the public interface remains compatible. No correctness defect was found in the proposed implementation.

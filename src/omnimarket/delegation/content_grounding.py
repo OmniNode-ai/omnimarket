@@ -39,6 +39,7 @@ from omnimarket.delegation.identifier_grounding import (
     resolve_identifier_grounding_policy,
 )
 from omnimarket.inference.delegation_config_provenance import resolve_path_config
+from omnimarket.inference.request_instruction import instruction_text, is_negated
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_claim_grounding import (
     ModelClaimGroundingPolicy,
     ModelClaimGroundingVerdict,
@@ -53,6 +54,9 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_numeric_
     ModelNumericGroundingPolicy,
     ModelNumericGroundingVerdict,
     ModelUngroundedNumber,
+)
+from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_required_input_content import (
+    ModelRequiredInputContentPolicy,
 )
 
 _CONTRACT_PATH_CONFIG_KEY = "QUALITY_GATE_CONTRACT_PATH"
@@ -127,6 +131,81 @@ def resolve_evidence_comment_policy() -> ModelEvidenceCommentPolicy:
     return ModelEvidenceCommentPolicy.model_validate(
         _contract_section(_EVIDENCE_SECTION)
     )
+
+
+@lru_cache(maxsize=1)
+def resolve_required_input_content_policy() -> ModelRequiredInputContentPolicy:
+    """Load required content at the same declaring place as grounding rules."""
+    return ModelRequiredInputContentPolicy.model_validate(
+        _contract_section("required_input_content")
+    )
+
+
+def evaluate_required_input_content(
+    content: str, grounding_source: str | None
+) -> tuple[str | None, bool]:
+    """Check only obligations whose complete source selector is satisfied.
+
+    A captured field is required only when the source supplies one unambiguous
+    value. No source or no matching obligation is SKIPPED, never a phantom pass.
+    This is a reject-only floor, not a semantic correctness proof.
+    """
+    if grounding_source is None:
+        return None, False
+    failures: list[str] = []
+    evaluated = False
+    flags = re.IGNORECASE | re.MULTILINE
+    request = instruction_text(grounding_source).casefold()
+    # Formatting a field as inline code or bold must not change its identity.
+    answer = " ".join(re.sub(r"[`*_]", "", content).casefold().split())
+    for rule in resolve_required_input_content_policy().rules:
+        if not all(re.search(p, grounding_source, flags) for p in rule.source_patterns):
+            continue
+        if not all(
+            any(
+                not is_negated(request, match.start())
+                for match in re.finditer(p, request, flags)
+            )
+            for p in rule.instruction_patterns
+        ):
+            continue
+        if rule.answer_any:
+            evaluated = True
+            if not any(
+                not is_negated(
+                    content.casefold(),
+                    match.start("claim")
+                    if "claim" in match.re.groupindex
+                    else match.start(),
+                )
+                for pattern in rule.answer_any
+                for match in re.finditer(pattern, content, flags)
+            ):
+                failures.append(rule.name)
+        for pattern in rule.source_value_patterns:
+            values = {
+                " ".join(
+                    re.sub(r"[`*_]", "", m.group("value"))
+                    .strip(" \"'.")
+                    .casefold()
+                    .split()
+                )
+                for m in re.finditer(pattern, grounding_source, flags)
+            }
+            values.discard("")
+            if len(values) != 1:
+                # Several labelled runs/steps need attribution beyond this
+                # mechanical rule; guessing would refuse correct diagnoses.
+                continue
+            evaluated = True
+            value = next(iter(values))
+            if re.search(r"(?<!\w)" + re.escape(value) + r"(?!\w)", answer) is None:
+                failures.append(f"{rule.name} ({value})")
+    if failures:
+        return "TASK_MISMATCH: required_input_content missing " + ", ".join(
+            failures
+        ), True
+    return None, evaluated
 
 
 @lru_cache(maxsize=64)
@@ -696,7 +775,9 @@ __all__: list[str] = [
     "evaluate_entry_cites_evidence",
     "evaluate_name_resolution",
     "evaluate_numeric_grounding",
+    "evaluate_required_input_content",
     "resolve_evidence_comment_policy",
     "resolve_name_resolution_policy",
     "resolve_numeric_grounding_policy",
+    "resolve_required_input_content_policy",
 ]

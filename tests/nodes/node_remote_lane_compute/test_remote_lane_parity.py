@@ -75,10 +75,7 @@ def test_closing_matches_the_runner(index: int) -> None:
     result = HandlerRemoteLaneResult().handle(
         ModelRemoteLaneResultRequest.model_validate(case["request"])
     )
-    assert (
-        result.model_dump(exclude={"delegation"}) | {"delegation": result.delegation}
-        == case["expected"]
-    )
+    assert result.model_dump(include=set(case["expected"])) == case["expected"]
 
 
 def test_a_broken_rank_fails_the_cases(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,0 +1,65 @@
+schema_version: 1.0.0
+ticket_id: OMN-21455
+title: Codex harness attempt prerequisite for model work comparisons
+summary: 'Partial lane scope: extend the existing delegation effect with a host-invoked Codex attempt and typed
+  receipt. The original six benchmark acceptance criteria (comparison table, report, budget stop) stay open on the ticket
+  and are not carried here; this change does not claim the 50-contract comparison, reporting or budget-reservation implementation. A nested lab attempt
+  reports startup_refused because the parent sandbox denies the existing Codex installation_id read/write open.
+  Successful inference must be proved by a host dispatcher outside the agent tool sandbox, with the child sandbox
+  retained.'
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-codex-harness-attempt
+  statement: Prerequisite slice of the model work comparison; the comparison run and report are out of scope here.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a host-invoked Codex attempt returns a typed receipt (answer, tokens, wall seconds,
+      model provenance, exit cause, exit code) through the stdin codex-harness CLI, with the child sandbox retained
+      and the attempt process group terminated on timeout -- falsifier: uv run pytest tests/nodes/node_llm_delegation_call_effect/test_codex_harness_attempt.py
+      -q'
+evidence_requirements:
+- kind: tests
+  description: Focused Codex attempt behavior tests.
+  command: uv run pytest tests/nodes/node_llm_delegation_call_effect/test_codex_harness_attempt.py -q --no-cov --tb=line
+- kind: manual
+  description: 'deploy: execute the packaged host CLI against a controlled child; no live dependencies required.'
+  command: uv run pytest tests/nodes/node_llm_delegation_call_effect/test_codex_harness_attempt.py -q --no-cov --tb=line
+    -k "public_surface_imports or cli_stdin_and_receipt"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21455-codex-attempt
+  description: 'Supporting lane scope only: host-equivalent Codex argv, unchanged host environment and login, sandbox
+    enforcement, typed receipt, cached tokens, UNKNOWN measurements, startup refusal and process-group timeout cleanup.
+    These tests do not settle the six benchmark criteria.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_llm_delegation_call_effect/test_codex_harness_attempt.py -q --no-cov
+      --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21455-deploy-host-cli
+  description: 'Hosted deploy check: import the installed existing node entry point and execute its stdin CLI against
+    a controlled subprocess. The child is sandboxed by policy; the test needs no account, lab host, private runtime
+    or broker. Live host inference is a separate pending proof.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_llm_delegation_call_effect/test_codex_harness_attempt.py -q --no-cov
+      --tb=line -k "public_surface_imports or cli_stdin_and_receipt"
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: uv run python -m omnimarket.nodes.node_llm_delegation_call_effect --help
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: |
+      set -eu;
+      curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_codex_harness_attempt.py" | grep -q "class HandlerCodexHarnessAttempt"
+    cwd: .

@@ -1,0 +1,716 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 78 and seed 2542150479724272129 with 12 workers on 32 cores with 7282MB heap and 64MB offheap memory [pid: 1] (Linux 7.0.0-34-generic amd64, Eclipse Adoptium 17.0.20.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file AndonStop.tla
+Parsing file /tmp/Integers.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Integers
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module AndonStop
+Starting... (2026-10-27 18:11:57)
+Implied-temporal checking--satisfiability problem has 1 branches.
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-27 18:11:57.
+Checking temporal properties for the current state space with 215175 total distinct states at (2026-10-27 18:12:00)
+Error: Temporal properties were violated.
+
+Error: The following behavior constitutes a counter-example:
+
+State 1: <Initial predicate>
+/\ canaryUsed = 0
+/\ ls = <<"none", "none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "enforce"
+/\ cons = 0
+/\ cm = FALSE
+/\ cross = 0
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = FALSE
+/\ lgen = 0
+/\ handFixBad = FALSE
+/\ st = "absent"
+/\ used = 0
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 0
+/\ occ = 0
+/\ humanCleared = FALSE
+/\ goodPost = 0
+/\ boundGen = 0
+/\ evid = FALSE
+/\ replTotal = 0
+/\ cache = "absent"
+/\ age = 0
+
+State 2: <DetectorFires line 158, col 3 to line 163, col 49 of module AndonStop>
+/\ canaryUsed = 0
+/\ ls = <<"none", "none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "enforce"
+/\ cons = 0
+/\ cm = FALSE
+/\ cross = 0
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = FALSE
+/\ lgen = 0
+/\ handFixBad = FALSE
+/\ st = "open"
+/\ used = 0
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 0
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 0
+/\ boundGen = 0
+/\ evid = FALSE
+/\ replTotal = 0
+/\ cache = "open"
+/\ age = 0
+
+State 3: <RecordEvidence line 173, col 3 to line 177, col 49 of module AndonStop>
+/\ canaryUsed = 0
+/\ ls = <<"none", "none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "enforce"
+/\ cons = 0
+/\ cm = FALSE
+/\ cross = 0
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = FALSE
+/\ lgen = 0
+/\ handFixBad = FALSE
+/\ st = "open"
+/\ used = 0
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 0
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 0
+/\ boundGen = 0
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "open"
+/\ age = 0
+
+State 4: <CountermeasureMerged line 214, col 3 to line 220, col 95 of module AndonStop>
+/\ canaryUsed = 0
+/\ ls = <<"none", "none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "enforce"
+/\ cons = 0
+/\ cm = TRUE
+/\ cross = 0
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = FALSE
+/\ lgen = 0
+/\ handFixBad = FALSE
+/\ st = "fixed"
+/\ used = 0
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 1
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 0
+/\ boundGen = 0
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "fixed"
+/\ age = 0
+
+State 5: <ReadbackMismatch line 293, col 3 to line 298, col 49 of module AndonStop>
+/\ canaryUsed = 0
+/\ ls = <<"none", "none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "enforce"
+/\ cons = 0
+/\ cm = FALSE
+/\ cross = 0
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = FALSE
+/\ lgen = 0
+/\ handFixBad = FALSE
+/\ st = "open"
+/\ used = 0
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 1
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 0
+/\ boundGen = 0
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "open"
+/\ age = 0
+
+State 6: <CountermeasureMerged line 214, col 3 to line 220, col 95 of module AndonStop>
+/\ canaryUsed = 0
+/\ ls = <<"none", "none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "enforce"
+/\ cons = 0
+/\ cm = TRUE
+/\ cross = 0
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = TRUE
+/\ lgen = 0
+/\ handFixBad = FALSE
+/\ st = "fixed"
+/\ used = 0
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 2
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 0
+/\ boundGen = 0
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "fixed"
+/\ age = 0
+
+State 7: <CanaryDispatch line 350, col 3 to line 355, col 81 of module AndonStop>
+/\ canaryUsed = 1
+/\ ls = <<"none", "none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "enforce"
+/\ cons = 0
+/\ cm = TRUE
+/\ cross = 1
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = TRUE
+/\ lgen = 0
+/\ handFixBad = FALSE
+/\ st = "fixed"
+/\ used = 0
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 2
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 0
+/\ boundGen = 0
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "fixed"
+/\ age = 0
+
+State 8: <ReadbackFixed line 272, col 3 to line 273, col 37 of module AndonStop>
+/\ canaryUsed = 0
+/\ ls = <<"none", "none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "enforce"
+/\ cons = 1
+/\ cm = TRUE
+/\ cross = 0
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = TRUE
+/\ lgen = 0
+/\ handFixBad = FALSE
+/\ st = "fixed"
+/\ used = 0
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 2
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 1
+/\ boundGen = 0
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "fixed"
+/\ age = 0
+
+State 9: <CanaryDispatch line 350, col 3 to line 355, col 81 of module AndonStop>
+/\ canaryUsed = 1
+/\ ls = <<"none", "none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "enforce"
+/\ cons = 1
+/\ cm = TRUE
+/\ cross = 1
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = TRUE
+/\ lgen = 0
+/\ handFixBad = FALSE
+/\ st = "fixed"
+/\ used = 0
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 2
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 1
+/\ boundGen = 0
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "fixed"
+/\ age = 0
+
+State 10: <Tick line 166, col 3 to line 170, col 49 of module AndonStop>
+/\ canaryUsed = 1
+/\ ls = <<"none", "none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "enforce"
+/\ cons = 1
+/\ cm = TRUE
+/\ cross = 1
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = TRUE
+/\ lgen = 0
+/\ handFixBad = FALSE
+/\ st = "fixed"
+/\ used = 0
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 2
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 1
+/\ boundGen = 0
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "fixed"
+/\ age = 1
+
+State 11: <Tick line 166, col 3 to line 170, col 49 of module AndonStop>
+/\ canaryUsed = 1
+/\ ls = <<"none", "none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "enforce"
+/\ cons = 1
+/\ cm = TRUE
+/\ cross = 1
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = TRUE
+/\ lgen = 0
+/\ handFixBad = FALSE
+/\ st = "fixed"
+/\ used = 0
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 2
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 1
+/\ boundGen = 0
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "fixed"
+/\ age = 2
+
+State 12: <Tick line 166, col 3 to line 170, col 49 of module AndonStop>
+/\ canaryUsed = 1
+/\ ls = <<"none", "none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "enforce"
+/\ cons = 1
+/\ cm = TRUE
+/\ cross = 1
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = TRUE
+/\ lgen = 0
+/\ handFixBad = FALSE
+/\ st = "fixed"
+/\ used = 0
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 2
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 1
+/\ boundGen = 0
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "fixed"
+/\ age = 3
+
+State 13: <Tick line 166, col 3 to line 170, col 49 of module AndonStop>
+/\ canaryUsed = 1
+/\ ls = <<"none", "none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "enforce"
+/\ cons = 1
+/\ cm = TRUE
+/\ cross = 1
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = TRUE
+/\ lgen = 0
+/\ handFixBad = FALSE
+/\ st = "fixed"
+/\ used = 0
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 2
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 1
+/\ boundGen = 0
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "fixed"
+/\ age = 4
+
+State 14: <StaleLimitReached line 205, col 3 to line 211, col 82 of module AndonStop>
+/\ canaryUsed = 1
+/\ ls = <<"none", "none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "enforce"
+/\ cons = 1
+/\ cm = TRUE
+/\ cross = 1
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = TRUE
+/\ lgen = 0
+/\ handFixBad = FALSE
+/\ st = "stale"
+/\ used = 0
+/\ decisions = 1
+/\ histCounted = FALSE
+/\ cmCount = 2
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 1
+/\ boundGen = 0
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "stale"
+/\ age = 0
+
+State 15: <ReplacementsExtended line 238, col 3 to line 241, col 82 of module AndonStop>
+/\ canaryUsed = 1
+/\ ls = <<"none", "none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 1
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "enforce"
+/\ cons = 1
+/\ cm = TRUE
+/\ cross = 1
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = TRUE
+/\ lgen = 0
+/\ handFixBad = FALSE
+/\ st = "stale"
+/\ used = 0
+/\ decisions = 1
+/\ histCounted = FALSE
+/\ cmCount = 2
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 1
+/\ boundGen = 0
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "stale"
+/\ age = 0
+
+State 16: <LeaseGranted line 181, col 3 to line 186, col 59 of module AndonStop>
+/\ canaryUsed = 1
+/\ ls = <<"claimed", "none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 1
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "enforce"
+/\ cons = 1
+/\ cm = TRUE
+/\ cross = 1
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = TRUE
+/\ lgen = 1
+/\ handFixBad = FALSE
+/\ st = "swarming"
+/\ used = 0
+/\ decisions = 1
+/\ histCounted = FALSE
+/\ cmCount = 2
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 1
+/\ boundGen = 1
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "swarming"
+/\ age = 0
+
+State 17: <Tick line 166, col 3 to line 170, col 49 of module AndonStop>
+/\ canaryUsed = 1
+/\ ls = <<"claimed", "none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 1
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "enforce"
+/\ cons = 1
+/\ cm = TRUE
+/\ cross = 1
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = TRUE
+/\ lgen = 1
+/\ handFixBad = FALSE
+/\ st = "swarming"
+/\ used = 0
+/\ decisions = 1
+/\ histCounted = FALSE
+/\ cmCount = 2
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 1
+/\ boundGen = 1
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "swarming"
+/\ age = 1
+
+State 18: <Tick line 166, col 3 to line 170, col 49 of module AndonStop>
+/\ canaryUsed = 1
+/\ ls = <<"claimed", "none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 1
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "enforce"
+/\ cons = 1
+/\ cm = TRUE
+/\ cross = 1
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = TRUE
+/\ lgen = 1
+/\ handFixBad = FALSE
+/\ st = "swarming"
+/\ used = 0
+/\ decisions = 1
+/\ histCounted = FALSE
+/\ cmCount = 2
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 1
+/\ boundGen = 1
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "swarming"
+/\ age = 2
+
+State 19: <Tick line 166, col 3 to line 170, col 49 of module AndonStop>
+/\ canaryUsed = 1
+/\ ls = <<"claimed", "none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 1
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "enforce"
+/\ cons = 1
+/\ cm = TRUE
+/\ cross = 1
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = TRUE
+/\ lgen = 1
+/\ handFixBad = FALSE
+/\ st = "swarming"
+/\ used = 0
+/\ decisions = 1
+/\ histCounted = FALSE
+/\ cmCount = 2
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 1
+/\ boundGen = 1
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "swarming"
+/\ age = 3
+
+State 20: <SpawnStarted line 370, col 3 to line 371, col 75 of module AndonStop>
+/\ canaryUsed = 1
+/\ ls = <<"spawning", "none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 1
+/\ migTerm = FALSE
+/\ alive = {1}
+/\ mode = "enforce"
+/\ cons = 1
+/\ cm = TRUE
+/\ cross = 1
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = TRUE
+/\ lgen = 1
+/\ handFixBad = FALSE
+/\ st = "swarming"
+/\ used = 0
+/\ decisions = 1
+/\ histCounted = FALSE
+/\ cmCount = 2
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 1
+/\ boundGen = 1
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "swarming"
+/\ age = 3
+
+State 21: <LaunchTimedOut line 388, col 3 to line 389, col 98 of module AndonStop>
+/\ canaryUsed = 1
+/\ ls = <<"uncertain", "none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 1
+/\ migTerm = FALSE
+/\ alive = {1}
+/\ mode = "enforce"
+/\ cons = 1
+/\ cm = TRUE
+/\ cross = 1
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = TRUE
+/\ lgen = 1
+/\ handFixBad = FALSE
+/\ st = "swarming"
+/\ used = 0
+/\ decisions = 1
+/\ histCounted = FALSE
+/\ cmCount = 2
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 1
+/\ boundGen = 1
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "swarming"
+/\ age = 3
+
+State 22: <UncertainWindowElapsed line 401, col 3 to line 403, col 71 of module AndonStop>
+/\ canaryUsed = 1
+/\ ls = <<"expired", "none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 1
+/\ migTerm = FALSE
+/\ alive = {1}
+/\ mode = "enforce"
+/\ cons = 1
+/\ cm = TRUE
+/\ cross = 1
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = TRUE
+/\ lgen = 1
+/\ handFixBad = FALSE
+/\ st = "swarming"
+/\ used = 0
+/\ decisions = 1
+/\ histCounted = FALSE
+/\ cmCount = 2
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 1
+/\ boundGen = 1
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "swarming"
+/\ age = 3
+
+State 23: <Tick line 166, col 3 to line 170, col 49 of module AndonStop>
+/\ canaryUsed = 1
+/\ ls = <<"expired", "none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 1
+/\ migTerm = FALSE
+/\ alive = {1}
+/\ mode = "enforce"
+/\ cons = 1
+/\ cm = TRUE
+/\ cross = 1
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = TRUE
+/\ lgen = 1
+/\ handFixBad = FALSE
+/\ st = "swarming"
+/\ used = 0
+/\ decisions = 1
+/\ histCounted = FALSE
+/\ cmCount = 2
+/\ occ = 1
+/\ humanCleared = FALSE
+/\ goodPost = 1
+/\ boundGen = 1
+/\ evid = TRUE
+/\ replTotal = 0
+/\ cache = "swarming"
+/\ age = 4
+
+State 24: Stuttering
+Finished checking temporal properties in 00s at 2026-10-27 18:12:00
+1247741 states generated, 215175 distinct states found, 26132 states left on queue.
+Finished in 03s at (2026-10-27 18:12:00)
+exit=13

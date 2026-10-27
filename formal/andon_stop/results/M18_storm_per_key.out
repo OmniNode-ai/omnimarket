@@ -1,0 +1,46 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 127 and seed 377472404339733650 with 12 workers on 32 cores with 7282MB heap and 64MB offheap memory [pid: 1] (Linux 7.0.0-34-generic amd64, Eclipse Adoptium 17.0.20.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file AndonStop.tla
+Parsing file /tmp/Integers.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Integers
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module AndonStop
+Starting... (2026-10-27 18:11:18)
+Computing initial states...
+Error: Invariant StormIsOneStop is violated by the initial state:
+/\ canaryUsed = 0
+/\ ls = <<"none", "none", "none", "none", "none", "none", "none">>
+/\ opExt = 0
+/\ migTerm = FALSE
+/\ alive = {}
+/\ mode = "observe"
+/\ cons = 0
+/\ cm = FALSE
+/\ cross = 0
+/\ unkClears = FALSE
+/\ handFixUsed = FALSE
+/\ badActive = FALSE
+/\ causeFixed = FALSE
+/\ lgen = 0
+/\ handFixBad = FALSE
+/\ st = "absent"
+/\ used = 0
+/\ decisions = 0
+/\ histCounted = FALSE
+/\ cmCount = 0
+/\ occ = 0
+/\ humanCleared = FALSE
+/\ goodPost = 0
+/\ boundGen = 0
+/\ evid = FALSE
+/\ replTotal = 0
+/\ cache = "absent"
+/\ age = 0
+
+Finished in 00s at (2026-10-27 18:11:18)
+exit=12

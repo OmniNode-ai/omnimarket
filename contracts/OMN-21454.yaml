@@ -1,0 +1,174 @@
+schema_version: 1.0.0
+ticket_id: OMN-21454
+title: Native remote-lane receipt usage and work identity
+summary: 'Omnimarket side only: close-node engine events produce typed usage and brief identity. Runner wiring,
+  receipt persistence and CLAIM/TERMINAL propagation remain outstanding in the launcher; no runner code changes
+  here. Original criterion text is retained; checks bind the corresponding node-side behavior, not completed runner
+  integration.'
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+- events
+requirements:
+- id: req-native-receipt-usage
+  statement: The close node provides the typed receipt usage and ledger identity required by the runner.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a receipt for a stubbed Claude stream-json run whose result event holds usage carries tokens_in,
+      tokens_out, cache_read, cache_write and tool_calls from that event -- falsifier: uv run pytest plugins/omni/skills/remote-lane/tests
+      -q -k receipt_carries_claude_usage'
+  - id: AC2
+    statement: 'AC2: a receipt for a stubbed Codex run carries tokens_in, tokens_out and tool_calls from the usage
+      object the runner already reads, and cost_basis UNKNOWN with total_cost_usd absent, not 0 -- falsifier: uv
+      run pytest plugins/omni/skills/remote-lane/tests -q -k codex_cost_unknown_not_zero'
+  - id: AC3
+    statement: 'AC3: a brief with a single line Contract: <contract_id> writes contract_id into the receipt and
+      the lane CLAIM and TERMINAL rows, and a brief without the line writes none -- falsifier: uv run pytest plugins/omni/skills/remote-lane/tests
+      -q -k contract_id_in_receipt'
+  - id: AC4
+    statement: 'AC4: a run whose stream carries no usage records the token fields as UNKNOWN and the receipt still
+      validates -- falsifier: uv run pytest plugins/omni/skills/remote-lane/tests -q -k missing_usage_unknown'
+  - id: AC5
+    statement: 'AC5: a regression test built from a recorded real stream-json tail and a recorded codex event tail
+      (fixture paths named in the test) fails on the runner before the change and passes after -- falsifier: uv
+      run pytest plugins/omni/skills/remote-lane/tests -q -k recorded_stream_fixtures'
+  - id: AC6
+    statement: 'AC6: turns, tool_calls and retries are derived from the recorded event sequence per engine by the
+      stated definitions (turns are assistant messages, tool_calls are tool-use blocks or command items, retries
+      are repeated identical calls after a failed result) and a recorded stream with several turns, two tool types,
+      a failed call and a retry yields exactly those counts -- falsifier: uv run pytest plugins/omni/skills/remote-lane/tests
+      -q -k counter_semantics_recorded_streams'
+  - id: AC7
+    statement: 'AC7: the brief''s Attempt line is copied into the receipt beside the Contract line -- falsifier:
+      uv run pytest plugins/omni/skills/remote-lane/tests -q -k attempt_id_in_receipt'
+evidence_requirements:
+- kind: tests
+  description: Focused usage, native fixture and packaged RuntimeLocal tests.
+  command: uv run pytest tests/nodes/node_remote_lane_close_compute/test_receipt_usage.py -q --no-cov
+- kind: manual
+  description: Hosted deploy check exercises the packaged node without network, broker, credentials or live services.
+  command: Packaged ONEX node dispatch and typed receipt readback in dod-omn21454-deploy-packaged-node.
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21454-ac1
+  description: 'AC1 node-side proof: receipt_carries_claude_usage. Launcher integration is not claimed.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_remote_lane_close_compute/test_receipt_usage.py -q --no-cov -k receipt_carries_claude_usage
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21454-ac2
+  description: 'AC2 node-side proof: codex_cost_unknown_not_zero. Launcher integration is not claimed.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_remote_lane_close_compute/test_receipt_usage.py -q --no-cov -k codex_cost_unknown_not_zero
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21454-ac3
+  description: 'AC3 node-side proof: contract_id_in_receipt. Launcher integration is not claimed.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_remote_lane_close_compute/test_receipt_usage.py -q --no-cov -k contract_id_in_receipt
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21454-ac4
+  description: 'AC4 node-side proof: missing_usage_unknown. Launcher integration is not claimed.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_remote_lane_close_compute/test_receipt_usage.py -q --no-cov -k missing_usage_unknown
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21454-ac5
+  description: 'AC5 node-side proof: recorded_stream_fixtures. Launcher integration is not claimed.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_remote_lane_close_compute/test_receipt_usage.py -q --no-cov -k recorded_stream_fixtures
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21454-ac6
+  description: 'AC6 node-side proof: counter_semantics_recorded_streams. Launcher integration is not claimed.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_remote_lane_close_compute/test_receipt_usage.py -q --no-cov -k counter_semantics_recorded_streams
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21454-ac7
+  description: 'AC7 node-side proof: attempt_id_in_receipt. Launcher integration is not claimed.'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_remote_lane_close_compute/test_receipt_usage.py -q --no-cov -k attempt_id_in_receipt
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21454-deploy-packaged-node
+  description: 'Hosted deploy smoke: dispatch both recorded native streams through the packaged close node using
+    the ONEX CLI and compare the typed receipt usage and ledger identity with the recorded expectations. Unknown
+    Codex cost must remain absent. Runs against the evaluated checkout without credentials, broker or lab services;
+    this verifies the packaged compute node, not launcher integration or a production rollout.'
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  - AC4
+  - AC5
+  - AC6
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_remote_lane_close_compute/test_usage_runtime_local.py -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: |
+      set -eu;
+      export PYTHONDONTWRITEBYTECODE=1;
+      probe_dir="$(mktemp -d)";
+      trap 'rm -rf "$probe_dir"' EXIT;
+      uv sync --locked;
+      runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+      for engine in claude codex; do
+        "$runtime_bin/python" -c '
+      import json
+      import sys
+      from pathlib import Path
+      engine, output = sys.argv[1:]
+      fixtures = Path("tests/nodes/node_remote_lane_close_compute/fixtures")
+      events = json.loads((fixtures / f"{engine}_recorded_events.json").read_text())["events"]
+      Path(output).write_text(json.dumps({"engine_exit_code": 0, "engine": engine, "engine_output": events, "brief": "Contract: work-42\nAttempt: attempt-2\n"}))
+      ' "$engine" "$probe_dir/$engine.input.json";
+        env ONEX_LANE=omn21454-deploy-probe "$runtime_bin/onex" node node_remote_lane_close_compute --input "$probe_dir/$engine.input.json" --state-root "$probe_dir/$engine.state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/$engine.receipt.json";
+        "$runtime_bin/python" -c '
+      import json
+      import sys
+      from pathlib import Path
+      engine, receipt_path = sys.argv[1:]
+      receipt = json.loads(Path(receipt_path).read_text())
+      assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+      expected = json.loads(Path("tests/nodes/node_remote_lane_close_compute/fixtures/recorded_expected.json").read_text())[engine]
+      identity = {"contract_id": "work-42", "attempt_id": "attempt-2"}
+      result = receipt["result"]
+      assert result["usage"] == {**expected, **identity}, result
+      assert result["ledger_cells"] == identity, result
+      if engine == "codex":
+          assert result["usage"]["cost_basis"] == "UNKNOWN" and "total_cost_usd" not in result["usage"], result
+      print(json.dumps({"engine": engine, "run_id": receipt["run_id"], "usage": result["usage"], "ledger_cells": result["ledger_cells"]}, sort_keys=True))
+      ' "$engine" "$probe_dir/$engine.receipt.json";
+      done
+    cwd: ${OMNI_HOME}/omnimarket

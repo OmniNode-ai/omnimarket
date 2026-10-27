@@ -128,7 +128,10 @@ def test_routing_decision_document_prose_dod_is_not_docstring() -> None:
 
     decision = handler_delegation_routing.delta(request)
 
-    assert decision.dod_deterministic == ("response_non_empty",)
+    assert decision.dod_deterministic == (
+        "required_input_content",
+        "response_non_empty",
+    )
     # OMN-13218: semantic_adequacy replaced the blunt min_length_chars_200 floor.
     # A correct short prose answer now passes at tier 1 instead of escalating on
     # character count, while a truncated/empty stub still fails. The per-class

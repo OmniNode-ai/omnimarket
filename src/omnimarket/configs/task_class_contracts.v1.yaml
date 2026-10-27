@@ -373,6 +373,14 @@ quality_rules:
       in that prompt's definition of done and moves no score.
     waived_unless_prompt_matches:
       - "\\b(?:at\\s+most|no\\s+more\\s+than)\\s+(?:\\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\\s+words?\\b(?!\\s+(?:per|a|each|every)\\b)"
+  required_input_content:
+    enforcement: blocking
+    rationale: >-
+      Explicit input obligations are not a score preference: a read-state
+      regression must be discussed, and a CI diagnosis requested to name its
+      supplied failing step and upstream run must include those fields. The
+      narrow selectors and content rules are in the quality gate contract.
+      With no matching source obligation the check is skipped, not passed.
   semantic_adequacy:
     enforcement: blocking
     rationale: >-
@@ -1447,6 +1455,7 @@ task_classes:
     cloud_routing_policy: allowed
     definition_of_done:
       deterministic:
+        - required_input_content
         - response_non_empty
       heuristic:
         - no_refusal
@@ -1627,6 +1636,7 @@ task_classes:
     cloud_routing_policy: allowed
     definition_of_done:
       deterministic:
+        - required_input_content
         - response_non_empty
       heuristic:
         - no_refusal
@@ -1942,6 +1952,7 @@ task_classes:
     cloud_routing_policy: allowed
     definition_of_done:
       deterministic:
+        - required_input_content
         - response_non_empty
       heuristic:
         # OMN-13963: `semantic_adequacy` is the LOCAL acceptance authority. Without
@@ -2015,6 +2026,7 @@ task_classes:
     cloud_routing_policy: allowed
     definition_of_done:
       deterministic:
+        - required_input_content
         - response_non_empty
       heuristic:
         # OMN-13963: LOCAL acceptance authority (see `reasoning` above). Without a
@@ -2136,6 +2148,7 @@ task_classes:
     cloud_routing_policy: allowed
     definition_of_done:
       deterministic:
+        - required_input_content
         - response_non_empty
       heuristic:
         - cites_specific_lines
@@ -2250,6 +2263,7 @@ task_classes:
     cloud_routing_policy: allowed
     definition_of_done:
       deterministic:
+        - required_input_content
         - response_non_empty
       heuristic:
         - cites_specific_lines

@@ -1,0 +1,228 @@
+config:
+  andon_stop:
+    stale_after_hours: 4
+    storm_distinct_keys: 5
+    lease_minutes: 90
+    max_lease_replacements: 3
+    consecutive_fixed_readings: 2
+    canary_dispatches_per_readback_interval: 1
+    recovery_minimum_crossings: 1       # replaces config.seam_read.default_minimum_crossings and the expected crossings for a recovery readback only
+    stop_classes:            # the registry of 5.2; scope keys are supplied at open, never named here
+      - {id: engine-policy-breach, label: A, detector: SM-02, scope_key_kind: engine}
+      - {id: repository-without-lander, label: B, detector: "floor, stuck-green, repo-status, SM-07", scope_key_kind: repository}
+      - {id: host-bound-ruling-drifted, label: C, detector: "drift check, host drift", scope_key_kind: host}
+      - {id: ruling-drifted, label: D, detector: drift check, scope_key_kind: ruling}
+      - {id: seam-mismatch, label: E, detector: any MISSING seam, scope_key_kind: seam}
+state_machine:
+  version: {major: 1, minor: 0, patch: 0}
+  state_machine_name: andon_stop_fsm
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: 'Lifecycle of one stop: opened by a detector, worked by one swarm lane under a lease, cleared only by consecutive complete fixed readbacks.'
+  initial_state: open
+  terminal_states: [cleared, declared_false]
+  error_states: []
+  persistence_enabled: false
+  states:
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: open
+    state_type: operational
+    description: A detector found a defect of a declared class; no swarm lane holds the lease yet.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: swarming
+    state_type: operational
+    description: One swarm lane holds the lease and works the cause.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: fixed
+    state_type: operational
+    description: A countermeasure merged; the readback must read fixed on consecutive complete readings.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: stale
+    state_type: operational
+    description: No live swarm lane past the stale limit, or the lease replacements are used up; one decision row is open.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: cleared
+    state_type: terminal
+    description: The readback read fixed on the required consecutive readings; dispatch resumes.
+    is_terminal: true
+    is_recoverable: false
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: declared_false
+    state_type: terminal
+    description: The operator declared the stop a false positive; one decision row records it.
+    is_terminal: true
+    is_recoverable: false
+  transitions:
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: open_to_swarming_on_lease_granted
+    from_state: open
+    to_state: swarming
+    trigger: lease_granted
+    conditions:
+    - {condition_name: replacement_budget_left, condition_type: expression, expression: lease_replacements_remaining != 0}
+    actions:
+    - version: {major: 1, minor: 0, patch: 0}
+      action_name: emit_lease_record
+      action_type: intent_emission
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: stale_to_swarming_on_lease_granted
+    from_state: stale
+    to_state: swarming
+    trigger: lease_granted
+    conditions:
+    - {condition_name: replacement_budget_left, condition_type: expression, expression: lease_replacements_remaining != 0}
+    actions:
+    - version: {major: 1, minor: 0, patch: 0}
+      action_name: emit_lease_record
+      action_type: intent_emission
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: swarming_to_swarming_on_lease_expired_replaced
+    from_state: swarming
+    to_state: swarming
+    trigger: lease_expired
+    priority: 1
+    conditions:
+    - {condition_name: replacement_left, condition_type: expression, expression: lease_replacements_remaining != 0}
+    actions:
+    - version: {major: 1, minor: 0, patch: 0}
+      action_name: emit_lease_record
+      action_type: intent_emission
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: swarming_to_stale_on_lease_expired_exhausted
+    from_state: swarming
+    to_state: stale
+    trigger: lease_expired
+    conditions:
+    - {condition_name: replacements_used_up, condition_type: expression, expression: lease_replacements_remaining == 0}
+    actions:
+    - version: {major: 1, minor: 0, patch: 0}
+      action_name: emit_decision_row
+      action_type: intent_emission
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: open_to_stale_on_stale_limit_reached
+    from_state: open
+    to_state: stale
+    trigger: stale_limit_reached
+    actions:
+    - version: {major: 1, minor: 0, patch: 0}
+      action_name: emit_decision_row
+      action_type: intent_emission
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: open_to_fixed_on_countermeasure_merged
+    from_state: open
+    to_state: fixed
+    trigger: countermeasure_merged
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: swarming_to_fixed_on_countermeasure_merged
+    from_state: swarming
+    to_state: fixed
+    trigger: countermeasure_merged
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: stale_to_fixed_on_countermeasure_merged
+    from_state: stale
+    to_state: fixed
+    trigger: countermeasure_merged
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: open_to_fixed_on_hand_fix_recorded
+    from_state: open
+    to_state: fixed
+    trigger: hand_fix_recorded
+    conditions:
+    - {condition_name: hand_fix_allowed, condition_type: expression, expression: hand_fix_allowed == True}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: swarming_to_fixed_on_hand_fix_recorded
+    from_state: swarming
+    to_state: fixed
+    trigger: hand_fix_recorded
+    conditions:
+    - {condition_name: hand_fix_allowed, condition_type: expression, expression: hand_fix_allowed == True}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: stale_to_fixed_on_hand_fix_recorded
+    from_state: stale
+    to_state: fixed
+    trigger: hand_fix_recorded
+    conditions:
+    - {condition_name: hand_fix_allowed, condition_type: expression, expression: hand_fix_allowed == True}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: stale_to_stale_on_replacements_extended
+    from_state: stale
+    to_state: stale
+    trigger: replacements_extended
+    actions:
+    - version: {major: 1, minor: 0, patch: 0}
+      action_name: emit_decision_row
+      action_type: intent_emission
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: fixed_to_cleared_on_readback_fixed_enough
+    from_state: fixed
+    to_state: cleared
+    trigger: readback_fixed
+    priority: 1
+    conditions:
+    - {condition_name: readback_complete, condition_type: expression, expression: readback_complete == True}
+    - {condition_name: no_fixed_readings_missing, condition_type: expression, expression: fixed_readings_missing == 0}
+    actions:
+    - version: {major: 1, minor: 0, patch: 0}
+      action_name: emit_clear_record
+      action_type: intent_emission
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: fixed_to_fixed_on_readback_fixed_more_needed
+    from_state: fixed
+    to_state: fixed
+    trigger: readback_fixed
+    conditions:
+    - {condition_name: fixed_readings_missing, condition_type: expression, expression: fixed_readings_missing != 0}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: fixed_to_fixed_on_readback_unknown
+    from_state: fixed
+    to_state: fixed
+    trigger: readback_unknown
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: fixed_to_open_on_readback_mismatch
+    from_state: fixed
+    to_state: open
+    trigger: readback_mismatch
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: fixed_to_stale_on_stale_limit_reached
+    from_state: fixed
+    to_state: stale
+    trigger: stale_limit_reached
+    actions:
+    - version: {major: 1, minor: 0, patch: 0}
+      action_name: emit_decision_row
+      action_type: intent_emission
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: open_to_declared_false_on_declared_false
+    from_state: open
+    to_state: declared_false
+    trigger: declared_false
+    actions:
+    - version: {major: 1, minor: 0, patch: 0}
+      action_name: emit_decision_row
+      action_type: intent_emission
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: swarming_to_declared_false_on_declared_false
+    from_state: swarming
+    to_state: declared_false
+    trigger: declared_false
+    actions:
+    - version: {major: 1, minor: 0, patch: 0}
+      action_name: emit_decision_row
+      action_type: intent_emission
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: fixed_to_declared_false_on_declared_false
+    from_state: fixed
+    to_state: declared_false
+    trigger: declared_false
+    actions:
+    - version: {major: 1, minor: 0, patch: 0}
+      action_name: emit_decision_row
+      action_type: intent_emission
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: stale_to_declared_false_on_declared_false
+    from_state: stale
+    to_state: declared_false
+    trigger: declared_false
+    actions:
+    - version: {major: 1, minor: 0, patch: 0}
+      action_name: emit_decision_row
+      action_type: intent_emission

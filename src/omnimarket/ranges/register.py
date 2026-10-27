@@ -78,6 +78,7 @@ REQUIRED_GATE_CHECKS: tuple[str, ...] = (
     "passes_existing_tests",
     "plain_text_only",
     "pytest_tests_present",
+    "required_input_content",
     "response_non_empty",
     "semantic_adequacy",
     "short_form_adequacy",

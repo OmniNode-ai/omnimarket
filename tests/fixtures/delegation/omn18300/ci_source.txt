@@ -1,0 +1,4 @@
+Diagnose this CI failure from the supplied evidence. Name the failing step and the upstream run ID in your diagnosis, then explain the cause and minimal fix.
+Failing step: Validate node metadata dependencies
+Upstream run ID: 19482736105
+Log: Validation failed: metadata.yaml is missing the newly imported dependency.

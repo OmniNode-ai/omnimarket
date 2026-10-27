@@ -1,6 +1,6 @@
 name: node_delegation_quality_gate_reducer
 version: "1.0.0"
-description: "Delegation quality gate reducer — validates LLM inference output against schema and compliance rules"
+description: "Delegation quality gate reducer — validates LLM inference output against schema, explicit input content obligations and compliance rules"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:

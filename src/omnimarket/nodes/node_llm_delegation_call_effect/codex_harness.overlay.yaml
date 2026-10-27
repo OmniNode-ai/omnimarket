@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Optional host policy. Invoke from the host dispatcher, not an agent tool shell.
+# HOME and CODEX_HOME remain the existing host account's; no credentials here.
+codex_harness:
+  executable: codex
+  sandbox: workspace-write
+  approval_policy: never
+  network_access: true
+  reasoning_effort: high
+  max_timeout_seconds: 600
+  terminate_grace_seconds: 5

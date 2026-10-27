@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 name: node_remote_lane_close_compute
-version: 0.1.0
-description: Decide how a finished remote lane closes from its exit code and final message.
+version: 0.2.0
+description: Decide lane closeout and measure native engine usage and work identity without I/O.
 omnibase_core_compat: '>=0.47.31,<0.48.0'
 entry_points:
   onex.nodes:

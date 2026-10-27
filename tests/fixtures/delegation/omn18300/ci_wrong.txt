@@ -1,0 +1,1 @@
+The CI failure is caused by a missing dependency declaration in metadata.yaml. First compare imports with declared dependencies. Then add the missing dependency and validate the metadata again before submitting the correction.

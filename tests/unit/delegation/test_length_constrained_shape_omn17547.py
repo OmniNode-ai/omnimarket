@@ -63,7 +63,7 @@ def test_resolves_member_value_is_stable() -> None:
 def test_override_band_is_short_form() -> None:
     """AC2: citation and analysis-structure checks are dropped, adequacy kept."""
     det, heur = resolve_task_class_dod_checks("research", prompt=LIVE_PROMPT)
-    assert det == ("response_non_empty",)
+    assert det == ("required_input_content", "response_non_empty")
     assert heur == ("no_refusal", "short_form_adequacy")
 
 

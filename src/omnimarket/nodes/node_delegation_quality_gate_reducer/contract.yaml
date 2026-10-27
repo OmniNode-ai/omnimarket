@@ -545,3 +545,40 @@ state_machine:
       from_state: evaluated
       to_state: evaluated
       trigger: quality_gate_result
+
+# Input obligations that response-only completeness/citation checks cannot see.
+# Reject-only: this is not a general semantic review or diagnosis verifier.
+required_input_content:
+  rules:
+    - name: non_destructive_read_consequence
+      instruction_patterns:
+        - '\breview\b'
+      # Only a review with an explicit read-state invariant and the
+      # actual get -> pop regression. Ordinary reviews are not held to this.
+      source_patterns:
+        - '\bnon[- ]destructive reads\b'
+        - '^-(?:[^\S\n])*return\s+self\.(?P<container>\w+)\.get\((?P<key>\w+)\)[^\S\n]*\r?\n\+[^\S\n]*return\s+self\.(?P=container)\.pop\((?P=key),\s*None\)'
+      # The rubric requires a concrete consequence, not simply saying "pop".
+      # Wording and line/symbol citation style are deliberately unrestricted.
+      answer_any:
+        - '(?=[^.!?\n]*\b(?:pop|get_filter|filter\w*|getter|read\w*|lookup\w*|entry|state|storage|dictionary|mapping)\b)[^.!?\n]*\b(?<!non-)(?<!non )(?P<claim>destruct\w*|delet\w*|remov\w*|mutat\w*|consum\w*|discard\w*|drain\w*|destroy\w*|eras\w*|empt\w*)\b'
+        - '\b(?P<claim>side[- ]effects?)\b'
+        - '\b(?P<claim>chang\w*)\s+(?:the\s+)?(?:stored\s+)?(?:state|storage|dictionary|mapping|registry)\b'
+        - '\b(?:subsequent|second|later|repeated)\s+(?:reads?|lookups?|calls?)\b[^.!?\n]{0,100}\b(?P<claim>differ\w*|None|missing|empty)\b'
+        - '\bnot\s+non[- ]destructive\b'
+    - name: ci_failing_step
+      source_patterns:
+        - '\bdiagnos\w*\b'
+        - '\bCI\b|\bcontinuous integration\b|\bGitHub Actions\b'
+      instruction_patterns:
+        - '\b(?:name|include|identify|report|state|give)\b[^\n.]*\bfailing[- ]step\b'
+      source_value_patterns:
+        - '^\s*(?:[-*]\s*)?(?:\*\*)?Failing[- ]step(?:\*\*)?\s*:\s*(?P<value>[^\n]+)'
+    - name: ci_upstream_run_id
+      source_patterns:
+        - '\bdiagnos\w*\b'
+        - '\bCI\b|\bcontinuous integration\b|\bGitHub Actions\b'
+      instruction_patterns:
+        - '\b(?:name|include|identify|report|state|give)\b[^\n.]*\bupstream run[- ]ID\b'
+      source_value_patterns:
+        - '^\s*(?:[-*]\s*)?(?:\*\*)?Upstream run[- ]ID(?:\*\*)?\s*:\s*[`"\x27]?(?P<value>\d{9,12})\b'

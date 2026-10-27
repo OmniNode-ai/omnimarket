@@ -1,0 +1,31 @@
+{
+  "claude": {
+    "engine": "claude",
+    "model": "claude-sonnet-5-5",
+    "tokens_in": 214,
+    "tokens_out": 39881,
+    "tokens_cached": 11585717,
+    "cache_read": 11585717,
+    "cache_write": 159293,
+    "turns": 113,
+    "tool_calls": 113,
+    "retries": 0,
+    "wall_seconds": 3716.278,
+    "cost_basis": "MEASURED",
+    "total_cost_usd": 3.6587453
+  },
+  "codex": {
+    "engine": "codex",
+    "model": "UNKNOWN",
+    "tokens_in": 1214374,
+    "tokens_out": 8148,
+    "tokens_cached": 1133184,
+    "cache_read": 1133184,
+    "cache_write": 0,
+    "turns": 5,
+    "tool_calls": 24,
+    "retries": 0,
+    "wall_seconds": "UNKNOWN",
+    "cost_basis": "UNKNOWN"
+  }
+}
