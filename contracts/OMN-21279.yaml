@@ -100,6 +100,27 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+  - id: dod-omn-21279-scm-consumer-timeout-diagnostic
+    description: >-
+      Supplemental runtime-health evidence: execute the SCM caller's timeout
+      path and the broker admin adapter with empty/missing runtime groups,
+      active assignments, another lane's topics, audit readers, unstable groups
+      and incomplete broker reads. A timeout names no_consumer_for_topic only
+      when complete evidence proves zero serving consumers; an unreadable
+      probe stays unknown. The opened producer supplies authentication and the
+      physical topic. Writes publish once, retain exit 75, and never select a
+      different transport. This is supporting diagnosis, not proof that the
+      dev runtime recovered or that infra's layering criteria are complete.
+      The new adapter tests fail at the merge base where the adapter is absent.
+    source: generated
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run --frozen pytest
+          tests/unit/handlers/scm/test_scm_consumer_diagnostics.py
+          tests/unit/handlers/scm/test_onex_scm_command.py
+          -q --no-cov -n 0 --refuse-skips --maxfail=1
   - id: dod-omn-21279-deploy-inprocess-scm-terminal
     description: >-
       Hosted deploy-scope smoke for the in-process SCM entrypoint: run the real
