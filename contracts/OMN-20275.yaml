@@ -173,3 +173,42 @@ dod_evidence:
         check_value: |-
           env docker run --rm --user "$(id -u):$(id -g)" -v "${PWD}:/workspace:ro" -w /workspace -v "$(uv cache dir):/uv-cache" -v "$(command -v uv):/usr/local/bin/uv:ro" -e UV_LINK_MODE=copy -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0="*" -e PYTHONDONTWRITEBYTECODE=1 -e UV_PROJECT_ENVIRONMENT=/tmp/bus-binding-venv -e UV_CACHE_DIR=/uv-cache ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a uv run --frozen pytest tests/unit/bus_binding -q -n 0 -p no:randomly -p no:cacheprovider --no-cov --basetemp=/tmp/bus-binding-tests
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-github-write-token-precedence"
+    description: "GitHub write auth slice: a resolved GITHUB_TOKEN never reads or mints the fallback App identity; a resolver failure refuses without switching identities. Historical ledger acceptance criteria are not claimed by this auth slice."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_app_credentials.py -q -p no:randomly -k "resolved_github_token_never_takes_app_path or resolver_error_does_not_take_app_path"'
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-github-write-app-store-refs"
+    description: "GitHub write auth slice: absent token selects contract-declared store refs; the existing minter accepts an optional installation id and restricts the token to the requested repository, otherwise discovering the owner's installation. Missing App credentials produce a failure terminal without a GitHub request."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_app_credentials.py tests/unit/test_github_app_auth.py -q -p no:randomly -k "missing_token_mints or missing_installation_ref or unreadable_key or missing_app_credential or explicit_installation or contract_declares_ordered"'
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-github-write-no-secret-log"
+    description: "GitHub write auth slice: App key, id, minted token and untrusted resolver/mint response errors never reach credential failure text or captured logs."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_app_credentials.py tests/unit/test_github_app_auth.py -q -p no:randomly -k "secret_values_never_reach_logs or resolver_error_does_not_take_app_path or malformed_exchange_does_not_expose_response_secret"'
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-github-write-inmemory-auth"
+    description: "GitHub write auth slice: the actual in-memory SCM CLI dispatch resolves App refs through the handler's canonical secret resolver, invokes the existing minter and returns a completed terminal. Only the GitHub HTTP boundary and credentials are synthetic."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_app_credentials.py -q -p no:randomly -k inmemory_cli_uses_the_same_store_resolver"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-deploy-github-write-app-auth"
+    description: "Deploy probe: in a disposable Python container from a read-only checkout, exercise the installed write node's contract, credential precedence, App minter and actual in-memory SCM terminal. No broker, GitHub credential or lab service is required. The new regression file is absent at the merge base, so the command fails there."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker pull -q ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: |-
+          env docker run --rm --user "$(id -u):$(id -g)" -v "${PWD}:/workspace:ro" -w /workspace -v "$(uv cache dir):/uv-cache" -v "$(command -v uv):/usr/local/bin/uv:ro" -e UV_LINK_MODE=copy -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0="*" -e PYTHONDONTWRITEBYTECODE=1 -e UV_PROJECT_ENVIRONMENT=/tmp/github-write-auth-venv -e UV_CACHE_DIR=/uv-cache ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_app_credentials.py tests/unit/test_github_app_auth.py -q -p no:randomly -p no:cacheprovider --basetemp=/tmp/github-write-auth-tests
+        cwd: "${OMNI_HOME}/omnimarket"
