@@ -214,49 +214,8 @@ published_events:
     topic: onex.evt.omnimarket.node-generation-failed.v1
     description: "Business-failure benchmark; contract shape may still be valid when a checked semantic or corpus gate failed."
 
-model_routing:
-  # OMN-12779 + OMN-12801: provider, served_model_id, and endpoint_ref are
-  # declared here. The endpoint URL + api_key reference are NOT declared via an
-  # env var — they are resolved per-model from the routing authority (the bifrost
-  # delegation contract overlay keyed by endpoint_ref), the same authority the
-  # delegation routing reducer uses. A shared LLM_CODER_URL env cannot serve
-  # multiple providers (vLLM/Gemini/OpenRouter have distinct URLs), so there is
-  # no endpoint_env / endpoint_mode indirection.
-  provider: local
-  # OMN-16492: must match the routing authority's model_name for endpoint_ref
-  # (bifrost_delegation.yaml local-coder, live-verified "Qwen3.6-35B-A3B" at .201:8000
-  # per OMN-16419). The generation path posts this value to the wire verbatim
-  # and does NOT traverse the delegation-path attribution guard, so drift here
-  # ships false model attribution silently — bound by
-  # tests/unit/delegation/test_generation_contract_model_attribution_omn16492.py.
-  served_model_id: Qwen3.8-27B
-  endpoint_ref: local-coder
-  routing_source: contract
-  # OMN-12829 (C1): task class driving the routing-authority escalation ladder
-  # (task_class_contracts.escalation_policy.tier_order). Node generation is a
-  # code-generation task; declared here so the escalation tier order is
-  # contract-governed, never inferred from the prompt or a code literal.
-  # OMN-12890: when local tier exhausts retries the routing authority escalates to
-  # cheap_cloud, selecting backend cloud-gemini-flash (model: gemini-2.5-flash-lite
-  # via AI Studio key GEMINI_API_KEY). The prior model gemini-2.0-flash hit free-tier
-  # quota (HTTP 429); gemini-2.5-flash-lite is quota-available on the same key.
-  task_type: code_generation
-  # Provider-specific request shaping is selected per active model from
-  # configs/inference_protocols.v1.yaml. Keeping it out of this route contract
-  # prevents local Qwen fields from leaking into cloud-provider payloads when
-  # the routing authority escalates the run.
-  auth:
-    shared_secret_env: LOCAL_LLM_SHARED_SECRET
-    cidr_allowlist_env: LLM_ENDPOINT_CIDR_ALLOWLIST
-  # OMN-13621: per-model inference pricing is sourced from the canonical
-  # cost-pricing contract (omnimarket/cost/cost_pricing.yaml), NOT a hardcoded
-  # source constant. _calculate_cost resolves the priced entry for the run's
-  # (provider, served_model_id) and prices the measured tokens through it; the
-  # resulting cost_inference_usd lands in the canonical cost projection
-  # (generation_events.cost_inference_usd) via node_projection_delegation.
-  cost_pricing:
-    source: contract
-    contract_path: omnimarket/cost/cost_pricing.yaml
+# Model choices belong to the explicit overlay (OMN-20201).
+model_routing_overlay: routing_overlay.yaml
 
 dependencies:
   - name: llm_shared_secret

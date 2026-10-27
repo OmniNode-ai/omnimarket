@@ -15,7 +15,7 @@ labels the entry ``CORRECTED_LABEL``.
 
 from __future__ import annotations
 
-from typing import Self
+from typing import Literal, Self
 
 from omnibase_core.enums.enum_context_supersession_status import (
     EnumContextSupersessionStatus,
@@ -27,6 +27,22 @@ from omnibase_core.models.context.model_context_source_result import (
     ModelContextSourceResult,
 )
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from omnimarket.events.model_ledger_row_event import ModelLedgerLinkedWordsEvent
+from omnimarket.nodes.node_work_ledger_emit_effect.handlers.row_parser import (
+    parse_ledger_row,
+)
+
+
+def ledger_provenance_label(
+    text: str,
+) -> Literal["recorded, linked", "recorded, unlinked"]:
+    """Use typed row cells; prose mentioning a link is never linking evidence."""
+    row = parse_ledger_row(text)
+    if isinstance(row, ModelLedgerLinkedWordsEvent) and row.prompt_id and row.covers:
+        return "recorded, linked"
+    return "recorded, unlinked"
+
 
 FRAMING_LABEL = "recorded framing, not operator words"
 CORRECTED_LABEL = "corrected, see correction"
@@ -70,6 +86,17 @@ class ModelLedgerSourceEntry(ModelContextSourceEntry):
     operator_words: str | None = None
     recorded_framing: tuple[str, str] | None = None
     framing_label: str | None = None
+    provenance_label: Literal["recorded, linked", "recorded, unlinked"] = (
+        "recorded, unlinked"
+    )
+
+    @model_validator(mode="after")
+    def _provenance_matches_row(self) -> Self:
+        if self.provenance_label != ledger_provenance_label(self.text):
+            raise ValueError(
+                "provenance_label must match the row's prompt_id and covers cells"
+            )
+        return self
 
     @model_validator(mode="after")
     def _corrections_mark_the_entry(self) -> Self:

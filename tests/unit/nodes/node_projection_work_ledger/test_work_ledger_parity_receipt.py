@@ -60,7 +60,12 @@ def _run(
         json.dumps(
             {
                 "rows": [
-                    {"row_id": _rid(raw), "row_ts": raw[:20], "source": source}
+                    {
+                        "row_id": _rid(raw),
+                        "row_ts": raw[:20],
+                        "source": source,
+                        "raw_row": raw,
+                    }
                     for raw, source in projected
                 ],
                 "state": [],
@@ -197,6 +202,9 @@ def test_receipt_counts_ledger_emit_as_backfill(
     projection_sources: dict[str, int], backfilled: str, exact: bool
 ) -> None:
     report = compare(
+        projection_raw_rows={
+            hashlib.sha256(raw.encode()).hexdigest(): raw for raw in ROWS
+        },
         file_rows=ROWS,
         projection_rows={_rid(raw): raw[:20] for raw in ROWS[1:4]},
         projection_state={},

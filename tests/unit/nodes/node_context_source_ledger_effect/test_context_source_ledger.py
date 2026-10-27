@@ -157,7 +157,10 @@ def test_entry_text_equals_markdown_row_text_for_every_authority_row_of_a_day(
     assert len(expected) == 5
     assert max(len(r) for r in expected) > 900
 
-    for reader in (_ListReader((*DAY, NEXT_DAY)), MarkdownLedgerRowReader([markdown])):
+    for reader in (
+        _ListReader((*DAY, NEXT_DAY)),
+        MarkdownLedgerRowReader([markdown], manifest_root=tmp_path),
+    ):
         result = _handler(reader).handle(_request("2026-10-01T23:59:59Z", cited=stamps))
         assert result.status is EnumContextSourceStatus.RESOLVED
         assert sorted(e.text for e in result.entries) == sorted(expected)
@@ -182,9 +185,9 @@ def test_pinned_markdown_reader_keeps_line_refs_across_archive_rolls(
     live = tmp_path / "ROLLING_WORK_LEDGER.md"
     archive.write_text("\n".join(DAY[:3]) + "\n", "utf-8")
     live.write_text("\n".join(DAY[3:]) + "\n", "utf-8")
-    result = _handler(MarkdownLedgerRowReader([archive, live])).handle(
-        _request("2026-10-01T23:59:59Z", cited=(DAY[0][:20], DAY[3][:20]))
-    )
+    result = _handler(
+        MarkdownLedgerRowReader([archive, live], manifest_root=tmp_path)
+    ).handle(_request("2026-10-01T23:59:59Z", cited=(DAY[0][:20], DAY[3][:20])))
     refs = {e.row_stamp: e.source_ref for e in result.entries}
     assert refs == {
         DAY[0][:20]: f"{archive.name}:1",

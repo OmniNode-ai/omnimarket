@@ -258,13 +258,28 @@ dod_evidence:
         check_value: "uv run --frozen pytest tests/nodes/node_session_compaction_measurement_compute/test_measurement.py -q --no-cov -k 'dropped_decision_negative_control or wall_time_and_usage_stream_dedup or node_contract_and_overlay'"
         cwd: "${OMNI_HOME}/omnimarket"
 
+  - id: "dod-omn21090-ac4-pinned-ledger-source"
+    description: "Track C TC.4 repository contribution: pinned ledger reads are confined to their explicit manifest root and provenance labels require both linking cells. This does not assert every Track C child is Done; epic completion remains a Linear state audit."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env UV_FROZEN=1 uv run pytest tests/unit/nodes/node_context_source_ledger_effect/test_ledger_pinned_root.py tests/unit/nodes/node_context_source_ledger_effect/test_ledger_provenance.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21090-deploy-pinned-ledger-dispatch"
+    description: "Hosted-runner TC.4 probe: packaged typed dispatch preserves the D1 correction and refuses missing files, manifest escapes and unauthorized tenants on both local bus bindings. No services or credentials are used; the test fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run --frozen pytest tests/test_golden_chain_context_source_ledger_pinned.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21090-ac4-sampled-exemplar-revocation"
     description: "Track C TC.5 contribution: minimum-sample revocation and count-derived quality metrics. This does not assert every Track C child is Done; the epic criterion remains a Linear API check. All existing evidence entries for AC1 through AC5 are preserved."
     source: "manual"
     binds_ac: ["AC4"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/nodes/node_exemplar_registry_reconcile_compute/test_sampled_revocation.py -q -n 0 -p no:randomly --no-cov"
+        check_value: "env UV_FROZEN=true uv run pytest tests/nodes/node_exemplar_registry_reconcile_compute/test_sampled_revocation.py -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21090-deploy-sampled-exemplar-revocation"
     description: "Hosted-runner probe executes the packaged exemplar reconcile handler and in-memory runtime against count-based revocation controls; a head without the change fails. No runtime host or credentials are used."
@@ -272,4 +287,53 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run --frozen pytest tests/nodes/node_exemplar_registry_reconcile_compute/test_sampled_revocation.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+
+  - id: "dod-omn21090-routing-overlay-boundary"
+    description: "Repository gate repair only: the generation base contract forbids model choices, its explicit overlay supplies every canonical routing field, and missing or conflicting authority fails closed. This does not establish that any epic child track is Done; AC1 through AC5 still require their specified Linear API reads."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validation/test_generation_routing_overlay.py tests/test_routing_authority_gate.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1", "AC2", "AC3", "AC4", "AC5"]
+  - id: "dod-omn21090-deploy-routing-overlay-probe"
+    description: "Hosted runner checks the packaged generation handler reads the declared model from its packaged overlay and both enforcing gates pass. No services, inference calls, or credentials are required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run --frozen pytest tests/validation/test_generation_routing_overlay.py tests/test_routing_authority_gate.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+
+  - id: "dod-omn21090-ac2-required-parity-evidence"
+    description: "Track A TA.5 code contribution; this does not assert all Track A children are Done: exact parity refuses absent or partial projected text through the in-memory bus, injected spool transport and JSON CLI; changed words and dropped correction links remain mismatches. The full UTC-day live projection proof remains a separate required check."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity_required_text.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+
+  - id: "dod-omn21090-deploy-required-parity-evidence"
+    description: "Hosted-runner probe reads the published parity module at the checked-out head and executes its missing-text negative control. The old module returns no missing-text mismatch and fails. No runtime host or application credential is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          set -euo pipefail
+          probe=$(mktemp -d)
+          trap 'rm -rf "$probe"' EXIT
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_work_ledger/parity.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d > "$probe/parity.py"
+          uv run --frozen python - "$probe/parity.py" <<'PYPROBE'
+          import hashlib
+          import runpy
+          import sys
+          from datetime import UTC, datetime
+          compare = runpy.run_path(sys.argv[1])["compare"]
+          raw = "2026-10-01T12:00:00Z | STATUS | lane=probe | evidence"
+          rid = hashlib.sha256(raw.encode()).hexdigest()
+          result = compare(file_rows=[raw], projection_rows={rid: raw[:20]}, projection_state={}, since=datetime(2026, 10, 1, tzinfo=UTC), until=datetime(2026, 10, 2, tzinfo=UTC))
+          assert not result.exact
+          assert [(m.kind.value, m.key) for m in result.mismatches] == [("row_text_missing_in_projection", rid)]
+          PYPROBE
         cwd: "${OMNI_HOME}/omnimarket"

@@ -56,6 +56,7 @@ from omnimarket.cost.cost_pricing import (
 )
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_usage_source import EnumUsageSource
+from omnimarket.handlers.handler_contract_routing_overlay import load_routing_contract
 from omnimarket.inference.delegation_config_provenance import (
     resolve_bifrost_path_binding,
 )
@@ -242,10 +243,7 @@ def _replay_state_path(correlation_id: str) -> Path | None:
 
 
 def _load_contract(path: Path | None = None) -> dict[str, Any]:
-    p = path or _CONTRACT_PATH
-    with open(p) as f:
-        data: dict[str, Any] = yaml.safe_load(f)
-    return data
+    return load_routing_contract(path or _CONTRACT_PATH)
 
 
 # OMN-18568: the contract of the node that PUBLISHES the two tool-reuse verdict
@@ -854,9 +852,9 @@ class HandlerGenerationConsumer:
     the contract terminal topic; this handler never self-publishes it (OMN-15469).
 
     Routing authority (OMN-12779 + OMN-12801 — no env-var endpoint indirection):
-        1. contract.yaml model_routing.provider — e.g. "local"
-        2. contract.yaml model_routing.served_model_id — the wire model ID string
-        3. contract.yaml model_routing.endpoint_ref — bifrost backend id (e.g. "local-coder")
+        1. routing overlay model_routing.provider — e.g. "local"
+        2. routing overlay model_routing.served_model_id — the wire model ID string
+        3. routing overlay model_routing.endpoint_ref — bifrost backend id (e.g. "local-coder")
         4. endpoint_url + api_key_ref are resolved per-model from the routing
            authority (bifrost delegation contract overlay) via
            ``resolve_generation_endpoint`` — NOT from a shared LLM_CODER_URL env.

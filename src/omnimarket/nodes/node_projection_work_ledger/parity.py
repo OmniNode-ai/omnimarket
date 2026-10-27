@@ -28,7 +28,8 @@ Rows the emit path can never carry (a legacy or tool-internal type) are counted
 apart, never as mismatches, and never silently dropped.
 
 OMN-21107 TA.5 compares projected ``raw_row`` text and parsed authority fields
-for each shared row in the window when raw text is supplied. It also compares
+for every shared row in the window. Missing projected text is a mismatch;
+metadata-only exports cannot establish exact parity. It also compares
 the relationship closure derived from each side's rows through the state
 horizon, restricted to entities touched by the window.
 
@@ -218,6 +219,8 @@ def compare(
     projection_raw_rows: Mapping[str, str] | None = None,
 ) -> ModelWorkLedgerParityReport:
     """Compare the file's rows in the window with the projection. Pure."""
+    # Missing evidence must never disable the authority checks.
+    projection_raw_rows = projection_raw_rows if projection_raw_rows is not None else {}
     stamped_rows = [(parse_stamp(raw.split(" | ", 1)[0]), raw) for raw in file_rows]
     if state_horizon is None:
         state_horizon = file_horizon(file_rows, until)
@@ -242,14 +245,12 @@ def compare(
             continue
         if row_in_window:
             in_window[result.row.row_id] = raw
-            if projection_raw_rows is not None:
-                file_text_rows[result.row.row_id] = result.row.raw_row
+            file_text_rows[result.row.row_id] = result.row.raw_row
             touched.update(op.entity_key for op in result.ops)
         if row_in_state:
             state_row_ids.add(result.row.row_id)
             apply_ops(expected, result.ops)
-            if projection_raw_rows is not None:
-                file_links.extend(result.links)
+            file_links.extend(result.links)
 
     mismatches: list[ModelParityMismatch] = []
     for row_id in sorted(in_window.keys() - projection_rows.keys()):
@@ -270,59 +271,58 @@ def compare(
         )
 
     rows_text_compared = 0
-    if projection_raw_rows is not None:
-        for row_id in sorted(in_window.keys() & projection_rows.keys()):
-            if row_id not in projection_raw_rows:
-                mismatches.append(
-                    ModelParityMismatch(
-                        kind=EnumParityMismatchKind.ROW_TEXT_MISSING_IN_PROJECTION,
-                        key=row_id,
-                    )
-                )
-                continue
-            rows_text_compared += 1
-            file_text = file_text_rows[row_id]
-            projection_text = projection_raw_rows[row_id]
-            if file_text == projection_text:
-                continue
-            offset = next(
-                (
-                    i
-                    for i, (a, b) in enumerate(
-                        zip(file_text, projection_text, strict=False)
-                    )
-                    if a != b
-                ),
-                min(len(file_text), len(projection_text)),
-            )
+    for row_id in sorted(in_window.keys() & projection_rows.keys()):
+        if row_id not in projection_raw_rows:
             mismatches.append(
                 ModelParityMismatch(
-                    kind=EnumParityMismatchKind.ROW_TEXT_DIFFERS,
+                    kind=EnumParityMismatchKind.ROW_TEXT_MISSING_IN_PROJECTION,
                     key=row_id,
-                    detail=f"first difference at offset {offset}; file_len={len(file_text)} projection_len={len(projection_text)}",
                 )
             )
-            try:
-                projected_authority = _authority(projection_text)
-            except LedgerRowRefusalError:
-                detail = "projection row does not parse"
-            else:
-                file_authority = _authority(file_text)
-                differing = sorted(
-                    name
-                    for name in file_authority
-                    if file_authority[name] != projected_authority[name]
+            continue
+        rows_text_compared += 1
+        file_text = file_text_rows[row_id]
+        projection_text = projection_raw_rows[row_id]
+        if file_text == projection_text:
+            continue
+        offset = next(
+            (
+                i
+                for i, (a, b) in enumerate(
+                    zip(file_text, projection_text, strict=False)
                 )
-                if not differing:
-                    continue
-                detail = f"fields={','.join(differing)}"
-            mismatches.append(
-                ModelParityMismatch(
-                    kind=EnumParityMismatchKind.ROW_AUTHORITY_DIFFERS,
-                    key=row_id,
-                    detail=detail,
-                )
+                if a != b
+            ),
+            min(len(file_text), len(projection_text)),
+        )
+        mismatches.append(
+            ModelParityMismatch(
+                kind=EnumParityMismatchKind.ROW_TEXT_DIFFERS,
+                key=row_id,
+                detail=f"first difference at offset {offset}; file_len={len(file_text)} projection_len={len(projection_text)}",
             )
+        )
+        try:
+            projected_authority = _authority(projection_text)
+        except LedgerRowRefusalError:
+            detail = "projection row does not parse"
+        else:
+            file_authority = _authority(file_text)
+            differing = sorted(
+                name
+                for name in file_authority
+                if file_authority[name] != projected_authority[name]
+            )
+            if not differing:
+                continue
+            detail = f"fields={','.join(differing)}"
+        mismatches.append(
+            ModelParityMismatch(
+                kind=EnumParityMismatchKind.ROW_AUTHORITY_DIFFERS,
+                key=row_id,
+                detail=detail,
+            )
+        )
 
     expected = {key: value for key, value in expected.items() if key in touched}
     state_after_horizon: set[str] = set()
@@ -375,51 +375,46 @@ def compare(
                     )
                 )
     relations_compared = 0
-    if projection_raw_rows is not None:
-        file_closure, _ = close_relationships(_relation_state(expected), file_links)
-        projection_links = (
-            link
-            for link in links_for_rows(projection_raw_rows.values())
-            if since <= link.at <= state_horizon
-        )
-        projection_closure, _ = close_relationships(
-            _relation_state(
-                {
-                    key: projection_state[key]
-                    for key in expected
-                    if key in projection_state
-                }
-            ),
-            projection_links,
-        )
-        for key in sorted(expected):
-            if key not in projection_closure:
-                continue
-            relations_compared += 1
-            differences: list[str] = []
-            for field in (
-                "superseded_by",
-                "amended_by",
-                "extended_by",
-                "corrected_by",
-                "operator_spans",
-            ):
-                file_value = list(cast(tuple[object, ...], file_closure[key][field]))
-                projection_value = list(
-                    cast(tuple[object, ...], projection_closure[key][field])
+    file_closure, _ = close_relationships(_relation_state(expected), file_links)
+    projection_links = (
+        link
+        for link in links_for_rows(projection_raw_rows.values())
+        if since <= link.at <= state_horizon
+    )
+    projection_closure, _ = close_relationships(
+        _relation_state(
+            {key: projection_state[key] for key in expected if key in projection_state}
+        ),
+        projection_links,
+    )
+    for key in sorted(expected):
+        if key not in projection_closure:
+            continue
+        relations_compared += 1
+        differences: list[str] = []
+        for field in (
+            "superseded_by",
+            "amended_by",
+            "extended_by",
+            "corrected_by",
+            "operator_spans",
+        ):
+            file_value = list(cast(tuple[object, ...], file_closure[key][field]))
+            projection_value = list(
+                cast(tuple[object, ...], projection_closure[key][field])
+            )
+            if file_value != projection_value:
+                differences.append(
+                    f"{field}: file={file_value} projection={projection_value}"
                 )
-                if file_value != projection_value:
-                    differences.append(
-                        f"{field}: file={file_value} projection={projection_value}"
-                    )
-            if differences:
-                mismatches.append(
-                    ModelParityMismatch(
-                        kind=EnumParityMismatchKind.STATE_RELATIONS_DIFFER,
-                        key=key,
-                        detail="; ".join(differences),
-                    )
+        if differences:
+            mismatches.append(
+                ModelParityMismatch(
+                    kind=EnumParityMismatchKind.STATE_RELATIONS_DIFFER,
+                    key=key,
+                    detail="; ".join(differences),
                 )
+            )
     return ModelWorkLedgerParityReport(
         window_since=since,
         window_until=until,
@@ -854,9 +849,7 @@ def main(argv: list[str] | None = None) -> int:
             until=until,
             state_horizon=horizon,
             later_projection_rows=later_rows,
-            projection_raw_rows=(raw_rows or None)
-            if args.projection_json is not None
-            else raw_rows,
+            projection_raw_rows=raw_rows,
         ).model_copy(update={"projection_sources": sources})
         if args.explain or args.receipt:
             missing = [

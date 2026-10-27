@@ -1298,7 +1298,8 @@ repos:
       # (replaces the deleted omnimarket-local scripts/ci/check_routing_authority.py
       # and folds in the previously-unwired core validator_delegation_profile).
       # Proves the demo path resolves provider/served_model_id/endpoint_ref/
-      # routing_source from contract + bifrost authority; no demo-path source reads
+      # routing_source from the explicit overlay + bifrost authority; the base
+      # contract is checked too. No demo-path source reads
       # env for endpoint/provider/model, hardcodes a provider literal, or reads a
       # fallback endpoint string; residue files stay within their env-authority
       # baselines (OMN-12877); every bifrost backend respects the provider-class
@@ -1307,7 +1308,7 @@ repos:
       - id: routing-authority-demo-gate
         name: Routing-authority demo gate (OMN-13285)
         language: system
-        entry: uv run python -m omnibase_core.validation.validator_routing_authority --repo omnimarket --repo-root .
+        entry: uv run python scripts/validation/validate_contract_overlay_boundary.py --routing-authority --root .
         files: >-
           ^(src/omnimarket/nodes/node_generation_consumer/|
           src/omnimarket/nodes/node_llm_delegation_call_effect/|
