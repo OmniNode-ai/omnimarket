@@ -131,8 +131,9 @@ descriptor:
     - effects
 
 # Ordered choice: a resolved token wins; only an absent token selects the App.
-# Resolution errors refuse rather than switching identities. Individual refs are
-# optional; the handler requires either the token or the App id and private key.
+# Resolution errors refuse rather than switching identities. GITHUB_TOKEN stays
+# the required primary credential (OMN-21423); the App refs are optional, and the
+# handler requires either the token or the App id and private key.
 credential_choice:
   token_secret: GITHUB_TOKEN
   fallback_app:
@@ -143,7 +144,7 @@ credential_choice:
 secrets:
   GITHUB_TOKEN:
     description: "Preferred GitHub token for API calls (REST + GraphQL)."
-    required: false
+    required: true
   ONEXBOT_OCC_APP_ID:
     description: "Fallback writer GitHub App id, resolved only when GITHUB_TOKEN is absent."
     required: false

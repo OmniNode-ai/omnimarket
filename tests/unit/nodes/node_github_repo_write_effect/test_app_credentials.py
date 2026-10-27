@@ -120,7 +120,10 @@ def test_contract_declares_ordered_optional_credentials():
     contract = yaml.safe_load(module._CONTRACT_PATH.read_text())
     auth = contract["credential_choice"]
     assert auth["token_secret"] == "GITHUB_TOKEN"
-    for name in [auth["token_secret"], *auth["fallback_app"].values()]:
+    # The primary token stays the required declaration (OMN-21423); the
+    # handler still resolves it with required=False so absence selects the App.
+    assert contract["secrets"][auth["token_secret"]]["required"] is True
+    for name in auth["fallback_app"].values():
         assert contract["secrets"][name]["required"] is False
 
 

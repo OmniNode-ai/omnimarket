@@ -56,16 +56,16 @@ requirements:
     acceptance:
       - id: "AC17"
         statement: |-
-          AC17: a resolved GITHUB_TOKEN prevents App credential lookup and minting; a resolver failure refuses without switching identities or exposing the resolver exception -- falsifier: uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_app_credentials.py -q -p no:randomly -k "resolved_github_token_never_takes_app_path or resolver_error_does_not_take_app_path"
+          AC17: a resolved GITHUB_TOKEN prevents App credential lookup and minting; a resolver failure refuses without switching identities or exposing the resolver exception -- falsifier: uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_app_credentials.py -q -p no:randomly -k "resolved_github_token_never_takes_app_path or resolver_error_does_not_take_app_path"
       - id: "AC18"
         statement: |-
-          AC18: an absent primary token selects contract-declared App secret refs, narrows the minted token to the requested repository, accepts an optional installation id and otherwise discovers the owner's installation; missing App credentials return credential_unavailable with zero repository requests -- falsifier: uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_app_credentials.py tests/unit/test_github_app_auth.py -q -p no:randomly -k "missing_token_mints or missing_installation_ref or unreadable_key or missing_app_credential or explicit_installation or contract_declares_ordered"
+          AC18: an absent primary token selects contract-declared App secret refs, narrows the minted token to the requested repository, accepts an optional installation id and otherwise discovers the owner's installation; missing App credentials return credential_unavailable with zero repository requests -- falsifier: uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_app_credentials.py tests/unit/test_github_app_auth.py -q -p no:randomly -k "missing_token_mints or missing_installation_ref or unreadable_key or missing_app_credential or explicit_installation or contract_declares_ordered"
       - id: "AC19"
         statement: |-
-          AC19: App credential values, minted tokens and untrusted resolver or mint response errors never enter credential failure text or captured logs -- falsifier: uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_app_credentials.py tests/unit/test_github_app_auth.py -q -p no:randomly -k "secret_values_never_reach_logs or resolver_error_does_not_take_app_path or malformed_exchange_does_not_expose_response_secret"
+          AC19: App credential values, minted tokens and untrusted resolver or mint response errors never enter credential failure text or captured logs -- falsifier: uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_app_credentials.py tests/unit/test_github_app_auth.py -q -p no:randomly -k "secret_values_never_reach_logs or resolver_error_does_not_take_app_path or malformed_exchange_does_not_expose_response_secret"
       - id: "AC20"
         statement: |-
-          AC20: the in-memory SCM CLI resolves App refs through the write handler's canonical secret resolver, mints a repository-scoped token and returns a completed terminal through a recorded HTTP boundary -- falsifier: uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_app_credentials.py -q -p no:randomly -k inmemory_cli_uses_the_same_store_resolver
+          AC20: the in-memory SCM CLI resolves App refs through the write handler's canonical secret resolver, mints a repository-scoped token and returns a completed terminal through a recorded HTTP boundary -- falsifier: uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_app_credentials.py -q -p no:randomly -k inmemory_cli_uses_the_same_store_resolver
 evidence_requirements:
   - kind: "tests"
     description: "AC6 to AC9: handler, bus host, CLI and lane-principal tests."
@@ -194,7 +194,7 @@ dod_evidence:
     binds_ac: ["AC17"]
     checks:
       - check_type: "test_passes"
-        check_value: 'uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_app_credentials.py -q -p no:randomly -k "resolved_github_token_never_takes_app_path or resolver_error_does_not_take_app_path"'
+        check_value: 'uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_app_credentials.py -q -p no:randomly -k "resolved_github_token_never_takes_app_path or resolver_error_does_not_take_app_path"'
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20275-github-write-app-store-refs"
     description: "GitHub write auth slice: absent token selects contract-declared store refs; the existing minter accepts an optional installation id and restricts the token to the requested repository, otherwise discovering the owner's installation. Missing App credentials produce a failure terminal without a GitHub request."
@@ -202,7 +202,7 @@ dod_evidence:
     binds_ac: ["AC18"]
     checks:
       - check_type: "test_passes"
-        check_value: 'uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_app_credentials.py tests/unit/test_github_app_auth.py -q -p no:randomly -k "missing_token_mints or missing_installation_ref or unreadable_key or missing_app_credential or explicit_installation or contract_declares_ordered"'
+        check_value: 'uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_app_credentials.py tests/unit/test_github_app_auth.py -q -p no:randomly -k "missing_token_mints or missing_installation_ref or unreadable_key or missing_app_credential or explicit_installation or contract_declares_ordered"'
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20275-github-write-no-secret-log"
     description: "GitHub write auth slice: App key, id, minted token and untrusted resolver/mint response errors never reach credential failure text or captured logs."
@@ -210,7 +210,7 @@ dod_evidence:
     binds_ac: ["AC19"]
     checks:
       - check_type: "test_passes"
-        check_value: 'uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_app_credentials.py tests/unit/test_github_app_auth.py -q -p no:randomly -k "secret_values_never_reach_logs or resolver_error_does_not_take_app_path or malformed_exchange_does_not_expose_response_secret"'
+        check_value: 'uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_app_credentials.py tests/unit/test_github_app_auth.py -q -p no:randomly -k "secret_values_never_reach_logs or resolver_error_does_not_take_app_path or malformed_exchange_does_not_expose_response_secret"'
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20275-github-write-inmemory-auth"
     description: "GitHub write auth slice: the actual in-memory SCM CLI dispatch resolves App refs through the handler's canonical secret resolver, invokes the existing minter and returns a completed terminal. Only the GitHub HTTP boundary and credentials are synthetic."
@@ -218,7 +218,7 @@ dod_evidence:
     binds_ac: ["AC20"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_app_credentials.py -q -p no:randomly -k inmemory_cli_uses_the_same_store_resolver"
+        check_value: "uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_app_credentials.py -q -p no:randomly -k inmemory_cli_uses_the_same_store_resolver"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20275-deploy-github-write-app-auth"
     description: "Deploy probe: in a disposable Python container from a read-only checkout, exercise the installed write node's contract, credential precedence, App minter and actual in-memory SCM terminal. No broker, GitHub credential or lab service is required. The new regression file is absent at the merge base, so the command fails there."
