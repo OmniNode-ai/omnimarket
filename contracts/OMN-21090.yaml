@@ -344,3 +344,28 @@ dod_evidence:
           assert [(m.kind.value, m.key) for m in result.mismatches] == [("row_text_missing_in_projection", rid)]
           PYPROBE
         cwd: "${OMNI_HOME}/omnimarket"
+
+  - id: "dod-omn21090-compaction-absolute-deadline"
+    description: >-
+      Compaction implementation evidence: the same contract-bound handler on the
+      in-memory bus and broker-semantics binding spends publication time from the
+      remaining reply budget, refuses a late package without prepared or activated
+      emissions, closes both subscriptions on expiry, and rejects a revision probe
+      for another session or barrier. The ticket's live dev-bus package proof and
+      epic child-state criteria remain outstanding; these tests do not assert them.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build_deadline.py -q -n 0 --no-cov"
+  - id: "dod-omn21090-deploy-compaction-deadline"
+    description: >-
+      Hosted-runner offline deployment probe of the packaged compaction handler
+      using both local bus bindings. A slow publish must reduce the terminal wait,
+      a late terminal must never activate, and expired subscriptions must close.
+      The probe fails on a merge base without the deadline tests or deadline fix.
+      It needs no services or credentials and is not live dev-runtime proof.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run --frozen pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build_deadline.py -q -n 0 --no-cov"
