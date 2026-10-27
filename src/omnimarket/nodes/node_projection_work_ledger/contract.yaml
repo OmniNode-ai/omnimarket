@@ -1,6 +1,6 @@
 ---
 name: projection_work_ledger
-contract_version: {major: 1, minor: 1, patch: 0}
+contract_version: {major: 1, minor: 1, patch: 1}
 node_type: reducer
 node_version: {major: 1, minor: 0, patch: 0}
 input_model: omnimarket.models.model_work_ledger_fold_request.ModelWorkLedgerFoldRequest
@@ -14,7 +14,10 @@ description: >
   column groups. The markdown file
   stays authoritative in stage 1; this projection is what its readers move onto
   one at a time (pause_check, the drain map, queue_status, session-resume), and
-  the parity check compares the two.
+  the parity check compares the two. Exact parity requires every shared row's
+  raw text, parsed authority fields and every touched entity's relationship
+  closure. Missing text is a named mismatch, including metadata-only exports;
+  an incomplete comparison cannot produce an exact daily receipt.
 
   Rule 7a: a projection is two classes. HandlerProjectionWorkLedger is the pure
   definition-B fold; WorkLedgerProjectionWriter is the effect-class writer the

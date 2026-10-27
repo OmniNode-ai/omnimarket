@@ -26,12 +26,13 @@ import pytest
 from omnibase_core.nodes.node_routing_authority_check_compute.handler import (
     check_routing_authority_at_path,
 )
-from omnibase_core.validation.validator_routing_authority import (
-    main,
-)
+
+from scripts.validation.validate_contract_overlay_boundary import main
 
 _REPO_ROOT = Path(__file__).parent.parent
-_DEFAULT_CONTRACTS = ("src/omnimarket/nodes/node_generation_consumer/contract.yaml",)
+_DEFAULT_CONTRACTS = (
+    "src/omnimarket/nodes/node_generation_consumer/routing_overlay.yaml",
+)
 _DEFAULT_SOURCES = (
     "src/omnimarket/nodes/node_generation_consumer/handlers/handler_generation_consumer.py",
     "src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_inference_intent.py",
@@ -69,7 +70,7 @@ class TestLiveDemoPathPasses:
         assert report.passed, report.model_dump()
 
     def test_cli_exit_zero_on_live_tree(self) -> None:
-        rc = main(["--repo-root", str(_REPO_ROOT)])
+        rc = main(["--routing-authority", "--root", str(_REPO_ROOT)])
         assert rc == 0
 
     def test_demo_path_artifacts_present(self) -> None:

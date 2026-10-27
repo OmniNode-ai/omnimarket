@@ -33,6 +33,7 @@ def _row(raw: str, source: str = "onex-ledger") -> dict[str, str]:
         "row_id": hashlib.sha256(raw.encode()).hexdigest(),
         "row_ts": raw[:20],
         "source": source,
+        "raw_row": raw,
     }
 
 

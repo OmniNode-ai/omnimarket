@@ -539,7 +539,7 @@ jobs:
       # OMN-13285 (W6/GAP-3): ported to the canonical core COMPUTE validator
       # (replaces the deleted omnimarket-local scripts/ci/check_routing_authority.py).
       - name: Routing-authority demo gate (enforce)
-        run: uv run python -m omnibase_core.validation.validator_routing_authority --repo omnimarket --repo-root .
+        run: uv run python scripts/validation/validate_contract_overlay_boundary.py --routing-authority --root .
       # OMN-12964: Quality-gate calibration. Fails CI if the delegation quality
       # gate score distribution collapses (degenerate {0.0,1.0}) or fails to
       # discriminate known-good from known-bad outputs. A meaningless quality

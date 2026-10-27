@@ -184,7 +184,7 @@ def test_three_tiers_share_folds_with_equal_results(
     if markdown:
         path = tmp_path / "ROLLING_WORK_LEDGER.md"
         path.write_text("# ledger\n\n" + "\n".join(ROWS) + "\n", encoding="utf-8")
-        reader = MarkdownLedgerRowReader([path])
+        reader = MarkdownLedgerRowReader([path], manifest_root=tmp_path)
     else:
         reader = _ListReader()
     fold = _CountingFold()
