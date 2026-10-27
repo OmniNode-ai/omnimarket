@@ -18,6 +18,9 @@ requirements:
   - id: DoD9
     statement: No-answer and timeout failures advance on an eligible non-final rung and stop at the task-class escalation
       limit.
+  - id: DoD10
+    statement: Packaged work contracts validate against the checked-in dependency lock and retain executable positive,
+      negative and tamper controls.
 evidence_requirements:
 - kind: tests
   description: Inline tests survive dispatch serialization; no-answer and timeout failures obey the escalation budget.
@@ -65,3 +68,13 @@ dod_evidence:
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - DoD8
+- id: dod-omn18300-corpus-lock
+  description: Load the shipped corpus and execute its positive, negative, integrity and file/bus boundary checks.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/test_work_contract_corpus.py tests/nodes/test_work_contract_checks.py
+      tests/nodes/test_work_contract_bindings.py tests/nodes/test_model_work_contract.py -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - DoD10
