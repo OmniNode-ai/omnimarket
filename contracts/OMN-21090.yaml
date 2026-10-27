@@ -273,3 +273,18 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run --frozen pytest tests/test_golden_chain_context_source_ledger_pinned.py -q -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21090-ac4-sampled-exemplar-revocation"
+    description: "Track C TC.5 contribution: minimum-sample revocation and count-derived quality metrics. This does not assert every Track C child is Done; the epic criterion remains a Linear API check. All existing evidence entries for AC1 through AC5 are preserved."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/nodes/node_exemplar_registry_reconcile_compute/test_sampled_revocation.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21090-deploy-sampled-exemplar-revocation"
+    description: "Hosted-runner probe executes the packaged exemplar reconcile handler and in-memory runtime against count-based revocation controls; a head without the change fails. No runtime host or credentials are used."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run --frozen pytest tests/nodes/node_exemplar_registry_reconcile_compute/test_sampled_revocation.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
