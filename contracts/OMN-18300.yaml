@@ -35,10 +35,20 @@ requirements:
 - id: req-gate-required-input-content
   statement: The delegation quality gate rejects an answer that omits explicit input content obligations
     (the destructive-read regression and the supplied CI step and upstream run values).
+  acceptance:
+  - id: DoD1
+    statement: 'This gate increment rejects the seeded destructive-read review miss and CI field omissions;
+      falsifier: uv run pytest tests/unit/delegation/test_quality_gate_required_content_omn18300.py -q'
+  - id: DoD2
+    statement: 'The content floor retains correct-answer controls, source ambiguity handling and existing
+      quality-gate behavior. This criterion covers the gate increment only, not epic AC1-AC7.'
+  - id: DoD3
+    statement: 'The installed gate in a disposable container rejects an answer missing both explicitly
+      supplied CI fields and recommends fallback. This is package behavior, not live service activation.'
 evidence_requirements:
 - kind: tests
   description: Gate-only replay and correct-answer controls; not epic completion proof.
-  command: uv run pytest tests/unit/delegation/test_quality_gate_required_content_omn18300.py -q -n 0
+  command: uv run pytest tests/unit/delegation/test_quality_gate_required_content_omn18300.py -q
     -p no:randomly --no-cov
 emergency_bypass:
   enabled: false
@@ -50,53 +60,58 @@ dod_evidence:
     are refused. Both tests failed before the patch because passed was True. These do not bind or prove
     the parent epic criteria.'
   source: manual
+  binds_ac: [DoD1]
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/delegation/test_quality_gate_required_content_omn18300.py -q
-      -n 0 -p no:randomly --no-cov
-    cwd: .
+      -p no:randomly --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn18300-gate-regressions
   description: Existing quality gate, calibration, score, inventory and response-contract tests remain
     passing; no right-answer refusal is observed in this corpus. Does not prove universal semantic correctness.
   source: manual
+  binds_ac: [DoD2]
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/delegation/test_quality_gate*.py tests/unit/delegation/test_handler_quality_gate*.py
-      tests/unit/delegation/test_unpassable_criterion_omn19005.py tests/unit/nodes/node_delegation_quality_gate_reducer
-      tests/integration/node_delegation_quality_gate_reducer tests/test_omn19320_check_register.py -q
-      -n 0 -p no:randomly --no-cov
-    cwd: .
+    check_value: uv run pytest tests/unit/delegation/test_quality_gate_calibration.py tests/unit/delegation/test_quality_gate_code_artifact_omn12717.py tests/unit/delegation/test_quality_gate_cross_block_omn21258.py tests/unit/delegation/test_quality_gate_deterministic_acceptance_omn13366.py tests/unit/delegation/test_quality_gate_fence_in_string.py tests/unit/delegation/test_quality_gate_judge_combine_omn13470.py -q -p no:randomly --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_quality_gate_language_aware_compiles_omn14004.py tests/unit/delegation/test_quality_gate_marker_authority_omn13370.py tests/unit/delegation/test_quality_gate_names_resolve.py tests/unit/delegation/test_quality_gate_no_refusal_deterministic_omn13373.py tests/unit/delegation/test_quality_gate_numbers_grounded.py tests/unit/delegation/test_quality_gate_passes_existing_tests_honest_omn13850.py -q -p no:randomly --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_quality_gate_passes_existing_tests_runs_omn21076.py tests/unit/delegation/test_quality_gate_promotion_leak_omn13375.py tests/unit/delegation/test_quality_gate_required_content_omn18300.py tests/unit/delegation/test_quality_gate_research_omn13354.py tests/unit/delegation/test_quality_gate_response_contract_omn15193.py tests/unit/delegation/test_quality_gate_result_projection_omn15850.py -q -p no:randomly --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_quality_gate_score_verification.py tests/unit/delegation/test_quality_gate_short_form_deterministic_floor_omn17765.py tests/unit/delegation/test_quality_gate_short_output_omn13218.py tests/unit/delegation/test_handler_quality_gate_intent.py tests/unit/delegation/test_handler_quality_gate_thinking_traces.py tests/unit/delegation/test_unpassable_criterion_omn19005.py -q -p no:randomly --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_delegation_quality_gate_reducer/test_glm_refusals_omn19734.py tests/unit/nodes/node_delegation_quality_gate_reducer/test_step_by_step_explanation_causal_markers_omn19401.py tests/unit/nodes/node_delegation_quality_gate_reducer/test_uses_pytest_mark_unit_module_marker.py tests/integration/node_delegation_quality_gate_reducer/test_delegation_quality_gate_reducer_state_coverage.py tests/test_omn19320_check_register.py -q -p no:randomly --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn18300-deploy-content-floor
-  description: 'Hosted-runner-accessible behavioral deploy check: exercise the gate from the installed
-    checkout with an explicit input field and require an omission refusal. Fails at the merge base where
-    required_input_content is unsupported. This verifies shipped package behavior, not activation of a
-    running service.'
+  description: 'Deploy probe: execute the installed gate in a disposable container from a read-only
+    checkout and require both missing CI fields to cause refusal and fallback. The unpatched gate
+    cannot satisfy these assertions. The probe needs no lab endpoint or credentials and runs on
+    hosted Docker runners; it proves package behavior, not live service activation.'
   source: manual
+  binds_ac: [DoD3]
   checks:
   - check_type: command
-    check_value: 'uv run --locked python - <<''PY''
-
+    check_value: docker pull -q ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: |-
+      env docker run --rm -i --user "$(id -u):$(id -g)" -v "${PWD}:/workspace:ro" -w /workspace -v "$(uv cache dir):/uv-cache" -v "$(command -v uv):/usr/local/bin/uv:ro" -e UV_LINK_MODE=copy -e PYTHONDONTWRITEBYTECODE=1 -e UV_PROJECT_ENVIRONMENT=/tmp/required-content-venv -e UV_PYTHON_INSTALL_DIR=/tmp/required-content-python -e UV_CACHE_DIR=/uv-cache ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a uv run --frozen --python 3.12 python - <<'PY'
       from uuid import uuid4
-
-      from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import
-      delta
-
-      from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_input import
-      ModelQualityGateInput
-
-      source = "Diagnose this CI failure. Name the failing step and upstream run ID.\nFailing step: Validate
-      metadata\nUpstream run ID: 19482736105\n"
-
-      result = delta(ModelQualityGateInput(correlation_id=uuid4(), task_type="reasoning", llm_response_content="First,
-      metadata.yaml omits a dependency. Then declare it and validate again.", dod_deterministic=("response_non_empty",
-      "required_input_content"), dod_heuristic=("semantic_adequacy",)), grounding_source=source)
-
+      from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import delta
+      from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_input import ModelQualityGateInput
+      from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import resolve_task_class_dod_checks
+      source = "Diagnose this CI failure. Name the failing step and upstream run ID.\nFailing step: Validate metadata\nUpstream run ID: 19482736105\n"
+      deterministic, heuristic = resolve_task_class_dod_checks("reasoning", source)
+      result = delta(ModelQualityGateInput(correlation_id=uuid4(), task_type="reasoning", llm_response_content="First, metadata.yaml omits a dependency. Then declare it and validate again.", dod_deterministic=deterministic, dod_heuristic=heuristic), grounding_source=source)
       assert not result.passed and result.fallback_recommended, result
-
-      assert any("required_input_content missing" in reason and "ci_failing_step" in reason and "ci_upstream_run_id"
-      in reason for reason in result.failure_reasons), result.failure_reasons
-
-      print("installed gate refuses missing supplied CI fields")
-
-      PY'
-    cwd: .
+      assert any("required_input_content missing" in reason and "ci_failing_step" in reason and "ci_upstream_run_id" in reason for reason in result.failure_reasons), result.failure_reasons
+      good = delta(ModelQualityGateInput(correlation_id=uuid4(), task_type="reasoning", llm_response_content="First, Validate metadata failed in upstream run 19482736105 because metadata.yaml omits the imported dependency. Then declare the dependency and validate again.", dod_deterministic=deterministic, dod_heuristic=heuristic), grounding_source=source)
+      assert good.passed, good.failure_reasons
+      print("installed gate refuses missing supplied CI fields and accepts complete diagnosis")
+      PY
+    cwd: ${OMNI_HOME}/omnimarket
