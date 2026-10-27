@@ -135,20 +135,20 @@ def _normalise(family: str, doc: ModelReceiptDocument) -> dict[str, Any]:
 
 
 class HandlerModelWorkReceiptJoin:
-    def handle(self, payload: ModelReceiptJoinRequest) -> ModelReceiptJoinResult:
-        by_attempt = {row.attempt_id: row for row in payload.manifest}
+    def handle(self, request: ModelReceiptJoinRequest) -> ModelReceiptJoinResult:
+        by_attempt = {row.attempt_id: row for row in request.manifest}
         by_correlation = {
-            key: row for row in payload.manifest for key in row.correlation_ids
+            key: row for row in request.manifest for key in row.correlation_ids
         }
         by_lease = {
-            key: row for row in payload.manifest for key in row.landing_lease_ids
+            key: row for row in request.manifest for key in row.landing_lease_ids
         }
         groups: dict[
             tuple[str, str], list[tuple[ModelSourceReceipt, ModelReceiptDocument]]
         ] = defaultdict(list)
-        unjoined = {row.record_id: row for row in payload.existing_unjoined}
+        unjoined = {row.record_id: row for row in request.existing_unjoined}
         rows = {
-            (row.contract_id, row.attempt_id): row for row in payload.existing_receipts
+            (row.contract_id, row.attempt_id): row for row in request.existing_receipts
         }
         conflicts: list[ModelReceiptConflict] = []
         landing: list[ModelLandingCrossCheck] = []
@@ -167,7 +167,7 @@ class HandlerModelWorkReceiptJoin:
                 attempt_id=identity.attempt_id if identity else "UNKNOWN",
             )
 
-        unique = {_source_key(source): source for source in payload.sources}
+        unique = {_source_key(source): source for source in request.sources}
         order = {"remote_lane": 0, "delegate": 1, "harness_delegate": 2, "landing": 3}
         for source in sorted(
             unique.values(),
@@ -224,13 +224,13 @@ class HandlerModelWorkReceiptJoin:
                 continue
             groups[(identity.contract_id, identity.attempt_id)].append((source, doc))
 
-        expectations = {c.contract_id: c for c in payload.contracts}
-        executions = {(c.contract_id, c.attempt_id): c for c in payload.checks}
+        expectations = {c.contract_id: c for c in request.contracts}
+        executions = {(c.contract_id, c.attempt_id): c for c in request.checks}
         for key, sources in sorted(groups.items()):
             identity = by_attempt[key[1]]
             expectation = expectations.get(key[0])
             execution = executions.get(key)
-            output = payload.outputs.get(key[1])
+            output = request.outputs.get(key[1])
             reason = ""
             if expectation is None:
                 reason = "missing_contract_check"

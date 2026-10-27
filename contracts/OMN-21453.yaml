@@ -145,3 +145,40 @@ dod_evidence:
   - check_type: command
     check_value: uv run pytest tests/nodes/test_model_work_receipt_join.py -q -k "deploy_registration_and_policy
       or inmemory_bus_binding or sqlite_writer_binding" --refuse-skips
+- id: dod-omn21453-deploy-published-handler
+  description: >-
+    Hosted source deployment probe: fetch the published handler from GitHub at the
+    evaluated checkout commit and invoke its typed request interface. An unmapped
+    receipt must remain a separate unjoined record, excluded from per-pass figures.
+    Fails at the dispatch head because the handler rejects the request keyword.
+    Requires public HTTPS only; proves published source behavior, not activation
+    on a host. The checkout smoke above separately covers installed registration,
+    in-memory bus delivery and replace-by-key persistence.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      published="$(mktemp)";
+      trap 'rm -f "$published"' EXIT;
+      curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_model_work_receipt_join_compute/handlers/handler_model_work_receipt_join.py" --output "$published";
+      env PYTHONDONTWRITEBYTECODE=1 uv run --locked python - "$published" <<'PY'
+      import sys
+      import types
+      from pathlib import Path
+      from omnimarket.nodes.node_model_work_receipt_join_compute import ModelReceiptJoinRequest, ModelSourceReceipt
+      from omnimarket.nodes.node_model_work_receipt_join_compute.models.model_work_attempt_receipt import ModelReceiptJoinResult
+      module = types.ModuleType("omnimarket.nodes.node_model_work_receipt_join_compute.handlers.published_receipt_join")
+      module.__package__ = "omnimarket.nodes.node_model_work_receipt_join_compute.handlers"
+      source = Path(sys.argv[1]).read_text(encoding="utf-8")
+      exec(compile(source, "published_receipt_join.py", "exec"), vars(module))
+      request = ModelReceiptJoinRequest(manifest=(), sources=(ModelSourceReceipt(family="remote_lane", source_ref="deploy-probe", document={}),))
+      result = module.HandlerModelWorkReceiptJoin().handle(request=request)
+      assert isinstance(result, ModelReceiptJoinResult), result
+      assert result.receipts == () and result.summary.joined == 0, result
+      assert result.summary.unjoined == 1 and result.summary.per_pass_eligible == 0, result
+      assert result.unjoined[0].reason == "not_in_manifest", result
+      assert result.unjoined[0].source_refs == ("deploy-probe",), result
+      print("published receipt join typed request and unjoined accounting passed")
+      PY
+    cwd: .
