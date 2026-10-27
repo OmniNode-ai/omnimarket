@@ -6,7 +6,7 @@ entry_points:
   onex.nodes:
     node_projection_live_events: "omnimarket.nodes.node_projection_live_events"
 capabilities:
-  standalone: true
+  standalone: false
   full_runtime: true
   # OMN-15800: HandlerLiveEventsProjectionRunner additionally publishes a
   # bus-fed snapshot delta (own Kafka producer) alongside its own DB

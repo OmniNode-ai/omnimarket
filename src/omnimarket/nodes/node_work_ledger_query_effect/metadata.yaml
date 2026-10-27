@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 name: work_ledger_query_effect
-version: "1.0.0"
-description: "Answers work ledger reads from the lab database with the markdown ledger's read rules."
+version: "1.1.0"
+description: "Answers ledger reads and sequence-ordered history with ingest cutoffs, source coverage and bound cursors."
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 capabilities:
   standalone: true

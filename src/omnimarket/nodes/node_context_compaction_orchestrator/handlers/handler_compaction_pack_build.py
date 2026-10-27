@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from collections.abc import Callable
 from contextlib import ExitStack
 from datetime import datetime
@@ -125,6 +126,8 @@ class HandlerCompactionPackBuildBus:
         request_topic: str,
         completed_topic: str,
         failed_topic: str,
+        *,
+        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self._publisher = event_publisher
         self._consumer = event_consumer
@@ -132,13 +135,14 @@ class HandlerCompactionPackBuildBus:
         self._request_topic = request_topic
         self._completed_topic = completed_topic
         self._failed_topic = failed_topic
+        self._monotonic = monotonic
 
     def build(
         self,
         request: ModelContextCompactionRequested,
         *,
         source_revision: str | None,
-        timeout_s: float,
+        deadline: float,
     ) -> ModelContextCompactionBuildOutcome:
         command_id = uuid4()
         command = build_pack_command(request, self._access, source_revision)
@@ -149,6 +153,10 @@ class HandlerCompactionPackBuildBus:
             stack.callback(failed.close)
             completed.register(str(command_id))
             failed.register(str(command_id))
+            if self._monotonic() >= deadline:
+                return ModelContextCompactionBuildOutcome(
+                    failure_class=EnumContextCompactionFailureClass.PACK_BUILDER_UNAVAILABLE
+                )
             self._publisher(
                 self._request_topic,
                 ModelEventEnvelope[ModelContextPackCommand](
@@ -159,8 +167,11 @@ class HandlerCompactionPackBuildBus:
                 .model_dump_json()
                 .encode(),
             )
-            reply = completed.wait(str(command_id), timeout_s)
-        if reply is None:
+            remaining = deadline - self._monotonic()
+            reply = (
+                completed.wait(str(command_id), remaining) if remaining > 0 else None
+            )
+        if reply is None or self._monotonic() >= deadline:
             return ModelContextCompactionBuildOutcome(
                 failure_class=EnumContextCompactionFailureClass.PACK_BUILDER_UNAVAILABLE
             )

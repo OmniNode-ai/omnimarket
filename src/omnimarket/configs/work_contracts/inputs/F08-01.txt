@@ -1,0 +1,12 @@
+Diagnose this real failed GitHub Actions run from its log. Name the failing job and exact step, identify the direct cause and distinguish it from a test failure. Give a bounded remedy; do not run or change anything. Cite the run URL and the decisive log evidence.
+Run: https://github.com/OmniNode-ai/omnimarket/actions/runs/40490148883
+Log:
+Routing Tier Bindability	Assert provider catalogues still list declared OpenRouter models	﻿2026-10-27T10:39:40.7174888Z ##[group]Run uv run python -m omnimarket.nodes.node_provider_model_catalogue_effect
+Routing Tier Bindability	Assert provider catalogues still list declared OpenRouter models	2026-10-27T10:39:40.7175795Z ^[[36;1muv run python -m omnimarket.nodes.node_provider_model_catalogue_effect^[[0m
+Routing Tier Bindability	Assert provider catalogues still list declared OpenRouter models	2026-10-27T10:39:40.7220496Z shell: /usr/bin/bash -e {0}
+Routing Tier Bindability	Assert provider catalogues still list declared OpenRouter models	2026-10-27T10:39:40.7220979Z env:
+Routing Tier Bindability	Assert provider catalogues still list declared OpenRouter models	2026-10-27T10:39:40.7221293Z   UV_PYTHON_INSTALL_DIR: fixture-root
+Routing Tier Bindability	Assert provider catalogues still list declared OpenRouter models	2026-10-27T10:39:40.7221685Z   UV_CACHE_DIR: fixture-root
+Routing Tier Bindability	Assert provider catalogues still list declared OpenRouter models	2026-10-27T10:39:40.7221975Z ##[endgroup]
+Routing Tier Bindability	Assert provider catalogues still list declared OpenRouter models	2026-10-27T10:39:45.6359498Z provider catalogue does not list openrouter-nemotron-super: nvidia/nemotron-3-super-120b-a12b:free
+Routing Tier Bindability	Assert provider catalogues still list declared OpenRouter models	2026-10-27T10:39:46.0371994Z ##[error]Process completed with exit code 1.

@@ -1,0 +1,9 @@
+from solution import canonical_ac_label as f
+
+def test_labels():
+    assert f('ac-3')=='AC3'
+    assert f('**AC3**: passes')=='AC3'
+    assert f('DoD2: proof')=='DOD2'
+    assert f('AC003')=='AC3'
+    assert f('ordinary prose')==''
+    assert f('')==''

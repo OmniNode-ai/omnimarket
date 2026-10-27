@@ -1,0 +1,64 @@
+contract_id: F09-01
+task_kind: classification
+inputs:
+- path: src/omnimarket/configs/work_contracts/inputs/F09-01.json
+  sha256: c887f426fa6791bc0498635561a355b786d6cd70a401d86d6c5453f21aabf818
+acceptance:
+  kind: schema
+  spec:
+    schema:
+      type: object
+      additionalProperties: false
+      required:
+      - scenario
+      - rows
+      properties:
+        scenario:
+          const: F09-01
+        rows:
+          type: array
+          minItems: 1
+          maxItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - id
+            - label
+            properties:
+              id:
+                type: string
+              label:
+                enum:
+                - shell_shape
+                - git_guard
+                - reply_format
+                - question_guard
+                - consumer_lag
+                - idle_capacity
+                - job_exit
+                - judge_touch
+                - throughput
+    expected_json: '{"rows": [{"id": "L3677", "label": "question_guard"}], "scenario":
+      "F09-01"}'
+budgets:
+  max_output_tokens: 8192
+  max_wall_s: 180
+  max_turns: 8
+  max_usd: 5
+controls:
+  positive:
+    path: src/omnimarket/configs/work_contracts/controls/F09-01.positive.txt
+    sha256: ed155319dae180597d873a790d447110d401a810d106e7c9590f13f64d3c21e7
+  negative:
+    path: src/omnimarket/configs/work_contracts/controls/F09-01.negative.txt
+    sha256: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+evaluators:
+- path: src/omnimarket/handlers/work_contracts/control_evaluator.py
+  sha256: 35beec5a332b646a0c1a696407f0b4a1f5a683269b19e9f782af9df0ee662d7d
+provenance:
+  source: 2026-10-27-deleg-sc-b-1100.md
+  source_sha256: 0483ba868fbaa3852282cf543dd824bc2f79fc946515bdc8769ed581bdffde0a
+  adaptation: Frozen JSON ground truth and schema. F03 summary constrained to a known-good
+    reference. F09 uses deidentified fixture rows with original ids and labels; historical
+    inputs are not equivalent.

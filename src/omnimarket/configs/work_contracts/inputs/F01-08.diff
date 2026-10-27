@@ -1,0 +1,14 @@
+diff --git a/.github/workflows/check-handshake.yml b/.github/workflows/check-handshake.yml
+index ae0c1272..f7159234 100644
+--- a/.github/workflows/check-handshake.yml
++++ b/.github/workflows/check-handshake.yml
+@@ -28,8 +28,8 @@ jobs:
+         uses: actions/checkout@v7
+         with:
+           repository: OmniNode-ai/omnibase_core
+-                                                                                # Auto-bumped by omnibase_core publish-downstream-pin-bump.yml to c54925b433b2.
+-          ref: c54925b433b29b450952141146687f9f988ccf2a
++                                                                                # Auto-bumped by omnibase_core publish-downstream-pin-bump.yml to 9b083ad32228.
++          ref: 9b083ad32228f078aecfc47f9c71155656b47fae
+           path: omnibase_core
+           token: ${{ secrets.OMNIBASE_CORE_TOKEN || secrets.GITHUB_TOKEN }}

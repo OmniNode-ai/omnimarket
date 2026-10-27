@@ -1,0 +1,19 @@
+{
+  "cues": [
+    "contracts/OMN-21409.yaml",
+    "src/omnimarket/nodes/node_idle_slot_fill_effect/contract.yaml",
+    "src/omnimarket/nodes/node_idle_slot_fill_effect/handlers/handler_idle_slot_fill.py",
+    "src/omnimarket/nodes/node_idle_slot_fill_effect/metadata.yaml",
+    "tests/nodes/node_idle_slot_fill_effect/test_codex_capacity_route.py",
+    "tests/nodes/node_idle_slot_fill_effect/test_idle_slot_fill_node.py",
+    "admitted_slots",
+    "HandlerIdleSlotFill",
+    "test_fill_routes_experiment_to_declared_available_model",
+    "send",
+    "test_shared_capacity_choice_comes_from_contract",
+    "test_claude_pin_waits_for_usable_account_capacity",
+    "test_shared_codex_never_exceeds_the_host_budget"
+  ],
+  "mode": "summary",
+  "prompt": "src/omnimarket/configs/work_contracts/inputs/F01-01.txt"
+}

@@ -1,0 +1,1 @@
+{"diagnosis": "Rejects recreated CHANGELOG.md under readme-only-docs/root-readme-only, not a Python test failure."}

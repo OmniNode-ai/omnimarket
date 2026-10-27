@@ -1,0 +1,6 @@
+import pytest
+from solution import validate_run_id as f
+def test_value():
+ try: f("a..b")
+ except ValueError: return
+ assert False, "mutant accepted traversal"

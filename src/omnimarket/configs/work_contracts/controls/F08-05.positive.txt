@@ -1,0 +1,1 @@
+{"diagnosis": "Migration 0006_work_ledger_ingested_at.sql absent from pinned infra release; requires vendor, release, then pin advance. Later successful delegate smoke does not clear this step."}

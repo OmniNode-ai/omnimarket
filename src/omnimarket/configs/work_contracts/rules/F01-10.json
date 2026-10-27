@@ -1,0 +1,17 @@
+{
+  "cues": [
+    "contracts/OMN-21116.yaml",
+    "plugins/onex/hooks/lib/hook_inventory.py",
+    "tests/contracts/test_omn21116_retired_hook_closure.py",
+    "tests/hooks/test_hook_inventory_undeclared_gate.py",
+    "test_ac3_contract_and_inventory_have_no_retired_references",
+    "test_ac3_decoded_criterion_retains_the_ticket_wording",
+    "test_ac4_baseline_preserves_exact_two_file_deletion",
+    "test_ac5_auto_is_not_declared_or_registered",
+    "test_ac5_auto_installed_registration_is_refused",
+    "test_compaction_gate_keeps_both_filename_spellings",
+    "test_a_gate_shaped_script_declared_nowhere_is_reported_by_name"
+  ],
+  "mode": "summary",
+  "prompt": "src/omnimarket/configs/work_contracts/inputs/F01-10.txt"
+}

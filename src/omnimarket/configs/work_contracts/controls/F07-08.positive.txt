@@ -1,0 +1,1 @@
+{"source": "src/omnibase_core/models/security/model_signature_chain.py", "old": "\"envelope_id\": str(self.envelope_id),", "new": "\"envelope_id\": self.envelope_id,", "defect": "Signature chain hash passes a UUID envelope_id into json.dumps without converting it to a string, raising TypeError during hashing."}

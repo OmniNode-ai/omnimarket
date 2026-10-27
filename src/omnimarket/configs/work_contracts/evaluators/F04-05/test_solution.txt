@@ -1,0 +1,9 @@
+from solution import normalize_omnimarket_v0_contract as f
+
+def test_v0():
+    raw={'handler':{'input_model':'a.B','class':'H'},'descriptor':{'timeout_ms':1},'terminal_event':'x','name':'n'}
+    assert f(raw)=={'name':'n','input_model':'a.B'}
+    assert 'handler' in raw
+    assert f({'handler':{'input_model':'a'},'input_model':'b'})=={'input_model':'b'}
+    assert f({'handler':None,'name':'n'})=={'name':'n'}
+    assert f({})=={}

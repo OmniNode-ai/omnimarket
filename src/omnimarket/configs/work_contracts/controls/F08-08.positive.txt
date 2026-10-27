@@ -1,0 +1,1 @@
+{"diagnosis": "Pre-commit suite rejects CHANGELOG.md via readme-only-docs, the same doc policy failure as kb-doc-gate; distinguish other hooks."}

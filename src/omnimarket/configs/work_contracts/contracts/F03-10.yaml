@@ -1,0 +1,68 @@
+contract_id: F03-10
+task_kind: code_generation
+inputs:
+- path: src/omnimarket/configs/work_contracts/inputs/F03-10.txt
+  sha256: a2de4e8143f3dad964581447a0722df063d1b0daf03b5cc0be40fa60c1493807
+acceptance:
+  kind: schema
+  spec:
+    schema:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - kind
+      - symbols
+      - count
+      - summary
+      properties:
+        id:
+          const: F03-10
+        kind:
+          enum:
+          - enum
+          - protocol
+          - model
+          - implementation
+          - package
+          - mixed
+        symbols:
+          type: array
+          items:
+            type: string
+          uniqueItems: true
+        count:
+          type: integer
+          minimum: 0
+        summary:
+          type: string
+          pattern: ^\S+(?:\s+\S+){0,5}$
+    expected_json: '{"count": 20, "id": "F03-10", "kind": "mixed", "summary": "Public
+      module symbols.", "symbols": ["_required_key_names", "_declared_property_names",
+      "render_response_contract_instruction", "render_extraction_marker_instruction",
+      "compose_system_prompt_with_response_contract", "compose_system_prompt_with_response_contract_instruction",
+      "one_line", "run_receipt_path", "_terminal_of", "_is_delegation", "_failure_text",
+      "render_delegate_outcome", "DelegateTerminalUnresolvedError", "DelegateReplyTimeoutError",
+      "is_reply_timeout", "reply_timeout_error", "_absent_fields", "_describe", "resolve_delegate_terminal",
+      "ProtocolConstraintValidator"]}'
+budgets:
+  max_output_tokens: 8192
+  max_wall_s: 180
+  max_turns: 8
+  max_usd: 5
+controls:
+  positive:
+    path: src/omnimarket/configs/work_contracts/controls/F03-10.positive.txt
+    sha256: a8bd02d73463075840044d0700c31983000b65269f2b44aac6272e4142daa510
+  negative:
+    path: src/omnimarket/configs/work_contracts/controls/F03-10.negative.txt
+    sha256: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+evaluators:
+- path: src/omnimarket/handlers/work_contracts/control_evaluator.py
+  sha256: 35beec5a332b646a0c1a696407f0b4a1f5a683269b19e9f782af9df0ee662d7d
+provenance:
+  source: 2026-10-27-deleg-sc-b-1100.md
+  source_sha256: 0483ba868fbaa3852282cf543dd824bc2f79fc946515bdc8769ed581bdffde0a
+  adaptation: Frozen JSON ground truth and schema. F03 summary constrained to a known-good
+    reference. F09 uses deidentified fixture rows with original ids and labels; historical
+    inputs are not equivalent.

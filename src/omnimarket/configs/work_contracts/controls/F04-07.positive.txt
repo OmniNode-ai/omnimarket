@@ -1,0 +1,16 @@
+from __future__ import annotations
+
+def compute_vts_per_kloc(vts: float, lines_changed: int) -> float:
+    """Normalise VTS per 1000 lines changed.
+
+    For PRs with fewer than 1000 lines, the denominator floors to 1
+    (i.e. 1 kLOC) to avoid inflating the metric for small changes.
+
+    Args:
+        vts: The computed VTS value.
+        lines_changed: Total lines changed in the PR.
+
+    Returns:
+        VTS normalised per kLOC.
+    """
+    return vts / max(1, lines_changed // 1000)

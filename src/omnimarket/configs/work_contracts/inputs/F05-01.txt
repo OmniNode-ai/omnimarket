@@ -1,0 +1,21 @@
+Write pytest unit tests for the untested public function convert_stats_to_typed_dict. Public source: omnibase_core/src/omnibase_core/types/converter_stats.py:15. Return ONLY a complete test module, no explanation or Markdown. Import the function and any support types from solution. Do not redefine or monkeypatch the target function. Use meaningful assertions and edge cases. Tests run in isolation on this host. Required behavior to cover: Coercion/defaults/nulls/datetime preservation and invalid numeric values.
+
+Exact public source slice including required support:
+from __future__ import annotations
+
+from omnibase_core.types.converter_datetime_parser import parse_datetime
+
+from omnibase_core.types.typed_dict_execution_stats import TypedDictExecutionStats
+
+from omnibase_core.types.typed_dict_legacy_stats import TypedDictLegacyStats
+
+def convert_stats_to_typed_dict(stats: TypedDictLegacyStats) -> TypedDictExecutionStats:
+    """Convert legacy stats dict[str, Any] to TypedDict."""
+    return TypedDictExecutionStats(
+        execution_count=int(stats.get("execution_count", 0) or 0),
+        success_count=int(stats.get("success_count", 0) or 0),
+        failure_count=int(stats.get("failure_count", 0) or 0),
+        average_duration_ms=float(stats.get("average_duration_ms", 0.0) or 0.0),
+        last_execution=parse_datetime(stats.get("last_execution")),
+        total_duration_ms=int(stats.get("total_duration_ms", 0) or 0),
+    )

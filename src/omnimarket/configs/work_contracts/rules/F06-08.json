@@ -1,0 +1,6 @@
+{
+  "mode": "module_tests",
+  "module": "omnibase_core.models.security.model_signature_chain",
+  "test": "src/omnimarket/configs/work_contracts/evaluators/F06-08/test_frozen.txt",
+  "test_layout": "tests/unit/models/security/test_omn17716_signature_chain_hash_uuid_boundary.py"
+}

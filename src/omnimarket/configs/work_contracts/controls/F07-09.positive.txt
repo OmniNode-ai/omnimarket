@@ -1,0 +1,1 @@
+{"source": "src/omnibase_core/models/delegation/model_invocation_command.py", "old": "correlation_id: UUID", "new": "correlation_id: str", "defect": "correlation_id is weakened to string, breaking the required UUID object type and rejecting UUID-object callers."}

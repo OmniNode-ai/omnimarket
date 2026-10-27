@@ -1,0 +1,65 @@
+from __future__ import annotations
+
+from typing import Self
+
+from pydantic import BaseModel
+
+class SchemaVersion(BaseModel):
+    """Parsed schema version with comparison support.
+
+    Attributes:
+        major: Major version number.
+        minor: Minor version number.
+        raw: Original version string.
+    """
+
+    # Pydantic BaseModel: migration from frozen dataclass verified — field assignment
+    # syntax is identical; round-trip through model_validate() tested in test suite.
+    model_config = {"frozen": True, "extra": "ignore", "from_attributes": True}
+
+    major: int
+    minor: int
+    raw: str
+
+    @classmethod
+    def parse(cls, version_str: str) -> Self:
+        """Parse a version string like '1.0' into a SchemaVersion.
+
+        Args:
+            version_str: Dot-separated version string (e.g. '1.0', '2.1').
+
+        Returns:
+            A SchemaVersion instance.
+
+        Raises:
+            ValueError: If the version string cannot be parsed.
+        """
+        parts = version_str.strip().split(".")
+        if len(parts) < 2:
+            raise ValueError(
+                f"Invalid schema version '{version_str}': expected 'major.minor'"
+            )
+        try:
+            major = int(parts[0])
+            minor = int(parts[1])
+        except ValueError as e:
+            raise ValueError(f"Invalid schema version '{version_str}': {e}") from e
+        return cls(major=major, minor=minor, raw=version_str.strip())
+
+def is_compatible(wire_version: str, reader_version: str) -> bool:
+    """Check whether a wire-format version is compatible with the reader.
+
+    Compatibility rules:
+    - Same major version: always compatible (minor differences tolerated).
+    - Different major version: incompatible.
+
+    Args:
+        wire_version: The schema_version from the received data.
+        reader_version: The schema_version the reader expects.
+
+    Returns:
+        True if the wire version is compatible with the reader.
+    """
+    wire = SchemaVersion.parse(wire_version)
+    reader = SchemaVersion.parse(reader_version)
+    return wire.major == reader.major

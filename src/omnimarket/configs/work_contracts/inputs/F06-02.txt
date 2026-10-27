@@ -1,0 +1,603 @@
+Fix the failing test from its log. Public repository OmniNode-ai/omnibase_core, snapshot 8096ef1c99658003281ab3507a3a01a4ba98d7a8.
+Return only a unified diff for src/omnibase_core/models/core/model_deployment_topology_database_migration_ledger.py; do not change any test, contract, configuration, dependency or other file. The regression was seeded by restoring this product source file to the parent of a recent fix commit. Do not assume access to a workspace. Preserve existing behavior and strong UUID types.
+The unchanged test command is: pytest tests/unit/models/core/test_model_deployment_topology_database.py -q --tb=short
+Failing test log:
+[1m============================= test session starts ==============================[0m
+platform darwin -- Python 3.13.12, pytest-9.0.3, pluggy-1.6.0
+rootdir: fixture-root
+configfile: pytest.ini
+plugins: hypothesis-6.151.6, mock-3.15.1, locust-2.43.3, xdist-3.8.0, split-0.11.0, timeout-2.4.0, cov-6.3.0, anyio-4.14.2, pytest_httpserver-1.1.5, asyncio-1.3.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 22 items
+
+tests/unit/models/core/test_model_deployment_topology_database.py [31mF[0m[31mF[0m[31mF[0m[31mF[0m[32m.[0m[32m.[0m[31m [ 27%]
+[0m[31mF[0m[31mF[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[31mF[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[31mF[0m[32m.[0m[32m.[0m[32m.[0m[31m                                                         [100%][0m
+
+=================================== FAILURES ===================================
+[31m[1m______________ test_binding_cannot_reference_a_different_database ______________[0m
+[1m[31mtests/unit/models/core/test_model_deployment_topology_database.py[0m:191: in test_binding_cannot_reference_a_different_database
+    [0mModelDeploymentTopology.model_validate(payload)[90m[39;49;00m
+[1m[31msrc/omnibase_core/models/core/model_deployment_topology_database.py[0m:138: in validate_references
+    [0m[94mif[39;49;00m ledger.schema_name [95mnot[39;49;00m [95min[39;49;00m [96mself[39;49;00m.schemas:[90m[39;49;00m
+       ^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31m../../../.onex-dispatch-venv/lib/python3.13/site-packages/pydantic/main.py[0m:1042: in __getattr__
+    [0m[94mraise[39;49;00m [96mAttributeError[39;49;00m([33mf[39;49;00m[33m'[39;49;00m[33m{[39;49;00m[96mtype[39;49;00m([96mself[39;49;00m).[91m__name__[39;49;00m[33m!r}[39;49;00m[33m object has no attribute [39;49;00m[33m{[39;49;00mitem[33m!r}[39;49;00m[33m'[39;49;00m)[90m[39;49;00m
+[1m[31mE   AttributeError: 'ModelDeploymentTopologyDatabaseMigrationLedger' object has no attribute 'schema_name'. Did you mean: 'schema_json'?[0m
+[31m[1m_______________________ test_database_resource_is_frozen _______________________[0m
+[1m[31mtests/unit/models/core/test_model_deployment_topology_database.py[0m:297: in test_database_resource_is_frozen
+    [0mtopology = ModelDeploymentTopology.model_validate(_topology_payload())[90m[39;49;00m
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31msrc/omnibase_core/models/core/model_deployment_topology_database.py[0m:138: in validate_references
+    [0m[94mif[39;49;00m ledger.schema_name [95mnot[39;49;00m [95min[39;49;00m [96mself[39;49;00m.schemas:[90m[39;49;00m
+       ^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31m../../../.onex-dispatch-venv/lib/python3.13/site-packages/pydantic/main.py[0m:1042: in __getattr__
+    [0m[94mraise[39;49;00m [96mAttributeError[39;49;00m([33mf[39;49;00m[33m'[39;49;00m[33m{[39;49;00m[96mtype[39;49;00m([96mself[39;49;00m).[91m__name__[39;49;00m[33m!r}[39;49;00m[33m object has no attribute [39;49;00m[33m{[39;49;00mitem[33m!r}[39;49;00m[33m'[39;49;00m)[90m[39;49;00m
+[1m[31mE   AttributeError: 'ModelDeploymentTopologyDatabaseMigrationLedger' object has no attribute 'schema_name'. Did you mean: 'schema_json'?[0m
+[31m[1m____ test_database_topology_parses_typed_resource_and_resolves_table_domain ____[0m
+[1m[31mtests/unit/models/core/test_model_deployment_topology_database.py[0m:97: in test_database_topology_parses_typed_resource_and_resolves_table_domain
+    [0mtopology = ModelDeploymentTopology.model_validate(_topology_payload())[90m[39;49;00m
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31msrc/omnibase_core/models/core/model_deployment_topology_database.py[0m:138: in validate_references
+    [0m[94mif[39;49;00m ledger.schema_name [95mnot[39;49;00m [95min[39;49;00m [96mself[39;49;00m.schemas:[90m[39;49;00m
+       ^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31m../../../.onex-dispatch-venv/lib/python3.13/site-packages/pydantic/main.py[0m:1042: in __getattr__
+    [0m[94mraise[39;49;00m [96mAttributeError[39;49;00m([33mf[39;49;00m[33m'[39;49;00m[33m{[39;49;00m[96mtype[39;49;00m([96mself[39;49;00m).[91m__name__[39;49;00m[33m!r}[39;49;00m[33m object has no attribute [39;49;00m[33m{[39;49;00mitem[33m!r}[39;49;00m[33m'[39;49;00m)[90m[39;49;00m
+[1m[31mE   AttributeError: 'ModelDeploymentTopologyDatabaseMigrationLedger' object has no attribute 'schema_name'. Did you mean: 'schema_json'?[0m
+[31m[1m_______________ test_database_topology_yaml_roundtrip_is_stable ________________[0m
+[1m[31mtests/unit/models/core/test_model_deployment_topology_database.py[0m:122: in test_database_topology_yaml_roundtrip_is_stable
+    [0mtopology = ModelDeploymentTopology.model_validate(_topology_payload())[90m[39;49;00m
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31msrc/omnibase_core/models/core/model_deployment_topology_database.py[0m:138: in validate_references
+    [0m[94mif[39;49;00m ledger.schema_name [95mnot[39;49;00m [95min[39;49;00m [96mself[39;49;00m.schemas:[90m[39;49;00m
+       ^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31m../../../.onex-dispatch-venv/lib/python3.13/site-packages/pydantic/main.py[0m:1042: in __getattr__
+    [0m[94mraise[39;49;00m [96mAttributeError[39;49;00m([33mf[39;49;00m[33m'[39;49;00m[33m{[39;49;00m[96mtype[39;49;00m([96mself[39;49;00m).[91m__name__[39;49;00m[33m!r}[39;49;00m[33m object has no attribute [39;49;00m[33m{[39;49;00mitem[33m!r}[39;49;00m[33m'[39;49;00m)[90m[39;49;00m
+[1m[31mE   AttributeError: 'ModelDeploymentTopologyDatabaseMigrationLedger' object has no attribute 'schema_name'. Did you mean: 'schema_json'?[0m
+[31m[1m_____ test_migration_ledger_import_emits_no_warning_and_installs_no_filter _____[0m
+[1m[31mtests/unit/models/core/test_model_deployment_topology_database.py[0m:369: in test_migration_ledger_import_emits_no_warning_and_installs_no_filter
+    [0m[94massert[39;49;00m result.returncode == [94m0[39;49;00m, result.stderr[90m[39;49;00m
+[1m[31mE   AssertionError: Traceback (most recent call last):[0m
+[1m[31mE       File "<string>", line 8, in <module>[0m
+[1m[31mE         import omnibase_core.models.core.model_deployment_topology_database_migration_ledger[0m
+[1m[31mE       File "fixture-root", line 28, in <module>[0m
+[1m[31mE         class ModelDeploymentTopologyDatabaseMigrationLedger(BaseModel):[0m
+[1m[31mE         ...<51 lines>...[0m
+[1m[31mE                 return self[0m
+[1m[31mE       File "fixture-root", line 243, in __new__[0m
+[1m[31mE         set_model_fields(cls, config_wrapper=config_wrapper, ns_resolver=ns_resolver)[0m
+[1m[31mE         ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[1m[31mE       File "fixture-root", line 579, in set_model_fields[0m
+[1m[31mE         fields, pydantic_extra_info, class_vars = collect_model_fields([0m
+[1m[31mE                                                   ~~~~~~~~~~~~~~~~~~~~^[0m
+[1m[31mE             cls, config_wrapper, ns_resolver, typevars_map=typevars_map[0m
+[1m[31mE             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[1m[31mE         )[0m
+[1m[31mE         ^[0m
+[1m[31mE       File "fixture-root", line 335, in collect_model_fields[0m
+[1m[31mE         warnings.warn([0m
+[1m[31mE         ~~~~~~~~~~~~~^[0m
+[1m[31mE             f'Field name "{ann_name}" in "{cls.__qualname__}" shadows an attribute in parent '[0m
+[1m[31mE             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[1m[31mE         ...<2 lines>...[0m
+[1m[31mE             stacklevel=4,[0m
+[1m[31mE             ^^^^^^^^^^^^^[0m
+[1m[31mE         )[0m
+[1m[31mE         ^[0m
+[1m[31mE     UserWarning: Field name "schema" in "ModelDeploymentTopologyDatabaseMigrationLedger" shadows an attribute in parent "BaseModel"[0m
+[1m[31mE     [0m
+[1m[31mE   assert 1 == 0[0m
+[1m[31mE    +  where 1 = CompletedProcess(args=['fixture-root', '-W', 'error::UserWarning', '-c',... Field name "schema" in "ModelDeploymentTopologyDatabaseMigrationLedger" shadows an attribute in parent "BaseModel"\n').returncode[0m
+[31m[1m____________ test_migration_ledger_schema_key_round_trips_by_alias _____________[0m
+[1m[31mtests/unit/models/core/test_model_deployment_topology_database.py[0m:381: in test_migration_ledger_schema_key_round_trips_by_alias
+    [0m[94massert[39;49;00m ledger.schema_name == [33m"[39;49;00m[33mplatform_catalog[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+           ^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31m../../../.onex-dispatch-venv/lib/python3.13/site-packages/pydantic/main.py[0m:1042: in __getattr__
+    [0m[94mraise[39;49;00m [96mAttributeError[39;49;00m([33mf[39;49;00m[33m'[39;49;00m[33m{[39;49;00m[96mtype[39;49;00m([96mself[39;49;00m).[91m__name__[39;49;00m[33m!r}[39;49;00m[33m object has no attribute [39;49;00m[33m{[39;49;00mitem[33m!r}[39;49;00m[33m'[39;49;00m)[90m[39;49;00m
+[1m[31mE   AttributeError: 'ModelDeploymentTopologyDatabaseMigrationLedger' object has no attribute 'schema_name'. Did you mean: 'schema_json'?[0m
+[31m[1m_ test_unknown_database_cross_references_fail_closed[path1-missing_database-database_ref] _[0m
+[1m[31mtests/unit/models/core/test_model_deployment_topology_database.py[0m:183: in test_unknown_database_cross_references_fail_closed
+    [0mModelDeploymentTopology.model_validate(payload)[90m[39;49;00m
+[1m[31msrc/omnibase_core/models/core/model_deployment_topology_database.py[0m:138: in validate_references
+    [0m[94mif[39;49;00m ledger.schema_name [95mnot[39;49;00m [95min[39;49;00m [96mself[39;49;00m.schemas:[90m[39;49;00m
+       ^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31m../../../.onex-dispatch-venv/lib/python3.13/site-packages/pydantic/main.py[0m:1042: in __getattr__
+    [0m[94mraise[39;49;00m [96mAttributeError[39;49;00m([33mf[39;49;00m[33m'[39;49;00m[33m{[39;49;00m[96mtype[39;49;00m([96mself[39;49;00m).[91m__name__[39;49;00m[33m!r}[39;49;00m[33m object has no attribute [39;49;00m[33m{[39;49;00mitem[33m!r}[39;49;00m[33m'[39;49;00m)[90m[39;49;00m
+[1m[31mE   AttributeError: 'ModelDeploymentTopologyDatabaseMigrationLedger' object has no attribute 'schema_name'. Did you mean: 'schema_json'?[0m
+[31m[1m___________________ test_unknown_table_location_fails_closed ___________________[0m
+[1m[31mtests/unit/models/core/test_model_deployment_topology_database.py[0m:271: in test_unknown_table_location_fails_closed
+    [0mtopology = ModelDeploymentTopology.model_validate(_topology_payload())[90m[39;49;00m
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31msrc/omnibase_core/models/core/model_deployment_topology_database.py[0m:138: in validate_references
+    [0m[94mif[39;49;00m ledger.schema_name [95mnot[39;49;00m [95min[39;49;00m [96mself[39;49;00m.schemas:[90m[39;49;00m
+       ^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31m../../../.onex-dispatch-venv/lib/python3.13/site-packages/pydantic/main.py[0m:1042: in __getattr__
+    [0m[94mraise[39;49;00m [96mAttributeError[39;49;00m([33mf[39;49;00m[33m'[39;49;00m[33m{[39;49;00m[96mtype[39;49;00m([96mself[39;49;00m).[91m__name__[39;49;00m[33m!r}[39;49;00m[33m object has no attribute [39;49;00m[33m{[39;49;00mitem[33m!r}[39;49;00m[33m'[39;49;00m)[90m[39;49;00m
+[1m[31mE   AttributeError: 'ModelDeploymentTopologyDatabaseMigrationLedger' object has no attribute 'schema_name'. Did you mean: 'schema_json'?[0m
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m tests/unit/models/core/test_model_deployment_topology_database.py::[1mtest_binding_cannot_reference_a_different_database[0m - AttributeError: 'ModelDeploymentTopologyDatabaseMigrationLedger' object has...
+[31mFAILED[0m tests/unit/models/core/test_model_deployment_topology_database.py::[1mtest_database_resource_is_frozen[0m - AttributeError: 'ModelDeploymentTopologyDatabaseMigrationLedger' object has...
+[31mFAILED[0m tests/unit/models/core/test_model_deployment_topology_database.py::[1mtest_database_topology_parses_typed_resource_and_resolves_table_domain[0m - AttributeError: 'ModelDeploymentTopologyDatabaseMigrationLedger' object has...
+[31mFAILED[0m tests/unit/models/core/test_model_deployment_topology_database.py::[1mtest_database_topology_yaml_roundtrip_is_stable[0m - AttributeError: 'ModelDeploymentTopologyDatabaseMigrationLedger' object has...
+[31mFAILED[0m tests/unit/models/core/test_model_deployment_topology_database.py::[1mtest_migration_ledger_import_emits_no_warning_and_installs_no_filter[0m - AssertionError: Traceback (most recent call last):
+[31mFAILED[0m tests/unit/models/core/test_model_deployment_topology_database.py::[1mtest_migration_ledger_schema_key_round_trips_by_alias[0m - AttributeError: 'ModelDeploymentTopologyDatabaseMigrationLedger' object has...
+[31mFAILED[0m tests/unit/models/core/test_model_deployment_topology_database.py::[1mtest_unknown_database_cross_references_fail_closed[path1-missing_database-database_ref][0m - AttributeError: 'ModelDeploymentTopologyDatabaseMigrationLedger' object has...
+[31mFAILED[0m tests/unit/models/core/test_model_deployment_topology_database.py::[1mtest_unknown_table_location_fails_closed[0m - AttributeError: 'ModelDeploymentTopologyDatabaseMigrationLedger' object has...
+[31m========================= [31m[1m8 failed[0m, [32m14 passed[0m[31m in 0.60s[0m[31m =========================[0m
+
+
+Current faulty source src/omnibase_core/models/core/model_deployment_topology_database_migration_ledger.py:
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""Checksum-aware migration-ledger declaration for a deployment database."""
+
+import warnings
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+__all__ = ["ModelDeploymentTopologyDatabaseMigrationLedger"]
+
+_SQL_IDENTIFIER_PATTERN = r"^[a-z_][a-z0-9_]*$"
+
+# OMN-16415: `schema` is the correct SQL-domain field name here (a database
+# schema reference); pydantic v2 still emits a UserWarning at class-definition
+# time because the name shadows BaseModel's deprecated `.schema()` classmethod.
+# Renaming would ripple into every deployment-topology YAML contract that
+# declares `schema:` across consuming repos for zero behavioral benefit, so the
+# warning is suppressed narrowly by message pattern at its emission point
+# (class definition) instead of a blanket ignore.
+warnings.filterwarnings(
+    "ignore",
+    message=r'Field name "schema" in ".*" shadows an attribute in parent "BaseModel"',
+    category=UserWarning,
+)
+
+
+class ModelDeploymentTopologyDatabaseMigrationLedger(BaseModel):
+    """Typed shape of an existing ledger selected for a migration stream."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
+
+    # Pydantic v2 keeps BaseModel.schema as a deprecated compatibility callable.
+    schema: str = Field(  # type: ignore[assignment]
+        ..., min_length=1, max_length=63, pattern=_SQL_IDENTIFIER_PATTERN
+    )
+    relation: str = Field(
+        ..., min_length=1, max_length=63, pattern=_SQL_IDENTIFIER_PATTERN
+    )
+    stream_column: str = Field(
+        ...,
+        min_length=1,
+        max_length=63,
+        pattern=_SQL_IDENTIFIER_PATTERN,
+    )
+    domain_column: str = Field(
+        ...,
+        min_length=1,
+        max_length=63,
+        pattern=_SQL_IDENTIFIER_PATTERN,
+    )
+    # string-version-ok: SQL identifier naming a ledger column, not a version value.
+    version_column: str = Field(
+        ...,
+        min_length=1,
+        max_length=63,
+        pattern=_SQL_IDENTIFIER_PATTERN,
+    )
+    checksum_column: str = Field(
+        ...,
+        min_length=1,
+        max_length=63,
+        pattern=_SQL_IDENTIFIER_PATTERN,
+    )
+
+    @model_validator(mode="after")
+    def ledger_columns_are_distinct(
+        self,
+    ) -> "ModelDeploymentTopologyDatabaseMigrationLedger":
+        """Each required migration identity dimension needs its own column."""
+        columns = {
+            self.stream_column,
+            self.domain_column,
+            self.version_column,
+            self.checksum_column,
+        }
+        if len(columns) != 4:
+            # error-ok: Pydantic validators require ValueError to produce ValidationError.
+            raise ValueError("Migration ledger columns must be distinct")
+        return self
+
+```
+Unchanged test source:
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""Tests for typed application-database deployment topology contracts."""
+
+import subprocess
+import sys
+from typing import Any
+
+import pytest
+from pydantic import ValidationError
+
+from omnibase_core.enums.enum_database_grant_object_type import (
+    EnumDatabaseGrantObjectType,
+)
+from omnibase_core.enums.enum_database_privilege import EnumDatabasePrivilege
+from omnibase_core.enums.enum_database_schema_domain import EnumDatabaseSchemaDomain
+from omnibase_core.models.contracts.subcontracts.model_db_table_declaration import (
+    ModelDbTableDeclaration,
+)
+from omnibase_core.models.core.model_deployment_topology import ModelDeploymentTopology
+
+pytestmark = pytest.mark.unit
+
+
+def _database_payload() -> dict[str, Any]:
+    return {
+        "physical_name": "omnidash_analytics",
+        "schemas": {
+            "tenant": {"domain": "TENANT", "owner": "owner_onex_tenant"},
+            "omninode_internal": {
+                "domain": "OMNINODE_INTERNAL",
+                "owner": "owner_omninode_internal",
+            },
+            "platform_catalog": {
+                "domain": "PLATFORM_CATALOG",
+                "owner": "owner_platform_catalog",
+            },
+        },
+        "owners": {
+            "owner_onex_tenant": {"login": False},
+            "owner_omninode_internal": {"login": False},
+            "owner_platform_catalog": {"login": False},
+        },
+        "principals": {
+            "onex_api": {
+                "login": True,
+                "bypass_rls": False,
+                "grants": [
+                    {
+                        "object_type": "SCHEMA",
+                        "schema": "tenant",
+                        "privileges": ["USAGE"],
+                    },
+                    {
+                        "object_type": "TABLE",
+                        "schema": "tenant",
+                        "objects": ["delegation_events"],
+                        "privileges": ["SELECT", "INSERT"],
+                    },
+                ],
+            }
+        },
+        "bindings": {
+            "onex_api": {
+                "database_ref": "application",
+                "principal": "onex_api",
+                "dsn_env": "OMNINODE_CLOUD_DB_URL",
+            }
+        },
+        "migration_stream": "omnibase_infra.application",
+        "checksum_ledgers": {
+            "canonical": {
+                "schema": "platform_catalog",
+                "relation": "schema_migrations",
+                "stream_column": "migration_stream",
+                "domain_column": "domain",
+                "version_column": "version",
+                "checksum_column": "checksum",
+            }
+        },
+        "checksum_ledger": "canonical",
+    }
+
+
+def _topology_payload() -> dict[str, Any]:
+    return {
+        "schema_version": "2.0",
+        "services": {},
+        "presets": {},
+        "active_preset": None,
+        "databases": {"application": _database_payload()},
+    }
+
+
+def test_database_topology_parses_typed_resource_and_resolves_table_domain() -> None:
+    topology = ModelDeploymentTopology.model_validate(_topology_payload())
+    declaration = ModelDbTableDeclaration(
+        name="delegation_events",
+        database_ref="application",
+        schema="tenant",
+        migration="nodes/node_projection_delegation/0001.sql",
+        access="read_write",
+        role="events",
+    )
+
+    database = topology.databases["application"]
+    assert database.physical_name == "omnidash_analytics"
+    assert database.schemas["tenant"].domain is EnumDatabaseSchemaDomain.TENANT
+    assert topology.table_domain(declaration) is EnumDatabaseSchemaDomain.TENANT
+    assert (
+        database.principals["onex_api"].grants[0].object_type
+        is EnumDatabaseGrantObjectType.SCHEMA
+    )
+    assert (
+        EnumDatabasePrivilege.USAGE
+        in database.principals["onex_api"].grants[0].privileges
+    )
+
+
+def test_database_topology_yaml_roundtrip_is_stable() -> None:
+    topology = ModelDeploymentTopology.model_validate(_topology_payload())
+
+    restored = ModelDeploymentTopology._from_yaml_string(topology._to_yaml_string())
+
+    assert restored == topology
+
+
+@pytest.mark.parametrize(
+    ("path", "value", "message"),
+    [
+        (
+            ("databases", "application", "schemas", "tenant", "owner"),
+            "missing_owner",
+            "owner",
+        ),
+        (
+            (
+                "databases",
+                "application",
+                "bindings",
+                "onex_api",
+                "database_ref",
+            ),
+            "missing_database",
+            "database_ref",
+        ),
+        (
+            ("databases", "application", "bindings", "onex_api", "principal"),
+            "missing_principal",
+            "principal",
+        ),
+        (
+            ("databases", "application", "checksum_ledger"),
+            "missing_ledger",
+            "checksum_ledger",
+        ),
+        (
+            (
+                "databases",
+                "application",
+                "principals",
+                "onex_api",
+                "grants",
+                0,
+                "schema",
+            ),
+            "missing_schema",
+            "schema",
+        ),
+    ],
+)
+def test_unknown_database_cross_references_fail_closed(
+    path: tuple[str | int, ...], value: str, message: str
+) -> None:
+    payload = _topology_payload()
+    target: Any = payload
+    for part in path[:-1]:
+        target = target[part]
+    target[path[-1]] = value
+
+    with pytest.raises(ValidationError, match=message):
+        ModelDeploymentTopology.model_validate(payload)
+
+
+def test_binding_cannot_reference_a_different_database() -> None:
+    payload = _topology_payload()
+    payload["databases"]["reporting"] = _database_payload()
+
+    with pytest.raises(ValidationError, match="database_ref"):
+        ModelDeploymentTopology.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("login", False), ("bypass_rls", True)],
+)
+def test_workload_principal_must_be_login_without_bypass_rls(
+    field: str, value: bool
+) -> None:
+    payload = _topology_payload()
+    payload["databases"]["application"]["principals"]["onex_api"][field] = value
+
+    with pytest.raises(ValidationError, match=field):
+        ModelDeploymentTopology.model_validate(payload)
+
+
+def test_schema_owner_must_be_nologin() -> None:
+    payload = _topology_payload()
+    payload["databases"]["application"]["owners"]["owner_onex_tenant"]["login"] = True
+
+    with pytest.raises(ValidationError, match="login"):
+        ModelDeploymentTopology.model_validate(payload)
+
+
+def test_owner_and_login_principal_role_names_cannot_overlap() -> None:
+    payload = _topology_payload()
+    payload["databases"]["application"]["owners"]["onex_api"] = {"login": False}
+
+    with pytest.raises(
+        ValidationError, match="both NOLOGIN owners and LOGIN principals"
+    ):
+        ModelDeploymentTopology.model_validate(payload)
+
+
+def test_workload_principal_cannot_receive_ddl_privileges() -> None:
+    payload = _topology_payload()
+    payload["databases"]["application"]["principals"]["onex_api"]["grants"].append(
+        {
+            "object_type": "SCHEMA",
+            "schema": "tenant",
+            "privileges": ["CREATE"],
+        }
+    )
+
+    with pytest.raises(ValidationError, match="DDL privileges: CREATE"):
+        ModelDeploymentTopology.model_validate(payload)
+
+
+def test_dsn_binding_accepts_only_an_environment_variable_name() -> None:
+    payload = _topology_payload()
+    payload["databases"]["application"]["bindings"]["onex_api"]["dsn_env"] = (
+        "postgresql://runtime@example.invalid/application"
+    )
+
+    with pytest.raises(ValidationError, match="dsn_env"):
+        ModelDeploymentTopology.model_validate(payload)
+
+
+def test_unknown_fields_and_secret_material_are_rejected() -> None:
+    payload = _topology_payload()
+    payload["databases"]["application"]["principals"]["onex_api"]["password"] = (
+        "not-allowed"
+    )
+
+    with pytest.raises(ValidationError, match="password"):
+        ModelDeploymentTopology.model_validate(payload)
+
+
+def test_grant_privileges_must_match_object_type() -> None:
+    payload = _topology_payload()
+    payload["databases"]["application"]["principals"]["onex_api"]["grants"][0][
+        "privileges"
+    ] = ["SELECT"]
+
+    with pytest.raises(ValidationError, match="SELECT"):
+        ModelDeploymentTopology.model_validate(payload)
+
+
+def test_unknown_table_location_fails_closed() -> None:
+    topology = ModelDeploymentTopology.model_validate(_topology_payload())
+    declaration = ModelDbTableDeclaration(
+        name="delegation_events",
+        database_ref="application",
+        schema="unknown_schema",
+        migration="nodes/node_projection_delegation/0001.sql",
+        role="events",
+    )
+
+    with pytest.raises(ValueError, match="unknown_schema"):
+        topology.table_domain(declaration)
+
+
+def test_table_cannot_override_topology_owned_domain() -> None:
+    with pytest.raises(ValidationError, match="domain"):
+        ModelDbTableDeclaration(
+            name="delegation_events",
+            database_ref="application",
+            schema="tenant",
+            migration="nodes/node_projection_delegation/0001.sql",
+            role="events",
+            domain="OMNINODE_INTERNAL",  # type: ignore[call-arg]
+        )
+
+
+def test_database_resource_is_frozen() -> None:
+    topology = ModelDeploymentTopology.model_validate(_topology_payload())
+
+    with pytest.raises(ValidationError):
+        topology.databases["application"].physical_name = "other"  # type: ignore[misc]
+
+
+def test_schema_field_shadow_warning_suppressed_on_fresh_import() -> None:
+    """OMN-16415: importing these three models must not emit the pydantic
+    ``schema`` field-shadow ``UserWarning`` -- that warning, printed to the
+    gateway-forwarder healthcheck's stdout on every invocation, was noise
+    surfacing on the container's Docker health log. A fresh subprocess is
+    required because the warning fires once at class-definition time, and the
+    pytest process has already imported (and cached) these modules by the time
+    this test runs.
+    """
+    script = (
+        "import warnings\n"
+        "with warnings.catch_warnings(record=True) as caught:\n"
+        "    warnings.simplefilter('always')\n"
+        "    from omnibase_core.models.core.model_deployment_topology_database_migration_ledger import (\n"
+        "        ModelDeploymentTopologyDatabaseMigrationLedger,\n"
+        "    )\n"
+        "    from omnibase_core.models.core.model_deployment_topology_database_grant import (\n"
+        "        ModelDeploymentTopologyDatabaseGrant,\n"
+        "    )\n"
+        "    from omnibase_core.models.contracts.subcontracts.model_db_table_declaration import (\n"
+        "        ModelDbTableDeclaration,\n"
+        "    )\n"
+        "shadow = [w for w in caught if 'shadows an attribute' in str(w.message)]\n"
+        "assert not shadow, [str(w.message) for w in shadow]\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+_LEDGER_MODULE = (
+    "omnibase_core.models.core.model_deployment_topology_database_migration_ledger"
+)
+
+
+def test_migration_ledger_import_emits_no_warning_and_installs_no_filter() -> None:
+    """OMN-17427: the migration-ledger module must not produce the pydantic
+    ``schema`` field-shadow ``UserWarning`` at all, rather than hide it with a
+    process-global ``warnings.filterwarnings`` call. The subprocess records every
+    ``filterwarnings`` call made from the ledger module and turns the call into a
+    no-op, so a suppression cannot mask the warning; ``-W error::UserWarning``
+    then fails the import if the warning is produced.
+    """
+    script = (
+        "import sys, warnings\n"
+        "calls = []\n"
+        "def recorder(*args, **kwargs):\n"
+        "    caller = sys._getframe(1).f_globals.get('__name__')\n"
+        f"    if caller == {_LEDGER_MODULE!r}:\n"
+        "        calls.append(caller)\n"
+        "warnings.filterwarnings = recorder\n"
+        f"import {_LEDGER_MODULE}\n"
+        "assert not calls, 'ledger module called warnings.filterwarnings'\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-W", "error::UserWarning", "-c", script],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == ""
+
+
+def test_migration_ledger_schema_key_round_trips_by_alias() -> None:
+    from omnibase_core.models.core.model_deployment_topology_database_migration_ledger import (
+        ModelDeploymentTopologyDatabaseMigrationLedger,
+    )
+
+    payload = _database_payload()["checksum_ledgers"]["canonical"]
+    ledger = ModelDeploymentTopologyDatabaseMigrationLedger.model_validate(payload)
+
+    assert ledger.schema_name == "platform_catalog"
+    dumped = ledger.model_dump(by_alias=True)
+    assert dumped["schema"] == "platform_catalog"
+    assert "schema_name" not in dumped
+    assert (
+        ModelDeploymentTopologyDatabaseMigrationLedger.model_validate(dumped) == ledger
+    )
+    assert "schema" in ledger.model_dump_json(by_alias=True)
+
+```

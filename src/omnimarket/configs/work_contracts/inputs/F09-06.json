@@ -1,0 +1,10 @@
+{
+  "instruction": "Classify the public fixtures in order; labels are stated in the evidence.",
+  "rows": [
+    {
+      "evidence": "public fixture for handed-off",
+      "id": "L3722"
+    }
+  ],
+  "scenario": "F09-06"
+}

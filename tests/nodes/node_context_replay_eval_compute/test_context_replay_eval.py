@@ -218,7 +218,9 @@ class TestAnswers:
         [
             (EnumAnswerGrade.UNAVAILABLE, EnumAnswerGrade.UNAVAILABLE),
             (EnumAnswerGrade.UNAVAILABLE, EnumAnswerGrade.MISMATCH),
+            (EnumAnswerGrade.UNAVAILABLE, EnumAnswerGrade.MATCH),
             (EnumAnswerGrade.MATCH, EnumAnswerGrade.UNAVAILABLE),
+            (EnumAnswerGrade.MISMATCH, EnumAnswerGrade.UNAVAILABLE),
         ],
     )
     def test_missing_answers_cannot_pass_quality_comparison(
@@ -238,6 +240,7 @@ class TestAnswers:
         # TA.9 requires asking the fixed question against both actual inputs.
         # Zero matches against zero absent answers is not measured parity.
         assert not result.next_action_met
+        assert all(not run.package_at_least_native for run in result.runs)
         assert any("unavailable" in failure for failure in result.falsifiers)
 
     @pytest.mark.parametrize(
@@ -287,7 +290,7 @@ class TestAnswers:
         assert counts.native_unavailable == counts.package_unavailable == 1
         assert counts.native_matches == 0
         assert counts.package_matches == 1
-        assert counts.package_at_least_native
+        assert not counts.package_at_least_native
         assert not result.next_action_met
         assert result.falsifiers == (
             "run r1: answers unavailable: package 1, native 1",

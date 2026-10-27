@@ -1,0 +1,281 @@
+Build a causal diagnosis that separates configuration authority, missing sibling release, and missing deploy evidence. Combine these public logs and three-repo source excerpts. Give the minimum ordered remedies and negative controls without executing any command or modifying a check; state what cannot be proved by a successful smoke call.
+Diagnose this real failed GitHub Actions job. Name the job and the failing step, identify the direct cause, and distinguish the direct failure from any downstream symptom or misleading successful output. Cite the supplied evidence. Propose a bounded remedy without executing it; do not change checks, rerun CI, or assume a newer head is still red.
+Source: https://github.com/OmniNode-ai/omnimarket/actions/runs/40256265686/job/121359139102
+Failing step from GitHub job metadata: Every node migration this change adds is in the pinned omnibase_infra release
+The log download labels steps UNKNOWN STEP; the exact name above is authoritative.
+Log excerpt (original timestamps, with gaps):
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:03.8266854Z ^[[36;1m  if [[ -n "$first_release" ]]; then^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:03.8268411Z ^[[36;1m    echo "::error::$file $relation the pinned omnibase_infra revision $INFRA_REF_NAME (omnibase-infra $INFRA_VERSION in uv.lock). The first omnibase_infra release that vendors it byte-identical is $first_release: bump omnibase-infra to >=${first_release#v} in pyproject.toml ([project].dependencies and [tool.uv] override-dependencies) and uv.lock in this change."^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:03.8269774Z ^[[36;1m  else^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:03.8271562Z ^[[36;1m    echo "::error::$file $relation the pinned omnibase_infra revision $INFRA_REF_NAME (omnibase-infra $INFRA_VERSION in uv.lock), and no omnibase_infra release vendors it yet (missing sibling release: omnibase_infra with $vendored). Vendor it in omnibase_infra with scripts/sync-node-migrations.sh, release omnibase_infra, then bump the omnibase-infra pin here. Code that writes this migration's columns must not merge before that release."^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:03.8273169Z ^[[36;1m  fi^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:03.8273522Z ^[[36;1m  echo "| $file | $status | ${first_release:-not released} |" >> "$GITHUB_STEP_SUMMARY"^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:03.8273944Z ^[[36;1m  failed=1^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:03.8274157Z ^[[36;1mdone <<< "$files"^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:03.8339066Z   BASE_SHA: 3efbf03f29a0bf4beb9f3f6bb57aba5fa1d23ebf
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:03.8339460Z   HEAD_SHA: ccf679f800b22f0899401017e34c9c72465ab857
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:03.8339749Z ##[endgroup]
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:04.3983692Z ##[error]src/omnimarket/nodes/node_projection_work_ledger/migrations/0006_work_ledger_ingested_at.sql is not in the pinned omnibase_infra revision dev-20261025152318-03ea9377f87c (omnibase-infra 0.38.77 in uv.lock), and no omnibase_infra release vendors it yet (missing sibling release: omnibase_infra with docker/migrations/forward/nodes/node_projection_work_ledger/0006_work_ledger_ingested_at.sql). Vendor it in omnibase_infra with scripts/sync-node-migrations.sh, release omnibase_infra, then bump the omnibase-infra pin here. Code that writes this migration's columns must not merge before that release.
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:04.3994259Z ##[error]Process completed with exit code 1.
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:04.4058329Z ##[group]Run set -euo pipefail
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:04.4058656Z ^[[36;1mset -euo pipefail^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:04.4058959Z ^[[36;1muv build --wheel --out-dir "$RUNNER_TEMP/dist"^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:07.5127872Z ^[[36;1muv venv --no-config --python 3.12 "$RUNNER_TEMP/pinned-venv"^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:07.5128372Z ^[[36;1mif ! uv pip install --no-config --python "$RUNNER_TEMP/pinned-venv/bin/python" \^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:07.5128839Z ^[[36;1m  "$wheel" "$INFRA_SPEC" "$CORE_SPEC"; then^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:07.5129764Z ^[[36;1m  echo "::error::this head does not install against the omnibase-infra $INFRA_REF_NAME and omnibase-core $CORE_REF_NAME its uv.lock pins; the missing sibling release is whatever this head requires beyond those pins"^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:07.5130611Z ^[[36;1m  exit 1^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:07.5130807Z ^[[36;1mfi^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:07.5131445Z ^[[36;1m"$RUNNER_TEMP/pinned-venv/bin/python" - <<'PY'^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:07.5131787Z ^[[36;1mimport importlib.metadata^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:17.7028015Z ^[[36;1m    message = (^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:17.7028390Z ^[[36;1m        f"{len(failures)} omnimarket modules do not import against the released "^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:17.7029024Z ^[[36;1m        f"omnibase-infra=={os.environ['INFRA_VERSION']} / omnibase-core=={os.environ['CORE_VERSION']}. "^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:17.7029672Z ^[[36;1m        "This head needs a sibling release newer than its pins (missing sibling release): "^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:17.7030291Z ^[[36;1m        "land and release the sibling change, then bump the pin in pyproject.toml and uv.lock. "^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:17.7030772Z ^[[36;1m        f"First failure: {failures[0]}"^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:17.7031273Z ^[[36;1m    )^[[0m
+Sibling Release Compatibility Gate (OMN-20381)	UNKNOWN STEP	2026-10-26T01:54:17.7031619Z ^[[36;1m    message = message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")^[[0m
+
+Diagnose this real failed GitHub Actions job. Name the job and the failing step, identify the direct cause, and distinguish the direct failure from any downstream symptom or misleading successful output. Cite the supplied evidence. Propose a bounded remedy without executing it; do not change checks, rerun CI, or assume a newer head is still red.
+Source: https://github.com/OmniNode-ai/omnimarket/actions/runs/40260893932/job/121372839881
+Failing step from GitHub job metadata: Run deploy gate
+The log download labels steps UNKNOWN STEP; the exact name above is authoritative.
+Log excerpt (original timestamps, with gaps):
+deploy-gate / deploy-gate	UNKNOWN STEP	2026-10-26T02:48:22.5676050Z 
+deploy-gate / deploy-gate	UNKNOWN STEP	2026-10-26T02:48:22.5676214Z [notice] A new release of pip is available: 26.2.1 -> 26.2.2
+deploy-gate / deploy-gate	UNKNOWN STEP	2026-10-26T02:48:22.5676540Z [notice] To update, run: pip install --upgrade pip
+deploy-gate / deploy-gate	UNKNOWN STEP	2026-10-26T02:48:24.1989169Z ##[error]DEPLOY GATE FAILED: PR touches runtime paths but no cited ticket has deploy DoD evidence. Runtime paths: ['src/omnimarket/nodes/node_context_compaction_receipts_fold_compute/__init__.py', 'src/omnimarket/nodes/node_context_compaction_receipts_fold_compute/contract.yaml', 'src/omnimarket/nodes/node_context_compaction_receipts_fold_compute/handlers/handler_context_current_context_fold.py']. Tickets found but declaring no falsifiable deploy probe: ['OMN-21090', 'OMN-21090', 'OMN-21090', 'OMN-21090']. Add a dod_evidence item to onex_change_control/contracts/OMN-XXXX.yaml whose check_value is a FALSIFIABLE deploy probe: it must execute a command against a live surface (docker/kubectl/rpk/psql/curl/ssh/onex/gh) so that its exit status depends on the state of the deployed system. It must NOT read back the receipt or contract your own PR authors (drift/dod_receipts/..., $CONTRACT_REPO_DIR) — such a check greps text you wrote and can never go RED. Good: docker exec ${RUNTIME_CONTAINER:-omninode-runtime} python -c 'import <changed_module>'. Good (compute-only/no-live-deploy tickets, hermetic under onex_change_control's OMN-14051 guard): gh api repos/OWNER/REPO/contents/<changed_path>?ref=<merge_sha> --jq .content | base64 -d | grep -q '<symbol the fix introduces>'. Rejected: grep -q '^status: PASS$' drift/dod_receipts/OMN-XXXX/dod-deploy/command.yaml. Root cause: OMN-8841 (deploy-agent inactive 2 days post-Dockerfile change). Gate: OMN-8912. Contract source fix: OMN-11423. Falsifiability fix: OMN-14505.
+deploy-gate / deploy-gate	UNKNOWN STEP	2026-10-26T02:48:24.2026336Z ##[error]Process completed with exit code 1.
+deploy-gate / deploy-gate	UNKNOWN STEP	2026-10-26T02:48:24.2063485Z ##[group]Run echo "::error::deploy-gate (OMN-20074): omnimarket reads deploy evidence from this repository's contracts/OMN-<n>.yaml at the pull request head. Add a falsifiable deploy check to that contract in this pull request; a change control companion is not read."
+deploy-gate / deploy-gate	UNKNOWN STEP	2026-10-26T02:48:24.2064425Z ^[[36;1mecho "::error::deploy-gate (OMN-20074): omnimarket reads deploy evidence from this repository's contracts/OMN-<n>.yaml at the pull request head. Add a falsifiable deploy check to that contract in this pull request; a change control companion is not read."^[[0m
+deploy-gate / deploy-gate	UNKNOWN STEP	2026-10-26T02:48:24.2117347Z shell: /usr/bin/bash -e {0}
+deploy-gate / deploy-gate	UNKNOWN STEP	2026-10-26T02:48:24.2117489Z env:
+deploy-gate / deploy-gate	UNKNOWN STEP	2026-10-26T02:48:24.2117645Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.15/x64
+deploy-gate / deploy-gate	UNKNOWN STEP	2026-10-26T02:48:24.2117888Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.15/x64/lib/pkgconfig
+deploy-gate / deploy-gate	UNKNOWN STEP	2026-10-26T02:48:24.2118600Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.15/x64
+deploy-gate / deploy-gate	UNKNOWN STEP	2026-10-26T02:48:24.2118817Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.15/x64/lib
+deploy-gate / deploy-gate	UNKNOWN STEP	2026-10-26T02:48:24.2119000Z ##[endgroup]
+deploy-gate / deploy-gate	UNKNOWN STEP	2026-10-26T02:48:24.2184767Z ##[error]deploy-gate (OMN-20074): omnimarket reads deploy evidence from this repository's contracts/OMN-<n>.yaml at the pull request head. Add a falsifiable deploy check to that contract in this pull request; a change control companion is not read.
+deploy-gate / deploy-gate	UNKNOWN STEP	2026-10-26T02:48:24.2244977Z Post job cleanup.
+deploy-gate / deploy-gate	UNKNOWN STEP	2026-10-26T02:48:24.2791958Z [command]/usr/bin/git version
+deploy-gate / deploy-gate	UNKNOWN STEP	2026-10-26T02:48:24.2819108Z git version 2.55.0
+deploy-gate / deploy-gate	UNKNOWN STEP	2026-10-26T02:48:24.2838801Z Temporarily overriding HOME='fixture-root' before making global git config changes
+
+PUBLIC SOURCE omniclaude/src/omniclaude/delegation/runner.py:140-180
+140:     error_message: str = Field(default="", description="Structured error on failure")
+141: 
+142: 
+143: def canonical_bifrost_contract_path() -> Path:
+144:     """Return the path of the canonical contract inside the installed omnimarket.
+145: 
+146:     omniclaude owns no routing table (OMN-17102). The one routing authority is
+147:     ``omnimarket/configs/bifrost_delegation.yaml``, shipped in the omnimarket
+148:     package this repo pins; every omniclaude loader resolves it through here. A
+149:     forked copy once drifted to config_version 1.1.0 while the canonical contract
+150:     moved on, and kept naming backends the canonical contract had deleted.
+151: 
+152:     Raises:
+153:         RuntimeError: omnimarket is not installed, or the installed release does
+154:             not ship the contract. There is no vendored fallback: a stale copy
+155:             is the defect this function exists to prevent.
+156:     """
+157:     spec = importlib.util.find_spec("omnimarket")
+158:     locations = list(spec.submodule_search_locations or []) if spec else []
+159:     if not locations:
+160:         raise RuntimeError(
+161:             "omnimarket is not installed, so the canonical bifrost delegation "
+162:             "contract cannot be resolved. Install the omnimarket release pinned "
+163:             "in pyproject.toml; omniclaude ships no copy of the contract."
+164:         )
+165:     path = Path(locations[0]) / "configs" / "bifrost_delegation.yaml"
+166:     if not path.is_file():
+167:         raise RuntimeError(
+168:             f"Installed omnimarket does not ship the canonical bifrost delegation "
+169:             f"contract at {path}. Advance the omnimarket pin to a release that does."
+170:         )
+171:     return path
+172: 
+173: 
+174: _DEFAULT_BIFROST_CONTRACT_PATH = canonical_bifrost_contract_path()
+175: _DEFAULT_BIFROST_OVERLAY_PATH = (
+176:     Path.home() / ".omninode" / "delegation" / "bifrost_overrides.yaml"
+177: )
+178: 
+179: 
+180: def _backend_has_credential(backend: ModelDelegationBackendConfig) -> bool:
+
+PUBLIC SOURCE omnimarket/src/omnimarket/configs/bifrost_delegation.yaml:1-110
+1: # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+2: # SPDX-License-Identifier: MIT
+3: #
+4: # bifrost_delegation.yaml — Delegation routing rules for Claude Code task classes.
+5: #
+6: # Maps task-class contracts to bifrost backend routing policies.
+7: # Every gateway response MUST include the selected rule_id and config_version
+8: # to make provenance auditable (OMN-10637 requirement R1).
+9: #
+10: # OMN-12815 / OMN-13159: every endpoint_url is the COMPLETE final URL incl. the
+11: # full chat path (e.g. .../v1/chat/completions). It is posted VERBATIM at every
+12: # call site — no in-code construction, append, rstrip, or path-resolver exists
+13: # anymore. Public cloud endpoints carry the complete URL here; site-specific
+14: # LOCAL endpoints are null in the repo default and the env var named by
+15: # `endpoint_url_env` (formerly `base_url_env`) MUST hold the COMPLETE URL (incl.
+16: # /v1/chat/completions) — supplied by the overlay file the installer writes,
+17: # usually ~/.omninode/delegation/bifrost_overrides.yaml. A bare base (no chat
+18: # path) is a misconfiguration — resolution fails closed rather than
+19: # constructing a path.
+20: #
+21: # See routing_tiers.yaml for tier escalation ladder.
+22: # OMN-17427 / RULING 2026-10-01T15:49:37Z: Gemini is declared for explicitly
+23: # pinned tests only. Ordinary routes use local and existing non-Gemini cloud rungs.
+24: #
+25: # Tickets: OMN-10637, OMN-10638, OMN-10657, OMN-12815, OMN-13170, OMN-13343, OMN-13351, OMN-15155, OMN-16442, OMN-17099
+26: config_version: "2.8.0"
+27: schema_version: "bifrost_delegation.v1"
+28: # Backend definitions — endpoint_url values are merged from the overlay at load time.
+29: # model_name is null here; resolved at deploy time via bifrost_overrides.yaml overlay.
+30: # backend_ids are capability-named (not model-named) so the public config never
+31: # embeds site-specific model identifiers.
+32: backends:
+33:   # Local backends (vLLM on example-endpoint) — capability-named, model_name resolved via overlay
+34:   - backend_id: local-coder
+35:     provider: local
+36:     # OMN-18278: measured 2026-10-01 on the lab vLLM endpoint serving
+37:     # Qwen3.8-27B with no reasoning parser: reasoning arrives inline in
+38:     # message.content. A llama.cpp endpoint with a reasoning parser returns
+39:     # it in reasoning_content instead; its lane overlay sets this to null.
+40:     inline_reasoning_terminator: "</think>"
+41:     endpoint_url_env: BIFROST_LOCAL_CODER_ENDPOINT_URL
+42:     endpoint_url: null
+43:     # The lane overlay declares the local served model id; omnibase_infra renders it.
+44:     # probe_served_models in node_llm_delegation_call_effect checks the endpoint.
+45:     model_name: null
+46:     tier: local
+47:     # OMN-13170: timeout_ms is sized to the 65536-token output budget below — a
+48:     # 64k-token code-generation artifact at local vLLM throughput exceeds 60s and
+49:     # was failing with error="request timed out" / output_tokens=0 once OMN-13170
+50:     # deleted the hardcoded 120s transport cap. 300000 ms (5 min) gives the model
+51:     # room to finish a full module + tests. Overlay-overridable per deploy lane.
+52:     timeout_ms: 300000
+53:     # OMN-13161: per-backend output-token ceiling. The served model (Qwen3.6-35B-A3B,
+54:     # OMN-16419) reports max_model_len=131072; a 64k output budget stays well
+55:     # within range for code-generation artifacts.
+56:     max_tokens: 65536
+57:     # OMN-18297 -- grounding budget, NOT the context window. Live readback of
+58:     # this endpoint's /v1/models on 2026-09-13 reports max_model_len 131072, and
+59:     # an 18245-token prompt was accepted without complaint; the answer then cited
+60:     # eight pull requests occurring nowhere in it, and the quality gate scored it
+61:     # 1.0. Measured grounding on this backend the same session: clean at 577, 898,
+62:     # 1030 and 2381 input tokens (zero ungrounded identifiers across four tasks),
+63:     # ungrounded at 18245. The honest measured bracket is therefore (2381, 18245];
+64:     # 8000 is a declared bound INSIDE that bracket, chosen to sit above every
+65:     # observed success and well under the only observed failure. It is NOT itself
+66:     # a measured degradation point, and narrowing it needs a bisection run that
+67:     # has not been done. The identifier-grounding check is what actually catches a
+68:     # fabricated citation; this budget is the coarse pre-emptive bound that keeps
+69:     # an oversized prompt off a rung that cannot hold it.
+70:     max_grounded_input_tokens: 8000
+71:     capabilities:
+72:       - code_generation
+73:       - refactoring
+74:       - documentation
+75:     # OMN-17427 -- LIVE-PROBED 2026-10-03 on the same endpoint
+76:     # local-heavy-reasoning reads (BIFROST_LOCAL_CODER_ENDPOINT_URL,
+77:     # Qwen3.8-27B). Without the directive the code-edit loop's turns were
+78:     # refused no_schema_conforming_json on 234 of 747 local-coder attempts
+79:     # in 24 h (prose or empty content instead of the JSON object); with the
+80:     # json_schema directive 20 of 20 replayed failing turns extracted.
+81:     # Re-probe after an endpoint redeploy.
+82:     supports_response_format_json_schema: true
+83:   # OMN-16442: the `local-reasoner` backend (model_name
+84:   # Qwen3.6-27B-MTP-IQ4_XS.gguf, endpoint_url_env
+85:   # BIFROST_LOCAL_REASONER_ENDPOINT_URL → example-endpoint:8001) was DELETED. OMN-16419
+86:   # left it wired ONLY because routing_rules.research still referenced it and
+87:   # a routing-table change was out of that ticket's bounded scope; this ticket
+88:   # IS that routing-table change, so the reference is removed below and the
+89:   # definition goes with it. The endpoint is the RTX 4090 slot physically
+90:   # removed from example-endpoint for RMA (OMN-16407) — re-probed 2026-08-28, `curl
+91:   # example-endpoint:8001/v1/models` returns exit 7 "Couldn't connect to
+92:   # server", and the canonical inventory
+93:   # (public-hardware-reference, verified 2026-08-28) marks
+94:   # the slot DEAD / RETIRED. Restore a reasoner rung by REGISTERING the
+95:   # replacement hardware, never by reviving this backend_id against a slot
+96:   # that no longer exists.
+97:   - backend_id: local-heavy-reasoning
+98:     provider: local
+99:     # OMN-18278: measured 2026-10-01 on the lab vLLM endpoint serving
+100:     # Qwen3.8-27B with no reasoning parser: reasoning arrives inline in
+101:     # message.content. A llama.cpp endpoint with a reasoning parser returns
+102:     # it in reasoning_content instead; its lane overlay sets this to null.
+103:     inline_reasoning_terminator: "</think>"
+104:     endpoint_url_env: BIFROST_LOCAL_CODER_ENDPOINT_URL
+105:     endpoint_url: null
+106:     # The lane overlay declares the local served model id; omnibase_infra renders it.
+107:     # probe_served_models in node_llm_delegation_call_effect checks the endpoint.
+108:     model_name: null
+109:     tier: local
+110:     # OMN-13170: same 65536-token budget as local-coder → same 300000 ms ceiling so
+
+PUBLIC SOURCE omnibase_infra/src/omnibase_infra/runtime/render_bifrost_delegation_contract.py:65-125
+65:     ModelBifrostLaneOverlay,
+66: )
+67: from omnibase_spi.protocols.services import ProtocolSecretStore
+68: 
+69: _DEFAULT_TARGET_PATH = Path("/app/data/delegation/bifrost_delegation.yaml")
+70: _BASE_CONTRACT_PATH_ENV = "BIFROST_BASE_CONTRACT_PATH"
+71: _LANE_OVERLAY_PATH_ENV = "BIFROST_LANE_OVERLAY_PATH"
+72: _LANE_ENV = "ONEX_ENVIRONMENT"
+73: #: OMN-19214: a lane's overlay row in the config store is the same
+74: #: ``bifrost_lane_overlay.v3`` document the mounted file holds, keyed per lane.
+75: LANE_OVERLAY_STORE_KEY_PREFIX = "delegation.bifrost.lane_overlay."
+76: _CHAT_COMPLETIONS_PATH_SUFFIX = "/chat/completions"
+77: #: OMN-17099: the embedding backend's real endpoint is OpenAI-embeddings-shaped,
+78: #: not chat-completions-shaped (live probe 2026-09-27: example-endpoint:8002/v1/chat/completions
+79: #: 404s; example-endpoint:8002/v1/embeddings returns real vectors). ``ModelBifrostLaneBackendBinding``
+80: #: accepts the same two suffixes; this module's own completeness gate must agree.
+81: _EMBEDDINGS_PATH_SUFFIX = "/embeddings"
+82: _COMPLETE_ENDPOINT_SUFFIXES = (_CHAT_COMPLETIONS_PATH_SUFFIX, _EMBEDDINGS_PATH_SUFFIX)
+83: _DEFAULT_ENDPOINT_PROBE_TIMEOUT_SECONDS = 3.0
+84: #: OMN-19432: the base contract's own declaration that a backend answers TYPED
+85: #: DECISIONS on its provider's own schema (TypeSafe Jev's System One API)
+86: #: rather than OpenAI chat completions. Such a backend is never a rung: no
+87: #: routing rule or tier ladder names it, so it is not an "active endpoint" for
+88: #: delegation, and its complete URL names its own operation instead of ending
+89: #: in the chat path.
+90: _TYPED_DECISION_TIER = "typed_decision"
+91: #: A last path segment that is only an API version (``v1``, ``v1beta``) marks a
+92: #: bare base, which OMN-12815 forbids: nothing downstream appends a path.
+93: _BARE_VERSION_SEGMENT = re.compile(r"^v\d+(?:(?:alpha|beta)\d*)?$")
+94: 
+95: EndpointProbe = Callable[[str, str, float], ModelBifrostEndpointProbeFailure | None]
+96: 
+97: 
+98: def _resolve_canonical_source_path(env: Mapping[str, str]) -> Path:
+99:     """Resolve the deploy-provided base contract at BIFROST_BASE_CONTRACT_PATH."""
+100:     configured = env.get(_BASE_CONTRACT_PATH_ENV, "").strip()
+101:     if not configured:
+102:         raise ProtocolConfigurationError(
+103:             f"{_BASE_CONTRACT_PATH_ENV} is unset or blank; there is no default: "
+104:             "the deploy (the omnimarket composed image or the lane's compose) "
+105:             "provides the base contract. Fail fast."
+106:         )
+107:     candidate = Path(configured)
+108:     if not candidate.is_file():
+109:         raise ProtocolConfigurationError(
+110:             f"{_BASE_CONTRACT_PATH_ENV} is not an existing file: {candidate}"
+111:         )
+112:     return candidate
+113: 
+114: 
+115: def _load_mapping(path: Path, *, label: str) -> dict[str, object]:
+116:     try:
+117:         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+118:     except FileNotFoundError as exc:
+119:         raise ProtocolConfigurationError(f"{label} not found: {path}") from exc
+120:     except yaml.YAMLError as exc:
+121:         raise ProtocolConfigurationError(
+122:             f"{label} is malformed: {path}: {exc}"
+123:         ) from exc
+124:     if not isinstance(raw, dict):
+125:         raise ProtocolConfigurationError(f"{label} must have a mapping root: {path}")

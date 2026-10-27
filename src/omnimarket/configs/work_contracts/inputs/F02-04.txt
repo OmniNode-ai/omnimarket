@@ -1,0 +1,1229 @@
+Read the complete public Python module below. Answer each question using the exact first line of the named definition's docstring. Give three lines labelled Q1, Q2, Q3. Copy the text exactly; do not paraphrase. The relevant definitions are in the latter part of the module.
+Q1: What is the first docstring line of the definition named get_handler_node_introspected_from_container?
+Q2: What is the first docstring line of the definition named get_handler_node_registration_acked_from_container?
+Q3: What is the first docstring line of the definition named wire_registration_dispatchers?
+
+Public repository: OmniNode-ai/omnibase_infra
+Module: src/omnibase_infra/runtime/util_container_wiring.py
+Revision: 1f3b487925f19e2896ae79ca985616daf6491610
+
+BEGIN PUBLIC SOURCE
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Container wiring for omnibase_infra services.  # ai-slop-ok: pre-existing
+
+This module provides functions to register infrastructure services
+with ModelONEXContainer from omnibase_core. It establishes container-based
+dependency injection for RegistryPolicy and other infrastructure components.
+
+Design Principles:
+- Explicit registration: All services registered explicitly
+- Singleton per container: Each container gets its own service instances
+- Type-safe resolution: Services registered with proper type interfaces
+- Testability: Easy to mock services via container
+
+Service Keys:
+- RegistryPolicy: Registered as interface=RegistryPolicy
+- RegistryProtocolBinding: Registered as interface=RegistryProtocolBinding
+- RegistryCompute: Registered as interface=RegistryCompute
+
+Example Usage:
+    ```python
+    from omnibase_core.container import ModelONEXContainer
+    from omnibase_infra.runtime.util_container_wiring import wire_infrastructure_services
+    from omnibase_infra.runtime.registry_policy import RegistryPolicy
+
+    # Bootstrap container
+    container = ModelONEXContainer()
+
+    # Wire infrastructure services
+    summary = await wire_infrastructure_services(container)
+    print(f"Registered {len(summary['services'])} services")
+
+    # Resolve services using type interface
+    policy_registry = await container.service_registry.resolve_service(RegistryPolicy)
+
+    # Use the registry
+    policy_registry.register_policy(
+        policy_id="exponential_backoff",
+        policy_class=ExponentialBackoffPolicy,
+        policy_type=EnumPolicyType.ORCHESTRATOR,
+    )
+    ```
+
+Integration Notes:
+- Uses ModelONEXContainer.service_registry for registration
+- Services registered as global scope (singleton per container)
+- Type-safe resolution via interface types
+- Compatible with omnibase_core v0.5.6 and later (async service registry)
+- For omnibase_core v0.6.2+: Validates service_registry availability before operations
+"""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING
+
+from omnibase_core.enums import EnumInjectionScope
+from omnibase_core.models.primitives import ModelSemVer
+from omnibase_infra.enums import EnumInfraTransportType
+from omnibase_infra.errors import (
+    ModelInfraErrorContext,
+    ServiceRegistrationError,
+    ServiceRegistryUnavailableError,
+    ServiceResolutionError,
+)
+from omnibase_infra.runtime.handler_registry import RegistryProtocolBinding
+from omnibase_infra.runtime.registry_compute import RegistryCompute
+from omnibase_infra.runtime.registry_policy import RegistryPolicy
+
+if TYPE_CHECKING:
+    import asyncpg
+
+    from omnibase_core.container import ModelONEXContainer
+    from omnibase_infra.nodes.node_registration_orchestrator.handlers import (
+        HandlerNodeIntrospected,
+        HandlerNodeRegistrationAcked,
+        HandlerRuntimeTick,
+    )
+    from omnibase_infra.nodes.node_registration_orchestrator.wiring import WiringResult
+    from omnibase_infra.projectors import ProjectionReaderRegistration
+    from omnibase_infra.protocols.protocol_snapshot_publisher import (
+        ProtocolSnapshotPublisher,
+    )
+    from omnibase_infra.runtime.message_dispatch_engine import (
+        MessageDispatchEngine,
+    )
+    from omnibase_infra.runtime.projector_shell import ProjectorShell
+
+# Default semantic version for infrastructure components (from omnibase_core)
+SEMVER_DEFAULT = ModelSemVer.parse("1.0.0")
+
+logger = logging.getLogger(__name__)
+
+
+def _validate_service_registry(
+    container: ModelONEXContainer,
+    operation: str,
+) -> None:
+    """Validate that container.service_registry is not None.
+
+    This validation should be called before any operation that uses
+    container.service_registry to provide clear error messages when
+    the service registry is unavailable.
+
+    Args:
+        container: The ONEX container to validate.
+        operation: Description of the operation being attempted.
+
+    Raises:
+        ServiceRegistryUnavailableError: If service_registry is None.
+
+    Example:
+        >>> _validate_service_registry(container, "register RegistryPolicy")
+        >>> # Proceed with registration...
+    """
+    if not hasattr(container, "service_registry"):
+        raise ServiceRegistryUnavailableError(
+            "Container missing 'service_registry' attribute",
+            operation=operation,
+            hint=(
+                "Expected ModelONEXContainer from omnibase_core. "
+                "Check that omnibase_core is properly installed."
+            ),
+        )
+
+    if container.service_registry is None:
+        # service_registry returns None under several conditions, requiring
+        # downstream validation.
+        raise ServiceRegistryUnavailableError(
+            "Container service_registry is None",
+            operation=operation,
+            hint=(
+                "ModelONEXContainer.service_registry returns None when:\n"
+                "  1. enable_service_registry=False was passed to constructor\n"
+                "  2. ServiceRegistry module is not available/installed\n"
+                "  3. Container initialization encountered an import error\n"
+                "Check container logs for 'ServiceRegistry not available' warnings."
+            ),
+        )
+
+
+def _analyze_attribute_error(error_str: str) -> tuple[str, str]:
+    """Analyze AttributeError and return (missing_attribute, hint).
+
+    Extracts the missing attribute name from the error string and provides
+    a user-friendly hint for common container API issues.
+
+    Note: service_registry missing/None cases are handled by _validate_service_registry()
+    which is called before operations. This function handles other AttributeErrors
+    (e.g., missing register_instance method).
+
+    Args:
+        error_str: The string representation of the AttributeError.
+
+    Returns:
+        Tuple of (missing_attribute, hint) for error context.
+    """
+    missing_attr = error_str.split("'")[-2] if "'" in error_str else "unknown"
+
+    if "register_instance" in error_str:
+        hint = (
+            "Container.service_registry missing 'register_instance' method. "
+            "Check omnibase_core version compatibility (requires v0.5.6 or later)."
+        )
+    else:
+        hint = f"Missing attribute: '{missing_attr}'"
+
+    return missing_attr, hint
+
+
+def _analyze_type_error(error_str: str) -> tuple[str, str]:
+    """Analyze TypeError and return (invalid_argument, hint).
+
+    Extracts which argument caused the type error and provides
+    a user-friendly hint for fixing registration issues.
+
+    Args:
+        error_str: The string representation of the TypeError.
+
+    Returns:
+        Tuple of (invalid_argument, hint) for error context.
+    """
+    if "interface" in error_str:
+        return "interface", (
+            "Invalid 'interface' argument. "
+            "Expected a type class (e.g., RegistryPolicy), not an instance."
+        )
+    if "instance" in error_str:
+        return "instance", (
+            "Invalid 'instance' argument. Expected an instance of the interface type."
+        )
+    if "scope" in error_str:
+        return "scope", (
+            "Invalid 'scope' argument. Expected 'global', 'request', or 'transient'."
+        )
+    if "metadata" in error_str:
+        return "metadata", "Invalid 'metadata' argument. Expected dict[str, object]."
+    if "positional" in error_str or "argument" in error_str:
+        return "signature", (
+            "Argument count mismatch. "
+            "Check register_instance() signature compatibility with omnibase_core version."
+        )
+    return "unknown", "Check register_instance() signature compatibility."
+
+
+async def wire_infrastructure_services(
+    container: ModelONEXContainer,
+) -> dict[str, list[str] | str]:
+    """Register infrastructure services with the container.
+
+    Registers RegistryPolicy, RegistryProtocolBinding, and RegistryCompute as global
+    singleton services in the container. Uses ModelONEXContainer.service_registry.register_instance()
+    with the respective class as the interface type.
+
+    Note: This function is async because ModelONEXContainer.service_registry.register_instance()
+    is async in omnibase_core v0.5.6 and later (see omnibase_core.container.ModelONEXContainer).
+
+    Args:
+        container: ONEX container instance to register services in.
+
+    Returns:
+        Summary dict with:
+            - services: List of registered service class names
+            - status: Always "success" (errors raise exceptions)
+
+    Raises:
+        ServiceRegistryUnavailableError: If service_registry is missing or None.
+        ServiceRegistrationError: If service registration fails.
+
+    Example:
+        >>> from omnibase_core.container import ModelONEXContainer
+        >>> container = ModelONEXContainer()
+        >>> summary = await wire_infrastructure_services(container)
+        >>> print(summary)
+        {'services': ['RegistryPolicy', 'RegistryProtocolBinding', 'RegistryCompute'], 'status': 'success'}
+        >>> policy_reg = await container.service_registry.resolve_service(RegistryPolicy)
+        >>> handler_reg = await container.service_registry.resolve_service(RegistryProtocolBinding)
+        >>> compute_reg = await container.service_registry.resolve_service(RegistryCompute)
+        >>> # Verify via duck typing (per ONEX conventions)
+        >>> hasattr(policy_reg, 'register_policy') and callable(policy_reg.register_policy)
+        True
+        >>> hasattr(handler_reg, 'register') and callable(handler_reg.register)
+        True
+        >>> hasattr(compute_reg, 'register_plugin') and callable(compute_reg.register_plugin)
+        True
+    """
+    # Validate service_registry is available and has required methods
+    _validate_service_registry(container, "wire_infrastructure_services")
+
+    services_registered: list[str] = []
+
+    try:
+        # Create RegistryPolicy instance
+        policy_registry = RegistryPolicy()
+
+        # Register with container using type interface (global scope = singleton)
+        await container.service_registry.register_instance(
+            interface=RegistryPolicy,
+            instance=policy_registry,
+            scope=EnumInjectionScope.GLOBAL,
+            metadata={
+                "description": "ONEX policy plugin registry",
+                "version": str(SEMVER_DEFAULT),
+            },
+        )
+
+        services_registered.append("RegistryPolicy")
+        logger.debug("Registered RegistryPolicy in container (global scope)")
+
+        # Create RegistryProtocolBinding instance
+        handler_registry = RegistryProtocolBinding()
+
+        # Register with container using type interface (global scope = singleton)
+        await container.service_registry.register_instance(
+            interface=RegistryProtocolBinding,
+            instance=handler_registry,
+            scope=EnumInjectionScope.GLOBAL,
+            metadata={
+                "description": "ONEX protocol handler binding registry",
+                "version": str(SEMVER_DEFAULT),
+            },
+        )
+
+        services_registered.append("RegistryProtocolBinding")
+        logger.debug("Registered RegistryProtocolBinding in container (global scope)")
+
+        # Create RegistryCompute instance
+        compute_registry = RegistryCompute()
+
+        # Register with container using type interface (global scope = singleton)
+        await container.service_registry.register_instance(
+            interface=RegistryCompute,
+            instance=compute_registry,
+            scope=EnumInjectionScope.GLOBAL,
+            metadata={
+                "description": "ONEX compute plugin registry",
+                "version": str(SEMVER_DEFAULT),
+            },
+        )
+
+        services_registered.append("RegistryCompute")
+        logger.debug("Registered RegistryCompute in container (global scope)")
+
+        # Register ProtocolTopicRegistry (OMN-5839)
+        from omnibase_infra.topics.registry_topic_registry import (
+            RegistryTopicRegistry,
+        )
+
+        await RegistryTopicRegistry.register(container)
+        services_registered.append("ProtocolTopicRegistry")
+
+    except AttributeError as e:
+        # Container missing service_registry or registration method
+        error_str = str(e)
+        missing_attr, hint = _analyze_attribute_error(error_str)
+
+        logger.exception(
+            "Container missing required service_registry API",
+            extra={
+                "error": error_str,
+                "error_type": "AttributeError",
+                "missing_attribute": missing_attr,
+                "hint": hint,
+            },
+        )
+        context = ModelInfraErrorContext.with_correlation(
+            transport_type=EnumInfraTransportType.RUNTIME,
+            operation="wire_infrastructure_services",
+        )
+        raise ServiceRegistrationError(
+            f"Container wiring failed - {hint}",
+            context=context,
+            missing_attribute=missing_attr,
+            required_api="container.service_registry.register_instance(interface, instance, scope, metadata)",
+            original_error=str(e),
+        ) from e
+    except TypeError as e:
+        # Invalid arguments to register_instance
+        error_str = str(e)
+        invalid_arg, hint = _analyze_type_error(error_str)
+
+        logger.exception(
+            "Invalid arguments during service registration",
+            extra={
+                "error": error_str,
+                "error_type": "TypeError",
+                "invalid_argument": invalid_arg,
+                "hint": hint,
+            },
+        )
+        context = ModelInfraErrorContext.with_correlation(
+            transport_type=EnumInfraTransportType.RUNTIME,
+            operation="wire_infrastructure_services",
+        )
+        raise ServiceRegistrationError(
+            f"Container wiring failed - {hint}",
+            context=context,
+            invalid_argument=invalid_arg,
+            expected_signature="register_instance(interface=Type, instance=obj, scope='global'|'request'|'transient', metadata=dict)",
+            original_error=str(e),
+        ) from e
+    except Exception as e:
+        # Generic fallback for unexpected errors
+        logger.exception(
+            "Failed to register infrastructure services",
+            extra={"error": str(e), "error_type": type(e).__name__},
+        )
+        context = ModelInfraErrorContext.with_correlation(
+            transport_type=EnumInfraTransportType.RUNTIME,
+            operation="wire_infrastructure_services",
+        )
+        raise ServiceRegistrationError(
+            f"Failed to wire infrastructure services: {e}",
+            context=context,
+            original_error=str(e),
+            error_type=type(e).__name__,
+        ) from e
+
+    logger.info(
+        "Infrastructure services wired successfully",
+        extra={
+            "service_count": len(services_registered),
+            "services": services_registered,
+        },
+    )
+
+    return {"services": services_registered, "status": "success"}
+
+
+async def wire_llm_handlers(
+    container: ModelONEXContainer,
+    publisher: Callable[..., Awaitable[bool]] | None = None,
+) -> dict[str, list[str] | str]:
+    """Register LLM inference and embedding handlers with the container.
+
+    Wires ``RegistryInfraLlmInferenceEffect`` and
+    ``RegistryInfraLlmEmbeddingEffect`` into the container. When a
+    ``publisher`` is provided, the inference handler is wrapped with
+    ``ServiceLlmMetricsPublisher`` so that every call emits
+    ``llm-call-completed`` events.
+
+    Args:
+        container: ONEX container instance to register handlers in.
+        publisher: Optional async callable for event emission. When
+            provided, ``register_openai_compatible_with_metrics`` is
+            used; otherwise ``register_openai_compatible``.
+
+    Returns:
+        Summary dict with registered handler names and status.
+
+    Raises:
+        ServiceRegistryUnavailableError: If service_registry is unavailable.
+        ServiceRegistrationError: If handler registration fails.
+
+    Related:
+        - OMN-6785: Register LLM inference + embedding handlers in runtime bootstrap
+
+    .. versionadded:: 0.29.0
+    """
+    _validate_service_registry(container, "wire_llm_handlers")
+
+    from omnibase_infra.nodes.node_llm_embedding_effect.registry import (
+        RegistryInfraLlmEmbeddingEffect,
+    )
+    from omnibase_infra.nodes.node_llm_inference_effect.registry import (
+        RegistryInfraLlmInferenceEffect,
+    )
+
+    handlers_registered: list[str] = []
+
+    try:
+        # Register inference handler (with or without metrics)
+        if publisher is not None:
+            await (
+                RegistryInfraLlmInferenceEffect.register_openai_compatible_with_metrics(
+                    container, publisher=publisher
+                )
+            )
+            handlers_registered.append("HandlerLlmOpenaiCompatible (with metrics)")
+            handlers_registered.append("ServiceLlmMetricsPublisher")
+        else:
+            await RegistryInfraLlmInferenceEffect.register_openai_compatible(container)
+            handlers_registered.append("HandlerLlmOpenaiCompatible")
+
+        # Register embedding handler
+        await RegistryInfraLlmEmbeddingEffect.register_openai_compatible(container)
+        handlers_registered.append("HandlerEmbeddingOpenaiCompatible")
+
+    except Exception as e:
+        context = ModelInfraErrorContext.with_correlation(
+            transport_type=EnumInfraTransportType.RUNTIME,
+            operation="wire_llm_handlers",
+        )
+        logger.debug("LLM handler wiring failed: %s", e, exc_info=True)
+        raise ServiceRegistrationError(
+            "Failed to wire LLM handlers",
+            context=context,
+            original_error=type(e).__name__,
+            error_type=type(e).__name__,
+        ) from e
+
+    logger.info(
+        "LLM handlers wired successfully",
+        extra={
+            "handler_count": len(handlers_registered),
+            "handlers": handlers_registered,
+        },
+    )
+
+    return {"services": handlers_registered, "status": "success"}
+
+
+async def get_policy_registry_from_container(
+    container: ModelONEXContainer,
+) -> RegistryPolicy:
+    """Get RegistryPolicy from container.
+
+    Resolves RegistryPolicy using ModelONEXContainer.service_registry.resolve_service().
+    This is the preferred method for accessing RegistryPolicy in container-based code.
+
+    Note: This function is async because ModelONEXContainer.service_registry.resolve_service()
+    is async in omnibase_core v0.5.6 and later (see omnibase_core.container.ModelONEXContainer).
+
+    Args:
+        container: ONEX container instance with registered RegistryPolicy.
+
+    Returns:
+        RegistryPolicy instance from container.
+
+    Raises:
+        ServiceRegistryUnavailableError: If service_registry is missing or None.
+        ServiceResolutionError: If RegistryPolicy not registered in container.
+
+    Example:
+        >>> from omnibase_core.container import ModelONEXContainer
+        >>> container = ModelONEXContainer()
+        >>> await wire_infrastructure_services(container)
+        >>> registry = await get_policy_registry_from_container(container)
+        >>> isinstance(registry, RegistryPolicy)
+        True
+
+    Note:
+        This function assumes RegistryPolicy was registered via
+        wire_infrastructure_services(). If not, it will raise ServiceResolutionError.
+        For auto-registration, use get_or_create_policy_registry() instead.
+    """
+    # Validate service_registry is available
+    _validate_service_registry(container, "resolve RegistryPolicy")
+
+    try:
+        registry: RegistryPolicy = await container.service_registry.resolve_service(
+            RegistryPolicy
+        )
+        return registry
+    except AttributeError as e:
+        # Note: service_registry case is now handled by _validate_service_registry
+        # This block handles other AttributeErrors like missing resolve_service
+        error_str = str(e)
+        if "resolve_service" in error_str:
+            hint = (
+                "Container.service_registry missing 'resolve_service' method. "
+                "Check omnibase_core version compatibility (requires v0.5.6 or later)."
+            )
+        else:
+            hint = f"Missing attribute in resolution chain: {e}"
+
+        logger.exception(
+            "Failed to resolve RegistryPolicy from container",
+            extra={
+                "error": error_str,
+                "error_type": "AttributeError",
+                "service_type": "RegistryPolicy",
+                "hint": hint,
+            },
+        )
+        context = ModelInfraErrorContext.with_correlation(
+            transport_type=EnumInfraTransportType.RUNTIME,
+            operation="resolve_policy_registry",
+        )
+        raise ServiceResolutionError(
+            f"Failed to resolve RegistryPolicy - {hint}",
+            service_name="RegistryPolicy",
+            context=context,
+            required_api="container.service_registry.resolve_service(RegistryPolicy)",
+            original_error=str(e),
+        ) from e
+    except Exception as e:
+        logger.exception(
+            "Failed to resolve RegistryPolicy from container",
+            extra={
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "service_type": "RegistryPolicy",
+            },
+        )
+        context = ModelInfraErrorContext.with_correlation(
+            transport_type=EnumInfraTransportType.RUNTIME,
+            operation="resolve_policy_registry",
+        )
+        raise ServiceResolutionError(
+            "RegistryPolicy not registered in container",
+            service_name="RegistryPolicy",
+            context=context,
+            fix="Call wire_infrastructure_services(container) first",
+            original_error=str(e),
+        ) from e
+
+
+async def get_or_create_policy_registry(
+    container: ModelONEXContainer,
+) -> RegistryPolicy:
+    """Get RegistryPolicy from container, creating if not registered.
+
+    Convenience function that provides lazy initialization semantics.
+    Attempts to resolve RegistryPolicy from container, and if not found,
+    creates and registers a new instance.
+
+    This function is useful when code paths may not have called
+    wire_infrastructure_services() yet or when lazy initialization is desired.
+
+    Note: This function is async because ModelONEXContainer.service_registry methods
+    (resolve_service and register_instance) are async in omnibase_core v0.5.6 and later.
+
+    Args:
+        container: ONEX container instance.
+
+    Returns:
+        RegistryPolicy instance from container (existing or newly created).
+
+    Example:
+        >>> container = ModelONEXContainer()
+        >>> # No wiring yet, but this still works
+        >>> registry = await get_or_create_policy_registry(container)
+        >>> isinstance(registry, RegistryPolicy)
+        True
+        >>> # Second call returns same instance
+        >>> registry2 = await get_or_create_policy_registry(container)
+        >>> registry is registry2
+        True
+
+    Note:
+        While this function provides convenience, prefer explicit wiring via
+        wire_infrastructure_services() for production code to ensure proper
+        initialization order and error handling.
+    """
+    # Validate service_registry is available
+    _validate_service_registry(container, "get_or_create RegistryPolicy")
+
+    try:
+        # Try to resolve existing RegistryPolicy
+        registry: RegistryPolicy = await container.service_registry.resolve_service(
+            RegistryPolicy
+        )
+        return registry
+    except Exception:  # noqa: BLE001 — boundary: catch-all for resilience
+        # RegistryPolicy not registered, create and register it
+        logger.debug("RegistryPolicy not found in container, auto-registering")
+
+        try:
+            policy_registry = RegistryPolicy()
+            await container.service_registry.register_instance(
+                interface=RegistryPolicy,
+                instance=policy_registry,
+                scope=EnumInjectionScope.GLOBAL,
+                metadata={
+                    "description": "ONEX policy plugin registry (auto-registered)",
+                    "version": str(SEMVER_DEFAULT),
+                    "auto_registered": True,
+                },
+            )
+            logger.debug("Auto-registered RegistryPolicy in container (lazy init)")
+            return policy_registry
+
+        except Exception as e:
+            logger.exception(
+                "Failed to auto-register RegistryPolicy",
+                extra={"error": str(e), "error_type": type(e).__name__},
+            )
+            context = ModelInfraErrorContext.with_correlation(
+                transport_type=EnumInfraTransportType.RUNTIME,
+                operation="auto_register_policy_registry",
+            )
+            raise ServiceRegistrationError(
+                "Failed to create and register RegistryPolicy",
+                service_name="RegistryPolicy",
+                context=context,
+                original_error=str(e),
+            ) from e
+
+
+async def get_handler_registry_from_container(
+    container: ModelONEXContainer,
+) -> RegistryProtocolBinding:
+    """Get RegistryProtocolBinding from container.
+
+    Resolves RegistryProtocolBinding using ModelONEXContainer.service_registry.resolve_service().
+    This is the preferred method for accessing RegistryProtocolBinding in container-based code.
+
+    Note: This function is async because ModelONEXContainer.service_registry.resolve_service()
+    is async in omnibase_core v0.5.6 and later (see omnibase_core.container.ModelONEXContainer).
+
+    Args:
+        container: ONEX container instance with registered RegistryProtocolBinding.
+
+    Returns:
+        RegistryProtocolBinding instance from container.
+
+    Raises:
+        ServiceRegistryUnavailableError: If service_registry is missing or None.
+        ServiceResolutionError: If RegistryProtocolBinding not registered in container.
+
+    Example:
+        >>> from omnibase_core.container import ModelONEXContainer
+        >>> container = ModelONEXContainer()
+        >>> await wire_infrastructure_services(container)
+        >>> registry = await get_handler_registry_from_container(container)
+        >>> # Verify via duck typing (per ONEX conventions)
+        >>> hasattr(registry, 'register') and callable(registry.register)
+        True
+
+    Note:
+        This function assumes RegistryProtocolBinding was registered via
+        wire_infrastructure_services(). If not, it will raise ServiceResolutionError.
+    """
+    # Validate service_registry is available
+    _validate_service_registry(container, "resolve RegistryProtocolBinding")
+
+    try:
+        registry: RegistryProtocolBinding = (
+            await container.service_registry.resolve_service(RegistryProtocolBinding)
+        )
+        return registry
+    except AttributeError as e:
+        # Note: service_registry case is now handled by _validate_service_registry
+        # This block handles other AttributeErrors like missing resolve_service
+        error_str = str(e)
+        if "resolve_service" in error_str:
+            hint = (
+                "Container.service_registry missing 'resolve_service' method. "
+                "Check omnibase_core version compatibility (requires v0.5.6 or later)."
+            )
+        else:
+            hint = f"Missing attribute in resolution chain: {e}"
+
+        logger.exception(
+            "Failed to resolve RegistryProtocolBinding from container",
+            extra={
+                "error": error_str,
+                "error_type": "AttributeError",
+                "service_type": "RegistryProtocolBinding",
+                "hint": hint,
+            },
+        )
+        context = ModelInfraErrorContext.with_correlation(
+            transport_type=EnumInfraTransportType.RUNTIME,
+            operation="resolve_handler_registry",
+        )
+        raise ServiceResolutionError(
+            f"Failed to resolve RegistryProtocolBinding - {hint}",
+            service_name="RegistryProtocolBinding",
+            context=context,
+            required_api="container.service_registry.resolve_service(RegistryProtocolBinding)",
+            original_error=str(e),
+        ) from e
+    except Exception as e:
+        logger.exception(
+            "Failed to resolve RegistryProtocolBinding from container",
+            extra={
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "service_type": "RegistryProtocolBinding",
+            },
+        )
+        context = ModelInfraErrorContext.with_correlation(
+            transport_type=EnumInfraTransportType.RUNTIME,
+            operation="resolve_handler_registry",
+        )
+        raise ServiceResolutionError(
+            "RegistryProtocolBinding not registered in container",
+            service_name="RegistryProtocolBinding",
+            context=context,
+            fix="Call wire_infrastructure_services(container) first",
+            original_error=str(e),
+        ) from e
+
+
+async def get_compute_registry_from_container(
+    container: ModelONEXContainer,
+) -> RegistryCompute:
+    """Get RegistryCompute from container.
+
+    Resolves RegistryCompute using ModelONEXContainer.service_registry.resolve_service().
+    This is the preferred method for accessing RegistryCompute in container-based code.
+
+    Note: This function is async because ModelONEXContainer.service_registry.resolve_service()
+    is async in omnibase_core v0.5.6 and later (see omnibase_core.container.ModelONEXContainer).
+
+    Args:
+        container: ONEX container instance with registered RegistryCompute.
+
+    Returns:
+        RegistryCompute instance from container.
+
+    Raises:
+        ServiceRegistryUnavailableError: If service_registry is missing or None.
+        ServiceResolutionError: If RegistryCompute not registered in container.
+
+    Example:
+        >>> from omnibase_core.container import ModelONEXContainer
+        >>> container = ModelONEXContainer()
+        >>> await wire_infrastructure_services(container)
+        >>> registry = await get_compute_registry_from_container(container)
+        >>> isinstance(registry, RegistryCompute)
+        True
+
+    Note:
+        This function assumes RegistryCompute was registered via
+        wire_infrastructure_services(). If not, it will raise ServiceResolutionError.
+        For auto-registration, use get_or_create_compute_registry() instead.
+    """
+    # Validate service_registry is available
+    _validate_service_registry(container, "resolve RegistryCompute")
+
+    try:
+        registry: RegistryCompute = await container.service_registry.resolve_service(
+            RegistryCompute
+        )
+        return registry
+    except AttributeError as e:
+        # Note: service_registry case is now handled by _validate_service_registry
+        # This block handles other AttributeErrors like missing resolve_service
+        error_str = str(e)
+        if "resolve_service" in error_str:
+            hint = (
+                "Container.service_registry missing 'resolve_service' method. "
+                "Check omnibase_core version compatibility (requires v0.5.6 or later)."
+            )
+        else:
+            hint = f"Missing attribute in resolution chain: {e}"
+
+        logger.exception(
+            "Failed to resolve RegistryCompute from container",
+            extra={
+                "error": error_str,
+                "error_type": "AttributeError",
+                "service_type": "RegistryCompute",
+                "hint": hint,
+            },
+        )
+        context = ModelInfraErrorContext.with_correlation(
+            transport_type=EnumInfraTransportType.RUNTIME,
+            operation="resolve_compute_registry",
+        )
+        raise ServiceResolutionError(
+            f"Failed to resolve RegistryCompute - {hint}",
+            service_name="RegistryCompute",
+            context=context,
+            required_api="container.service_registry.resolve_service(RegistryCompute)",
+            original_error=str(e),
+        ) from e
+    except Exception as e:
+        logger.exception(
+            "Failed to resolve RegistryCompute from container",
+            extra={
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "service_type": "RegistryCompute",
+            },
+        )
+        context = ModelInfraErrorContext.with_correlation(
+            transport_type=EnumInfraTransportType.RUNTIME,
+            operation="resolve_compute_registry",
+        )
+        raise ServiceResolutionError(
+            "RegistryCompute not registered in container",
+            service_name="RegistryCompute",
+            context=context,
+            fix="Call wire_infrastructure_services(container) first",
+            original_error=str(e),
+        ) from e
+
+
+async def get_or_create_compute_registry(
+    container: ModelONEXContainer,
+) -> RegistryCompute:
+    """Get RegistryCompute from container, creating if not registered.
+
+    Convenience function that provides lazy initialization semantics.
+    Attempts to resolve RegistryCompute from container, and if not found,
+    creates and registers a new instance.
+
+    This function is useful when code paths may not have called
+    wire_infrastructure_services() yet or when lazy initialization is desired.
+
+    Note: This function is async because ModelONEXContainer.service_registry methods
+    (resolve_service and register_instance) are async in omnibase_core v0.5.6 and later.
+
+    Args:
+        container: ONEX container instance.
+
+    Returns:
+        RegistryCompute instance from container (existing or newly created).
+
+    Example:
+        >>> container = ModelONEXContainer()
+        >>> # No wiring yet, but this still works
+        >>> registry = await get_or_create_compute_registry(container)
+        >>> isinstance(registry, RegistryCompute)
+        True
+        >>> # Second call returns same instance
+        >>> registry2 = await get_or_create_compute_registry(container)
+        >>> registry is registry2
+        True
+
+    Note:
+        While this function provides convenience, prefer explicit wiring via
+        wire_infrastructure_services() for production code to ensure proper
+        initialization order and error handling.
+    """
+    # Validate service_registry is available
+    _validate_service_registry(container, "get_or_create RegistryCompute")
+
+    try:
+        # Try to resolve existing RegistryCompute
+        registry: RegistryCompute = await container.service_registry.resolve_service(
+            RegistryCompute
+        )
+        return registry
+    except Exception:  # noqa: BLE001 — boundary: catch-all for resilience
+        # RegistryCompute not registered, create and register it
+        logger.debug("RegistryCompute not found in container, auto-registering")
+
+        try:
+            compute_registry = RegistryCompute()
+            await container.service_registry.register_instance(
+                interface=RegistryCompute,
+                instance=compute_registry,
+                scope=EnumInjectionScope.GLOBAL,
+                metadata={
+                    "description": "ONEX compute plugin registry (auto-registered)",
+                    "version": str(SEMVER_DEFAULT),
+                    "auto_registered": True,
+                },
+            )
+            logger.debug("Auto-registered RegistryCompute in container (lazy init)")
+            return compute_registry
+
+        except Exception as e:
+            logger.exception(
+                "Failed to auto-register RegistryCompute",
+                extra={"error": str(e), "error_type": type(e).__name__},
+            )
+            context = ModelInfraErrorContext.with_correlation(
+                transport_type=EnumInfraTransportType.RUNTIME,
+                operation="auto_register_compute_registry",
+            )
+            raise ServiceRegistrationError(
+                "Failed to create and register RegistryCompute",
+                service_name="RegistryCompute",
+                context=context,
+                original_error=str(e),
+            ) from e
+
+
+async def wire_registration_handlers(
+    container: ModelONEXContainer,
+    pool: asyncpg.Pool,
+    liveness_interval_seconds: int | None = None,
+    projector: ProjectorShell | None = None,
+    snapshot_publisher: ProtocolSnapshotPublisher | None = None,
+) -> WiringResult:
+    """Register registration orchestrator handlers with the container.
+
+    This function delegates to the Registration domain wiring module,
+    following the domain-driven design principle where Registration-specific
+    code lives in the Registration domain rather than the generic runtime layer.
+
+    Registers ProjectionReaderRegistration and the three registration handlers:
+    - HandlerNodeIntrospected
+    - HandlerRuntimeTick
+    - HandlerNodeRegistrationAcked
+
+    All handlers depend on ProjectionReaderRegistration, which is registered first.
+    This enables declarative dependency resolution when constructing the
+    NodeRegistrationOrchestrator.
+
+    Args:
+        container: ONEX container instance to register services in.
+        pool: asyncpg connection pool for database access.
+        liveness_interval_seconds: Liveness deadline interval for ack handler.
+            If None, uses ONEX_LIVENESS_INTERVAL_SECONDS env var or default (60s).
+        projector: Optional ProjectorShell for persisting state transitions.
+            If provided, HandlerNodeIntrospected will persist projections to the
+            database using ProjectorShell.partial_update() and upsert_partial().
+            If None, the handler operates in read-only mode (useful for testing
+            or when projection persistence is handled elsewhere).
+        snapshot_publisher: Optional ProtocolSnapshotPublisher for publishing
+            compacted snapshots to Kafka. If provided, handlers will publish
+            snapshots after state transitions (best-effort, non-blocking).
+
+    Returns:
+        Summary dict with:
+            - services: List of registered service class names
+            - status: Always "success" (errors raise exceptions)
+
+    Raises:
+        ServiceRegistryUnavailableError: If service_registry is missing or None.
+        ContainerWiringError: If service registration fails.
+
+    Example:
+        >>> from omnibase_core.container import ModelONEXContainer
+        >>> from omnibase_infra.runtime.projector_shell import ProjectorShell
+        >>> from omnibase_infra.runtime.projector_plugin_loader import ProjectorPluginLoader
+        >>> import asyncpg
+        >>> container = ModelONEXContainer()
+        >>> pool = await asyncpg.create_pool(dsn)
+        >>> # Load projector from contract
+        >>> loader = ProjectorPluginLoader()
+        >>> projector = await loader.load_from_contract("registration_projector", pool)
+        >>> summary = await wire_registration_handlers(container, pool, projector=projector)
+        >>> print(summary)
+        {'services': ['ProjectionReaderRegistration', 'HandlerNodeIntrospected', ...], 'status': 'success'}
+        >>> # Resolve handlers from container
+        >>> handler = await container.service_registry.resolve_service(HandlerNodeIntrospected)
+
+    Note:
+        This function delegates to the Registration domain wiring module
+        (omnibase_infra.nodes.node_registration_orchestrator.wiring) to keep
+        Registration-specific code in its own domain. See OMN-1346.
+    """
+    # Delegate to the Registration domain wiring module
+    # This keeps Registration-specific logic (handlers, projectors) in its domain
+    from omnibase_infra.nodes.node_registration_orchestrator.wiring import (
+        wire_registration_handlers as _wire_registration_handlers,
+    )
+
+    return await _wire_registration_handlers(
+        container,
+        pool,
+        liveness_interval_seconds=liveness_interval_seconds,
+        projector=projector,
+        snapshot_publisher=snapshot_publisher,
+    )
+
+
+async def get_projection_reader_from_container(
+    container: ModelONEXContainer,
+) -> ProjectionReaderRegistration:
+    """Get ProjectionReaderRegistration from container.
+
+    This function delegates to the Registration domain wiring module.
+
+    Args:
+        container: ONEX container instance with registered ProjectionReaderRegistration.
+
+    Returns:
+        ProjectionReaderRegistration instance from container.
+
+    Raises:
+        ServiceRegistryUnavailableError: If service_registry is missing or None.
+        ServiceResolutionError: If ProjectionReaderRegistration not registered in container.
+
+    Example:
+        >>> pool = await asyncpg.create_pool(dsn)
+        >>> await wire_registration_handlers(container, pool)
+        >>> reader = await get_projection_reader_from_container(container)
+
+    Note:
+        This function delegates to the Registration domain wiring module
+        (omnibase_infra.nodes.node_registration_orchestrator.wiring). See OMN-1346.
+    """
+    from omnibase_infra.nodes.node_registration_orchestrator.wiring import (
+        get_projection_reader_from_container as _get_projection_reader,
+    )
+
+    return await _get_projection_reader(container)
+
+
+async def get_handler_node_introspected_from_container(
+    container: ModelONEXContainer,
+) -> HandlerNodeIntrospected:
+    """Get HandlerNodeIntrospected from container.
+
+    This function delegates to the Registration domain wiring module.
+
+    Args:
+        container: ONEX container instance with registered handlers.
+
+    Returns:
+        HandlerNodeIntrospected instance from container.
+
+    Raises:
+        ServiceRegistryUnavailableError: If service_registry is missing or None.
+        ServiceResolutionError: If handler not registered in container.
+
+    Note:
+        This function delegates to the Registration domain wiring module
+        (omnibase_infra.nodes.node_registration_orchestrator.wiring). See OMN-1346.
+    """
+    from omnibase_infra.nodes.node_registration_orchestrator.wiring import (
+        get_handler_node_introspected_from_container as _get_handler,
+    )
+
+    return await _get_handler(container)
+
+
+async def get_handler_runtime_tick_from_container(
+    container: ModelONEXContainer,
+) -> HandlerRuntimeTick:
+    """Get HandlerRuntimeTick from container.
+
+    This function delegates to the Registration domain wiring module.
+
+    Args:
+        container: ONEX container instance with registered handlers.
+
+    Returns:
+        HandlerRuntimeTick instance from container.
+
+    Raises:
+        ServiceRegistryUnavailableError: If service_registry is missing or None.
+        ServiceResolutionError: If handler not registered in container.
+
+    Note:
+        This function delegates to the Registration domain wiring module
+        (omnibase_infra.nodes.node_registration_orchestrator.wiring). See OMN-1346.
+    """
+    from omnibase_infra.nodes.node_registration_orchestrator.wiring import (
+        get_handler_runtime_tick_from_container as _get_handler,
+    )
+
+    return await _get_handler(container)
+
+
+async def get_handler_node_registration_acked_from_container(
+    container: ModelONEXContainer,
+) -> HandlerNodeRegistrationAcked:
+    """Get HandlerNodeRegistrationAcked from container.
+
+    This function delegates to the Registration domain wiring module.
+
+    Args:
+        container: ONEX container instance with registered handlers.
+
+    Returns:
+        HandlerNodeRegistrationAcked instance from container.
+
+    Raises:
+        ServiceRegistryUnavailableError: If service_registry is missing or None.
+        ServiceResolutionError: If handler not registered in container.
+
+    Note:
+        This function delegates to the Registration domain wiring module
+        (omnibase_infra.nodes.node_registration_orchestrator.wiring). See OMN-1346.
+    """
+    from omnibase_infra.nodes.node_registration_orchestrator.wiring import (
+        get_handler_node_registration_acked_from_container as _get_handler,
+    )
+
+    return await _get_handler(container)
+
+
+async def wire_registration_dispatchers(
+    container: ModelONEXContainer,
+    engine: MessageDispatchEngine,
+) -> dict[str, list[str] | str]:
+    """Wire registration dispatchers into MessageDispatchEngine.
+
+    This function delegates to the Registration domain wiring module,
+    following the domain-driven design principle where Registration-specific
+    code lives in the Registration domain rather than the generic runtime layer.
+
+    Creates dispatcher adapters for the registration handlers and registers
+    them with the MessageDispatchEngine. This enables the engine to route
+    introspection events to the appropriate handlers.
+
+    Prerequisites:
+        - wire_registration_handlers() must be called first to register
+          the underlying handlers in the container.
+        - MessageDispatchEngine must not be frozen yet. If the engine is already
+          frozen, dispatcher registration will fail with a ContainerWiringError.
+
+    Args:
+        container: ONEX container with registered handlers.
+        engine: MessageDispatchEngine instance to register dispatchers with.
+
+    Returns:
+        Summary dict with diagnostic information:
+            - dispatchers: List of registered dispatcher IDs (e.g.,
+              ['dispatcher.node-introspected', 'dispatcher.runtime-tick',
+               'dispatcher.node-registration-acked'])
+            - routes: List of registered route IDs (e.g.,
+              ['route.registration.node-introspection', 'route.registration.runtime-tick',
+               'route.registration.node-registration-acked'])
+            - status: Always "success" (errors raise exceptions)
+
+        This diagnostic output can be logged or used to verify correct wiring.
+
+    Raises:
+        ServiceRegistryUnavailableError: If service_registry is missing or None.
+        ContainerWiringError: If required handlers are not registered in the container,
+            or if the engine is already frozen (cannot register new dispatchers).
+
+    Engine Frozen Behavior:
+        If engine.freeze() has been called before this function, the engine
+        will reject new dispatcher registrations. Ensure this function is called
+        during the wiring phase before engine.freeze() is invoked.
+
+    Example:
+        >>> from omnibase_core.container import ModelONEXContainer
+        >>> from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
+        >>> import asyncpg
+        >>>
+        >>> container = ModelONEXContainer()
+        >>> pool = await asyncpg.create_pool(dsn)
+        >>> await wire_registration_handlers(container, pool)
+        >>>
+        >>> engine = MessageDispatchEngine()
+        >>> summary = await wire_registration_dispatchers(container, engine)
+        >>> print(summary)
+        {'dispatchers': [...], 'routes': [...]}
+        >>> engine.freeze()  # Must freeze after wiring
+
+    Note:
+        This function delegates to the Registration domain wiring module
+        (omnibase_infra.nodes.node_registration_orchestrator.wiring) to keep
+        Registration-specific code in its own domain. See OMN-1346.
+    """
+    # Delegate to the Registration domain wiring module
+    # This keeps Registration-specific logic (route IDs, dispatchers) in its domain
+    from omnibase_infra.nodes.node_registration_orchestrator.wiring import (
+        wire_registration_dispatchers as _wire_registration_dispatchers,
+    )
+
+    return await _wire_registration_dispatchers(container, engine)
+
+
+__all__: list[str] = [
+    # Container wiring functions
+    "get_compute_registry_from_container",
+    "get_handler_node_introspected_from_container",
+    "get_handler_node_registration_acked_from_container",
+    "get_handler_registry_from_container",
+    "get_handler_runtime_tick_from_container",
+    "get_or_create_compute_registry",
+    "get_or_create_policy_registry",
+    "get_policy_registry_from_container",
+    "get_projection_reader_from_container",
+    "wire_infrastructure_services",
+    # LLM handlers (Plan D WS1)
+    "wire_llm_handlers",
+    # Registration handlers (OMN-888)
+    "wire_registration_handlers",
+    # Registration dispatchers (OMN-892)
+    "wire_registration_dispatchers",
+]
+
+END PUBLIC SOURCE

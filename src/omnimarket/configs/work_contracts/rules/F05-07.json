@@ -1,0 +1,6 @@
+{
+  "mode": "mutation_test",
+  "mutant": "src/omnimarket/configs/work_contracts/evaluators/F05-07/mutant.txt",
+  "original": "src/omnimarket/configs/work_contracts/evaluators/F05-07/original.txt",
+  "symbol": "scopes_cover_scope"
+}

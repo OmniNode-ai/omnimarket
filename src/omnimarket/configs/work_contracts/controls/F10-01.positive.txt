@@ -1,0 +1,1 @@
+{"diagnosis": "Use F08-01 semantic check. In addition require receipt attempt history to show the withdrawn rung and a reason for every move; a refusal before any attempt fails this escalation check.", "evidence_scope": "offline diagnosis; no live model escalation proven"}

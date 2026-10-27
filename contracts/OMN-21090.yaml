@@ -2,7 +2,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-21090"
 title: "Claude Code context service and delegation adapter (compaction mod)"
-summary: "This repository change adds the per-session current-context fold of the plan's section 6 boundary algorithm, step 5 (TA.13): a pure handler in node_context_compaction_receipts_fold_compute that joins install-confirm results of one session in any order and with duplicates, keeps the maximal boundary chains and every boundary observation, and reads back the current boundary, what it installed, and each installed activation retired at the next boundary. It is not routed and has no table yet. The epic criteria are read through the Linear API on child tickets and are not bound by this contract. TC.4 additionally offers explicit ledger sequence watermarks: it refuses gaps, duplicates and legacy NULL sequences as stale and reports the contiguous prefix reached; timestamp-pinned replay remains supported. The ownership manifest also declares omninode_internal.compaction_current_context and its cursor sequence ahead of migration delivery; no writer node or SQL is added by the ownership stage."
+summary: "TA.18 measured-admission increment (OMN-21119): require a final assembled-input count before a pack hash permits dispatch and refuse input above the routed ceiling. This does not complete the child or epic. This repository change adds the per-session current-context fold of the plan's section 6 boundary algorithm, step 5 (TA.13): a pure handler in node_context_compaction_receipts_fold_compute that joins install-confirm results of one session in any order and with duplicates, keeps the maximal boundary chains and every boundary observation, and reads back the current boundary, what it installed, and each installed activation retired at the next boundary. It is not routed and has no table yet. The epic criteria are read through the Linear API on child tickets and are not bound by this contract. TC.4 additionally offers explicit ledger sequence watermarks: it refuses gaps, duplicates and legacy NULL sequences as stale and reports the contiguous prefix reached; timestamp-pinned replay remains supported. The ownership manifest also declares omninode_internal.compaction_current_context and its cursor sequence ahead of migration delivery; no writer node or SQL is added by the ownership stage."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -318,7 +318,7 @@ dod_evidence:
     binds_ac: ["AC2"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity_required_text.py -q -n 0 --no-cov"
+        check_value: "env UV_FROZEN=true uv run pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity_required_text.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
 
   - id: "dod-omn21090-deploy-required-parity-evidence"
@@ -344,3 +344,28 @@ dod_evidence:
           assert [(m.kind.value, m.key) for m in result.mismatches] == [("row_text_missing_in_projection", rid)]
           PYPROBE
         cwd: "${OMNI_HOME}/omnimarket"
+
+  - id: "dod-omn21090-compaction-absolute-deadline"
+    description: >-
+      Compaction implementation evidence: the same contract-bound handler on the
+      in-memory bus and broker-semantics binding spends publication time from the
+      remaining reply budget, refuses a late package without prepared or activated
+      emissions, closes both subscriptions on expiry, and rejects a revision probe
+      for another session or barrier. The ticket's live dev-bus package proof and
+      epic child-state criteria remain outstanding; these tests do not assert them.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env UV_FROZEN=true uv run pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build_deadline.py -q -n 0 --no-cov"
+  - id: "dod-omn21090-deploy-compaction-deadline"
+    description: >-
+      Hosted-runner offline deployment probe of the packaged compaction handler
+      using both local bus bindings. A slow publish must reduce the terminal wait,
+      a late terminal must never activate, and expired subscriptions must close.
+      The probe fails on a merge base without the deadline tests or deadline fix.
+      It needs no services or credentials and is not live dev-runtime proof.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run --frozen pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build_deadline.py -q -n 0 --no-cov"
