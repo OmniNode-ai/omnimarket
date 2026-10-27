@@ -401,6 +401,13 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # delegation_capability_cells, dispatched once per consumed map-run event
     # by runtime auto-wiring; its pure fold, HandlerDelegationCapabilityMap,
     # and the offline HandlerCapabilityGridRun do NOT declare the capability.
+    # OMN-21288 folds five more writers into the runtime on the same reviewed
+    # terms: LiveEventsProjectionWriter, RegistrationProjectionWriter,
+    # SavingsProjectionWriter, TenantCredentialsProjectionWriter and
+    # TenantMirrorProjectionWriter. Each is its node's only DB writer,
+    # dispatched once per consumed event by runtime auto-wiring on its
+    # standalone writer operation; the per-node walk above proves no pure
+    # handler in those nodes also declares the capability.
     assert declared == {
         "AlertChannelLivenessProjectionWriter",
         "AutomationLivenessProjectionWriter",
@@ -432,6 +439,11 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "UsageByModelDayProjectionWriter",
         "HandlerRoutingFeedbackWriter",
         "RunTraceProjectionWriter",
+        "LiveEventsProjectionWriter",
+        "RegistrationProjectionWriter",
+        "SavingsProjectionWriter",
+        "TenantCredentialsProjectionWriter",
+        "TenantMirrorProjectionWriter",
     }, f"unexpected {attr} declarations: {sorted(declared)}"
 
 
