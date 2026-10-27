@@ -13,10 +13,10 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 _LANE = r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$"
 _TICKET = r"^OMN-\d+$"
@@ -42,6 +42,47 @@ class EnumWorkLedgerParityStatus(StrEnum):
     UNMEASURED = "unmeasured"
 
 
+class ModelWorkLedgerHistoryRange(BaseModel):
+    """An explicit ledger sequence interval, including its expected sources.
+
+    Bounds must come from the caller's sealed acquisition manifest. Completeness
+    applies to this interval, never to unspecified retained history or archives.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ledger_id: str = Field(min_length=1)
+    first_seq: int = Field(ge=1)
+    last_seq: int = Field(ge=1)
+    sources: tuple[Annotated[str, Field(min_length=1)], ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> ModelWorkLedgerHistoryRange:
+        if self.last_seq < self.first_seq:
+            raise ValueError("last_seq must be at least first_seq")
+        if len(set(self.sources)) != len(self.sources):
+            raise ValueError("history sources must be unique")
+        return self
+
+
+class ModelWorkLedgerCompleteness(BaseModel):
+    """Source coverage before discovery filters, with explicit uncertainty."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    status: Literal["complete", "incomplete"]
+    reasons: tuple[str, ...] = ()
+    first_seq: int
+    last_seq: int
+    cutoff: AwareDatetime
+    sources: tuple[str, ...]
+    rows_read: int
+    source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    contract_version: Literal["work-ledger-history/1"] = "work-ledger-history/1"
+    time_basis: Literal["database-ingest"] = "database-ingest"
+    sequence_basis: Literal["ledger_seq"] = "ledger_seq"
+
+
 class ModelWorkLedgerQueryRequest(BaseModel):
     """One question over the database ledger, bounded by a row_ts window."""
 
@@ -64,6 +105,27 @@ class ModelWorkLedgerQueryRequest(BaseModel):
     to: str | None = Field(default=None, pattern=_LANE)
     claims_since: str | None = None
     limit: int | None = Field(default=None, ge=1)
+    principal: str | None = Field(default=None, min_length=1)
+    run: str | None = Field(default=None, min_length=1)
+    history: ModelWorkLedgerHistoryRange | None = None
+    cursor: str | None = Field(default=None, min_length=1, max_length=4096)
+
+    @model_validator(mode="after")
+    def _history_boundary(self) -> ModelWorkLedgerQueryRequest:
+        if self.history is not None:
+            if self.query is not EnumWorkLedgerQueryKind.ROWS:
+                raise ValueError("history requires query=rows")
+            if self.until is None:
+                raise ValueError(
+                    "history requires an explicit range and exclusive until"
+                )
+            if self.until.utcoffset() is None:
+                raise ValueError("history until must carry a UTC offset")
+            if self.since is not None:
+                raise ValueError("history uses sequence bounds, not writer timestamps")
+        elif self.cursor is not None or self.run is not None:
+            raise ValueError("run and cursor require a history range")
+        return self
 
 
 class ModelWorkLedgerRowRecord(BaseModel):
@@ -80,6 +142,8 @@ class ModelWorkLedgerRowRecord(BaseModel):
     raw_row: str
     source: str
     projected_at: datetime | None = None
+    ledger_seq: int | None = Field(default=None, ge=1)
+    ingested_at: AwareDatetime | None = None
 
 
 class ModelWorkLedgerOpenClaim(BaseModel):
@@ -180,12 +244,16 @@ class ModelWorkLedgerQueryResult(BaseModel):
     freshness: ModelWorkLedgerFreshness | None = None
     parity: ModelWorkLedgerParity | None = None
     error: str | None = None
+    completeness: ModelWorkLedgerCompleteness | None = None
+    next_cursor: str | None = None
 
 
 __all__ = [
     "EnumWorkLedgerParityStatus",
     "EnumWorkLedgerQueryKind",
+    "ModelWorkLedgerCompleteness",
     "ModelWorkLedgerFreshness",
+    "ModelWorkLedgerHistoryRange",
     "ModelWorkLedgerHoldCounts",
     "ModelWorkLedgerHoldInForce",
     "ModelWorkLedgerInbox",

@@ -1,0 +1,1 @@
+{"id": "F03-03", "kind": "model", "symbols": ["ModelDelegateTerminalMetrics"], "count": 1, "summary": "Public module symbols."}

@@ -1,0 +1,8 @@
+{
+  "mode": "phrases",
+  "required": [
+    "Handle GET /ready requests (readiness probe).",
+    "Handle GET /health/detailed requests (verbose diagnostics).",
+    "Build per-component health status from runtime health details."
+  ]
+}

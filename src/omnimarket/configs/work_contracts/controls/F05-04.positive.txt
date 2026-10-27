@@ -1,0 +1,3 @@
+from solution import scope_covers_pr as f, ModelHoldScope, ModelPrKey
+def test_value():
+ assert f(ModelHoldScope(repos=frozenset({"omnimarket"})),ModelPrKey(repo="omnimarket",number=1))

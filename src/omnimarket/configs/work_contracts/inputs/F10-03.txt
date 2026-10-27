@@ -1,0 +1,180 @@
+Diagnose this real failed GitHub Actions job. Name the job and the failing step, identify the direct cause, and distinguish the direct failure from any downstream symptom or misleading successful output. Cite the supplied evidence. Propose a bounded remedy without executing it; do not change checks, rerun CI, or assume a newer head is still red.
+Source: https://github.com/OmniNode-ai/omnibase_core/actions/runs/40153015237/job/121048412452
+Failing step from GitHub job metadata: Check ruff formatting
+The log download labels steps UNKNOWN STEP; the exact name above is authoritative.
+Log excerpt (original timestamps, with gaps):
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:33.8686231Z 
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:33.8980081Z tests/unit/models/evidence_bundle/test_evidence_verifier_result.py ^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m [  9%]
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:34.8207005Z ^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m.^[[0m^[[32m                           [100%]^[[0m
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:34.8210203Z 
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:34.8211030Z ^[[32m============================== ^[[32m^[[1m51 passed^[[0m^[[32m in 1.49s^[[0m^[[32m ==============================^[[0m
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.1450938Z ##[group]Run uv run ruff format --check src/ tests/
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.1451448Z ^[[36;1muv run ruff format --check src/ tests/^[[0m
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.1490203Z shell: /usr/bin/bash -e {0}
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.1490664Z env:
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.1490961Z   UV_VERSION: 0.8.3
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.1491276Z   UV_HTTP_TIMEOUT: 600
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.1491649Z   PYTHON_VERSION: 3.12
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.1491955Z   PYTEST_XDIST_WORKERS: 1
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.1492384Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.15/x64
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.1492985Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.15/x64/lib/pkgconfig
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.1493464Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.15/x64
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.1493996Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.15/x64
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.1494447Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.15/x64
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.1494904Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.15/x64/lib
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.1495469Z   UV_PYTHON_INSTALL_DIR: fixture-root
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.1495944Z   UV_CACHE_DIR: fixture-root
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.1496354Z ##[endgroup]
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8545712Z unformatted: File would be reformatted
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8546306Z    --> src/omnibase_core/models/core/model_generic_collection.py:181:26
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8547004Z     |
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8547310Z 180 |         return self.filter_items(
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8547729Z     -             lambda item: getattr(item, "is_valid", True)
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8548226Z     -             and getattr(item, "valid", True),
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8548601Z 181 +             lambda item: (
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8549045Z 182 +                 getattr(item, "is_valid", True) and getattr(item, "valid", True)
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8549477Z 183 +             ),
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8549829Z 184 |         )
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8550128Z     |
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8550297Z 
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8550447Z unformatted: File would be reformatted
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8550921Z    --> src/omnibase_core/models/examples/model_property_collection.py:106:27
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8551429Z     |
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8551705Z 105 |             (
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8554092Z     -                 lambda v: isinstance(v, list)
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8554805Z     -                 and all(isinstance(item, str) for item in v),
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8555406Z 106 +                 lambda v: (
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8556296Z 107 +                     isinstance(v, list) and all(isinstance(item, str) for item in v)
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8556961Z 108 +                 ),
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8558071Z 109 |                 ModelPropertyValue.from_string_list,
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8558891Z 110 |             ),
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8559323Z 111 |             (
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8559816Z     -                 lambda v: isinstance(v, list)
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8560540Z     -                 and all(isinstance(item, int) for item in v),
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8561147Z 112 +                 lambda v: (
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8561740Z 113 +                     isinstance(v, list) and all(isinstance(item, int) for item in v)
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8562384Z 114 +                 ),
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8563036Z 115 |                 ModelPropertyValue.from_int_list,
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8563595Z 116 |             ),
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8564053Z 117 |             (
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8564614Z     -                 lambda v: isinstance(v, list)
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8565207Z     -                 and all(isinstance(item, float) for item in v),
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8565843Z 118 +                 lambda v: (
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8566510Z 119 +                     isinstance(v, list) and all(isinstance(item, float) for item in v)
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8567238Z 120 +                 ),
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8567748Z 121 |                 ModelPropertyValue.from_float_list,
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8568259Z     |
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8568536Z 
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8569032Z unformatted: File would be reformatted
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8569779Z    --> tests/unit/models/nodes/node_services/test_model_service_effect_health.py:90:37
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8570444Z     |
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8570952Z 89  |     service.get_service_health = lambda: MixinNodeService.get_service_health(service)
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8571518Z     -     service.add_shutdown_callback = (
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8572057Z     -         lambda callback: MixinNodeService.add_shutdown_callback(service, callback)
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8572594Z 90  +     service.add_shutdown_callback = lambda callback: (
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8573356Z 91  +         MixinNodeService.add_shutdown_callback(service, callback)
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8573782Z 92  |     )
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8574122Z     -     service._wait_for_active_invocations = (
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8574643Z     -         lambda timeout_ms=30000: MixinNodeService._wait_for_active_invocations(
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8575238Z     -             service, timeout_ms
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8575750Z     -         )
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8576527Z 93  +     service._wait_for_active_invocations = lambda timeout_ms=30000: (
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8577562Z 94  +         MixinNodeService._wait_for_active_invocations(service, timeout_ms)
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8578236Z 95  |     )
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8578656Z     -     service._try_get_event_bus_from_container = (
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8579364Z     -         lambda: MixinNodeService._try_get_event_bus_from_container(service)
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8580072Z 96  +     service._try_get_event_bus_from_container = lambda: (
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8580829Z 97  +         MixinNodeService._try_get_event_bus_from_container(service)
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8581393Z 98  |     )
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8581882Z --------------------------------------------------------------------------------
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8582795Z 104 |     )
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8583276Z     -     service._register_signal_handlers = (
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8583905Z     -         lambda: MixinNodeService._register_signal_handlers(service)
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8584438Z 105 +     service._register_signal_handlers = lambda: (
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8585000Z 106 +         MixinNodeService._register_signal_handlers(service)
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8585407Z 107 |     )
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8585716Z     |
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8585947Z 
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8586166Z unformatted: File would be reformatted
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8587156Z    --> tests/unit/models/nodes/node_services/test_model_service_orchestrator_health.py:103:37
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8587672Z     |
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8588093Z 102 |     service.get_service_health = lambda: MixinNodeService.get_service_health(service)
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8588643Z     -     service.add_shutdown_callback = (
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8589154Z     -         lambda callback: MixinNodeService.add_shutdown_callback(service, callback)
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8589681Z 103 +     service.add_shutdown_callback = lambda callback: (
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8590161Z 104 +         MixinNodeService.add_shutdown_callback(service, callback)
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8590599Z 105 |     )
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8590970Z     -     service._wait_for_active_invocations = (
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8591447Z     -         lambda timeout_ms=30000: MixinNodeService._wait_for_active_invocations(
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8591924Z     -             service, timeout_ms
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8592309Z     -         )
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8593232Z 106 +     service._wait_for_active_invocations = lambda timeout_ms=30000: (
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8594001Z 107 +         MixinNodeService._wait_for_active_invocations(service, timeout_ms)
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8594429Z 108 |     )
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8594869Z 109 |     service._emit_shutdown_event = lambda: MixinNodeService._emit_shutdown_event(
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8595325Z 110 |         service
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8595626Z 111 |     )
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8595981Z     -     service._try_get_event_bus_from_container = (
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8596483Z     -         lambda: MixinNodeService._try_get_event_bus_from_container(service)
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8597091Z 112 +     service._try_get_event_bus_from_container = lambda: (
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8597561Z 113 +         MixinNodeService._try_get_event_bus_from_container(service)
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8598038Z 114 |     )
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8598450Z 115 |     service._health_monitor_loop = lambda: MixinNodeService._health_monitor_loop(
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8598918Z 116 |         service
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8599224Z 117 |     )
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8599583Z     -     service._register_signal_handlers = (
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8600020Z     -         lambda: MixinNodeService._register_signal_handlers(service)
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8600477Z 118 +     service._register_signal_handlers = lambda: (
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8600909Z 119 +         MixinNodeService._register_signal_handlers(service)
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8601338Z 120 |     )
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8601632Z     |
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8601767Z 
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8601937Z unformatted: File would be reformatted
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8602372Z    --> tests/unit/models/skill/test_model_agent_skill.py:204:15
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8602920Z     |
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8603249Z 203 | METADATA_KEY = SAFE.filter(
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8603676Z     -     lambda s: not s.startswith(("onex.", "claude-code."))
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8604084Z     -     and s
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8604437Z     -     not in {
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8604759Z     -         *CLAUDE_CODE_EXTENSION_KEYS,
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8605159Z     -         "name",
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8605510Z     -         "description",
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8605904Z     -         "license",
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8606238Z     -         "compatibility",
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8606568Z     -         "metadata",
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8606956Z     -         "allowed-tools",
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8607323Z     -     }
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8607632Z 204 +     lambda s: (
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8607993Z 205 +         not s.startswith(("onex.", "claude-code."))
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8608380Z 206 +         and s
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8608773Z 207 +         not in {
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8609119Z 208 +             *CLAUDE_CODE_EXTENSION_KEYS,
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8609511Z 209 +             "name",
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8609840Z 210 +             "description",
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8610235Z 211 +             "license",
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8610607Z 212 +             "compatibility",
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8610963Z 213 +             "metadata",
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8611416Z 214 +             "allowed-tools",
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8611790Z 215 +         }
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8612123Z 216 +     )
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8612426Z 217 | )
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8612952Z     |
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8613119Z 
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8613315Z unformatted: File would be reformatted
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8613726Z   --> tests/unit/test_init_exports.py:74:25
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8614184Z    |
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8614494Z 73 |         with isolated_sys_modules(
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8614893Z    -             lambda key: key.startswith("omnibase_core")
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8615360Z    -             and key != "omnibase_core.__init__"
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8615795Z 74 +             lambda key: (
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8616285Z 75 +                 key.startswith("omnibase_core") and key != "omnibase_core.__init__"
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8616753Z 76 +             )
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8617041Z 77 |         ):
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8617405Z    |
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8617542Z 
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8617794Z 6 files would be reformatted, 7177 files already formatted
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8629636Z ##[error]Process completed with exit code 1.
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.8787003Z Post job cleanup.
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.9623603Z [command]/usr/bin/git version
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.9657178Z git version 2.55.0
+Code Quality	UNKNOWN STEP	2026-10-25T02:04:35.9689126Z Temporarily overriding HOME='fixture-root' before making global git config changes

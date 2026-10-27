@@ -1,0 +1,20 @@
+Implement the small Python function below from its docstring. Public source: omnibase_core/src/omnibase_core/normalization/contract_normalizer.py:228. Keep the exact public signature and specified behavior. Return ONLY one complete Python module, no explanation or Markdown. Include its support definitions/imports. Do not write tests.
+
+from __future__ import annotations
+
+import copy
+
+def normalize_omnimarket_v0_contract(raw: dict[str, object]) -> dict[str, object]:
+    """Rewrite an omnimarket v0 contract dict to the canonical shape.
+
+    Compatibility-stripping transform, not a semantic migration. The
+    ``handler``, ``descriptor``, and ``terminal_event`` blocks are dropped
+    entirely; ``descriptor.node_archetype``, ``descriptor.timeout_ms``,
+    and the ``terminal_event`` topic string are not carried forward.
+    Callers that need this information must extract it before running
+    the normalizer.
+
+    The only field salvaged is ``handler.input_model``, which is hoisted
+    to a root-level ``input_model`` when not already present.
+    """
+    raise NotImplementedError

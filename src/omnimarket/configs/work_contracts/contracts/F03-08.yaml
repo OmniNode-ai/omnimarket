@@ -1,0 +1,62 @@
+contract_id: F03-08
+task_kind: code_generation
+inputs:
+- path: src/omnimarket/configs/work_contracts/inputs/F03-08.txt
+  sha256: bfdaa7c94949dc873cf894798d3f0be2c7864151ba3f00dc006a512245b772b4
+acceptance:
+  kind: schema
+  spec:
+    schema:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - kind
+      - symbols
+      - count
+      - summary
+      properties:
+        id:
+          const: F03-08
+        kind:
+          enum:
+          - enum
+          - protocol
+          - model
+          - implementation
+          - package
+          - mixed
+        symbols:
+          type: array
+          items:
+            type: string
+          uniqueItems: true
+        count:
+          type: integer
+          minimum: 0
+        summary:
+          type: string
+          pattern: ^\S+(?:\s+\S+){0,3}$
+    expected_json: '{"count": 1, "id": "F03-08", "kind": "protocol", "summary": "Public
+      module symbols.", "symbols": ["ProtocolConstraintValidator"]}'
+budgets:
+  max_output_tokens: 8192
+  max_wall_s: 180
+  max_turns: 8
+  max_usd: 5
+controls:
+  positive:
+    path: src/omnimarket/configs/work_contracts/controls/F03-08.positive.txt
+    sha256: 27744ee01e277513178b8255224af13d4b0a986f87e5e93fc3fbb96274e83deb
+  negative:
+    path: src/omnimarket/configs/work_contracts/controls/F03-08.negative.txt
+    sha256: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+evaluators:
+- path: src/omnimarket/handlers/work_contracts/control_evaluator.py
+  sha256: 35beec5a332b646a0c1a696407f0b4a1f5a683269b19e9f782af9df0ee662d7d
+provenance:
+  source: 2026-10-27-deleg-sc-b-1100.md
+  source_sha256: 0483ba868fbaa3852282cf543dd824bc2f79fc946515bdc8769ed581bdffde0a
+  adaptation: Frozen JSON ground truth and schema. F03 summary constrained to a known-good
+    reference. F09 uses deidentified fixture rows with original ids and labels; historical
+    inputs are not equivalent.

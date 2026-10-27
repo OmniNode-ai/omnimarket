@@ -1,0 +1,23 @@
+from __future__ import annotations
+
+from omnibase_core.models.events.work.model_hold_scope import ModelHoldScope
+
+from omnibase_core.models.events.work.model_pr_key import ModelPrKey
+
+def scope_covers_pr(scope: ModelHoldScope, pr: ModelPrKey) -> bool:
+    """True when ``scope`` covers pull request ``pr``."""
+    return scope.all_repos or pr in scope.prs or pr.repo in scope.repos
+
+def scope_covers_repo(scope: ModelHoldScope, repo: str) -> bool:
+    """True when ``scope`` covers every pull request of ``repo``."""
+    return scope.all_repos or repo.lower() in scope.repos
+
+def is_subscope(part: ModelHoldScope, whole: ModelHoldScope) -> bool:
+    """True when everything ``part`` covers is covered by ``whole``."""
+    return (
+        all(scope_covers_pr(whole, pr) for pr in part.prs)
+        and all(scope_covers_repo(whole, repo) for repo in part.repos)
+        and (not part.all_repos or whole.all_repos)
+        and part.surfaces <= whole.surfaces
+        and True
+    )

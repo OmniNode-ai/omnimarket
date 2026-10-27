@@ -118,21 +118,25 @@ class HandlerAnswerComparison:
             native = sum(
                 case.native_answer is EnumAnswerGrade.MATCH for case in run.cases
             )
+            native_unavailable = sum(
+                case.native_answer is EnumAnswerGrade.UNAVAILABLE for case in run.cases
+            )
+            package_unavailable = sum(
+                case.package_answer is EnumAnswerGrade.UNAVAILABLE for case in run.cases
+            )
             counts.append(
                 ModelRunAnswerCounts(
                     run_id=run.run_id,
                     cases=len(run.cases),
                     package_matches=package,
                     native_matches=native,
-                    native_unavailable=sum(
-                        case.native_answer is EnumAnswerGrade.UNAVAILABLE
-                        for case in run.cases
+                    native_unavailable=native_unavailable,
+                    package_unavailable=package_unavailable,
+                    package_at_least_native=(
+                        package >= native
+                        and package_unavailable == 0
+                        and native_unavailable == 0
                     ),
-                    package_unavailable=sum(
-                        case.package_answer is EnumAnswerGrade.UNAVAILABLE
-                        for case in run.cases
-                    ),
-                    package_at_least_native=package >= native,
                 )
             )
             if package < native:

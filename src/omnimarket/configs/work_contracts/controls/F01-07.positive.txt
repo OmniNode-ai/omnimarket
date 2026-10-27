@@ -1,0 +1,1 @@
+The change updates .github/workflows/ci.yml. It revises the implementation and its checks.

@@ -1,0 +1,14 @@
+Implement the small Python function below from its docstring. Public source: omnimarket/src/omnimarket/occ_criterion_units.py:239. Keep the exact public signature and specified behavior. Return ONLY one complete Python module, no explanation or Markdown. Include its support definitions/imports. Do not write tests.
+
+from __future__ import annotations
+
+import unicodedata
+
+def canonical_criterion_text(item: str) -> str:
+    """The form a criterion is hashed in.
+
+    Unicode NFC, whitespace runs collapsed to single spaces, ends stripped --
+    and nothing else. See the module docstring for why the normalisation is
+    this narrow.
+    """
+    raise NotImplementedError

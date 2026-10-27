@@ -1,0 +1,6 @@
+{
+  "mode": "mutation_test",
+  "mutant": "src/omnimarket/configs/work_contracts/evaluators/F05-02/mutant.txt",
+  "original": "src/omnimarket/configs/work_contracts/evaluators/F05-02/original.txt",
+  "symbol": "convert_health_to_typed_dict"
+}

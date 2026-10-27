@@ -1,0 +1,46 @@
+{
+  "instruction": "Classify the public fixtures in order; labels are stated in the evidence.",
+  "rows": [
+    {
+      "evidence": "public fixture for handed-off",
+      "id": "L3722"
+    },
+    {
+      "evidence": "public fixture for partial",
+      "id": "L3634"
+    },
+    {
+      "evidence": "public fixture for done",
+      "id": "L3606"
+    },
+    {
+      "evidence": "public fixture for failed",
+      "id": "L3461"
+    },
+    {
+      "evidence": "public fixture for blocked",
+      "id": "L3333"
+    },
+    {
+      "evidence": "public fixture for DELIVERED",
+      "id": "L3171"
+    },
+    {
+      "evidence": "public fixture for skipped-owned",
+      "id": "L2538"
+    },
+    {
+      "evidence": "public fixture for ended-waiting",
+      "id": "L1705"
+    },
+    {
+      "evidence": "public fixture for unknown",
+      "id": "L1351"
+    },
+    {
+      "evidence": "public fixture for handed-off",
+      "id": "L3721"
+    }
+  ],
+  "scenario": "F09-08"
+}

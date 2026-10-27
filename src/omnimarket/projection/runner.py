@@ -466,6 +466,8 @@ class BaseProjectionRunner(ABC):
     - project_event(topic, data, meta): project a single event to DB
     """
 
+    _contract: dict[str, Any]
+
     def __init__(
         self,
         *,
@@ -536,6 +538,26 @@ class BaseProjectionRunner(ABC):
         self._producer: AIOKafkaProducer | None = None
         self._health_server: _ProjectionHealthServer | None = None
         self._health_thread: threading.Thread | None = None
+
+    async def project_runtime_event(
+        self, topic: str, data: dict[str, Any], meta: MessageMeta
+    ) -> bool:
+        """Apply one runtime delivery with topology-bound, loop-scoped resources.
+
+        No Kafka consumer is started. The existing per-binding resolver gives
+        each declared table its workload identity, including writers spanning
+        tenant and internal schemas. A fresh runner belongs to each delivery;
+        neither a pool nor a producer may survive the loop that used it.
+        """
+        self._standalone_db_tables = tuple(self._contract["db_io"]["db_tables"])
+        try:
+            await self._connect_standalone_databases()
+            return await self.project_event(topic, data, meta)
+        finally:
+            try:
+                await self._stop_producer()
+            finally:
+                await self._close_standalone_databases()
 
     def _start_health_server_if_configured(self) -> None:
         """Start the readiness/liveness HTTP server iff configured.

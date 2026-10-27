@@ -1,0 +1,11 @@
+--- a/src/omnibase_core/models/delegation/model_invocation_command.py
++++ b/src/omnibase_core/models/delegation/model_invocation_command.py
+@@ -20,7 +20,7 @@
+     the remote-agent invoke effect to act on the delegation request.
+     """
+ 
+-    model_config = ConfigDict(frozen=True)
++    model_config = ConfigDict(frozen=True, extra="forbid")
+ 
+     task_id: UUID
+     correlation_id: UUID

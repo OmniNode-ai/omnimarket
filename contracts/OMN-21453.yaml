@@ -1,0 +1,184 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+schema_version: 1.0.0
+ticket_id: OMN-21453
+title: Manifest-backed model attempt receipt join
+summary: A pure Phase 1 node normalizes four receipt families, binds attempt identity to a pre-dispatch manifest,
+  reports conflicting measurements, and compares lab-run acceptance evidence with pinned contract expectations.
+  The comparison run owns persistence. Recorded remote-lane fixture parity and the work-contract runner adapter
+  remain integration evidence to collect.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-ac1
+  statement: 'AC1: ModelWorkAttemptReceipt is a frozen model with contract_id, attempt_id, engine, model, effort,
+    tokens_in, tokens_out, cache_read, cache_write, wall_s, turns, tool_calls, retries, rejection_reasons, cost_usd,
+    cost_basis (MEASURED or UNKNOWN), verdict (pass, fail or unjoined) and source_refs, and each numeric field a
+    source lacks is the literal UNKNOWN, never 0'
+  acceptance:
+  - id: AC1
+    statement: 'AC1: ModelWorkAttemptReceipt is a frozen model with contract_id, attempt_id, engine, model, effort,
+      tokens_in, tokens_out, cache_read, cache_write, wall_s, turns, tool_calls, retries, rejection_reasons, cost_usd,
+      cost_basis (MEASURED or UNKNOWN), verdict (pass, fail or unjoined) and source_refs, and each numeric field
+      a source lacks is the literal UNKNOWN, never 0 -- falsifier: uv run pytest tests/nodes/test_model_work_receipt_join.py
+      -q -k absent_is_unknown'
+- id: req-ac2
+  statement: 'AC2: a recorded codex remote-lane receipt with total_cost_usd 0 joins to cost_basis UNKNOWN, and a
+    recorded sonnet receipt with total_cost_usd above 0 joins to MEASURED'
+  acceptance:
+  - id: AC2
+    statement: 'AC2: a recorded codex remote-lane receipt with total_cost_usd 0 joins to cost_basis UNKNOWN, and
+      a recorded sonnet receipt with total_cost_usd above 0 joins to MEASURED -- falsifier: uv run pytest tests/nodes/test_model_work_receipt_join.py
+      -q -k codex_zero_cost_is_unknown'
+- id: req-ac3
+  statement: 'AC3: the dedup key is (contract_id, attempt_id) and joining the same inputs twice writes the same
+    rows once'
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the dedup key is (contract_id, attempt_id) and joining the same inputs twice writes the same
+      rows once -- falsifier: uv run pytest tests/nodes/test_model_work_receipt_join.py -q -k rerun_idempotent'
+- id: req-ac4
+  statement: 'AC4: a receipt with no contract_id is written with verdict unjoined and counted in the join summary,
+    not dropped'
+  acceptance:
+  - id: AC4
+    statement: 'AC4: a receipt with no contract_id is written with verdict unjoined and counted in the join summary,
+      not dropped -- falsifier: uv run pytest tests/nodes/test_model_work_receipt_join.py -q -k unjoined_counted'
+- id: req-ac5
+  statement: 'AC5: the verdict field is computed by running the contract''s acceptance check from the work contract
+    task on the attempt output, not copied from the model''s own claim'
+  acceptance:
+  - id: AC5
+    statement: 'AC5: the verdict field is computed by running the contract''s acceptance check from the work contract
+      task on the attempt output, not copied from the model''s own claim -- falsifier: uv run pytest tests/nodes/test_model_work_receipt_join.py
+      -q -k verdict_from_check'
+- id: req-ac6
+  statement: 'AC6: attempt identity comes from a pre-dispatch manifest row (contract_id, arm, draw, attempt_id)
+    carried into the receipt as an Attempt line, a landing cost row is never summed into an attempt, two sources
+    that disagree on a field are reported as a conflict, and a record that cannot be mapped is a separate typed
+    unjoined record excluded from every per-pass figure'
+  acceptance:
+  - id: AC6
+    statement: 'AC6: attempt identity comes from a pre-dispatch manifest row (contract_id, arm, draw, attempt_id)
+      carried into the receipt as an Attempt line, a landing cost row is never summed into an attempt, two sources
+      that disagree on a field are reported as a conflict, and a record that cannot be mapped is a separate typed
+      unjoined record excluded from every per-pass figure -- falsifier: uv run pytest tests/nodes/test_model_work_receipt_join.py
+      -q -k attempt_identity_and_conflicts'
+evidence_requirements:
+- kind: tests
+  description: Acceptance falsifiers and in-memory bus/SQLite binding checks.
+  command: uv run pytest tests/nodes/test_model_work_receipt_join.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21453-ac1
+  description: 'AC1: ModelWorkAttemptReceipt is a frozen model with contract_id, attempt_id, engine, model, effort,
+    tokens_in, tokens_out, cache_read, cache_write, wall_s, turns, tool_calls, retries, rejection_reasons, cost_usd,
+    cost_basis (MEASURED or UNKNOWN), verdict (pass, fail or unjoined) and source_refs, and each numeric field a
+    source lacks is the literal UNKNOWN, never 0'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/test_model_work_receipt_join.py -q -k absent_is_unknown
+- id: dod-omn21453-ac2
+  description: 'AC2: a recorded codex remote-lane receipt with total_cost_usd 0 joins to cost_basis UNKNOWN, and
+    a recorded sonnet receipt with total_cost_usd above 0 joins to MEASURED Behavioral controls reproduce the recorded
+    inventory semantics; the local fixtures are explicitly synthetic, and a launcher-side recorded Codex/Sonnet
+    receipt parity run is still required before ticket completion.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/test_model_work_receipt_join.py -q -k codex_zero_cost_is_unknown
+- id: dod-omn21453-ac3
+  description: 'AC3: the dedup key is (contract_id, attempt_id) and joining the same inputs twice writes the same
+    rows once'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/test_model_work_receipt_join.py -q -k rerun_idempotent
+- id: dod-omn21453-ac4
+  description: 'AC4: a receipt with no contract_id is written with verdict unjoined and counted in the join summary,
+    not dropped'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/test_model_work_receipt_join.py -q -k unjoined_counted
+- id: dod-omn21453-ac5
+  description: 'AC5: the verdict field is computed by running the contract''s acceptance check from the work contract
+    task on the attempt output, not copied from the model''s own claim'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/test_model_work_receipt_join.py -q -k verdict_from_check
+- id: dod-omn21453-ac6
+  description: 'AC6: attempt identity comes from a pre-dispatch manifest row (contract_id, arm, draw, attempt_id)
+    carried into the receipt as an Attempt line, a landing cost row is never summed into an attempt, two sources
+    that disagree on a field are reported as a conflict, and a record that cannot be mapped is a separate typed
+    unjoined record excluded from every per-pass figure'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/test_model_work_receipt_join.py -q -k attempt_identity_and_conflicts
+- id: dod-omn21453-deploy-checkout-smoke
+  description: 'Hosted checkout deploy-scope smoke: import the installed node entry point, resolve its contract
+    handler and typed policy, run an in-memory bus round trip and a disposable SQLite replace-by-key write twice.
+    Fails on the merge base because the node and its registered entry point do not exist. No service, broker, host
+    paths or credentials required; this proves package deployment shape, not a live rollout.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: uv run pytest tests/nodes/test_model_work_receipt_join.py -q -k "deploy_registration_and_policy
+      or inmemory_bus_binding or sqlite_writer_binding" --refuse-skips
+- id: dod-omn21453-deploy-published-handler
+  description: >-
+    Hosted source deployment probe: fetch the published handler from GitHub at the
+    evaluated checkout commit and invoke its typed request interface. An unmapped
+    receipt must remain a separate unjoined record, excluded from per-pass figures.
+    Fails at the dispatch head because the handler rejects the request keyword.
+    Requires public HTTPS only; proves published source behavior, not activation
+    on a host. The checkout smoke above separately covers installed registration,
+    in-memory bus delivery and replace-by-key persistence.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      published="$(mktemp)";
+      trap 'rm -f "$published"' EXIT;
+      curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_model_work_receipt_join_compute/handlers/handler_model_work_receipt_join.py" --output "$published";
+      env PYTHONDONTWRITEBYTECODE=1 uv run --locked python - "$published" <<'PY'
+      import sys
+      import types
+      from pathlib import Path
+      from omnimarket.nodes.node_model_work_receipt_join_compute import ModelReceiptJoinRequest, ModelSourceReceipt
+      from omnimarket.nodes.node_model_work_receipt_join_compute.models.model_work_attempt_receipt import ModelReceiptJoinResult
+      module = types.ModuleType("omnimarket.nodes.node_model_work_receipt_join_compute.handlers.published_receipt_join")
+      module.__package__ = "omnimarket.nodes.node_model_work_receipt_join_compute.handlers"
+      source = Path(sys.argv[1]).read_text(encoding="utf-8")
+      exec(compile(source, "published_receipt_join.py", "exec"), vars(module))
+      request = ModelReceiptJoinRequest(manifest=(), sources=(ModelSourceReceipt(family="remote_lane", source_ref="deploy-probe", document={}),))
+      result = module.HandlerModelWorkReceiptJoin().handle(request=request)
+      assert isinstance(result, ModelReceiptJoinResult), result
+      assert result.receipts == () and result.summary.joined == 0, result
+      assert result.summary.unjoined == 1 and result.summary.per_pass_eligible == 0, result
+      assert result.unjoined[0].reason == "not_in_manifest", result
+      assert result.unjoined[0].source_refs == ("deploy-probe",), result
+      print("published receipt join typed request and unjoined accounting passed")
+      PY
+    cwd: .

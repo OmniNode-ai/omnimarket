@@ -1,0 +1,1 @@
+{"diagnosis": "Missing uv on a self-hosted runner, exit 2, before rebuild receipt; runner placement/image defect, not application failure."}

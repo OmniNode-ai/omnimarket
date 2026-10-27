@@ -1,0 +1,64 @@
+contract_id: F09-06
+task_kind: classification
+inputs:
+- path: src/omnimarket/configs/work_contracts/inputs/F09-06.json
+  sha256: b59d7d90063ff496baa4865f02e4d2e77082d33bf865fde762fa7f6e7c603898
+acceptance:
+  kind: schema
+  spec:
+    schema:
+      type: object
+      additionalProperties: false
+      required:
+      - scenario
+      - rows
+      properties:
+        scenario:
+          const: F09-06
+        rows:
+          type: array
+          minItems: 1
+          maxItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - id
+            - label
+            properties:
+              id:
+                type: string
+              label:
+                enum:
+                - handed-off
+                - partial
+                - done
+                - failed
+                - blocked
+                - DELIVERED
+                - skipped-owned
+                - ended-waiting
+                - unknown
+    expected_json: '{"rows": [{"id": "L3722", "label": "handed-off"}], "scenario":
+      "F09-06"}'
+budgets:
+  max_output_tokens: 8192
+  max_wall_s: 180
+  max_turns: 8
+  max_usd: 5
+controls:
+  positive:
+    path: src/omnimarket/configs/work_contracts/controls/F09-06.positive.txt
+    sha256: b0fdb87be859b83eb8d44018597316cb55cf6ffed5b67a650d4d6e044e626154
+  negative:
+    path: src/omnimarket/configs/work_contracts/controls/F09-06.negative.txt
+    sha256: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+evaluators:
+- path: src/omnimarket/handlers/work_contracts/control_evaluator.py
+  sha256: 35beec5a332b646a0c1a696407f0b4a1f5a683269b19e9f782af9df0ee662d7d
+provenance:
+  source: 2026-10-27-deleg-sc-b-1100.md
+  source_sha256: 0483ba868fbaa3852282cf543dd824bc2f79fc946515bdc8769ed581bdffde0a
+  adaptation: Frozen JSON ground truth and schema. F03 summary constrained to a known-good
+    reference. F09 uses deidentified fixture rows with original ids and labels; historical
+    inputs are not equivalent.

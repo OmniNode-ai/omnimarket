@@ -1,0 +1,70 @@
+{
+  "instruction": "Classify the public fixtures in order; labels are stated in the evidence.",
+  "rows": [
+    {
+      "evidence": "public fixture for question_guard",
+      "id": "L3677"
+    },
+    {
+      "evidence": "public fixture for judge_touch",
+      "id": "L3675"
+    },
+    {
+      "evidence": "public fixture for shell_shape",
+      "id": "L3670"
+    },
+    {
+      "evidence": "public fixture for reply_format",
+      "id": "L3663"
+    },
+    {
+      "evidence": "public fixture for throughput",
+      "id": "L3661"
+    },
+    {
+      "evidence": "public fixture for git_guard",
+      "id": "L3654"
+    },
+    {
+      "evidence": "public fixture for idle_capacity",
+      "id": "L3621"
+    },
+    {
+      "evidence": "public fixture for job_exit",
+      "id": "L3596"
+    },
+    {
+      "evidence": "public fixture for consumer_lag",
+      "id": "L3521"
+    },
+    {
+      "evidence": "public fixture for question_guard",
+      "id": "L3131"
+    },
+    {
+      "evidence": "public fixture for judge_touch",
+      "id": "L3648"
+    },
+    {
+      "evidence": "public fixture for shell_shape",
+      "id": "L3669"
+    },
+    {
+      "evidence": "public fixture for reply_format",
+      "id": "L3366"
+    },
+    {
+      "evidence": "public fixture for throughput",
+      "id": "L3102"
+    },
+    {
+      "evidence": "public fixture for git_guard",
+      "id": "L3632"
+    },
+    {
+      "evidence": "public fixture for idle_capacity",
+      "id": "L3528"
+    }
+  ],
+  "scenario": "F09-04"
+}

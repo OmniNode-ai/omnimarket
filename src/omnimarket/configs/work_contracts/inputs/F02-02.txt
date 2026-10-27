@@ -1,0 +1,1443 @@
+Read the complete public Python module below. Answer each question using the exact first line of the named definition's docstring. Give three lines labelled Q1, Q2, Q3. Copy the text exactly; do not paraphrase. The relevant definitions are in the latter part of the module.
+Q1: What is the first docstring line of the definition named _consume_loop?
+Q2: What is the first docstring line of the definition named _mark_bootstrap_complete_from_fetch_metadata?
+Q3: What is the first docstring line of the definition named on_partitions_assigned?
+
+Public repository: OmniNode-ai/omnimarket
+Module: src/omnimarket/projection/snapshot_cache.py
+Revision: 8ea4f7a0bc9794e48d6fe7d2a99d075f8c93a22a
+
+BEGIN PUBLIC SOURCE
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Bus-fed, in-memory serving cache for bus_backed projection exposures.
+
+OMN-15800 Seam B (2026-08-09 operator ruling: "nothing should be connecting
+to a database other than the runtime"). ``SnapshotCache`` is the ONLY state
+backing ``GET /projection/{topic}`` for any exposure whose contract declares
+``projection_api.bus_backed: true`` — the projection-api process holds zero
+DB driver and zero DSN. One ``AIOKafkaConsumer`` subscribes to every
+bus_backed exposure's compacted ``onex.snapshot.projection.*`` topic, replays
+each to end-of-partition (bootstrap), and then keeps consuming live. HTTP
+reads never touch Kafka directly — they read this in-memory dict.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import logging
+import os
+import time
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any
+
+from aiokafka import AIOKafkaConsumer, ConsumerRebalanceListener, TopicPartition
+from aiokafka.errors import IllegalStateError
+
+from omnimarket.projection.models import (
+    ModelProjectionSnapshotDelta,
+    ProjectionTableConfig,
+)
+from omnimarket.topic_namespace import (
+    apply_topic_namespace_all,
+    resolve_topic_namespace,
+    strip_topic_namespace,
+)
+
+logger = logging.getLogger(__name__)
+
+# SnapshotCache is a full-topic STATE CACHE, not a work queue -- every replica
+# must see every partition. Two different mechanisms have held that invariant,
+# and the swap is the subject of OMN-15904:
+#
+#   BEFORE  a per-process-unique group id (canonical base + uuid4
+#           discriminator), so each replica formed its own group and Kafka's
+#           coordinator could not split partitions between them. Correct, and
+#           unresumable by construction: a group nobody has ever committed to
+#           has no committed offset, so with auto_offset_reset="earliest"
+#           every process start replayed the topic from offset 0.
+#   NOW     MANUAL ASSIGNMENT. ``start()`` enumerates the partitions itself
+#           and calls ``consumer.assign()``, which never consults the group
+#           coordinator -- so the invariant holds no matter how many replicas
+#           share one id, and it no longer depends on the id being unique.
+#           That frees the id to be STABLE, which is what lets a restart
+#           resume from its own committed offsets instead of replaying.
+#
+# The id is still canonically derived (OMN-15840): the pre-OMN-15840 literal
+# prefix (f"{prefix}-{uuid4()}") matched none of the six patterns pinned in
+# workspace_config/tests/test_msk_group_pattern_pin.py and died
+# GroupAuthorizationFailedError before the consumer could join -- same defect
+# class as OMN-15700 (omnibase_infra#2681), whose ModelNodeIdentity +
+# compute_consumer_group_id mechanism this reuses rather than a parallel one.
+# Dropping the discriminator does not change which pattern the id matches,
+# because the discriminator was a suffix.
+_GROUP_SERVICE_NAME = "omnimarket-projection-api"
+_GROUP_NODE_NAME = "snapshot-cache"
+_GROUP_VERSION = "v1"
+DEFAULT_CLIENT_ID = "omnimarket-projection-api-snapshot-cache"
+# OMN-18905: how many records behind the end of its topic an exposure may be
+# before it is reported STALE. Not zero: a live producer is momentarily ahead
+# of any consumer between fetches, and a bound of zero would flap on every
+# healthy topic. consumer-flow on the example-endpoint dev lane produces ~11 records/s, so
+# the default tolerates roughly nine seconds of normal following and nothing
+# like the nine-hour freeze this bound exists to surface.
+DEFAULT_STALE_LAG_RECORDS = 100
+# OMN-18905 follow-up. How many consecutive deltas an exposure may refuse as
+# stale replays before it is reported STALE, counted since its last real
+# apply. Not zero: a genuine Kafka redelivery is a correct, healthy drop, and
+# a bound of zero would flap on one. Small, because the failure this catches
+# is unbounded -- on the live lane every delta for a key was refused, for
+# hours, so a streak in the tens is already conclusive while a handful is
+# ordinary redelivery.
+DEFAULT_STALE_DROP_STREAK = 10
+# OMN-15904: how long start() waits for a topic's partition metadata to appear
+# before refusing. Bounded, not infinite: a topic that never appears must still
+# fail the pod rather than hang it, because a consumer stuck waiting forever is
+# indistinguishable at /ready from one replaying slowly. Chosen against the lab
+# boot gate, which waits ~32 minutes for the runtime family -- so this has to be
+# comfortably inside that, while long enough for a cold lane's producers to
+# start and create their topics.
+_ASSIGN_METADATA_TIMEOUT_SECONDS = 300.0
+_ASSIGN_METADATA_POLL_SECONDS = 2.0
+_BOOTSTRAP_POLL_INTERVAL_SECONDS = 0.5
+_BOOTSTRAP_POLL_MAX_ATTEMPTS = 40  # ~20s to observe a partition assignment
+# OMN-15876: batch size for the post-bootstrap-poll consume loop's
+# getmany() calls. The catch-up check runs at most once per batch (not once
+# per message), so this bounds RPC overhead to roughly
+# (backlog_size / this) end_offsets()/position() round trips during a fresh
+# pod's bootstrap replay, independent of how large the topic's retained
+# backlog is.
+_CONSUME_BATCH_MAX_RECORDS = 500
+# OMN-15876: hard ceiling on each bootstrap-check broker round trip. aiokafka's
+# own docstring for end_offsets() says it "may block indefinitely if the
+# partition does not exist", and position() loops until the partition has a
+# valid position. An await that never returns is the one failure mode a
+# try/except cannot catch, and it is INDISTINGUISHABLE from a slow replay in
+# every surface this platform had: same 503, same per-topic map, no log line,
+# no restart (the readinessProbe only marks NotReady). Bounding the call turns
+# that hang into a recorded, retried transient. Timing out leaves the topic
+# un-bootstrapped, so the readiness gate stays refused -- the safe direction.
+_BOOTSTRAP_RPC_TIMEOUT_SECONDS = 30.0
+# OMN-15876: the shortest interval between two RPC-backed bootstrap catch-up
+# checks inside the consume loop. The zero-RPC fast path
+# (_mark_bootstrap_complete_from_fetch_metadata) settles every partition that
+# is delivering records, so this slower authority only has to answer the case
+# the fast path cannot see -- a partition delivering NOTHING (an empty topic,
+# or a compacted partition whose retained head sits entirely below the log
+# start offset). Bounding it by elapsed time makes the RPC count a function of
+# how long the replay takes, never of how many records it contains, which is
+# the property the 600s progressDeadlineSeconds needs.
+_BOOTSTRAP_RPC_CHECK_MIN_INTERVAL_SECONDS = 5.0
+# OMN-15876: how far past ``exposure.limit * 4`` the cache is allowed to grow
+# before a capacity trim runs. The trim is O(rows log rows); running it on
+# EVERY record once the cap is reached makes a replay O(records x cap log cap),
+# which is what the live consumer-flow backlog could not finish. Letting the
+# dict overshoot by this factor and then trimming back to the cap in one pass
+# costs one sort per ``cap`` records instead of one per record -- the eviction
+# work becomes amortized O(1). Memory stays bounded by a constant factor of the
+# declared cap, and a larger retained set can only make the served answer more
+# complete, never less: ``get_rows`` orders the FULL retained set and truncates
+# to ``exposure.limit`` afterwards.
+_ROW_CAP_SLACK_FACTOR = 2
+
+
+def _default_group_id() -> str:
+    """Derive this instance's default consumer group id canonically.
+
+    Reuses the same mechanism as omnibase_infra#2681 (OMN-15700): a typed
+    ``ModelNodeIdentity`` fed through ``compute_consumer_group_id()``, rather
+    than a bespoke f-string literal, so the result is authorized by the
+    MSK-IAM-pinned ``fixture-runtime.*`` pattern in the deployed environment.
+
+    The environment component MUST come from ``ONEX_ENVIRONMENT`` -- the
+    deployment env var the fixture-runtime ConfigMap already sets for every other
+    runtime process. This reads it via ``os.environ[...]`` (fail-fast) rather
+    than ``os.getenv(..., "local")``: a silent "local" default is the exact
+    fail-open class flagged on OMN-15835 for the sibling savings-estimator
+    group, and it would derive a group id that is authorized nowhere.
+    """
+    # Lazy import (OMN-15800 AC6): importing anything from ``omnibase_infra``
+    # transitively loads asyncpg (that package's own top-level __init__
+    # chain reaches a module-scope asyncpg.exceptions import), and the
+    # projection-api process must never load asyncpg. This function only
+    # runs at SnapshotCache instance construction, never at module import.
+    from omnibase_infra.enums import EnumConsumerGroupPurpose
+    from omnibase_infra.models import ModelNodeIdentity
+    from omnibase_infra.utils import compute_consumer_group_id
+
+    environment = os.environ["ONEX_ENVIRONMENT"]
+    identity = ModelNodeIdentity(
+        env=environment,
+        service=_GROUP_SERVICE_NAME,
+        node_name=_GROUP_NODE_NAME,
+        version=_GROUP_VERSION,
+    )
+    base_group_id = compute_consumer_group_id(
+        identity, EnumConsumerGroupPurpose.CONSUME
+    )
+    # STABLE ACROSS RESTARTS (OMN-15904), and that is only safe because this
+    # consumer assigns its partitions MANUALLY -- see ``start()``.
+    #
+    # It used to end in ``apply_instance_discriminator(base, uuid4())`` so that
+    # every replica formed its own group and therefore received every
+    # partition of this full-topic state cache. That made the group id
+    # unresumable by construction: a fresh group has no committed offset, so
+    # with ``auto_offset_reset="earliest"`` every process start replayed the
+    # whole topic from offset 0. OMN-15876 made that replay converge; it did
+    # not stop it happening. Measured on fixture-runtime 2026-09-26, the same replay
+    # took 903s at 12:55Z and over 1800s by 19:55Z -- past
+    # progressDeadlineSeconds, so the container was killed mid-replay and
+    # thirteen consecutive staging deploys failed on that one rollout.
+    #
+    # The full-topic guarantee the discriminator was protecting is now held by
+    # ``consumer.assign()`` instead, which never consults the group
+    # coordinator -- so no replica can be given a subset no matter how many
+    # replicas share this id. The group id's only remaining job is to name
+    # where offsets are committed, which is exactly the job it has to do for a
+    # restart to resume.
+    return base_group_id
+
+
+@dataclass(frozen=True)
+class CachedRow:
+    """One cached row: the serialized column values plus cache metadata.
+
+    ``observed_at`` is display-only (never consulted for staleness -- it is
+    wall-clock time and can move backward across replicas/NTP steps).
+    ``source_topic``/``source_partition``/``source_offset`` are the
+    authoritative ordering token: broker-assigned Kafka coordinates of the
+    SOURCE message that produced this row (CodeRabbit, OMN-15800 round 3,
+    discussion r3745850632).
+    """
+
+    row: dict[str, Any]
+    observed_at: datetime
+    source_topic: str
+    source_partition: int
+    source_offset: int
+    tenant_id: str
+
+
+@dataclass
+class _TopicCacheState:
+    rows: dict[tuple[str, ...], CachedRow] = field(default_factory=dict)
+    bootstrap_complete: bool = False
+    latest_event_at: datetime | None = None
+    assigned_partitions: set[int] = field(default_factory=set)
+    eof_seen: set[int] = field(default_factory=set)
+    # OMN-15876: the offset this cache would read NEXT on each partition,
+    # derived from the offsets of the records it has actually applied
+    # (``msg.offset + 1``). This is the same quantity
+    # ``AIOKafkaConsumer.position()`` returns, obtained without the await --
+    # it is what lets the bootstrap catch-up check run with zero broker round
+    # trips while a replay is in flight. A partition absent from this map has
+    # delivered no record yet, which is NOT the same as being at offset 0 and
+    # is never treated as caught up.
+    next_position: dict[int, int] = field(default_factory=dict)
+    # OMN-18905: the newest end offset observed per partition, refreshed from
+    # the consumer's own fetch metadata on EVERY batch -- including for a
+    # topic that has already latched ``bootstrap_complete``. That last part is
+    # the whole point. ``bootstrap_complete`` is a one-way latch and
+    # ``eof_seen`` is a sticky set, so once a topic has caught up ONCE nothing
+    # re-evaluates it; a cache that then stops applying records keeps
+    # reporting itself ready and keeps serving the rows it had. Measured on
+    # the example-endpoint dev lane 2026-09-20: runner-fleet served rows from 06:06:13Z
+    # from a process started at 14:39:01Z, with /ready reporting all sixteen
+    # topics bootstrapped and no consumer failure. Lag is derived from this
+    # map against ``next_position`` and is a LIVE quantity, never a latch.
+    end_offsets: dict[int, int] = field(default_factory=dict)
+    # OMN-18905 follow-up. Deltas this cache CONSUMED and then discarded as a
+    # stale replay, counted since the last one it actually applied. The lag
+    # guard alone cannot see this class: a cache that reads every record and
+    # drops it is at lag ZERO while its rows stand still, which is exactly
+    # the live failure -- every in-process writer stamps source_offset 0, so
+    # `0 <= 0` refuses every delta after the first for a key. Drops piling up
+    # with no applies, while the source advances, is the signature.
+    dropped_since_apply: int = 0
+    dropped_total: int = 0
+    last_dropped_event_at: datetime | None = None
+    # OMN-18955: the offset after the last record this cache APPLIED on each
+    # partition. Unlike ``next_position`` it is never seeded from a
+    # ``position()`` round trip, so it only ever names records whose effect is
+    # already in ``rows`` -- which is what makes it safe to resume from.
+    applied_position: dict[int, int] = field(default_factory=dict)
+
+
+class _ReassignmentListener(ConsumerRebalanceListener):  # type: ignore[misc]
+    """Resume each reassigned partition where this cache left off.
+
+    OMN-18955. aiokafka calls ``on_partitions_assigned`` after every group
+    join, including the rejoin that follows an expired heartbeat session. A
+    seek there overrides the start aiokafka would otherwise resolve, which for
+    this consumer (no committed offsets, ``auto_offset_reset="earliest"``) is
+    always the log start.
+    """
+
+    def __init__(self, cache: SnapshotCache) -> None:
+        self._cache = cache
+
+    async def on_partitions_revoked(self, revoked: set[TopicPartition]) -> None:
+        return None
+
+    async def on_partitions_assigned(self, assigned: set[TopicPartition]) -> None:
+        self._cache.on_partitions_assigned(assigned)
+
+
+class _SortWrapper:
+    """Comparable wrapper enabling per-column ASC/DESC in a single sort key.
+
+    ``None`` sorts last by default, independent of ASC/DESC direction
+    (matches every pre-OMN-15800-defect-A order_by, none of which declared
+    NULLS placement explicitly). A contract that explicitly declares ``NULLS
+    FIRST`` flips this per column via ``nulls_last=False`` (OMN-15800 defect
+    A) -- direction and NULLS placement are independent SQL knobs.
+    """
+
+    __slots__ = ("nulls_last", "reverse", "value")
+
+    def __init__(self, value: Any, reverse: bool, nulls_last: bool = True) -> None:
+        self.value = value
+        self.reverse = reverse
+        # OMN-15800 defect A: explicit NULLS FIRST|LAST placement, independent
+        # of ASC/DESC direction (SQL semantics — an explicit NULLS clause
+        # overrides whatever the direction's implicit default would be).
+        # Defaults True to preserve this cache's pre-existing behavior for
+        # every order_by that does not declare NULLS explicitly (nulls always
+        # sorted last, unconditionally).
+        self.nulls_last = nulls_last
+
+    def __lt__(self, other: _SortWrapper) -> bool:
+        if self.value is None and other.value is None:
+            return False
+        if self.value is None:
+            return not self.nulls_last
+        if other.value is None:
+            return self.nulls_last
+        if self.reverse:
+            return bool(other.value < self.value)
+        return bool(self.value < other.value)
+
+
+def _sort_rows(
+    items: list[tuple[tuple[str, ...], CachedRow]],
+    order_by_spec: tuple[tuple[str, str, str | None], ...],
+) -> list[tuple[tuple[str, ...], CachedRow]]:
+    if not order_by_spec:
+        return items
+
+    def _sort_key(
+        item: tuple[tuple[str, ...], CachedRow],
+    ) -> tuple[_SortWrapper, ...]:
+        _key, cached = item
+        return tuple(
+            _SortWrapper(
+                cached.row.get(column),
+                reverse=(direction == "DESC"),
+                nulls_last=(nulls != "FIRST"),
+            )
+            for column, direction, nulls in order_by_spec
+        )
+
+    return sorted(items, key=_sort_key)
+
+
+def _parse_observed_at(value: str) -> datetime:
+    try:
+        ts = value[:-1] + "+00:00" if value.endswith("Z") else value
+        parsed = datetime.fromisoformat(ts)
+        return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+    except ValueError:
+        return datetime.now(UTC)
+
+
+def _log_foreign_key_arity(topic: str, arity: int, expected: int) -> None:
+    # Debug, not warning: a bootstrap replay of a topic whose exposure changed
+    # its key delivers one of these per retained legacy record (thousands), and
+    # every one is expected, not a fault.
+    logger.debug(
+        "SnapshotCache: dropped a %d-part key on %s; the exposure declares "
+        "%d key columns (OMN-17215)",
+        arity,
+        topic,
+        expected,
+    )
+
+
+class SnapshotCache:
+    """In-memory topic -> key -> row cache fed by compacted snapshot topics."""
+
+    def __init__(
+        self,
+        exposures: dict[str, ProjectionTableConfig],
+        *,
+        bootstrap_servers: str,
+        stale_lag_records: int = DEFAULT_STALE_LAG_RECORDS,
+        stale_drop_streak: int = DEFAULT_STALE_DROP_STREAK,
+        group_id: str | None = None,
+        client_id: str = DEFAULT_CLIENT_ID,
+    ) -> None:
+        self._exposures: dict[str, ProjectionTableConfig] = {
+            topic: cfg for topic, cfg in exposures.items() if cfg.bus_backed
+        }
+        self._bootstrap_servers = bootstrap_servers
+        # Per-process-unique unless a caller explicitly pins one (tests).
+        self._group_id = group_id or _default_group_id()
+        self._client_id = client_id
+        # CANONICAL keys. The exposure map is the contract; the deployment
+        # namespace is a wire fact and must never reach this index
+        # (OMN-18891).
+        self._state: dict[str, _TopicCacheState] = {
+            topic: _TopicCacheState() for topic in self._exposures
+        }
+        # Resolved once at construction rather than per message, so one cache
+        # cannot straddle two namespaces mid-flight.
+        self._topic_namespace: str = resolve_topic_namespace()
+        self._consumer: AIOKafkaConsumer | None = None
+        self._consume_task: asyncio.Task[None] | None = None
+        self._running = False
+        # OMN-15876. The consume loop is a fire-and-forget task; before this
+        # field existed, an exception escaping it ended consumption FOREVER
+        # with no visible trace anywhere. asyncio only logs an unretrieved
+        # task exception when the Task object is garbage collected, and
+        # ``self._consume_task`` holds a strong reference for the life of the
+        # process -- so it is never collected and the traceback is never
+        # emitted. Meanwhile ``/health`` stays 200 (it never consults this
+        # object's consumer at all), uvicorn keeps serving, and any topic that
+        # had already reached ``bootstrap_complete`` keeps being SERVED at 200
+        # from a cache that has silently stopped updating. That is the
+        # fail-open half of the same defect: this field makes the death a
+        # first-class, reportable fact instead of an absence.
+        self._consume_failure: str | None = None
+        # OMN-15876: monotonic stamp of the last RPC-backed catch-up check, so
+        # that check is bounded by elapsed time rather than by batch count.
+        self._last_rpc_bootstrap_check: float | None = None
+        self._stale_lag_records = stale_lag_records
+        self._stale_drop_streak = stale_drop_streak
+        # OMN-18955: group assignments received, for ``reassignment_count``.
+        self._assignment_count = 0
+        # OMN-15904: the resume bookkeeping. ``_committed_position`` is what
+        # this process has successfully committed, which is what a restart will
+        # resume from; ``_commit_failures`` is counted rather than raised so a
+        # broker that refuses a commit costs the next restart a longer catch-up
+        # instead of costing this one its consumer.
+        self._committed_position: dict[TopicPartition, int] = {}
+        self._commit_failures = 0
+
+    @property
+    def subscription_topics(self) -> list[str]:
+        """The PHYSICAL topic names this cache subscribes to, in order.
+
+        Identical to the exposure keys unless a deployment namespace is
+        configured. Without this, a second projection API on a shared broker
+        reads the dev lane's snapshots and serves them as its own
+        (OMN-18891).
+        """
+        return apply_topic_namespace_all(
+            self._exposures.keys(), namespace=self._topic_namespace
+        )
+
+    def canonical_topic(self, topic: str) -> str:
+        """Map a PHYSICAL topic name back to its exposure key.
+
+        Every lookup into ``_state`` and ``_exposures`` on the consume path
+        goes through this. A physical name reaching those maps directly does
+        not raise: it misses, returns at the ``state is None`` guard, and the
+        cache serves stale rows with a healthy consumer lag and nothing in
+        the log (OMN-18891).
+
+        Tolerant of an already-canonical name, so the consume path is correct
+        whichever form it is handed.
+        """
+        return strip_topic_namespace(topic, namespace=self._topic_namespace)
+
+    @property
+    def bus_backed_topics(self) -> frozenset[str]:
+        return frozenset(self._exposures)
+
+    def tracks_topic(self, topic: str) -> bool:
+        return topic in self._exposures
+
+    def is_bootstrapped(self, topic: str) -> bool:
+        state = self._state.get(topic)
+        return state is not None and state.bootstrap_complete
+
+    def assigned_partition_count(self, topic: str) -> int:
+        """How many partitions of ``topic`` this consumer has ever been
+        assigned.
+
+        OMN-15876. ``bootstrap_complete`` cannot be set for a topic whose
+        assignment is empty (see
+        :meth:`_mark_bootstrap_complete_when_caught_up`), so ``0`` here is the
+        difference between "the broker has no partition for this name --
+        typically the topic does not exist, since auto-create is off on the
+        managed cluster" and "assigned, still replaying". Those two produce an
+        IDENTICAL ``bootstrapped=False`` and cost this platform five
+        consecutive staging rollouts and a bespoke probe workflow to tell
+        apart. Reported by ``/ready`` so the next reader gets it for free.
+        """
+        state = self._state.get(topic)
+        return len(state.assigned_partitions) if state is not None else 0
+
+    @property
+    def consume_failure(self) -> str | None:
+        """Why this cache stopped consuming, or ``None`` while it is healthy.
+
+        OMN-15876. Reported by ``/ready`` and, when set, makes readiness fail
+        closed REGARDLESS of the per-topic bootstrap map: a process whose
+        consumer is dead cannot be serving live state, and reporting 200
+        because every topic happened to finish its initial replay before the
+        loop died would be exactly the fail-open answer this endpoint exists
+        to refuse.
+        """
+        if self._consume_failure is not None:
+            return self._consume_failure
+        task = self._consume_task
+        if self._running and task is not None and task.done():
+            return "consume loop exited while the cache was still running"
+        return None
+
+    def latest_event_at(self, topic: str) -> datetime | None:
+        state = self._state.get(topic)
+        return state.latest_event_at if state is not None else None
+
+    def last_dropped_event_at(self, topic: str) -> datetime | None:
+        """When this exposure last refused a delta as a stale replay.
+
+        Beside ``dropped_since_apply`` this is what makes a frozen exposure
+        legible: a recent drop time with a stale verdict says the cache is
+        actively reading and actively discarding, which is a different repair
+        from a consumer that has stopped fetching.
+        """
+        state = self._state.get(topic)
+        return state.last_dropped_event_at if state is not None else None
+
+    def row_count(self, topic: str) -> int:
+        state = self._state.get(topic)
+        return len(state.rows) if state is not None else 0
+
+    def apply_message(
+        self,
+        topic: str,
+        key: bytes | None,
+        value: bytes | None,
+        headers: list[tuple[str, bytes]],
+    ) -> None:
+        """Apply one raw Kafka message (upsert or tombstone) to the cache.
+
+        Public and synchronous so both the live consumer loop and the
+        cross-boundary regression test drive the exact same apply path — the
+        test does not hand-roll a stand-in for cache application.
+        """
+        # The caller hands the message's PHYSICAL topic; every map below is
+        # keyed CANONICAL (OMN-18891).
+        topic = self.canonical_topic(topic)
+        state = self._state.get(topic)
+        if state is None:
+            return  # not a bus_backed topic this cache tracks
+        # OMN-17215: the number of parts a key for this exposure must have.
+        # Snapshot topics retain records by time, not by compaction, so a
+        # replay still delivers records written under an exposure's PREVIOUS
+        # key_columns (consumer-flow's consumer_group|topic|window_start) for
+        # as long as the topic's retention keeps them. The cache stores rows
+        # under the delta's own key, so such a record can never be replaced by
+        # a current-key row and would be served beside it until it aged out;
+        # a foreign-arity tombstone could only ever pop a key that should not
+        # exist. Both are dropped. The wire model carries the key PARTS, not
+        # the column names, so arity is the only discriminator available here:
+        # a future key change that preserved arity would pass this guard.
+        expected_key_arity = len(self._exposures[topic].key_columns)
+
+        if value is None:
+            # Genuine Kafka tombstone: unconditional delete, no
+            # source offset to compare (see publish_snapshot_delta).
+            if key is None:
+                return
+            key_tuple = tuple(key.decode("utf-8").split("|"))
+            if len(key_tuple) != expected_key_arity:
+                _log_foreign_key_arity(topic, len(key_tuple), expected_key_arity)
+                return
+            state.rows.pop(key_tuple, None)
+            return
+
+        try:
+            delta = ModelProjectionSnapshotDelta.model_validate_json(value)
+        except Exception as exc:
+            logger.error(
+                "SnapshotCache: malformed snapshot delta on %s: %s", topic, exc
+            )
+            return
+
+        if len(delta.key) != expected_key_arity:
+            _log_foreign_key_arity(topic, len(delta.key), expected_key_arity)
+            return
+
+        tenant_id = "omninode"
+        for header_key, header_value in headers:
+            if header_key == "tenant_id":
+                tenant_id = header_value.decode("utf-8")
+                break
+
+        # Staleness authority (CodeRabbit, OMN-15800 round 3, discussion
+        # r3745850632): compare the SOURCE message's own (partition, offset)
+        # -- never wall-clock time. A delta from a DIFFERENT source_topic
+        # than what's cached is never comparable (independent offset
+        # spaces -- e.g. node-introspection.v1 and node-heartbeat.v1 both
+        # update the same registry row) and always applies; only a replay
+        # of an offset <= the cached one from the SAME source_topic+
+        # source_partition is dropped as stale/idempotent-replay.
+        existing = state.rows.get(delta.key)
+        if (
+            existing is not None
+            and delta.source_topic == existing.source_topic
+            and delta.source_partition == existing.source_partition
+            and delta.source_offset <= existing.source_offset
+        ):
+            state.dropped_since_apply += 1
+            state.dropped_total += 1
+            dropped_at = _parse_observed_at(delta.observed_at)
+            if dropped_at is not None:
+                state.last_dropped_event_at = dropped_at
+            return  # stale/replayed delta relative to cache state -- idempotent
+
+        observed_at = _parse_observed_at(delta.observed_at)
+        state.rows[delta.key] = CachedRow(
+            row=dict(delta.row or {}),
+            observed_at=observed_at,
+            source_topic=delta.source_topic,
+            source_partition=delta.source_partition,
+            source_offset=delta.source_offset,
+            tenant_id=tenant_id,
+        )
+        # A real apply clears the streak. The counter answers "how many has
+        # this exposure refused SINCE it last moved", not "ever" -- a cache
+        # that is applying is healthy however many redeliveries it has
+        # declined over its life, and ``dropped_total`` keeps the lifetime
+        # figure for anyone who wants it.
+        state.dropped_since_apply = 0
+        if state.latest_event_at is None or observed_at > state.latest_event_at:
+            state.latest_event_at = observed_at
+
+        exposure = self._exposures[topic]
+        max_rows = exposure.limit * 4
+        if len(state.rows) > max_rows * _ROW_CAP_SLACK_FACTOR:
+            # Evict by RECENCY (lowest observed_at first), never by the
+            # exposure's display order_by_spec (CodeRabbit, OMN-15800): for an
+            # ASC-ordered exposure, sorting-then-truncating-to-head would keep
+            # the OLDEST rows forever and evict the row this call just wrote.
+            # Retention and display ordering are separate concerns.
+            #
+            # OMN-15876: this runs once per ``max_rows`` records, not once per
+            # record. Live on fixture-runtime, ``consumer-flow.v1`` retained
+            # 1,293,082 records (log start 0, high-water 1,293,082) and puts
+            # ``window_start`` inside its compaction key, so every record mints
+            # a NEW key: the cap was exceeded within the first 2,000 records
+            # and every one of the remaining ~1.29M paid a full 2,000-row sort
+            # plus a dict rebuild. Measured at 0.55 ms/record on an
+            # unthrottled machine, that is ~12 minutes of pure CPU before the
+            # pod's 500m CFS limit is applied -- against a pod that was killed
+            # by its own liveness probe long before finishing, restarting the
+            # replay from the log start each time (the consumer group carries a
+            # fresh per-process discriminator and reads
+            # ``auto_offset_reset="earliest"``). Trimming on the overshoot
+            # instead makes the eviction cost independent of the backlog.
+            # observed_at (wall-clock, display-only metadata) is a globally
+            # comparable soft-LRU signal here -- capacity eviction is not the
+            # correctness-critical authority path (that's the offset-keyed
+            # staleness check above); a rare mis-ordered eviction under an
+            # NTP step is a capacity heuristic miss, not a silently dropped
+            # newer row.
+            newest_first = sorted(
+                state.rows.items(),
+                key=lambda item: item[1].observed_at,
+                reverse=True,
+            )
+            state.rows = dict(newest_first[:max_rows])
+
+    def unavailable_reason(self, topic: str) -> tuple[str, str] | None:
+        """Why ``topic`` cannot be read yet, or ``None`` when it can.
+
+        The status page's read surface (``ProtocolProjectionPageView``).
+        """
+        if self.is_bootstrapped(topic):
+            return None
+        return (
+            "snapshot_bootstrap_incomplete",
+            "the snapshot consumer has not finished its initial replay of the "
+            "compacted topic",
+        )
+
+    def get_rows(
+        self,
+        topic: str,
+        *,
+        limit: int | None = None,
+        order_by_override: tuple[tuple[str, str, str | None], ...] | None = None,
+        tenant_column: str | None = None,
+        tenant_id: str | None = None,
+        unbounded: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Return cached rows for ``topic``, ordered per the exposure's order_by_spec.
+
+        ``limit=None`` means the exposure's contract ``limit``, not "every row".
+        A caller that must filter BEFORE it pages (a ``since``/``cursor`` walk,
+        a content filter) passes ``unbounded=True`` to receive the whole
+        ordered, tenant-scoped retained set (OMN-17215): truncating to the
+        contract limit first hands such a caller only the lowest ``limit``
+        rows, so its cursor can never pass them. ``unbounded`` together with an
+        explicit ``limit`` is contradictory and raises.
+
+        ``order_by_override`` lets a caller apply a caller-requested direction
+        flip (the ``?order=asc|desc`` query param) to the ACTUAL returned rows
+        -- not just to the response envelope's ``ordering`` string, which
+        would otherwise silently diverge from the real row order.
+
+        ``tenant_column``/``tenant_id`` (OMN-15797 AC2) scope the result to one
+        tenant using the ROW's own stored tenant value -- the same column the
+        writer's RLS policy compares ``app.tenant_id`` against -- never
+        :attr:`CachedRow.tenant_id`, which is read off a Kafka header no
+        producer sets today and is the house tenant for every row. Scoping
+        happens BEFORE ordering and BEFORE ``limit``: truncating first and
+        filtering after would hand a tenant an empty page whenever another
+        tenant's rows fill the window.
+
+        Passing ``tenant_column`` without ``tenant_id`` raises rather than
+        returning every tenant's rows: the whole point of this ticket is that
+        an unscoped answer must never be reachable by omission.
+        """
+        if unbounded and limit is not None:
+            raise ValueError(
+                f"get_rows({topic!r}) was given both unbounded=True and "
+                f"limit={limit!r}; pass one or the other"
+            )
+        state = self._state.get(topic)
+        if state is None:
+            return []
+        exposure = self._exposures[topic]
+        spec = (
+            order_by_override
+            if order_by_override is not None
+            else exposure.order_by_spec
+        )
+        items = list(state.rows.items())
+        if tenant_column is not None:
+            if tenant_id is None:
+                raise ValueError(
+                    f"get_rows({topic!r}) was given tenant_column="
+                    f"{tenant_column!r} with no tenant_id; refusing to fall "
+                    "back to an unscoped read (OMN-15797)"
+                )
+            items = [
+                item for item in items if item[1].row.get(tenant_column) == tenant_id
+            ]
+        ordered = _sort_rows(items, spec)
+        rows = [cached.row for _key, cached in ordered]
+        if unbounded:
+            return rows
+        effective_limit = limit if limit is not None else exposure.limit
+        return rows[:effective_limit]
+
+    async def start(self) -> None:
+        """Subscribe, replay every bus_backed topic to end-of-partition, then
+        keep consuming live. A no-op when no exposure declares bus_backed."""
+        if not self._exposures:
+            logger.info(
+                "SnapshotCache: no bus_backed exposures declared; not starting a consumer"
+            )
+            return
+        # Lazy import (OMN-15800 AC6): see the note in _default_group_id().
+        from omnibase_infra.event_bus.kafka_auth import (
+            build_aiokafka_auth_kwargs_from_env,
+        )
+
+        # NO TOPICS in the constructor (OMN-15904): passing them here makes
+        # aiokafka subscribe, and a subscription is group-coordinated
+        # assignment. This consumer assigns manually below, and the two are
+        # mutually exclusive in aiokafka as they are in the Kafka protocol.
+        self._consumer = AIOKafkaConsumer(  # no-contract-check: projection-api runtime owns the snapshot-cache consumer lifecycle (OMN-15800), same runtime-boundary pattern as BaseProjectionRunner.run()
+            bootstrap_servers=self._bootstrap_servers,
+            group_id=self._group_id,
+            client_id=self._client_id,
+            auto_offset_reset="earliest",
+            enable_auto_commit=False,
+            value_deserializer=None,
+            # OMN-15816: fixture-runtime's managed Kafka listener is SASL_SSL/
+            # AWS_MSK_IAM-only -- a client built without these kwargs defaults
+            # to PLAINTEXT and the broker closes the connection immediately.
+            # Same idiom as omnibase_infra's own consumers, e.g.
+            # AgentActionsConsumer (services/observability/agent_actions/consumer.py).
+            **build_aiokafka_auth_kwargs_from_env(),
+        )
+        await self._consumer.start()
+        await self._assign_and_resume()
+        self._running = True
+        self._consume_task = asyncio.ensure_future(self._consume_loop())
+
+    async def _assign_and_resume(self) -> None:
+        """Assign every partition of every topic, then resume from committed offsets.
+
+        OMN-15904, and the two halves are why this method exists at all.
+
+        ASSIGN, not subscribe. ``assign()`` bypasses the group coordinator
+        entirely, so every replica holds every partition of every topic by
+        construction rather than by having a group id nobody else shares. That
+        is the invariant the uuid4 discriminator used to protect, and holding it
+        here is what makes a stable group id safe.
+
+        RESUME from this group's own committed offsets. ``auto_offset_reset``
+        stays ``"earliest"`` and remains correct: it is the fallback for a
+        partition this group has never committed, which is a genuine
+        first-ever start and does need the whole topic. Everything else seeks
+        to the committed position, which is the entire point -- a restart's
+        catch-up becomes proportional to what arrived while the process was
+        down, not to the topic's whole retained backlog.
+
+        FAILS CLOSED ON AN EMPTY ASSIGNMENT. A topic whose metadata resolves to
+        no partitions would otherwise assign nothing, consume nothing, and
+        latch ``bootstrap_complete`` over an empty cache -- serving zero rows
+        at HTTP 200, the exact fail-open shape OMN-18905 was filed for. An
+        unresolvable topic raises instead.
+        """
+        consumer = self._consumer
+        if consumer is None:  # pragma: no cover - start() sets it first
+            raise RuntimeError("SnapshotCache._assign_and_resume before start")
+
+        # WAIT for metadata, do not refuse on its first absence.
+        #
+        # The first cut of this raised the moment any topic had no partitions,
+        # and that DEADLOCKED a cold lane. Measured on the OMN-15904 candidate,
+        # delivery run 36344681102: `omnimarket-projection-api` stayed 0/1 for
+        # the boot gate's full 32-minute wait and
+        # `onex.snapshot.projection.consumer-flow.v1` was reported ABSENT, while
+        # the same gate on the pre-change candidate (run 36328593981, 15:10Z)
+        # had it 1/1 Ready.
+        #
+        # The cycle: on a fresh cluster the snapshot topics do not exist yet.
+        # `partitions_for_topic` therefore returns nothing, the refusal fired,
+        # `start()` raised, the pod never became Ready -- and because the topics
+        # are created by their PRODUCERS, a consumer that refuses to start can
+        # never be the thing that brings them into existence. The consumer
+        # refused because the topic was absent; the topic stayed absent because
+        # the consumer refused.
+        #
+        # `subscribe()` did not have this problem, which is why the swap
+        # introduced it and why fixture-runtime never showed it: there the topics
+        # already exist, so the very first metadata read resolves.
+        #
+        # ABSENT-NOW and ABSENT-FOREVER are different findings and the bound is
+        # what separates them. A topic whose producer has not started yet
+        # appears within seconds of it doing so; a topic that is genuinely
+        # misnamed or unprovisioned never appears. Waiting distinguishes them
+        # without giving up the fail-closed property: after the bound this still
+        # raises, so the cache never assigns nothing and then reports itself
+        # bootstrapped.
+        deadline = time.monotonic() + _ASSIGN_METADATA_TIMEOUT_SECONDS
+        assignment: list[TopicPartition] = []
+        unresolved: list[str] = []
+        waited = False
+        while True:
+            # `topics()` forces a metadata refresh; `partitions_for_topic` is a
+            # local read of whatever the last refresh returned, so without this
+            # the loop would re-read the same empty snapshot forever.
+            await consumer.topics()
+            assignment = []
+            unresolved = []
+            for topic in self.subscription_topics:
+                partitions = consumer.partitions_for_topic(topic)
+                if not partitions:
+                    unresolved.append(topic)
+                    continue
+                assignment.extend(TopicPartition(topic, p) for p in sorted(partitions))
+            if not unresolved:
+                break
+            if time.monotonic() >= deadline:
+                raise RuntimeError(
+                    "SnapshotCache: no partition metadata for "
+                    f"{sorted(unresolved)} after "
+                    f"{_ASSIGN_METADATA_TIMEOUT_SECONDS:g}s; refusing to assign "
+                    "a partial view of a full-topic cache. Assigning nothing "
+                    "would latch bootstrap_complete over an empty cache and "
+                    "serve zero rows at HTTP 200 (OMN-15904, OMN-18905). On a "
+                    "cold lane this means the topics' producers never started; "
+                    "on a warm one it means the names are wrong."
+                )
+            if not waited:
+                logger.info(
+                    "SnapshotCache: waiting up to %gs for partition metadata on "
+                    "%d topic(s) not yet present: %s. A cold lane creates these "
+                    "when their producers first publish (OMN-15904).",
+                    _ASSIGN_METADATA_TIMEOUT_SECONDS,
+                    len(unresolved),
+                    sorted(unresolved),
+                )
+                waited = True
+            await asyncio.sleep(_ASSIGN_METADATA_POLL_SECONDS)
+
+        if waited:
+            logger.info(
+                "SnapshotCache: partition metadata resolved for every topic "
+                "after waiting (OMN-15904)."
+            )
+
+        consumer.assign(assignment)
+
+        resumed: list[str] = []
+        fresh: list[str] = []
+        for tp in assignment:
+            committed = await consumer.committed(tp)
+            if committed is None:
+                fresh.append(f"{tp.topic}[{tp.partition}]")
+                continue
+            consumer.seek(tp, committed)
+            state = self._state.get(self.canonical_topic(tp.topic))
+            if state is not None:
+                # Seed the in-process floor too, so the OMN-18955 resume path
+                # and the drop-streak accounting both start from the same
+                # position this process is actually reading from.
+                state.applied_position.setdefault(tp.partition, committed)
+                state.next_position.setdefault(tp.partition, committed)
+            resumed.append(f"{tp.topic}[{tp.partition}]@{committed}")
+
+        logger.info(
+            "SnapshotCache: assigned %d partition(s) manually under stable group "
+            "%r; resumed %d from committed offsets (%s); %d had no committed "
+            "offset and replay from the log start (OMN-15904): %s",
+            len(assignment),
+            self._group_id,
+            len(resumed),
+            sorted(resumed) or "none",
+            len(fresh),
+            sorted(fresh) or "none",
+        )
+
+    async def _consume_loop(self) -> None:
+        """Supervise :meth:`_run_consume_loop` (OMN-15876).
+
+        The loop below awaits ``getmany()``, ``end_offsets()`` and
+        ``position()``. Every one of them can raise: ``position()`` raises
+        ``IllegalStateError`` the instant a partition read out of
+        ``assignment()`` is revoked by a rebalance before the await lands on
+        it (aiokafka ``consumer.py``: "Raises IllegalStateError: partition is
+        not assigned"), ``end_offsets()`` raises ``KafkaTimeoutError`` on a
+        slow broker, and ``getmany()`` surfaces broker-side authorization and
+        fetch errors. Before this wrapper, ANY of those ended consumption for
+        the life of the process, silently -- no traceback, no restart, no
+        change to ``/health``, and a ``/ready`` body indistinguishable from a
+        replay still in progress.
+
+        This does NOT swallow the failure into a healthy-looking process: it
+        records it on :attr:`consume_failure`, which ``/ready`` reads and
+        fails closed on. A cancelled task is a normal shutdown and is
+        re-raised untouched.
+        """
+        try:
+            await self._run_consume_loop()
+        except asyncio.CancelledError:
+            raise
+        except (
+            Exception
+        ) as exc:  # OMN-15876: terminal boundary, recorded on consume_failure
+            self._consume_failure = f"{type(exc).__name__}: {exc}"
+            logger.exception(
+                "SnapshotCache: consume loop terminated; this cache has "
+                "STOPPED consuming and /ready will fail closed until the "
+                "process is replaced (OMN-15876)"
+            )
+
+    async def _run_consume_loop(self) -> None:
+        assert self._consumer is not None
+        # Poll (not a one-shot check) so a topic with ZERO messages still
+        # reaches bootstrap_complete=True: aiokafka assigns partitions lazily
+        # after the group join, so the assignment is frequently empty on the
+        # very first call, and an idle/empty compacted topic never delivers a
+        # message to re-trigger the check from inside the loop below
+        # (CodeRabbit, OMN-15800). Bounded retries, not an infinite poll.
+        for _attempt in range(_BOOTSTRAP_POLL_MAX_ATTEMPTS):
+            await self._mark_bootstrap_complete_when_caught_up()
+            if all(state.bootstrap_complete for state in self._state.values()):
+                break
+            await asyncio.sleep(_BOOTSTRAP_POLL_INTERVAL_SECONDS)
+        else:
+            logger.warning(
+                "SnapshotCache: bootstrap did not complete for all topics "
+                "within %d attempts; still-incomplete topics keep serving "
+                "503 snapshot_bootstrap_incomplete until a future poll "
+                "inside the consume loop catches them up",
+                _BOOTSTRAP_POLL_MAX_ATTEMPTS,
+            )
+        # OMN-15876: consume in BATCHES and run the RPC-heavy catch-up check
+        # at most once per batch, never once per message. The prior
+        # `async for msg in self._consumer: ... if not bootstrapped: await
+        # _mark_bootstrap_complete_when_caught_up()` shape fired an
+        # end_offsets() broker round trip (across every assigned partition)
+        # plus a position() round trip per assigned partition on EVERY
+        # message from a not-yet-bootstrapped topic. Against a topic with a
+        # large, actively-growing retained backlog (fixture-runtime's
+        # live-events.v1 exposure: 60,724+ messages) that is tens of
+        # thousands of unbatched broker round trips before a single fresh
+        # pod's bootstrap replay can complete -- observed live as a pod that
+        # ran 47+ minutes with zero restarts and never left /ready 503
+        # (readinessProbe only marks NotReady; it never restarts the pod, so
+        # this was a genuine non-convergent-in-practice algorithm, not a
+        # crash). Batching bounds RPC overhead by (batch count), not
+        # (message count), independent of backlog size.
+        while self._running:
+            try:
+                batches = await self._consumer.getmany(
+                    timeout_ms=int(_BOOTSTRAP_POLL_INTERVAL_SECONDS * 1000),
+                    max_records=_CONSUME_BATCH_MAX_RECORDS,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # transient fetch error, retried next poll
+                # A fetch error is a reason to retry the NEXT poll, not to end
+                # consumption for the life of the process (OMN-15876). Nothing
+                # is marked bootstrapped on this path, so a persistent failure
+                # keeps /ready at 503 -- the fail-closed direction.
+                logger.warning(
+                    "SnapshotCache: getmany() raised; retrying after %.1fs (OMN-15876)",
+                    _BOOTSTRAP_POLL_INTERVAL_SECONDS,
+                    exc_info=True,
+                )
+                await asyncio.sleep(_BOOTSTRAP_POLL_INTERVAL_SECONDS)
+                continue
+            if not self._running:
+                break
+            pending_commit: dict[TopicPartition, int] = {}
+            for _tp, messages in batches.items():
+                for msg in messages:
+                    headers = list(msg.headers or [])
+                    self.apply_message(msg.topic, msg.key, msg.value, headers)
+                if messages:
+                    last = messages[-1]
+                    state = self._state.get(self.canonical_topic(last.topic))
+                    if state is not None:
+                        # The offsets are the consumer's own, in order, so the
+                        # last record of the batch carries the highest one.
+                        state.next_position[last.partition] = last.offset + 1
+                        state.applied_position[last.partition] = last.offset + 1
+                        pending_commit[TopicPartition(last.topic, last.partition)] = (
+                            last.offset + 1
+                        )
+            # OMN-15904: commit AFTER the batch is applied, never before.
+            #
+            # The committed offset is a promise that everything below it is
+            # already in this cache's rows, so committing ahead of the apply
+            # would let a restart resume past records it never applied -- a
+            # permanent hole in a cache that reports itself bootstrapped. Once
+            # per batch, not once per record: the batch is bounded by
+            # _CONSUME_BATCH_MAX_RECORDS, so this is one commit per 500
+            # records at most, which is the same ratio OMN-15876 chose for the
+            # catch-up RPCs and for the same reason.
+            #
+            # A commit failure must not end consumption. The cache is still
+            # correct in memory; what is lost is the resume point, which costs
+            # the NEXT restart a longer catch-up and nothing else. Recording it
+            # and carrying on is strictly better than converting a bookkeeping
+            # error into the dead consumer OMN-15876's supervisor exists to
+            # surface.
+            if pending_commit:
+                try:
+                    await self._consumer.commit(dict(pending_commit))
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    self._commit_failures += 1
+                    logger.warning(
+                        "SnapshotCache: offset commit failed (%s: %s); the cache "
+                        "is unaffected but the next restart will replay from the "
+                        "last offset that did commit (OMN-15904). Failure %d.",
+                        type(exc).__name__,
+                        exc,
+                        self._commit_failures,
+                    )
+                else:
+                    self._committed_position.update(pending_commit)
+                pending_commit.clear()
+            # OMN-18905: refresh every assigned partition's end offset from
+            # the consumer's own fetch metadata BEFORE the short circuit
+            # below. ``highwater()`` is a local read of what the last fetch
+            # response already carried, so this costs no broker round trip,
+            # and it must run for topics that have already latched
+            # ``bootstrap_complete`` -- they are exactly the ones whose
+            # staleness nothing else would ever notice.
+            self._refresh_end_offsets_from_fetch_metadata()
+            if all(state.bootstrap_complete for state in self._state.values()):
+                continue
+            # OMN-15876: settle everything that CAN be settled without a
+            # broker round trip first. Every partition that is actively
+            # delivering records is answerable from the consumer's own fetch
+            # metadata, and that is the whole of a fresh pod's replay.
+            self._mark_bootstrap_complete_from_fetch_metadata()
+            # Then the RPC-backed authority, for the partitions the fast path
+            # cannot answer -- ones delivering no records at all. It must
+            # still run on an EMPTY batch: a late partition assignment
+            # (aiokafka assigns lazily post-group-join; can land after the
+            # initial bounded poll window above has already exhausted) on a
+            # topic with zero traffic would otherwise never get a chance to be
+            # marked bootstrap_complete, because getmany() keeps returning {}
+            # forever (CodeRabbit, PR #2051, PRRT_kwDOR6jjtc6YWuL5). What it
+            # must NOT do is run once per batch of a large replay: that is the
+            # O(backlog) round-trip cost measured at 123 end_offsets() calls
+            # for fixture-runtime's 60,724-record live-events backlog.
+            if self._has_partition_the_fast_path_cannot_settle():
+                now = time.monotonic()
+                last_check = self._last_rpc_bootstrap_check
+                if (
+                    last_check is None
+                    or now - last_check >= _BOOTSTRAP_RPC_CHECK_MIN_INTERVAL_SECONDS
+                ):
+                    self._last_rpc_bootstrap_check = now
+                    await self._mark_bootstrap_complete_when_caught_up()
+
+    def _record_partition_progress(
+        self, tp: TopicPartition, *, position: int, end_offset: int | None
+    ) -> None:
+        """Fold one partition's (position, end offset) reading into the state.
+
+        The single place a partition is marked assigned, marked caught up, and
+        a topic marked bootstrap-complete -- shared by the zero-RPC fast path
+        and the RPC-backed authority so the two can never drift into two
+        different definitions of "caught up".
+        """
+        state = self._state.get(self.canonical_topic(tp.topic))
+        if state is None:
+            return
+        state.assigned_partitions.add(tp.partition)
+        if end_offset is None:
+            # OMN-18905, GATE-DIRECTION LAW: the caller could not read an end
+            # offset for this partition. The previous code defaulted that to
+            # ``0`` at the call site, and ``position >= 0`` is true of every
+            # position including zero, so a partition the broker did not
+            # answer for was marked caught up. Unknown is refused instead.
+            return
+        state.end_offsets[tp.partition] = end_offset
+        if position >= end_offset:
+            state.eof_seen.add(tp.partition)
+        if state.assigned_partitions and state.eof_seen == state.assigned_partitions:
+            state.bootstrap_complete = True
+
+    def _refresh_end_offsets_from_fetch_metadata(self) -> None:
+        """Record each assigned partition's newest known end offset. No RPC.
+
+        OMN-18905. Unlike the bootstrap fast path this does NOT skip a topic
+        that is already ``bootstrap_complete``: a completed topic is precisely
+        the one whose lag no other code path recomputes, and a completed topic
+        that stops advancing is the defect this exists to make visible.
+        An unknown highwater is left alone rather than written as zero, so a
+        partition the consumer has not fetched yet never reads as caught up.
+        """
+        consumer = self._consumer
+        if consumer is None:
+            return
+        for tp in consumer.assignment():
+            state = self._state.get(tp.topic)
+            if state is None:
+                continue
+            highwater = consumer.highwater(tp)
+            if highwater is None:
+                continue
+            state.end_offsets[tp.partition] = highwater
+
+    def lag_report(self, topic: str) -> dict[str, int] | None:
+        """How far behind the end of its topic this exposure's state is.
+
+        ``None`` when the topic is not cached at all. Otherwise
+        ``applied_offset`` and ``end_offset`` are summed across the assigned
+        partitions and ``lag`` is the non-negative difference.
+
+        A partition with a known end offset but no applied position has
+        delivered nothing, and its whole end offset counts as lag -- the
+        conservative direction, and the one that refuses rather than
+        flatters. Only partitions whose end offset is known are counted; an
+        unknown one is omitted rather than guessed, and ``partitions`` says
+        how many were actually measured so a caller can tell a real zero from
+        an unmeasured one.
+        """
+        state = self._state.get(topic)
+        if state is None:
+            return None
+        applied = end = measured = 0
+        for partition, end_offset in state.end_offsets.items():
+            end += end_offset
+            applied += state.next_position.get(partition, 0)
+            measured += 1
+        return {
+            "applied_offset": applied,
+            "end_offset": end,
+            "lag": max(0, end - applied),
+            "partitions": measured,
+            "dropped_since_apply": state.dropped_since_apply,
+            "dropped_total": state.dropped_total,
+        }
+
+    def is_stale(self, topic: str) -> bool:
+        """Is this exposure serving state further behind than the bound?
+
+        Per EXPOSURE, never per process: an idle producer sits at lag zero and
+        stays fresh, while a busy one that the cache has stopped following
+        goes stale on its own. That is what lets one frozen topic be reported
+        without taking every other panel dark with it.
+        """
+        report = self.lag_report(topic)
+        if report is None or report["partitions"] == 0:
+            # Nothing measured is not evidence of freshness. A topic with no
+            # readable end offset cannot be asserted current.
+            return True
+        if report["lag"] > self._stale_lag_records:
+            return True
+        # OMN-18905 follow-up: the class the lag bound alone cannot see. A
+        # cache that reads every record and discards it sits at lag ZERO
+        # while its rows stand still. Consecutive refusals with no apply in
+        # between is the only signal that separates that from a healthy,
+        # caught-up exposure, because both look identical by offset.
+        return report["dropped_since_apply"] > self._stale_drop_streak
+
+    def _has_partition_the_fast_path_cannot_settle(self) -> bool:
+        """Is there an un-bootstrapped partition only a broker round trip can
+        answer? (OMN-15876)
+
+        The zero-RPC fast path needs two facts per partition: a highwater
+        aiokafka has learned from some fetch response, and a consumed position,
+        which it derives from applied record offsets. A partition that has
+        delivered NOTHING has no position -- an empty topic, a compacted
+        partition whose retained head sits entirely below the log start, or a
+        partition assigned so late that no fetch has landed on it yet. Those
+        are exactly the cases ``position()`` exists to answer, and the only
+        cases worth a round trip.
+
+        Gating on this rather than on "the last batch was empty" matters for a
+        multi-partition topic: one busy partition would otherwise keep the
+        topic looking like it was making progress forever while a silent
+        sibling partition was never settled, and the topic would never reach
+        ``bootstrap_complete`` -- ``/ready`` refusing permanently, which is
+        fail-closed but not correct. Once a round trip has seeded a position
+        for such a partition, the fast path can carry it from then on, so the
+        total number of round trips is bounded by the partition count and not
+        by the size of the backlog.
+        """
+        consumer = self._consumer
+        if consumer is None:
+            return False
+        for tp in consumer.assignment():
+            state = self._state.get(self.canonical_topic(tp.topic))
+            if state is None or state.bootstrap_complete:
+                continue
+            if (
+                state.next_position.get(tp.partition) is None
+                or consumer.highwater(tp) is None
+            ):
+                return True
+        return False
+
+    def _mark_bootstrap_complete_from_fetch_metadata(self) -> None:
+        """Zero-RPC bootstrap catch-up check (OMN-15876).
+
+        Both quantities the check needs are already in hand during a replay:
+
+        * the end offset is ``AIOKafkaConsumer.highwater(tp)``, a SYNCHRONOUS
+          accessor aiokafka refreshes from every ``FetchResponse``
+          (``aiokafka/consumer/fetcher.py``: ``tp_state.highwater = highwater``).
+          It is strictly fresher than a periodic ``end_offsets()`` call, and it
+          costs nothing;
+        * the position is ``msg.offset + 1`` of the last record applied on that
+          partition, recorded by the consume loop.
+
+        So a fresh pod's entire replay -- the case that took 20-63 minutes live
+        on fixture-runtime, at 123 ``end_offsets()`` round trips for a 60,724-record
+        backlog -- needs no broker round trip at all.
+
+        This method can only ever mark a partition caught up EARLIER-refusing,
+        never earlier-accepting (GATE-DIRECTION LAW):
+
+        * an unknown highwater (``None`` -- aiokafka has not yet had a fetch
+          response for that partition) is skipped, not assumed;
+        * a partition that has delivered no record has no entry in
+          ``next_position`` and is skipped, not assumed to be at offset 0;
+        * a highwater above the applied position leaves the topic
+          un-bootstrapped, so ``/ready`` keeps refusing.
+
+        It is synchronous by construction. Nothing here awaits, so nothing here
+        can stall the consume loop -- which is what the per-batch
+        ``asyncio.wait_for(..., 30.0)`` pair it replaces was doing.
+        """
+        consumer = self._consumer
+        if consumer is None:
+            return
+        for tp in consumer.assignment():
+            state = self._state.get(self.canonical_topic(tp.topic))
+            if state is None or state.bootstrap_complete:
+                continue
+            highwater = consumer.highwater(tp)
+            if highwater is None:
+                # Not yet learned from any fetch response. Unknown is refused.
+                continue
+            position = state.next_position.get(tp.partition)
+            if position is None:
+                # This partition has delivered nothing yet. The RPC-backed
+                # authority below owns that case -- an empty topic is legitimately
+                # bootstrapped, but only ``position()`` can say so.
+                continue
+            self._record_partition_progress(tp, position=position, end_offset=highwater)
+
+    async def _mark_bootstrap_complete_when_caught_up(self) -> None:
+        """Mark each assigned partition bootstrap-complete once its consumer
+        position has caught up to the end offset observed at that moment.
+
+        OMN-15876 -- every broker round trip here is an await, and the
+        assignment read on the first line can be revoked by a rebalance while
+        any of them is in flight. A partition that is gone by the time
+        ``position()`` reaches it raises ``IllegalStateError``; a slow broker
+        makes ``end_offsets()`` raise ``KafkaTimeoutError``. Both are now
+        skipped or retried on the NEXT pass rather than ending the consume
+        loop, and both leave the affected topic un-bootstrapped, so readiness
+        stays refused. Nothing here can mark a topic ready that is not.
+        """
+        assert self._consumer is not None
+        partitions: frozenset[TopicPartition] = self._consumer.assignment()
+        if not partitions:
+            return
+        try:
+            end_offsets = await asyncio.wait_for(
+                self._consumer.end_offsets(list(partitions)),
+                timeout=_BOOTSTRAP_RPC_TIMEOUT_SECONDS,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # transient, retried on the next pass
+            logger.warning(
+                "SnapshotCache: end_offsets() raised during the bootstrap "
+                "catch-up check; no topic is marked bootstrapped on this "
+                "pass (OMN-15876)",
+                exc_info=True,
+            )
+            return
+        for tp in partitions:
+            try:
+                position = await asyncio.wait_for(
+                    self._consumer.position(tp),
+                    timeout=_BOOTSTRAP_RPC_TIMEOUT_SECONDS,
+                )
+            except IllegalStateError:
+                # Revoked between the assignment read above and this await.
+                # Skipping is the conservative direction: this partition is
+                # neither counted as assigned nor as caught up.
+                logger.debug(
+                    "SnapshotCache: %s was revoked mid-check; skipping (OMN-15876)",
+                    tp,
+                )
+                continue
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # transient, retried next pass
+                logger.warning(
+                    "SnapshotCache: position(%s) raised during the bootstrap "
+                    "catch-up check; skipping this partition on this pass "
+                    "(OMN-15876)",
+                    tp,
+                    exc_info=True,
+                )
+                continue
+            state = self._state.get(self.canonical_topic(tp.topic))
+            if state is None:
+                continue
+            # Feed the fast path too: a position read here is the same
+            # quantity the consume loop derives from applied record offsets,
+            # and seeding it lets a partition that has delivered nothing so
+            # far be settled without another round trip later.
+            state.next_position[tp.partition] = position
+            self._record_partition_progress(
+                tp, position=position, end_offset=end_offsets.get(tp)
+            )
+
+    @property
+    def reassignment_count(self) -> int:
+        """How many times this consumer was handed its partitions again.
+
+        OMN-18955. The first assignment is not counted. Anything above zero
+        means the group rejoined -- on the example-endpoint dev lane, a heartbeat session
+        that expired while the host was loaded -- and every such rejoin used
+        to restart every topic's replay from the log start.
+        """
+        return max(0, self._assignment_count - 1)
+
+    @property
+    def committed_position(self) -> dict[TopicPartition, int]:
+        """The offsets this process has committed, per partition (OMN-15904).
+
+        This is the resume point a restart will read. Exposed so a readback can
+        assert the commit half actually happened rather than inferring it from
+        the absence of a replay -- an uncommitted cache and a committed one look
+        identical until the next restart, which is the property that let the
+        replay-from-zero defect sit latent from 2026-08-11 to 2026-09-26.
+        """
+        return dict(self._committed_position)
+
+    @property
+    def commit_failures(self) -> int:
+        """How many offset commits failed (OMN-15904). Nonzero is not fatal.
+
+        A failed commit leaves the cache correct and the resume point stale, so
+        the cost lands on the next restart's catch-up. Surfaced as a count
+        because a broker that refuses every commit would otherwise look exactly
+        like one that accepts them until someone restarted the pod.
+        """
+        return self._commit_failures
+
+    def on_partitions_assigned(self, assigned: set[TopicPartition]) -> None:
+        """Resume what this cache has already applied.
+
+        NOTE (OMN-15904): under manual assignment there are no rebalances, so
+        the rejoin this was written for cannot occur any more and nothing calls
+        this from the aiokafka side. It is kept because the seek-to-applied
+        logic is still the correct answer if assignment ever becomes
+        coordinated again, and because deleting a guard whose trigger merely
+        became unreachable is how the trigger comes back unnoticed.
+
+        OMN-18955. A partition this process has applied records from is sought
+        to the offset after the last one it applied. Everything below that
+        offset is already folded into ``rows``, so reading it again can only
+        produce drops -- and before this, every rejoin did exactly that for
+        every topic, restarting an eight-million-record replay and pinning an
+        idle topic's drop streak above the stale bound until its writer next
+        published. A partition with nothing applied yet is left where aiokafka
+        put it, the log start, exactly as on the first assignment.
+        """
+        self._assignment_count += 1
+        consumer = self._consumer
+        if consumer is None:
+            return
+        resumed: list[str] = []
+        for tp in assigned:
+            state = self._state.get(self.canonical_topic(tp.topic))
+            applied = (
+                None if state is None else state.applied_position.get(tp.partition)
+            )
+            if applied is None:
+                continue
+            consumer.seek(tp, applied)
+            resumed.append(f"{tp.topic}[{tp.partition}]@{applied}")
+        if resumed:
+            logger.warning(
+                "SnapshotCache: partitions reassigned (rejoin %d); resuming %d "
+                "partition(s) where this cache left off instead of replaying "
+                "them from the log start: %s (OMN-18955)",
+                self.reassignment_count,
+                len(resumed),
+                sorted(resumed),
+            )
+
+    async def stop(self) -> None:
+        self._running = False
+        if self._consume_task is not None:
+            self._consume_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._consume_task
+            self._consume_task = None
+        if self._consumer is not None:
+            with contextlib.suppress(Exception):
+                await self._consumer.stop()
+            self._consumer = None
+
+END PUBLIC SOURCE

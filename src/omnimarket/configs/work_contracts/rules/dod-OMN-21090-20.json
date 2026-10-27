@@ -1,0 +1,6 @@
+{
+  "mode": "module_tests",
+  "module": "omnimarket.nodes.node_exemplar_registry_reconcile_compute.handlers.handler_exemplar_registry_reconcile",
+  "nodeid": "test_revocation_uses_counts_on_each_dispatch_binding[counts2-False-revoke-0.0-None-cli]",
+  "test": "tests/nodes/node_exemplar_registry_reconcile_compute/test_sampled_revocation.py"
+}

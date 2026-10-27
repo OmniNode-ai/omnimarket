@@ -1,0 +1,26 @@
+Write pytest unit tests for the untested public function is_subscope. Public source: omnibase_core/src/omnibase_core/nodes/node_work_ledger_state_compute/scope_math.py:37. Return ONLY a complete test module, no explanation or Markdown. Import the function and any support types from solution. Do not redefine or monkeypatch the target function. Use meaningful assertions and edge cases. Tests run in isolation on this host. Required behavior to cover: Subset relation across PRs/repos/all_repos/surfaces/lanes.
+
+Exact public source slice including required support:
+from __future__ import annotations
+
+from omnibase_core.models.events.work.model_hold_scope import ModelHoldScope
+
+from omnibase_core.models.events.work.model_pr_key import ModelPrKey
+
+def scope_covers_pr(scope: ModelHoldScope, pr: ModelPrKey) -> bool:
+    """True when ``scope`` covers pull request ``pr``."""
+    return scope.all_repos or pr in scope.prs or pr.repo in scope.repos
+
+def scope_covers_repo(scope: ModelHoldScope, repo: str) -> bool:
+    """True when ``scope`` covers every pull request of ``repo``."""
+    return scope.all_repos or repo.lower() in scope.repos
+
+def is_subscope(part: ModelHoldScope, whole: ModelHoldScope) -> bool:
+    """True when everything ``part`` covers is covered by ``whole``."""
+    return (
+        all(scope_covers_pr(whole, pr) for pr in part.prs)
+        and all(scope_covers_repo(whole, repo) for repo in part.repos)
+        and (not part.all_repos or whole.all_repos)
+        and part.surfaces <= whole.surfaces
+        and part.lanes <= whole.lanes
+    )

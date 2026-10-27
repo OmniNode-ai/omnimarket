@@ -1,0 +1,279 @@
+Trace ONEX_CONTRACTS_DIR and transport selection across these three repositories. For explicit_bus=inmemory, config_bus=kafka, ONEX_EVENT_BUS_TYPE=kafka, which authority wins? What if explicit_bus is absent? Explain how onboarding avoids stale environment and why a directory pointer is not a transport override. Cite all three sources.
+PUBLIC SOURCE omnibase_core/src/omnibase_core/contracts/runtime/runtime_orchestrator.yaml:75-110
+75:         - lifecycle
+76:         - kernel
+77:       documentation_url: https://docs.onex.ai/runtime/orchestrator
+78: 
+79:     # Execution Graph: Runtime node relationships
+80:     execution_graph:
+81:       nodes:
+82:         # ─────────────────────────────────────────────────────────────
+83:         # EFFECT: Contract Loader
+84:         # Scans filesystem for contract YAML files
+85:         # ─────────────────────────────────────────────────────────────
+86:         - node_id: contract_loader
+87:           node_type: EFFECT_GENERIC
+88:           node_name: Contract Loader
+89:           description: Scans contracts directory and loads YAML contract files
+90:           target_node_type: NodeContractLoaderEffect
+91:           contract_ref: runtime/contract_loader_effect.yaml
+92:           metadata:
+93:             contracts_dir: "${env.ONEX_CONTRACTS_DIR:./contracts}"
+94:             pattern: "**/*.yaml"
+95:             exclude_patterns:
+96:               # CRITICAL: Runtime contracts must be excluded from hot reload
+97:               # to prevent circular dependency. The runtime cannot reload its
+98:               # own contract definition while running - this is a bootstrapping
+99:               # constraint similar to how an OS kernel cannot update itself
+100:               # without a reboot. See "Design Decisions" in header comments.
+101:               - "**/runtime/**"
+102:               # Internal/partial contracts not meant for direct instantiation.
+103:               # These are fragments or templates included by other contracts.
+104:               - "**/_*.yaml"
+105:             watch_mode: false
+106:             scan_interval_ms: 300000
+107: 
+108:         # ─────────────────────────────────────────────────────────────
+109:         # REDUCER: Contract Registry
+110:         # Maintains state of loaded/compiled contracts
+
+PUBLIC SOURCE omnibase_infra/src/omnibase_infra/backends/auto_configure.py:125-285
+125:     """Discover and probe all installed onex.backends entry points.
+126: 
+127:     Returns:
+128:         List of probe results, one per discovered backend.
+129:     """
+130:     results: list[ModelProbeResult] = []
+131:     backends = entry_points(group="onex.backends")
+132: 
+133:     for ep in backends:
+134:         probe_fn = _PROBE_REGISTRY.get(ep.name)
+135:         if probe_fn is not None and callable(probe_fn):
+136:             result = probe_fn()
+137:             results.append(result)
+138:         else:
+139:             results.append(
+140:                 ModelProbeResult(
+141:                     state=EnumProbeState.DISCOVERED,
+142:                     reason=f"No probe registered for backend '{ep.name}'",
+143:                     backend_label=ep.name,
+144:                 )
+145:             )
+146: 
+147:     return results
+148: 
+149: 
+150: def resolve_bus_type(
+151:     *,
+152:     explicit_bus: str | None = None,
+153:     config_bus: str | None = None,
+154:     config_source: str | None = None,
+155:     kafka_bootstrap: str | None = None,
+156:     authority_topic: str | None = None,
+157: ) -> tuple[str, str]:
+158:     """Resolve WHICH event-bus transport to use, deterministically (OMN-16678).
+159: 
+160:     The single authority every call site shares — :func:`select_event_bus` (the
+161:     runtime kernel's path) and ``cli/cli_delegate.py::resolve_default_bus``
+162:     (the ``onex delegate`` path) both route through this function, so the two
+163:     can no longer disagree about what the operator asked for.
+164: 
+165:     Resolution order, highest first (OMN-17304):
+166: 
+167:     1. **Explicit argument** (``--bus`` at the CLI, ``bus_type=`` in-process).
+168:        Never second-guessed and never probed against.
+169:     2. **Declared config** (``config.event_bus.type``, OMN-16693). The
+170:        runtime's own configured statement of intent, honoured without probing:
+171:        the config already stated the answer, and probing it only reintroduces
+172:        the chance to contradict it. Every runtime has one — the deployed lanes
+173:        ship ``contracts/runtime/runtime_config.yaml``, and an unconfigured
+174:        install resolves the SHIPPED tier-0 default
+175:        (``runtime/tier0_runtime_config.yaml``: in-memory bus, local profile),
+176:        so for config-resolved callers the probe tier below is structurally
+177:        unreachable.
+178:     3. **Live broker probe** (:func:`~omnibase_infra.backends.backend_probe.probe_kafka`),
+179:        reached only by callers that genuinely pass no config, mapped totally:
+180: 
+181:        * ``AUTHORITATIVE`` / ``HEALTHY`` -> ``kafka``. Determinate positive.
+182:        * ``DISCOVERED`` -> ``inmemory``. Determinate negative: reached only by
+183:          branches that concluded something definite (no bootstrap configured,
+184:          unparseable broker address, refused TCP connect).
+185:        * ``REACHABLE`` -> :class:`EventBusResolutionAmbiguousError`.
+186:          Indeterminate: TCP is up but the metadata call did not complete, so
+187:          whether this broker will serve this caller is UNKNOWN. This is the
+188:          state a transient 2s ``list_topics`` timeout against a *healthy*
+189:          broker lands in, and mapping it to a transport is what made
+190:          resolution non-repeatable (14 kafka / 6 inmemory over 20 calls,
+191:          unchanged env — ``OmniNode-ai/knowledge_base#59``).
+192: 
+193:     **``ONEX_EVENT_BUS_TYPE`` holds NO tier (OMN-17304).** The pre-ruling
+194:     ladder ranked it above config, which made one line in an operator's shell
+195:     profile the transport authority for every delegation on the machine. Per
+196:     the operator ruling, env vars may bootstrap WHERE configuration is found
+197:     (``ONEX_CONTRACTS_DIR``), never WHAT the transport is. A set value is
+198:     ignored — with a WARNING naming the removal, so the export is deleted
+199:     rather than silently dead. This applies to every caller: configured
+200:     binding outranks env everywhere, because env stopped being a peer
+201:     authority at all.
+202: 
+203:     Args:
+204:         explicit_bus: Caller-supplied transport, or ``None`` to auto-resolve.
+205:         config_bus: The transport declared by the runtime's configuration
+206:             (``config.event_bus.type``), or ``None`` when the caller genuinely
+207:             has no config to speak for.
+208:         config_source: Optional human-readable provenance of WHERE
+209:             ``config_bus`` came from (a file path, "shipped tier-0 default
+210:             ..."), appended to the returned reason so a receipt can name the
+211:             authority, not merely the tier.
+212:         kafka_bootstrap: Broker override. ``None`` lets ``probe_kafka`` resolve
+213:             ``KAFKA_BOOTSTRAP_SERVERS`` itself — the already-approved boundary
+214:             for that lookup.
+215:         authority_topic: Topic whose live consumer-group liveness decides the
+216:             AUTHORITATIVE tier (OMN-16529). Pass the exact topic the caller is
+217:             about to publish to, or ``None``.
+218: 
+219:     Returns:
+220:         ``(bus_type, reason)`` — ``bus_type`` is one of
+221:         :data:`SUPPORTED_BUS_TYPES`; ``reason`` is human-readable provenance
+222:         naming which tier decided, for logging and receipts.
+223: 
+224:     Raises:
+225:         ValueError: ``explicit_bus`` or ``config_bus`` names a transport that
+226:             does not exist.
+227:         EventBusResolutionAmbiguousError: the probe result is indeterminate and
+228:             nothing above it declared an intent to disambiguate it.
+229:     """
+230:     # OMN-17304: warn on a set-and-ignored ONEX_EVENT_BUS_TYPE. The env-var
+231:     # name is spelled as a LITERAL here, not as BUS_TYPE_OVERRIDE_ENV:
+232:     # `check-env-reads` grandfathers an added read only when it can extract a
+233:     # literal name and match it against the same file's base version, and it
+234:     # deliberately blocks the constant-name (non-literal) read form outright.
+235:     # This read pre-dates OMN-16678 in this file; it no longer participates in
+236:     # resolution — it exists solely to tell the operator their export stopped
+237:     # doing anything (the value is not even validated: a dead variable must
+238:     # not retain the power to fail a boot).
+239:     raw_ignored = os.getenv("ONEX_EVENT_BUS_TYPE", "").strip()
+240:     if raw_ignored:
+241:         logger.warning(
+242:             "%s=%s is set but is ignored (OMN-17304): it no longer holds any "
+243:             "tier in transport resolution. The transport resolves from the "
+244:             "runtime's configured authority (explicit argument > "
+245:             "config.event_bus.type > broker probe); env vars may bootstrap "
+246:             "where config is found (ONEX_CONTRACTS_DIR), never what the "
+247:             "transport is. Remove the export.",
+248:             BUS_TYPE_OVERRIDE_ENV,
+249:             raw_ignored,
+250:         )
+251: 
+252:     # Tier 1 — explicit caller selection.
+253:     if explicit_bus is not None:
+254:         normalized = _normalize_bus_value(
+255:             explicit_bus,
+256:             source="Explicit event bus selection",
+257:             remedy="Pass one of those values instead.",
+258:         )
+259:         return normalized, f"explicit bus selection: {normalized}"
+260: 
+261:     # Tier 2 — the transport the runtime's configuration declares (OMN-16693,
+262:     # promoted to the top non-explicit tier by OMN-17304). Honoured without
+263:     # probing: the config already stated the answer, and probing it only
+264:     # reintroduces the chance to contradict it.
+265:     if config_bus is not None:
+266:         resolved_config = _normalize_bus_value(
+267:             config_bus,
+268:             source="config.event_bus.type",
+269:             remedy="Correct the runtime config's event_bus.type field.",
+270:         )
+271:         provenance = f"config.event_bus.type={config_bus}"
+272:         if config_source:
+273:             provenance = f"{provenance} ({config_source})"
+274:         return resolved_config, provenance
+275: 
+276:     # Tier 3 — probe. Total over EnumProbeState; no implicit default branch.
+277:     probe = probe_kafka(
+278:         bootstrap_servers=kafka_bootstrap, authority_topic=authority_topic
+279:     )
+280:     if probe.state in (EnumProbeState.HEALTHY, EnumProbeState.AUTHORITATIVE):
+281:         return BUS_KAFKA, probe.reason
+282:     if probe.state is EnumProbeState.DISCOVERED:
+283:         return BUS_INMEMORY, f"{probe.state.name}: {probe.reason}"
+284:     raise EventBusResolutionAmbiguousError(
+285:         f"Kafka probe returned {probe.state.name} ({probe.reason}); the broker "
+
+PUBLIC SOURCE omniclaude/tests/skills/test_onboarding_returning_machine_omn21087.py:20-95
+20: import sys
+21: from pathlib import Path
+22: 
+23: import pytest
+24: 
+25: sys.path.insert(0, str(Path(__file__).resolve().parent))
+26: _preflight = importlib.import_module("test_lab_onboarding_script_omn20150")
+27: SCRIPT = _preflight.SCRIPT
+28: _drive_tty = _preflight._drive_tty
+29: _functions = _preflight._functions
+30: _run = _preflight._run
+31: 
+32: pytestmark = pytest.mark.unit
+33: 
+34: LEFTOVER_ENV = {
+35:     "OMNI_HOME": "/old/omni",
+36:     "OMNIBASE_INTERNAL_PATH": "/old/omni/internal-clone",
+37:     "ONEX_EVENT_BUS_TYPE": "kafka",
+38:     "ONEX_LAB_TENANT_STATE_DIR": "/old/tenant",
+39:     "ONEX_STATE_DIR": "/old/omni/.onex_state",
+40:     "ONEX_DISPATCH_VENV": "/old/venv",
+41:     "ONEX_CONTRACTS_DIR": "/old/contracts",
+42:     "KAFKA_BOOTSTRAP_SERVERS": "lab:9092",
+43: }
+44: 
+45: ZSHRC = (
+46:     "alias ll='ls -l'\n"
+47:     "export OMNI_HOME=/old/omni\n"
+48:     "alias onex='uv run --project $OMNI_HOME/omnibase_infra onex'\n"
+49:     "export ONEX_LAB_TENANT_STATE_DIR=/old/tenant\n"
+50:     "onex() {\n"
+51:     "  echo old\n"
+52:     "}\n"
+53:     "export EDITOR=vim\n"
+54: )
+55: 
+56: 
+57: def _snapshot(root: Path) -> dict[str, bytes]:
+58:     return {
+59:         str(p.relative_to(root)): p.read_bytes()
+60:         for p in sorted(root.rglob("*"))
+61:         if p.is_file()
+62:     }
+63: 
+64: 
+65: def _seed_home(tmp_path: Path) -> Path:
+66:     home = tmp_path / "home"
+67:     (home / ".omninode" / "delegation").mkdir(parents=True)
+68:     (home / ".zshrc").write_text(ZSHRC)
+69:     (home / ".omninode" / "delegation" / "bifrost_overrides.yaml").write_text(
+70:         "backends:\n  - backend_id: local-coder\n"
+71:     )
+72:     return home
+73: 
+74: 
+75: def _sourced(
+76:     tmp_path: Path, snippet: str, **env: str
+77: ) -> subprocess.CompletedProcess[str]:
+78:     """The whole script with its functions defined and main not run, then snippet."""
+79:     body = SCRIPT.read_text()
+80:     assert body.rstrip().endswith("\nmain")
+81:     script = tmp_path / "sourced.sh"
+82:     script.write_text(body.rstrip()[: -len("main")] + "\n" + snippet + "\n")
+83:     (tmp_path / "run").mkdir(exist_ok=True)
+84:     return subprocess.run(
+85:         ["/bin/bash", str(script)],
+86:         env={
+87:             "HOME": str(tmp_path / "home"),
+88:             "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+89:             "TMPDIR": str(tmp_path / "run") + "/",
+90:             "ONBOARD_NOTIFY": "0",
+91:             "ONBOARD_TEST_NO_USER_SHELL": "1",
+92:             **env,
+93:         },
+94:         capture_output=True,
+95:         text=True,

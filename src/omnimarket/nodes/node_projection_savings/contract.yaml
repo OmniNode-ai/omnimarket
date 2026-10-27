@@ -2,13 +2,7 @@
 name: projection_savings
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: reducer
-# OMN-17985: this contract is owned by its OWN standalone writer Deployment
-# (RUNTIME_PROFILE=projection-writer-savings on onex-dev), not by the shared main runtime it
-# fell to while it declared nothing. The name became declarable when
-# omnibase_core 0.47.5 registered it in REGISTERED_RUNTIME_PROFILES and
-# CONSUMER_ATTACHED_RUNTIME_PROFILES; the writer is consumer-attached as
-# measured fact -- it joined its group and the coordinator issued it
-# partitions. Declaring it here is what makes ownership single-valued.
+# Logical subscription ownership; the composing runtime activates this profile.
 runtime_profiles:
   - projection-writer-savings
 node_version: {major: 1, minor: 0, patch: 0}
@@ -22,29 +16,54 @@ description: >
   context_compaction).
 
 handler:
-  module: omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings
-  class: HandlerProjectionSavings
+  module: omnimarket.nodes.node_projection_savings.handlers.handler_runtime_writer
+  class: SavingsProjectionWriter
 
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - operation: projection_savings
+    - topic: onex.evt.omnibase-infra.savings-estimated.v1
+      message_category: event
+      operation: savings_projection_writer
       handler:
-        name: HandlerProjectionSavings
-        module: omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings
-      handler_module: omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings
-      event_model: omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings.ModelSavingsEstimatedEvent
-    - operation: compaction_savings
+        name: SavingsProjectionWriter
+        module: omnimarket.nodes.node_projection_savings.handlers.handler_runtime_writer
+      handler_module: omnimarket.nodes.node_projection_savings.handlers.handler_runtime_writer
+    - topic: onex.evt.omnimarket.delegate-skill-completed.v1
+      message_category: event
+      operation: savings_projection_writer
       handler:
-        name: HandlerCompactionSavings
-        module: omnimarket.nodes.node_projection_savings.handlers.handler_compaction_savings
-      handler_module: omnimarket.nodes.node_projection_savings.handlers.handler_compaction_savings
-      event_model: omnimarket.nodes.node_projection_savings.handlers.handler_compaction_savings.ModelCompactionSavingsSource
-    - operation: savings_projection_runner
+        name: SavingsProjectionWriter
+        module: omnimarket.nodes.node_projection_savings.handlers.handler_runtime_writer
+      handler_module: omnimarket.nodes.node_projection_savings.handlers.handler_runtime_writer
+    - topic: onex.evt.omnimarket.delegate-skill-failed.v1
+      message_category: event
+      operation: savings_projection_writer
       handler:
-        name: SavingsProjectionRunner
-        module: omnimarket.nodes.node_projection_savings.handlers.handler_savings
-      handler_module: omnimarket.nodes.node_projection_savings.handlers.handler_savings
+        name: SavingsProjectionWriter
+        module: omnimarket.nodes.node_projection_savings.handlers.handler_runtime_writer
+      handler_module: omnimarket.nodes.node_projection_savings.handlers.handler_runtime_writer
+    - topic: onex.evt.omnibase-infra.delegation-completed.v1
+      message_category: event
+      operation: savings_projection_writer
+      handler:
+        name: SavingsProjectionWriter
+        module: omnimarket.nodes.node_projection_savings.handlers.handler_runtime_writer
+      handler_module: omnimarket.nodes.node_projection_savings.handlers.handler_runtime_writer
+    - topic: onex.evt.omnibase-infra.delegation-failed.v1
+      message_category: event
+      operation: savings_projection_writer
+      handler:
+        name: SavingsProjectionWriter
+        module: omnimarket.nodes.node_projection_savings.handlers.handler_runtime_writer
+      handler_module: omnimarket.nodes.node_projection_savings.handlers.handler_runtime_writer
+    - topic: onex.evt.omniclaude.hook-event.v1
+      message_category: event
+      operation: savings_projection_writer
+      handler:
+        name: SavingsProjectionWriter
+        module: omnimarket.nodes.node_projection_savings.handlers.handler_runtime_writer
+      handler_module: omnimarket.nodes.node_projection_savings.handlers.handler_runtime_writer
 
 terminal_event: onex.evt.omnimarket.projection-savings-applied.v1
 

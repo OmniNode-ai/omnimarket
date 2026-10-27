@@ -1,0 +1,32 @@
+Implement the small Python function below from its docstring. Public source: omnibase_core/src/omnibase_core/normalization/contract_normalizer.py:263. Keep the exact public signature and specified behavior. Return ONLY one complete Python module, no explanation or Markdown. Include its support definitions/imports. Do not write tests.
+
+from __future__ import annotations
+
+_DOD_KIND_TO_TYPE: dict[str, str] = {
+    "test": "unit_test",
+    "unit_test": "unit_test",
+    "integration_test": "integration_test",
+    "pr_merged": "pr_merged",
+    "file_exists": "file_exists",
+}
+
+def normalize_dod_evidence(raw: dict[str, object]) -> dict[str, object]:
+    """Map legacy ``kind`` -> ``type`` on dod_evidence entries.
+
+    Legacy contracts spelled the discriminator on each dod_evidence entry
+    as ``kind``; the canonical schema names it ``type``. Per-entry rules:
+
+    - String entries (``"test_passes"``) pass through unchanged.
+    - Dict entries with ``kind`` and no ``type`` are rewritten:
+      ``kind`` is removed, ``type`` is set via :data:`_DOD_KIND_TO_TYPE`
+      (or copied verbatim if no mapping is registered).
+    - Dict entries that already carry ``type`` are left alone (no double
+      mapping; pre-canonical entries win).
+
+    The input dict is not mutated; a new dict is returned. Idempotent:
+    running twice yields the same result. No-op when ``dod_evidence`` is
+    absent.
+
+    Corpus context: 8 files in the audited corpus carry legacy ``kind``.
+    """
+    raise NotImplementedError

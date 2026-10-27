@@ -1,0 +1,6 @@
+{
+  "mode": "module_tests",
+  "module": "omnibase_core.models.delegation.model_invocation_command",
+  "test": "src/omnimarket/configs/work_contracts/evaluators/F06-09/test_frozen.txt",
+  "test_layout": "tests/unit/models/delegation/test_delegation_models.py"
+}

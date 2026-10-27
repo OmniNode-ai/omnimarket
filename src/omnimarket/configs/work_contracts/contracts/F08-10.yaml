@@ -1,0 +1,42 @@
+contract_id: F08-10
+task_kind: reasoning
+inputs:
+- path: src/omnimarket/configs/work_contracts/inputs/F08-10.txt
+  sha256: c0dcf1ca34f56d8ff6bb4375b6c75bd661cb40fae352ed04f70c2ad148bc3c00
+acceptance:
+  kind: schema
+  spec:
+    schema:
+      type: object
+      required:
+      - diagnosis
+      properties:
+        diagnosis:
+          type: string
+          const: Fewer reviewer models succeeded than cross-model agreement requires,
+            no verdict; zero blocking findings does not establish a pass.
+      additionalProperties: false
+    expected_json: '{"diagnosis": "Fewer reviewer models succeeded than cross-model
+      agreement requires, no verdict; zero blocking findings does not establish a
+      pass."}'
+budgets:
+  max_output_tokens: 8192
+  max_wall_s: 180
+  max_turns: 8
+  max_usd: 5
+controls:
+  positive:
+    path: src/omnimarket/configs/work_contracts/controls/F08-10.positive.txt
+    sha256: 13aea2cc70270d84007a3afd73553711c32cbf1de53f47e6ab70855346a84de7
+  negative:
+    path: src/omnimarket/configs/work_contracts/controls/F08-10.negative.txt
+    sha256: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+evaluators:
+- path: src/omnimarket/handlers/work_contracts/control_evaluator.py
+  sha256: 35beec5a332b646a0c1a696407f0b4a1f5a683269b19e9f782af9df0ee662d7d
+provenance:
+  source: 2026-10-27-deleg-sc-e-1100.md
+  source_sha256: e622719726c2f859deb08bc3b084f70bb82ccf61c93722c1d5243dbb845c928f
+  adaptation: Frozen prose rubric converted to complete structured diagnosis. F10
+    is offline diagnosis only; no fabricated live attempt/transition proof. Historical
+    outputs are not equivalent.

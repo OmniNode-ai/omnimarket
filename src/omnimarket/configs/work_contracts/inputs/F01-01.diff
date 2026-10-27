@@ -1,0 +1,394 @@
+diff --git a/contracts/OMN-21409.yaml b/contracts/OMN-21409.yaml
+index 4b1e661e2..402868166 100644
+--- a/contracts/OMN-21409.yaml
++++ b/contracts/OMN-21409.yaml
+@@ -3,6 +3,8 @@ schema_version: "1.0.0"
+ ticket_id: "OMN-21409"
+ title: "S4b: node_idle_slot_fill_effect moves to omnimarket with its private lists in the overlay"
+ summary: >-
++  Idle-slot fill exposes shared Codex capacity to the declared lane model policy,
++  honors engine limit marks and preserves the chosen model in the brief and runner.
+   Slice S4b of the scripts migration moves node_idle_slot_fill_effect into
+   omnimarket in its canonical node shape (contract, metadata, handlers, models,
+   node.py, cloud_backlog.py) with its tests under tests/nodes/. The packaged
+@@ -71,9 +73,18 @@ dod_evidence:
+     checks:
+       - check_type: "test_passes"
+         check_value: "uv run pytest tests/nodes/node_idle_slot_fill_effect/test_overlay_refusals.py tests/nodes/node_idle_slot_fill_effect/test_idle_slot_fill_node.py tests/nodes/node_idle_slot_fill_effect/test_idle_turn_guard.py tests/nodes/node_idle_slot_fill_effect/test_cloud_backlog_fill.py -q"
++      - check_type: "test_passes"
++        check_value: "uv run pytest tests/nodes/node_idle_slot_fill_effect/test_codex_capacity_route.py -q"
+   - id: "dod-omn21409-deploy-import"
+-    description: "Hosted deploy check, runnable on the hosted runner with no lab route, broker or database: the node package imports from the installed omnimarket and resolves its onex.nodes entry point. Fails at the merge base, where the package and entry point are absent."
++    description: "Hosted published-artifact readback, runnable with the runner GitHub token and no lab route, broker or database: fetch this revision's handler from GitHub and require shared Codex capacity in the policy input. Fails against the merge-base handler, which exposes only Codex-only capacity. This checks the published revision, not a running service. The import and dispatch regression checks below remain required evidence."
+     source: "manual"
+     checks:
++      - check_type: "command"
++        check_value: >-
++          set -o pipefail; gh api
++          "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_idle_slot_fill_effect/handlers/handler_idle_slot_fill.py?ref=$(git rev-parse HEAD)"
++          --jq .content | base64 -d | grep -F '"codex": codex_left + shared_left,' > /dev/null
+       - check_type: "command"
+         check_value: "uv run --locked python -c \"from importlib.metadata import entry_points; eps={e.name: e for e in entry_points(group='onex.nodes')}; eps['node_idle_slot_fill_effect'].load()\""
++      - check_type: "test_passes"
++        check_value: "uv run pytest tests/nodes/node_idle_slot_fill_effect/test_codex_capacity_route.py -q"
+diff --git a/src/omnimarket/nodes/node_idle_slot_fill_effect/contract.yaml b/src/omnimarket/nodes/node_idle_slot_fill_effect/contract.yaml
+index 3a108f0a2..3e702e328 100644
+--- a/src/omnimarket/nodes/node_idle_slot_fill_effect/contract.yaml
++++ b/src/omnimarket/nodes/node_idle_slot_fill_effect/contract.yaml
+@@ -13,7 +13,8 @@ description: >
+   The lab is never idle (RULING 2026-10-14T21:46:25Z, operator 2026-10-18). fill: from the throughput tick's live
+   pool hosts, its own finding lines and the lanes the merge sweep places this tick, choose the lanes that fill the
+   free slots from the standing pillar backlog (unowned process-fix PRs, unowned shared reds, M4 board reds, queued
+-  experiment designs), Claude lanes first, then Codex and declared low-risk GLM capacity, each with its brief; keys
++  experiment designs), ranking all admitted engines through node_lane_model_policy_compute's declared policy
++  (Codex and low-risk GLM before Claude, Sonnet ceiling), each with its brief; keys
+   sent inside the window are skipped. With the file backlog spent it generates items from live state: the operator's
+   open delegation-pillar and M4-carrier tickets with no live CLAIM and no open PR (the session's Linear snapshot),
+   tickets blocked on a missing readback (the ledger) and the experiment designs of the idle_slot_fill overlay in
+diff --git a/src/omnimarket/nodes/node_idle_slot_fill_effect/handlers/handler_idle_slot_fill.py b/src/omnimarket/nodes/node_idle_slot_fill_effect/handlers/handler_idle_slot_fill.py
+index 6ec7d6aa8..1e3b37332 100644
+--- a/src/omnimarket/nodes/node_idle_slot_fill_effect/handlers/handler_idle_slot_fill.py
++++ b/src/omnimarket/nodes/node_idle_slot_fill_effect/handlers/handler_idle_slot_fill.py
+@@ -9,7 +9,8 @@
+ 
+ ``HandlerIdleSlotFill`` (operation fill) is what the throughput tick sends by itself. The free slots are the Claude
+ slots of every host the tick's node reported as ``MISSING lab-headroom:<host>`` and whose probe read, less the lanes
+-the merge sweep places this tick, then the Codex slots of hosts that admit Codex and not Claude. They are filled from
++the merge sweep places this tick, with Codex sharing that budget and dedicated Codex capacity counted separately.
++The contract's model policy ranks all admitted engines. Slots are filled from
+ the standing pillar backlog, in this order: a repair lane for each broken lab piece the tick names
+ (``running-vs-merged:``, ``host-tick:``, ``throughput-node``, ``dispatch-replace:``), a fix-forward lane for each red
+ landing branch (``repo-status:<repo>`` naming base_branch_red, or merge_queue_ejecting with no controller owner: RULING
+@@ -636,6 +637,31 @@ def brief(
+     )
+ 
+ 
++def admitted_slots(host: Mapping[str, Any], engine: str, now: str) -> int:
++    """Honor the pool admission and its engine marks without reading account secrets."""
++    admission = host.get("admission") or {}
++    if admission.get("probe_error") or admission.get(f"{engine}_refusal"):
++        return 0
++    marks = (
++        ("limited_mark", "auth_mark") if engine == "claude" else ("codex_limited_mark",)
++    )
++    for key in marks:
++        mark = host.get(key) or {}
++        if mark.get("state", "absent") == "absent":
++            continue
++        until = _stamp(str(mark.get("until") or ""))
++        observed = _stamp(now)
++        if (
++            mark.get("state") != "present"
++            or until is None
++            or observed is None
++            or until > observed
++        ):
++            return 0
++    slots = admission.get(f"{engine}_slots")
++    return slots if isinstance(slots, int) and slots > 0 else 0
++
++
+ class HandlerIdleSlotFill:
+     def handle(self, request: ModelIdleSlotFillRequest) -> ModelIdleSlotFillResult:
+         free_hosts = {
+@@ -661,9 +687,10 @@ def handle(self, request: ModelIdleSlotFillRequest) -> ModelIdleSlotFillResult:
+                 host.get("name") not in free_hosts and not glm_headroom
+             ) or admission.get("probe_error"):
+                 continue
+-            c, x = (admission.get(k) for k in ("claude_slots", "codex_slots"))
+-            c = c if isinstance(c, int) and c > 0 else 0
+-            x = x if isinstance(x, int) and x > 0 else 0
++            c, x = (
++                admitted_slots(host, engine, request.now)
++                for engine in ("claude", "codex")
++            )
+             local_left = c if host.get("local") else local_left
+             claude += c
+             codex_only += x if c == 0 else 0
+@@ -894,9 +921,12 @@ def handle(self, request: ModelIdleSlotFillRequest) -> ModelIdleSlotFillResult:
+                     }
+                 )
+                 continue
++            # Both engines can spend a shared host's one budget. Let the declared
++            # policy rank them even when the item has no explicit engine pin.
++            shared_left = min(shared_left, claude_left)
+             available = {
+                 "claude": claude_left,
+-                "codex": codex_left + (shared_left if required == "codex" else 0),
++                "codex": codex_left + shared_left,
+                 "glm": glm_left,
+             }
+             decision = resolve_lane_model(
+diff --git a/src/omnimarket/nodes/node_idle_slot_fill_effect/metadata.yaml b/src/omnimarket/nodes/node_idle_slot_fill_effect/metadata.yaml
+index 57f620bb0..922cc6270 100644
+--- a/src/omnimarket/nodes/node_idle_slot_fill_effect/metadata.yaml
++++ b/src/omnimarket/nodes/node_idle_slot_fill_effect/metadata.yaml
+@@ -8,7 +8,8 @@ description: 'The lab is never idle: from the throughput tick''s live pool hosts
+   designs come from the idle_slot_fill and repos overlays. The fill reads active repository fixer HOLDs
+   from the declared ledger and its archives before selecting work; an unread ledger blocks repository work.
+   Each tick also recovers abandoned blocked or partial ruled work through the same dispatcher, queues repeat
+-  blocks for the orchestrator, and reads declared live ruling checks.'
++  blocks for the orchestrator, and reads declared live ruling checks. All admitted engines, including shared
++  Codex capacity, are ranked by the lane model policy contract; current limit and auth marks remove capacity.'
+ pack: distributed_validation
+ node_role: effect
+ display_name: Idle Slot Fill Effect
+diff --git a/tests/nodes/node_idle_slot_fill_effect/test_codex_capacity_route.py b/tests/nodes/node_idle_slot_fill_effect/test_codex_capacity_route.py
+new file mode 100644
+index 000000000..a587ce808
+--- /dev/null
++++ b/tests/nodes/node_idle_slot_fill_effect/test_codex_capacity_route.py
+@@ -0,0 +1,213 @@
++# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
++# SPDX-License-Identifier: MIT
++"""The real fill effect preserves the declared model across dispatch surfaces."""
++
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++import pytest
++
++from omnimarket.nodes.node_idle_slot_fill_effect.handlers import (
++    handler_idle_slot_fill as fill,
++)
++from omnimarket.nodes.node_idle_slot_fill_effect.models import (
++    ModelIdleSlotFillRequest,
++    ModelLabFillRequest,
++)
++from omnimarket.nodes.node_lane_model_policy_compute.handlers import (
++    handler_lane_model_policy as policy,
++)
++from omnimarket.nodes.node_lane_model_policy_compute.models.model_lane_model_policy import (
++    ModelLaneModelPolicy,
++)
++
++
++@pytest.mark.unit
++@pytest.mark.parametrize(
++    ("claude_slots", "marks", "expected"),
++    [
++        (0, {}, "codex"),
++        (
++            2,
++            {"limited_mark": {"state": "present", "until": "2026-10-29T03:00:00Z"}},
++            "codex",
++        ),
++        (2, {}, "codex"),
++    ],
++)
++def test_fill_routes_experiment_to_declared_available_model(
++    tmp_path: Path,
++    monkeypatch: pytest.MonkeyPatch,
++    claude_slots: int,
++    marks: dict[str, object],
++    expected: str,
++) -> None:
++    monkeypatch.setenv("OMNI_LAB_FILL_GENERATE", "off")
++    backlog = tmp_path / "backlog.json"
++    backlog.write_text(
++        json.dumps(
++            {
++                "items": [
++                    {
++                        "key": "experiment",
++                        "kind": "experiment-design",
++                        "ticket": "OMN-21409",
++                    },
++                    {
++                        "key": "forbidden",
++                        "kind": "experiment-design",
++                        "ticket": "OMN-21409",
++                        "required_engine": "opus",
++                    },
++                ]
++            }
++        )
++    )
++    calls: list[list[str]] = []
++
++    def send(argv: list[str]) -> tuple[bool, str]:
++        calls.append(argv)
++        return True, "DETACHED"
++
++    monkeypatch.setattr(fill, "_send", send)
++    fill.HandlerLabFill().handle(
++        ModelLabFillRequest(
++            now="2026-10-27T03:27:00Z",
++            request={
++                "lab_headroom": {
++                    "hosts": [
++                        {
++                            "name": "host-a",
++                            **marks,
++                            "admission": {
++                                "claude_slots": claude_slots,
++                                "codex_slots": 2,
++                            },
++                        }
++                    ]
++                }
++            },
++            lines=["MISSING lab-headroom:host-a | free slots 2"],
++            launch=None,
++            state_dir=tmp_path / "state",
++            backlog=str(backlog),
++            runner=tmp_path / "unused.py",
++            lanes_dir=tmp_path / "receipts",
++            out_of_scope={},
++        )
++    )
++    assert len(calls) == 1
++    argv = calls[0]
++    assert argv[argv.index("--model") + 1] == expected
++    brief = Path(argv[argv.index("--brief") + 1]).read_text()
++    assert f"ROUTE: model={expected} effort=high\n" in brief
++    assert "model=opus" not in brief
++    assert (
++        json.loads((tmp_path / "state" / fill.SENT_FILE).read_text())["experiment"][
++            "model"
++        ]
++        == expected
++    )
++
++
++@pytest.mark.unit
++def test_shared_capacity_choice_comes_from_contract(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    declared = policy.load_policy()
++    assert declared.ceiling == "sonnet"
++    assert declared.order.index("codex") < declared.order.index("sonnet")
++    reordered = [model for model in declared.order if model != "sonnet"]
++    reordered.insert(0, "sonnet")
++    monkeypatch.setattr(
++        policy,
++        "load_policy",
++        lambda: ModelLaneModelPolicy.model_validate(
++            {**declared.model_dump(), "order": reordered}
++        ),
++    )
++    result = fill.HandlerIdleSlotFill().handle(
++        ModelIdleSlotFillRequest(
++            now="2026-10-27T03:27:00Z",
++            hosts=[
++                {"name": "host-a", "admission": {"claude_slots": 1, "codex_slots": 1}}
++            ],
++            lines=["MISSING lab-headroom:host-a | free slots 1"],
++            backlog=[
++                {
++                    "key": "experiment",
++                    "kind": "experiment-design",
++                    "ticket": "OMN-21409",
++                }
++            ],
++        )
++    )
++    assert result.sends[0]["model"] == "sonnet"
++
++
++@pytest.mark.unit
++@pytest.mark.parametrize(
++    ("mark", "allowed"),
++    [
++        ({"state": "present", "until": "2026-10-29T03:00:00Z"}, False),
++        ({"state": "present", "until": "2026-10-26T03:00:00Z"}, True),
++        ({"state": "unreadable"}, False),
++        ({"state": "present", "until": "invalid"}, False),
++    ],
++)
++def test_claude_pin_waits_for_usable_account_capacity(
++    mark: dict[str, str], allowed: bool
++) -> None:
++    result = fill.HandlerIdleSlotFill().handle(
++        ModelIdleSlotFillRequest(
++            now="2026-10-27T03:27:00Z",
++            hosts=[
++                {
++                    "name": "host-a",
++                    "limited_mark": mark,
++                    "admission": {"claude_slots": 1, "codex_slots": 1},
++                }
++            ],
++            lines=["MISSING lab-headroom:host-a | free slots 1"],
++            backlog=[
++                {
++                    "key": "pinned",
++                    "kind": "experiment-design",
++                    "ticket": "OMN-21409",
++                    "required_engine": "claude",
++                }
++            ],
++        )
++    )
++    assert bool(result.sends) is allowed
++    if allowed:
++        assert result.sends[0]["model"] == "sonnet"
++    else:
++        assert result.skipped[0]["why"] == "claude-required: waiting for Claude quota"
++
++
++@pytest.mark.unit
++@pytest.mark.parametrize("reserved", [0, 1, 2])
++def test_shared_codex_never_exceeds_the_host_budget(reserved: int) -> None:
++    result = fill.HandlerIdleSlotFill().handle(
++        ModelIdleSlotFillRequest(
++            now="2026-10-27T03:27:00Z",
++            hosts=[
++                {"name": "host-a", "admission": {"claude_slots": 2, "codex_slots": 2}}
++            ],
++            lines=["MISSING lab-headroom:host-a | free slots 2"],
++            queue_reserved={"codex": reserved},
++            backlog=[
++                {
++                    "key": f"experiment-{n}",
++                    "kind": "experiment-design",
++                    "ticket": "OMN-21409",
++                }
++                for n in range(3)
++            ],
++        )
++    )
++    assert [send["model"] for send in result.sends] == ["codex"] * (2 - reserved)
++    assert result.idle_after == 0
+diff --git a/tests/nodes/node_idle_slot_fill_effect/test_idle_slot_fill_node.py b/tests/nodes/node_idle_slot_fill_effect/test_idle_slot_fill_node.py
+index c0d9e2a69..c4319478f 100644
+--- a/tests/nodes/node_idle_slot_fill_effect/test_idle_slot_fill_node.py
++++ b/tests/nodes/node_idle_slot_fill_effect/test_idle_slot_fill_node.py
+@@ -89,8 +89,8 @@ def fill(**changes) -> models.ModelIdleSlotFillResult:
+ def test_free_slots_are_filled_from_the_tick_lines_in_pillar_order():
+     result = fill()
+     assert [(s["kind"], s["key"], s["model"]) for s in result.sends] == [
+-        ("process-fix", "repo-private-data#812", "sonnet"),
+-        ("cause-red", "repo-status:omnimarket", "sonnet"),
++        ("process-fix", "repo-private-data#812", "codex"),
++        ("cause-red", "repo-status:omnimarket", "codex"),
+     ]
+     first, second = result.sends
+     assert first["lane"] == "fill-pf-drive-repo-private-data-812-20261018T2130Z"
+@@ -239,7 +239,7 @@ def test_codex_lanes_go_to_codex_only_hosts_after_claude_slots():
+     assert [(s["key"], s["model"]) for s in result.sends] == [
+         ("repo-private-data#812", "codex"),
+         ("repo-status:omnimarket", "codex"),
+-        ("exp:cache-warm", "sonnet"),
++        ("exp:cache-warm", "codex"),
+     ]
+     assert result.codex_only_free == 2
+     assert result.idle_after == 0
+@@ -1654,7 +1654,7 @@ def refuse(*args):
+ 
+ 
+ def test_no_opus_claude_fill_brief_routes_sonnet():
+-    result = fill()
++    result = fill(hosts=[host("host-a", 2, 0)])
+     assert result.sends
+     for send in result.sends:
+         assert send["model"] == "sonnet"
+@@ -1770,7 +1770,7 @@ def test_no_opus_quoted_requirement_is_not_a_pin(fence):
+         ],
+     )
+     assert len(result.sends) == 1
+-    assert result.sends[0]["model"] == "sonnet"
++    assert result.sends[0]["model"] == "codex"
+     assert result.skipped == []

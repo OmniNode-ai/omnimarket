@@ -1,0 +1,54 @@
+contract_id: F07-07
+task_kind: code_review
+inputs:
+- path: src/omnimarket/configs/work_contracts/inputs/F07-07.txt
+  sha256: 02fe004391553fbaf157f2236742ac93efa2248e53787baaf0e15b70f59e0c7f
+acceptance:
+  kind: schema
+  spec:
+    schema:
+      type: object
+      required:
+      - source
+      - old
+      - new
+      - defect
+      properties:
+        source:
+          type: string
+          const: src/omnibase_core/models/security/model_backend_performance_profile.py
+        old:
+          type: string
+          const: default=EnumLatencyLevel.MINIMAL,
+        new:
+          type: string
+          const: default="unrecognized_latency",
+        defect:
+          type: string
+          const: latency defaults to an invalid string instead of EnumLatencyLevel;
+            unvalidated default construction bypasses the enum boundary.
+      additionalProperties: false
+    expected_json: '{"defect": "latency defaults to an invalid string instead of EnumLatencyLevel;
+      unvalidated default construction bypasses the enum boundary.", "new": "default=\"unrecognized_latency\",",
+      "old": "default=EnumLatencyLevel.MINIMAL,", "source": "src/omnibase_core/models/security/model_backend_performance_profile.py"}'
+budgets:
+  max_output_tokens: 8192
+  max_wall_s: 180
+  max_turns: 8
+  max_usd: 5
+controls:
+  positive:
+    path: src/omnimarket/configs/work_contracts/controls/F07-07.positive.txt
+    sha256: 16cb1a872e8c4f41491f4d1394b537cd6f6f315a111fd2cc7917edc0435745d5
+  negative:
+    path: src/omnimarket/configs/work_contracts/controls/F07-07.negative.txt
+    sha256: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+evaluators:
+- path: src/omnimarket/handlers/work_contracts/control_evaluator.py
+  sha256: 35beec5a332b646a0c1a696407f0b4a1f5a683269b19e9f782af9df0ee662d7d
+provenance:
+  source: 2026-10-27-deleg-sc-d-1100.md
+  source_sha256: e9ea31b55d2bedfed466bc0d2d3a9761081d1150c30ecc2426454cc8d0740f8f
+  adaptation: Manual seeded review rubric converted to exact structured defect and
+    consequence fields. The contract requires a JSON finding; historical free text
+    is not equivalent.
