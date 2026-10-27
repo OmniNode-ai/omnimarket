@@ -122,6 +122,11 @@ requirements:
     acceptance:
       - id: "AC41"
         statement: "AC41: a ghost beside an old orphan leaves errors empty, ghost_containers names the ghost and docker rm names only the orphan; an inspect that exits 1 with no rows makes no rm call and records one docker inspect error -- falsifier: env -u PYTHONPATH uv run pytest tests/nodes/node_lab_disk_hygiene_effect/test_lab_disk_hygiene_ghosts.py -q -n 0 --no-cov -p no:randomly fails at the merge base"
+  - id: "req-lab-disk-hygiene-all-ghost-inspect"
+    statement: "When every stopped candidate is a ghost, docker inspect prints nothing on stdout, exits 1 and names each candidate id as an unknown object on stderr; the lab disk hygiene node reads that as all ghosts, records no error and removes nothing. An inspect that exits nonzero without naming every candidate still records the docker inspect error."
+    acceptance:
+      - id: "AC42"
+        statement: "AC42: two dead ghost containers whose inspect exits 1 with no rows and a stderr naming both ids leave errors empty, name both in ghost_containers and make no docker rm call -- falsifier: env -u PYTHONPATH uv run pytest tests/nodes/node_lab_disk_hygiene_effect/test_lab_disk_hygiene_ghosts.py -q -n 0 --no-cov -p no:randomly -k only_ghost_candidates fails at the merge base"
   - id: "req-gateway-overlay-model-swap"
     statement: "Gateway model and thinking mode are deployment configuration; swapping them changes the native call target without a workflow edit. The full gate resolver proof remains in the resolver repository."
     acceptance:
@@ -448,6 +453,26 @@ dod_evidence:
       - check_type: "command"
         check_value: |-
           env docker run --rm --user "$(id -u):$(id -g)" -v "${PWD}:/workspace:ro" -w /workspace -v "$(uv cache dir):/uv-cache" -v "$(command -v uv):/usr/local/bin/uv:ro" -e UV_LINK_MODE=copy -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0="*" -e PYTHONDONTWRITEBYTECODE=1 -e UV_PROJECT_ENVIRONMENT=/tmp/disk-hygiene-venv -e UV_CACHE_DIR=/uv-cache ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a uv run --frozen pytest tests/nodes/node_lab_disk_hygiene_effect -q -n 0 -p no:randomly -p no:cacheprovider --no-cov --basetemp=/tmp/disk-hygiene-tests
+        cwd: "${OMNI_HOME}/omnimarket"
+
+  - id: "dod-omn20910-ac42-disk-hygiene-all-ghosts"
+    description: "Two dead ghost containers whose inspect exits 1 with no rows and a stderr naming both ids are reported in ghost_containers with no error and no docker rm."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_lab_disk_hygiene_effect/test_lab_disk_hygiene_ghosts.py -q -n 0 -p no:randomly --no-cov -k only_ghost_candidates"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC42"]
+  - id: "dod-omn20910-deploy-disk-hygiene-all-ghosts"
+    description: "The check runs tests/nodes/node_lab_disk_hygiene_effect in a disposable Python container from a read-only checkout with a fake docker CLI and no lab service, verifying that an inspect naming every candidate as unknown is read as all ghosts with no error for OMN-20910."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker pull -q ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: |-
+          env docker run --rm --user "$(id -u):$(id -g)" -v "${PWD}:/workspace:ro" -w /workspace -v "$(uv cache dir):/uv-cache" -v "$(command -v uv):/usr/local/bin/uv:ro" -e UV_LINK_MODE=copy -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0="*" -e PYTHONDONTWRITEBYTECODE=1 -e UV_PROJECT_ENVIRONMENT=/tmp/disk-hygiene-all-ghost-venv -e UV_CACHE_DIR=/uv-cache ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a uv run --frozen pytest tests/nodes/node_lab_disk_hygiene_effect -q -n 0 -p no:randomly -p no:cacheprovider --no-cov --basetemp=/tmp/disk-hygiene-all-ghost-tests
         cwd: "${OMNI_HOME}/omnimarket"
 
   - id: "dod-omn20910-gateway-thinking-ac1"

@@ -433,7 +433,13 @@ class HandlerLabDiskHygiene:
                 continue
             cid, _, stamp = line.partition("\t")
             finished[cid.strip()] = _finished_at(stamp)
-        if ages.returncode != 0 and not finished:
+        every_unknown = all(
+            f"no such object: {cid}" in ages.stderr.lower() for cid in candidates
+        )
+        if ages.returncode != 0 and not finished and not every_unknown:
+            # No age read and the engine did not name every candidate as an unknown
+            # object (a hung or absent engine): remove nothing. When it did name them
+            # all, each one is a ghost and falls through to the ghost branch below.
             errors.append(
                 f"docker inspect exit {ages.returncode}: {_tail(ages.stderr)}"
             )
