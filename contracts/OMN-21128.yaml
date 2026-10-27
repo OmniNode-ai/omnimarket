@@ -15,6 +15,12 @@ is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
+  - id: "req-exemplar-sampled-revocation"
+    statement: "Revocation requires a declared minimum sample; precision and recall are derived from labelled confusion counts."
+    acceptance:
+      - id: "AC12"
+        statement: >-
+          AC12: an exemplar is not revoked on a single failure with no prior runs (a minimum sample is required), and precision and recall come from counts, not constants -- falsifier: a one-run revocation, or a recall figure that does not move with the counts.
   - id: "req-exemplar-admission-refusals"
     statement: "A candidate is refused, with every reason listed, when it is in its repository's baseline, comes from a repository where the gate does not run, fails the gate, or is one of the shape-valid negatives."
     acceptance:
@@ -92,6 +98,21 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn21128-ac12-sampled-revocation"
+    description: "A first failure without history is deprecated rather than irrevocably revoked. Precision and recall derive from strict nonnegative confusion counts; each quality threshold requires enough denominator samples. Typed dispatch, RuntimeLocal in-memory dispatch and the packaged onex node CLI run the same cases. This slice does not complete the admission orchestrator or registry writer."
+    source: "manual"
+    binds_ac: ["AC12"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env UV_FROZEN=true uv run pytest tests/nodes/node_exemplar_registry_reconcile_compute/test_sampled_revocation.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21128-deploy-sampled-revocation"
+    description: "Hosted-runner packaged-handler and in-memory-runtime probe checks the sampled revocation behavior, strict evidence validation and checked-in contract/overlay parity. A head without this implementation fails these tests. No live services or credentials are required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run --frozen pytest tests/nodes/node_exemplar_registry_reconcile_compute/test_sampled_revocation.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21128-refusals"
     description: "Baseline, gate-absent, gate-failed and shape-valid negative candidates are refused with every reason."
     source: "manual"

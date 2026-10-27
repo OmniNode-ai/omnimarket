@@ -71,6 +71,17 @@ writer_topics:
   name_prefix: "work-ledger-append-from-"
   version: 1
   principal_pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
+# OMN-20275: the serve host watches that its consumers hold partition assignments. When they do not for
+# `unhealthy_probes_before_degraded` probes in a row the host reports degraded, raises one alarm for the
+# episode and drops and retakes every subscription, waiting `backoff_initial_seconds` growing by
+# `backoff_factor` up to `backoff_cap_seconds` between attempts, until the assignments return.
+consume_watch:
+  probe_interval_seconds: 15
+  unhealthy_probes_before_degraded: 3
+  resubscribe_timeout_seconds: 60
+  backoff_initial_seconds: 15
+  backoff_factor: 2
+  backoff_cap_seconds: 300
 runtime_dispatch:
   # UNATTRIBUTED legacy topic: serve answers parsed requests with a refusal.
   command_topic: "onex.cmd.omnimarket.work-ledger-append-requested.v1"

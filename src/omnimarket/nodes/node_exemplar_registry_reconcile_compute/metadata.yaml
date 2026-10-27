@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 name: node_exemplar_registry_reconcile_compute
-version: "1.0.0"
-description: Pure TC.5 exemplar registry reconciliation and lifecycle planning
+version: "1.1.0"
+description: Pure TC.5 exemplar registry reconciliation with sampled quality evidence
 omnibase_core_compat: ">=0.47.28,<0.48.0"
 entry_points:
   onex.nodes:
