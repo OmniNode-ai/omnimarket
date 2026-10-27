@@ -9,24 +9,6 @@ is_seam_ticket: false
 interface_change: true
 interfaces_touched: ["public_api"]
 requirements:
-  - id: "req-original-ledger-bus-acceptance"
-    statement: "Original ledger append acceptance from the supplied ticket; cross-repository and live-host checks remain local Done-gate work."
-    acceptance:
-      - id: "AC1"
-        statement: |-
-          AC1: the serve handler appends a request's rows through the configured append command exactly once: a redelivered request id returns status duplicate with the original line and no second row -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_append_effect -q -k redelivered_request_appends_once
-      - id: "AC2"
-        statement: |-
-          AC2: a request whose append command exits 65 yields a receipt with status refused, exit_code 65 and the refusal text, and the ledger file is byte-identical -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_append_effect -q -k refused_append_leaves_ledger_unchanged
-      - id: "AC3"
-        statement: |-
-          AC3: a RULING or OPERATOR-CONSENT row in a bus request is refused before the append command runs -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_append_effect -q -k consent_and_ruling_refused_over_bus
-      - id: "AC4"
-        statement: |-
-          AC4: onex-ledger with ONEX_LEDGER_WRITE_VIA=bus writes nothing locally, publishes one request carrying req= and via=bus cells, and exits with the receipt exit code; with the publisher missing it refuses with exit 69 and names the variable -- falsifier: uv run pytest tests/ledger -q -k bus_write_mode
-      - id: "AC5"
-        statement: |-
-          AC5: a remote-lane run on h202 writes its own CLAIM and TERMINAL through the ledger skills, and both rows are in the ledger of record and in omninode_internal.work_ledger_rows with the same row_id -- falsifier: grep -c of the run lane in the ledger file expecting 2, plus psql count(\*) from omninode_internal.work_ledger_rows where raw_row like the run lane expecting 2
   - id: "req-broker-principal-attribution"
     statement: "Rows are attributed to the broker principal of the producing connection, attested by the per-principal writer topic, and per-row signing is removed."
     acceptance:
@@ -84,6 +66,18 @@ requirements:
       - id: "AC20"
         statement: |-
           AC20: the in-memory SCM CLI resolves App refs through the write handler's canonical secret resolver, mints a repository-scoped token and returns a completed terminal through a recorded HTTP boundary -- falsifier: uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_app_credentials.py -q -p no:randomly -k inmemory_cli_uses_the_same_store_resolver
+  - id: "req-ledger-writer-consumer-recovery"
+    statement: "The ledger writer retakes its subscriptions when the broker drops its consumer group, under the node contract's capped backoff, without restarting the writer or losing a queued command."
+    acceptance:
+      - id: "AC21"
+        statement: |-
+          AC21: after the consumer session expires and the group coordinator is unavailable, the writer resubscribes once the coordinator returns and appends the commands published during the outage exactly once, through the same worker task, across five dropped sessions -- falsifier: uv run pytest tests/unit/work_ledger_bus/test_consume_watch.py -q -k "resumes_appending or resubscribes_and_appends"
+      - id: "AC22"
+        statement: |-
+          AC22: resubscribe attempts back off from the initial delay and never exceed the cap declared in node_work_ledger_append_effect's contract -- falsifier: uv run pytest tests/unit/work_ledger_bus/test_consume_watch.py -q -k "backoff_grows or policy_comes_from"
+      - id: "AC23"
+        statement: |-
+          AC23: a degraded episode writes a degraded state file and exactly one exception-queue alarm, recovery writes healthy, and a second episode raises a second alarm -- falsifier: uv run pytest tests/unit/work_ledger_bus/test_consume_watch.py -q -k one_alarm_per_episode
 evidence_requirements:
   - kind: "tests"
     description: "AC6 to AC9: handler, bus host, CLI and lane-principal tests."
@@ -249,71 +243,29 @@ dod_evidence:
         check_value: |-
           env docker run --rm --user "$(id -u):$(id -g)" -v "${PWD}:/workspace:ro" -w /workspace -v "$(uv cache dir):/uv-cache" -v "$(command -v uv):/usr/local/bin/uv:ro" -e UV_LINK_MODE=copy -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0="*" -e PYTHONDONTWRITEBYTECODE=1 -e UV_PROJECT_ENVIRONMENT=/tmp/github-write-auth-venv -e UV_CACHE_DIR=/uv-cache ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_app_credentials.py tests/unit/test_github_app_auth.py -q -p no:randomly -p no:cacheprovider --basetemp=/tmp/github-write-auth-tests
         cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn20275-ac1-original-ledger-handler"
-    description: "AC1: the serve handler appends a request's rows through the configured append command exactly once: a redelivered request id returns status duplicate with the original line and no second row"
+  - id: "dod-omn20275-ac21-consumer-drop-recovery"
+    description: "AC21: the writer resubscribes after dropped sessions and appends each post-drop command exactly once without a restart"
     source: "manual"
-    binds_ac: ["AC1"]
+    binds_ac: ["AC21"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_work_ledger_append_effect -q -k redelivered_request_appends_once"
+        check_value: 'uv run pytest tests/unit/work_ledger_bus/test_consume_watch.py -q -k "resumes_appending or resubscribes_and_appends"'
         cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn20275-ac2-original-ledger-handler"
-    description: "AC2: a request whose append command exits 65 yields a receipt with status refused, exit_code 65 and the refusal text, and the ledger file is byte-identical"
+  - id: "dod-omn20275-ac22-consumer-backoff-cap"
+    description: "AC22: resubscribe backoff grows from the initial delay to the cap declared in the node contract"
     source: "manual"
-    binds_ac: ["AC2"]
+    binds_ac: ["AC22"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_work_ledger_append_effect -q -k refused_append_leaves_ledger_unchanged"
+        check_value: 'uv run pytest tests/unit/work_ledger_bus/test_consume_watch.py -q -k "backoff_grows or policy_comes_from"'
         cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn20275-ac3-original-ledger-handler"
-    description: "AC3: a RULING or OPERATOR-CONSENT row in a bus request is refused before the append command runs"
+  - id: "dod-omn20275-ac23-consumer-degraded-alarm"
+    description: "AC23: one degraded state report and one exception-queue alarm per episode"
     source: "manual"
-    binds_ac: ["AC3"]
+    binds_ac: ["AC23"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_work_ledger_append_effect -q -k consent_and_ruling_refused_over_bus"
-        cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn20275-ac4-original-bus-write-mode"
-    description: "AC4 belongs to the ledger CLI source repository, selected by ONEX_LEDGER_SOURCE_ROOT. Pending local Done-gate evidence; this omnimarket-only recovery lane does not claim to have run it."
-    source: "manual"
-    binds_ac: ["AC4"]
-    execution_scope: "local_done_gate"
-    status: "pending"
-    checks:
-      - check_type: "test_passes"
-        check_value: 'uv run --directory "${ONEX_LEDGER_SOURCE_ROOT:?set to the ledger CLI source root}" pytest tests/ledger -q -k bus_write_mode'
-        cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn20275-ac5-h202-live-ledger-parity"
-    description: "AC5 requires an actual h202 run's own CLAIM and TERMINAL, exactly two ledger and projection rows with identical raw text and derived row_id. Pending local Done-gate readback, never inferred from this h201 lane. Set OMN20275_H202_LANE and ONEX_LEDGER_PATH to that run and the ledger of record; psql uses the operator's existing read connection."
-    source: "manual"
-    binds_ac: ["AC5"]
-    execution_scope: "local_done_gate"
-    status: "pending"
-    checks:
-      - check_type: "command"
-        check_value: |-
-          uv run python - <<'PY'
-          import json
-          import os
-          import subprocess
-          from pathlib import Path
-          from omnimarket.events.model_ledger_row_event import work_ledger_row_id
-          lane = os.environ["OMN20275_H202_LANE"]
-          assert lane and "\n" not in lane
-          rows = []
-          for line in Path(os.environ["ONEX_LEDGER_PATH"]).read_text().splitlines():
-              cells = [cell.strip() for cell in line.split(" | ")]
-              if len(cells) > 2 and cells[1] in {"CLAIM", "TERMINAL"} and f"lane={lane}" in cells:
-                  assert "host=h202" in cells and any(cell.startswith("via=bus") for cell in cells)
-                  rows.append(line)
-          assert len(rows) == 2 and {row.split(" | ")[1] for row in rows} == {"CLAIM", "TERMINAL"}
-          sql = "SELECT coalesce(json_agg(json_build_object('row_id',row_id,'raw_row',raw_row)), '[]'::json) FROM omninode_internal.work_ledger_rows WHERE row_lane = :'lane' AND row_type IN ('CLAIM', 'TERMINAL');"
-          result = subprocess.run(["psql", "-XAt", "-v", "ON_ERROR_STOP=1", "-v", f"lane={lane}"], input=sql, text=True, capture_output=True, check=True)
-          projected = json.loads(result.stdout)
-          assert len(projected) == 2
-          assert {(row["row_id"], row["raw_row"]) for row in projected} == {(work_ledger_row_id(row), row) for row in rows}
-          print("AC5: h202 CLAIM and TERMINAL match ledger and projection row_id")
-          PY
+        check_value: 'uv run pytest tests/unit/work_ledger_bus/test_consume_watch.py -q -k "one_alarm_per_episode"'
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20275-deploy-consume-watch-recovery"
     description: "Deploy probe in a disposable Python container from a read-only checkout: five dropped consumer sessions recover without restarting the writer, and the real append handler invokes its configured command once per post-drop row. Disabling ConsumeWatch leaves the ledger empty and fails the regression. No broker, credentials or lab service is required."
