@@ -284,18 +284,18 @@ def test_ac3_the_decided_event_carries_the_measures_and_round_trips(
         correlation_id=uuid4(),
         task_type="code_generation",
         candidates=candidates,
-        selection_contract=load_measured_selection_contract(),
         pricing=pricing,
         runs=runs,
         decided_at=NOW,
     )
+    handler = HandlerMeasuredModelSelection(load_measured_selection_contract())
 
     def forbid_file_read(*args: object, **kwargs: object) -> str:
         raise AssertionError("COMPUTE attempted a file read")
 
     with monkeypatch.context() as guard:
         guard.setattr(Path, "read_text", forbid_file_read)
-        event = HandlerMeasuredModelSelection().handle(request)
+        event = handler.handle(request)
 
     assert event.task_type == request.task_type
     assert event.selection.selected_model == "Qwen3.8-27B"

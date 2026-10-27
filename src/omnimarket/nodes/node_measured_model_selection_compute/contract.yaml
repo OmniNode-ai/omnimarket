@@ -89,7 +89,6 @@ inputs:
   correlation_id: {type: UUID, required: true}
   task_type: {type: str, required: true}
   candidates: {type: tuple, required: true}
-  selection_contract: {type: ModelMeasuredSelectionContract, required: true}
   pricing: {type: tuple, required: true}
   runs: {type: tuple, required: true}
   decided_at: {type: datetime, required: true}

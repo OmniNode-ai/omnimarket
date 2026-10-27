@@ -11,7 +11,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.delegation.model_measured_selection import (
     ModelMeasuredSelection,
-    ModelMeasuredSelectionContract,
     ModelPricedModel,
     ModelRecordedRun,
     ModelSelectionCandidate,
@@ -27,7 +26,6 @@ class ModelMeasuredSelectionRequest(BaseModel):
     task_type: str = Field(min_length=1)
     #: The routing contract's candidates, each with its measure sources.
     candidates: tuple[ModelSelectionCandidate, ...] = Field(min_length=1)
-    selection_contract: ModelMeasuredSelectionContract
     pricing: tuple[ModelPricedModel, ...]
     runs: tuple[ModelRecordedRun, ...]
     decided_at: datetime

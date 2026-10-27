@@ -32,6 +32,7 @@ from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
 
 from omnimarket.handlers.handler_measured_selection_config import (
     MeasuredSelectionContractError,
+    load_measured_selection_contract,
 )
 from omnimarket.models.delegation.model_measured_selection import (
     ModelCandidateMeasures,
@@ -243,13 +244,26 @@ def select_by_measure(
 
 
 class HandlerMeasuredModelSelection:
-    """Rank on the shipped rules; the decided event carries every measure read."""
+    """Rank on the shipped rules; the decided event carries every measure read.
+
+    The rules are injected at construction and loaded outside this node, so
+    ``handle`` reads no file and the request keeps its released wire shape.
+    """
+
+    def __init__(
+        self, selection_contract: ModelMeasuredSelectionContract | None = None
+    ) -> None:
+        self._selection_contract = (
+            selection_contract
+            if selection_contract is not None
+            else load_measured_selection_contract()
+        )
 
     def handle(
         self, request: ModelMeasuredSelectionRequest
     ) -> ModelMeasuredSelectionDecidedEvent:
         selection = select_by_measure(
-            request.selection_contract,
+            self._selection_contract,
             request.candidates,
             request.pricing,
             request.runs,
