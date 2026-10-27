@@ -40,6 +40,8 @@ def fixed_tasks() -> list[dict[str, Any]]:
 
 
 def files_for(task: dict[str, Any]) -> tuple[dict[str, str], str]:
+    if task.get("cohort") == "recent":
+        return task["files"], task["prompt"]
     kind, i = task["task_class"], task["variant"]
     cap = i * 10
     if kind == "rebase-conflict":
@@ -141,6 +143,11 @@ def files_for(task: dict[str, Any]) -> tuple[dict[str, str], str]:
 
 def oracle(task: dict[str, Any], root: Path) -> None:
     """Positive control used only by checker tests, never exposed to a harness."""
+    if task.get("cohort") == "recent":
+        from tests.harness_evals.recent import oracle_recent
+
+        oracle_recent(task, root)
+        return
     kind, i = task["task_class"], task["variant"]
     if kind == "rebase-conflict":
         (root / "limits.py").write_text(
@@ -445,9 +452,19 @@ if __name__ == "__main__":
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--git-dir")
     args = parser.parse_args()
+    if __package__:
+        from .recent import check_task, recent_tasks
+    else:
+        from recent import check_task, recent_tasks
+
     selected = next(
-        (task for task in fixed_tasks() if task["item_key"] == args.item_key), None
+        (
+            task
+            for task in fixed_tasks() + recent_tasks()
+            if task["item_key"] == args.item_key
+        ),
+        None,
     )
     if selected is None:
         parser.error("unknown fixed fixture item")
-    raise SystemExit(0 if check(selected, args.root, git_dir=args.git_dir) else 1)
+    raise SystemExit(0 if check_task(selected, args.root, git_dir=args.git_dir) else 1)
