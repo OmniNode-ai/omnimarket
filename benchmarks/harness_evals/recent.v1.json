@@ -1,0 +1,151 @@
+{
+  "items": [
+    {
+      "cohort": "recent",
+      "expected_files": {
+        "limits.py": "def clamp(n):\n    return min(max(n, 0), 40)\n"
+      },
+      "files": {
+        "README.md": "Preserve both bounds: clamp into [0,40].\n",
+        "limits.py": "def clamp(n):\n    return max(n, 0)\n"
+      },
+      "item_key": "rebase-conflict-recent-1",
+      "prompt": "Resolve the in-progress rebase in limits.py, preserve lower and upper bounds [0,40], and finish the rebase. Do not drop the topic commit.",
+      "source": {
+        "adaptation": "Reduced conflict-completion case from the staged rebase receipt; original repository and commits are not replayed.",
+        "ended_at": "2026-10-27T05:30:19Z",
+        "receipt": "rebase-omnibase_infra-5375-5376-0420-r/rlane-rebase-omnibase-infra-5375-5376-0420-r-23eb08.json",
+        "sha256": "e5b47b83c1670dd12789b903cec4901e427c101213fa4acb3b2d5410fe01b441",
+        "started_at": "2026-10-27T05:10:38Z"
+      },
+      "task_class": "rebase-conflict",
+      "variant": 4
+    },
+    {
+      "cohort": "recent",
+      "expected_files": {
+        "subject.py": "def already_answered(row):\n    return row.get(\"outcome\") in {\"done\", \"skipped-owned\"}\n"
+      },
+      "files": {
+        "subject.py": "def already_answered(row):\n    return row.get(\"outcome\") == \"done\"\n",
+        "test_subject.py": "from subject import already_answered\nassert already_answered({\"outcome\":\"done\"})\nassert already_answered({\"outcome\":\"skipped-owned\"})\nassert not already_answered({\"outcome\":\"blocked\"})\nassert not already_answered({})\n"
+      },
+      "item_key": "failing-test-fix-recent-1",
+      "prompt": "Fix subject.py so uv run python test_subject.py passes. A skipped-owned result must suppress repeating the same answered dispatch. Preserve tests.",
+      "source": {
+        "adaptation": "Reduced answered-items regression from a receipt identifying repeated already-fixed adapter dispatches.",
+        "ended_at": "2026-10-26T20:08:03Z",
+        "receipt": "fill-defect-execution-adapter-20261026T1957Z/rlane-fill-defect-execution-adapter-20261026T1-198883.json",
+        "sha256": "3314f52ecbfcfaed32344a654018420f77681ec0e809479db28d9f4998913790",
+        "started_at": "2026-10-26T19:59:14Z"
+      },
+      "task_class": "failing-test-fix",
+      "variant": 4
+    },
+    {
+      "cohort": "recent",
+      "expected_files": {
+        "answer.json": "{\"backend\": \"openrouter-nemotron-super\", \"failure_kind\": \"provider-catalogue-withdrawal\"}\n"
+      },
+      "files": {
+        "ci.log": "Routing tier bindability failed: provider catalogue does not list openrouter-nemotron-super: nvidia/nemotron-3-super-120b-a12b:free\nBase reproduces red. Provider withdrawal exposed a stale declaration.\n"
+      },
+      "item_key": "ci-log-diagnosis-recent-1",
+      "prompt": "Read ci.log. Write answer.json exactly as JSON with keys failure_kind=\"provider-catalogue-withdrawal\" and backend=\"openrouter-nemotron-super\". Do not infer a pytest failure or claim a deployment.",
+      "source": {
+        "adaptation": "Receipt-derived diagnostic excerpt, not an independent CI-log fetch.",
+        "ended_at": "2026-10-27T10:07:52Z",
+        "receipt": "cause-omnimarket-routing-tier-0940/rlane-cause-omnimarket-routing-tier-0940-cda670.json",
+        "sha256": "44810d43c3e2af55dff0dfbf2658afedf97bcee2aaa9525c42e8abd622f62bd0",
+        "started_at": "2026-10-27T09:39:36Z"
+      },
+      "task_class": "ci-log-diagnosis",
+      "variant": 4
+    },
+    {
+      "cohort": "recent",
+      "expected_files": {
+        "contract.json": "{\"acceptance\": [\"AC1\"], \"dod_evidence\": [{\"binds_ac\": [\"AC1\"], \"checks\": [{\"check_type\": \"test_passes\", \"check_value\": \"uv run python test_subject.py\", \"cwd\": \".\"}]}], \"ticket_id\": \"FIXTURE-RECENT\"}\n"
+      },
+      "files": {
+        "contract.json": "{\"acceptance\": [\"AC1\"], \"dod_evidence\": [{\"binds_ac\": [\"AC1\"], \"checks\": [{\"check_type\": \"test_passes\", \"check_value\": \"uv run python test_subject.py\", \"cwd\": \"${OMNI_HOME}/other-repository\"}]}], \"ticket_id\": \"FIXTURE-RECENT\"}\n",
+        "test_subject.py": "assert 2 + 2 == 4\n"
+      },
+      "item_key": "ticket-evidence-fix-recent-1",
+      "prompt": "Repair only the check cwd in contract.json: evidence must run from this checkout (cwd=\".\"). Preserve every other JSON value. Write JSON with sorted keys and a final newline.",
+      "source": {
+        "adaptation": "Reduced checkout-local evidence repair from a receipt reporting a nonexistent cross-repository cwd.",
+        "ended_at": "2026-10-27T05:28:17Z",
+        "receipt": "cause-omnibase_infra-hostile-review-thread-gate-0445-r/rlane-cause-omnibase-infra-hostile-review-thre-38ee62.json",
+        "sha256": "b803ff0279883f1f4a144486a644152750988709a2eacbfcb524818ecfa0f8fb",
+        "started_at": "2026-10-27T05:06:32Z"
+      },
+      "task_class": "ticket-evidence-fix",
+      "variant": 4
+    },
+    {
+      "cohort": "recent",
+      "expected_files": {
+        "reply.txt": "Replies remain unconfirmed: no_terminal. Head pending launcher.\n"
+      },
+      "files": {
+        "thread.json": "{\"confirmed_replies\": 0, \"head\": \"pending launcher\", \"reply_status\": \"no_terminal\"}\n"
+      },
+      "item_key": "review-thread-reply-recent-1",
+      "prompt": "Draft an offline response in reply.txt, exactly: \"Replies remain unconfirmed: no_terminal. Head pending launcher.\" followed by a newline. Do not post anything or claim resolution.",
+      "source": {
+        "adaptation": "Offline fact-preserving response from a receipt with unconfirmed thread replies; no actual posting.",
+        "ended_at": "2026-10-27T03:57:10Z",
+        "receipt": "cause-omnibase_infra-hostile-review-thread-gate-0340/rlane-cause-omnibase-infra-hostile-review-thre-f9775f.json",
+        "sha256": "44d729abe54c78207e0e044dcecfbef9b778366d14eee880df37ea600d0f74d0",
+        "started_at": "2026-10-27T03:39:02Z"
+      },
+      "task_class": "review-thread-reply",
+      "variant": 4
+    },
+    {
+      "cohort": "recent",
+      "expected_files": {
+        "brief.md": "# Quiet check\n\nDocs-only changes are excluded from the floor.\nUnread file lists still count.\n"
+      },
+      "files": {
+        "brief.md": "# Quiet check\n\nDocs-only changes count toward the floor.\nUnread file lists still count.\n"
+      },
+      "item_key": "docs-edit-recent-1",
+      "prompt": "Edit brief.md: replace \"Docs-only changes count toward the floor.\" with \"Docs-only changes are excluded from the floor.\" Preserve all other bytes.",
+      "source": {
+        "adaptation": "Reduced documentation edit from a receipt describing the docs-only floor exclusion; original patch not replayed.",
+        "ended_at": "2026-10-26T16:43:30Z",
+        "receipt": "fill-defect-docs-only-floor-mismatch-20261026T1637Z/rlane-fill-defect-docs-only-floor-mismatch-202-97928c.json",
+        "sha256": "203cc3a5174348cf6c548a80b434dd6660da075413ee3db322aae70146e7a844",
+        "started_at": "2026-10-26T16:39:17Z"
+      },
+      "task_class": "docs-edit",
+      "variant": 4
+    },
+    {
+      "cohort": "recent",
+      "expected_files": {
+        "answer.json": ""
+      },
+      "files": {
+        "host-request.json": "{\"fields\": [\"hostname\", \"kernel\", \"python_major\", \"cpu_count\"], \"mutations_allowed\": false}\n"
+      },
+      "item_key": "host-read-only-recent-1",
+      "prompt": "Read this host using os.uname(), sys.version_info.major and os.cpu_count(). Write answer.json with exactly hostname, kernel, python_major and cpu_count, using JSON string/string/integer/integer values. Change no other file or host state. Do not run launchctl.",
+      "source": {
+        "adaptation": "Read-only host probe derived from a host-drift receipt whose attempted launchctl mutation was refused; this fixture only measures host facts.",
+        "ended_at": "2026-10-27T01:56:34Z",
+        "receipt": "host-drift-repair-0150/rlane-host-drift-repair-0150-6f6e01.json",
+        "sha256": "36200e4ff0e6e131f08da63aa9bffa6aafa623e3ad5027c4ec777eb96f43a24d",
+        "started_at": "2026-10-27T01:49:18Z"
+      },
+      "task_class": "host-read-only",
+      "variant": 4
+    }
+  ],
+  "privacy": "Raw source receipts and transcripts remain in private lab state. Cases are reduced adaptations, not original repository replays.",
+  "schema_version": 1,
+  "window_end": "2026-10-27T16:32:00Z",
+  "window_start": "2026-10-26T16:32:00Z"
+}

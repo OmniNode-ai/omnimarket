@@ -39,6 +39,12 @@ requirements:
       - id: "AC2"
         statement: >-
           AC2: a lane label never claims a protected container, and an unlabelled container is reported unowned and never named for stopping -- falsifier: the same pytest run fails
+  - id: "req-omn21288-work-contract-pins-current"
+    statement: "The work contract corpus loads against the current tree, so whole-tree collection succeeds."
+    acceptance:
+      - id: "AC3"
+        statement: >-
+          AC3: every work contract input pin, including the uv.lock environment pin, matches the file on disk -- falsifier: uv run pytest tests/nodes/test_work_contract_pins_current.py -q --no-cov fails
 evidence_requirements:
   - kind: "tests"
     description: "Retention tests pass"
@@ -162,3 +168,11 @@ dod_evidence:
           bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/handler_projection_runtime_writer.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python -c "import ast, sys; tree = ast.parse(sys.stdin.read()); cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == \"RuntimeProjectionWriter\"); assert any(isinstance(n, ast.FunctionDef) and n.name == \"handle\" for n in cls.body)"'
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_omn21288_projection_writers_in_runtime.py -q --no-cov --refuse-skips"
+  - id: "dod-omn21288-r3-pins-current"
+    description: "The corpus of work contracts loads with every pin matching the tree. The test fails at the merge base, where the uv.lock pin is stale."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/test_work_contract_pins_current.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"

@@ -357,7 +357,7 @@ dod_evidence:
     binds_ac: ["AC2"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build_deadline.py -q -n 0 --no-cov"
+        check_value: "uv run pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_pack_build_deadline.py -q -n 0 --no-cov"
   - id: "dod-omn21090-deploy-compaction-deadline"
     description: >-
       Hosted-runner offline deployment probe of the packaged compaction handler

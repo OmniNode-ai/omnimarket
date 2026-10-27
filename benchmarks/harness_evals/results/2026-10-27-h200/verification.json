@@ -1,0 +1,50 @@
+{
+  "checks": [
+    {
+      "command": "HARNESS_EVAL_TEST_GIT_DIR=\"$GIT_DIR\" uv run --frozen pytest tests/unit/delegation/test_harness_eval.py tests/unit/delegation/test_harness_eval_fixtures.py tests/unit/delegation/test_harness_eval_recent.py tests/nodes/node_remote_lane_compute/test_engine_ladder_remote_lane_compute.py tests/nodes/node_remote_lane_compute/test_engine_experiment_rows.py tests/nodes/node_delegation_eval_run_orchestrator tests/test_golden_chain_projection_delegation_eval.py -q --no-cov --refuse-skips -n 0",
+      "exit_code": 0,
+      "observed": "137 passed in 13.84s"
+    },
+    {
+      "command": "uv run --frozen mypy src/ --strict",
+      "exit_code": 0,
+      "observed": "Success: no issues found in 6597 source files"
+    },
+    {
+      "command": "uv run --frozen ruff check --fix <changed Python files>",
+      "exit_code": 0,
+      "observed": "Found 1 error (1 fixed, 0 remaining)"
+    },
+    {
+      "command": "ModelTicketContract.from_yaml(contracts/OMN-21396.yaml)",
+      "observed": "contract parsed OMN-21396"
+    },
+    {
+      "command": "uv run --frozen pre-commit run --files <staged implementation and evidence files>",
+      "exit_code": 1,
+      "observed": "test-deletion-parity-receipt-gate could not discover .git after scrubbing Git location environment; all other applicable hooks passed"
+    },
+    {
+      "command": "uv run --frozen pre-commit run --all-files",
+      "exit_code": 1,
+      "observed": "sandbox protected-file write refusal; contract-sweep, parity and anti-growth validators cannot discover hidden .git. Initial hygiene configuration was supplied for the subsequent changed-file run."
+    },
+    {
+      "command": "Independent final fixture and receipt replay; disjoint cohort attempt IDs; capability guard",
+      "exit_code": 0,
+      "observed": "56 observations verified; 56 unique proposed attempts; no capability promotion"
+    },
+    {
+      "command": "Typed excluded-attempt rows and global identifier validation",
+      "exit_code": 0,
+      "observed": "5 invalid-checker attempts retained separately; 61 unique proposed attempts overall"
+    }
+  ],
+  "host": "h200",
+  "lane": "cx-exp-harness-evals-1835",
+  "limitations": [
+    "Codex startup probes cannot initialize the in-process app-server inside the lane sandbox. No Codex model task trial was produced.",
+    "All-files pre-commit cannot open the sandbox-protected .agents/plugins/marketplace.json for writing. The launcher must repeat it outside the lane sandbox.",
+    "The changed-file parity gate and all-files contract-sweep gate require .git discovery that this headless worktree intentionally hides; launcher validation is pending."
+  ]
+}
