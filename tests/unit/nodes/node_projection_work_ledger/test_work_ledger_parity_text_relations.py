@@ -161,7 +161,7 @@ def test_a_projected_row_that_no_longer_parses_is_an_authority_mismatch() -> Non
     assert (EnumParityMismatchKind.ROW_AUTHORITY_DIFFERS, rid) in kinds
 
 
-def test_without_projected_text_the_row_checks_do_not_run() -> None:
+def test_without_projected_text_every_shared_row_is_named() -> None:
     log, state, _raw = _project(ROWS)
     report = compare(
         file_rows=ROWS,
@@ -170,8 +170,13 @@ def test_without_projected_text_the_row_checks_do_not_run() -> None:
         since=SINCE,
         until=UNTIL,
     )
-    assert report.exact is True
-    assert (report.rows_text_compared, report.relations_compared) == (0, 0)
+    assert report.exact is False
+    assert report.rows_text_compared == 0
+    assert {
+        m.key
+        for m in report.mismatches
+        if m.kind is EnumParityMismatchKind.ROW_TEXT_MISSING_IN_PROJECTION
+    } == set(log)
 
 
 def test_receipt_counts_text_and_relation_mismatches() -> None:

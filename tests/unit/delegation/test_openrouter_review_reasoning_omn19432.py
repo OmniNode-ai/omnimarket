@@ -86,11 +86,10 @@ def _bifrost_backends() -> dict[str, Any]:
 
 
 def test_the_withdrawn_sibling_is_absent_from_the_free_tier() -> None:
-    """A refused call on the ultra rung retries its sibling before any metered tier."""
+    """The withdrawn sibling is neither a tier entry nor a declared backend."""
     refs = [m["backend_id"] for m in _tiers()["cheap_frontier"]["models"]]
     assert refs == [_FREE_RUNG]
-    assert _bifrost_backends()[_SIBLING]["endpoint_url"] is None
-    assert _bifrost_backends()[_SIBLING]["explicit_pin_only"] is True
+    assert _SIBLING not in _bifrost_backends()
 
 
 def test_the_third_free_model_leaves_out_the_class_it_measured_weak_on() -> None:

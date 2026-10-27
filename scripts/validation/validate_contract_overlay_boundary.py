@@ -12,6 +12,12 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from omnibase_core.validation.validator_routing_authority import main as core_main
+
+from omnimarket.handlers.handler_contract_routing_overlay import (
+    load_routing_contract,
+    routing_overlay_path,
+)
 
 FORBIDDEN_KEYS = {
     "api_base",
@@ -227,6 +233,32 @@ def changed_contracts(root: Path, ref: str) -> list[Path]:
     return [root / line for line in result.stdout.splitlines() if line]
 
 
+def _check_routing_authority(root: Path) -> int:
+    """Audit the base and its runtime overlay without changing core's audits.
+
+    ModelRoutingContractEntry requires a served model in the routing document.
+    OMN-20201 forbids that choice in the base node contract, so resolve the same
+    explicit sibling resource the runtime reads and pass it to core's CLI.
+    Default source, residue and endpoint audits are preserved in full.
+    """
+    contract = root / "src/omnimarket/nodes/node_generation_consumer/contract.yaml"
+    try:
+        findings = validate_contract_overlay_boundary(root, [contract])
+        for finding in findings:
+            print(finding.format(root))
+        if findings:
+            return 1
+        load_routing_contract(contract)
+        raw = yaml.safe_load(contract.read_text(encoding="utf-8"))
+        overlay = routing_overlay_path(contract, raw)
+    except (OSError, ValueError, KeyError, TypeError, yaml.YAMLError) as exc:
+        print(f"routing-authority-gate: {exc}")
+        return 1
+    return core_main(
+        ["--repo-root", str(root), "--contract", str(overlay.relative_to(root))]
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Validate node contract.yaml files do not own LLM model or endpoint defaults."
@@ -248,8 +280,19 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         help="Scan only these contract.yaml files (pre-commit passes the staged ones).",
     )
+    parser.add_argument(
+        "--routing-authority",
+        action="store_true",
+        help="Audit the generation base and its explicit routing overlay with core.",
+    )
     args = parser.parse_args(argv)
     root = args.root.resolve()
+    if args.routing_authority:
+        if args.changed_since or args.paths:
+            parser.error(
+                "--routing-authority cannot be combined with contract path filters"
+            )
+        return _check_routing_authority(root)
 
     scoped: list[Path] | None = None
     if args.changed_since:

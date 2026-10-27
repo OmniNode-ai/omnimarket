@@ -554,27 +554,10 @@ backends:
     extra_headers:
       HTTP-Referer: "https://omninode.ai"
       X-Title: "OmniNode ONEX Experiment"
-  # Super is withdrawn: its free slug remains in OpenRouter's catalogue, but
-  # the authenticated chat endpoint returns HTTP 404 (Nvidia function missing,
-  # verified 2026-10-25). No provider rename was established. Ultra and its
-  # north-mini spread peer remain the free tier before metered escalation.
-  # The Super declaration is parked for historical references only. No endpoint
-  # and explicit_pin_only prevent ordinary or pinned inference on the dead slug.
-  # Parked the same way as cloud-glm above: the `endpoint_url_env` name is inert
-  # and exists only for the provider endpoint shape audit. The deploy-time
-  # renderer strips it, nothing reads it from the process environment, and a
-  # lane overlay binds only local backends, so no lane sets it.
-  - backend_id: openrouter-nemotron-super
-    provider: openrouter
-    endpoint_url_env: BIFROST_OPENROUTER_NEMOTRON_SUPER_ENDPOINT_URL
-    endpoint_url: null
-    explicit_pin_only: true
-    model_name: "nvidia/nemotron-3-super-120b-a12b:free"
-    secret_ref: llm.openrouter.api_key
-    tier: cheap_frontier
-    timeout_ms: 300000
-    max_tokens: 65536
-    capabilities: [judge_adequacy, code_generation, reasoning, research, refactoring]
+  # Super is withdrawn: the free slug returned HTTP 404 on 2026-10-25
+  # and disappeared from the provider catalogue on 2026-10-27. Its parked
+  # declaration and routing references are retired; historical receipts retain
+  # their original backend identity. Ultra and north-mini remain declared.
   # OMN-19432: a third FREE OpenRouter model, cohere/north-mini-code:free, priced 0/0
   # in the same 2026-09-30 catalog read, 256000-token window, 64000 output cap. On the
   # delegate's own gate, judge off, over 29 of the 2026-09-30 delegated tasks it passed
@@ -667,8 +650,8 @@ backends:
 #   shadow_policy_id: UUID of the shadow policy used for A/B evaluation
 routing_rules:
   # ── code_generation ──────────────────────────────────────────────────────
-  # Route code generation to local coder first (zero API cost),
-  # then try the existing non-Gemini free cloud rungs for reliability.
+  # Packaged rules carry only neutral local defaults. A deployment overlay
+  # supplies its vendor fallback order; tier escalation remains contract-driven.
   - rule_id: "d4e5f6a7-0001-4000-8000-000000000001"
     priority: 10
     task_class: code_generation
@@ -682,9 +665,6 @@ routing_rules:
     latency_sla_ms: 30000
     backend_ids:
       - local-coder
-      - openrouter-nemotron-ultra
-      - openrouter-nemotron-super
-      - openrouter-north-mini-code
     fallback_policy:
       action: escalate_to_next_tier
       max_retries: 2
@@ -692,7 +672,7 @@ routing_rules:
     shadow_policy_id: "e5f6a7b8-0001-4000-8000-000000000001"
   # ── test ────────────────────────────────────────────────────────────────
   # Unit-test generation is code generation with stricter quality gates.
-  # Route locally first with a longer timeout because test artifacts regularly
+  # Route locally with a longer timeout because test artifacts regularly
   # approach the 30s boundary on quantized local models.
   - rule_id: "d4e5f6a7-0004-4000-8000-000000000004"
     priority: 15
@@ -707,16 +687,13 @@ routing_rules:
     latency_sla_ms: 60000
     backend_ids:
       - local-coder
-      - openrouter-nemotron-ultra
-      - openrouter-nemotron-super
-      - openrouter-north-mini-code
     fallback_policy:
       action: escalate_to_next_tier
       max_retries: 1
       on_exhaust: return_error
     shadow_policy_id: "e5f6a7b8-0004-4000-8000-000000000004"
   # ── documentation ────────────────────────────────────────────────────────
-  # Documentation tasks start locally, then try the existing free cloud rungs.
+  # Documentation tasks use the neutral local default.
   - rule_id: "d4e5f6a7-0002-4000-8000-000000000002"
     priority: 20
     task_class: documentation
@@ -730,17 +707,13 @@ routing_rules:
     cost_ceiling_usd_per_1k_tokens: 0.004
     backend_ids:
       - local-coder
-      - openrouter-nemotron-ultra
-      - openrouter-nemotron-super
-      - openrouter-north-mini-code
     fallback_policy:
       action: escalate_to_next_tier
       max_retries: 1
       on_exhaust: return_error
     shadow_policy_id: "e5f6a7b8-0002-4000-8000-000000000002"
   # ── research ─────────────────────────────────────────────────────────────
-  # Research tasks require deep reasoning; route to the heavy-reasoning local
-  # slot first, then the existing non-Gemini free cloud rungs.
+  # Research tasks use the neutral heavy-reasoning local default.
   - rule_id: "d4e5f6a7-0003-4000-8000-000000000003"
     priority: 30
     task_class: research
@@ -755,12 +728,9 @@ routing_rules:
     # note on the backends block above. This rule referencing it was the sole
     # reason OMN-16419 could not delete the backend definition. `research`
     # keeps its live local rung via routing_tiers.yaml
-    # (local-heavy-reasoning) plus the free cloud rungs here.
+    # (local-heavy-reasoning); vendor fallbacks belong to the overlay.
     backend_ids:
       - local-heavy-reasoning
-      - openrouter-nemotron-ultra
-      - openrouter-nemotron-super
-      - openrouter-north-mini-code
     fallback_policy:
       action: escalate_to_next_tier
       max_retries: 2
@@ -770,11 +740,8 @@ routing_rules:
 # Attempts backends in order.
 default_backends:
   - local-coder
-  # OMN-17427: local backends precede the existing non-Gemini cloud rungs.
+  # Vendor fallback choices belong to the deployment overlay.
   - local-heavy-reasoning
-  - openrouter-nemotron-ultra
-  - openrouter-nemotron-super
-  - openrouter-north-mini-code
 # Provider quota policy (OMN-16891) — how to read a 429 from each provider.
 #
 # A 429 is not one failure class. Retrying the same tier on a quota-exhaustion

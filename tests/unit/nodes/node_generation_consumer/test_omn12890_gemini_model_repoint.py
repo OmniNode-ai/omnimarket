@@ -113,7 +113,9 @@ def test_generation_contract_documents_cloud_escalation_backend() -> None:
     The contract comment block must mention 'cloud-gemini-flash' so the escalation
     path is contract-documented (not just an implicit routing-authority lookup).
     """
-    raw = _GENERATION_CONTRACT.read_text(encoding="utf-8")
+    raw = (_GENERATION_CONTRACT.parent / "routing_overlay.yaml").read_text(
+        encoding="utf-8"
+    )
     assert "cloud-gemini-flash" in raw, (
         "node_generation_consumer/contract.yaml does not cite the cloud escalation "
         "backend 'cloud-gemini-flash'. Add an OMN-12890 comment documenting the "
@@ -124,7 +126,9 @@ def test_generation_contract_documents_cloud_escalation_backend() -> None:
 @pytest.mark.unit
 def test_generation_contract_documents_quota_available_model() -> None:
     """OMN-12890: node_generation_consumer contract.yaml must cite gemini-2.5-flash-lite."""
-    raw = _GENERATION_CONTRACT.read_text(encoding="utf-8")
+    raw = (_GENERATION_CONTRACT.parent / "routing_overlay.yaml").read_text(
+        encoding="utf-8"
+    )
     assert _QUOTA_AVAILABLE_MODEL in raw, (
         f"node_generation_consumer/contract.yaml does not cite '{_QUOTA_AVAILABLE_MODEL}'. "
         "Add an OMN-12890 comment documenting the cloud escalation model (OMN-12890)."

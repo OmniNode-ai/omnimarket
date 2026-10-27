@@ -84,7 +84,7 @@ class ModelParityExplain(BaseModel):
 
 
 class ModelWorkLedgerParityReport(BaseModel):
-    """Exact parity means ``mismatches`` is empty and the window held at least one row."""
+    """Exact parity requires complete row text and relationship evidence."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -124,7 +124,12 @@ class ModelWorkLedgerParityReport(BaseModel):
 
     @property
     def exact(self) -> bool:
-        return not self.mismatches and self.file_rows > 0
+        return (
+            not self.mismatches
+            and self.file_rows > 0
+            and self.rows_text_compared == self.file_rows == self.projection_rows
+            and self.relations_compared == self.state_entities_compared
+        )
 
 
 __all__: list[str] = [

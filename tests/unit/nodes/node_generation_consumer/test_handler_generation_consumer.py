@@ -19,6 +19,7 @@ from typing import Any
 import pytest
 import yaml
 
+from omnimarket.handlers.handler_contract_routing_overlay import load_routing_contract
 from omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer import (
     HandlerGenerationConsumer,
     ModelActiveRoute,
@@ -793,8 +794,7 @@ def test_production_contract_declares_provider() -> None:
         _CONTRACT_PATH,
     )
 
-    with open(_CONTRACT_PATH) as f:
-        contract = yaml.safe_load(f)
+    contract = load_routing_contract(_CONTRACT_PATH)
 
     model_routing = contract.get("model_routing", {})
     provider = model_routing.get("provider", "")
@@ -810,8 +810,7 @@ def test_production_contract_declares_served_model_id() -> None:
         _CONTRACT_PATH,
     )
 
-    with open(_CONTRACT_PATH) as f:
-        contract = yaml.safe_load(f)
+    contract = load_routing_contract(_CONTRACT_PATH)
 
     model_routing = contract.get("model_routing", {})
     served_model_id = model_routing.get("served_model_id", "")
@@ -834,8 +833,7 @@ def test_production_contract_declares_endpoint_ref() -> None:
         _CONTRACT_PATH,
     )
 
-    with open(_CONTRACT_PATH) as f:
-        contract = yaml.safe_load(f)
+    contract = load_routing_contract(_CONTRACT_PATH)
 
     model_routing = contract.get("model_routing", {})
     endpoint_ref = model_routing.get("endpoint_ref", "")
