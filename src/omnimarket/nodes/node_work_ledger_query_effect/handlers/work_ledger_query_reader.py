@@ -59,6 +59,10 @@ class ProtocolWorkLedgerQueryReader(Protocol):
         self, *, until: datetime
     ) -> tuple[datetime | None, datetime | None]: ...
 
+    def read_history(
+        self, *, ledger_id: str, first_seq: int, last_seq: int, until: datetime
+    ) -> tuple[ModelWorkLedgerRowRecord, ...]: ...
+
 
 def format_database_error(exc: Exception, source: ModelWorkLedgerQuerySource) -> str:
     """Keep a database exception useful without exposing its connection string."""
@@ -141,6 +145,38 @@ class PostgresWorkLedgerQueryReader:
                 (since, until),
             )
         return self._records(rows)
+
+    def read_history(
+        self, *, ledger_id: str, first_seq: int, last_seq: int, until: datetime
+    ) -> tuple[ModelWorkLedgerRowRecord, ...]:
+        """One statement snapshot, scoped to one ledger and an exclusive ingest cutoff.
+
+        Unsequenced/untimed legacy rows remain visible so the caller cannot
+        mistake a partial historical backfill for complete retained history.
+        """
+        rows = self._query(
+            "SELECT row_id, row_ts, row_type, row_lane, raw_row, source, projected_at, ledger_seq, ingested_at "
+            "FROM {relation} WHERE ledger_id = %s "
+            "AND (ledger_seq BETWEEN %s AND %s OR ledger_seq IS NULL) "
+            "AND (ingested_at < %s OR ingested_at IS NULL) "
+            "ORDER BY ledger_seq NULLS LAST, row_id",
+            (ledger_id, first_seq, last_seq, until),
+        )
+        return tuple(
+            ModelWorkLedgerRowRecord(
+                row_id=row_id,
+                row_ts=row_ts,
+                row_type=row_type,
+                row_lane=row_lane,
+                text=raw_row.split("\n", 1)[0],
+                raw_row=raw_row,
+                source=source,
+                projected_at=projected_at,
+                ledger_seq=ledger_seq,
+                ingested_at=ingested_at,
+            )
+            for row_id, row_ts, row_type, row_lane, raw_row, source, projected_at, ledger_seq, ingested_at in rows
+        )
 
     def read_parity_receipts(
         self, *, since: datetime, until: datetime

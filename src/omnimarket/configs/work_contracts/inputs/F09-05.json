@@ -1,0 +1,134 @@
+{
+  "instruction": "Classify the public fixtures in order; labels are stated in the evidence.",
+  "rows": [
+    {
+      "evidence": "public fixture for question_guard",
+      "id": "L3677"
+    },
+    {
+      "evidence": "public fixture for judge_touch",
+      "id": "L3675"
+    },
+    {
+      "evidence": "public fixture for shell_shape",
+      "id": "L3670"
+    },
+    {
+      "evidence": "public fixture for reply_format",
+      "id": "L3663"
+    },
+    {
+      "evidence": "public fixture for throughput",
+      "id": "L3661"
+    },
+    {
+      "evidence": "public fixture for git_guard",
+      "id": "L3654"
+    },
+    {
+      "evidence": "public fixture for idle_capacity",
+      "id": "L3621"
+    },
+    {
+      "evidence": "public fixture for job_exit",
+      "id": "L3596"
+    },
+    {
+      "evidence": "public fixture for consumer_lag",
+      "id": "L3521"
+    },
+    {
+      "evidence": "public fixture for question_guard",
+      "id": "L3131"
+    },
+    {
+      "evidence": "public fixture for judge_touch",
+      "id": "L3648"
+    },
+    {
+      "evidence": "public fixture for shell_shape",
+      "id": "L3669"
+    },
+    {
+      "evidence": "public fixture for reply_format",
+      "id": "L3366"
+    },
+    {
+      "evidence": "public fixture for throughput",
+      "id": "L3102"
+    },
+    {
+      "evidence": "public fixture for git_guard",
+      "id": "L3632"
+    },
+    {
+      "evidence": "public fixture for idle_capacity",
+      "id": "L3528"
+    },
+    {
+      "evidence": "public fixture for job_exit",
+      "id": "L3072"
+    },
+    {
+      "evidence": "public fixture for consumer_lag",
+      "id": "L3286"
+    },
+    {
+      "evidence": "public fixture for question_guard",
+      "id": "L2795"
+    },
+    {
+      "evidence": "public fixture for judge_touch",
+      "id": "L3514"
+    },
+    {
+      "evidence": "public fixture for shell_shape",
+      "id": "L3642"
+    },
+    {
+      "evidence": "public fixture for reply_format",
+      "id": "L3133"
+    },
+    {
+      "evidence": "public fixture for throughput",
+      "id": "L2645"
+    },
+    {
+      "evidence": "public fixture for git_guard",
+      "id": "L3491"
+    },
+    {
+      "evidence": "public fixture for idle_capacity",
+      "id": "L3474"
+    },
+    {
+      "evidence": "public fixture for job_exit",
+      "id": "L2617"
+    },
+    {
+      "evidence": "public fixture for consumer_lag",
+      "id": "L2512"
+    },
+    {
+      "evidence": "public fixture for question_guard",
+      "id": "L2278"
+    },
+    {
+      "evidence": "public fixture for judge_touch",
+      "id": "L3475"
+    },
+    {
+      "evidence": "public fixture for shell_shape",
+      "id": "L3535"
+    },
+    {
+      "evidence": "public fixture for reply_format",
+      "id": "L2875"
+    },
+    {
+      "evidence": "public fixture for throughput",
+      "id": "L2244"
+    }
+  ],
+  "scenario": "F09-05"
+}

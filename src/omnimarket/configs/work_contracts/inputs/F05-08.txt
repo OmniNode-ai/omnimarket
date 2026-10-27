@@ -1,0 +1,31 @@
+Write pytest unit tests for the untested public function validate_run_id. Public source: omnibase_infra/src/omnibase_infra/nodes/node_session_state_effect/models/model_run_context.py:26. Return ONLY a complete test module, no explanation or Markdown. Import the function and any support types from solution. Do not redefine or monkeypatch the target function. Use meaningful assertions and edge cases. Tests run in isolation on this host. Required behavior to cover: Allowlist valid ids and reject empty, slashes, spaces, double dots.
+
+Exact public source slice including required support:
+from __future__ import annotations
+
+import re
+
+RUN_ID_PATTERN = re.compile(r"^[a-zA-Z0-9._-]+$")
+
+def validate_run_id(value: str) -> str:
+    """Validate a run_id against the filesystem-safe allowlist.
+
+    Args:
+        value: The run_id to validate.
+
+    Returns:
+        The validated run_id (unchanged).
+
+    Raises:
+        ValueError: If the run_id contains unsafe characters or '..'.
+    """
+    if not RUN_ID_PATTERN.match(value):
+        msg = (
+            "run_id must contain only alphanumeric characters, "
+            "dots, hyphens, and underscores"
+        )
+        raise ValueError(msg)
+    if ".." in value:
+        msg = "run_id must not contain '..'"
+        raise ValueError(msg)
+    return value

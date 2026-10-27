@@ -1,0 +1,469 @@
+Summarize the merged PR diff below in at most 3 sentences and at most 90 words. State the concrete behavior changed, including a changed file or symbol from the diff. Use only facts from this input; do not introduce any number or identifier absent from it. Return only the summary.
+
+Public repository: OmniNode-ai/omnibase_core
+Merged PR: omnibase_core#2075
+Title: fix(OMN-17427): replace deprecated asyncio.iscoroutinefunction with inspect
+Merged at: 2026-10-22T02:27:39Z
+Merge SHA: f2f778daa65857ad0f9d07067ddc4b8fa7ce788c
+
+BEGIN PUBLIC SOURCE
+diff --git a/contracts/OMN-17427.yaml b/contracts/OMN-17427.yaml
+index 2906c6e2f6..ac94028ded 100644
+--- a/contracts/OMN-17427.yaml
++++ b/contracts/OMN-17427.yaml
+@@ -372,6 +372,15 @@ requirements:
+           with matching ticket identities and at least their migrated evidence counts, with populated
+           checks and retained disclosed supersessions. -- falsifier: uv run pytest tests/unit/models/ticket/test_migrated_ticket_contracts_omn17427.py
+           -q -o addopts=''"
++  - id: req-omn17427-no-asyncio-iscoroutinefunction
++    statement: omnibase_core detects coroutine functions with inspect.iscoroutinefunction, never the asyncio
++      form CPython 3.14 deprecates, so the OMN-17870 Werror teardown regression collects on 3.14.
++    acceptance:
++      - id: AC48
++        statement: "AC48: No module under src/omnibase_core calls asyncio.iscoroutinefunction, and wrapping
++          sync and async functions with the error-handling decorators raises no DeprecationWarning under
++          an error filter. -- falsifier: uv run pytest tests/unit/decorators/test_no_asyncio_iscoroutinefunction.py
++          -q -o addopts=''"
+ evidence_requirements:
+   - kind: tests
+     description: "The caller-evidence job exempts an OCC writer app version bump using the pinned producer
+@@ -467,6 +476,10 @@ evidence_requirements:
+     description: "RuntimeLocal joins the declared terminal subscriptions concurrently, and a fatal first
+       terminal leaves no later terminal bound."
+     command: uv run pytest tests/unit/runtime/test_runtime_local_failure_terminal.py -q
++  - kind: tests
++    description: "No src module calls asyncio.iscoroutinefunction, and the error-handling decorators wrap
++      functions without a DeprecationWarning."
++    command: uv run pytest tests/unit/decorators/test_no_asyncio_iscoroutinefunction.py -q -o addopts=''
+ emergency_bypass:
+   enabled: false
+   justification: ''
+@@ -1007,3 +1020,16 @@ dod_evidence:
+         cwd: ${OMNI_HOME}/omnibase_core
+     binds_ac:
+       - AC47
++  - id: dod-omn17427-no-asyncio-iscoroutinefunction
++    description: Hosted source probe. The checked-out src tree has no asyncio.iscoroutinefunction call
++      and the error-handling decorators wrap sync and async functions under a DeprecationWarning error
++      filter. The same test fails at the merge base, which carries nine such calls.
++    source: manual
++    execution_scope: hosted_and_local
++    checks:
++      - check_type: test_passes
++        check_value: uv run pytest tests/unit/decorators/test_no_asyncio_iscoroutinefunction.py -q -o
++          addopts=''
++        cwd: ${OMNI_HOME}/omnibase_core
++    binds_ac:
++      - AC48
+diff --git a/pyproject.toml b/pyproject.toml
+index 247cc72258..de133f5069 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
+ 
+ [project]
+ name = "omnibase_core"
+-version = "0.47.51"
++version = "0.47.52"
+ description = "ONEX Core Framework - Base classes and essential implementations"
+ authors = [
+     {name = "OmniNode.ai", email = "contact@omninode.ai"}
+diff --git a/src/omnibase_core/decorators/decorator_effect_boundary.py b/src/omnibase_core/decorators/decorator_effect_boundary.py
+index 58d58e5b30..d53806bd22 100644
+--- a/src/omnibase_core/decorators/decorator_effect_boundary.py
++++ b/src/omnibase_core/decorators/decorator_effect_boundary.py
+@@ -9,7 +9,7 @@
+ 
+ Async Support:
+     The decorator automatically detects async functions using
+-    asyncio.iscoroutinefunction() and creates the appropriate wrapper:
++    inspect.iscoroutinefunction() and creates the appropriate wrapper:
+     - Async functions get an async wrapper that properly awaits the original
+     - Sync functions get a sync wrapper that calls the original directly
+ 
+@@ -17,7 +17,7 @@
+     of decorated functions.
+ """
+ 
+-import asyncio
++import inspect
+ from collections.abc import Callable
+ from functools import wraps
+ from typing import ParamSpec, TypeVar
+@@ -58,7 +58,7 @@ def effect_boundary(
+     via introspection using get_effect_boundary().
+ 
+     This decorator supports both sync and async functions. It automatically
+-    detects async functions using asyncio.iscoroutinefunction() and creates
++    detects async functions using inspect.iscoroutinefunction() and creates
+     the appropriate wrapper type to preserve async behavior.
+ 
+     Args:
+@@ -126,7 +126,7 @@ def decorator(func: Callable[P, R]) -> Callable[P, R]:
+         )
+ 
+         # Create appropriate wrapper based on function type
+-        if asyncio.iscoroutinefunction(func):
++        if inspect.iscoroutinefunction(func):
+ 
+             @wraps(func)
+             async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+diff --git a/src/omnibase_core/decorators/decorator_enforce_execution_shape.py b/src/omnibase_core/decorators/decorator_enforce_execution_shape.py
+index 59730b7f1a..c81925f892 100644
+--- a/src/omnibase_core/decorators/decorator_enforce_execution_shape.py
++++ b/src/omnibase_core/decorators/decorator_enforce_execution_shape.py
+@@ -17,8 +17,8 @@
+     - CANONICAL_EXECUTION_SHAPES.md: Full documentation of allowed/forbidden patterns
+ """
+ 
+-import asyncio
+ import functools
++import inspect
+ from collections.abc import Callable
+ from typing import ParamSpec, TypeVar
+ 
+@@ -131,7 +131,7 @@ def enforce_execution_shape(
+ 
+     def decorator(func: Callable[P, T]) -> Callable[P, T]:
+         # Check if the function is async
+-        if asyncio.iscoroutinefunction(func):
++        if inspect.iscoroutinefunction(func):
+ 
+             @functools.wraps(func)
+             async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+diff --git a/src/omnibase_core/decorators/decorator_error_handling.py b/src/omnibase_core/decorators/decorator_error_handling.py
+index 7a11dc09e2..4eefad5f72 100644
+--- a/src/omnibase_core/decorators/decorator_error_handling.py
++++ b/src/omnibase_core/decorators/decorator_error_handling.py
+@@ -16,6 +16,7 @@
+ 
+ import asyncio
+ import functools
++import inspect
+ from collections.abc import Callable
+ from typing import Any, ParamSpec, TypeVar
+ 
+@@ -247,7 +248,7 @@ def process(self, input_state):
+     """
+ 
+     def decorator(func: Callable[P, R]) -> Callable[P, R]:
+-        if asyncio.iscoroutinefunction(func):
++        if inspect.iscoroutinefunction(func):
+ 
+             @functools.wraps(func)
+             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+@@ -335,7 +336,7 @@ def validate_contract(self, contract_data):
+     """
+ 
+     def decorator(func: Callable[P, R]) -> Callable[P, R]:
+-        if asyncio.iscoroutinefunction(func):
++        if inspect.iscoroutinefunction(func):
+ 
+             @functools.wraps(func)
+             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+@@ -444,7 +445,7 @@ def read_contract_file(self, file_path):
+     """
+ 
+     def decorator(func: Callable[P, R]) -> Callable[P, R]:
+-        if asyncio.iscoroutinefunction(func):
++        if inspect.iscoroutinefunction(func):
+ 
+             @functools.wraps(func)
+             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+diff --git a/src/omnibase_core/mixins/mixin_node_executor.py b/src/omnibase_core/mixins/mixin_node_executor.py
+index feecd4ab55..2a2ace75ba 100644
+--- a/src/omnibase_core/mixins/mixin_node_executor.py
++++ b/src/omnibase_core/mixins/mixin_node_executor.py
+@@ -43,6 +43,7 @@ async def execute_compute(self) -> None:
+ 
+ import asyncio
+ import contextlib
++import inspect
+ import signal
+ import time
+ from pathlib import Path
+@@ -401,7 +402,7 @@ async def _execute_tool(
+             )
+ 
+         run_method = self.run
+-        if asyncio.iscoroutinefunction(run_method):
++        if inspect.iscoroutinefunction(run_method):
+             return await run_method(input_state)
+         return await asyncio.get_running_loop().run_in_executor(
+             None, run_method, input_state
+diff --git a/src/omnibase_core/mixins/mixin_node_service.py b/src/omnibase_core/mixins/mixin_node_service.py
+index f6ff89a0e9..38cc10dcea 100644
+--- a/src/omnibase_core/mixins/mixin_node_service.py
++++ b/src/omnibase_core/mixins/mixin_node_service.py
+@@ -29,6 +29,7 @@
+ """
+ 
+ import asyncio
++import inspect
+ import signal
+ import time
+ import types
+@@ -643,7 +644,7 @@ async def _execute_tool(
+             )
+ 
+         run_method = self.run
+-        if asyncio.iscoroutinefunction(run_method):
++        if inspect.iscoroutinefunction(run_method):
+             return await run_method(input_state)
+         # Run synchronous method in executor to avoid blocking
+         return await asyncio.get_running_loop().run_in_executor(
+diff --git a/src/omnibase_core/models/infrastructure/model_effect_transaction.py b/src/omnibase_core/models/infrastructure/model_effect_transaction.py
+index 98bb0b0868..043bb43e4c 100644
+--- a/src/omnibase_core/models/infrastructure/model_effect_transaction.py
++++ b/src/omnibase_core/models/infrastructure/model_effect_transaction.py
+@@ -9,7 +9,7 @@
+ 
+ """
+ 
+-import asyncio
++import inspect
+ from collections.abc import Callable
+ from datetime import datetime
+ from uuid import UUID
+@@ -116,7 +116,7 @@ async def rollback(self) -> tuple[bool, list[ModelOnexError]]:
+             reversed(self.rollback_operations)
+         ):
+             try:
+-                if asyncio.iscoroutinefunction(rollback_func):
++                if inspect.iscoroutinefunction(rollback_func):
+                     await rollback_func()
+                 else:
+                     rollback_func()
+diff --git a/src/omnibase_core/models/infrastructure/model_transaction.py b/src/omnibase_core/models/infrastructure/model_transaction.py
+index 5eb7352955..b33db1363e 100644
+--- a/src/omnibase_core/models/infrastructure/model_transaction.py
++++ b/src/omnibase_core/models/infrastructure/model_transaction.py
+@@ -4,6 +4,7 @@
+ """Transaction model for side effect management with rollback support."""
+ 
+ import asyncio
++import inspect
+ from collections.abc import Callable
+ from datetime import datetime
+ from uuid import UUID
+@@ -77,7 +78,7 @@ async def rollback(self) -> None:
+         # Execute rollback operations in reverse order
+         for rollback_func in reversed(self.rollback_operations):
+             try:
+-                if asyncio.iscoroutinefunction(rollback_func):
++                if inspect.iscoroutinefunction(rollback_func):
+                     await rollback_func()
+                 else:
+                     rollback_func()
+diff --git a/tests/unit/decorators/test_error_handling_extended.py b/tests/unit/decorators/test_error_handling_extended.py
+index b39e60ea16..9d71ddcc26 100644
+--- a/tests/unit/decorators/test_error_handling_extended.py
++++ b/tests/unit/decorators/test_error_handling_extended.py
+@@ -16,6 +16,8 @@
+ Target: 90%+ coverage for decorators/decorator_error_handling.py
+ """
+ 
++import inspect
++
+ import pytest
+ 
+ from omnibase_core.decorators.decorator_error_handling import (
+@@ -602,13 +604,12 @@ async def async_documented_function():
+     @pytest.mark.asyncio
+     async def test_async_wrapper_is_coroutine_function(self):
+         """Test that decorated async functions remain coroutine functions."""
+-        import asyncio
+ 
+         @standard_error_handling("Async operation")
+         async def async_func():
+             return "result"
+ 
+-        assert asyncio.iscoroutinefunction(async_func)
++        assert inspect.iscoroutinefunction(async_func)
+ 
+ 
+ @pytest.mark.unit
+@@ -798,14 +799,13 @@ class TestAsyncDecoratorEdgeCases:
+     @pytest.mark.asyncio
+     async def test_sync_function_remains_sync(self):
+         """Test that sync functions decorated remain sync (not async)."""
+-        import asyncio
+ 
+         @standard_error_handling("Sync operation")
+         def sync_func():
+             return "sync result"
+ 
+         # Should NOT be a coroutine function
+-        assert not asyncio.iscoroutinefunction(sync_func)
++        assert not inspect.iscoroutinefunction(sync_func)
+         result = sync_func()
+         assert result == "sync result"
+ 
+diff --git a/tests/unit/decorators/test_no_asyncio_iscoroutinefunction.py b/tests/unit/decorators/test_no_asyncio_iscoroutinefunction.py
+new file mode 100644
+index 0000000000..0dbee0f969
+--- /dev/null
++++ b/tests/unit/decorators/test_no_asyncio_iscoroutinefunction.py
+@@ -0,0 +1,65 @@
++# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
++# SPDX-License-Identifier: MIT
++
++"""
++Guard: omnibase_core never calls ``asyncio.iscoroutinefunction``.
++
++CPython 3.14 deprecates ``asyncio.iscoroutinefunction`` (removal slated for
++3.16). Under ``-W error`` the call in ``standard_error_handling`` raised a
++DeprecationWarning while ``ModelONEXContainer`` was being defined, so the
++OMN-17870 Werror teardown regression failed at collection on 3.14. CI pins
++3.12, where the call is silent, so this test reads the source instead of
++relying on the warning. ``inspect.iscoroutinefunction`` is the replacement.
++"""
++
++import ast
++import warnings
++from pathlib import Path
++
++import pytest
++
++import omnibase_core
++
++SRC_ROOT = Path(omnibase_core.__file__).parent
++
++
++def _asyncio_iscoroutinefunction_calls() -> list[str]:
++    hits: list[str] = []
++    for path in sorted(SRC_ROOT.rglob("*.py")):
++        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
++        for node in ast.walk(tree):
++            if (
++                isinstance(node, ast.Attribute)
++                and node.attr == "iscoroutinefunction"
++                and isinstance(node.value, ast.Name)
++                and node.value.id == "asyncio"
++            ):
++                hits.append(f"{path.relative_to(SRC_ROOT)}:{node.lineno}")
++    return hits
++
++
++@pytest.mark.unit
++def test_src_has_no_asyncio_iscoroutinefunction() -> None:
++    assert _asyncio_iscoroutinefunction_calls() == []
++
++
++@pytest.mark.unit
++def test_error_handling_decorators_emit_no_deprecation_warning() -> None:
++    from omnibase_core.decorators.decorator_error_handling import (
++        io_error_handling,
++        standard_error_handling,
++        validation_error_handling,
++    )
++
++    async def async_op() -> None:
++        return None
++
++    def sync_op() -> None:
++        return None
++
++    with warnings.catch_warnings():
++        warnings.simplefilter("error", DeprecationWarning)
++        standard_error_handling("op")(async_op)
++        standard_error_handling("op")(sync_op)
++        validation_error_handling("op")(async_op)
++        io_error_handling("op")(async_op)
+diff --git a/tests/unit/examples/demo/handlers/support_assistant/test_handler_support_assistant.py b/tests/unit/examples/demo/handlers/support_assistant/test_handler_support_assistant.py
+index 3fbac9d520..913b891274 100644
+--- a/tests/unit/examples/demo/handlers/support_assistant/test_handler_support_assistant.py
++++ b/tests/unit/examples/demo/handlers/support_assistant/test_handler_support_assistant.py
+@@ -148,7 +148,7 @@ def test_handle_method_is_async(self, mock_container: MagicMock) -> None:
+         handler = SupportAssistantHandler(mock_container)
+ 
+         # Verify handle is a coroutine function
+-        assert asyncio.iscoroutinefunction(handler.handle)
++        assert inspect.iscoroutinefunction(handler.handle)
+ 
+     def test_handle_method_signature(self, mock_container: MagicMock) -> None:
+         """Handle method has correct signature."""
+diff --git a/tests/unit/protocols/compute/test_protocol_circuit_breaker.py b/tests/unit/protocols/compute/test_protocol_circuit_breaker.py
+index 8a89054265..f0a2737cf7 100644
+--- a/tests/unit/protocols/compute/test_protocol_circuit_breaker.py
++++ b/tests/unit/protocols/compute/test_protocol_circuit_breaker.py
+@@ -16,6 +16,7 @@
+ """
+ 
+ import asyncio
++import inspect
+ from collections.abc import Callable
+ from uuid import UUID, uuid4
+ 
+@@ -224,9 +225,9 @@ def test_sync_impl_passes_runtime_check_but_not_type_check(self):
+         assert isinstance(sync_mock, ProtocolAsyncCircuitBreaker)
+ 
+         # But we can verify the methods aren't actually async
+-        assert not asyncio.iscoroutinefunction(sync_mock.record_success)
+-        assert not asyncio.iscoroutinefunction(sync_mock.record_failure)
+-        assert not asyncio.iscoroutinefunction(sync_mock.reset)
++        assert not inspect.iscoroutinefunction(sync_mock.record_success)
++        assert not inspect.iscoroutinefunction(sync_mock.record_failure)
++        assert not inspect.iscoroutinefunction(sync_mock.reset)
+ 
+ 
+ @pytest.mark.unit
+diff --git a/tests/unit/protocols/infrastructure/test_protocol_database_connection.py b/tests/unit/protocols/infrastructure/test_protocol_database_connection.py
+index 97009c2cf0..5a949fd662 100644
+--- a/tests/unit/protocols/infrastructure/test_protocol_database_connection.py
++++ b/tests/unit/protocols/infrastructure/test_protocol_database_connection.py
+@@ -14,7 +14,7 @@
+     - PR #302: Add infrastructure protocols
+ """
+ 
+-import asyncio
++import inspect
+ from typing import Any
+ 
+ import pytest
+@@ -202,7 +202,7 @@ def test_wrong_signature_passes_runtime_check(self) -> None:
+         assert isinstance(wrong, ProtocolDatabaseConnection)
+ 
+         # But we can verify the method isn't actually async
+-        assert not asyncio.iscoroutinefunction(wrong.connect)
++        assert not inspect.iscoroutinefunction(wrong.connect)
+ 
+ 
+ @pytest.mark.unit
+diff --git a/tests/unit/protocols/infrastructure/test_protocol_service_discovery.py b/tests/unit/protocols/infrastructure/test_protocol_service_discovery.py
+index c2dde03aaf..b0ca31a06c 100644
+--- a/tests/unit/protocols/infrastructure/test_protocol_service_discovery.py
++++ b/tests/unit/protocols/infrastructure/test_protocol_service_discovery.py
+@@ -14,7 +14,7 @@
+     - PR #302: Add infrastructure protocols
+ """
+ 
+-import asyncio
++import inspect
+ from typing import Any
+ 
+ import pytest
+@@ -274,7 +274,7 @@ def test_wrong_signature_passes_runtime_check(self) -> None:
+         assert isinstance(wrong, ProtocolServiceDiscovery)
+ 
+         # But we can verify the method isn't actually async
+-        assert not asyncio.iscoroutinefunction(wrong.register_service)
++        assert not inspect.iscoroutinefunction(wrong.register_service)
+ 
+ 
+ @pytest.mark.unit
+diff --git a/uv.lock b/uv.lock
+index 8d3c3aa460..1587d4250c 100644
+--- a/uv.lock
++++ b/uv.lock
+@@ -862,7 +862,7 @@ wheels = [
+ 
+ [[package]]
+ name = "omnibase-core"
+-version = "0.47.51"
++version = "0.47.52"
+ source = { editable = "." }
+ dependencies = [
+     { name = "blake3" },
+
+END PUBLIC SOURCE

@@ -1,0 +1,1 @@
+{"source": "src/omnibase_core/models/core/model_custom_filters.py", "old": "return self.filters.get(name)", "new": "return self.filters.pop(name, None)", "defect": "get_filter destructively pops the filter; a read deletes stored state and subsequent reads differ."}

@@ -1,0 +1,77 @@
+Review this real public-source diff for correctness. Repository OmniNode-ai/omnibase_core, base feea07ed819bfdd5291aaa575ae6a2f9d3a3e923^, proposed fix based on feea07ed819bfdd5291aaa575ae6a2f9d3a3e923. The candidate includes one deliberately seeded correctness bug among the actual changes. Report the defect, location, concrete failure mechanism and a minimal correction. Review only; do not execute tools or change files.
+Requirements: Preserve typed UUID identities, immutable state where declared, existing public wire names, enum defaults, non-destructive reads, runtime-resolvable model annotations, and effect execution under warnings-as-errors.
+Candidate diff:
+```diff
+--- a/src/omnibase_core/models/nodes/sprint_roll/model_sprint_roll_plan.py
++++ b/src/omnibase_core/models/nodes/sprint_roll/model_sprint_roll_plan.py
+@@ -43,6 +43,11 @@
+     #: exists is never overwritten.
+     proposed_estimates: dict[str, int] = Field(default_factory=dict)
+ 
+     #: Unestimated tickets deliberately left alone because their children hold the
+     #: points. Reported so a blank parent reads as a decision, not an omission.
+     unestimated_parents: tuple[str, ...] = Field(default_factory=tuple)
++
++    #: Ticket identifier -> why it is not a candidate, for open-by-name tickets whose
++    #: workflow state type is excluded (duplicate, canceled). Never moved, never sent
++    #: to Backlog: the roll leaves them exactly where they are (OMN-21085).
++    refused: dict[str, str] = Field(default_factory=list)
+
+```
+Complete candidate file src/omnibase_core/models/nodes/sprint_roll/model_sprint_roll_plan.py:
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Output contract for the sprint-roll COMPUTE node (OMN-20396).
+
+A plan, not an action. Nothing here has been written anywhere: the paired EFFECT node
+(OMN-20397) turns `placements` into project moves and `backlog_ticket_ids` into state
+moves, journalling each one before it sends it.
+"""
+
+from __future__ import annotations
+
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from omnibase_core.models.nodes.sprint_roll.model_criterion_proposal import (
+    ModelCriterionProposal,
+)
+from omnibase_core.models.nodes.sprint_roll.model_sprint_placement import (
+    ModelSprintPlacement,
+)
+
+__all__ = ["ModelSprintRollPlan"]
+
+
+class ModelSprintRollPlan(BaseModel):
+    """The whole roll: where every open ticket in the window lands."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
+
+    source_sprint_id: UUID
+    source_sprint_name: str
+    cap: int
+    cap_basis: str
+    median_estimate: int
+    rolling_ticket_ids: tuple[str, ...] = Field(default_factory=tuple)
+    placements: tuple[ModelSprintPlacement, ...] = Field(default_factory=tuple)
+    backlog_ticket_ids: tuple[str, ...] = Field(default_factory=tuple)
+    proposals: tuple[ModelCriterionProposal, ...] = Field(default_factory=tuple)
+
+    #: Ticket identifier -> the base estimate to write, for tickets that carry none.
+    #: Proposals only: the EFFECT node journals each write, and an estimate that already
+    #: exists is never overwritten.
+    proposed_estimates: dict[str, int] = Field(default_factory=dict)
+
+    #: Unestimated tickets deliberately left alone because their children hold the
+    #: points. Reported so a blank parent reads as a decision, not an omission.
+    unestimated_parents: tuple[str, ...] = Field(default_factory=tuple)
+
+    #: Ticket identifier -> why it is not a candidate, for open-by-name tickets whose
+    #: workflow state type is excluded (duplicate, canceled). Never moved, never sent
+    #: to Backlog: the roll leaves them exactly where they are (OMN-21085).
+    refused: dict[str, str] = Field(default_factory=list)
+
+```

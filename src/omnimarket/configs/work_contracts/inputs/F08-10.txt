@@ -1,0 +1,40 @@
+Diagnose this real failed GitHub Actions job. Name the job and the failing step, identify the direct cause, and distinguish the direct failure from any downstream symptom or misleading successful output. Cite the supplied evidence. Propose a bounded remedy without executing it; do not change checks, rerun CI, or assume a newer head is still red.
+Source: https://github.com/OmniNode-ai/omniclaude/actions/runs/40260460895/job/121371524033
+Failing step from GitHub job metadata: Run adversarial review
+The log download labels steps UNKNOWN STEP; the exact name above is authoritative.
+Log excerpt (original timestamps, with gaps):
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	2026-10-26T02:43:45.1427754Z ^[[36;1m    "models_succeeded": [],^[[0m
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	2026-10-26T02:43:45.1428085Z ^[[36;1m    "review_exit": int(os.environ["REVIEW_EXIT"]),^[[0m
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	2026-10-26T02:43:45.1428455Z ^[[36;1m    "error": (^[[0m
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	2026-10-26T02:43:45.1428803Z ^[[36;1m        "fewer reviewer models succeeded than cross-model agreement "^[[0m
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	2026-10-26T02:43:45.1429231Z ^[[36;1m        "requires \u2014 no verdict could be established"^[[0m
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	2026-10-26T02:43:45.1429562Z ^[[36;1m    ),^[[0m
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	2026-10-26T02:43:45.1429865Z ^[[36;1m    "named_cause": os.environ.get("NAMED_CAUSE", ""),^[[0m
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	2026-10-26T02:43:45.1430200Z ^[[36;1m    "findings": [],^[[0m
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	2026-10-26T02:43:45.1432669Z ^[[36;1m    echo "blocking_count=0"^[[0m
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	2026-10-26T02:43:45.1432971Z ^[[36;1m    echo "total_findings=0"^[[0m
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	2026-10-26T02:43:45.1433265Z ^[[36;1m    echo "models_succeeded="^[[0m
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	2026-10-26T02:43:45.1433837Z ^[[36;1m    echo "error=fewer reviewer models succeeded than cross-model agreement requires — no verdict could be established"^[[0m
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	2026-10-26T02:43:45.1434368Z ^[[36;1m    echo "named_cause=${NAMED_CAUSE}"^[[0m
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	2026-10-26T02:43:45.1434680Z ^[[36;1m  } >> "$GITHUB_OUTPUT"^[[0m
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	2026-10-26T02:43:45.1435211Z ^[[36;1m  echo "::error title=Hostile Reviewer degraded quorum::fewer models succeeded than agreement requires; no verdict was established"^[[0m
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	2026-10-26T02:43:45.1435736Z ^[[36;1m  exit 1^[[0m
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	    'Only findings raised by at least two distinct reviewer models block (OMN-18479); ' +
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	    'findings below that threshold are listed as warnings and do not.';
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	} else if (verdict === 'degraded_quorum') {
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	  note = '\n\n> **Action required**: fewer reviewer models succeeded than cross-model ' +
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	    'agreement requires, so NO verdict was established. An absent verdict is not a passing ' +
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	    'one, so this fails the required gate closed. Re-run the job; if a model endpoint is ' +
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	    'genuinely down, escalate rather than bypassing.';
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	  if (error) note += ` Error: \`${error}\``;
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	2026-10-26T02:45:24.9989731Z   REVIEW_VOTERS_OVERLAY: fixture-root
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	2026-10-26T02:45:24.9991020Z   UV_PYTHON_INSTALL_DIR: fixture-root
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	2026-10-26T02:45:24.9991811Z   REVIEW_VERDICT: degraded_quorum
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	2026-10-26T02:45:24.9992345Z   REVIEW_BLOCKING: 0
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	2026-10-26T02:45:24.9992833Z   REVIEW_TOTAL: 0
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	2026-10-26T02:45:24.9993291Z   REVIEW_MODELS: 
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	2026-10-26T02:45:24.9994133Z   REVIEW_ERROR: fewer reviewer models succeeded than cross-model agreement requires — no verdict could be established
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	2026-10-26T02:45:24.9995035Z   REVIEW_NAMED_CAUSE: 
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	2026-10-26T02:45:24.9995512Z ##[endgroup]
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	2026-10-26T02:45:27.1109692Z Post job cleanup.
+Hostile Reviewer (adversarial gate)	UNKNOWN STEP	2026-10-26T02:45:27.1911072Z ##[warning]Input 'app-id' has been deprecated with message: Use 'client-id' instead.

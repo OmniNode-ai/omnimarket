@@ -1,0 +1,465 @@
+Determine whether a hard delegation can ever climb into Codex under the supplied product ladder, and trace the configuration ownership across these three repos. Identify cheap_frontier and ceiling backend IDs, explain why a separate Codex harness comparison measures a different route, and distinguish a routing-contract refusal from exhausted model attempts. Cite source files.
+PUBLIC SOURCE omnimarket/src/omnimarket/configs/routing_tiers.yaml:320-475
+320:   # OpenRouter serves at genuinely zero cost may sit here — never a paid model
+321:   # through the aggregator, and never the paid slug of a model whose free slug
+322:   # was retired. The live 2026-08-28 probe confirmed the pinned model still
+323:   # reports `"cost": 0, "is_byok": false` in the provider's OWN usage
+324:   # accounting, so `cost_type: free_local` below remains TRUE rather than
+325:   # asserted.
+326:   - name: cheap_frontier
+327:     cost_per_1k_tokens: 0.0
+328:     # OMN-13234: free_local-class cost — the OpenRouter Qwen3-Coder-480B entry is
+329:     # the genuinely FREE tier (zero marginal API cost). Modeled as free_local so
+330:     # the projection records 0 actual cost without a per-token rate.
+331:     cost:
+332:       cost_type: free_local
+333:     models:
+334:       # Qwen3 Coder 480B via OpenRouter free tier — cheap frontier direct (OMN-12492)
+335:       - id: openrouter-nemotron-ultra
+336:         backend_id: openrouter-nemotron-ultra
+337:         max_context_tokens: 262144
+338:         # OMN-16891 added code_review and validator_generation to this free
+339:         # coder rung alongside code_generation/refactor/test. OMN-17427 now
+340:         # withholds code_review; the remaining code classes keep their placements.
+341:         #
+342:         # Placement constraint, stated rather than discovered in production:
+343:         # this rung is a POOR fit for terse or tightly-budgeted structured
+344:         # output. Live 2026-08-28 probe — asked to "Reply with exactly: ok"
+345:         # under max_tokens 16, it spent 18 reasoning tokens and returned its
+346:         # own deliberation ("The user wants me to reply with exactly ok...")
+347:         # instead of the answer, a live reproduction of OMN-12717. The backend
+348:         # carries a 65536-token output budget in bifrost_delegation.yaml for
+349:         # exactly this reason; do not narrow it for this rung.
+350:         use_for:
+351:           - code_generation
+352:           # OMN-17427: code_review REMOVED -- withheld from delegation, see
+353:           # task_class_contracts.v1.yaml code_review.routing_availability
+354:           - reasoning
+355:           # OMN-19432: `review` added beside `reasoning`; see the class contract.
+356:           - review
+357:           - research
+358:           - refactor
+359:           - test
+360:           - validator_generation
+361:           # OMN-13640: the three PROSE classes ADDED, so this genuinely-free
+362:           # rung is actually reachable for prose. Before this, `cheap_frontier`
+363:           # appeared in no prose class's escalation_policy.tier_order and no
+364:           # cheap_frontier model listed a prose class here -- the free cloud
+365:           # rung was never attempted for prose, and every prose escalation went
+366:           # straight to the metered cheap_cloud tier (4 of 4 accepted drafts on
+367:           # 2026-09-14, $0.001809 mean, answered by gemini-2.5-flash-lite).
+368:           #
+369:           # This is NOT a capability stretch on a code-only model. The entry
+370:           # `id` above is HISTORICAL -- it is the tier-model id, kept stable
+371:           # because task_model_overrides and the id-match escape hatch key on
+372:           # it. The model this backend actually serves is declared in
+373:           # bifrost_delegation.yaml as
+374:           # `model_name: nvidia/nemotron-3-ultra-550b-a55b:free` -- a GENERAL
+375:           # instruction model, not a coder-only one -- so serving
+376:           # natural_language_generation here is what the backend already is.
+377:           # Do not read the id as the served model.
+378:           #
+379:           # Placement caveat, already recorded above and unchanged: this rung is
+380:           # a poor fit for terse, tightly-budgeted output (it spends reasoning
+381:           # tokens deliberating). Prose responses are not terse and the backend
+382:           # carries a 65536-token output budget, so the fit is the right way
+383:           # round here; do not narrow that budget for this rung.
+384:           - document
+385:           - documentation
+386:           - summarization
+387:         fast_path_threshold_tokens: 8192
+388:       # north-mini-code is a spread peer of openrouter-nemotron-ultra via its
+389:       # placement in bifrost_delegation.yaml. The mirrored entry copies the
+390:       # ultra rung's use_for, so it still serves every class that rung serves.
+391:     eval_before_accept: true
+392:     eval_model: null
+393:     max_retries: 1
+394:   # Ceiling tier (OMN-13215). Executes through the canonical HTTP inference path
+395:   # like every lower tier — NO subprocess, NO shelled CLI. The model maps to an
+396:   # HTTP frontier backend. To swap the ceiling provider (gemini / glm / openrouter
+397:   # / claude) edit ONLY this contract/overlay: repoint backend_id to another HTTP
+398:   # backend, or override that backend's endpoint_url / model_name / secret_ref in
+399:   # bifrost_overrides.yaml. No code change required.
+400:   #
+401:   # OMN-13351: the ceiling backend was repointed from the dead Anthropic
+402:   # ``cloud-sonnet`` (secret_ref llm.anthropic.api_key, which resolves to None in
+403:   # every lane — this org has NO Anthropic key, Claude Code is OAuth) to the
+404:   # resolvable Gemini frontier backend ``cloud-gemini-2-5-flash`` (secret_ref
+405:   # llm.gemini.api_key, model gemini-2.5-flash). The 2026-06-19 fixture-runtime
+406:   # escalation reprove proved the Anthropic key resolves to None and the ceiling
+407:   # terminated ``no_routable_backend_for_task`` on every escalation; a live
+408:   # key-resolution + 1-token model probe this ticket confirmed llm.gemini.api_key
+409:   # resolves and gemini-2.5-flash returns HTTP 200 (gemini-2.5-pro is quota-zero
+410:   # 429 on the only resolvable Gemini key, OMN-12890-class free-tier exhaustion).
+411:   #
+412:   # OMN-13667: ceiling repointed a second time — from free-tier AI Studio Gemini
+413:   # (cloud-gemini-2-5-flash, gemini-2.5-flash) which 503s on every escalation to
+414:   # GLM-5.2 z.ai direct (cloud-glm, secret_ref llm.glm.api_key) — the proven
+415:   # backend already used by the judge lane and the cheap_cloud tier. Cost model
+416:   # updated to metered (0.002 / 1k tokens) to match the billed z.ai direct key.
+417:   # max_retries raised 0 → 2 for resilience against transient z.ai errors.
+418:   # A fallback model entry (openrouter-nemotron-ultra, separate provider,
+419:   # genuinely free tier) is added so the ceiling is not a single point of failure.
+420:   #
+421:   # OMN-14625: ceiling repointed a THIRD time — from GLM-5.2 z.ai direct
+422:   # (cloud-glm) back to Gemini (cloud-gemini-2-5-flash, gemini-2.5-flash). The z.ai
+423:   # GLM route is DEAD from the example-endpoint runtime: resolve_api_key succeeds but every
+424:   # completion call 401s / loops FAILED-only (forensics this ticket; see memory
+425:   # reference_glm_zai_wiring_and_consumers). The openrouter-nemotron-ultra
+426:   # fallback entry added under OMN-13667 is REMOVED — with the primary ceiling
+427:   # back on a proven-resolvable backend, the free-aggregator fallback is not
+428:   # worth its markup-avoidance tradeoff on the ceiling slot specifically
+429:   # (cheap_frontier below still carries the same OpenRouter model for the
+430:   # lower-cost escalation path).
+431:   #
+432:   # The tier slot is kept named ``claude`` because every task-class
+433:   # escalation_policy.tier_order and the handler cost_tier_map key on this literal
+434:   # tier name; ``claude`` is now a stable ceiling-slot identifier, NOT a provider
+435:   # claim.
+436:   - name: claude
+437:     cost_per_1k_tokens: 0.002
+438:     # OMN-14625: ceiling repointed off GLM-5.2 z.ai direct (cloud-glm) to Gemini
+439:     # (cloud-gemini-2-5-flash) — same billed/metered rate class as cheap_cloud above.
+440:     cost:
+441:       cost_type: metered
+442:       rate_per_1k_usd: 0.002
+443:     models:
+444:       # OMN-14625: primary ceiling model repointed from GLM-5.2 z.ai direct
+445:       # (cloud-glm) to Gemini (cloud-gemini-2-5-flash, model gemini-2.5-flash). The
+446:       # z.ai GLM route is DEAD from the example-endpoint runtime — resolve_api_key succeeds
+447:       # but every completion call 401s / loops FAILED-only (OMN-14625
+448:       # forensics; see reference_glm_zai_wiring_and_consumers). Gemini's
+449:       # cloud-gemini-2-5-flash backend is proven resolvable on this lane (live 200s,
+450:       # secret_ref llm.gemini.api_key). The OpenRouter Qwen3-Coder-480B
+451:       # fallback entry that previously sat below GLM is REMOVED from this
+452:       # ceiling: it is not a routine escalation backend (OpenRouter is
+453:       # reserved for the genuinely-free cheap_frontier tier per OMN-14225
+454:       # policy), and with the primary ceiling now on a proven-resolvable
+455:       # backend a paid-tier single point of failure is preferable to a free
+456:       # aggregator markup as the ceiling's own fallback.
+457:       - id: gemini-2.5-flash
+458:         backend_id: cloud-gemini-2-5-flash
+459:         max_context_tokens: 1000000
+460:         use_for:
+461:           - escalation
+462:           - complex_reasoning
+463:           # OMN-15961: agent_delegation REMOVED — see the local-tier comment
+464:           # (routing_tiers.yaml:88-98) for the full rationale. OMN-15503's
+465:           # framing ("agent_orchestration is the required-capability label,
+466:           # not a routable task taxonomy value") was itself the false
+467:           # premise: agent_orchestration IS the capability this ceiling
+468:           # cannot provide, which is exactly why claiming agent_delegation
+469:           # here was wrong.
+470:           - code_generation
+471:           - reasoning
+472:           - planning
+473:           - test
+474:           - document
+475:           - research
+
+PUBLIC SOURCE omnimarket/src/omnimarket/configs/task_class_contracts.v1.yaml:1-110
+1: # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+2: # SPDX-License-Identifier: MIT
+3: # Copyright (c) 2026 OmniNode Team
+4: #
+5: # task_class_contracts.v1.yaml — Task-class routing contracts.
+6: #
+7: # Loaded by node_delegation_routing_reducer to augment tier routing with
+8: # per-task-class pricing ceilings, cloud routing policies, and escalation order.
+9: #
+10: # cloud_routing_policy values:
+11: #   opt_in   — cloud routing requires explicit caller opt-in
+12: #   allowed  — cloud routing is permitted when local tiers are unavailable
+13: #   blocked  — cloud routing is never permitted for this task class
+14: #
+15: # pricing_ceiling_per_1k_tokens: maximum acceptable cost per 1000 tokens (USD).
+16: #   local tier ≈ $0.000, cheap_cloud ≈ $0.002, claude ≈ $0.015
+17: #
+18: # escalation_policy.tier_order: the COMPLETE, CLOSED, ORDERED set of tiers
+19: #   eligible for this task class. Only the tiers named here are tried, in this
+20: #   order. Tiers NOT listed are excluded for this task class (they are not
+21: #   appended after the declared order) — the listed ceiling tier is the final
+22: #   tier tried. When tier_order is absent, the routing_tiers.yaml declaration
+23: #   order is used instead; that file is the source of truth for fallback order.
+24: #
+25: # escalation_policy.entry_share: OPTIONAL {tier: cheap_frontier, share: 0.25}.
+26: #   OMN-20163: a deterministic fraction (0.0..1.0) of correlation ids starts on
+27: #   this free tier, which must be named in tier_order and must not already be
+28: #   first. A miss retries tier_order's first tier before any metered tier.
+29: #   Initial entry draws are disabled while quota blocks every entry-tier backend.
+30: #   Absent key or share 0.0 preserves the declared order; no class opts in here.
+31: #
+32: # default_task_model_ref: model ID used when no per-task override is declared.
+33: #   Maps to the model `id` field in routing_tiers.yaml (e.g. "qwen3-coder-30b").
+34: #
+35: # task_model_overrides: per-task-type model ID overrides. The routing reducer
+36: #   prioritizes the declared model over tier-order selection when the model is
+37: #   available in the tier with a configured bifrost endpoint (OMN-10942).
+38: #
+39: # gateway_exposure: closed public/internal admission policy. The Gateway may
+40: #   project only entries declared public; internal entries remain valid Market
+41: #   task classes but are not admitted at the public Gateway boundary.
+42: #
+43: # selection: how a PROMPT selects this task class (OMN-18305). Required on
+44: #   every class. `phrases` are matched on WORD BOUNDARIES and by PRESENCE ONLY
+45: #   — never counted, so the bulk of a document cannot outvote its purpose, and
+46: #   "latest" can no longer match "test". `min_words`/`max_words` gate which
+47: #   prompt SHAPES the class is eligible for at all and are evaluated before any
+48: #   phrase, which is what keeps a 7,000-word coordination ledger structurally
+49: #   ineligible for `test`. `priority` ranks eligible classes (higher wins; ties
+50: #   broken by class name, so resolution is total and deterministic) and puts
+51: #   the prose classes above the keyword classes. An empty `phrases` list means
+52: #   the class is never resolved from a prompt — the internal classes. This
+53: #   replaces the hardcoded keyword table the `onex delegate` CLI used to carry;
+54: #   see ModelTaskClassSelection in inference/task_class_authority.py.
+55: #
+56: # context_profile: OPTIONAL context profile name (a file stem under
+57: #   src/omnimarket/pack/profiles, e.g. delegation_payload_local; OMN-21119).
+58: #   The delegation orchestrator requests that profile's context pack before
+59: #   dispatching a task of this class. Absent means no pack. No class here sets
+60: #   it until the profile is promoted on its measured evidence.
+61: #
+62: # response_contract_ref: OPTIONAL dotted "module.path.AttrName" naming a pydantic
+63: #   model (or a discriminated Union type alias) whose JSON Schema
+64: #   (resolve_task_class_response_contract, node_delegation_routing_reducer)
+65: #   becomes the DEFAULT response_contract for a local dispatch of this task
+66: #   class when the caller supplies none of its own (OMN-15196). This is a
+67: #   structural REPLACEMENT for that class's dod_heuristic keyword checks (the
+68: #   quality gate validates the response against the schema instead of
+69: #   substring-matching) — a migrated class's dod_heuristic keyword entries for
+70: #   the retired checks are deleted, not merely superseded, per the
+71: #   net-negative-surface rule. A caller-declared response_contract (e.g. a
+72: #   per-request schema) always takes precedence over this default. Absent —
+73: #   the pre-OMN-15196 DoD-heuristic-only behavior — for every class not listed
+74: #   here.
+75: #
+76: # Related Tickets:
+77: #   - OMN-10615: Wire routing reducer to read task-class contracts
+78: #   - OMN-10942: Task routing policy from contract with model defaults
+79: #   - OMN-15161: Per-role dispatch report contracts ported into omnibase_core
+80: #   - OMN-15193: Contract-declared response validation replaces keyword heuristics
+81: #   - OMN-15196: Migrate task classes to declared response contracts; retire
+82: #     the keyword heuristics those classes made obsolete
+83: version: "1.0"
+84: # OMN-16419: default_task_model_ref and every "Qwen3.6-35B-A3B" task_model_overrides
+85: # entry below were repointed to "Qwen3.6-35B-A3B" — the live-verified SGLang served id at
+86: # example-endpoint:8000 (the stale label was never running post-reboot; see bifrost_delegation.yaml
+87: # local-coder/local-heavy-reasoning and routing_tiers.yaml for the matching backend
+88: # model ids this id-match escape hatch resolves against).
+89: default_task_model_ref: "Qwen3.8-27B"
+90: # OMN-17427 / RULING 2026-10-08T23:48:01Z (OMN-20422): lab models first for
+91: # appropriate tasks, with a scoring rubric. This is the rubric.
+92: #
+93: # `lab_tier` names the routing_tiers.yaml tier that is the lab. `bar` is what a
+94: # class's held-out set must score there: the shipped value is the 21-of-28 bar
+95: # the code_review measurement used. Each routable class declares `lab_rubric`:
+96: # `verdict` is pass, fail or unmeasured, and a pass or fail carries the
+97: # `measured` score it was earned from; the check refuses a verdict its score
+98: # does not earn. A class is released from lab-first ONLY by a recorded fail; an
+99: # unmeasured class keeps the default. For every other routable class the
+100: # lab-first check (node_lab_first_routing_check_compute, run by the
+101: # lab-first-routing pre-commit hook and a ci.yml step) refuses a tier_order that does
+102: # not open on the lab tier, an entry_share that starts a fraction elsewhere, and
+103: # a model pin the lab tier does not serve. A class with no serving tier
+104: # (routing_availability) declares no rubric.
+105: lab_first_policy:
+106:   lab_tier: local
+107:   bar:
+108:     adequate: 21
+109:     of: 28
+110:   rationale: >-
+
+PUBLIC SOURCE omnibase_infra/src/omnibase_infra/cli/cli_delegate.py:1-150
+1: # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+2: # SPDX-License-Identifier: MIT
+3: 
+4: """``onex delegate`` — single-command local-LLM delegation (OMN-13096).
+5: 
+6: Phase 2b of the skill-output-suppression slice
+7: (``docs/plans/2026-06-12-skill-output-suppression-plan.md``): the
+8: governing simplification is that **a dispatch skill IS one CLI call**.
+9: 
+10: ``onex delegate "<prompt>" [--task-type X] [--max-tokens N]`` wraps, inside
+11: the CLI entrypoint:
+12: 
+13: 1. task-class resolution by the task-class contract, read through the
+14:    installed registry (``onex.contracts:task_class_authority``, OMN-19407),
+15: 2. typed payload construction written to ``<state-root>/tmp/<run_id>.json``
+16:    (run_id-suffixed scratch — never ``/tmp``; ``feedback_no_tmp_use_workspace``),
+17: 3. resolution of the packaged ``node_delegate_skill_orchestrator`` contract,
+18: 4. dispatch through the OMN-13094 receipt-mode path
+19:    (:func:`omnibase_infra.cli.receipt_mode.run_receipt_mode`).
+20: 
+21: Bus target (OMN-13532; default flipped under OMN-14376; made deterministic
+22: under OMN-16678; made CONFIG-RESOLVED under OMN-17304). ``--bus`` is OPTIONAL,
+23: never required for a delegation to reach the shared platform substrate. When
+24: omitted, :func:`resolve_default_bus` resolves the CLI's EMBEDDED runtime the
+25: way every other runtime resolves — from that runtime's OWN configuration,
+26: through the ONE shared authority
+27: (``backends/auto_configure.py::resolve_bus_type``, also used by
+28: ``select_event_bus``), which applies a single resolution order —
+29: **explicit ``--bus`` > configured authority > shipped ``inmemory`` default**:
+30: the ``ONEX_CONTRACTS_DIR`` bootstrap pointer names a contracts directory whose
+31: ``runtime/runtime_config.yaml`` is the configured authority; with no pointer
+32: (or no file) the SHIPPED tier-0 default runtime config answers — in-memory
+33: bus, ``local`` profile — with a WARNING logged (stderr / capture, never
+34: stdout) naming the local-SQLite consequence. ``ONEX_EVENT_BUS_TYPE`` holds NO
+35: tier (set-and-ignored produces a warning), and a broker's reachability no
+36: longer decides the transport: execution locus is a resolved property of
+37: configuration, not an environmental accident.
+38: 
+39: Broker addressing (OMN-16871). ``--bus`` says WHICH KIND of transport;
+40: ``--lane`` says WHICH BROKER. The address used to be resolved by
+41: ``EventBusKafka`` from the ambient ``KAFKA_BOOTSTRAP_SERVERS``, which on the
+42: launching Mac names the ``example-endpoint`` fixture-runtime lane — so every ad hoc
+43: delegation from a developer shell published onto a governed proof lane, and
+44: that lane recorded four such CLI terminal-run consumer groups when the finding
+45: was re-verified. That path is DELETED, not repointed: with the resolved bus on
+46: ``kafka``, a run that named neither ``--lane`` nor ``--kafka-bootstrap`` is
+47: refused, and the refusal lists the declared lanes. ``--lane`` resolves the
+48: broker AND the declared transport from ``config/lab/ci_bus_lanes.yaml``
+49: under the workspace config root — the same declaration the CI publishers and the
+50: chain canary already read, through the same ``load_lane_transport`` reader, so
+51: no second source exists. SASL credentials are unchanged and still reach the
+52: client through the standard ``KAFKA_SASL_*`` environment, which is where a
+53: secret belongs; what left the environment is the ADDRESS.
+54: 
+55: **Execution locality (OMN-17295): ``--bus`` selects the TRANSPORT, never the
+56: executor.** On both values the ``node_delegate_skill_orchestrator`` runs
+57: IN-PROCESS in this CLI process, resolved from the local venv's installed
+58: ``omnimarket``. :func:`build_backend_overrides` is the only consumer of the
+59: flag and it returns ``{"event_bus": <bus>}`` (plus an optional
+60: ``kafka_bootstrap``) — nothing in that map names an executor or a remote host.
+61: With ``kafka``, the typed ``ModelDelegateSkillRequest`` command and this run's
+62: terminal are carried over the live broker
+63: (``feedback_bus_is_the_transport`` — the bus is THE transport) so the
+64: projection lands in the shared ``delegation_events`` table rather than
+65: per-machine SQLite; the accept/climb decision itself is still made by the
+66: orchestrator code in THIS process. A ``--bus kafka`` invocation is therefore
+67: NOT a probe of a deployed lane's behaviour, and there is no remote-execution
+68: mode to select: building one is deliberately out of scope (a thin client, if
+69: it is ever built, is gateway-mediated). ``--bus``/``--kafka-bootstrap`` are
+70: explicit OVERRIDES for forcing a specific transport; both flow straight
+71: through ``backend_overrides`` to ``RuntimeLocal``, which never hardcodes the
+72: broker.
+73: 
+74: stdout receives exactly ONE
+75: :class:`~omnibase_core.models.dispatch.model_skill_result.ModelSkillResult`
+76: JSON whose ``result`` is the FULL
+77: ``ModelDelegateSkillResponse`` (status, response, model_name, provider,
+78: task_type, quality_gate_passed, metrics). RuntimeLocal logs, envelope dumps,
+79: and progress go to the capture file + artifact store and never reach the
+80: caller. Non-zero exit on failure.
+81: 
+82: This replaces the multi-step ``omniclaude`` delegate shim
+83: (payload temp file + ``cd omnimarket`` + ``onex node`` log flood +
+84: ``cat workflow_result.json``) with one command, one typed result.
+85: 
+86: Correlation identity and hard timeout (OMN-14397). Two invocations issued back
+87: to back from the same working directory/state-root were observed sharing a
+88: ``correlation_id`` and a hung Kafka-bus call outliving its own ``--timeout``,
+89: requiring a manual ``kill`` on ``example-endpoint``. This CLI now mints ``correlation_id``
+90: fresh per invocation and writes it explicitly into the payload rather than
+91: leaving it to an implicit downstream default, and wraps the receipt-mode
+92: dispatch in a ``SIGALRM``-based hard backstop: ``RuntimeLocal``'s own
+93: ``asyncio.wait_for`` timeout only preempts at an ``await`` point, so a
+94: response-listener stuck in a synchronous, non-cooperative blocking call never
+95: yields control back and that timeout silently never fires. ``SIGALRM``
+96: interrupts blocking syscalls too, so it aborts the call (and reports a clear
+97: error) even when the hang is not asyncio-cooperative.
+98: 
+99: .. versionadded:: OMN-13096
+100: .. versionchanged:: OMN-14397
+101:    Fresh ``correlation_id`` per invocation; hard ``SIGALRM`` timeout backstop.
+102: .. versionchanged:: OMN-17295
+103:    The minted ``correlation_id`` is threaded into ``run_receipt_mode`` so the
+104:    receipt is selected strictly by this run's identity; ``--bus`` help no
+105:    longer claims a deployed runtime consumer dispatches the work.
+106: """
+107: 
+108: from __future__ import annotations
+109: 
+110: import functools
+111: import importlib
+112: import json
+113: import logging
+114: import math
+115: import os
+116: import re
+117: import signal
+118: import socket
+119: import sys
+120: import time
+121: import uuid
+122: from collections.abc import Iterator, Mapping, Sequence
+123: from contextlib import contextmanager
+124: from datetime import UTC, datetime
+125: from pathlib import Path
+126: 
+127: import click
+128: import yaml
+129: from pydantic import BaseModel, ValidationError
+130: 
+131: from omnibase_core.enums.enum_skill_result_status import EnumSkillResultStatus
+132: from omnibase_core.errors.model_onex_error import ModelOnexError
+133: from omnibase_core.models.dispatch.model_skill_result import ModelSkillResult
+134: from omnibase_infra.backends.auto_configure import (
+135:     BUS_INMEMORY,
+136:     BUS_KAFKA,
+137:     SUPPORTED_BUS_TYPES,
+138:     EventBusResolutionAmbiguousError,
+139:     resolve_bus_type,
+140: )
+141: from omnibase_infra.cli.cli_node import _resolve_packaged_contract
+142: from omnibase_infra.cli.contract_registry import (
+143:     ContractChoice,
+144:     RegistryUnresolvedError,
+145:     field_vocabulary,
+146:     node_input_model,
+147: )
+148: from omnibase_infra.cli.delegate_caller import (
+149:     DELEGATE_CALLER_LANE_METADATA_KEY,
+150:     resolve_delegate_caller,
+
+PUBLIC SOURCE omniclaude/src/omniclaude/delegation/runner.py:140-180
+140:     error_message: str = Field(default="", description="Structured error on failure")
+141: 
+142: 
+143: def canonical_bifrost_contract_path() -> Path:
+144:     """Return the path of the canonical contract inside the installed omnimarket.
+145: 
+146:     omniclaude owns no routing table (OMN-17102). The one routing authority is
+147:     ``omnimarket/configs/bifrost_delegation.yaml``, shipped in the omnimarket
+148:     package this repo pins; every omniclaude loader resolves it through here. A
+149:     forked copy once drifted to config_version 1.1.0 while the canonical contract
+150:     moved on, and kept naming backends the canonical contract had deleted.
+151: 
+152:     Raises:
+153:         RuntimeError: omnimarket is not installed, or the installed release does
+154:             not ship the contract. There is no vendored fallback: a stale copy
+155:             is the defect this function exists to prevent.
+156:     """
+157:     spec = importlib.util.find_spec("omnimarket")
+158:     locations = list(spec.submodule_search_locations or []) if spec else []
+159:     if not locations:
+160:         raise RuntimeError(
+161:             "omnimarket is not installed, so the canonical bifrost delegation "
+162:             "contract cannot be resolved. Install the omnimarket release pinned "
+163:             "in pyproject.toml; omniclaude ships no copy of the contract."
+164:         )
+165:     path = Path(locations[0]) / "configs" / "bifrost_delegation.yaml"
+166:     if not path.is_file():
+167:         raise RuntimeError(
+168:             f"Installed omnimarket does not ship the canonical bifrost delegation "
+169:             f"contract at {path}. Advance the omnimarket pin to a release that does."
+170:         )
+171:     return path
+172: 
+173: 
+174: _DEFAULT_BIFROST_CONTRACT_PATH = canonical_bifrost_contract_path()
+175: _DEFAULT_BIFROST_OVERLAY_PATH = (
+176:     Path.home() / ".omninode" / "delegation" / "bifrost_overrides.yaml"
+177: )
+178: 
+179: 
+180: def _backend_has_credential(backend: ModelDelegationBackendConfig) -> bool:

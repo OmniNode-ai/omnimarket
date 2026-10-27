@@ -1,0 +1,3 @@
+Get HandlerNodeIntrospected from container.
+Get HandlerNodeRegistrationAcked from container.
+Wire registration dispatchers into MessageDispatchEngine.

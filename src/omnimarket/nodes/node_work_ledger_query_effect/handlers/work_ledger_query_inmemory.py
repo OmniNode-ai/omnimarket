@@ -34,6 +34,9 @@ from typing import Any, Protocol
 from omnimarket.events.enum_ledger_row_type import EnumLedgerRowType
 from omnimarket.handlers.work_ledger_text import ledger_row_stamp
 from omnimarket.models.work_ledger_query import ModelWorkLedgerRowRecord
+from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_reader import (
+    WorkLedgerReadError,
+)
 
 _DEFAULT_GROUP = "work-ledger-inmemory-reader"
 
@@ -163,6 +166,14 @@ class InMemoryWorkLedgerQueryReader:
             return None, None
         return max(r.row_ts for r in shown), max(
             r.projected_at for r in shown if r.projected_at is not None
+        )
+
+    def read_history(
+        self, *, ledger_id: str, first_seq: int, last_seq: int, until: datetime
+    ) -> tuple[ModelWorkLedgerRowRecord, ...]:
+        """A volatile bus copy cannot prove retained, database-timed history."""
+        raise WorkLedgerReadError(
+            "in-memory ledger has no authoritative retained history or database ingest time"
         )
 
 

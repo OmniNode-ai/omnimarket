@@ -7,7 +7,7 @@ description: >
   delegation-routing tenant overlay copies secret_ref values from.
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 capabilities:
-  standalone: true
+  standalone: false
   full_runtime: true
   requires_network: true
   requires_secrets: false

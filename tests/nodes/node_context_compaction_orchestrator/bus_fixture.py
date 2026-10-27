@@ -13,6 +13,7 @@ from typing import Any, cast
 
 from omnibase_core.enums.enum_node_kind import EnumNodeKind
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_core.event_bus.event_bus_semantic_fake import EventBusSemanticFake
 from omnibase_infra.runtime.auto_wiring.discovery import discover_contracts_from_paths
 from omnibase_infra.runtime.auto_wiring.handler_wiring import (
     _make_dispatch_callback,
@@ -93,7 +94,11 @@ class MemorySession:
 
 
 class MemoryConsumer:
-    def __init__(self, bus: EventBusInmemory, loop: asyncio.AbstractEventLoop) -> None:
+    def __init__(
+        self,
+        bus: EventBusInmemory | EventBusSemanticFake,
+        loop: asyncio.AbstractEventLoop,
+    ) -> None:
         self.bus = bus
         self.loop = loop
         self.lock = threading.Lock()
@@ -126,7 +131,14 @@ class MemoryConsumer:
 class BusHarness:
     """A loop on a worker thread also supports synchronous legacy test entrypoints."""
 
-    def __init__(self, pack: Any = None, *, silent: bool = False) -> None:
+    def __init__(
+        self,
+        pack: Any = None,
+        *,
+        silent: bool = False,
+        bus_class: Any = EventBusInmemory,
+    ) -> None:
+        self.bus_class = bus_class
         self.loop = asyncio.new_event_loop()
         self.thread = threading.Thread(target=self.loop.run_forever, daemon=True)
         self.thread.start()
@@ -136,7 +148,7 @@ class BusHarness:
         asyncio.run_coroutine_threadsafe(self._start(), self.loop).result(10)
 
     async def _start(self) -> None:
-        self.bus = EventBusInmemory(environment="local", group="compaction-fixture")
+        self.bus = self.bus_class(environment="local", group="compaction-fixture")
         await self.bus.start()
         self.topics = load_compaction_pack_topics()
         self.consumer = MemoryConsumer(self.bus, self.loop)

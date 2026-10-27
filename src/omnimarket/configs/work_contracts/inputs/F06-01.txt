@@ -1,0 +1,606 @@
+Fix the failing test from its log. Public repository OmniNode-ai/omnibase_core, snapshot 9bfa5cf5ed05b64da7f1d72ae847aafd628658d9.
+Return only a unified diff for src/omnibase_core/models/orchestrator/payloads/model_action_typed_payload.py; do not change any test, contract, configuration, dependency or other file. The regression was seeded by restoring this product source file to the parent of a recent fix commit. Do not assume access to a workspace. Preserve existing behavior and strong UUID types.
+The unchanged test command is: pytest tests/unit/utils/test_workflow_executor_effect_werror.py -q --tb=short
+Failing test log:
+[1m============================= test session starts ==============================[0m
+platform darwin -- Python 3.13.12, pytest-9.0.3, pluggy-1.6.0
+rootdir: fixture-root
+configfile: pytest.ini
+plugins: hypothesis-6.151.6, mock-3.15.1, locust-2.43.3, xdist-3.8.0, split-0.11.0, timeout-2.4.0, cov-6.3.0, anyio-4.14.2, pytest_httpserver-1.1.5, asyncio-1.3.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 3 items
+
+tests/unit/utils/test_workflow_executor_effect_werror.py [31mF[0m[31mF[0m[31mF[0m[31m             [100%][0m
+
+=================================== FAILURES ===================================
+[31m[1m________ TestEffectStepWerror.test_effect_step_action_emits_no_warning _________[0m
+[1m[31mtests/unit/utils/test_workflow_executor_effect_werror.py[0m:73: in test_effect_step_action_emits_no_warning
+    [0maction, _ = _create_action_for_step(step, uuid4())[90m[39;49;00m
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31msrc/omnibase_core/utils/util_workflow_executor.py[0m:1608: in _create_action_for_step
+    [0maction = ModelAction([90m[39;49;00m
+[1m[31msrc/omnibase_core/models/orchestrator/model_action.py[0m:300: in _validate_action_consistency
+    [0m[96mself[39;49;00m._validate_payload_type_integration()[90m[39;49;00m
+[1m[31msrc/omnibase_core/models/orchestrator/model_action.py[0m:343: in _validate_payload_type_integration
+    [0mwarnings.warn([90m[39;49;00m
+[1m[31mE   UserWarning: ModelAction: Payload type 'ModelOperationalActionPayload' is not among the recommended types ['ModelDataActionPayload', 'ModelFilesystemActionPayload', 'ModelRegistryActionPayload', 'ModelLifecycleActionPayload'] for action_type=effect. This may be intentional for custom workflows, but consider using a recommended payload type for better semantic alignment. See get_recommended_payloads_for_action_type() for guidance.[0m
+[31m[1m__ TestEffectStepWerror.test_parallel_effect_workflow_completes_under_werror ___[0m
+[1m[31mtests/unit/utils/test_workflow_executor_effect_werror.py[0m:122: in test_parallel_effect_workflow_completes_under_werror
+    [0m[94massert[39;49;00m result.execution_status == EnumWorkflowStatus.COMPLETED[90m[39;49;00m
+[1m[31mE   AssertionError: assert <EnumWorkflow...LED: 'failed'> == <EnumWorkflow...: 'completed'>[0m
+[1m[31mE     [0m
+[1m[31mE     [0m[91m- completed[39;49;00m[90m[39;49;00m[0m
+[1m[31mE     [92m+ failed[39;49;00m[90m[39;49;00m[0m
+----------------------------- Captured stderr call -----------------------------
+ERROR:root:Workflow 'effect_werror_workflow' step 'Fetch Data' (7b8aff69-4fd0-40ca-806a-36cd5059d183) failed with unexpected error: ModelAction: Payload type 'ModelOperationalActionPayload' is not among the recommended types ['ModelDataActionPayload', 'ModelFilesystemActionPayload', 'ModelRegistryActionPayload', 'ModelLifecycleActionPayload'] for action_type=effect. This may be intentional for custom workflows, but consider using a recommended payload type for better semantic alignment. See get_recommended_payloads_for_action_type() for guidance.
+NoneType: None
+------------------------------ Captured log call -------------------------------
+[1m[31mERROR   [0m root:util_workflow_executor.py:1198 Workflow 'effect_werror_workflow' step 'Fetch Data' (7b8aff69-4fd0-40ca-806a-36cd5059d183) failed with unexpected error: ModelAction: Payload type 'ModelOperationalActionPayload' is not among the recommended types ['ModelDataActionPayload', 'ModelFilesystemActionPayload', 'ModelRegistryActionPayload', 'ModelLifecycleActionPayload'] for action_type=effect. This may be intentional for custom workflows, but consider using a recommended payload type for better semantic alignment. See get_recommended_payloads_for_action_type() for guidance.
+NoneType: None
+[31m[1m_ TestEffectStepWerror.test_sequential_effect_workflow_completes_under_werror __[0m
+[1m[31mtests/unit/utils/test_workflow_executor_effect_werror.py[0m:95: in test_sequential_effect_workflow_completes_under_werror
+    [0m[94massert[39;49;00m result.execution_status == EnumWorkflowStatus.COMPLETED[90m[39;49;00m
+[1m[31mE   AssertionError: assert <EnumWorkflow...LED: 'failed'> == <EnumWorkflow...: 'completed'>[0m
+[1m[31mE     [0m
+[1m[31mE     [0m[91m- completed[39;49;00m[90m[39;49;00m[0m
+[1m[31mE     [92m+ failed[39;49;00m[90m[39;49;00m[0m
+----------------------------- Captured stderr call -----------------------------
+ERROR:root:Workflow 'effect_werror_workflow' step 'Fetch Data' (1e4bbabf-987b-4e1b-9a97-9f3d08a88c9e) failed with unexpected error: ModelAction: Payload type 'ModelOperationalActionPayload' is not among the recommended types ['ModelDataActionPayload', 'ModelFilesystemActionPayload', 'ModelRegistryActionPayload', 'ModelLifecycleActionPayload'] for action_type=effect. This may be intentional for custom workflows, but consider using a recommended payload type for better semantic alignment. See get_recommended_payloads_for_action_type() for guidance.
+Traceback (most recent call last):
+  File "fixture-root", line 791, in _execute_sequential
+    action, action_payload_size = _create_action_for_step(step, workflow_id)
+                                  ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "fixture-root", line 1608, in _create_action_for_step
+    action = ModelAction(
+        action_id=uuid4(),
+    ...<10 lines>...
+        created_at=datetime.now(),
+    )
+  File "fixture-root", line 263, in __init__
+    validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+  File "fixture-root", line 300, in _validate_action_consistency
+    self._validate_payload_type_integration()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "fixture-root", line 343, in _validate_payload_type_integration
+    warnings.warn(
+    ~~~~~~~~~~~~~^
+        f"ModelAction: Payload type '{payload_type.__name__}' is not among "
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+        stacklevel=3,
+        ^^^^^^^^^^^^^
+    )
+    ^
+UserWarning: ModelAction: Payload type 'ModelOperationalActionPayload' is not among the recommended types ['ModelDataActionPayload', 'ModelFilesystemActionPayload', 'ModelRegistryActionPayload', 'ModelLifecycleActionPayload'] for action_type=effect. This may be intentional for custom workflows, but consider using a recommended payload type for better semantic alignment. See get_recommended_payloads_for_action_type() for guidance.
+------------------------------ Captured log call -------------------------------
+[1m[31mERROR   [0m root:util_workflow_executor.py:868 Workflow 'effect_werror_workflow' step 'Fetch Data' (1e4bbabf-987b-4e1b-9a97-9f3d08a88c9e) failed with unexpected error: ModelAction: Payload type 'ModelOperationalActionPayload' is not among the recommended types ['ModelDataActionPayload', 'ModelFilesystemActionPayload', 'ModelRegistryActionPayload', 'ModelLifecycleActionPayload'] for action_type=effect. This may be intentional for custom workflows, but consider using a recommended payload type for better semantic alignment. See get_recommended_payloads_for_action_type() for guidance.
+Traceback (most recent call last):
+  File "fixture-root", line 791, in _execute_sequential
+    action, action_payload_size = _create_action_for_step(step, workflow_id)
+                                  ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "fixture-root", line 1608, in _create_action_for_step
+    action = ModelAction(
+        action_id=uuid4(),
+    ...<10 lines>...
+        created_at=datetime.now(),
+    )
+  File "fixture-root", line 263, in __init__
+    validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+  File "fixture-root", line 300, in _validate_action_consistency
+    self._validate_payload_type_integration()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "fixture-root", line 343, in _validate_payload_type_integration
+    warnings.warn(
+    ~~~~~~~~~~~~~^
+        f"ModelAction: Payload type '{payload_type.__name__}' is not among "
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+        stacklevel=3,
+        ^^^^^^^^^^^^^
+    )
+    ^
+UserWarning: ModelAction: Payload type 'ModelOperationalActionPayload' is not among the recommended types ['ModelDataActionPayload', 'ModelFilesystemActionPayload', 'ModelRegistryActionPayload', 'ModelLifecycleActionPayload'] for action_type=effect. This may be intentional for custom workflows, but consider using a recommended payload type for better semantic alignment. See get_recommended_payloads_for_action_type() for guidance.
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m tests/unit/utils/test_workflow_executor_effect_werror.py::[1mTestEffectStepWerror::test_effect_step_action_emits_no_warning[0m - UserWarning: ModelAction: Payload type 'ModelOperationalActionPayload' is n...
+[31mFAILED[0m tests/unit/utils/test_workflow_executor_effect_werror.py::[1mTestEffectStepWerror::test_parallel_effect_workflow_completes_under_werror[0m - AssertionError: assert <EnumWorkflow...LED: 'failed'> == <EnumWorkflow...: ...
+[31mFAILED[0m tests/unit/utils/test_workflow_executor_effect_werror.py::[1mTestEffectStepWerror::test_sequential_effect_workflow_completes_under_werror[0m - AssertionError: assert <EnumWorkflow...LED: 'failed'> == <EnumWorkflow...: ...
+[31m============================== [31m[1m3 failed[0m[31m in 0.69s[0m[31m ===============================[0m
+
+
+Current faulty source src/omnibase_core/models/orchestrator/payloads/model_action_typed_payload.py:
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""
+Typed Payload Integration for ModelAction.
+
+Bridges EnumActionType (COMPUTE, EFFECT, REDUCE, ORCHESTRATE, CUSTOM) with the
+semantic-category-based SpecificActionPayload system.
+
+Design Decision:
+----------------
+The codebase already has a comprehensive typed payload system at
+`omnibase_core.models.core.model_action_payload_*` organized by SEMANTIC
+operation type (what the action does):
+- Lifecycle: initialize, shutdown, health_check
+- Data: read, write, create, update, delete
+- Transformation: transform, convert, parse
+- Operational: process, execute, run
+- Validation: validate, verify, check
+- Management: configure, deploy, migrate
+- Monitoring: monitor, collect, report
+- Registry: register, unregister, discover
+- Filesystem: scan, watch, sync
+- Custom: any custom operations
+
+This is SUPERIOR to organizing by node type (COMPUTE/EFFECT/REDUCE/ORCHESTRATE)
+because:
+1. A single node type can handle multiple semantic operations
+2. The semantic categorization provides more precise type safety
+3. Payload fields directly match the operation being performed
+
+Exports:
+1. `ActionPayloadType` - Type alias for use in ModelAction.payload field
+2. `get_recommended_payloads_for_action_type()` - Mapping from EnumActionType
+3. `create_action_payload()` - Factory for creating payloads based on action type
+
+Usage Example:
+--------------
+```python
+from omnibase_core.models.orchestrator.model_action import ModelAction
+from omnibase_core.models.orchestrator.payloads import (
+    ActionPayloadType,
+    ModelDataActionPayload,
+    create_action_payload,
+)
+from omnibase_core.enums.enum_workflow_execution import EnumActionType
+
+# Create a typed payload for an EFFECT action that reads data
+payload = create_action_payload(
+    action_type=EnumActionType.EFFECT,
+    semantic_action="read",
+    target_path="/data/users.json",
+    filters={"active": True},
+)
+
+# The payload is now fully typed as ModelDataActionPayload
+assert isinstance(payload, ModelDataActionPayload)
+```
+"""
+
+from omnibase_core.enums.enum_workflow_execution import EnumActionType
+from omnibase_core.models.core.model_action_category import ModelActionCategory
+from omnibase_core.models.core.model_action_payload_types import (
+    SpecificActionPayload,
+    create_specific_action_payload,
+)
+from omnibase_core.models.core.model_custom_action_payload import (
+    ModelCustomActionPayload,
+)
+from omnibase_core.models.core.model_data_action_payload import ModelDataActionPayload
+from omnibase_core.models.core.model_filesystem_action_payload import (
+    ModelFilesystemActionPayload,
+)
+from omnibase_core.models.core.model_lifecycle_action_payload import (
+    ModelLifecycleActionPayload,
+)
+from omnibase_core.models.core.model_management_action_payload import (
+    ModelManagementActionPayload,
+)
+from omnibase_core.models.core.model_monitoring_action_payload import (
+    ModelMonitoringActionPayload,
+)
+from omnibase_core.models.core.model_node_action_type import ModelNodeActionType
+from omnibase_core.models.core.model_operational_action_payload import (
+    ModelOperationalActionPayload,
+)
+from omnibase_core.models.core.model_predefined_categories import (
+    LIFECYCLE,
+    MANAGEMENT,
+    OPERATION,
+    QUERY,
+    TRANSFORMATION,
+    VALIDATION,
+)
+from omnibase_core.models.core.model_registry_action_payload import (
+    ModelRegistryActionPayload,
+)
+from omnibase_core.models.core.model_transformation_action_payload import (
+    ModelTransformationActionPayload,
+)
+from omnibase_core.models.core.model_validation_action_payload import (
+    ModelValidationActionPayload,
+)
+
+__all__ = [
+    # Type alias for ModelAction.payload field
+    "ActionPayloadType",
+    # Factory functions
+    "create_action_payload",
+    "get_recommended_payloads_for_action_type",
+    "get_payload_type_for_semantic_action",
+    # Re-exported payload types (for convenience)
+    "ModelCustomActionPayload",
+    "ModelDataActionPayload",
+    "ModelFilesystemActionPayload",
+    "ModelLifecycleActionPayload",
+    "ModelManagementActionPayload",
+    "ModelMonitoringActionPayload",
+    "ModelOperationalActionPayload",
+    "ModelRegistryActionPayload",
+    "ModelTransformationActionPayload",
+    "ModelValidationActionPayload",
+    # Union type
+    "SpecificActionPayload",
+]
+
+# Type alias for typed payloads in ModelAction
+# union-ok: discriminated_model_union - Type alias representing all valid payload types
+ActionPayloadType = SpecificActionPayload
+
+# Mapping from EnumActionType to commonly used semantic payload types
+# This is informational - the actual payload type depends on the semantic operation
+_ACTION_TYPE_TO_PAYLOAD_RECOMMENDATIONS: dict[
+    EnumActionType, list[type[SpecificActionPayload]]
+] = {
+    EnumActionType.COMPUTE: [
+        ModelTransformationActionPayload,  # transform, convert, parse
+        ModelValidationActionPayload,  # validate, verify, check
+        ModelOperationalActionPayload,  # process, execute, run
+    ],
+    EnumActionType.EFFECT: [
+        ModelDataActionPayload,  # read, write, create, update, delete
+        ModelFilesystemActionPayload,  # scan, watch, sync
+        ModelRegistryActionPayload,  # register, unregister, discover
+        ModelLifecycleActionPayload,  # health_check, initialize, shutdown
+    ],
+    EnumActionType.REDUCE: [
+        ModelOperationalActionPayload,  # aggregate, reduce
+        ModelMonitoringActionPayload,  # collect, report
+        ModelDataActionPayload,  # query, search
+    ],
+    EnumActionType.ORCHESTRATE: [
+        ModelManagementActionPayload,  # configure, deploy, migrate
+        ModelOperationalActionPayload,  # execute, run
+        ModelLifecycleActionPayload,  # initialize, shutdown
+    ],
+    EnumActionType.CUSTOM: [
+        ModelCustomActionPayload,  # any custom operations
+    ],
+}
+
+# Default categories for each EnumActionType when semantic_action is not specified
+_ACTION_TYPE_TO_DEFAULT_CATEGORY: dict[EnumActionType, ModelActionCategory] = {
+    EnumActionType.COMPUTE: TRANSFORMATION,
+    EnumActionType.EFFECT: OPERATION,
+    EnumActionType.REDUCE: OPERATION,
+    EnumActionType.ORCHESTRATE: MANAGEMENT,
+    EnumActionType.CUSTOM: OPERATION,
+}
+
+
+def get_recommended_payloads_for_action_type(
+    action_type: EnumActionType,
+) -> list[type[SpecificActionPayload]]:
+    """
+    Get recommended payload types for a given EnumActionType.
+
+    This is a guide for developers to understand which payload types are
+    commonly used with each action type. The actual payload type should be
+    chosen based on the semantic operation being performed.
+
+    Args:
+        action_type: The EnumActionType (COMPUTE, EFFECT, REDUCE, etc.)
+
+    Returns:
+        List of payload types commonly used with this action type
+
+    Example:
+        >>> payloads = get_recommended_payloads_for_action_type(EnumActionType.EFFECT)
+        >>> print([p.__name__ for p in payloads])
+        ['ModelDataActionPayload', 'ModelFilesystemActionPayload', ...]
+    """
+    return _ACTION_TYPE_TO_PAYLOAD_RECOMMENDATIONS.get(action_type, [])
+
+
+def create_action_payload(
+    action_type: EnumActionType,
+    semantic_action: str | None = None,
+    **kwargs: object,
+) -> SpecificActionPayload:
+    """
+    Create a typed payload for an action based on action type and semantic operation.
+
+    This factory function bridges EnumActionType with the semantic-category-based
+    payload system. It creates a ModelNodeActionType internally and uses the
+    existing create_specific_action_payload factory.
+
+    Args:
+        action_type: The EnumActionType (COMPUTE, EFFECT, REDUCE, ORCHESTRATE, CUSTOM)
+        semantic_action: Optional semantic action name (e.g., "read", "transform").
+                         If not provided or empty, a default based on action_type is used.
+                         Empty string is treated as None for convenience.
+        **kwargs: Additional keyword arguments passed to the payload constructor
+
+    Returns:
+        Appropriate SpecificActionPayload instance
+
+    Example:
+        >>> # Create a data payload for an EFFECT action
+        >>> payload = create_action_payload(
+        ...     action_type=EnumActionType.EFFECT,
+        ...     semantic_action="read",
+        ...     target_path="/data/users.json",
+        ... )
+        >>> assert isinstance(payload, ModelDataActionPayload)
+
+        >>> # Create a transformation payload for a COMPUTE action
+        >>> payload = create_action_payload(
+        ...     action_type=EnumActionType.COMPUTE,
+        ...     semantic_action="transform",
+        ...     input_format="json",
+        ...     output_format="yaml",
+        ... )
+        >>> assert isinstance(payload, ModelTransformationActionPayload)
+    """
+    # Treat empty string as None for convenience - use default action for type
+    # This handles edge case where semantic_action="" is passed
+    if semantic_action is None or semantic_action == "":
+        # Use default based on action type
+        default_names = {
+            EnumActionType.COMPUTE: "process",
+            EnumActionType.EFFECT: "execute",
+            EnumActionType.REDUCE: "aggregate",
+            EnumActionType.ORCHESTRATE: "coordinate",
+            EnumActionType.CUSTOM: "custom",
+        }
+        semantic_action = default_names.get(action_type, "process")
+
+    # Determine category
+    category = _ACTION_TYPE_TO_DEFAULT_CATEGORY.get(action_type, OPERATION)
+
+    # Override category based on well-known semantic actions
+    category_overrides: dict[str, ModelActionCategory] = {
+        # Lifecycle actions
+        "health_check": LIFECYCLE,
+        "initialize": LIFECYCLE,
+        "shutdown": LIFECYCLE,
+        "start": LIFECYCLE,
+        "stop": LIFECYCLE,
+        # Validation actions
+        "validate": VALIDATION,
+        "verify": VALIDATION,
+        "check": VALIDATION,
+        "test": VALIDATION,
+        # Transformation actions
+        "transform": TRANSFORMATION,
+        "convert": TRANSFORMATION,
+        "parse": TRANSFORMATION,
+        "serialize": TRANSFORMATION,
+        # Management actions
+        "configure": MANAGEMENT,
+        "deploy": MANAGEMENT,
+        "migrate": MANAGEMENT,
+        # Query actions
+        "monitor": QUERY,
+        "collect": QUERY,
+        "report": QUERY,
+        "alert": QUERY,
+    }
+
+    if semantic_action in category_overrides:
+        category = category_overrides[semantic_action]
+
+    # Create rich action type model
+    node_action_type = ModelNodeActionType(
+        name=semantic_action,
+        category=category,
+        display_name=semantic_action.replace("_", " ").title(),
+        description=f"Action: {semantic_action} (via {action_type.value})",
+    )
+
+    # Use existing factory to create the specific payload
+    return create_specific_action_payload(node_action_type, **kwargs)
+
+
+# Mapping from semantic action names to their corresponding payload types
+# Using a flat dict is more efficient and maintainable than nested if/elif chains
+_SEMANTIC_ACTION_TO_PAYLOAD_TYPE: dict[str, type[SpecificActionPayload]] = {
+    # Data actions
+    "read": ModelDataActionPayload,
+    "write": ModelDataActionPayload,
+    "create": ModelDataActionPayload,
+    "update": ModelDataActionPayload,
+    "delete": ModelDataActionPayload,
+    "search": ModelDataActionPayload,
+    "query": ModelDataActionPayload,
+    # Registry actions
+    "register": ModelRegistryActionPayload,
+    "unregister": ModelRegistryActionPayload,
+    "discover": ModelRegistryActionPayload,
+    # Filesystem actions
+    "scan": ModelFilesystemActionPayload,
+    "watch": ModelFilesystemActionPayload,
+    "sync": ModelFilesystemActionPayload,
+    # Custom action
+    "custom": ModelCustomActionPayload,
+    # Lifecycle actions
+    "health_check": ModelLifecycleActionPayload,
+    "initialize": ModelLifecycleActionPayload,
+    "shutdown": ModelLifecycleActionPayload,
+    "start": ModelLifecycleActionPayload,
+    "stop": ModelLifecycleActionPayload,
+    # Validation actions
+    "validate": ModelValidationActionPayload,
+    "verify": ModelValidationActionPayload,
+    "check": ModelValidationActionPayload,
+    "test": ModelValidationActionPayload,
+    # Transformation actions
+    "transform": ModelTransformationActionPayload,
+    "convert": ModelTransformationActionPayload,
+    "parse": ModelTransformationActionPayload,
+    "serialize": ModelTransformationActionPayload,
+    # Management actions
+    "configure": ModelManagementActionPayload,
+    "deploy": ModelManagementActionPayload,
+    "migrate": ModelManagementActionPayload,
+    # Monitoring/Query actions
+    "monitor": ModelMonitoringActionPayload,
+    "collect": ModelMonitoringActionPayload,
+    "report": ModelMonitoringActionPayload,
+    "alert": ModelMonitoringActionPayload,
+}
+
+
+def get_payload_type_for_semantic_action(
+    semantic_action: str,
+) -> type[SpecificActionPayload]:
+    """
+    Get the expected payload type for a semantic action name.
+
+    This is useful for type checking and validation.
+
+    Args:
+        semantic_action: The semantic action name (e.g., "read", "transform")
+
+    Returns:
+        The payload type class expected for this action
+
+    Note:
+        Unknown actions default to ModelOperationalActionPayload rather than
+        raising an error, as this allows extensibility for custom actions.
+    """
+    return _SEMANTIC_ACTION_TO_PAYLOAD_TYPE.get(
+        semantic_action, ModelOperationalActionPayload
+    )
+
+```
+Unchanged test source:
+```python
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""
+Werror coverage for effect workflow steps (OMN-17869).
+
+An effect step maps to EnumActionType.EFFECT. The payload built for it must be
+one ModelAction recommends for EFFECT, otherwise ModelAction emits an
+informational UserWarning that becomes an exception under PYTHONWARNINGS=error
+and marks a valid workflow failed.
+"""
+
+import warnings
+from uuid import uuid4
+
+import pytest
+
+from omnibase_core.enums.enum_workflow_coordination import EnumFailureRecoveryStrategy
+from omnibase_core.enums.enum_workflow_execution import (
+    EnumActionType,
+    EnumExecutionMode,
+)
+from omnibase_core.enums.enum_workflow_status import EnumWorkflowStatus
+from omnibase_core.models.contracts.model_workflow_step import ModelWorkflowStep
+from omnibase_core.models.contracts.subcontracts.model_coordination_rules import (
+    ModelCoordinationRules,
+)
+from omnibase_core.models.contracts.subcontracts.model_execution_graph import (
+    ModelExecutionGraph,
+)
+from omnibase_core.models.contracts.subcontracts.model_workflow_definition import (
+    ModelWorkflowDefinition,
+)
+from omnibase_core.models.contracts.subcontracts.model_workflow_definition_metadata import (
+    ModelWorkflowDefinitionMetadata,
+)
+from omnibase_core.models.primitives.model_semver import ModelSemVer
+from omnibase_core.utils.util_workflow_executor import (
+    _create_action_for_step,
+    execute_workflow,
+)
+
+
+def _workflow_definition() -> ModelWorkflowDefinition:
+    version = ModelSemVer(major=1, minor=0, patch=0)
+    return ModelWorkflowDefinition(
+        workflow_metadata=ModelWorkflowDefinitionMetadata(
+            workflow_name="effect_werror_workflow",
+            workflow_version=version,
+            version=version,
+            description="Effect-step workflow run with warnings as errors",
+            execution_mode="sequential",
+        ),
+        execution_graph=ModelExecutionGraph(nodes=[], version=version),
+        coordination_rules=ModelCoordinationRules(
+            parallel_execution_allowed=True,
+            failure_recovery_strategy=EnumFailureRecoveryStrategy.RETRY,
+            version=version,
+        ),
+        version=version,
+    )
+
+
+@pytest.mark.unit
+class TestEffectStepWerror:
+    """Effect steps must not emit a payload recommendation warning."""
+
+    def test_effect_step_action_emits_no_warning(self) -> None:
+        step = ModelWorkflowStep(step_name="Fetch Data", step_type="effect")
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            action, _ = _create_action_for_step(step, uuid4())
+
+        assert action.action_type == EnumActionType.EFFECT
+
+    @pytest.mark.asyncio
+    async def test_sequential_effect_workflow_completes_under_werror(self) -> None:
+        first = ModelWorkflowStep(step_name="Fetch Data", step_type="effect")
+        second = ModelWorkflowStep(
+            step_name="Save Results",
+            step_type="effect",
+            depends_on=[first.step_id],
+        )
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            result = await execute_workflow(
+                _workflow_definition(),
+                [first, second],
+                uuid4(),
+                execution_mode=EnumExecutionMode.SEQUENTIAL,
+            )
+
+        assert result.execution_status == EnumWorkflowStatus.COMPLETED
+        assert len(result.completed_steps) == 2
+        assert len(result.failed_steps) == 0
+
+    @pytest.mark.asyncio
+    async def test_parallel_effect_workflow_completes_under_werror(self) -> None:
+        fetch = ModelWorkflowStep(step_name="Fetch Data", step_type="effect")
+        left = ModelWorkflowStep(
+            step_name="Write Left",
+            step_type="effect",
+            depends_on=[fetch.step_id],
+        )
+        right = ModelWorkflowStep(
+            step_name="Write Right",
+            step_type="effect",
+            depends_on=[fetch.step_id],
+        )
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            result = await execute_workflow(
+                _workflow_definition(),
+                [fetch, left, right],
+                uuid4(),
+                execution_mode=EnumExecutionMode.PARALLEL,
+            )
+
+        assert result.execution_status == EnumWorkflowStatus.COMPLETED
+        assert len(result.completed_steps) == 3
+        assert len(result.failed_steps) == 0
+
+```

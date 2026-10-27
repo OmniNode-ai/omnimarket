@@ -1,0 +1,18 @@
+Implement the small Python function below from its docstring. Public source: omnimarket/src/omnimarket/occ_contract_pin.py:243. Keep the exact public signature and specified behavior. Return ONLY one complete Python module, no explanation or Markdown. Include its support definitions/imports. Do not write tests.
+
+from __future__ import annotations
+
+import re
+
+_AC_LABEL_RE = re.compile(
+    r"^[\s>*_+-]*(?:\*\*)?\s*(AC|DOD)[-_ .]?(\d+)([a-zA-Z]?)\b", re.IGNORECASE
+)
+
+def canonical_ac_label(text: str) -> str:
+    """``AC3`` / ``DOD2`` parsed from a criterion or a binding entry, or ``""``.
+
+    Both sides of the join go through this one function, so a contract writing
+    ``ac-3`` and a ticket writing ``**AC3**`` bind, and neither side can
+    normalise differently from the other.
+    """
+    raise NotImplementedError

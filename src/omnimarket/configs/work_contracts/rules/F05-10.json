@@ -1,0 +1,6 @@
+{
+  "mode": "mutation_test",
+  "mutant": "src/omnimarket/configs/work_contracts/evaluators/F05-10/mutant.txt",
+  "original": "src/omnimarket/configs/work_contracts/evaluators/F05-10/original.txt",
+  "symbol": "decode_event_message"
+}

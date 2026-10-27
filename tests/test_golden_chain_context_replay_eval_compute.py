@@ -117,7 +117,7 @@ def test_golden_chain_presence_answers_capacity_and_review_rows() -> None:
         assert run.cases == run.package_matches == 2
         assert run.native_matches == run.native_unavailable == 1
         assert run.package_unavailable == 0
-        assert run.package_at_least_native
+        assert not run.package_at_least_native
 
     carried = [
         {

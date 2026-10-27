@@ -1,0 +1,1 @@
+{"diagnosis": "Use F08-09 semantic check; plan identifies repo-local falsifiable probe and its control. Require short-budget attempt and receipt history with each move.", "evidence_scope": "offline diagnosis; no live model escalation proven"}

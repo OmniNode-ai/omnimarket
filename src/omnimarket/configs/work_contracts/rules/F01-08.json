@@ -1,0 +1,7 @@
+{
+  "cues": [
+    ".github/workflows/check-handshake.yml"
+  ],
+  "mode": "summary",
+  "prompt": "src/omnimarket/configs/work_contracts/inputs/F01-08.txt"
+}

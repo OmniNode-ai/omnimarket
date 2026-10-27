@@ -1,0 +1,18 @@
+{
+  "branch_coverage_pct": 100.0,
+  "candidate_count": 1,
+  "coverage_target": 80.0,
+  "handler_module": "omnimarket.nodes.node_projection_registration.handlers.handler_runtime_writer",
+  "handler_module_sha256": "sha256:5aec26bcbb6dbbde5ca17b0b19d08e09a92b59c196ed7ca29f3cbfce32ae5c1d",
+  "meets_target": true,
+  "node_id": "omnimarket.nodes.node_projection_registration",
+  "receipt_schema": "adequacy_receipt.v1",
+  "recorded_at": "2026-10-27T16:30:58+00:00",
+  "recorder_schema": "adequacy_receipt.v1",
+  "selected_count": 1,
+  "selected_input_hashes": [
+    "sha256:ef5de9c395f445d35995a230e1d1b6e60d80e8bc7bf71bd15b8e644e2d61e292"
+  ],
+  "uncovered_waiver": null,
+  "volatile_mask": []
+}

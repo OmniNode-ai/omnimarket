@@ -1,0 +1,404 @@
+Trace no_escalation from public request wire through runtime protocol, deployed dispatch, and local dispatch. Is it keyword-only with False default? Which completion shaping fields are refused by the deployed bus boundary and why? Describe one falsifiable parity test without implementing it. Cite exact files.
+PUBLIC SOURCE omnimarket/src/omnimarket/models/delegation/wire/model_delegate_skill_request.py:1-150
+1: # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+2: # SPDX-License-Identifier: MIT
+3: """Consumer-facing delegation request model (shared delegation wire contract).
+4: 
+5: Distinct from the runtime-internal ``ModelDelegationRequest``: consumers supply
+6: ``source``, ``cwd``, ``wait``, and ``metadata`` and never set the runtime-internal
+7: ``emitted_at`` / ``output_schema_key`` / ``compliance_budget``. The ``task_type``
+8: Literal is the MVP taxonomy and must match the delegate node contract.yaml
+9: ``allowed_task_types`` field.
+10: 
+11: This lives in the shared delegation wire package (alongside
+12: ``ModelDelegateSkillResponse``) so any node composing the delegation route can
+13: reference it without reaching into a sibling node's private models package
+14: (OMN-12704). ``node_delegate_skill_orchestrator`` re-exports it for compatibility.
+15: """
+16: 
+17: from __future__ import annotations
+18: 
+19: from collections.abc import Mapping
+20: from datetime import datetime
+21: from typing import Any, Literal
+22: from uuid import UUID, uuid4
+23: 
+24: from omnibase_core.models.delegation.wire import ModelDelegationProvenance
+25: from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+26: 
+27: from omnimarket.events.delegation import (
+28:     EnumQualityContractMode,
+29:     validate_acceptance_criteria,
+30: )
+31: from omnimarket.models.delegation.wire.model_delegation_output_files import (
+32:     ModelDeclaredOutputs,
+33: )
+34: 
+35: # OMN-15482: the closed set of ``response_format`` directives this delegation
+36: # path genuinely threads end-to-end (onto the outbound chat-completions
+37: # payload). Deliberately narrow: OpenAI's ``json_schema`` structured-output
+38: # mode is NOT accepted, because the local dispatch path does not translate it
+39: # and a silently-ignored directive is the exact fidelity defect this ticket
+40: # closes. Schema-level response constraints belong on ``response_contract``.
+41: _SUPPORTED_RESPONSE_FORMAT_TYPES: frozenset[str] = frozenset({"json_object"})
+42: 
+43: # OMN-18931: the dogfood fault-route policy key omnibase_infra's delegation
+44: # dispatch port publishes beside a pinned ``backend_id`` and an exact
+45: # ``requested_timeout_seconds``.
+46: NO_ESCALATION_WIRE_KEY = "no_escalation"
+47: 
+48: # OMN-20844: the request key that names the model the customer's own provider
+49: # key runs for one call. Decoded, not declared, by
+50: # ``_tolerate_model_before_it_is_declared``.
+51: MODEL_WIRE_KEY = "model"
+52: 
+53: # OMN-21098 (step 1 of 2): the request key that carries the client-call identity
+54: # (client, session id, tool-use id, client host, client max mode) the delegation
+55: # adapter stamps on an Agent call. Decoded, not declared, by
+56: # ``_tolerate_client_call_before_it_is_declared``.
+57: CLIENT_CALL_WIRE_KEY = "client_call"
+58: 
+59: # OMN-19437 AC1: the keys the CLI and RuntimeLocal stamp on a command so its
+60: # terminal can carry the same ids. Declared on the request below; the released
+61: # step-1 decoder ``_tolerate_trace_context_before_it_is_declared`` is now a no-op
+62: # for this class.
+63: TRACE_CONTEXT_WIRE_KEYS: frozenset[str] = frozenset({"trace_id", "span_id"})
+64: 
+65: 
+66: class ModelDelegateSkillRequest(BaseModel):
+67:     """Typed delegation request from a registered adapter source."""
+68: 
+69:     model_config = ConfigDict(frozen=True, extra="forbid")
+70: 
+71:     prompt: str = Field(..., min_length=1, description="User prompt to delegate.")
+72:     task_type: Literal[
+73:         "test",
+74:         "document",
+75:         "research",
+76:         "code_generation",
+77:         "code_review",
+78:         "refactor",
+79:         "reasoning",
+80:         "complex_reasoning",
+81:         "planning",
+82:         "review",
+83:         "summarization",
+84:         "agent_delegation",
+85:         "escalation",
+86:         "evidence_comment",
+87:         "documentation",
+88:         "validator_generation",
+89:         "brief_drafting",
+90:         "extraction_proposer",
+91:         "tail_summary",
+92:         "context_selection",
+93:         "context_compaction",
+94:     ] = Field(
+95:         ...,
+96:         description=(
+97:             "Task classification for routing. Must match contract allowed_task_types."
+98:         ),
+99:     )
+100:     source: Literal["claude-code", "codex", "external-client"] = Field(
+101:         ...,
+102:         description="Registered adapter source.",
+103:     )
+104:     provenance: ModelDelegationProvenance | None = Field(
+105:         default=None,
+106:         exclude_if=lambda value: value is None,
+107:         description=(
+108:             "Typed ingress provenance carried unchanged through delegation state "
+109:             "and terminal evidence. None is legacy/unclassified, never synthetic."
+110:         ),
+111:     )
+112:     cwd: str | None = Field(default=None, description="Caller current directory.")
+113:     source_file_path: str | None = Field(
+114:         default=None,
+115:         description="File context for the delegation, if any.",
+116:     )
+117:     working_directory: str | None = Field(
+118:         default=None,
+119:         description="Worker working directory requested by the caller.",
+120:     )
+121:     session_id: str | None = Field(
+122:         default=None,
+123:         description="Session that originated the delegation request.",
+124:     )
+125:     recipient: str | None = Field(
+126:         default=None,
+127:         description="Requested delegation recipient surface.",
+128:     )
+129:     codex_sandbox_mode: str | None = Field(
+130:         default=None,
+131:         description="Codex sandbox mode requested by the caller.",
+132:     )
+133:     wait: bool = Field(default=True, description="Wait for synchronous result.")
+134:     max_tokens: int | None = Field(
+135:         default=None,
+136:         gt=0,
+137:         description=(
+138:             "Optional explicit output-token budget. When omitted (None) the "
+139:             "orchestrator resolves the effective value from the selected backend's "
+140:             "per-backend ceiling in the routing contract; when supplied it is "
+141:             "capped at that backend ceiling (OMN-13161)."
+142:         ),
+143:     )
+144:     correlation_id: UUID = Field(default_factory=uuid4)
+145:     metadata: dict[str, str] = Field(default_factory=dict)
+146:     quality_contract_mode: EnumQualityContractMode = Field(
+147:         default="extend_task_class",
+148:         description=(
+149:             "How request-level acceptance criteria interact with task-class DoD."
+150:         ),
+
+PUBLIC SOURCE omnibase_infra/src/omnibase_infra/runtime/protocols/protocol_delegation_dispatch_port.py:35-110
+35:         source_session_id: str | None,
+36:         wait: bool,
+37:         # OMN-18924: defaulted, not required. See the implementation's note --
+38:         # these landed as required while the deployed caller passed neither,
+39:         # and every dev-lane delegation terminalized `provider_error` on the
+40:         # resulting TypeError. Exactly the shape the OMN-18321 comment below
+41:         # records, one incident later.
+42:         execution_timeout_seconds: int = DEFAULT_EXECUTION_TIMEOUT_SECONDS,
+43:         terminal_delivery_margin_seconds: int = DEFAULT_TERMINAL_DELIVERY_MARGIN_SECONDS,
+44:         quality_contract_mode: str,
+45:         acceptance_criteria: tuple[str, ...],
+46:         tenant_id: str | None = None,
+47:         # OMN-18321: declared here because the OmniMarket consumer protocol
+48:         # declares it and its handler passes it on EVERY delegation (OMN-18172,
+49:         # omnimarket#2494). It was added on that side alone, and the resulting
+50:         # TypeError on the deployed bus path was swallowed by the consumer's own
+51:         # `except Exception` into a delegate-skill-failed terminal -- so the
+52:         # dev-lane chain died silently for a day and wrote no FSM row at all.
+53:         # CORRECTED 2026-09-21 (OMN-18938). This comment used to say parity was
+54:         # "held mechanically" by
+55:         # tests/integration/runtime/test_delegation_dispatch_port_consumer_kwarg_parity.py.
+56:         # That sentence was read as proof and was broader than the file: the
+57:         # module covered the consumer's names in both directions and nothing
+58:         # that started from OURS, so a keyword added here as REQUIRED was
+59:         # invisible to it. omnibase_infra#3882 did exactly that, every
+60:         # delegation on the dev lane terminalised provider_error, and the
+61:         # module ran 3 passed 0 failed throughout. The missing direction landed
+62:         # under OMN-18938; the module's own docstring now names all three and
+63:         # is the place to read before trusting a claim like this one.
+64:         #
+65:         # A DEFAULT ON A KEYWORD HERE IS LOAD-BEARING, not a convenience. The
+66:         # two repos deploy independently, so the consumer is a release behind
+67:         # by construction and a required keyword is broken for exactly that
+68:         # window. Add keywords defaulted; make one required only alongside a
+69:         # landed consumer that passes it.
+70:         provenance: ModelDelegationProvenance | None = None,
+71:         backend_id: str | None = None,
+72:         # OMN-19817: the OmniMarket consumer protocol declares this since
+73:         # omnimarket#2841 (OMN-18931), and RuntimeDelegationDispatchPort has
+74:         # accepted and published it since omnibase_infra#4088. The protocol was
+75:         # the one half left behind, which the consumer-kwarg-parity hook caught
+76:         # on every omnibase_infra commit. Defaulted, per the note above: the
+77:         # consumer passes it only when true, through a TypedDict-typed helper
+78:         # splat, so a released port predating the keyword keeps working.
+79:         no_escalation: bool = False,
+80:         response_contract: dict[str, object] | None = None,
+81:         system_prompt: str | None = None,
+82:         temperature: float | None = None,
+83:         response_format: dict[str, object] | None = None,
+84:         # OMN-20606: who issued the delegation and what it follows (caller
+85:         # lane, ticket, and the parent correlation, lineage kind and parent
+86:         # failure cause), validated by the delegate-skill handler. Declared
+87:         # here before omnimarket passes it, through a TypedDict-typed helper
+88:         # splat and only when named, so a released consumer keeps working.
+89:         attribution: Mapping[str, str] | None = None,
+90:         # OMN-20844: the model the customer's own provider key runs for this
+91:         # call. The OmniMarket consumer protocol declares it (omnimarket#3676);
+92:         # defaulted, per the note above, so a consumer that never passes it
+93:         # keeps working.
+94:         model: str | None = None,
+95:         # The consumer owns ModelNamedTestSpec. A BaseModel boundary accepts it
+96:         # without importing the higher-layer package; the deployed bus port
+97:         # carries it inline on the command (OMN-17427) and refuses a spec that
+98:         # points at the caller's workspace, which the lane cannot read.
+99:         named_tests: BaseModel | None = None,
+100:         # OMN-19448 / omnimarket#4252: consumer trace and queue-wait context.
+101:         # Defaulted, per the note above, so a consumer that never passes them
+102:         # keeps working.
+103:         trace_id: UUID | None = None,
+104:         queue_wait_ms: int | None = None,
+105:     ) -> dict[str, object]: ...
+106: 
+107: 
+108: __all__ = ["ProtocolDelegationDispatchPort"]
+
+PUBLIC SOURCE omnibase_infra/src/omnibase_infra/runtime/service_delegation_dispatch_port.py:330-430
+330:         # OMN-15504 while the caller deployed on the lane passes neither, so
+331:         # every delegation on the dev lane terminalized `provider_error` with
+332:         # a missing-argument TypeError -- the same producer-before-consumer
+333:         # inversion as the absent `execution_budgets` map, from the same
+334:         # change. Defaulted rather than required until the caller passes them:
+335:         # a new argument lands consumer-first or is excluded when unset.
+336:         #
+337:         # The port and its protocol are pinned to one default by
+338:         # `tests/unit/runtime/test_dispatch_port_budget_defaults_omn18924.py`.
+339:         execution_timeout_seconds: int = DEFAULT_EXECUTION_TIMEOUT_SECONDS,
+340:         terminal_delivery_margin_seconds: int = DEFAULT_TERMINAL_DELIVERY_MARGIN_SECONDS,
+341:         output_schema_key: str | None = None,
+342:         quality_contract_mode: str = "extend_task_class",
+343:         acceptance_criteria: tuple[str, ...] = (),
+344:         tenant_id: str | None = None,
+345:         provenance: ModelDelegationProvenance | None = None,
+346:         backend_id: str | None = None,
+347:         no_escalation: bool = False,
+348:         response_contract: dict[str, object] | None = None,
+349:         system_prompt: str | None = None,
+350:         temperature: float | None = None,
+351:         response_format: dict[str, object] | None = None,
+352:         attribution: Mapping[str, str] | None = None,
+353:         model: str | None = None,
+354:         named_tests: BaseModel | None = None,
+355:         trace_id: UUID | None = None,
+356:         queue_wait_ms: int | None = None,
+357:     ) -> dict[str, object]:
+358:         """Dispatch a request; guard OMN-18931 faults, pass OMN-19124 routing pins.
+359: 
+360:         Dev run 8c2b5dfc-3907-475d-aab6-126fade5f707 exposed the blanket
+361:         fault-pin refusal on a routing pin.
+362: 
+363:         ``attribution`` (OMN-20606) and ``queue_wait_ms`` (OMN-19448) are accepted
+364:         and unused: this port publishes to a deployed lane whose own handler
+365:         stamps the caller onto its terminal and measures its own queue wait.
+366:         Only omnimarket's in-process port writes an evidence terminal of its
+367:         own and needs these caller values. The Core wire request has no
+368:         queue-wait field and forbids extras, so publishing it would be refused.
+369:         """
+370:         del attribution, queue_wait_ms
+371: 
+372:         # Refuse a spec the lane cannot run before any route is resolved or
+373:         # anything is published.
+374:         named_tests_wire = (
+375:             None if named_tests is None else _named_tests_wire(named_tests)
+376:         )
+377: 
+378:         # OmniMarket's consumer-facing handler always supplies these optional
+379:         # arguments. The deployed bus model does not expose the completion-shaping
+380:         # fields yet, so None preserves the existing route while explicit requests
+381:         # fail closed instead of being silently dropped at this boundary.
+382:         for feature_name, feature_value in (
+383:             ("system_prompt", system_prompt),
+384:             ("temperature", temperature),
+385:             ("response_format", response_format),
+386:             # OMN-20844: the customer's model choice runs only on omnimarket's
+387:             # in-process BYOK route; the bus wire does not carry it.
+388:             ("model", model),
+389:         ):
+390:             if feature_value is not None:
+391:                 raise NotImplementedError(
+392:                     f"{feature_name} is not yet supported on the deployed bus "
+393:                     "dispatch path (RuntimeDelegationDispatchPort); threading it "
+394:                     "requires the canonical delegation request wire to carry it "
+395:                     "end to end (OMN-15482)"
+396:                 )
+397:         if backend_id is None and no_escalation:
+398:             raise ValueError("no_escalation requires backend_id")
+399:         if self._terminal_evidence_sink is not None and tenant_id is None:
+400:             raise ValueError(
+401:                 "terminal evidence capture requires the actual dispatch tenant_id"
+402:             )
+403:         if execution_timeout_seconds <= 0:
+404:             raise ValueError("execution_timeout_seconds must be positive")
+405:         if terminal_delivery_margin_seconds <= 0:
+406:             raise ValueError("terminal_delivery_margin_seconds must be positive")
+407:         routes = await self._resolved_routes()
+408:         selected = _select_delegation_route(routes)
+409:         # OMN-18933 (K6): on a bounded lane the declared row, the runtime's broker
+410:         # identity and the selected consumer contract must agree BEFORE the
+411:         # broker exists. A refusal raises here, so no command is published and no
+412:         # terminal or projection row can exist for this correlation.
+413:         bounded_route = resolve_bounded_delegation_route(
+414:             transport=self._event_bus,
+415:             selected_route=selected.route,
+416:         )
+417:         if bounded_route is not None:
+418:             logger.info(
+419:                 "bounded delegation route accepted before dispatch: "
+420:                 "correlation_id=%s route=%s",
+421:                 str(correlation_id),
+422:                 bounded_route.model_dump_json(),
+423:                 extra={
+424:                     "correlation_id": str(correlation_id),
+425:                     **bounded_route.model_dump(mode="json"),
+426:                 },
+427:             )
+428:         if backend_id is not None:
+429:             # OMN-18931 (K1) guards fault pins only. OMN-19124 routing pins
+430:             # pass to Market; dev run 8c2b5dfc-3907-475d-aab6-126fade5f707
+
+PUBLIC SOURCE omnimarket/src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch.py:1690-1760
+1690:         source_session_id: str | None,
+1691:         wait: bool,
+1692:         execution_timeout_seconds: int,
+1693:         terminal_delivery_margin_seconds: int,
+1694:         quality_contract_mode: str,
+1695:         acceptance_criteria: tuple[str, ...],
+1696:         tenant_id: str | None,
+1697:         provenance: ModelDelegationProvenance | None = None,
+1698:         backend_id: str | None = None,
+1699:         response_contract: dict[str, object] | None = None,
+1700:         system_prompt: str | None = None,
+1701:         temperature: float | None = None,
+1702:         response_format: dict[str, object] | None = None,
+1703:         no_escalation: bool = False,
+1704:         attribution: Mapping[str, str] | None = None,
+1705:         model: str | None = None,
+1706:         named_tests: ModelNamedTestSpec | None = None,
+1707:         trace_id: UUID | None = None,
+1708:         queue_wait_ms: int | None = None,
+1709:         probe_ladder: ModelProbeLadder | None = None,
+1710:     ) -> dict[str, object]:
+1711:         """Run one delegation, on the routing contract's ladder or a probe ladder.
+1712: 
+1713:         OMN-21212: ``probe_ladder`` names the rungs this run walks instead of
+1714:         the routing contract. It is accepted only from synthetic traffic whose
+1715:         provenance names the doctor's escalation check. Any other request
+1716:         carrying one is refused before dispatch, with zero provider calls: the
+1717:         run's one row is a ``refused_before_dispatch`` failure, and the refusal
+1718:         is raised. A probe run takes no pin and no model choice.
+1719:         """
+1720:         if probe_ladder is None:
+1721:             return await self._dispatch_rungs_naming_skips(
+1722:                 prompt=prompt,
+1723:                 task_type=task_type,
+1724:                 correlation_id=correlation_id,
+1725:                 max_tokens=max_tokens,
+1726:                 source_file_path=source_file_path,
+1727:                 source_session_id=source_session_id,
+1728:                 wait=wait,
+1729:                 execution_timeout_seconds=execution_timeout_seconds,
+1730:                 terminal_delivery_margin_seconds=terminal_delivery_margin_seconds,
+1731:                 quality_contract_mode=quality_contract_mode,
+1732:                 acceptance_criteria=acceptance_criteria,
+1733:                 tenant_id=tenant_id,
+1734:                 provenance=provenance,
+1735:                 backend_id=backend_id,
+1736:                 response_contract=response_contract,
+1737:                 system_prompt=system_prompt,
+1738:                 temperature=temperature,
+1739:                 response_format=response_format,
+1740:                 no_escalation=no_escalation,
+1741:                 attribution=attribution,
+1742:                 model=model,
+1743:                 named_tests=named_tests,
+1744:                 trace_id=trace_id,
+1745:                 queue_wait_ms=queue_wait_ms,
+1746:             )
+1747:         refusal: str | None = None
+1748:         if not probe_ladder_admitted(provenance):
+1749:             refusal = (
+1750:                 "a probe ladder is accepted only from synthetic delegation "
+1751:                 f"traffic with source_surface {PROBE_LADDER_SOURCE_SURFACE!r}; "
+1752:                 "this request's provenance is "
+1753:                 f"{provenance.model_dump(mode='json') if provenance else None}"
+1754:             )
+1755:         elif backend_id is not None or model is not None:
+1756:             refusal = (
+1757:                 "a probe ladder names its own rungs; it takes no backend pin or model"
+1758:             )
+1759:         if refusal is not None:
+1760:             first_rung = probe_ladder.rungs[0]

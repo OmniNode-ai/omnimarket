@@ -1,0 +1,7 @@
+import pytest
+from types import SimpleNamespace
+from solution import decode_event_message as f
+def test_value():
+ try: f(SimpleNamespace(value=b"[]",topic="fixture"))
+ except TypeError: return
+ assert False, "mutant accepted non-object"

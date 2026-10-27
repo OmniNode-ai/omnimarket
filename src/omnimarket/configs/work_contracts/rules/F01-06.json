@@ -1,0 +1,13 @@
+{
+  "cues": [
+    "contracts/OMN-19448.yaml",
+    "tests/unit/models/delegation/wire/test_omn19448_terminal_fields_for_projection.py",
+    "_failed_terminal",
+    "_round_trip",
+    "test_quality_gate_cause_outcome_and_verdict_survive_the_wire_unchanged",
+    "test_trace_id_is_carried_on_the_terminal_the_row_is_written_from",
+    "test_a_request_refused_before_dispatch_has_a_typed_cause_on_the_wire"
+  ],
+  "mode": "summary",
+  "prompt": "src/omnimarket/configs/work_contracts/inputs/F01-06.txt"
+}

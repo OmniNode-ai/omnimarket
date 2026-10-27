@@ -1,0 +1,15 @@
+{
+  "harness.json": {
+    "kind": "recorded_scrubbed_projection",
+    "recorded_model": "glm-5.3-flash",
+    "scrubbing": "Only model, duration_s, usage and rubric_verdict.measured.tool_calls retained. No task text, output, host, user, correlation, or filesystem paths."
+  },
+  "codex_remote.json": {
+    "kind": "synthetic_control",
+    "semantics": "Legacy Codex zero total_cost_usd and item-count num_turns. A recorded completed lane receipt is not present on the building host."
+  },
+  "sonnet_remote.json": {
+    "kind": "synthetic_control",
+    "semantics": "Positive Claude lane total_cost_usd is measured. Value is a test control, not an observed individual run. Recorded lane parity remains pending."
+  }
+}

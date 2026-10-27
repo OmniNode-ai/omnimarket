@@ -1,0 +1,54 @@
+contract_id: F07-09
+task_kind: code_review
+inputs:
+- path: src/omnimarket/configs/work_contracts/inputs/F07-09.txt
+  sha256: 6b43a23326844f4fe29d9d632dc1063629a07c255817ff7c5205d1e6b4e699ef
+acceptance:
+  kind: schema
+  spec:
+    schema:
+      type: object
+      required:
+      - source
+      - old
+      - new
+      - defect
+      properties:
+        source:
+          type: string
+          const: src/omnibase_core/models/delegation/model_invocation_command.py
+        old:
+          type: string
+          const: 'correlation_id: UUID'
+        new:
+          type: string
+          const: 'correlation_id: str'
+        defect:
+          type: string
+          const: correlation_id is weakened to string, breaking the required UUID
+            object type and rejecting UUID-object callers.
+      additionalProperties: false
+    expected_json: '{"defect": "correlation_id is weakened to string, breaking the
+      required UUID object type and rejecting UUID-object callers.", "new": "correlation_id:
+      str", "old": "correlation_id: UUID", "source": "src/omnibase_core/models/delegation/model_invocation_command.py"}'
+budgets:
+  max_output_tokens: 8192
+  max_wall_s: 180
+  max_turns: 8
+  max_usd: 5
+controls:
+  positive:
+    path: src/omnimarket/configs/work_contracts/controls/F07-09.positive.txt
+    sha256: 17aa9efa0ff79ca1e8c9a21fb4fa7d8ef4bc85374d3f0fd9f1020260bd83b0d9
+  negative:
+    path: src/omnimarket/configs/work_contracts/controls/F07-09.negative.txt
+    sha256: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+evaluators:
+- path: src/omnimarket/handlers/work_contracts/control_evaluator.py
+  sha256: 35beec5a332b646a0c1a696407f0b4a1f5a683269b19e9f782af9df0ee662d7d
+provenance:
+  source: 2026-10-27-deleg-sc-d-1100.md
+  source_sha256: e9ea31b55d2bedfed466bc0d2d3a9761081d1150c30ecc2426454cc8d0740f8f
+  adaptation: Manual seeded review rubric converted to exact structured defect and
+    consequence fields. The contract requires a JSON finding; historical free text
+    is not equivalent.

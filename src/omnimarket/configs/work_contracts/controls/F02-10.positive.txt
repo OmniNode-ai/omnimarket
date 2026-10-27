@@ -1,0 +1,3 @@
+Get the registration for an event type.
+Validate that a payload has all required fields for an event type.
+Extract the partition key from a payload based on the event registration.

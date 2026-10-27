@@ -120,3 +120,45 @@ dod_evidence:
           assert result["stop_names"] == ["probe-pg"], result
           print(json.dumps({"run_id": receipt["run_id"], "stop_names": result["stop_names"]}))
           ' "$probe_dir/receipt.json";
+  - id: "dod-omn21288-writers-ac1-prerequisite"
+    description: >-
+      AC1 prerequisite in omnimarket only: registration, savings, live-events,
+      tenant-credentials and tenant-registry contracts route each unchanged
+      subscription exactly once to an in-process writer, with no standalone
+      runner routed alongside it. The fixture/real-compose refusal check remains
+      the responsibility of the omnibase_infra fold; this does not claim AC1
+      complete across repositories.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21288_projection_writers_in_runtime.py -q --no-cov --refuse-skips -k contract_routes_only_the_runtime_writer"
+  - id: "dod-omn21288-writers-ac2-prerequisite"
+    description: >-
+      AC2 prerequisite in omnimarket only: the runtime's actual projection
+      callback applies the same SQL parameters and snapshot deltas as each
+      existing writer, on two deliveries, and closes its loop-bound pools and
+      producer. Wrong database principals and failed writes are refused without
+      leaked pools. The infra branch must pin this change before removing the
+      six writer services; this does not claim the real compose is already slim.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21288_projection_writers_in_runtime.py -q --no-cov --refuse-skips"
+  - id: "dod-omn21288-writers-deploy-probe"
+    description: >-
+      Hosted structural deployment smoke for the packaged runtime entrypoint,
+      requiring no lab route, broker, database or redeployment. Read the product
+      source at the checked-out PR head and require the executable runtime
+      writer entrypoint; then exercise actual runtime dispatch with fake driver
+      I/O. This fails against the merge base, which has no runtime_writer module.
+      Live-stack AC1/AC2 verification belongs to the subsequent infra fold.
+    source: "manual"
+    binds_ac: ["AC1", "AC2"]
+    checks:
+      - check_type: "command"
+        check_value: |
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/handler_projection_runtime_writer.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python -c "import ast, sys; tree = ast.parse(sys.stdin.read()); cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == \"RuntimeProjectionWriter\"); assert any(isinstance(n, ast.FunctionDef) and n.name == \"handle\" for n in cls.body)"'
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21288_projection_writers_in_runtime.py -q --no-cov --refuse-skips"

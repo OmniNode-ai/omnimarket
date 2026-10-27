@@ -1,0 +1,37 @@
+Diagnose this real failed GitHub Actions job. Name the job and the failing step, identify the direct cause, and distinguish the direct failure from any downstream symptom or misleading successful output. Cite the supplied evidence. Propose a bounded remedy without executing it; do not change checks, rerun CI, or assume a newer head is still red.
+Source: https://github.com/OmniNode-ai/omnibase_core/actions/runs/40153015237/job/121048320437
+Failing step from GitHub job metadata: Run the pre-commit suite
+The log download labels steps UNKNOWN STEP; the exact name above is authoritative.
+Log excerpt (original timestamps, with gaps):
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:04:08.0598590Z - exit code: 1
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:04:08.0598822Z - files were modified by this hook
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:04:08.0599015Z 
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:04:08.0599108Z Fixing CHANGELOG.md
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:04:08.0599250Z 
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:04:08.2707626Z check for merge conflicts..............................................................................Passed
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:04:08.5296049Z check for added large files............................................................................Passed
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:04:11.8525364Z Detect Secrets scan fans out without dropping a file (OMN-19612).......................................Passed
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:11:29.5058577Z No untracked TODO/FIXME/HACK comments..................................................................Passed
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:11:32.7015843Z No hardcoded ONEX topic strings........................................................................Passed
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:11:33.2953382Z Root README only documentation gate (OMN-17427)........................................................Failed
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:11:33.2954026Z - hook id: readme-only-docs
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:11:33.2954287Z - exit code: 1
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:11:33.2954451Z 
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:11:33.2954763Z CHANGELOG.md: Documentation belongs in the knowledge base; only root README.md is implicit.
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:11:33.2955844Z {"kind":"run","validator_name":"readme-only-docs","report_ref":"f4395f37-ab9e-40dc-af7e-7b57b8224ffa","emitted_at":"2026-10-25T02:11:33.122419+00:00","verdict":"FAIL","fired_count":1,"severity":null,"rule_name":null,"location":null}
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:11:33.2957399Z {"kind":"fire","validator_name":"readme-only-docs","report_ref":"f4395f37-ab9e-40dc-af7e-7b57b8224ffa","emitted_at":"2026-10-25T02:11:33.122419+00:00","verdict":null,"fired_count":null,"severity":"FAIL","rule_name":"root-readme-only","location":"CHANGELOG.md"}
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:11:33.2958263Z 
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:11:34.2858143Z demo-path topic coherence gate (OMN-12777).............................................................Passed
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:11:34.7866060Z Pre-commit fail-loud meta-gate (exit-0-on-missing / stages coverage)...................................Passed
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:11:35.2612107Z Pre-commit pin-parity (pre-commit rev vs CI-pinned SHA)................................................Passed
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:14:05.1460650Z If you are seeing this message in CI, reproduce locally with: `pre-commit run --all-files`.
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:14:05.1461728Z To run `pre-commit` as part of git workflow, use `pre-commit install`.
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:14:05.1462213Z All changes made by hooks:
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:14:05.2750880Z diff --git a/CHANGELOG.md b/CHANGELOG.md
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:14:05.2751768Z index bf5eff5b..156c59b0 100644
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:14:05.2752256Z --- a/CHANGELOG.md
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:14:05.2752681Z +++ b/CHANGELOG.md
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:14:05.2753093Z @@ -10,4 +10,3 @@
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:14:05.2753632Z  - S-c0: skill_surface contract section in omnibase_core (#2095)
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:14:05.2754517Z  - S-a: Agent Skills model, parser and renderer in omnibase_core (#2094)
+Pre-commit Suite (OMN-18899)	UNKNOWN STEP	2026-10-25T02:14:05.2755315Z  - fix: split location rules out of canonical_file_shape validator (#2093)

@@ -1,0 +1,1 @@
+{"id": "F03-08", "kind": "protocol", "symbols": ["ProtocolConstraintValidator"], "count": 1, "summary": "Public module symbols."}

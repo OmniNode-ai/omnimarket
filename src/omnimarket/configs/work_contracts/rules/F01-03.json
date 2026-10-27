@@ -1,0 +1,20 @@
+{
+  "cues": [
+    "contracts/OMN-20275.yaml",
+    "scripts/trigger_rebuild_on_merge.py",
+    "tests/unit/scripts/test_trigger_learns_binding_fallback_omn20275.py",
+    "ModelCiBusLaneSecretSource",
+    "ModelCiBusLaneSecretMapping",
+    "ModelCiBusLaneSecretResolver",
+    "ModelCiBusLane",
+    "_import_trigger_module",
+    "test_declared_binding_shape_loads_without_changing_transport",
+    "test_binding_declarations_remain_optional",
+    "test_unknown_binding_keys_are_refused",
+    "test_malformed_binding_shapes_are_refused",
+    "test_binding_fallback_edge_values_are_kept_verbatim",
+    "test_secret_resolver_edge_values"
+  ],
+  "mode": "summary",
+  "prompt": "src/omnimarket/configs/work_contracts/inputs/F01-03.txt"
+}

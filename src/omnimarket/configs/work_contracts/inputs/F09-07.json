@@ -1,0 +1,22 @@
+{
+  "instruction": "Classify the public fixtures in order; labels are stated in the evidence.",
+  "rows": [
+    {
+      "evidence": "public fixture for handed-off",
+      "id": "L3722"
+    },
+    {
+      "evidence": "public fixture for partial",
+      "id": "L3634"
+    },
+    {
+      "evidence": "public fixture for done",
+      "id": "L3606"
+    },
+    {
+      "evidence": "public fixture for failed",
+      "id": "L3461"
+    }
+  ],
+  "scenario": "F09-07"
+}

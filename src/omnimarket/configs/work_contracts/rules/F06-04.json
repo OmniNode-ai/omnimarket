@@ -1,0 +1,6 @@
+{
+  "mode": "module_tests",
+  "module": "omnibase_core.models.node_metadata.model_node_core_metadata_class",
+  "test": "src/omnimarket/configs/work_contracts/evaluators/F06-04/test_frozen.txt",
+  "test_layout": "tests/unit/models/node_metadata/test_omn17735_node_metadata_runtime_semver.py"
+}

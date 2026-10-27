@@ -1,0 +1,10 @@
+from solution import is_compatible as f
+
+def test_versions():
+    assert f('1.0','1.99') is True
+    assert f('1.99','1.0') is True
+    assert f('2.0','1.0') is False
+    assert f('0.1','0.2') is True
+    assert f(' 3.2 ','3.7') is True
+    import pytest
+    with pytest.raises(ValueError): f('bad','1.0')

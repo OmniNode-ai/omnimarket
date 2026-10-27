@@ -1,0 +1,14 @@
+{
+  "base_commit": "bef39a6bdac60fc24cc6ac2c2e8b0fe0b1c0a20b",
+  "base_file_exists": true,
+  "base_snapshot": {
+    "path": "src/omnimarket/configs/work_contracts/history/dod-OMN-21090-18.base.txt",
+    "sha256": "6c3635e2a3848b9fd11ce6f42c5c55cb2c511c196c3db250392c2365e7e42201"
+  },
+  "path": "src/omnimarket/nodes/node_exemplar_registry_reconcile_compute/handlers/handler_exemplar_registry_reconcile.py",
+  "repair_commit": "8ea4f7a0bc9794e48d6fe7d2a99d075f8c93a22a",
+  "repair_snapshot": {
+    "path": "src/omnimarket/configs/work_contracts/history/dod-OMN-21090-18.repair.txt",
+    "sha256": "9f9251ddf97b4b075770859047c3e54f21d3d6c8bfa7b3c4885088d8ed953374"
+  }
+}

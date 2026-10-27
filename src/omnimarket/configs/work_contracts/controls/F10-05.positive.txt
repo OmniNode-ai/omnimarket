@@ -1,0 +1,1 @@
+{"diagnosis": "Use F08-04 semantic check plus receipt evidence of attempted pinned rung and every transition; no rerun performed.", "evidence_scope": "offline diagnosis; no live model escalation proven"}
