@@ -295,7 +295,7 @@ def test_results_are_byte_identical_in_process_and_through_the_node_entry() -> N
 
 def test_the_node_names_no_host_path_repository_or_organization() -> None:
     forbidden = re.compile(
-        r"192\.168\.|/Users/|/Volumes/|://|OmniNode-ai|omnimarket\.ai|\.git\b"
+        r"192\.168\.|/(?:Users|Volumes)/|://|OmniNode-ai|omnimarket\.ai|\.git\b"
     )
     sources = [
         p for p in NODE_DIR.rglob("*") if p.suffix in {".py", ".yaml"} and p.is_file()
