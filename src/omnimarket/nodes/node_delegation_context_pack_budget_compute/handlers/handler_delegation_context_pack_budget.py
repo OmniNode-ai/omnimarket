@@ -45,11 +45,23 @@ class HandlerDelegationContextPackBudget:
                         f"context pack for task class {request.task_class} answered "
                         f"with an empty hash; correlation_id {request.correlation_id}"
                     )
+                elif request.assembled_request_tokens is None:
+                    status = EnumDelegationContextPackStatus.REFUSE_UNMEASURED_INPUT
+                    dispatch_allowed = False
+                    reason = (
+                        "full serialized input including the pack has not been counted"
+                    )
+                elif (
+                    request.assembled_request_tokens > request.max_grounded_input_tokens
+                ):
+                    status = EnumDelegationContextPackStatus.REFUSE_INPUT_OVERFLOW
+                    dispatch_allowed = False
+                    reason = "full serialized input including the pack exceeds the grounded-input ceiling"
                 else:
                     status = EnumDelegationContextPackStatus.ATTACH
                     dispatch_allowed = True
                     context_pack_hash = request.context_pack_hash.strip()
-                    reason = "context pack answered with a non-empty hash; attach and dispatch"
+                    reason = "context pack has a non-empty hash and measured input fits; attach and dispatch"
 
         return ModelDelegationContextPackBudgetResult(
             correlation_id=request.correlation_id,
@@ -62,5 +74,6 @@ class HandlerDelegationContextPackBudget:
             composed_request_tokens=request.composed_request_tokens,
             max_grounded_input_tokens=request.max_grounded_input_tokens,
             token_estimator=request.token_estimator,
+            assembled_request_tokens=request.assembled_request_tokens,
             reason=reason,
         )

@@ -59,6 +59,16 @@ requirements:
       - id: "DoD3"
         statement: |-
           DoD3: bind_compaction_ports with no injected probe source reads a projected barrier through connect_read_only and the boundary's SQL composer and the barrier wait ends met -- falsifier: uv run pytest tests/nodes/node_context_compaction_orchestrator/test_compaction_runtime_binding.py
+  - id: "req-client-receipt-verdict-bridge"
+    statement: |-
+      The receipt bridge verifies correlated core envelopes, admission and terminal identity and the quality gate before applying the existing section 7.2 client verdict table. This is the AC1 receipt interpretation contribution; transport, journal registration and live cohort qualification remain outside this increment.
+    acceptance:
+      - id: "DoD4"
+        statement: |-
+          DoD4: the direct handler, typed runtime dispatcher and in-memory runtime binding return the same hook shape for accepted, rejected, unknown, unavailable and conflicting receipt exchanges; an answer requires matching outer correlation, admission identity, terminal identity, effective mode, task type and quality gate.
+      - id: "DoD5"
+        statement: |-
+          DoD5: allowlisted tasks come from the installed overlay and the admission classification, UUID objects survive the bridge, missing or malformed configuration refuses, and receipt topics are loaded from the contract or an injected policy.
 evidence_requirements:
   - kind: "tests"
     description: "AC1 to AC3: the client-call identity derivation tests and the step-1 wire tests."
@@ -167,3 +177,18 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_context_compaction_orchestrator/handlers/compaction_runtime_binding.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -qF 'connect=connect_read_only,'
+  - id: "dod-omn21099-client-receipt-verdict"
+    description: "DoD4 and DoD5: the same receipt decision fixtures run through the handler, typed runtime dispatcher and in-memory runtime. Covers unrelated and forged replies, malformed booleans, mismatched identities, duplicates, conflicts and missing configuration; this does not claim the entire TB.4 child is complete."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_receipt_verdict_compute/test_golden_chain_receipt_verdict.py tests/nodes/node_delegation_client_verdict_compute/test_delegation_client_verdict_table.py tests/nodes/node_delegation_client_verdict_compute/test_golden_chain_delegation_client_verdict_compute.py -q -n 0 --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["DoD4", "DoD5"]
+  - id: "dod-omn21099-deploy-receipt-verdict"
+    description: "Hosted-runner deploy probe executes the packaged receipt node through RuntimeLocal and the in-memory bus. It needs only the checkout, a temporary overlay and frozen dependencies; the base fails because the node does not exist. No host, service or credential is used."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run --frozen pytest tests/nodes/node_delegation_receipt_verdict_compute -q -n 0 --no-cov --refuse-skips -k 'receipt_decisions and inmemory'"
+        cwd: "${OMNI_HOME}/omnimarket"

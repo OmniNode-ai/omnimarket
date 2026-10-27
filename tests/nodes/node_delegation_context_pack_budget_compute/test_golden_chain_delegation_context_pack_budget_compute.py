@@ -1,6 +1,9 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-21119: the context-pack budget request through the registered contract on the in-memory bus.
+"""OMN-21119: context-pack budget admission through the registered bus contract.
+
+Set OMN21119_TEST_BUS=kafka to run these cases on a separately configured Kafka binding;
+the default is the in-memory binding. A missing Kafka configuration fails the cases.
 
 Golden chain: a profile-naming task class with room under the ceiling is told to request a pack
 with the room as its budget. Error chain: a request with no correlation id fails with no result.
@@ -10,6 +13,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 from importlib.metadata import entry_points
 from pathlib import Path
 from typing import Any
@@ -79,7 +83,9 @@ async def _run(tmp_path: Path, payload: dict[str, Any], name: str) -> RuntimeLoc
         workflow_path=NODE_DIR / "contract.yaml",
         input_path=input_path,
         state_root=tmp_path / name,
-        backend_overrides={"event_bus": "inmemory"},
+        backend_overrides={
+            "event_bus": os.environ.get("OMN21119_TEST_BUS", "inmemory")
+        },
         timeout=10,
     )
     await runtime.run_async()
@@ -115,8 +121,45 @@ async def test_error_chain_over_the_bus_fails_without_a_result(tmp_path: Path) -
         workflow_path=NODE_DIR / "contract.yaml",
         input_path=input_path,
         state_root=tmp_path / "bad",
-        backend_overrides={"event_bus": "inmemory"},
+        backend_overrides={
+            "event_bus": os.environ.get("OMN21119_TEST_BUS", "inmemory")
+        },
         timeout=10,
     )
     assert await refused.run_async() is EnumWorkflowResult.FAILED
     assert refused.handler_result is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("measurement", "expected"),
+    [
+        (None, "refuse_unmeasured_input"),
+        (8000, "attach"),
+        (8001, "refuse_input_overflow"),
+    ],
+)
+async def test_bus_admission_requires_a_measured_input_within_the_ceiling(
+    tmp_path: Path, measurement: int | None, expected: str
+) -> None:
+    runtime = await _run(
+        tmp_path,
+        {
+            **REQUEST,
+            "context_pack_hash": "sha256:" + "f" * 64,
+            "assembled_request_tokens": measurement,
+        },
+        expected,
+    )
+    result = runtime.handler_result
+    assert isinstance(result, ModelDelegationContextPackBudgetResult)
+    assert result.status.value == expected
+    assert result.dispatch_allowed is (expected == "attach")
+    assert result.assembled_request_tokens == measurement
+    assert bool(result.context_pack_hash) is (expected == "attach")
+    assert (
+        ModelDelegationContextPackBudgetResult.model_validate_json(
+            result.model_dump_json()
+        )
+        == result
+    )

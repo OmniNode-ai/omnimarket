@@ -16,6 +16,8 @@ class EnumDelegationContextPackStatus(StrEnum):
     NO_ROOM = "no_room"
     ATTACH = "attach"
     REFUSE_EMPTY_HASH = "refuse_empty_hash"
+    REFUSE_UNMEASURED_INPUT = "refuse_unmeasured_input"
+    REFUSE_INPUT_OVERFLOW = "refuse_input_overflow"
 
 
 class ModelDelegationContextPackBudgetRequest(BaseModel):
@@ -52,6 +54,11 @@ class ModelDelegationContextPackBudgetRequest(BaseModel):
         default=None,
         description="Pack orchestrator's answer, possibly empty; None means no answer yet.",
     )
+    assembled_request_tokens: int | None = Field(
+        default=None,
+        ge=0,
+        description="Full serialized outbound input including the pack, counted with token_estimator after assembly.",
+    )
 
     @model_validator(mode="after")
     def validate_profile_budget(self) -> Self:
@@ -60,6 +67,15 @@ class ModelDelegationContextPackBudgetRequest(BaseModel):
             raise ValueError(
                 "context_profile and profile_token_budget must be set together"
             )
+        if self.assembled_request_tokens is not None:
+            if self.context_profile is None or self.context_pack_hash is None:
+                raise ValueError(
+                    "assembled_request_tokens requires a profile and pack answer"
+                )
+            if self.assembled_request_tokens < self.composed_request_tokens:
+                raise ValueError(
+                    "assembled input cannot be smaller than the input without the pack"
+                )
         return self
 
 
@@ -98,6 +114,9 @@ class ModelDelegationContextPackBudgetResult(BaseModel):
     )
     token_estimator: str = Field(
         description="Tokenizer or conservative estimate used to count the composed request."
+    )
+    assembled_request_tokens: int | None = Field(
+        description="Measured full serialized input including the pack, or None before measurement."
     )
     reason: str = Field(
         description="Factual reason for this context-pack admission decision."
