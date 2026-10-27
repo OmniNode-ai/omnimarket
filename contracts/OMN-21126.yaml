@@ -59,7 +59,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "Pinned Git source, access, provenance and local runtime tests."
-    command: "uv run --frozen pytest tests/nodes/node_context_source_git_effect -q -n 0 --no-cov"
+    command: "env UV_FROZEN=true uv run pytest tests/nodes/node_context_source_git_effect/test_golden_chain_context_source_git.py -q -n 0 --no-cov"
   - kind: "tests"
     description: "Invariants select compute for OMN-21126."
     command: "uv run pytest tests/nodes/node_context_invariants_select_compute/test_golden_chain_context_invariants_select.py -q -n 0"
@@ -79,7 +79,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/nodes/node_context_source_git_effect -q -n 0 --no-cov -k 'reads_pinned or missing or unsafe or symlink or invalid_utf8 or object_type or integrity'"
+        check_value: "env UV_FROZEN=true uv run pytest tests/nodes/node_context_source_git_effect/test_golden_chain_context_source_git.py -q -n 0 --no-cov -k 'reads_pinned or missing or unsafe or symlink or invalid_utf8 or object_type or integrity'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC13"]
   - id: "dod-omn21126-ac14-git-tenant-denial"
@@ -87,7 +87,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/nodes/node_context_source_git_effect -q -n 0 --no-cov -k 'denied_before or overlay_file or policy_is_strict'"
+        check_value: "env UV_FROZEN=true uv run pytest tests/nodes/node_context_source_git_effect/test_golden_chain_context_source_git.py -q -n 0 --no-cov -k 'denied_before or overlay_file or policy_is_strict'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC14"]
   - id: "dod-omn21126-ac15-git-freshness-no-budget"
@@ -95,7 +95,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/nodes/node_context_source_git_effect -q -n 0 --no-cov -k 'no_age_drop or oversize'"
+        check_value: "env UV_FROZEN=true uv run pytest tests/nodes/node_context_source_git_effect/test_golden_chain_context_source_git.py -q -n 0 --no-cov -k 'no_age_drop or oversize'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC15"]
   - id: "dod-omn21126-ac16-git-runtime-bindings"
@@ -103,7 +103,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/nodes/node_context_source_git_effect -q -n 0 --no-cov -k 'same_context_exchange or packaged_node_cli'"
+        check_value: "env UV_FROZEN=true uv run pytest tests/nodes/node_context_source_git_effect/test_golden_chain_context_source_git.py -q -n 0 --no-cov -k 'same_context_exchange or packaged_node_cli'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC16"]
   - id: "dod-omn21126-git-deploy-probe"

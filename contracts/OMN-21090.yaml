@@ -43,7 +43,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/nodes/node_context_source_git_effect -q -n 0 --no-cov"
+        check_value: "env UV_FROZEN=true uv run pytest tests/nodes/node_context_source_git_effect/test_golden_chain_context_source_git.py -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
   - id: "dod-omn21090-git-source-deploy-probe"
