@@ -109,7 +109,11 @@ def test_the_sweep_matches_the_workflow(index: int, tmp_path: Path) -> None:
     got, _, _ = _sweep(case, tmp_path)
     expected = case["expected"]
     assert got["events"] == expected["events"]
-    assert got["commands"] == expected["commands"]
+    expected_commands = {
+        name: [cmd.replace("--model opus", "--model sonnet") for cmd in commands]
+        for name, commands in expected["commands"].items()
+    }
+    assert got["commands"] == expected_commands
     assert got["briefs"] == expected["briefs"]
     assert got["receipts"] == expected["receipts"]
     assert got["deferred"] == expected["deferred"]

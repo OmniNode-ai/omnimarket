@@ -42,7 +42,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, date, datetime
 from getpass import getpass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import click
 import yaml
@@ -1271,6 +1271,13 @@ _REVIEW_GATEWAY_DRY_RUN_PAYLOAD: dict[str, object] = {
     help="The Claude model every review runs on, e.g. claude-sonnet-5-5.",
 )
 @click.option(
+    "--thinking-mode",
+    type=click.Choice(["disabled", "adaptive"]),
+    default="disabled",
+    show_default=True,
+    help="Native thinking protocol declared by this gateway's host overlay.",
+)
+@click.option(
     "--host",
     default=None,
     help=(
@@ -1309,6 +1316,7 @@ _REVIEW_GATEWAY_DRY_RUN_PAYLOAD: dict[str, object] = {
 def review_gateway(
     tenant: str,
     model_option: str,
+    thinking_mode: Literal["disabled", "adaptive"],
     host: str | None,
     bind: str,
     privacy_overlay: Path,
@@ -1366,6 +1374,7 @@ def review_gateway(
             host=bound_host,
             tenant_id=tenant,
             model=model_option,
+            thinking_mode=thinking_mode,
             cloud_refused_repositories=cloud_refused_repositories,
             bind_host=bind_host or "127.0.0.1",
             bind_port=int(bind_port),

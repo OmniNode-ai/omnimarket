@@ -28,6 +28,10 @@ from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
 )
 from pydantic import JsonValue, ValidationError
 
+from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
+    require_lane_model,
+)
+
 from ..models.model_linear_comments_sweep import (
     ModelLinearCommentsSweepRequest,
     ModelLinearCommentsSweepResult,
@@ -282,7 +286,9 @@ class HandlerLinearCommentsSweep:
                 label="collect:linear",
                 phase="Collect",
                 task_type="agent_delegation",
-                model="sonnet",
+                model=require_lane_model(
+                    requested_engine="claude", lane_kind="linear-comments"
+                ),
                 effort="medium",
                 prompt=self._render(
                     self.overlay.templates["linear-comments-collect"], slots
@@ -447,7 +453,9 @@ class HandlerLinearCommentsSweep:
                 label=f"verify:{_text(item.get('ticket'))}:{_text(item.get('comment_id'))}",
                 phase="Draft",
                 task_type="agent_delegation",
-                model="opus",
+                model=require_lane_model(
+                    requested_engine="claude", lane_kind="linear-comments"
+                ),
                 effort="high",
                 prompt=self._render(
                     self.overlay.templates["linear-comments-verify"],
@@ -526,7 +534,9 @@ class HandlerLinearCommentsSweep:
                 label="write:linear-file",
                 phase="Finalize",
                 task_type="agent_delegation",
-                model="sonnet",
+                model=require_lane_model(
+                    requested_engine="claude", lane_kind="linear-comments"
+                ),
                 effort="medium",
                 prompt=self._render(
                     self.overlay.templates["linear-comments-write"],

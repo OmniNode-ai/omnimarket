@@ -80,6 +80,9 @@ from omnimarket.handlers.cause_signature import (
     cause_key,
     normalize_signature,
 )
+from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
+    resolve_lane_model,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing import (
     BLOCKED_OUTCOMES,
     CAUSE_EXCLUDED_SUSPENSIONS,
@@ -633,6 +636,22 @@ def _eligibility_reruns(t: _Tick) -> None:
 
 
 # ------------------------------------------------------------------ dispatch
+def _allowed_worker_engine(
+    requested: EnumLandingEngine, available: set[EnumLandingEngine]
+) -> EnumLandingEngine | None:
+    decision = resolve_lane_model(
+        requested_engine=requested.value, lane_kind="landing-worker"
+    )
+    if decision.model is None:
+        return None
+    engine = (
+        EnumLandingEngine.CODEX_HIGH
+        if decision.engine == "codex"
+        else EnumLandingEngine(f"claude_{decision.model}")
+    )
+    return engine if engine in available else None
+
+
 def _try_dispatch(
     t: _Tick,
     subject: str,
@@ -654,7 +673,12 @@ def _try_dispatch(
     rec = t.record_of(subject)
     available = set(t.facts.available_engines)
     engine: EnumLandingEngine | None = next(
-        (e for e in policy.engine_ladder[rec.ladder_index :] if e in available), None
+        (
+            allowed
+            for e in policy.engine_ladder[rec.ladder_index :]
+            if (allowed := _allowed_worker_engine(e, available)) is not None
+        ),
+        None,
     )
     if engine is None:
         return False
@@ -1480,14 +1504,14 @@ def _try_dispatch_cause(t: _Tick, rec: ModelLandingCauseRecord) -> bool:
     ladder = policy.cause_engine_ladder
     available = set(t.facts.available_engines)
     if diagnosis:  # the budget is spent: one attempt by the strongest engine
-        engine = (
-            policy.cause_diagnosis_engine
-            if policy.cause_diagnosis_engine in available
-            else None
-        )
+        engine = _allowed_worker_engine(policy.cause_diagnosis_engine, available)
     else:
         engine = next(
-            (e for e in ladder[min(rec.attempts, len(ladder) - 1) :] if e in available),
+            (
+                allowed
+                for e in ladder[min(rec.attempts, len(ladder) - 1) :]
+                if (allowed := _allowed_worker_engine(e, available)) is not None
+            ),
             None,
         )
     if engine is None:

@@ -10,9 +10,13 @@ summary: >-
   remotes only) before it compares. The branch check itself is unchanged: a clone on a branch
   that is not the remote default is still refused. Not in this change: the ticket's per-host
   parity probe, placement refusal and queue-status line (the ticket's AC1 to AC3), which stay open.
+  This contract also carries a second pull request's share, bound to its own DOD1: a typed
+  dispatch-process entrypoint, python -m omnimarket.nodes.node_remote_lane_effect.run_retention
+  --script <request.json>, that builds the existing guarded host retention payload so the
+  launcher no longer imports omnimarket into its system Python.
 is_seam_ticket: false
-interface_change: false
-interfaces_touched: []
+interface_change: true
+interfaces_touched: ["public_api"]
 requirements:
   - id: "req-omn20266-refresh-origin-head"
     statement: "The provision fast-forward compares a clone's branch with the remote's current default branch."
@@ -26,6 +30,9 @@ evidence_requirements:
   - kind: "manual"
     description: "Deploy validation for the caller-contract deploy gate: the shipped provision script read at the checkout commit and a hosted import probe. No lab service is required."
     command: "deploy: gh api contents of handler_clone_parity.py at HEAD and a hosted import probe"
+  - kind: "tests"
+    description: "Closeout dispatch CLI and existing ownership/archive safety checks. Does not claim the ticket's host-parity criteria."
+    command: "uv run --locked pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -q --no-cov --refuse-skips"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -55,3 +62,27 @@ dod_evidence:
           read = sh.index("symbolic-ref -q refs/remotes/origin/HEAD")
           assert refresh < read, (refresh, read)
           print("provision script refreshes origin/HEAD before it reads it")'
+  - id: "dod-omn20266-closeout-dispatch-cli"
+    description: >-
+      Hosted check with no broker, database, host credentials or lab access: the
+      dispatch CLI emits a host payload that archives a final fixture run without
+      local cleanup while building it, and an invalid request (a bool keep_days, a
+      string delete, an unexpected key) exits nonzero with no payload. Fails at the
+      merge base, whose run_retention module has no command-line entrypoint. Binds
+      this pull request's DOD1 only, none of the ticket's AC1, AC2 or AC3.
+    source: "manual"
+    binds_ac: ["DOD1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -k dispatch_cli -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20266-closeout-deploy-probe"
+    description: >-
+      Deploy probe. Read the retention module from GitHub at the checked-out commit
+      and require the strict request parse the entrypoint introduces. It fails at
+      the merge base, where the module has no entrypoint.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_remote_lane_effect/run_retention.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"ModelRemoteLaneRetentionRequest.model_validate_json(\" > /dev/null'"
+        cwd: "${OMNI_HOME}/omnimarket"

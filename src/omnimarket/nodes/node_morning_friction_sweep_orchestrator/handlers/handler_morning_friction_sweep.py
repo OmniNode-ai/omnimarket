@@ -27,6 +27,10 @@ from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
 )
 from pydantic import JsonValue, ValidationError
 
+from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
+    require_lane_model,
+)
+
 from ..models.model_friction_overlay import ModelFrictionOverlay
 from ..models.model_friction_phase_results import (
     ModelFrictionAdjudication,
@@ -268,7 +272,9 @@ class HandlerMorningFrictionSweep:
                 ModelFrictionPhaseRequest(
                     label=label,
                     phase=self._phase(label),
-                    model="opus" if label in DELEGATED_LABELS else "sonnet",
+                    model=require_lane_model(
+                        requested_engine="claude", lane_kind="friction-phase"
+                    ),
                     effort="medium" if label == "friction-precheck" else "high",
                     prompt=self._render(self.overlay.templates[label], slots),
                     schema_definition=self._schema(label),

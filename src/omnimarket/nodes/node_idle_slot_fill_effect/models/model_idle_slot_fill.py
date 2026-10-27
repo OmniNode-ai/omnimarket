@@ -33,7 +33,9 @@ class ModelIdleSlotFillRequest:
     """What the throughput tick read: the live pool hosts, its own finding lines, the lanes the merge sweep will
     place this tick, the standing pillar backlog, the keys it already sent inside the window, and the repositories
     the merge sweep's one scope setting rules out (``scope_unread`` names why that setting could not be read). ``placing``
-    counts, by engine (claude, codex, glm), the lanes the fill sent that no host holds yet: each reserves a free slot."""
+    counts, by engine (claude, codex, glm), the lanes the fill sent that no host holds yet: each reserves a free slot.
+    ``fixer_holds`` carries active repository HOLD rows read by the effect; an
+    unread HOLD ledger refuses repository work with ``fixer_holds_unread``."""
 
     now: str
     hosts: list[dict[str, Any]]
@@ -57,6 +59,8 @@ class ModelIdleSlotFillRequest:
     completed: Mapping[str, str] = field(
         default_factory=dict
     )  # experiment key -> "<lane> at <ended_at>"
+    fixer_holds: Mapping[str, str] = field(default_factory=dict)
+    fixer_holds_unread: str = ""
 
 
 @dataclass(frozen=True)

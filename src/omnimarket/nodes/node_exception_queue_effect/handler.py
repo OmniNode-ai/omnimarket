@@ -30,6 +30,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
+    require_lane_model,
+)
+
 from .models import (
     ModelExceptionCliRequest,
     ModelExceptionCliResult,
@@ -104,12 +108,15 @@ def _single_line(value: object) -> str:
 
 
 def _brief(
-    request: ModelExceptionEmitRequest, lane: str, rows: list[dict[str, Any]]
+    request: ModelExceptionEmitRequest,
+    lane: str,
+    rows: list[dict[str, Any]],
+    model: str,
 ) -> Path:
     cls = request.row.cls
     lines = [
         f"# Lane {lane}: mechanize exception class {cls} ({TICKET})",
-        "ROUTE: model=opus effort=high",
+        f"ROUTE: model={model} effort=high",
         f"Parent: {request.parent or 'orchestrator'}. Ticket: {TICKET}. "
         f"Repo: {next((r['repo'] for r in reversed(rows) if r.get('repo')), '') or 'the class names it'}.",
         'Authority: Operator 2026-10-18 ~22:30Z: "need to make the process as mechanical as possible, '
@@ -143,7 +150,8 @@ def _mechanize(request: ModelExceptionEmitRequest, rows: list[dict[str, Any]]) -
     if previous.get("sent"):
         return f"already:{previous['lane']}"
     lane = "mechanize-" + request.row.cls[:48].rstrip("-")
-    brief = _brief(request, lane, rows)
+    model = require_lane_model(lane_kind="mechanize")
+    brief = _brief(request, lane, rows, model)
     repo = next((row["repo"] for row in reversed(rows) if row.get("repo")), "")
     sent, detail = False, "no-runner"
     if request.runner is not None:
@@ -162,7 +170,7 @@ def _mechanize(request: ModelExceptionEmitRequest, rows: list[dict[str, Any]]) -
             "--ticket",
             TICKET,
             "--model",
-            "opus",
+            model,
             "--effort",
             "high",
             "--priority-class",

@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_report_relay_effect
+version: 1.0.0
+description: 'A remote lane writes its report under the running host''s claude_scratch
+  reports directory; at close the launching host copies the lane''s own report files
+  into its own reports directory in one remote call, or leaves the lane''s final message
+  there when the lane wrote none. It never raises and never changes the lane''s outcome.
+  It follows the delegation receipt relay: the runner already holds the ssh path to
+  the host at close, so no second store is added.'
+pack: distributed_validation
+node_role: effect
+display_name: Lane Report Relay Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_lane_report_relay_effect: omnimarket.nodes.node_lane_report_relay_effect
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_write
+dependencies:
+- pydantic>=2.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- remote-lane

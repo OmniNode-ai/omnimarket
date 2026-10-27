@@ -43,7 +43,7 @@ def test_the_controller_host_is_preferred_when_admitted() -> None:
     )
     assert result.host == "host-a"
     assert result.error == ""
-    assert result.contract["controller_fix_model"] == "claude"
+    assert result.contract["controller_fix_model"] == "codex"
 
 
 def test_an_exhausted_claude_pool_falls_through_to_codex() -> None:
@@ -75,7 +75,12 @@ def test_an_absent_pool_read_keeps_the_runner_preflight() -> None:
     )
     assert result.host == "host-a"
     assert result.error == ""
-    assert result.contract == CONTRACT
+    assert result.contract == {
+        **CONTRACT,
+        "controller_fix_model": "sonnet",
+        "controller_fix_effort": "high",
+        "controller_fix_route": "route model=sonnet dest=sonnet-lane effort=high",
+    }
 
 
 def test_the_brief_names_the_bound_and_caps_the_listed_prs() -> None:

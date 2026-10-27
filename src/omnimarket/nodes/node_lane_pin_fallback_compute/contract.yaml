@@ -1,0 +1,92 @@
+{
+  "name": "node_lane_pin_fallback_compute",
+  "node_type": "COMPUTE_GENERIC",
+  "node_version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "description": "Decide whether a remote lane whose pinned host refused it is placed again on any admitting host, and why. A pin only the caller gave is a preference; a host the brief requires, a priority holdback and a placement node that gave no answer keep the no-host outcome.",
+  "input_model": {
+    "name": "ModelLanePinFallbackRequest",
+    "module": "omnimarket.nodes.node_lane_pin_fallback_compute.models.model_lane_pin_fallback"
+  },
+  "output_model": {
+    "name": "ModelLanePinFallbackResult",
+    "module": "omnimarket.nodes.node_lane_pin_fallback_compute.models.model_lane_pin_fallback"
+  },
+  "handler_routing": {
+    "routing_strategy": "operation_match",
+    "default_handler": "omnimarket.nodes.node_lane_pin_fallback_compute.handlers.handler_lane_pin_fallback:HandlerLanePinFallback",
+    "handlers": [
+      {
+        "operation": "handle",
+        "handler": {
+          "name": "HandlerLanePinFallback",
+          "module": "omnimarket.nodes.node_lane_pin_fallback_compute.handlers.handler_lane_pin_fallback"
+        },
+        "topic": "onex.cmd.omnimarket.lane-pin-fallback-requested.v1"
+      }
+    ]
+  },
+  "entrypoint": {
+    "name": "NodeLanePinFallbackCompute",
+    "module": "omnimarket.nodes.node_lane_pin_fallback_compute"
+  },
+  "execution": {
+    "deterministic": true,
+    "side_effects": false,
+    "caller": "remote-lane runner place_provisioning, when a pinned placement took no host"
+  },
+  "contract_version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "handler": {
+    "module": "omnimarket.nodes.node_lane_pin_fallback_compute.handlers.handler_lane_pin_fallback",
+    "class": "HandlerLanePinFallback",
+    "input_model": "omnimarket.nodes.node_lane_pin_fallback_compute.models.model_lane_pin_fallback.ModelLanePinFallbackRequest",
+    "output_model": "omnimarket.nodes.node_lane_pin_fallback_compute.models.model_lane_pin_fallback.ModelLanePinFallbackResult"
+  },
+  "event_bus": {
+    "subscribe_topics": [
+      "onex.cmd.omnimarket.lane-pin-fallback-requested.v1"
+    ],
+    "publish_topics": [
+      "onex.evt.omnimarket.lane-pin-fallback-completed.v1"
+    ]
+  },
+  "runtime_dispatch": {
+    "command_topic": "onex.cmd.omnimarket.lane-pin-fallback-requested.v1"
+  },
+  "descriptor": {
+    "node_archetype": "compute",
+    "purity": "pure",
+    "runtime_profiles": [
+      "main"
+    ],
+    "idempotent": true,
+    "timeout_ms": 5000
+  },
+  "replay": {
+    "requires_validator_version": true,
+    "timestamp_authority": "ingest_sequence",
+    "deterministic": true
+  },
+  "terminal_event": "onex.evt.omnimarket.lane-pin-fallback-completed.v1",
+  "metadata": {
+    "transport_type": "inmemory"
+  },
+  "externally_consumed_topics": [
+    "onex.evt.omnimarket.lane-pin-fallback-completed.v1"
+  ],
+  "runtime_profiles": [
+    "main"
+  ]
+}

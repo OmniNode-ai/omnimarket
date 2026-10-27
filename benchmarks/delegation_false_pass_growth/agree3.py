@@ -95,7 +95,7 @@ if len(sys.argv) > 4:
         "pairwise": {
             f"{x}-{y}": cohen([(r[i], r[j]) for _, _, *r in trip])
             for (x, i), (y, j) in itertools.combinations(
-                [("opus", 0), ("sonnet", 1), ("gpt-oss-120b", 2)], 2
+                [("opus", 0), ("sonnet", 1), ("third_rater", 2)], 2
             )
         },
         "by_class": {
@@ -117,7 +117,7 @@ if len(sys.argv) > 4:
         "false_pass_on_sample": {
             "opus": sum(x[2] == "inadequate" for x in trip),
             "sonnet": sum(x[3] == "inadequate" for x in trip),
-            "gpt-oss-120b": sum(x[4] == "inadequate" for x in trip),
+            "third_rater": sum(x[4] == "inadequate" for x in trip),
             "n": n,
         },
     }
@@ -127,7 +127,7 @@ if len(sys.argv) > 4:
             "task_class": cl,
             "opus": a,
             "sonnet": b,
-            "gpt-oss-120b": t,
+            "third_rater": t,
         }
         for c, cl, a, b, t in trip
     ]

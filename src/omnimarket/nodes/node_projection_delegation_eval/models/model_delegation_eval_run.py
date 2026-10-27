@@ -5,7 +5,7 @@
 from typing import Any
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.events.delegation_eval import (
     ModelDelegationEvalItemVerdict,
@@ -37,6 +37,11 @@ class _RunKeyed(BaseModel):
     rater_role: str
     rubric_version: str
     observed_at: AwareDatetime
+    harness: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    model: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    configuration: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class ModelDelegationEvalItemVerdictRow(_RunKeyed, ModelDelegationEvalItemVerdict):

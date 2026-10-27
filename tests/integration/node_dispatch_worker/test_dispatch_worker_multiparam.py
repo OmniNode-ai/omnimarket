@@ -94,7 +94,7 @@ CASES = [
             "role": EnumWorkerRole.watcher,
             "scope": "watch CI for the lifecycle PR",
             "targets": ["omnimarket#42"],
-            "model": "haiku",
+            "model": "sonnet",
         },
         None,
         {
@@ -104,7 +104,7 @@ CASES = [
             "fence_embeds": [],
             "fence_block_text": "(none",
             "bundle_level": "none",
-            "spawn_model": "haiku",
+            "spawn_model": "sonnet",
         },
         id="watcher-role-variant",
     ),
@@ -321,3 +321,22 @@ def test_dispatch_worker_missing_identifiers_raises() -> None:
     )
     with pytest.raises(ValueError, match="requires identifiers"):
         handler.handle(command, existing_task_subjects=[])
+
+
+@pytest.mark.parametrize("model", ["opus", "claude_opus", "haiku", "unknown"])
+def test_worker_policy_refuses_a_model_before_compiling_or_persisting(model, tmp_path):
+    command = ModelDispatchWorkerCommand(
+        name="refused",
+        team="policy",
+        role=EnumWorkerRole.watcher,
+        scope="Observe the supplied fixture",
+        targets=["OMN-21396"],
+        model=model,
+    )
+    result = HandlerDispatchWorker().handle(
+        command, existing_task_subjects=[], state_dir=tmp_path
+    )
+    assert result.rejected_reason
+    assert result.proposed_agent_spawn_args == {}
+    assert result.validated_prompt_template == ""
+    assert list(tmp_path.iterdir()) == []

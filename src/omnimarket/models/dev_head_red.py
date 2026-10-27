@@ -27,6 +27,9 @@ from omnimarket.events.pr_state import ISO_Z_PATTERN
 from omnimarket.models.ci_red_triage import ci_red_cause_key, ci_red_repo_slug
 from omnimarket.models.github_check_run import RED_CHECK_CONCLUSIONS
 from omnimarket.models.work_ledger_query import ModelWorkLedgerRowRecord
+from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
+    require_lane_model,
+)
 
 _CAUSE_KEY_RE = re.compile(r"^cause:([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+):[0-9a-f]{12}$")
 
@@ -121,7 +124,9 @@ class ModelDevCauseLaneRequest(BaseModel):
     head_sha: str = Field(min_length=1)
     check: str = Field(min_length=1)
     cause: str = Field(min_length=3)
-    model: Literal["opus"] = "opus"
+    model: str = Field(
+        default_factory=lambda: require_lane_model(lane_kind="cause-red")
+    )
     event_id: str = Field(pattern=r"^[0-9a-f]{64}$")
     observed_at: str = Field(pattern=ISO_Z_PATTERN)
 

@@ -7,6 +7,20 @@ is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
+  - id: "req-omn20780-retired-model-references"
+    statement: |-
+      No retired-model reference survives in repository content, including comments and historical fixtures; the check runs in a pre-commit hook and in the required CI lint. The experiment checker requires a nonempty caller-supplied retirement policy.
+    acceptance:
+      - id: "AC11"
+        statement: |-
+          AC11: node_retired_model_reference_check_effect finds no retired-model reference in filenames, text, comments or escaped YAML/JSON keys and values, the pre-commit hook and the required lint step run it, and the experiment checker refuses an empty retirement policy -- falsifier: uv run pytest tests/ci/test_retired_model_references.py tests/nodes/node_delegation_experiment_record_compute -q -n 0 -p no:randomly --no-cov fails when the checker node, its hook or lint step, or the policy refusal is removed
+  - id: "req-omn20780-history-archive"
+    statement: |-
+      The host file job archives all enabled categories; launching-host outputs archive at seven days separately from receipts; unverified, unsynced, protected, changed and newly arrived data survives; dry runs report zero actual removals.
+    acceptance:
+      - id: "AC12"
+        statement: |-
+          AC12: every enabled retention category archives before removal, launching-host outputs carry their own seven-day archive rule beside the fourteen-day receipts rule, only verified unchanged files are removed, and a dry run reports zero actual removals -- falsifier: uv run pytest tests/nodes/test_file_retention_archive_safety.py tests/nodes/test_omn17427_file_retention.py -q -n 0 -p no:randomly --no-cov fails when the archive-before-removal or verification rule is removed
   - id: "req-wire-self-accepted-bindings"
     statement: |-
       The tests that prove node_dod_verify refuses a binding accepted by its own author run in a pre-commit hook and in the required lint job.
@@ -45,6 +59,26 @@ requirements:
       - id: "AC6"
         statement: |-
           AC6: the pre-commit hook delegation-answer-gate and the required lint job both run tests/unit/delegation/test_answer_gate_omn20489.py -- falsifier: uv run pytest tests/ci/test_delegation_answer_gate_wiring_omn20780.py -q -p no:randomly --no-cov fails at the merge base because the hook and the lint step are absent
+  - id: "req-omn20780-blocked-ruling-relaunch"
+    statement: "Abandoned blocked or partial work on a process ruling becomes one lab-fill item after two hours."
+    acceptance:
+      - id: "AC7"
+        statement: "AC7: a blocked or partial TERMINAL on a process ruling mechanism-ticket, or with a CLAIM or brief citing a RULING, becomes one item after two hours without a later CLAIM; a later CLAIM or successful terminal suppresses it."
+  - id: "req-omn20780-recovery-dispatch"
+    statement: "The recovery item retains staged work and the named blocker and goes through existing lab-fill gates, Codex first."
+    acceptance:
+      - id: "AC8"
+        statement: "AC8: the item carries branch, patch path, run directory and blocker; the actor dispatches Codex on admitted shared or dedicated capacity, once, without bypassing scope or runner gates."
+  - id: "req-omn20780-repeat-block-exception"
+    statement: "A second block of the same ruled work remains an orchestrator exception, never a silent stop."
+    acceptance:
+      - id: "AC9"
+        statement: "AC9: a second block prints a finding and records one durable EXCEPTION row addressed to the parent orchestrator, including with zero free slots; no automatic third attempt is dispatched."
+  - id: "req-omn20780-live-ruling-invariants"
+    statement: "Every throughput tick reads the declared live ruling checks and reports mismatches with their live readings."
+    acceptance:
+      - id: "AC10"
+        statement: "AC10: a process ruling may declare one live-check; the two standing container and reviewer checks are declared; every tick reads them, including without headroom, and a mismatch prints MISSING ruling-drift:<ruling timestamp> with the live reading."
 evidence_requirements:
   - kind: "tests"
     description: "The hook and the lint job run the guarding tests, and the guarding tests pass."
@@ -54,6 +88,37 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn20780-retired-model-references"
+    description: "The retired-model reference check and the experiment checker's retirement-policy refusal pass at the head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_retired_model_references.py tests/nodes/node_delegation_experiment_record_compute -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC11"]
+  - id: "dod-omn20780-history-archive"
+    description: "The archive-before-removal, verification and dry-run controls of the host file job pass at the head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/test_file_retention_archive_safety.py tests/nodes/test_omn17427_file_retention.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC12"]
+  - id: "dod-omn20780-ruling-drift-deploy"
+    description: "Hosted deploy check: build this head's wheel, install it outside the project, scan its packaged model references, refuse a missing retirement policy, archive a disposable old output, read the gzip back and require the local file to survive without a sync acknowledgement. Hosted deploy probe: gh api reads handler_retired_model_reference_check.py at the checked-out commit and finds HandlerRetiredModelReferenceCheck; at the merge base the file is absent, so the read fails and the check exits nonzero. No live deployment is claimed."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          set -eu
+          probe_dir=$(mktemp -d)
+          trap 'rm -rf "$probe_dir"' EXIT
+          uv build --wheel --out-dir "$probe_dir"
+          uv run --no-project --with "$probe_dir"/*.whl python "$PWD/tests/ci/probe_ruling_drift_artifact.py"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_retired_model_reference_check_effect/handlers/handler_retired_model_reference_check.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"class HandlerRetiredModelReferenceCheck\" > /dev/null'"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20780-wiring"
     description: "The hook and the lint step name both guarding test files, and the wiring test passes."
     source: "manual"
@@ -102,3 +167,40 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_delegation_answer_gate_wiring_omn20780.py tests/unit/delegation/test_answer_gate_omn20489.py -q -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC6"]
+  - id: "dod-omn20780-ruling-detector"
+    description: "Lane blocked recovery and live invariants: AC7, behavioral controls fail before the implementation exists."
+    source: "manual"
+    binds_ac: ["AC7"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/test_ruling_recovery.py -q -p no:randomly --no-cov --refuse-skips -k 'blocked_ruled_work or waits_two_hours or claim_or_brief or unruled_success or sent_item or corrected_mechanism or claim_in_terminal_second'"
+  - id: "dod-omn20780-ruling-actor"
+    description: "Lane blocked recovery and live invariants: AC8, behavioral controls fail before the implementation exists."
+    source: "manual"
+    binds_ac: ["AC8"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/test_ruling_recovery.py -q -p no:randomly --no-cov --refuse-skips -k 'tick_dispatches_codex or shared_capacity or archive_and_citation or unknown_recovery_repository or owning_repository or stored_recovery_kind'"
+  - id: "dod-omn20780-ruling-exception"
+    description: "Lane blocked recovery and live invariants: AC9, behavioral controls fail before the implementation exists."
+    source: "manual"
+    binds_ac: ["AC9"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/test_ruling_recovery.py -q -p no:randomly --no-cov --refuse-skips -k 'second_block or tick_records_one_orchestrator_exception'"
+  - id: "dod-omn20780-ruling-drift"
+    description: "Lane blocked recovery and live invariants: AC10, behavioral controls fail before the implementation exists."
+    source: "manual"
+    binds_ac: ["AC10"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/test_ruling_recovery.py -q -p no:randomly --no-cov --refuse-skips -k 'live_reading_changes or runtime_check or review_check or unread_live or packaged_checks or process_ruling_can_declare or live_reader'"
+  - id: "dod-omn20780-ruling-deploy"
+    description: "Hosted deploy check: import the installed node entrypoint and exercise the packaged checks against a split runtime and wrong reviewer roster, with no Docker daemon, registry, credentials or lab network. Hosted deploy probe: gh api reads handler_idle_slot_fill.py at the checked-out commit and finds the HandlerRulingRecovery import; at the merge base the import is absent, so the grep finds nothing and the check exits nonzero."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/test_ruling_recovery.py -q -p no:randomly --no-cov --refuse-skips -k packaged_node_deploy_behavior"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_idle_slot_fill_effect/handlers/handler_idle_slot_fill.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"from .handler_ruling_recovery import HandlerRulingRecovery\" > /dev/null'"
+        cwd: "${OMNI_HOME}/omnimarket"

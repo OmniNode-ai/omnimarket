@@ -53,6 +53,15 @@ host tick not firing, a tick node that cannot run, a failed relaunch or fill dis
 nothing (no Agent,
 Workflow, lane skill or remote-lane runner call), is refused with the lines it read. A tick whose own ``lab-fill``
 line sent lanes into every free slot (``idle_after=0``) answers the headroom by itself.
+
+RULING 2026-10-26T11:31:48Z: Claude fills use Sonnet. Explicit Opus requirements
+are skipped with the ruling in the existing backlog report, without consuming a slot.
+
+OMN-21396: before selecting any candidate kind, the effect reads scope=fixer
+HOLDs from the declared ledger and its archives. Held work is reported with
+RULING 2026-10-26T17:22:56Z on lab-fill-dropped; an unread ledger blocks
+repository work. Generation being off or the stored backlog being full does
+not bypass the read. RELEASE and expiry share the landing controller's rule.
 """
 
 from __future__ import annotations
@@ -75,7 +84,11 @@ from typing import Any
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.rules_lab_fill_tickets import plan_ticket_backlog
+from omnimarket.handlers.rules_lane_requirements import claude_required, declarations
+from omnimarket.handlers.work_ledger_fixer_holds import fixer_hold_reasons
+from omnimarket.handlers.work_ledger_text import split_ledger_rows
 from omnimarket.models.lab_fill import ModelLabFillTicketFacts
+from omnimarket.models.landing_ledger_row import ModelLandingLedgerRow
 from omnimarket.nodes.node_idle_slot_fill_effect import overlay
 from omnimarket.nodes.node_idle_slot_fill_effect.models import (
     ModelBacklogSources,
@@ -86,9 +99,12 @@ from omnimarket.nodes.node_idle_slot_fill_effect.models import (
     ModelLabFillRequest,
     ModelLabFillResult,
 )
-from omnimarket.nodes.node_lane_placement_recovery_effect.handlers.handler_lane_engine_failover import (
-    claude_required,
+from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
+    load_policy,
+    resolve_lane_model,
 )
+
+from .handler_ruling_recovery import HandlerRulingRecovery
 
 RULING = "RULING 2026-10-14T21:46:25Z lane=orchestrator-bb1a (OMN-17427)"
 UMBRELLA_TICKETS = frozenset({"OMN-17427"})
@@ -96,7 +112,7 @@ TICKET_ID = re.compile(r"OMN-[0-9]+")
 TICKET_RULE = "omnimarket.handlers.rules_lab_fill_tickets.plan_ticket_backlog (omnimarket#4384, RULING 2026-10-20T10:45:21Z)"
 FACT_MAX_AGE = timedelta(hours=48)
 EXPERIMENT_RERUN_AFTER = timedelta(hours=24)
-CLAUDE_MODEL, CODEX_MODEL, EFFORT = "opus", "codex", "high"
+EFFORT = "high"
 GENERATED_KINDS = ("ticket", "readback", "experiment-design")
 DASHBOARD_RULING = "RULING 2026-10-01T10:53:36Z lane=dashboard-stayout (OMN-19969)"
 DASHBOARD_CRITERIA = frozenset({"C31", "C32"})
@@ -114,12 +130,14 @@ _DEV_RED = re.compile(
     r"(?!.*\| FIX: the controller owns it)"
 )
 DEV_RED_RULING = "RULING 2026-10-14T03:57:46Z lane=orchestrator-31d9 (OMN-20730)"
+RETIRED_RULING = "RULING 2026-10-26T17:22:56Z lane=orchestrator-31d9"
 
-BACKLOG_ORDER = ("m4-board-red", "experiment-design")
+BACKLOG_ORDER = ("ruling-relaunch", "m4-board-red", "experiment-design")
 _REPAIR = re.compile(
     r"^(?:MISSING|UNKNOWN) (?P<loop>running-vs-merged:\S+|host-tick:\S+|throughput-node|dispatch-replace:\S+) \| "
 )
 KIND_SLUG = {
+    "ruling-relaunch": "ruled-retry",
     "lab-repair": "repair",
     "dev-red": "dev-red",
     "process-fix": "pf-drive",
@@ -213,13 +231,68 @@ def lane_name(kind: str, name: str, now: str) -> str:
 
 
 def _priority(kind: str, repo: str) -> str:
-    if kind in ("process-fix", "lab-repair") or repo in overlay.process_fix_repos():
+    if (
+        kind in ("process-fix", "lab-repair", "ruling-relaunch")
+        or repo in overlay.process_fix_repos()
+    ):
         return "process-fix"
     mvp = (
         kind in ("dev-red", "cause-red", "m4-board-red", "ticket", "readback")
         and repo in overlay.mvp_repos()
     )
     return "mvp-landing" if mvp else "other"
+
+
+def read_fixer_holds(now: str, env: Mapping[str, str]) -> tuple[dict[str, str], str]:
+    """Read the declared ledger and its rolls, including HOLDs older than the claim window.
+
+    Unlike backlog generation, this read runs even when generation is off or the
+    stored backlog fills every slot. An unread ledger never means no HOLDs.
+    """
+    path = env.get("ONEX_LEDGER_PATH")
+    root = env.get("ONEX_REGISTRY_ROOT") or env.get("OMNI_HOME")
+    ledger = (
+        Path(path).expanduser()
+        if path
+        else (
+            Path(root).expanduser() / "docs/tracking/ROLLING_WORK_LEDGER.md"
+            if root
+            else None
+        )
+    )
+    if ledger is None:
+        return {}, "configure ONEX_LEDGER_PATH or a registry root before filling"
+    try:
+        paths = [
+            ledger,
+            *sorted((ledger.parent / "archive").glob("ROLLING_WORK_LEDGER*.md")),
+        ]
+        rows = []
+        for source in paths:
+            for text in split_ledger_rows(source.read_text(encoding="utf-8")):
+                stamp, rtype, _ = text.split(" | ", 2)
+                if rtype in {"HOLD", "RELEASE"}:
+                    rows.append(ModelLandingLedgerRow(ts=stamp, rtype=rtype, text=text))
+        clock = datetime.strptime(now, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+        return fixer_hold_reasons(sorted(rows, key=lambda row: row.ts), clock), ""
+    except (OSError, ValueError) as exc:
+        return {}, f"{ledger}: {type(exc).__name__}: {exc}"
+
+
+def fixer_hold_reason(item: Mapping[str, Any], holds: Mapping[str, str]) -> str | None:
+    """Apply the HOLD to all candidate kinds, including tickets lacking an explicit repo."""
+    repo = str(item.get("repo") or "").split("/", 1)[-1]
+    text = " ".join(str(item.get(key) or "") for key in ("title", "fact", "brief"))
+    for held, row in holds.items():
+        if (
+            (held == "all" and (repo or item.get("kind") != "lab-repair"))
+            or held == repo
+            or re.search(rf"(?<![\w-]){re.escape(held)}(?![\w-])", text, re.IGNORECASE)
+        ):
+            return (
+                f"fixer HOLD repo={held} scope=fixer; {RETIRED_RULING}; source: {row}"
+            )
+    return None
 
 
 def candidates(
@@ -288,14 +361,23 @@ def candidates(
         (i for i in backlog if isinstance(i, dict)),
         key=lambda i: rank.get(str(i.get("kind")), len(rank)),
     )
+    generated = list(generated)
     seen = {i["key"] for i in out}
     # what is re-verified before it is sent (OMN-20864): a stored item every rule, a generated design its receipts only
     for item, verify in [
+        # These are freshly derived from ledger state, including old staged
+        # work. A stored backlog row of this kind still passes every stored-row
+        # check; only the live detector's output takes the generated path.
+        *(
+            (i, "")
+            for i in generated
+            if isinstance(i, dict) and i.get("kind") == "ruling-relaunch"
+        ),
         *((i, "stored") for i in ordered),
         *(
             (i, "receipt" if i.get("kind") == "experiment-design" else "")
             for i in generated
-            if isinstance(i, dict)
+            if isinstance(i, dict) and i.get("kind") != "ruling-relaunch"
         ),
     ]:
         if (
@@ -559,7 +641,7 @@ class HandlerIdleSlotFill:
         free_hosts = {
             m["host"] for line in request.lines if (m := _HEADROOM.match(line))
         }
-        claude = codex_only = glm_only = 0
+        claude = codex_only = glm_only = codex_shared = 0
         local_host, local_left = (
             None,
             0,
@@ -585,6 +667,7 @@ class HandlerIdleSlotFill:
             local_left = c if host.get("local") else local_left
             claude += c
             codex_only += x if c == 0 else 0
+            codex_shared += min(c, x)
             glm_only += g if isinstance(g, int) and g > 0 and c == 0 and x == 0 else 0
         # OMN-17427 (2026-10-21): the pool read counts a lane only once it is placed, so a lane the fill sent that still waits for
         # placement reserves its slot here; without it each tick sent the free count again and ~150 runners queued on placement.
@@ -602,6 +685,16 @@ class HandlerIdleSlotFill:
             - placing.get("codex", 0)
             - request.queue_reserved.get("codex", 0),
         )
+        # A Codex-capable host can also admit Claude. Its slots are one budget:
+        # a ruled retry consumes a shared slot once, without inventing headroom.
+        shared_reserved = max(
+            0,
+            placing.get("codex", 0)
+            + request.queue_reserved.get("codex", 0)
+            - codex_only,
+        )
+        claude_left = max(0, claude_left - shared_reserved)
+        shared_left = min(claude_left, max(0, codex_shared - shared_reserved))
         glm_left = max(0, glm_only - placing.get("glm", 0))
         now = _stamp(request.now)
         window = timedelta(hours=request.window_hours)
@@ -612,8 +705,36 @@ class HandlerIdleSlotFill:
             request.lines,
             request.backlog,
             request.generated,
-            out_of_scope=request.out_of_scope,
         ):
+            if item["kind"] == "ruling-relaunch" and not item["repo"]:
+                skipped.append(
+                    {
+                        "key": item["key"],
+                        "why": "repo-unread: cannot judge the recovery item's repository scope",
+                    }
+                )
+                continue
+            if why := fixer_hold_reason(item, request.fixer_holds):
+                dropped.append({"key": item["key"], "why": why})
+                continue
+            if request.fixer_holds_unread and (
+                item["repo"] or item["kind"] != "lab-repair"
+            ):
+                dropped.append(
+                    {
+                        "key": item["key"],
+                        "why": f"fixer HOLD ledger unread: {request.fixer_holds_unread}; {RETIRED_RULING}",
+                    }
+                )
+                continue
+            if item["repo"] in request.out_of_scope:
+                dropped.append(
+                    {
+                        "key": item["key"],
+                        "why": f"out-of-scope: {request.out_of_scope[item['repo']]}",
+                    }
+                )
+                continue
             if (
                 item.get("_verify")
                 and now is not None
@@ -692,15 +813,64 @@ class HandlerIdleSlotFill:
                 )
                 continue
             pin = None
-            required = str(item.get("required_engine") or "").lower()
+            required = (
+                str(item.get("required_engine") or "").strip().lower().replace("_", "-")
+            )
+            requirements = [
+                (match[1].lower(), match[2])
+                for line in declarations(item.get("brief", ""))
+                if (
+                    match := re.fullmatch(
+                        r"Required (engine|model):\s*(.*?)\s*", line, re.IGNORECASE
+                    )
+                )
+            ]
+            required_model = next(
+                (value for kind, value in requirements if kind == "model"), None
+            )
+            brief_engine = next(
+                (value for kind, value in requirements if kind == "engine"), None
+            )
+            policy_facts = {
+                "lane_kind": item["kind"],
+                "risk_class": item.get("risk_class"),
+                "required_engine": required or brief_engine,
+                "required_model": required_model,
+            }
+            preflights = [resolve_lane_model(**policy_facts)]
+            preflights.extend(
+                resolve_lane_model(**{**policy_facts, f"required_{kind}": value})
+                for kind, value in requirements
+            )
+            if refusal := next(
+                (answer.reason for answer in preflights if not answer.allowed), None
+            ):
+                skipped.append({"key": item["key"], "why": refusal})
+                continue
             pinned = required in (
                 "claude",
-                "opus",
                 "sonnet",
-                "claude-opus",
                 "claude-sonnet",
             ) or claude_required(item.get("brief", ""))
-            if item["key"].startswith("repair:host-tick:"):
+            if required == "codex":
+                if pinned:
+                    skipped.append(
+                        {
+                            "key": item["key"],
+                            "why": "engine-conflict: Codex item carries a Claude-required brief",
+                        }
+                    )
+                    continue
+                shared_left = min(shared_left, claude_left)
+                if codex_left <= 0 and shared_left <= 0:
+                    skipped.append(
+                        {
+                            "key": item["key"],
+                            "why": "codex-required: waiting for admitted Codex capacity",
+                        }
+                    )
+                    continue
+            elif item["key"].startswith("repair:host-tick:"):
                 if local_left <= 0 or claude_left <= 0:
                     skipped.append(
                         {
@@ -715,8 +885,7 @@ class HandlerIdleSlotFill:
                         }
                     )
                     continue
-                pin, local_left = local_host, local_left - 1
-                model, claude_left = CLAUDE_MODEL, claude_left - 1
+                pin = local_host
             elif pinned and claude_left <= 0:
                 skipped.append(
                     {
@@ -725,20 +894,50 @@ class HandlerIdleSlotFill:
                     }
                 )
                 continue
-            elif claude_left > 0:
-                model, claude_left = CLAUDE_MODEL, claude_left - 1
-            elif codex_left > 0:
-                model, codex_left = CODEX_MODEL, codex_left - 1
-            elif glm_left > 0 and item.get("risk_class") in (
-                "doc",
-                "test",
-                "lint",
-                "small-fix",
-            ):
-                model, glm_left = "glm", glm_left - 1
-            else:
+            available = {
+                "claude": claude_left,
+                "codex": codex_left + (shared_left if required == "codex" else 0),
+                "glm": glm_left,
+            }
+            decision = resolve_lane_model(
+                **policy_facts,
+                requested_engine="claude" if pin or pinned else "auto",
+                available_engines=tuple(
+                    engine for engine, count in available.items() if count > 0
+                ),
+            )
+            if decision.model is None:
                 skipped.append({"key": item["key"], "why": "no free slot"})
                 continue
+            model = decision.model
+            constraints = [
+                resolve_lane_model(
+                    **{
+                        **policy_facts,
+                        "requested_engine": model,
+                        "available_models": (model,),
+                        f"required_{kind}": value,
+                    }
+                )
+                for kind, value in requirements
+            ]
+            if refusal := next(
+                (answer.reason for answer in constraints if not answer.allowed), None
+            ):
+                skipped.append({"key": item["key"], "why": refusal})
+                continue
+            if decision.engine == "claude":
+                claude_left -= 1
+                if pin:
+                    local_left -= 1
+            elif decision.engine == "codex":
+                if codex_left > 0:
+                    codex_left -= 1
+                else:
+                    shared_left -= 1
+                    claude_left -= 1
+            elif decision.engine == "glm":
+                glm_left -= 1
             lane = lane_name(item["kind"], item["name"], request.now)
             sends.append(
                 {
@@ -944,7 +1143,9 @@ def remote_lane_dir(env: Mapping[str, str] | None = None) -> Path:
 
 
 def engine_of(model: str) -> str:
-    return "codex" if model == CODEX_MODEL else "glm" if model == "glm" else "claude"
+    policy = load_policy()
+    name = model.strip().lower().replace("_", "-")
+    return policy.engines.get(policy.aliases.get(name, name), "claude")
 
 
 def placing_lanes(
@@ -1029,7 +1230,10 @@ def queue_reservations(
         lane = str(entry["lane"])
         if lane.startswith("fill-"):
             continue
-        engine = "codex" if entry.get("model") == CODEX_MODEL else "claude"
+        # The queue snapshot reserves Claude/Codex pools; keep its existing client accounting.
+        engine = (
+            "codex" if engine_of(str(entry.get("model") or "")) == "codex" else "claude"
+        )
         pin = pin_of(entry)
         available = (
             free_slots(
@@ -1524,7 +1728,8 @@ def default_sources(now: str, env: Mapping[str, str]) -> ModelBacklogSources | N
         ]
         return next((p for p in paths if p.exists()), paths[0])
 
-    registry_root = Path(env[REGISTRY_ROOT_ENV]) if env.get(REGISTRY_ROOT_ENV) else None
+    registry_value = env.get(REGISTRY_ROOT_ENV) or env.get("OMNI_HOME")
+    registry_root = Path(registry_value) if registry_value else None
     ledger = (
         Path(env["ONEX_LEDGER_PATH"])
         if env.get("ONEX_LEDGER_PATH")
@@ -1697,6 +1902,9 @@ def tick_row_recorder(
 
 
 class HandlerLabFill:
+    def __init__(self, ruling_recovery: HandlerRulingRecovery | None = None) -> None:
+        self._ruling_recovery = ruling_recovery or HandlerRulingRecovery()
+
     def handle(self, request: ModelLabFillRequest) -> ModelLabFillResult:
         if request.read_only:
             return self._fill(request)
@@ -1726,6 +1934,36 @@ class HandlerLabFill:
         backlog, standing, unread = read_backlog(backlog_path)
         sent_path = state / SENT_FILE
         sent = read_sent(sent_path)
+        sent_error = ""
+        if sent_path.exists():
+            try:
+                if not isinstance(_json(sent_path), dict):
+                    raise ValueError("dispatch history must be a mapping")
+            except (OSError, ValueError) as exc:
+                sent_error = str(exc)
+        # Every tick reads the ruling checks, even with no headroom, a spent
+        # backlog, generation disabled, or a read-only caller. Recovery uses the
+        # same scope, capacity, brief validation and runner gates as other work.
+        recovery = self._ruling_recovery.handle(
+            now=request.now,
+            state_dir=state,
+            sent=sent,
+            parent=request.parent,
+            read_only=request.read_only,
+            record=request.record,
+        )
+        if sent_error:
+            return ModelLabFillResult(
+                [
+                    *recovery.found,
+                    (
+                        "unknown",
+                        "lab-fill-sent",
+                        f"dispatch history unread: {sent_error}; no lane sent",
+                        "restore the sent record before dispatch; unread history never proves an item unsent",
+                    ),
+                ]
+            )
         planned = sweep_planned(request.launch)
         placing = placing_lanes(
             sent,
@@ -1739,6 +1977,7 @@ class HandlerLabFill:
         completed.update(answered_items(backlog, sent, lanes=lanes))
         scope = request.out_of_scope
         scope_unread = scope if isinstance(scope, str) else ""
+        holds, holds_unread = read_fixer_holds(request.now, os.environ)
         decision = HandlerIdleSlotFill().handle(
             ModelIdleSlotFillRequest(
                 now=request.now,
@@ -1748,6 +1987,7 @@ class HandlerLabFill:
                 lines=list(request.lines),
                 sweep_planned=planned,
                 backlog=backlog,
+                generated=recovery.items,
                 dispatched=sent,
                 window_hours=request.window_hours,
                 parent=request.parent,
@@ -1758,9 +1998,20 @@ class HandlerLabFill:
                 standing_tickets=standing,
                 watcher_state=watcher,
                 completed=completed,
+                fixer_holds=holds,
+                fixer_holds_unread=holds_unread,
             )
         )
-        found: list[tuple[str, str, str, str]] = []
+        found: list[tuple[str, str, str, str]] = list(recovery.found)
+        if holds_unread:
+            found.append(
+                (
+                    "unknown",
+                    "lab-fill-fixer-holds",
+                    f"fixer HOLD ledger unread; repository work is not sent: {holds_unread}",
+                    "restore the declared ledger and its archive reads",
+                )
+            )
         if unread is not None:
             found.append(
                 (
@@ -1803,7 +2054,7 @@ class HandlerLabFill:
                         dispatched=sent,
                         window_hours=request.window_hours,
                         parent=request.parent,
-                        generated=generated,
+                        generated=[*recovery.items, *generated],
                         out_of_scope=dict(scope) if isinstance(scope, Mapping) else {},
                         scope_unread=scope_unread,
                         placing=placing,
@@ -1811,6 +2062,8 @@ class HandlerLabFill:
                         standing_tickets=standing,
                         watcher_state=watcher,
                         completed=completed,
+                        fixer_holds=holds,
+                        fixer_holds_unread=holds_unread,
                     )
                 )
         if decision.dropped:
@@ -1847,7 +2100,7 @@ class HandlerLabFill:
         if decision.claude_free + decision.codex_only_free + decision.glm_only_free < 1:
             return ModelLabFillResult(found)
         names: list[str] = []
-        counts = {CLAUDE_MODEL: 0, CODEX_MODEL: 0, "glm": 0}
+        counts = {"claude": 0, "codex": 0, "glm": 0}
         for send in decision.sends:
             if request.read_only:
                 names.append(
@@ -1870,7 +2123,7 @@ class HandlerLabFill:
                     "kind": send["kind"],
                     "model": send["model"],
                 }
-                counts[send["model"]] += 1
+                counts[engine_of(send["model"])] += 1
                 names.append(
                     f"{send['lane']} ({send['kind']} {send['key']}, {send['model']})"
                 )
@@ -1911,7 +2164,7 @@ class HandlerLabFill:
                 "note",
                 "lab-fill",
                 (
-                    f"lab-fill | sent={n} (claude={counts[CLAUDE_MODEL]} codex={counts[CODEX_MODEL]}"
+                    f"lab-fill | sent={n} (claude={counts['claude']} codex={counts['codex']}"
                     + (f" glm={counts['glm']}" if decision.glm_only_free else "")
                     + ") "
                     f"free={decision.claude_free}+{decision.codex_only_free}"

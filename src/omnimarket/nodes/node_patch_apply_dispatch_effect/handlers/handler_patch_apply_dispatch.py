@@ -15,6 +15,10 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
+    require_lane_model,
+)
+
 from ..models import (
     Disposition,
     ModelPatchApplyDispatchRequest,
@@ -99,7 +103,9 @@ def runner_dispatch(command: tuple[str, ...], ledger: Path) -> Dispatch:
                         "--lane",
                         lane,
                         "--model",
-                        "sonnet",
+                        require_lane_model(
+                            requested_engine="claude", lane_kind="patch-apply"
+                        ),
                         "--effort",
                         "high",
                         "--ticket",

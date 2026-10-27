@@ -63,6 +63,7 @@ def _request(
     listed: tuple[str, ...] | None = None,
 ) -> ModelExperimentRecordRequest:
     return ModelExperimentRecordRequest(
+        retired_models=("retired-test-model",),
         listed_experiment_ids=(
             listed if listed is not None else tuple(r.experiment_id for r in records)
         ),
@@ -153,7 +154,10 @@ def test_ac2_run_id_without_a_receipt_is_refused_and_named() -> None:
 
 def test_ac2_zero_known_receipts_refuses_every_run() -> None:
     request = ModelExperimentRecordRequest(
-        listed_experiment_ids=("exp-1",), records=(_record(),), known_receipt_ids=()
+        retired_models=("retired-test-model",),
+        listed_experiment_ids=("exp-1",),
+        records=(_record(),),
+        known_receipt_ids=(),
     )
     result = HandlerDelegationExperimentRecord().handle(request)
     assert {i.refusal for i in result.issues} == {EnumExperimentRefusal.UNTRACEABLE_RUN}
@@ -187,8 +191,21 @@ def test_ac4_supported_verdict_needs_follow_on_or_ruling() -> None:
 
 
 def test_retired_model_arm_is_refused() -> None:
-    record = _record(arms=(_arm(model="gpt-oss-120b"), _arm("arm-b", run_ids=RUNS_B)))
+    record = _record(
+        arms=(_arm(model="retired-test-model"), _arm("arm-b", run_ids=RUNS_B))
+    )
     assert EnumExperimentRefusal.RETIRED_MODEL.value in _refusals(record)
+
+
+@pytest.mark.parametrize("policy", [None, ()])
+def test_absent_or_empty_retirement_policy_is_refused(policy) -> None:
+    from pydantic import ValidationError
+
+    fields = {"listed_experiment_ids": ("exp-1",), "records": (_record(),)}
+    if policy is not None:
+        fields["retired_models"] = policy
+    with pytest.raises(ValidationError):
+        ModelExperimentRecordRequest.model_validate(fields)
 
 
 def test_duplicate_experiment_id_is_refused() -> None:

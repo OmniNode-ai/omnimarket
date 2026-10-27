@@ -31,4 +31,4 @@ ticks:
       - process_exit: {pr: acme/app#1}
     expect:
       actions: ["dispatch_worker acme/app#1 real_red"]
-      engine: {acme/app#1: claude_sonnet}
+      engine: {acme/app#1: codex_high}

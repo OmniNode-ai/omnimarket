@@ -29,6 +29,9 @@ class HandlerProjectionDelegationEvalRun:
             "rater_role": request.rater_role,
             "rubric_version": request.rubric_version,
             "observed_at": request.observed_at,
+            "harness": request.harness,
+            "model": request.model,
+            "configuration": request.configuration,
         }
         return ModelDelegationEvalRunProjectionResult(
             status=request.status,

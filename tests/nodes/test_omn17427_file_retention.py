@@ -169,8 +169,9 @@ def test_dry_run_reports_and_removes_nothing(tmp_path: Path) -> None:
     _file(root / "old.txt", b"x" * 100, days=10)
     res = _only(_run([_entry(root)], dry_run=True))
     assert res.status == "dry_run"
-    assert res.files_removed == 1
-    assert res.bytes_removed == 100
+    assert res.files_removed == res.bytes_removed == 0
+    assert res.files_eligible == 1
+    assert res.bytes_eligible == 100
     assert (root / "old.txt").exists()
 
 
@@ -316,7 +317,8 @@ def test_archive_dry_run_writes_no_archive(tmp_path: Path) -> None:
     res = _only(
         _run([_entry(root, action="archive")], archive_root=archive, dry_run=True)
     )
-    assert res.files_removed == 1
+    assert res.files_removed == res.files_archived == 0
+    assert res.files_eligible == 1
     assert list(archive.iterdir()) == []
     assert (root / "query-1.txt").exists()
 
@@ -374,7 +376,8 @@ def test_archive_dry_run_without_a_root_measures_and_says_so(tmp_path: Path) -> 
     _file(root / "query-1.txt", b"x" * 30, days=30)
     res = _only(_run([_entry(root, action="archive")], archive_root=None, dry_run=True))
     assert res.status == "dry_run"
-    assert res.bytes_removed == 30
+    assert res.bytes_removed == 0
+    assert res.bytes_eligible == 30
     assert "archive root unavailable" in res.note
     assert (root / "query-1.txt").exists()
 
@@ -424,7 +427,9 @@ def test_unsynced_archive_copy_keeps_the_local_unit_until_the_marker_appears(
     assert writes == []
 
 
-def test_archive_copy_that_no_longer_verifies_is_rewritten(tmp_path: Path) -> None:
+def test_archive_collision_keeps_both_the_source_and_existing_archive(
+    tmp_path: Path,
+) -> None:
     root = tmp_path / "detail"
     payload = b"payload" * 50
     _file(root / "query-1.txt", payload, days=30)
@@ -438,8 +443,10 @@ def test_archive_copy_that_no_longer_verifies_is_rewritten(tmp_path: Path) -> No
             [_entry(root, name="ledger-detail", action="archive")], archive_root=archive
         )
     )
-    assert res.status == "ok"
-    assert gzip.decompress(copy.read_bytes()) == payload
+    assert res.status == "error"
+    assert res.files_removed == 0
+    assert (root / "query-1.txt").read_bytes() == payload
+    assert gzip.decompress(copy.read_bytes()) == b"something else"
 
 
 def test_contract_names_the_drive_sync_marker() -> None:

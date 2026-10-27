@@ -1,0 +1,96 @@
+schema_version: 1.0.0
+ticket_id: OMN-21414
+title: 'S6a: eleven remote-lane nodes move to omnimarket'
+summary: Publish the eleven remote-lane nodes with canonical contracts, handlers, frozen models, metadata and installed
+  entry points. Private deployment facts resolve through the shared overlay loader. Plugin callers are repointed
+  in a later omniclaude release under the 2026-10-26 ruling.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn21414-remote-lane-nodes
+  statement: The eleven remote-lane nodes are portable omnimarket packages with the ported behavior tests.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: omnimarket lists 43 files across the eleven nodes -- falsifier: git ls-tree -r --name-only
+      origin/dev over the eleven directories counts other than 43'
+  - id: AC2
+    statement: 'AC2: the hygiene gate over the 43 files exits 0 and git grep -n -F OMNI_HOME over them prints nothing
+      -- falsifier: exit 1 or 2, or a grep hit'
+  - id: AC3
+    statement: 'AC3: the ported tests of the eleven nodes pass in omnimarket CI -- falsifier: uv run pytest tests/nodes
+      -q fails for one of them'
+evidence_requirements:
+- kind: tests
+  description: Offline ported behavior tests and overlay refusal tests for the eleven remote-lane nodes.
+  command: uv run pytest tests/nodes/node_brief_prerequisites_compute tests/nodes/node_codex_gitlink_compute tests/nodes/node_codex_landing_compute
+    tests/nodes/node_dispatch_brief_shape_compute tests/nodes/node_install_canary_effect tests/nodes/node_lane_github_budget_effect
+    tests/nodes/node_lane_pin_fallback_compute tests/nodes/node_lane_queue_argv_compute tests/nodes/node_lane_report_relay_effect
+    tests/nodes/node_pr_head_stage_compute tests/nodes/node_ticket_text_effect tests/nodes/test_remote_lane_overlay_migration.py
+    tests/nodes/test_remote_lane_nodes_present.py -q --no-cov --refuse-skips
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21414-ac1-files
+  description: The authorized count is 43 moved files plus eleven required metadata.yaml files (54 total). AC1 predates
+    canonical metadata. This proof counts the complete eleven directories and fails at the merge base, where they
+    are absent. Acceptance text is preserved.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/test_remote_lane_nodes_present.py::test_43_moved_files_plus_eleven_metadata_files
+      -q --no-cov --refuse-skips
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21414-ac2-hygiene
+  description: All eleven directories must exist and none may contain the former registry variable. The public hygiene
+    gate scans all staged migration files with the host-supplied private vocabularies. This test fails at the merge
+    base, where the nodes are absent.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/test_remote_lane_nodes_present.py::test_moved_files_do_not_name_the_old_registry_variable
+      tests/nodes/test_remote_lane_overlay_migration.py -q --no-cov --refuse-skips
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21414-ac3-tests
+  description: Ported accounting, report relay, canary pool, drift and PR-head tests plus direct tests of brief
+    prerequisites, queue argv, pin fallback, dispatch shape, ticket text, gitlink lifecycle and Codex landing preparation.
+    Imports fail at the merge base.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_brief_prerequisites_compute/test_brief_prerequisites.py
+      tests/nodes/node_codex_gitlink_compute/test_codex_gitlink.py
+      tests/nodes/node_codex_landing_compute/test_codex_landing.py
+      tests/nodes/node_dispatch_brief_shape_compute/test_dispatch_brief_shape.py
+      tests/nodes/node_install_canary_effect/test_install_canary.py
+      tests/nodes/node_install_canary_effect/test_lane_ship_drift.py
+      tests/nodes/node_lane_github_budget_effect/test_lane_github_budget.py
+      tests/nodes/node_lane_pin_fallback_compute/test_lane_pin_fallback.py
+      tests/nodes/node_lane_queue_argv_compute/test_lane_queue_argv.py
+      tests/nodes/node_lane_report_relay_effect/test_report_relay.py
+      tests/nodes/node_pr_head_stage_compute/test_pr_head_stage.py
+      tests/nodes/node_ticket_text_effect/test_ticket_text.py tests/nodes/test_remote_lane_overlay_migration.py
+      tests/nodes/test_remote_lane_nodes_present.py -q --no-cov --refuse-skips
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21414-deploy-import
+  description: 'Hosted deploy check: the installed onex.nodes entry points and all eleven node modules import with
+    no broker, database, lab route or private overlay. Fails at the merge base where the entries are absent.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/test_remote_lane_nodes_present.py::test_all_eleven_installed_entry_points_load
+      -q --no-cov --refuse-skips
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: 'bash -o pipefail -c ''gh api "repos/OmniNode-ai/omnimarket/contents/pyproject.toml?ref=$(git rev-parse
+      HEAD)" --jq .content | base64 -d | grep -F "node_lane_report_relay_effect = " >/dev/null'' '
+    cwd: ${OMNI_HOME}/omnimarket

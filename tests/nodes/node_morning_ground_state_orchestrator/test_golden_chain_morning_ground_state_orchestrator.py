@@ -116,5 +116,10 @@ def test_original_workflow_decision_parity(scenario: dict[str, JsonValue]) -> No
         result.model_dump(mode="json", exclude={"correlation_id", "tenant_id"})
         == scenario["value"]
     )
-    assert gateway.calls == scenario["calls"]
+    # OMN-21396: the captured trace predates the Sonnet ceiling; all other cells remain exact.
+    expected_calls = [
+        {**call, "model": "sonnet" if call["model"] == "opus" else call["model"]}
+        for call in scenario["calls"]
+    ]
+    assert gateway.calls == expected_calls
     assert gateway.reconciled == [result.publish]

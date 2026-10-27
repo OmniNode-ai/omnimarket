@@ -7,6 +7,8 @@ the plugin only calls it. Open, unassigned current/next sprint tickets join the
 existing M4-carrier and delegation sources when they have unchecked criteria.
 Every issue passes the same ordered gates and yields an item or a counted drop.
 The rule reads no file, network or clock; all facts arrive in the request.
+The live gate re-applies the closed and other-owner exclusions to Linear read just
+before the send, because the snapshot is read once a day.
 
 Kept exclusions, each with its ruling: closed tickets; tickets assigned to someone other
 than the operator; tickets a live CLAIM or an open PR already carries; repositories the
@@ -22,8 +24,12 @@ import re
 from datetime import date, timedelta
 
 from omnimarket.models.lab_fill import (
+    EnumLabFillLiveSkip,
     EnumLabFillTicketDrop,
     EnumLabFillTicketSource,
+    ModelLabFillLiveFacts,
+    ModelLabFillLivePlan,
+    ModelLabFillLiveVerdict,
     ModelLabFillTicketDrop,
     ModelLabFillTicketFacts,
     ModelLabFillTicketItem,
@@ -48,6 +54,40 @@ _SOURCE_ORDER = tuple(EnumLabFillTicketSource)
 _SPRINT_SOURCES = frozenset(
     {EnumLabFillTicketSource.SPRINT_CURRENT, EnumLabFillTicketSource.SPRINT_NEXT}
 )
+
+
+def gate_live_tickets(facts: ModelLabFillLiveFacts) -> ModelLabFillLivePlan:
+    """Recheck each unique requested ticket with ordered, fail-closed live gates."""
+    live = {ticket.id: ticket for ticket in facts.live}
+    operators = set(facts.operators) | {"me"}
+    verdicts: list[ModelLabFillLiveVerdict] = []
+    for ticket_id in dict.fromkeys(facts.tickets):
+        ticket = live.get(ticket_id)
+        reason: EnumLabFillLiveSkip | None = None
+        detail = ""
+        if facts.error:
+            reason = EnumLabFillLiveSkip.UNREADABLE
+            detail = facts.error[:200]
+        elif ticket is None:
+            reason = EnumLabFillLiveSkip.NOT_FOUND
+        elif ticket.state_type.lower() in {"completed", "canceled", "cancelled"} or (
+            ticket.state_name.lower() in {"done", "canceled", "cancelled", "duplicate"}
+        ):
+            reason = EnumLabFillLiveSkip.CLOSED
+            detail = f"state {ticket.state_type or ticket.state_name}"
+        elif (
+            (ticket.assignee_id or ticket.assignee_name)
+            and ticket.assignee_id not in operators
+            and ticket.assignee_name not in operators
+        ):
+            reason = EnumLabFillLiveSkip.OTHER_OWNER
+            detail = f"assignee {ticket.assignee_id or ticket.assignee_name}"
+        verdicts.append(
+            ModelLabFillLiveVerdict(
+                id=ticket_id, send=reason is None, reason=reason, detail=detail
+            )
+        )
+    return ModelLabFillLivePlan(verdicts=tuple(verdicts))
 
 
 def sprint_window(project: str, today: date) -> EnumLabFillTicketSource | None:

@@ -32,6 +32,19 @@ requirements:
         statement: "AC6: the ADR select compute applies no token budget and computes no hash over the selection: an oversize fixture of 300 ADRs returns all 300, and the result model has no budget or hash field -- falsifier: uv run pytest tests/nodes/node_context_adr_select_compute/test_golden_chain_context_adr_select.py -q -n 0 -k no_budget fails at the merge base"
       - id: "AC7"
         statement: "AC7: no file the ADR select change adds names a private repository -- falsifier: grep -rliE 'knowledge.base.internal|omninode.infra|omnibase.internal' over the ADR node package and its tests lists a file"
+  - id: "req-doc-section-select-compute"
+    statement: "The shape, pattern and plan tiers of the context service are an omnimarket compute node in canonical shape (contract, node, handler) with its topics declared in its contract."
+    acceptance:
+      - id: "AC8"
+        statement: "AC8 (ticket AC3): every doc-section and plan excerpt is a contiguous slice of its source at the stamped sha with a line span, a plan whose lifecycle row is not active or not listed is excluded, and a shape section that two named documents define differently returns ambiguous with both excluded -- falsifier: uv run pytest tests/nodes/node_context_doc_section_select_compute/test_golden_chain_context_doc_section_select.py -q -n 0 -k 'contiguous_substring or plan_not_active or ambiguous' fails at the merge base, where the node package does not exist"
+      - id: "AC9"
+        statement: "AC9 (ticket AC5): the doc-section select compute applies no token budget and computes no hash over the selection: an oversize fixture of 300 sections returns all 300, and the result model has no budget or hash field -- falsifier: uv run pytest tests/nodes/node_context_doc_section_select_compute/test_golden_chain_context_doc_section_select.py -q -n 0 -k no_budget fails at the merge base"
+      - id: "AC10"
+        statement: "AC10 (ticket AC7): sections named always_inject by the request's rule data are returned unconditionally, triggers come only from that data, and an unknown rule key fails validation -- falsifier: uv run pytest tests/nodes/node_context_doc_section_select_compute/test_golden_chain_context_doc_section_select.py -q -n 0 -k 'always_inject or unknown_rule_key' fails at the merge base"
+      - id: "AC11"
+        statement: "AC11 (ticket AC9): every cited path in a doc-section excerpt is checked against a tree index built from the pinned commit's paths, and a path absent from the tree is reported ungrounded -- falsifier: uv run pytest tests/nodes/node_context_doc_section_select_compute/test_golden_chain_context_doc_section_select.py -q -n 0 -k ungrounded fails at the merge base"
+      - id: "AC12"
+        statement: "AC12 (ticket AC4): no file the doc-section change adds names a private repository -- falsifier: grep -rliE 'knowledge.base.internal|omninode.infra|omnibase.internal' over the doc-section node package and its tests lists a file"
 evidence_requirements:
   - kind: "tests"
     description: "Invariants select compute for OMN-21126."
@@ -39,6 +52,9 @@ evidence_requirements:
   - kind: "tests"
     description: "ADR select compute for OMN-21126."
     command: "uv run pytest tests/nodes/node_context_adr_select_compute/test_golden_chain_context_adr_select.py -q -n 0"
+  - kind: "tests"
+    description: "Doc-section select compute for OMN-21126."
+    command: "uv run pytest tests/nodes/node_context_doc_section_select_compute/test_golden_chain_context_doc_section_select.py -q -n 0"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -122,3 +138,54 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_context_adr_select_compute/handlers/handler_context_adr_select.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerContextAdrSelect'
+  - id: "dod-omn21126-ac8-doc-section-verbatim"
+    description: "Excerpts are contiguous slices at their spans, inactive and unlisted plans are excluded, and a conflicting shape definition excludes both."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_doc_section_select_compute/test_golden_chain_context_doc_section_select.py -q -n 0 -k 'contiguous_substring or plan_not_active or ambiguous or identical_definitions'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8"]
+  - id: "dod-omn21126-ac9-doc-section-no-budget"
+    description: "The oversize fixture returns every section and the result model carries no budget or hash field."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_doc_section_select_compute/test_golden_chain_context_doc_section_select.py -q -n 0 -k 'no_budget'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC9"]
+  - id: "dod-omn21126-ac10-doc-section-data-policy"
+    description: "always_inject sections are unconditional, triggers come from rule data, and an unknown rule key fails validation."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_doc_section_select_compute/test_golden_chain_context_doc_section_select.py -q -n 0 -k 'always_inject or unknown_rule_key'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC10"]
+  - id: "dod-omn21126-ac11-doc-section-grounding"
+    description: "Cited paths absent from the tree index are reported ungrounded."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_doc_section_select_compute/test_golden_chain_context_doc_section_select.py -q -n 0 -k 'ungrounded'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC11"]
+  - id: "dod-omn21126-ac12-doc-section-no-private-names"
+    description: "The doc-section handler exists and no file under its node package or tests names a private repository; at the merge base the handler is absent and the check fails."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_context_doc_section_select_compute/test_golden_chain_context_doc_section_select.py -q -n 0 -k no_private_names"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: >-
+          test -f src/omnimarket/nodes/node_context_doc_section_select_compute/handlers/handler_context_doc_section_select.py && ! grep -rqiE 'knowledge.base.internal|omninode.infra|omnibase.internal' src/omnimarket/nodes/node_context_doc_section_select_compute tests/nodes/node_context_doc_section_select_compute
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC12"]
+  - id: "dod-omn21126-doc-section-deploy-probe"
+    description: "Hosted-runner probe reads the doc-section select handler at this commit and requires its handler class; the base has no such file and the probe finds no match."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_context_doc_section_select_compute/handlers/handler_context_doc_section_select.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerContextDocSectionSelect'

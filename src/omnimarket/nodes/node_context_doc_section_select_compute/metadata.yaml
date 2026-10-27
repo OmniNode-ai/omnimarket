@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_context_doc_section_select_compute
+version: 1.0.0
+description: Selects verbatim shape, pattern and plan sections for a profile from data-declared
+  rules at a pinned commit, excluding inactive plans and ambiguous definitions.
+omnibase_core_compat: '>=0.47.44,<1.0.0'
+pack: context
+node_role: compute
+display_name: Context Doc Section Select Compute
+entry_points:
+  onex.nodes:
+    node_context_doc_section_select_compute: omnimarket.nodes.node_context_doc_section_select_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+- omnibase_core>=0.47.44
+license: MIT
+tags:
+- compute
+- context
+- sections
