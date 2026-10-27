@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_flow_measures_compute
+version: 1.0.0
+description: Compute the factory flow measures from supplied facts and now, with read time and basis, unread for a repository nobody read.
+pack: operator_tooling
+node_role: compute
+display_name: Flow Measures Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_flow_measures_compute: omnimarket.nodes.node_flow_measures_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- flow-measures
+- OMN-21441
