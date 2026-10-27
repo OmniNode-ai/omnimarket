@@ -914,15 +914,14 @@ class TestInferenceErrorEscalation:
         [
             "API returned empty message content",
             "API returned empty choices array",
+            "provider timed out",
         ],
     )
-    def test_empty_response_fails_without_rerouting(
+    def test_no_answer_moves_to_the_next_rung(
         self,
         error_message: str,
     ) -> None:
-        """OMN-13140 GATE 1: a blank provider body / empty choices is left
-        NON-retryable. Re-issuing the same prompt to a higher tier is unlikely to
-        turn an empty completion into content, so the workflow terminates."""
+        """No answer is a rung failure; another model can still answer."""
         handler = HandlerDelegationWorkflow()
         cid = uuid4()
 
@@ -935,18 +934,45 @@ class TestInferenceErrorEscalation:
             _make_error_inference_response(cid, error_message=error_message)
         )
 
-        assert not any(isinstance(event, ModelRoutingIntent) for event in events)
-        failure_event = next(
-            event for event in events if isinstance(event, ModelDelegationResult)
+        routing = [event for event in events if isinstance(event, ModelRoutingIntent)]
+        assert len(routing) == 1
+        assert routing[0].min_tier_name is not None
+        assert not any(isinstance(event, ModelDelegationResult) for event in events)
+        assert handler.workflows[cid].state == EnumDelegationState.ROUTED
+        assert handler.workflows[cid].escalation_count == 1
+        assert handler.workflows[cid].escalation_history[0].failure_reasons == (
+            error_message,
         )
-        assert isinstance(failure_event, ModelDelegationFailed)
-        assert handler.workflows[cid].state == EnumDelegationState.FAILED
-        assert handler.workflows[cid].escalation_count == 0
 
-        result: ModelDelegationResult = failure_event
-        assert result.quality_passed is False
-        assert result.failure_reason == error_message
-        assert result.terminal_failure_reason == "non_retryable_inference_response"
+    @pytest.mark.parametrize(
+        "error_message", ["API returned empty choices array", "provider timed out"]
+    )
+    def test_no_answer_stops_when_the_class_attempt_budget_is_spent(
+        self, monkeypatch: pytest.MonkeyPatch, error_message: str
+    ) -> None:
+        from omnimarket.nodes.node_delegation_orchestrator.handlers import (
+            handler_delegation_workflow as workflow_module,
+        )
+
+        monkeypatch.setattr(
+            workflow_module, "resolve_task_class_max_escalations", lambda _: 0
+        )
+        monkeypatch.setattr(
+            workflow_module, "sibling_backend_available_in_tier", lambda *_a, **_k: None
+        )
+        handler = HandlerDelegationWorkflow(workflows={})
+        cid = uuid4()
+        handler.handle_delegation_request(_make_request(correlation_id=cid))
+        handler.handle_routing_decision(
+            _make_routing_decision_with_tier(cid, tier_name="local")
+        )
+        events = handler.handle_inference_response(
+            _make_error_inference_response(cid, error_message)
+        )
+        assert not any(isinstance(event, ModelRoutingIntent) for event in events)
+        failure = next(e for e in events if isinstance(e, ModelDelegationFailed))
+        assert failure.terminal_failure_reason == "max_escalation_attempts_reached"
+        assert handler.workflows[cid].escalation_count == 0
 
     def test_final_rate_limit_names_provider_quota_exhaustion(
         self,

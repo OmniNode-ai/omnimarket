@@ -417,7 +417,7 @@ _FAILED_CALL: dict[EnumEscalationCause, tuple[str, StubProbeReply]] = {
         ),
     ),
     EnumEscalationCause.NON_RETRYABLE_FAILURE: (
-        "empty message content",
+        "provider_billing: account cannot fund the call",
         StubProbeReply(failure_class=EnumDelegationFailureClass.INVALID_JSON),
     ),
 }
@@ -492,12 +492,18 @@ def _local_first_rung(
 
 @pytest.fixture
 def bus(monkeypatch: pytest.MonkeyPatch) -> hw.HandlerDelegationWorkflow:
+    # Node-local tests do not inherit tests/conftest.py's ambient-tenant
+    # isolation. This fixture has no tenant registry and names no tenant.
+    monkeypatch.delenv("ONEX_TENANT_ID", raising=False)
     monkeypatch.setattr(
         provider_quota_state,
         "resolve_provider_quota_reader",
         lambda **_: provider_quota_state.StaticProviderQuotaReader(()),
     )
     monkeypatch.setattr(hw, "next_eligible_tier", lambda *_a, **_k: "cheap_cloud")
+    # This fixture declares two tiers and no same-tier sibling. Do not let the
+    # host's installed backend overlay add an unmodelled third responder.
+    monkeypatch.setattr(hw, "sibling_backend_available_in_tier", lambda *_a, **_k: None)
     return hw.HandlerDelegationWorkflow(workflows={})
 
 
@@ -565,6 +571,14 @@ def _bus_failed_call(
     handler: hw.HandlerDelegationWorkflow, task_type: str, error_message: str
 ) -> _PathRun:
     cid = _bus_route(handler, task_type)
+    if error_message.startswith("provider_billing:"):
+        # A customer's billing refusal is terminal; an empty completion can
+        # now move and therefore cannot stand in for NON_RETRYABLE_FAILURE.
+        workflow = handler.workflows[cid]
+        assert workflow.routing_decision is not None
+        workflow.routing_decision = workflow.routing_decision.model_copy(
+            update={"selected_backend_ref": "byok-openrouter"}
+        )
     events = handler.handle_inference_response(
         ModelInferenceResponseData(
             correlation_id=cid,

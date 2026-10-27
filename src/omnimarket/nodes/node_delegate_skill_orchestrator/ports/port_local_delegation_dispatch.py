@@ -851,6 +851,7 @@ def local_transport_cause(
     *,
     customer_route: bool,
     typed_refusal: bool,
+    error_message: str = "",
 ) -> EnumEscalationCause:
     """Classify a failed provider call on the local port (OMN-21213).
 
@@ -860,7 +861,16 @@ def local_transport_cause(
     fallback (INV-068). A house route names a timeout and a rate limit, and
     moves on any other retryable class once its retry budget of zero is spent.
     """
-    if not _is_retryable_transport_failure(failure_class) or (
+    no_answer = (
+        failure_class is EnumDelegationFailureClass.INVALID_JSON
+        and error_message.strip().lower()
+        in {
+            "api returned empty choices array",
+            "api returned empty content array",
+            "api returned empty message content",
+        }
+    )
+    if (not no_answer and not _is_retryable_transport_failure(failure_class)) or (
         customer_route and typed_refusal
     ):
         return EnumEscalationCause.NON_RETRYABLE_FAILURE
@@ -2553,6 +2563,7 @@ class LocalDelegationDispatchPort:
                     transport_failure_class,
                     customer_route=customer_route,
                     typed_refusal=typed_refusal,
+                    error_message=transport_failure_message,
                 )
                 spent = byok_retry_counts.get(backend.backend_id, 0)
                 rung_retry_budget = 0

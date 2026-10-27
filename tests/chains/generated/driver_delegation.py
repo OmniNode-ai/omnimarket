@@ -63,7 +63,11 @@ def _route(triggers: tuple[str, ...]) -> b.Step:
         return lambda h, c: h.handle_invocation_command(b.invocation_command(c))
     # The pilot's tiers: a free tier retries locally, cheap_cloud escalates a
     # sub-bar result, and free_local accepts a passing gate result as final.
-    if "gate_failed_local_retry" in triggers:
+    if "terminal_failure_no_escalation" in triggers:
+        # No-answer failures can move. This terminal path must start at the
+        # declared ceiling, where there is no later responder to ask.
+        tier = "claude"
+    elif "gate_failed_local_retry" in triggers:
         tier = "local"
     elif "gate_passed" in triggers:
         tier = "free_local"
