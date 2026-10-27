@@ -39,6 +39,18 @@ requirements:
       - id: "AC13"
         statement: |-
           AC13: over the in-memory bus, out-of-order row events, a never-published last row and malformed payloads produce the right file, the right committable offsets, a rendered event, a blocked event and a dead-letter event, and the contract declares every topic with no runtime attachment -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_render_effect/test_golden_chain_work_ledger_render_effect.py -q
+  - id: "req-bus-binding-inmemory-fallback"
+    statement: "When the durable bus fails its health read, a lane that declares a fallback binding runs on the in-memory bus with one alarm per episode and returns to the durable bus on its own; the lane's declared secret resolver is injected on every binding, and ledger appends made while degraded are held in a durable local outbox and replayed once under the same request id."
+    acceptance:
+      - id: "AC14"
+        statement: |-
+          AC14: the bus binding FSM declared in node_bus_binding_reducer's contract equals the pure transition function, a down bus degrades to the in-memory binding with one alarm and recovers on its own, and a lane without a declared fallback fails instead of degrading -- falsifier: uv run pytest tests/unit/bus_binding/test_bus_binding_fallback.py -q -k "fsm_contract or reducer_node_agrees or degrades_alarms_once or without_a_declared_fallback" fails at the merge base
+      - id: "AC15"
+        statement: |-
+          AC15: the same secret reference resolves on the durable and in-memory bindings, and without the injected resolver the in-memory route fails -- falsifier: uv run pytest tests/unit/bus_binding/test_bus_binding_fallback.py -q -k "same_secret_resolves or without_the_injected_resolver" fails at the merge base
+      - id: "AC16"
+        statement: |-
+          AC16: ledger rows appended on either binding land exactly once, the parity check fails when a binding loses a row, and a failed replay loses nothing -- falsifier: uv run pytest tests/unit/bus_binding/test_bus_binding_fallback.py -q -k "land_once_on_either_binding or loses_a_row or failed_replay_loses_nothing" fails at the merge base
 evidence_requirements:
   - kind: "tests"
     description: "AC6 to AC9: handler, bus host, CLI and lane-principal tests."
@@ -125,4 +137,39 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_work_ledger_render_effect/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^name: work_ledger_render_effect'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-ac14-bus-binding-fsm-fallback"
+    description: "AC14: the declared FSM equals the transition function; a down bus degrades to in-memory with one alarm and recovers; a lane without a fallback fails."
+    source: "manual"
+    binds_ac: ["AC14"]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/bus_binding/test_bus_binding_fallback.py -q -n 0 -p no:randomly --no-cov -k "fsm_contract or reducer_node_agrees or degrades_alarms_once or without_a_declared_fallback"'
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-ac15-bus-binding-secret-parity"
+    description: "AC15: the injected secret resolver serves both bindings; without it the in-memory route fails."
+    source: "manual"
+    binds_ac: ["AC15"]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/bus_binding/test_bus_binding_fallback.py -q -n 0 -p no:randomly --no-cov -k "same_secret_resolves or without_the_injected_resolver"'
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-ac16-bus-binding-ledger-outbox"
+    description: "AC16: ledger rows land once on either binding; a lost row fails parity; a failed replay loses nothing."
+    source: "manual"
+    binds_ac: ["AC16"]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/bus_binding/test_bus_binding_fallback.py -q -n 0 -p no:randomly --no-cov -k "land_once_on_either_binding or loses_a_row or failed_replay_loses_nothing"'
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-deploy-bus-binding-fallback"
+    description: "The check runs tests/unit/bus_binding in a disposable Python container from a read-only checkout with no broker and no lab service, verifying the in-memory fallback, the alarm, secret parity and the ledger outbox replay for OMN-20275; the test file does not exist at the merge base, so it fails there."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker pull -q ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: |-
+          env docker run --rm --user "$(id -u):$(id -g)" -v "${PWD}:/workspace:ro" -w /workspace -v "$(uv cache dir):/uv-cache" -v "$(command -v uv):/usr/local/bin/uv:ro" -e UV_LINK_MODE=copy -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0="*" -e PYTHONDONTWRITEBYTECODE=1 -e UV_PROJECT_ENVIRONMENT=/tmp/bus-binding-venv -e UV_CACHE_DIR=/uv-cache ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a uv run --frozen pytest tests/unit/bus_binding -q -n 0 -p no:randomly -p no:cacheprovider --no-cov --basetemp=/tmp/bus-binding-tests
         cwd: "${OMNI_HOME}/omnimarket"
