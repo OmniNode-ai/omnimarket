@@ -1,0 +1,1 @@
+{"id": "F03-01", "kind": "enum", "symbols": ["EnumNodeKind"], "count": 1, "summary": "Public module symbols."}

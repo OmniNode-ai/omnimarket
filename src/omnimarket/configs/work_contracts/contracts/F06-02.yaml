@@ -1,0 +1,51 @@
+contract_id: F06-02
+task_kind: code_edit
+inputs:
+- path: src/omnimarket/configs/work_contracts/inputs/F06-02.txt
+  sha256: 2a3fab167808879de5dc2da866b38fc6ad90296e3bd81c8429bf65de6d41bdfa
+- path: src/omnimarket/configs/work_contracts/evaluators/F06-02/test_frozen.txt
+  sha256: f8ac93fe6441b9539957341d80fdefd4e4c6493accbb5a7950b2db7356d07dcc
+- path: src/omnimarket/configs/work_contracts/rules/F06-02.json
+  sha256: 5fc599b37a90b5f5f6853412bd6a4a44579bc48f3c4885a59afc6c6427ef8ed1
+acceptance:
+  kind: seeded_bug
+  spec:
+    argv:
+    - python
+    - -m
+    - omnimarket.handlers.work_contracts.control_evaluator
+    - --root
+    - '{root}'
+    - --case
+    - src/omnimarket/configs/work_contracts/rules/F06-02.json
+    - --answer
+    - '{answer}'
+    environment:
+      path: uv.lock
+      sha256: cc8b0d6926212d86056ae768b5c3d30112085039ad5a829f3dc92469bbcf629e
+    expected_exit: 0
+    target: src/omnibase_core/models/core/model_deployment_topology_database_migration_ledger.py
+    patch:
+      path: src/omnimarket/configs/work_contracts/evaluators/F06-02/seed.patch
+      sha256: b9ce19b1591ba4aaccd7613243aa73a9258e015897138216dffd7941f762550f
+budgets:
+  max_output_tokens: 8192
+  max_wall_s: 180
+  max_turns: 8
+  max_usd: 5
+controls:
+  positive:
+    path: src/omnimarket/configs/work_contracts/controls/F06-02.positive.txt
+    sha256: f0fcd9d773bbecbab099084313a5bcb759a869d038e4ac63f794883c27800e62
+  negative:
+    path: src/omnimarket/configs/work_contracts/controls/F06-02.negative.txt
+    sha256: 72e068b4b38a8c43d39901b52a2a4a0974a0a5342ab16606efbd619962d3fe32
+evaluators:
+- path: src/omnimarket/handlers/work_contracts/control_evaluator.py
+  sha256: 35beec5a332b646a0c1a696407f0b4a1f5a683269b19e9f782af9df0ee662d7d
+provenance:
+  source: 2026-10-27-deleg-sc-d-1100.md
+  source_sha256: e9ea31b55d2bedfed466bc0d2d3a9761081d1150c30ecc2426454cc8d0740f8f
+  adaptation: Deidentified fixed/seeded public module and entire frozen original pytest
+    file. Runner accepts a complete replacement module; patch-only historical outputs
+    are not equivalent.

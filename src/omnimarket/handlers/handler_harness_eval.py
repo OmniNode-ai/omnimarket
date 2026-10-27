@@ -296,9 +296,9 @@ def normalize_observation(
         return row
     kind: str | None = None
     available = row.available
-    if (
-        "failed to initialize in-process app-server client: Read-only file system"
-        in diagnostic
+    if any(
+        f"failed to initialize in-process app-server client: {cause}" in diagnostic
+        for cause in ("Read-only file system", "Operation not permitted")
     ):
         available, kind = False, "sandbox-initialization"
     elif error_class == "HarnessNotLoggedIn":

@@ -1,0 +1,10 @@
+--- a/src/omnibase_core/models/orchestrator/payloads/model_action_typed_payload.py
++++ b/src/omnibase_core/models/orchestrator/payloads/model_action_typed_payload.py
+@@ -143,6 +143,7 @@
+         ModelFilesystemActionPayload,  # scan, watch, sync
+         ModelRegistryActionPayload,  # register, unregister, discover
+         ModelLifecycleActionPayload,  # health_check, initialize, shutdown
++        ModelOperationalActionPayload,  # execute, run (the EFFECT default)
+     ],
+     EnumActionType.REDUCE: [
+         ModelOperationalActionPayload,  # aggregate, reduce

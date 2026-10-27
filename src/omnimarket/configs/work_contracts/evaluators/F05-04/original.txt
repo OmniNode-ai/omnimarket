@@ -1,0 +1,9 @@
+from __future__ import annotations
+
+from omnibase_core.models.events.work.model_hold_scope import ModelHoldScope
+
+from omnibase_core.models.events.work.model_pr_key import ModelPrKey
+
+def scope_covers_pr(scope: ModelHoldScope, pr: ModelPrKey) -> bool:
+    """True when ``scope`` covers pull request ``pr``."""
+    return scope.all_repos or pr in scope.prs or pr.repo in scope.repos

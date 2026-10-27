@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+node: node_model_work_contract_compute
+enabled: false
+runtime_profiles: []
+execution_binding: existing_lab_runner
+input_policy: public_repositories_and_deidentified_ledger
+check_policy: pinned_evaluators_read_only
+historical_equivalence: exact_input_check_and_budget_match_only

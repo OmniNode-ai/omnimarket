@@ -1,0 +1,1 @@
+{"diagnosis": "Runtime paths touched, OMN-21090 has no falsifiable deploy probe; repo-local contracts at PR head, not a change-control companion."}

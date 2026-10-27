@@ -1,0 +1,14 @@
+{
+  "base_commit": "8070b633e06a89fed5e9798a00ea4735bd34e8cc",
+  "base_file_exists": false,
+  "base_snapshot": {
+    "path": "src/omnimarket/configs/work_contracts/history/dod-OMN-21090-13.base.txt",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "path": "src/omnimarket/nodes/node_session_compaction_measurement_compute/handlers/handler_measurement.py",
+  "repair_commit": "73d2c86b36c937232bc55b845d13877a974f2965",
+  "repair_snapshot": {
+    "path": "src/omnimarket/configs/work_contracts/history/dod-OMN-21090-13.repair.txt",
+    "sha256": "88323de245997b5cc636d1fa99fde8d3a909fe89257a0776cad46743b547ad7d"
+  }
+}

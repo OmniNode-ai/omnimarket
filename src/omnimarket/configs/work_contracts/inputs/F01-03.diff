@@ -1,0 +1,320 @@
+diff --git a/contracts/OMN-20275.yaml b/contracts/OMN-20275.yaml
+index af7c2d133d..3af5ef3896 100644
+--- a/contracts/OMN-20275.yaml
++++ b/contracts/OMN-20275.yaml
+@@ -17,6 +17,11 @@ requirements:
+       - id: "AC11"
+         statement: |-
+           AC11: apply-grants re-applies every declared grant to every issued principal in the lane (or the named ones), refuses a principal the broker does not hold, and never sets a password -- falsifier: uv run pytest tests/scripts/test_lab_principal_issuer_omn20150.py -q -k "apply_grants or ensuring_an_existing_topic_is_success or other_rpk_failures_are_bad_gateway"
++  - id: "req-ci-overlay-binding-shape"
++    statement: "The CI publisher accepts the lane's binding fallback and injected secret resolver declarations without changing its transport selection."
++    acceptance:
++      - id: "AC12"
++        statement: "binding_fallback preserves ordered bus names and secret_resolver preserves its convention flag and typed logical-name/source mappings. Both declarations remain optional, unknown keys and malformed shapes are refused, and broker/security selection is unchanged."
+ evidence_requirements:
+   - kind: "tests"
+     description: "AC10 and AC11: issuer tests."
+@@ -42,3 +47,11 @@ dod_evidence:
+       - check_type: "test_passes"
+         check_value: 'uv run pytest tests/scripts/test_lab_principal_issuer_omn20150.py -q -p no:randomly -k "apply_grants or ensuring_an_existing_topic_is_success or other_rpk_failures_are_bad_gateway"'
+         cwd: "${OMNI_HOME}/omnibase_infra"
++  - id: "dod-omn20275-ac12-ci-overlay-binding-shape"
++    description: "AC12: hermetic publisher overlay regression, runnable on a hosted runner without lab secrets, a live broker or Docker. The new declarations fail validation before this PR's model change."
++    source: "manual"
++    binds_ac: ["AC12"]
++    checks:
++      - check_type: "test_passes"
++        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/scripts/test_trigger_learns_binding_fallback_omn20275.py -q -p no:randomly"
++        cwd: "${OMNI_HOME}/omnibase_infra"
+diff --git a/scripts/trigger_rebuild_on_merge.py b/scripts/trigger_rebuild_on_merge.py
+index 590c4d1b64..e0ff1532e9 100644
+--- a/scripts/trigger_rebuild_on_merge.py
++++ b/scripts/trigger_rebuild_on_merge.py
+@@ -226,6 +226,38 @@ class ModelCiBusLaneDelegationFaultRoute(BaseModel):
+     no_escalation: bool
+ 
+ 
++class ModelCiBusLaneSecretSource(BaseModel):
++    """Where a lane's injected secret resolver reads one secret (OMN-20275), shape only."""
++
++    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
++
++    source_type: str
++    source_path: str
++
++
++class ModelCiBusLaneSecretMapping(BaseModel):
++    """One logical secret name and its source (OMN-20275), shape only."""
++
++    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
++
++    logical_name: str
++    source: ModelCiBusLaneSecretSource
++
++
++class ModelCiBusLaneSecretResolver(BaseModel):
++    """A lane's injected secret resolver declaration (OMN-20275), shape only.
++
++    Names and paths only. This publisher never resolves a secret, so it keeps
++    no policy here; it models the block so that ``extra="forbid"`` keeps
++    meaning "unknown key" instead of "key this script has not learned yet".
++    """
++
++    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
++
++    enable_convention_fallback: bool = False
++    mappings: tuple[ModelCiBusLaneSecretMapping, ...] = ()
++
++
+ class ModelCiBusLane(BaseModel):
+     """One checked-in CI control-bus lane declaration.
+ 
+@@ -297,6 +329,11 @@ class ModelCiBusLane(BaseModel):
+     broker_topology: ModelCiBusLaneBrokerTopology | None = None
+     delegation_routes: tuple[ModelCiBusLaneDelegationRoute, ...] = ()
+     delegation_fault_routes: tuple[ModelCiBusLaneDelegationFaultRoute, ...] = ()
++    # OMN-20275. Optional and unread by this publisher: the dev lane declares
++    # the ordered fallback buses and the injected secret resolver for the
++    # runtime bindings. Modelled so the strict overlay keeps validating.
++    binding_fallback: tuple[str, ...] = ()
++    secret_resolver: ModelCiBusLaneSecretResolver | None = None
+ 
+     @field_validator("broker")
+     @classmethod
+@@ -393,6 +430,9 @@ def validate_lanes(
+         "ModelCiBusLaneBrokerTopology": ModelCiBusLaneBrokerTopology,
+         "ModelCiBusLaneDelegationRoute": ModelCiBusLaneDelegationRoute,
+         "ModelCiBusLaneDelegationFaultRoute": ModelCiBusLaneDelegationFaultRoute,
++        "ModelCiBusLaneSecretResolver": ModelCiBusLaneSecretResolver,
++        "ModelCiBusLaneSecretMapping": ModelCiBusLaneSecretMapping,
++        "ModelCiBusLaneSecretSource": ModelCiBusLaneSecretSource,
+     }
+ )
+ ModelCiBusLane.model_rebuild(
+@@ -401,6 +441,9 @@ def validate_lanes(
+         "ModelCiBusLaneBrokerTopology": ModelCiBusLaneBrokerTopology,
+         "ModelCiBusLaneDelegationRoute": ModelCiBusLaneDelegationRoute,
+         "ModelCiBusLaneDelegationFaultRoute": ModelCiBusLaneDelegationFaultRoute,
++        "ModelCiBusLaneSecretResolver": ModelCiBusLaneSecretResolver,
++        "ModelCiBusLaneSecretMapping": ModelCiBusLaneSecretMapping,
++        "ModelCiBusLaneSecretSource": ModelCiBusLaneSecretSource,
+     }
+ )
+ 
+diff --git a/tests/unit/scripts/test_trigger_learns_binding_fallback_omn20275.py b/tests/unit/scripts/test_trigger_learns_binding_fallback_omn20275.py
+new file mode 100644
+index 0000000000..7adb68ee4a
+--- /dev/null
++++ b/tests/unit/scripts/test_trigger_learns_binding_fallback_omn20275.py
+@@ -0,0 +1,211 @@
++# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
++# SPDX-License-Identifier: MIT
++"""Hermetic coverage of the publisher's optional OMN-20275 lane declarations."""
++
++from __future__ import annotations
++
++import importlib.util
++from pathlib import Path
++from types import ModuleType
++
++import pytest
++import yaml
++from pydantic import ValidationError
++
++SCRIPT_PATH = (
++    Path(__file__).resolve().parents[3] / "scripts" / "trigger_rebuild_on_merge.py"
++)
++
++pytestmark = pytest.mark.unit
++
++
++def _import_trigger_module() -> ModuleType:
++    spec = importlib.util.spec_from_file_location(
++        "trigger_rebuild_on_merge_binding_fallback", SCRIPT_PATH
++    )
++    assert spec is not None and spec.loader is not None
++    mod = importlib.util.module_from_spec(spec)
++    spec.loader.exec_module(mod)
++    return mod
++
++
++@pytest.mark.parametrize("declaration", ["binding_fallback", "secret_resolver", "both"])
++def test_declared_binding_shape_loads_without_changing_transport(
++    tmp_path: Path, declaration: str
++) -> None:
++    """Either new block, and both together, preserve the publisher's routing."""
++    lane: dict[str, object] = {
++        "broker": "example.invalid:19092",
++        "security_protocol": "SASL_PLAINTEXT",
++        "sasl_mechanism": "SCRAM-SHA-256",
++    }
++    if declaration in {"binding_fallback", "both"}:
++        lane["binding_fallback"] = ["primary", "secondary"]
++    if declaration in {"secret_resolver", "both"}:
++        lane["secret_resolver"] = {
++            "enable_convention_fallback": True,
++            "mappings": [
++                {
++                    "logical_name": "KAFKA_SASL_PASSWORD",
++                    "source": {
++                        "source_type": "env",
++                        "source_path": "CI_KAFKA_PASSWORD",
++                    },
++                }
++            ],
++        }
++    overlay_path = tmp_path / "ci_bus_lanes.yaml"
++    overlay_path.write_text(
++        yaml.safe_dump({"default": "inmemory", "lanes": {"dev": lane}}),
++        encoding="utf-8",
++    )
++    mod = _import_trigger_module()
++
++    model = mod.load_ci_bus_overlay(overlay_path)
++
++    parsed = model.lanes["dev"]
++    if declaration in {"binding_fallback", "both"}:
++        assert parsed.binding_fallback == ("primary", "secondary")
++    if declaration in {"secret_resolver", "both"}:
++        resolver = parsed.secret_resolver
++        assert resolver is not None
++        assert resolver.enable_convention_fallback is True
++        assert resolver.mappings[0].logical_name == "KAFKA_SASL_PASSWORD"
++        assert resolver.mappings[0].source.source_type == "env"
++        assert resolver.mappings[0].source.source_path == "CI_KAFKA_PASSWORD"
++    assert (
++        mod.resolve_ci_bus_broker(overlay=model, lane="dev", injected_broker="")
++        == "example.invalid:19092"
++    )
++    assert mod.resolve_ci_bus_security(overlay=model, lane="dev") == (
++        "SASL_PLAINTEXT",
++        "SCRAM-SHA-256",
++    )
++
++
++def test_binding_declarations_remain_optional() -> None:
++    mod = _import_trigger_module()
++
++    lane = mod.ModelCiBusLane.model_validate({"broker": "inmemory"})
++
++    assert lane.binding_fallback == ()
++    assert lane.secret_resolver is None
++    resolver = mod.ModelCiBusLane.model_validate(
++        {"broker": "inmemory", "secret_resolver": {}}
++    ).secret_resolver
++    assert resolver is not None
++    assert resolver.enable_convention_fallback is False
++    assert resolver.mappings == ()
++
++
++@pytest.mark.parametrize(
++    "declaration",
++    [
++        {"binding_falback": []},
++        {"secret_resolver": {"enable_convention_falback": True}},
++        {
++            "secret_resolver": {
++                "mappings": [
++                    {
++                        "logical_name": "KAFKA_SASL_PASSWORD",
++                        "source": {
++                            "source_type": "env",
++                            "source_path": "CI_KAFKA_PASSWORD",
++                        },
++                        "logical_nam": "typo",
++                    }
++                ]
++            }
++        },
++        {
++            "secret_resolver": {
++                "mappings": [
++                    {
++                        "logical_name": "KAFKA_SASL_PASSWORD",
++                        "source": {
++                            "source_type": "env",
++                            "source_path": "CI_KAFKA_PASSWORD",
++                            "path": "typo",
++                        },
++                    }
++                ]
++            }
++        },
++    ],
++)
++def test_unknown_binding_keys_are_refused(declaration: dict[str, object]) -> None:
++    mod = _import_trigger_module()
++
++    with pytest.raises(ValueError, match="Extra inputs are not permitted"):
++        mod.ModelCiBusLane.model_validate({"broker": "inmemory", **declaration})
++
++
++@pytest.mark.parametrize(
++    ("declaration", "expected_loc"),
++    [
++        ({"binding_fallback": "primary"}, ("binding_fallback",)),
++        (
++            {
++                "secret_resolver": {
++                    "mappings": [{"logical_name": "KAFKA_SASL_PASSWORD"}]
++                }
++            },
++            ("secret_resolver", "mappings", 0, "source"),
++        ),
++        (
++            {
++                "secret_resolver": {
++                    "mappings": [
++                        {
++                            "logical_name": "KAFKA_SASL_PASSWORD",
++                            "source": {"source_type": "env"},
++                        }
++                    ]
++                }
++            },
++            ("secret_resolver", "mappings", 0, "source", "source_path"),
++        ),
++    ],
++)
++def test_malformed_binding_shapes_are_refused(
++    declaration: dict[str, object], expected_loc: tuple[str, ...]
++) -> None:
++    mod = _import_trigger_module()
++
++    with pytest.raises(ValidationError) as excinfo:
++        mod.ModelCiBusLane.model_validate({"broker": "inmemory", **declaration})
++
++    locs = [tuple(err["loc"]) for err in excinfo.value.errors()]
++    assert any(loc[: len(expected_loc)] == expected_loc for loc in locs), locs
++
++
++def test_binding_fallback_edge_values_are_kept_verbatim() -> None:
++    """The model is shape-only: empty and duplicate entries are not policed here."""
++    mod = _import_trigger_module()
++
++    empty = mod.ModelCiBusLane.model_validate(
++        {"broker": "inmemory", "binding_fallback": []}
++    )
++    assert empty.binding_fallback == ()
++    odd = mod.ModelCiBusLane.model_validate(
++        {"broker": "inmemory", "binding_fallback": ["primary", "primary", ""]}
++    )
++    assert odd.binding_fallback == ("primary", "primary", "")
++
++
++def test_secret_resolver_edge_values() -> None:
++    mod = _import_trigger_module()
++
++    explicit_none = mod.ModelCiBusLane.model_validate(
++        {"broker": "inmemory", "secret_resolver": None}
++    )
++    assert explicit_none.secret_resolver is None
++    resolver = mod.ModelCiBusLane.model_validate(
++        {
++            "broker": "inmemory",
++            "secret_resolver": {"enable_convention_fallback": True, "mappings": []},
++        }
++    ).secret_resolver
++    assert resolver is not None
++    assert resolver.enable_convention_fallback is True
++    assert resolver.mappings == ()

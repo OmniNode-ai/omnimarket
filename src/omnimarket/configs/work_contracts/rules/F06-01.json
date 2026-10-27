@@ -1,0 +1,6 @@
+{
+  "mode": "module_tests",
+  "module": "omnibase_core.models.orchestrator.payloads.model_action_typed_payload",
+  "test": "src/omnimarket/configs/work_contracts/evaluators/F06-01/test_frozen.txt",
+  "test_layout": "tests/unit/utils/test_workflow_executor_effect_werror.py"
+}

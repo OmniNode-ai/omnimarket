@@ -2,13 +2,7 @@
 name: projection_tenant_registry
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: reducer
-# OMN-17985: this contract is owned by its OWN standalone writer Deployment
-# (RUNTIME_PROFILE=projection-writer-tenant-registry on onex-dev), not by the shared main runtime it
-# fell to while it declared nothing. The name became declarable when
-# omnibase_core 0.47.5 registered it in REGISTERED_RUNTIME_PROFILES and
-# CONSUMER_ATTACHED_RUNTIME_PROFILES; the writer is consumer-attached as
-# measured fact -- it joined its group and the coordinator issued it
-# partitions. Declaring it here is what makes ownership single-valued.
+# Logical subscription ownership; the composing runtime activates this profile.
 runtime_profiles:
   - projection-writer-tenant-registry
 node_version: {major: 1, minor: 0, patch: 0}
@@ -35,24 +29,19 @@ description: >
   other node_projection_* relation. Only the runtime touches the database.
 
 handler:
-  module: omnimarket.nodes.node_projection_tenant_registry.handlers.handler_tenant_registry_projection
-  class: HandlerTenantRegistryProjectionRunner
+  module: omnimarket.nodes.node_projection_tenant_registry.handlers.handler_runtime_writer
+  class: TenantMirrorProjectionWriter
 
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - operation: TENANT_CREATED
+    - topic: onex.tenant.events # onex-topic-allow: control-plane tenant lifecycle topic, owned by onex-api (topic_constants.TENANT_EVENTS_TOPIC, OMN-16027)
+      message_category: event
+      operation: tenant_registry_projection_writer
       handler:
-        name: HandlerTenantRegistryProjectionRunner
-        module: omnimarket.nodes.node_projection_tenant_registry.handlers.handler_tenant_registry_projection
-      handler_module: omnimarket.nodes.node_projection_tenant_registry.handlers.handler_tenant_registry_projection
-      event_model: omnimarket.projection.tenant_registry_events.ModelTenantRegistryEvent
-    - operation: TENANT_UPDATED
-      handler:
-        name: HandlerTenantRegistryProjectionRunner
-        module: omnimarket.nodes.node_projection_tenant_registry.handlers.handler_tenant_registry_projection
-      handler_module: omnimarket.nodes.node_projection_tenant_registry.handlers.handler_tenant_registry_projection
-      event_model: omnimarket.projection.tenant_registry_events.ModelTenantRegistryEvent
+        name: TenantMirrorProjectionWriter
+        module: omnimarket.nodes.node_projection_tenant_registry.handlers.handler_runtime_writer
+      handler_module: omnimarket.nodes.node_projection_tenant_registry.handlers.handler_runtime_writer
 
 terminal_event: onex.evt.omnimarket.tenant-registry-projection-applied.v1
 

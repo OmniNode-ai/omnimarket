@@ -33,6 +33,7 @@ from omnimarket.nodes.node_projection_delegation_capability_map.handlers.handler
     HandlerProjectionDelegationCapabilityMap,
 )
 from tests.harness_evals.fixtures import fixed_tasks, fixture_digest
+from tests.harness_evals.recent import recent_digest, recent_tasks
 
 
 def load_trials(directory: Path) -> list[ModelHarnessObservation]:
@@ -87,7 +88,22 @@ def main() -> int:
     parser.add_argument("--lane", required=True)
     parser.add_argument("--ticket", required=True)
     parser.add_argument("--harness-versions", type=Path, required=True)
+    parser.add_argument("--cohort", choices=("fixed", "recent"), default="fixed")
+    parser.add_argument(
+        "--attempt-offset",
+        type=int,
+        default=0,
+        help="reserve earlier attempt numbers when publishing another cohort for this lane",
+    )
+    parser.add_argument(
+        "--replacement-reason",
+        default="invalid-fixture: binds_ac key omitted from original prompt",
+    )
     args = parser.parse_args()
+    if args.attempt_offset < 0:
+        parser.error("attempt offset must be nonnegative")
+    suite = fixed_tasks() if args.cohort == "fixed" else recent_tasks()
+    digest = fixture_digest() if args.cohort == "fixed" else recent_digest()
     harness_revision = hashlib.sha256(args.harness_versions.read_bytes()).hexdigest()
     by_key: dict[tuple[str, str], ModelHarnessObservation] = {}
     proofs = []
@@ -104,7 +120,7 @@ def main() -> int:
                     {
                         "harness": row.harness,
                         "item_key": row.item_key,
-                        "reason": "invalid-fixture: binds_ac key omitted from original prompt",
+                        "reason": args.replacement_reason,
                     }
                 )
             elif replacement:
@@ -129,7 +145,7 @@ def main() -> int:
                 ],
             }
         )
-    expected = {t["item_key"] for t in fixed_tasks()}
+    expected = {t["item_key"] for t in suite}
     for harness in {r.harness for r in by_key.values()}:
         if {r.item_key for r in by_key.values() if r.harness == harness} != expected:
             raise ValueError(f"incomplete fixed set for {harness}")
@@ -148,7 +164,8 @@ def main() -> int:
         {
             "runs": proofs,
             "excluded_trials": excluded,
-            "fixture_sha256": fixture_digest(),
+            "fixture_sha256": digest,
+            "cohort": args.cohort,
             "harness_versions_sha256": harness_revision,
         },
     )
@@ -160,7 +177,12 @@ def main() -> int:
         build_harness_run(
             tuple(group),
             tenant_id=args.tenant_id,
-            manifest_id="harness-lanes-v2:" + fixture_digest(),
+            manifest_id=(
+                "harness-lanes-v2:"
+                if args.cohort == "fixed"
+                else "harness-lanes-recent-v1:"
+            )
+            + digest,
             observed_at=now,
         ).model_dump(mode="json")
         for _, group in sorted(groups.items())
@@ -170,7 +192,7 @@ def main() -> int:
         rows,
         tenant_id=args.tenant_id,
         observed_at=now,
-        suite_revision=fixture_digest(),
+        suite_revision=digest,
         harness_revision=harness_revision,
     )
     write("capability-map-run.json", capability.model_dump(mode="json"))
@@ -190,7 +212,7 @@ def main() -> int:
         ModelEngineExperimentRow(
             lane=args.lane,
             ticket=args.ticket,
-            attempt=index + 1,
+            attempt=args.attempt_offset + index + 1,
             engine=engine[r.harness],
             model=r.model,
             outcome="done"

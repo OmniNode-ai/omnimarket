@@ -1,0 +1,1 @@
+{"diagnosis": "detect-changes and test skipped, no shard artifacts; downstream coverage refusal, not low measured coverage. Upstream repo-evidence failed per independently verified metadata."}

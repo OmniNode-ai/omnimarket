@@ -1,0 +1,194 @@
+[
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-delegate",
+    "failure_kinds": {},
+    "harness": "claude-glm",
+    "median_minutes": 0.5730530298673936,
+    "model": "glm-5.3",
+    "n": 3,
+    "pass_rate": 1.0,
+    "passes": 3,
+    "task_class": "ci-log-diagnosis",
+    "unavailable": 0
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-delegate",
+    "failure_kinds": {
+      "checker-failed": 1
+    },
+    "harness": "claude-glm",
+    "median_minutes": 0.7965219423659922,
+    "model": "glm-5.3",
+    "n": 3,
+    "pass_rate": 0.6666666666666666,
+    "passes": 2,
+    "task_class": "docs-edit",
+    "unavailable": 0
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-delegate",
+    "failure_kinds": {},
+    "harness": "claude-glm",
+    "median_minutes": 0.682266245832822,
+    "model": "glm-5.3",
+    "n": 3,
+    "pass_rate": 1.0,
+    "passes": 3,
+    "task_class": "failing-test-fix",
+    "unavailable": 0
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-delegate",
+    "failure_kinds": {
+      "checker-failed": 1,
+      "permission-denied": 2
+    },
+    "harness": "claude-glm",
+    "median_minutes": 1.0926785034670805,
+    "model": "glm-5.3",
+    "n": 3,
+    "pass_rate": 0.0,
+    "passes": 0,
+    "task_class": "host-read-only",
+    "unavailable": 0
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-delegate",
+    "failure_kinds": {
+      "checker-failed": 1,
+      "permission-denied": 2
+    },
+    "harness": "claude-glm",
+    "median_minutes": 1.1067497076340562,
+    "model": "glm-5.3",
+    "n": 3,
+    "pass_rate": 0.0,
+    "passes": 0,
+    "task_class": "rebase-conflict",
+    "unavailable": 0
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-delegate",
+    "failure_kinds": {},
+    "harness": "claude-glm",
+    "median_minutes": 0.5093860395834782,
+    "model": "glm-5.3",
+    "n": 3,
+    "pass_rate": 1.0,
+    "passes": 3,
+    "task_class": "review-thread-reply",
+    "unavailable": 0
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-delegate",
+    "failure_kinds": {
+      "permission-denied": 1
+    },
+    "harness": "claude-glm",
+    "median_minutes": 0.7372745569504332,
+    "model": "glm-5.3",
+    "n": 3,
+    "pass_rate": 0.6666666666666666,
+    "passes": 2,
+    "task_class": "ticket-evidence-fix",
+    "unavailable": 0
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-delegate",
+    "failure_kinds": {
+      "sandbox-initialization": 3
+    },
+    "harness": "codex",
+    "median_minutes": null,
+    "model": "gpt-6.1-sol",
+    "n": 0,
+    "pass_rate": null,
+    "passes": 0,
+    "task_class": "ci-log-diagnosis",
+    "unavailable": 3
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-delegate",
+    "failure_kinds": {
+      "sandbox-initialization": 3
+    },
+    "harness": "codex",
+    "median_minutes": null,
+    "model": "gpt-6.1-sol",
+    "n": 0,
+    "pass_rate": null,
+    "passes": 0,
+    "task_class": "docs-edit",
+    "unavailable": 3
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-delegate",
+    "failure_kinds": {
+      "sandbox-initialization": 3
+    },
+    "harness": "codex",
+    "median_minutes": null,
+    "model": "gpt-6.1-sol",
+    "n": 0,
+    "pass_rate": null,
+    "passes": 0,
+    "task_class": "failing-test-fix",
+    "unavailable": 3
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-delegate",
+    "failure_kinds": {
+      "sandbox-initialization": 3
+    },
+    "harness": "codex",
+    "median_minutes": null,
+    "model": "gpt-6.1-sol",
+    "n": 0,
+    "pass_rate": null,
+    "passes": 0,
+    "task_class": "host-read-only",
+    "unavailable": 3
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-delegate",
+    "failure_kinds": {
+      "sandbox-initialization": 3
+    },
+    "harness": "codex",
+    "median_minutes": null,
+    "model": "gpt-6.1-sol",
+    "n": 0,
+    "pass_rate": null,
+    "passes": 0,
+    "task_class": "rebase-conflict",
+    "unavailable": 3
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-delegate",
+    "failure_kinds": {
+      "sandbox-initialization": 3
+    },
+    "harness": "codex",
+    "median_minutes": null,
+    "model": "gpt-6.1-sol",
+    "n": 0,
+    "pass_rate": null,
+    "passes": 0,
+    "task_class": "review-thread-reply",
+    "unavailable": 3
+  },
+  {
+    "configuration": "fixture-v1:effort-low:timeout-90s:adapter-delegate",
+    "failure_kinds": {
+      "sandbox-initialization": 3
+    },
+    "harness": "codex",
+    "median_minutes": null,
+    "model": "gpt-6.1-sol",
+    "n": 0,
+    "pass_rate": null,
+    "passes": 0,
+    "task_class": "ticket-evidence-fix",
+    "unavailable": 3
+  }
+]

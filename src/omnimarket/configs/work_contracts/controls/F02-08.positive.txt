@@ -1,0 +1,3 @@
+Adapt async bus callback to sync terminal handler.
+Resolve handler (module, class) from available contract fields.
+The terminal handler's result object, if the run produced one.

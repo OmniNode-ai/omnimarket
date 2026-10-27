@@ -1,0 +1,23 @@
+Implement the small Python function below from its docstring. Public source: omnibase_core/src/omnibase_core/normalization/contract_normalizer.py:115. Keep the exact public signature and specified behavior. Return ONLY one complete Python module, no explanation or Markdown. Include its support definitions/imports. Do not write tests.
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+
+_LEGACY_EVENT_BUS_KEYS: frozenset[str] = frozenset(
+    {"event_bus", "subscribe_topics", "publish_topics", "topics"}
+)
+
+def normalize_event_bus(raw: Mapping[str, object]) -> dict[str, object]:
+    """Strip the legacy event_bus block and top-level topic list keys.
+
+    Drops `event_bus`, `subscribe_topics`, `publish_topics`, and `topics` keys
+    from the raw contract dict so the remainder passes canonical
+    extra="forbid" validation. Returns a new dict; does not mutate the input.
+    Idempotent on dicts that already lack these keys.
+
+    The event-bus declarations are preserved separately by callers that need
+    them (e.g., into a typed ModelEventBusConfig); this function only removes
+    the keys that would otherwise fail validation.
+    """
+    raise NotImplementedError

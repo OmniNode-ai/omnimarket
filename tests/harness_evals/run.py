@@ -31,11 +31,12 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
     HandlerHarnessEvalProcess,
 )
 from tests.harness_evals.fixtures import (
-    check,
     fixed_tasks,
     fixture_digest,
     materialize,
 )
+from tests.harness_evals.recent import check_task as check
+from tests.harness_evals.recent import recent_digest, recent_tasks
 
 run_command = HandlerHarnessEvalProcess().handle
 
@@ -90,6 +91,12 @@ def main() -> int:
         choices=tuple(sorted({t["task_class"] for t in fixed_tasks()})),
         help="explicit subset; replacement of invalid fixtures must be reported",
     )
+    parser.add_argument("--cohort", choices=("fixed", "recent"), default="fixed")
+    parser.add_argument(
+        "--item-key",
+        action="append",
+        help="explicit item subset, for invalid-checker replacement trials",
+    )
     args = parser.parse_args()
     if not 30 <= args.timeout_s <= 140:
         parser.error(
@@ -98,10 +105,15 @@ def main() -> int:
     if args.harness == "local-agent" and args.lab_script is None:
         parser.error("--lab-script is required for local-agent")
     args.output.mkdir(parents=True, exist_ok=False)
+    suite = fixed_tasks() if args.cohort == "fixed" else recent_tasks()
+    if args.item_key and set(args.item_key) - {t["item_key"] for t in suite}:
+        parser.error("unknown item key for cohort")
+    digest = fixture_digest() if args.cohort == "fixed" else recent_digest()
     tasks = [
         t
-        for t in fixed_tasks()
-        if not args.task_class or t["task_class"] == args.task_class
+        for t in suite
+        if (not args.task_class or t["task_class"] == args.task_class)
+        and (not args.item_key or t["item_key"] in args.item_key)
     ]
     observations: list[ModelHarnessObservation] = []
     model_default = {
@@ -115,6 +127,8 @@ def main() -> int:
         if args.harness != "local-agent"
         else f"fixture-v1:crush:timeout-{args.timeout_s}s"
     )
+    if args.cohort == "recent":
+        configuration = configuration.replace("fixture-v1", "receipt-v1")
     for task in tasks:
         item_dir = args.output / task["item_key"]
         item_dir.mkdir()
@@ -262,7 +276,12 @@ def main() -> int:
             build_harness_run(
                 tuple(r for r in observations if r.model == model),
                 tenant_id=args.tenant_id,
-                manifest_id="harness-lanes-v2:" + fixture_digest(),
+                manifest_id=(
+                    "harness-lanes-v2:"
+                    if args.cohort == "fixed"
+                    else "harness-lanes-recent-v1:"
+                )
+                + digest,
                 observed_at=datetime.now(UTC),
             ).model_dump(mode="json")
         )
@@ -270,7 +289,8 @@ def main() -> int:
     (args.output / "provenance.json").write_text(
         json.dumps(
             {
-                "fixture_sha256": fixture_digest(),
+                "fixture_sha256": digest,
+                "cohort": args.cohort,
                 "harness": args.harness,
                 "timeout_s": args.timeout_s,
                 "calls_per_item": 1,

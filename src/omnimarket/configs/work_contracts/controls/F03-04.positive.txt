@@ -1,0 +1,1 @@
+{"id": "F03-04", "kind": "implementation", "symbols": ["_required_key_names", "_declared_property_names", "render_response_contract_instruction", "render_extraction_marker_instruction", "compose_system_prompt_with_response_contract", "compose_system_prompt_with_response_contract_instruction"], "count": 6, "summary": "Public module symbols."}

@@ -51,7 +51,10 @@ def test_checker_rejects_initial_accepts_oracle_and_refuses_test_tampering(
         assert not check(task, tmp_path)
 
 
-def test_real_rebase_requires_completion_and_the_upstream_parent(tmp_path, monkeypatch):
+@pytest.mark.parametrize("cohort", ["fixed", "recent"])
+def test_real_rebase_requires_completion_and_the_upstream_parent(
+    tmp_path, monkeypatch, cohort
+):
     import json
     import os
     import subprocess
@@ -70,7 +73,9 @@ def test_real_rebase_requires_completion_and_the_upstream_parent(tmp_path, monke
         monkeypatch.setenv("GIT_WORK_TREE", str(repo))
     monkeypatch.setenv("GIT_COMMITTER_NAME", "Harness Fixture")
     monkeypatch.setenv("GIT_COMMITTER_EMAIL", "fixture@example.invalid")
-    task = fixed_tasks()[0]
+    from tests.harness_evals.recent import recent_tasks
+
+    task = fixed_tasks()[0] if cohort == "fixed" else recent_tasks()[0]
     root = tmp_path / "worktree"
     _, git_dir = materialize(task, root, repo)
     argv = ["git", "--git-dir", git_dir, "--work-tree", str(root)]
@@ -136,14 +141,19 @@ def test_committed_manifest_is_the_fixed_generated_suite():
             assert "binds_ac=" in files_for(task)[1]
 
 
+@pytest.mark.parametrize("cohort", ["fixed", "recent"])
 def test_adapter_checker_command_refuses_bad_fixture_and_accepts_correct_files(
     tmp_path,
+    cohort,
 ):
     import subprocess
     import sys
     from pathlib import Path
 
-    task = next(t for t in fixed_tasks() if t["task_class"] == "docs-edit")
+    from tests.harness_evals.recent import recent_tasks
+
+    tasks = fixed_tasks() if cohort == "fixed" else recent_tasks()
+    task = next(t for t in tasks if t["task_class"] == "docs-edit")
     for name, body in files_for(task)[0].items():
         (tmp_path / name).write_text(body)
     script = Path(__file__).resolve().parents[3] / "tests/harness_evals/fixtures.py"

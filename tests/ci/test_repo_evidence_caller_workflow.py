@@ -74,7 +74,13 @@ def _pytest_argv(check_value: str) -> list[str]:
         tokens = tokens[1:]
         while tokens and _ENV_ASSIGNMENT.fullmatch(tokens[0]):
             tokens = tokens[1:]
-    return tokens if tokens[:3] == ["uv", "run", "pytest"] else []
+    if tokens[:2] != ["uv", "run"]:
+        return []
+    # `uv run --frozen pytest ...` runs the same test: skip uv's own flags.
+    rest = tokens[2:]
+    while rest and rest[0].startswith("-"):
+        rest = rest[1:]
+    return ["uv", "run", *rest] if rest[:1] == ["pytest"] else []
 
 
 def contract_binds_violations(name: str, contract: dict[str, Any]) -> list[str]:
@@ -234,6 +240,14 @@ def test_contract_binds_accepts_an_unbound_command_only_deploy_probe() -> None:
             False,
         ),
         ("env uv run pytest tests/ci/no_such_test_file.py", False),
+        (
+            "uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q -n 0 --no-cov",
+            True,
+        ),
+        (
+            "uv run --frozen python -m pytest tests/ci/test_repo_evidence_caller_workflow.py",
+            False,
+        ),
     ],
 )
 def test_contract_binds_reads_through_an_env_prefix(

@@ -1,0 +1,10 @@
+from solution import normalize_dod_evidence as f
+
+def test_dod():
+    raw={'dod_evidence':['test_passes',{'kind':'test','x':1},{'kind':'novel'},{'kind':'test','type':'pr_merged'},{'kind':None}]}
+    out=f(raw)
+    assert out=={'dod_evidence':['test_passes',{'type':'unit_test','x':1},{'type':'novel'},{'kind':'test','type':'pr_merged'},{'type':None}]}
+    assert raw['dod_evidence'][1]['kind']=='test'
+    assert f(out)==out
+    assert f({})=={}
+    assert f({'dod_evidence':None})=={'dod_evidence':None}

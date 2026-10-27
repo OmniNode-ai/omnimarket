@@ -1,0 +1,12 @@
+Write pytest unit tests for the untested public function scope_covers_pr. Public source: omnibase_core/src/omnibase_core/nodes/node_work_ledger_state_compute/scope_math.py:27. Return ONLY a complete test module, no explanation or Markdown. Import the function and any support types from solution. Do not redefine or monkeypatch the target function. Use meaningful assertions and edge cases. Tests run in isolation on this host. Required behavior to cover: Global/explicit PR/repo coverage, mismatches.
+
+Exact public source slice including required support:
+from __future__ import annotations
+
+from omnibase_core.models.events.work.model_hold_scope import ModelHoldScope
+
+from omnibase_core.models.events.work.model_pr_key import ModelPrKey
+
+def scope_covers_pr(scope: ModelHoldScope, pr: ModelPrKey) -> bool:
+    """True when ``scope`` covers pull request ``pr``."""
+    return scope.all_repos or pr in scope.prs or pr.repo in scope.repos

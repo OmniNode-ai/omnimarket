@@ -1,0 +1,15 @@
+Diagnose this real failed GitHub Actions job. Name the job and the failing step, identify the direct cause, and distinguish the direct failure from any downstream symptom or misleading successful output. Cite the supplied evidence. Propose a bounded remedy without executing it; do not change checks, rerun CI, or assume a newer head is still red.
+Source: https://github.com/OmniNode-ai/omnibase_core/actions/runs/40153015237/job/121048320434
+Failing step from GitHub job metadata: Refuse tracked documentation and requirements txt
+The log download labels steps UNKNOWN STEP; the exact name above is authoritative.
+Log excerpt (original timestamps, with gaps):
+kb-doc-gate / kb-doc-gate	UNKNOWN STEP	2026-10-25T02:04:02.7925277Z  Downloading cryptography
+kb-doc-gate / kb-doc-gate	UNKNOWN STEP	2026-10-25T02:04:04.1744579Z       Built omnibase-core @ file://fixture-root
+kb-doc-gate / kb-doc-gate	UNKNOWN STEP	2026-10-25T02:04:04.1956059Z Installed 35 packages in 20ms
+kb-doc-gate / kb-doc-gate	UNKNOWN STEP	2026-10-25T02:04:05.1020825Z CHANGELOG.md: Documentation belongs in the knowledge base; only root README.md is implicit.
+kb-doc-gate / kb-doc-gate	UNKNOWN STEP	2026-10-25T02:04:05.1023406Z {"kind":"run","validator_name":"readme-only-docs","report_ref":"dfbb64ab-5df8-4a4e-b239-1cc31e1d98cd","emitted_at":"2026-10-25T02:04:05.101311+00:00","verdict":"FAIL","fired_count":1,"severity":null,"rule_name":null,"location":null}
+kb-doc-gate / kb-doc-gate	UNKNOWN STEP	2026-10-25T02:04:05.1026438Z {"kind":"fire","validator_name":"readme-only-docs","report_ref":"dfbb64ab-5df8-4a4e-b239-1cc31e1d98cd","emitted_at":"2026-10-25T02:04:05.101311+00:00","verdict":null,"fired_count":null,"severity":"FAIL","rule_name":"root-readme-only","location":"CHANGELOG.md"}
+kb-doc-gate / kb-doc-gate	UNKNOWN STEP	2026-10-25T02:04:05.1490312Z ##[error]Process completed with exit code 1.
+kb-doc-gate / kb-doc-gate	UNKNOWN STEP	2026-10-25T02:04:05.1574888Z ##[group]Run actions/upload-artifact@v7
+kb-doc-gate / kb-doc-gate	UNKNOWN STEP	2026-10-25T02:04:05.1575215Z with:
+kb-doc-gate / kb-doc-gate	UNKNOWN STEP	2026-10-25T02:04:05.1575441Z   name: readme-only-docs-report

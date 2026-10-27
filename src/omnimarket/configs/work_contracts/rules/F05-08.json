@@ -1,0 +1,6 @@
+{
+  "mode": "mutation_test",
+  "mutant": "src/omnimarket/configs/work_contracts/evaluators/F05-08/mutant.txt",
+  "original": "src/omnimarket/configs/work_contracts/evaluators/F05-08/original.txt",
+  "symbol": "validate_run_id"
+}

@@ -1,0 +1,74 @@
+contract_id: F09-09
+task_kind: classification
+inputs:
+- path: src/omnimarket/configs/work_contracts/inputs/F09-09.json
+  sha256: 9d48c92dbf339c4c5062df477392bf9a48baeba535270e17f737aa6f2f45848e
+acceptance:
+  kind: schema
+  spec:
+    schema:
+      type: object
+      additionalProperties: false
+      required:
+      - scenario
+      - rows
+      properties:
+        scenario:
+          const: F09-09
+        rows:
+          type: array
+          minItems: 24
+          maxItems: 24
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - id
+            - label
+            properties:
+              id:
+                type: string
+              label:
+                enum:
+                - handed-off
+                - partial
+                - done
+                - failed
+                - blocked
+                - DELIVERED
+                - skipped-owned
+                - ended-waiting
+                - unknown
+    expected_json: '{"rows": [{"id": "L3722", "label": "handed-off"}, {"id": "L3634",
+      "label": "partial"}, {"id": "L3606", "label": "done"}, {"id": "L3461", "label":
+      "failed"}, {"id": "L3333", "label": "blocked"}, {"id": "L3171", "label": "DELIVERED"},
+      {"id": "L2538", "label": "skipped-owned"}, {"id": "L1705", "label": "ended-waiting"},
+      {"id": "L1351", "label": "unknown"}, {"id": "L3721", "label": "handed-off"},
+      {"id": "L3620", "label": "partial"}, {"id": "L3519", "label": "done"}, {"id":
+      "L3225", "label": "failed"}, {"id": "L3112", "label": "blocked"}, {"id": "L2249",
+      "label": "skipped-owned"}, {"id": "L1349", "label": "unknown"}, {"id": "L3697",
+      "label": "handed-off"}, {"id": "L3472", "label": "partial"}, {"id": "L3503",
+      "label": "done"}, {"id": "L3208", "label": "failed"}, {"id": "L3048", "label":
+      "blocked"}, {"id": "L1633", "label": "skipped-owned"}, {"id": "L3672", "label":
+      "handed-off"}, {"id": "L3363", "label": "partial"}], "scenario": "F09-09"}'
+budgets:
+  max_output_tokens: 8192
+  max_wall_s: 180
+  max_turns: 8
+  max_usd: 5
+controls:
+  positive:
+    path: src/omnimarket/configs/work_contracts/controls/F09-09.positive.txt
+    sha256: 0c77da26d402bbe9dd7b61a445e5ce252541c07d858aed24091fc9a8445eaf37
+  negative:
+    path: src/omnimarket/configs/work_contracts/controls/F09-09.negative.txt
+    sha256: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+evaluators:
+- path: src/omnimarket/handlers/work_contracts/control_evaluator.py
+  sha256: 35beec5a332b646a0c1a696407f0b4a1f5a683269b19e9f782af9df0ee662d7d
+provenance:
+  source: 2026-10-27-deleg-sc-b-1100.md
+  source_sha256: 0483ba868fbaa3852282cf543dd824bc2f79fc946515bdc8769ed581bdffde0a
+  adaptation: Frozen JSON ground truth and schema. F03 summary constrained to a known-good
+    reference. F09 uses deidentified fixture rows with original ids and labels; historical
+    inputs are not equivalent.

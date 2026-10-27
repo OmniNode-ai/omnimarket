@@ -1,0 +1,1 @@
+{"diagnosis": "Names Routing Tier Bindability, Assert provider catalogues still list declared OpenRouter models, and unlisted openrouter-nemotron-super nvidia/nemotron-3-super-120b-a12b:free; no test failure invented."}

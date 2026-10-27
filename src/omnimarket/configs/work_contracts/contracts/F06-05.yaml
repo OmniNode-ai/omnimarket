@@ -1,0 +1,51 @@
+contract_id: F06-05
+task_kind: code_edit
+inputs:
+- path: src/omnimarket/configs/work_contracts/inputs/F06-05.txt
+  sha256: 1b67ac1d8b29763089db1de05044d7703b1782304b464cd5decbe4283d9f212a
+- path: src/omnimarket/configs/work_contracts/evaluators/F06-05/test_frozen.txt
+  sha256: 700841f172b394b3588dcf3d7bf41d37a89c43b9d65916c354de88bcd739a998
+- path: src/omnimarket/configs/work_contracts/rules/F06-05.json
+  sha256: bb0b70adc091e35dfcbbb4792b1add50387e36200ab1ed2a557cd117b50d4792
+acceptance:
+  kind: seeded_bug
+  spec:
+    argv:
+    - python
+    - -m
+    - omnimarket.handlers.work_contracts.control_evaluator
+    - --root
+    - '{root}'
+    - --case
+    - src/omnimarket/configs/work_contracts/rules/F06-05.json
+    - --answer
+    - '{answer}'
+    environment:
+      path: uv.lock
+      sha256: cc8b0d6926212d86056ae768b5c3d30112085039ad5a829f3dc92469bbcf629e
+    expected_exit: 0
+    target: src/omnibase_core/models/core/model_custom_filters.py
+    patch:
+      path: src/omnimarket/configs/work_contracts/evaluators/F06-05/seed.patch
+      sha256: 00a7797ad027afc9e1c484a78296e919d905096694604c5281dc4641893f0860
+budgets:
+  max_output_tokens: 8192
+  max_wall_s: 180
+  max_turns: 8
+  max_usd: 5
+controls:
+  positive:
+    path: src/omnimarket/configs/work_contracts/controls/F06-05.positive.txt
+    sha256: 6b2262f61d80ed180ce811328e7a7f73c1e0b8676ca593d9601ca69ba3e781ef
+  negative:
+    path: src/omnimarket/configs/work_contracts/controls/F06-05.negative.txt
+    sha256: d33c4e3d9d96a13593073e02c3c6afc2c94823bfc47e2adbc95169a05c758b05
+evaluators:
+- path: src/omnimarket/handlers/work_contracts/control_evaluator.py
+  sha256: 35beec5a332b646a0c1a696407f0b4a1f5a683269b19e9f782af9df0ee662d7d
+provenance:
+  source: 2026-10-27-deleg-sc-d-1100.md
+  source_sha256: e9ea31b55d2bedfed466bc0d2d3a9761081d1150c30ecc2426454cc8d0740f8f
+  adaptation: Deidentified fixed/seeded public module and entire frozen original pytest
+    file. Runner accepts a complete replacement module; patch-only historical outputs
+    are not equivalent.

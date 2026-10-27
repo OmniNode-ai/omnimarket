@@ -1,0 +1,26 @@
+Summarize the merged PR diff below in at most 3 sentences and at most 90 words. State the concrete behavior changed, including a changed file or symbol from the diff. Use only facts from this input; do not introduce any number or identifier absent from it. Return only the summary.
+
+Public repository: OmniNode-ai/omnibase_spi
+Merged PR: omnibase_spi#410
+Title: chore(ci): bump omnibase_core pin to 9b083ad32228 [bot] [OMN-9050]
+Merged at: 2026-10-26T08:34:09Z
+Merge SHA: d596588dc46846c0795b77e78d8c31ed35cc284c
+
+BEGIN PUBLIC SOURCE
+diff --git a/.github/workflows/check-handshake.yml b/.github/workflows/check-handshake.yml
+index ae0c1272..f7159234 100644
+--- a/.github/workflows/check-handshake.yml
++++ b/.github/workflows/check-handshake.yml
+@@ -28,8 +28,8 @@ jobs:
+         uses: actions/checkout@v7
+         with:
+           repository: OmniNode-ai/omnibase_core
+-                                                                                # Auto-bumped by omnibase_core publish-downstream-pin-bump.yml to c54925b433b2.
+-          ref: c54925b433b29b450952141146687f9f988ccf2a
++                                                                                # Auto-bumped by omnibase_core publish-downstream-pin-bump.yml to 9b083ad32228.
++          ref: 9b083ad32228f078aecfc47f9c71155656b47fae
+           path: omnibase_core
+           token: ${{ secrets.OMNIBASE_CORE_TOKEN || secrets.GITHUB_TOKEN }}
+ 
+
+END PUBLIC SOURCE

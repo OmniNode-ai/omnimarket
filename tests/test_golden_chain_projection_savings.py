@@ -234,9 +234,9 @@ class TestSavingsProjection:
             contract = yaml.safe_load(f)
         assert (
             contract["handler"]["module"]
-            == "omnimarket.nodes.node_projection_savings.handlers.handler_projection_savings"
+            == "omnimarket.nodes.node_projection_savings.handlers.handler_runtime_writer"
         )
-        assert contract["handler"]["class"] == "HandlerProjectionSavings"
+        assert contract["handler"]["class"] == "SavingsProjectionWriter"
         assert (
             "onex.evt.omnibase-infra.savings-estimated.v1"
             in contract["event_bus"]["subscribe_topics"]

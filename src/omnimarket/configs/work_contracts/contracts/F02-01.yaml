@@ -1,0 +1,44 @@
+contract_id: F02-01
+task_kind: document
+inputs:
+- path: src/omnimarket/configs/work_contracts/inputs/F02-01.txt
+  sha256: 1f230648a8fddcc7a7e2a9d14ee1576399f99de3154a23b4c87379a351378d3d
+- path: src/omnimarket/configs/work_contracts/rules/F02-01.json
+  sha256: 25f35609ee2964135414021645f2c3be28981d923becb5c47164d85c9c4fb25a
+acceptance:
+  kind: command
+  spec:
+    argv:
+    - python
+    - -m
+    - omnimarket.handlers.work_contracts.control_evaluator
+    - --root
+    - '{root}'
+    - --case
+    - src/omnimarket/configs/work_contracts/rules/F02-01.json
+    - --answer
+    - '{answer}'
+    environment:
+      path: uv.lock
+      sha256: cc8b0d6926212d86056ae768b5c3d30112085039ad5a829f3dc92469bbcf629e
+    expected_exit: 0
+budgets:
+  max_output_tokens: 8192
+  max_wall_s: 180
+  max_turns: 8
+  max_usd: 5
+controls:
+  positive:
+    path: src/omnimarket/configs/work_contracts/controls/F02-01.positive.txt
+    sha256: 18359d08c9f6cc4d1782765b159b1981763de1fb72f9775b1d8c7b3c6e4a4c09
+  negative:
+    path: src/omnimarket/configs/work_contracts/controls/F02-01.negative.txt
+    sha256: 1fda63a84bc5de11d6256c062c7b3463287139a1ba01910a5f6c4f412c8dfe46
+evaluators:
+- path: src/omnimarket/handlers/work_contracts/control_evaluator.py
+  sha256: 35beec5a332b646a0c1a696407f0b4a1f5a683269b19e9f782af9df0ee662d7d
+provenance:
+  source: 2026-10-27-deleg-sc-a-1100.md
+  source_sha256: 279abf85259294afb88a98f7ad8cacb1d943377e2c22aa7350487d4357e7246b
+  adaptation: Deidentified public long-context input and all exact docstring answers;
+    whitespace-normalized match.

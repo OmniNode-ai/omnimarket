@@ -1,0 +1,68 @@
+contract_id: F09-08
+task_kind: classification
+inputs:
+- path: src/omnimarket/configs/work_contracts/inputs/F09-08.json
+  sha256: 3020631bada829b68eae6bd63cb96a7018dd9772131b137ceb9168eecdc70c13
+acceptance:
+  kind: schema
+  spec:
+    schema:
+      type: object
+      additionalProperties: false
+      required:
+      - scenario
+      - rows
+      properties:
+        scenario:
+          const: F09-08
+        rows:
+          type: array
+          minItems: 10
+          maxItems: 10
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - id
+            - label
+            properties:
+              id:
+                type: string
+              label:
+                enum:
+                - handed-off
+                - partial
+                - done
+                - failed
+                - blocked
+                - DELIVERED
+                - skipped-owned
+                - ended-waiting
+                - unknown
+    expected_json: '{"rows": [{"id": "L3722", "label": "handed-off"}, {"id": "L3634",
+      "label": "partial"}, {"id": "L3606", "label": "done"}, {"id": "L3461", "label":
+      "failed"}, {"id": "L3333", "label": "blocked"}, {"id": "L3171", "label": "DELIVERED"},
+      {"id": "L2538", "label": "skipped-owned"}, {"id": "L1705", "label": "ended-waiting"},
+      {"id": "L1351", "label": "unknown"}, {"id": "L3721", "label": "handed-off"}],
+      "scenario": "F09-08"}'
+budgets:
+  max_output_tokens: 8192
+  max_wall_s: 180
+  max_turns: 8
+  max_usd: 5
+controls:
+  positive:
+    path: src/omnimarket/configs/work_contracts/controls/F09-08.positive.txt
+    sha256: 5730a0e25c03a3034d4fa6027b91cbb4c68f4eee2798704949ac93d7c10f7fa0
+  negative:
+    path: src/omnimarket/configs/work_contracts/controls/F09-08.negative.txt
+    sha256: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+evaluators:
+- path: src/omnimarket/handlers/work_contracts/control_evaluator.py
+  sha256: 35beec5a332b646a0c1a696407f0b4a1f5a683269b19e9f782af9df0ee662d7d
+provenance:
+  source: 2026-10-27-deleg-sc-b-1100.md
+  source_sha256: 0483ba868fbaa3852282cf543dd824bc2f79fc946515bdc8769ed581bdffde0a
+  adaptation: Frozen JSON ground truth and schema. F03 summary constrained to a known-good
+    reference. F09 uses deidentified fixture rows with original ids and labels; historical
+    inputs are not equivalent.

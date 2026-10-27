@@ -1,0 +1,1 @@
+{"id": "F03-07", "kind": "implementation", "symbols": ["one_line", "run_receipt_path", "_terminal_of", "_is_delegation", "_failure_text", "render_delegate_outcome"], "count": 6, "summary": "Public module symbols."}
