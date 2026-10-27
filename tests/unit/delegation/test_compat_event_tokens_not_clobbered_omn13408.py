@@ -47,8 +47,13 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
     ModelRoutingDecision,
 )
 
-# A non-retryable inference error marker forces the terminal FAILED path (no
-# escalation), so the compat event is emitted alongside delegation-failed.v1.
+# A no-answer failure now reaches the escalation decision, which reads quota
+# state; these drive the terminal path, so they bind an empty quota reader.
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
+# A no-answer failure on the ceiling tier has no rung left to escalate to, so it
+# forces the terminal FAILED path and the compat event is emitted alongside
+# delegation-failed.v1.
 _NON_RETRYABLE_ERROR = "empty message content from upstream model"
 
 _PROMPT_TOKENS = 1234

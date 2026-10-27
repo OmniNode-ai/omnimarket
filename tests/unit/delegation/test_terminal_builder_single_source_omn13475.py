@@ -56,6 +56,10 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
     ModelRoutingDecision,
 )
 
+# A no-answer failure now reaches the escalation decision, which reads quota
+# state; these drive the terminal path, so they bind an empty quota reader.
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
 _NON_RETRYABLE_ERROR = "empty message content from upstream model"
 _PROMPT_TOKENS = 1234
 _COMPLETION_TOKENS = 567

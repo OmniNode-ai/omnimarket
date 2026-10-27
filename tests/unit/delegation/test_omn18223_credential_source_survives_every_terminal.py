@@ -79,7 +79,12 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference
     HandlerInferenceIntent,
 )
 
-pytestmark = pytest.mark.unit
+pytestmark = [
+    pytest.mark.unit,
+    # A no-answer failure now reaches the escalation decision, which reads
+    # quota state; the terminal-path tests bind an empty quota reader.
+    pytest.mark.usefixtures("stub_provider_quota_reader"),
+]
 
 _EFFECT_MODULE = (
     "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent"
