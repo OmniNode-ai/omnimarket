@@ -65,7 +65,7 @@ from omnimarket.routing.roi_overlay import (
 # Three routable tiers for code_generation (tier_order = local -> cheap_cloud ->
 # cheap_frontier -> claude): local-coder, cloud-gemini-2-5-flash (cheap_cloud AND
 # claude ceiling — OMN-14625 repointed both off cloud-glm, whose z.ai route is
-# DEAD from the .201 runtime), openrouter-nemotron-ultra (cheap_frontier).
+# DEAD from the deployed runtime), openrouter-north-mini-code (cheap_frontier).
 # Complete endpoint_urls so the tiers route in CI without a host overlay.
 _BIFROST_THREE_TIER = textwrap.dedent(
     """\
@@ -88,11 +88,15 @@ _BIFROST_THREE_TIER = textwrap.dedent(
         timeout_ms: 60000
         max_tokens: 65536
         capabilities: [code_generation]
-      - backend_id: openrouter-nemotron-ultra
+      - backend_id: openrouter-north-mini-code
         provider: openrouter
         endpoint_url: "https://openrouter.test/v1/chat/completions"
-        model_name: qwen3-coder-480b
+        model_name: cohere/north-mini-code:free
         tier: cheap_frontier
+        placement:
+          tier: cheap_frontier
+          max_context_tokens: 256000
+          use_for: [code_generation, reasoning, test, refactor]
         timeout_ms: 30000
         max_tokens: 8192
         capabilities: [code_generation]
@@ -104,7 +108,7 @@ _BIFROST_THREE_TIER = textwrap.dedent(
         backend_policy_version: "2.0.0"
         match_operation_types: [chat_completion]
         match_capabilities: [code_generation]
-        backend_ids: [local-coder, cloud-gemini-2-5-flash, openrouter-nemotron-ultra]
+        backend_ids: [local-coder, cloud-gemini-2-5-flash, openrouter-north-mini-code]
         fallback_policy:
           action: escalate_to_next_tier
           max_retries: 1
@@ -137,6 +141,12 @@ def code_gen_routable(
     contract_path.write_text(_BIFROST_THREE_TIER)
     monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract_path))
     monkeypatch.delenv("BIFROST_OVERLAY_PATH", raising=False)
+    # OMN-20376: the free tier's one rung arrives by placement from this
+    # contract, so a ladder another test cached from a different contract
+    # must not be reused.
+    monkeypatch.setattr(routing, "_config", None)
+    monkeypatch.setattr(routing, "_config_spread_peers", None)
+    monkeypatch.setattr(routing, "_config_spread_weights", None)
     routing._load_bifrost_endpoints.cache_clear()
     try:
         yield
@@ -756,8 +766,8 @@ def test_port_resolve_initial_backend_roi_flips_tier(
         "code_generation", roi_overlay=_suppress("local")
     )
     # OMN-14225 free-before-paid: a suppressed local flips to the FREE cheap_frontier
-    # tier (openrouter-nemotron-ultra), not the paid cheap_cloud.
-    assert flipped.backend_id == "openrouter-nemotron-ultra"
+    # tier (openrouter-north-mini-code), not the paid cheap_cloud.
+    assert flipped.backend_id == "openrouter-north-mini-code"
     assert flipped.tier == "cheap_frontier"
 
 

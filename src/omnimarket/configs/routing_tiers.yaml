@@ -330,64 +330,20 @@ tiers:
     # the projection records 0 actual cost without a per-token rate.
     cost:
       cost_type: free_local
-    models:
-      # Qwen3 Coder 480B via OpenRouter free tier — cheap frontier direct (OMN-12492)
-      - id: openrouter-nemotron-ultra
-        backend_id: openrouter-nemotron-ultra
-        max_context_tokens: 262144
-        # OMN-16891 added code_review and validator_generation to this free
-        # coder rung alongside code_generation/refactor/test. OMN-17427 now
-        # withholds code_review; the remaining code classes keep their placements.
-        #
-        # Placement constraint, stated rather than discovered in production:
-        # this rung is a POOR fit for terse or tightly-budgeted structured
-        # output. Live 2026-08-28 probe — asked to "Reply with exactly: ok"
-        # under max_tokens 16, it spent 18 reasoning tokens and returned its
-        # own deliberation ("The user wants me to reply with exactly ok...")
-        # instead of the answer, a live reproduction of OMN-12717. The backend
-        # carries a 65536-token output budget in bifrost_delegation.yaml for
-        # exactly this reason; do not narrow it for this rung.
-        use_for:
-          - code_generation
-          # OMN-17427: code_review REMOVED -- withheld from delegation, see
-          # task_class_contracts.v1.yaml code_review.routing_availability
-          - reasoning
-          # OMN-19432: `review` added beside `reasoning`; see the class contract.
-          - review
-          - research
-          - refactor
-          - test
-          - validator_generation
-          # OMN-13640: the three PROSE classes ADDED, so this genuinely-free
-          # rung is actually reachable for prose. Before this, `cheap_frontier`
-          # appeared in no prose class's escalation_policy.tier_order and no
-          # cheap_frontier model listed a prose class here -- the free cloud
-          # rung was never attempted for prose, and every prose escalation went
-          # straight to the metered cheap_cloud tier (4 of 4 accepted drafts on
-          # 2026-09-14, $0.001809 mean, answered by gemini-2.5-flash-lite).
-          #
-          # This is NOT a capability stretch on a code-only model. The entry
-          # `id` above is HISTORICAL -- it is the tier-model id, kept stable
-          # because task_model_overrides and the id-match escape hatch key on
-          # it. The model this backend actually serves is declared in
-          # bifrost_delegation.yaml as
-          # `model_name: nvidia/nemotron-3-ultra-550b-a55b:free` -- a GENERAL
-          # instruction model, not a coder-only one -- so serving
-          # natural_language_generation here is what the backend already is.
-          # Do not read the id as the served model.
-          #
-          # Placement caveat, already recorded above and unchanged: this rung is
-          # a poor fit for terse, tightly-budgeted output (it spends reasoning
-          # tokens deliberating). Prose responses are not terse and the backend
-          # carries a 65536-token output budget, so the fit is the right way
-          # round here; do not narrow that budget for this rung.
-          - document
-          - documentation
-          - summarization
-        fast_path_threshold_tokens: 8192
-      # north-mini-code is a spread peer of openrouter-nemotron-ultra via its
-      # placement in bifrost_delegation.yaml. The mirrored entry copies the
-      # ultra rung's use_for, so it still serves every class that rung serves.
+    # OMN-20376: no vendor backend is named here. openrouter-nemotron-ultra is
+    # WITHDRAWN from this tier: it answered 6 of 10 on the 2026-10-25
+    # cheap_frontier smoke, under the bar of 7
+    # (tests/fixtures/receipts/cheap_frontier_smokes_2026_10_25.json), and was
+    # already explicit_pin_only; omnimarket#4412 withdrew Super and left Ultra
+    # named here. Its backend declaration stays in bifrost_delegation.yaml only
+    # because the default quality-gate judge and an explicit pin still resolve it.
+    #
+    # The tier's one rung, openrouter-north-mini-code, is declared by its own
+    # ``placement`` in bifrost_delegation.yaml (no ``fallback_for``), with the
+    # whole use_for written out there, because the deployment-fact gate admits no
+    # new vendor value in this packaged file. The routing authority appends it
+    # when it loads the ladder (omnimarket.routing.backend_placement).
+    models: []
     eval_before_accept: true
     eval_model: null
     max_retries: 1
@@ -415,8 +371,8 @@ tiers:
   # backend already used by the judge lane and the cheap_cloud tier. Cost model
   # updated to metered (0.002 / 1k tokens) to match the billed z.ai direct key.
   # max_retries raised 0 → 2 for resilience against transient z.ai errors.
-  # A fallback model entry (openrouter-nemotron-ultra, separate provider,
-  # genuinely free tier) is added so the ceiling is not a single point of failure.
+  # (The fallback entry OMN-13667 added here, openrouter-nemotron-ultra, was
+  # removed under OMN-14625 below; OMN-20376 withdrew Ultra from every tier.)
   #
   # OMN-14625: ceiling repointed a THIRD time — from GLM-5.2 z.ai direct
   # (cloud-glm) back to Gemini (cloud-gemini-2-5-flash, gemini-2.5-flash). The z.ai
@@ -426,8 +382,7 @@ tiers:
   # fallback entry added under OMN-13667 is REMOVED — with the primary ceiling
   # back on a proven-resolvable backend, the free-aggregator fallback is not
   # worth its markup-avoidance tradeoff on the ceiling slot specifically
-  # (cheap_frontier below still carries the same OpenRouter model for the
-  # lower-cost escalation path).
+  # (OMN-20376: cheap_frontier no longer carries that model either.)
   #
   # The tier slot is kept named ``claude`` because every task-class
   # escalation_policy.tier_order and the handler cost_tier_map key on this literal

@@ -107,3 +107,23 @@ dod_evidence:
         check_value: "uv run pytest tests/validators/test_provider_model_catalogue.py tests/unit/delegation/test_openrouter_review_reasoning_omn19432.py -q --refuse-skips"
       - check_type: "command"
         check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/bifrost_delegation.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"Super is withdrawn\" > /dev/null'"
+  - id: "dod-omn20376-deploy-ultra-withdrawn"
+    description: >-
+      Falsifiable hosted deploy smoke for the packaged routing configuration:
+      no tier of routing_tiers.yaml names openrouter-nemotron-ultra (the free
+      coder tier names no vendor backend, and the ceiling tier carries one
+      model with no fallback), no placement mirrors it, and the placed free
+      tier carries one rung, openrouter-north-mini-code, with its own use_for
+      written out. The Ultra backend declaration stays, explicit_pin_only with
+      judge_adequacy, for the default judge and explicit pins. The withdrawal
+      test fails on the merge-base config, which names Ultra as the free
+      tier's rung. The command probe reads the packaged bifrost contract from
+      GitHub at the checked-out commit and requires the withdrawal note; the
+      merge base carries none. No lab credentials, broker or model server are
+      required on the hosted runner.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_nemotron_ultra_withdrawn_omn20376.py tests/unit/routing/test_north_mini_spread_omn17427.py -q --refuse-skips"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/bifrost_delegation.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"withdrawn from routing_tiers.yaml too\" > /dev/null'"

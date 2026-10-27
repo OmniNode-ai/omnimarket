@@ -97,7 +97,7 @@ class _Model:
 
 _TIERS = (
     _Tier("local", "local-coder"),
-    _Tier("cheap_frontier", "openrouter-nemotron-ultra"),
+    _Tier("cheap_frontier", "openrouter-north-mini-code"),
     _Tier("cheap_cloud", "cloud-gemini-2-5-flash"),
 )
 
@@ -121,7 +121,7 @@ def test_band_cheapest_met_starts_at_the_first_tier_with_a_met_cell() -> None:
     start = _start(
         (
             _cell("cloud-gemini-2-5-flash", bound=0.97),
-            _cell("openrouter-nemotron-ultra", bound=0.92),
+            _cell("openrouter-north-mini-code", bound=0.92),
             _cell("local-coder", verdict=EnumCapabilityCellVerdict.MISSED),
         )
     )
@@ -130,14 +130,14 @@ def test_band_cheapest_met_starts_at_the_first_tier_with_a_met_cell() -> None:
     # though cheap_cloud's bound is higher.
     assert start.start_tier_name == "cheap_frontier"
     assert start.cell is not None
-    assert start.cell.backend_id == "openrouter-nemotron-ultra"
+    assert start.cell.backend_id == "openrouter-north-mini-code"
 
 
 def test_band_cheapest_met_ignores_other_bands_and_classes() -> None:
     start = _start(
         (
             _cell("local-coder", band=EnumSizeBand.L),
-            _cell("openrouter-nemotron-ultra").model_copy(
+            _cell("openrouter-north-mini-code").model_copy(
                 update={"task_class": "test"}
             ),
             _cell("cloud-gemini-2-5-flash"),
@@ -149,8 +149,8 @@ def test_band_cheapest_met_ignores_other_bands_and_classes() -> None:
 def test_band_cheapest_met_picks_the_highest_bound_cell_of_the_tier() -> None:
     start = _start(
         (
-            _cell("openrouter-nemotron-ultra", bound=0.91, configuration_id="cfg-a"),
-            _cell("openrouter-nemotron-ultra", bound=0.95, configuration_id="cfg-b"),
+            _cell("openrouter-north-mini-code", bound=0.91, configuration_id="cfg-a"),
+            _cell("openrouter-north-mini-code", bound=0.95, configuration_id="cfg-b"),
         )
     )
     assert start.cell is not None
@@ -164,7 +164,7 @@ def test_band_cheapest_met_routes_delta_to_the_measured_tier() -> None:
     measured = delta(
         _request(),
         capability_map=ModelCapabilityMapRead(
-            cells=(_cell("openrouter-nemotron-ultra"),), eval_line_verdict="met"
+            cells=(_cell("openrouter-north-mini-code"),), eval_line_verdict="met"
         ),
     )
     assert measured.tier_name == "cheap_frontier"
@@ -177,7 +177,7 @@ def test_band_cheapest_met_leaves_an_escalation_floor_alone() -> None:
         _request(),
         min_tier_name="local",
         capability_map=ModelCapabilityMapRead(
-            cells=(_cell("openrouter-nemotron-ultra"),), eval_line_verdict="met"
+            cells=(_cell("openrouter-north-mini-code"),), eval_line_verdict="met"
         ),
     )
     assert decision.tier_name == "local"
@@ -192,7 +192,7 @@ def test_band_no_met_static() -> None:
         (
             _cell("local-coder", verdict=EnumCapabilityCellVerdict.REFUSED),
             _cell(
-                "openrouter-nemotron-ultra", verdict=EnumCapabilityCellVerdict.MISSED
+                "openrouter-north-mini-code", verdict=EnumCapabilityCellVerdict.MISSED
             ),
         )
     )
@@ -232,7 +232,7 @@ def test_class_line_not_met_static(line: str | None) -> None:
         ModelCapabilityMapRead(cells=None, eval_line_verdict="met"),
         ModelCapabilityMapRead(cells=(), eval_line_verdict="met"),
         ModelCapabilityMapRead(
-            cells=(_cell("openrouter-nemotron-ultra"),), eval_line_verdict="missed"
+            cells=(_cell("openrouter-north-mini-code"),), eval_line_verdict="missed"
         ),
     ],
 )
@@ -253,7 +253,7 @@ def test_band_routing_log_line(caplog: pytest.LogCaptureFixture) -> None:
     delta(
         _request(),
         capability_map=ModelCapabilityMapRead(
-            cells=(_cell("openrouter-nemotron-ultra", n=133, bound=0.9312),),
+            cells=(_cell("openrouter-north-mini-code", n=133, bound=0.9312),),
             eval_line_verdict="met",
         ),
     )
@@ -264,7 +264,7 @@ def test_band_routing_log_line(caplog: pytest.LogCaptureFixture) -> None:
         f"class={_CLASS}",
         "band=S",
         "tier=cheap_frontier",
-        "cell=model/openrouter-nemotron-ultra/cfg-0000000000000001",
+        "cell=model/openrouter-north-mini-code/cfg-0000000000000001",
         "n=133",
         "bound=0.9312",
         f"reason={REASON_BAND_CHEAPEST_MET}",
