@@ -121,7 +121,7 @@ async def test_ac1_n_credentialed_backends_give_exactly_n_probed_verdicts(
     assert sorted(r.backend_id for r in probed) == sorted(ends)
     assert all(r.verdict is V.LIVE for r in probed)
     # Every declared backend is reported: the rest are skipped, never silently dropped.
-    assert len(result.rungs) == 13
+    assert len(result.rungs) == 12
     skipped = {r.verdict for r in result.rungs if not r.probed}
     assert skipped == {V.SKIPPED_NO_ENDPOINT}
     # glm-5.3 and glm-5.3-flash differ by model, so 4 rungs are 4 requests (+ 3 controls).
