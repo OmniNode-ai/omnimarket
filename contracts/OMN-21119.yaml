@@ -1,8 +1,8 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-21119"
-title: "TA.18 Resume and delegation-payload profiles (profile data, task-class field and pack budget slices)"
-summary: "The session_resume and delegation_payload_local context profiles ship as YAML under pack/profiles and resolve through node_context_profile_resolver_effect; task-class contract entries gain an optional context_profile field, a profile-name shape check, and resolve_task_class_context_profile. No production task class sets the field; a fixture task class exercises it. Pack budget slice: node_delegation_context_pack_budget_compute decides, for a task class naming a profile, the pack budget (the routed backend's grounded-input ceiling minus the request composed without the pack, never above the profile budget), no_room when nothing is left (sent without a pack), and the refusal of a pack answer with an empty hash. Not yet: the delegation orchestrator calling it and requesting the pack from node_context_pack_orchestrator, the session-resume wiring, the stable-prefix check on recorded requests and the sentinel topic check."
+title: "TA.18 Resume and delegation-payload profiles (profile data, task-class field and measured pack admission slices)"
+summary: "The session_resume and delegation_payload_local context profiles ship as YAML under pack/profiles and resolve through node_context_profile_resolver_effect; task-class contract entries gain an optional context_profile field, a profile-name shape check, and resolve_task_class_context_profile. No production task class sets the field; a fixture task class exercises it. Measured-admission slice: a non-empty pack hash alone never authorizes dispatch; the full serialized input including the pack must be measured with the same estimator and fit the routed ceiling. Pack budget slice: node_delegation_context_pack_budget_compute decides, for a task class naming a profile, the pack budget (the routed backend's grounded-input ceiling minus the request composed without the pack, never above the profile budget), no_room when nothing is left (sent without a pack), and the refusal of a pack answer with an empty hash. Not yet: the delegation orchestrator calling it and requesting the pack from node_context_pack_orchestrator, the session-resume wiring, the stable-prefix check on recorded requests and the sentinel topic check."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -27,7 +27,13 @@ requirements:
           S3 (AC1): for a task class naming a profile, the pack budget is the routed backend's grounded-input ceiling minus the request composed without the pack, never above the profile's budget; a request with no room left is sent without a pack and records `no_room`; the result names the estimator -- falsifier: test.
       - id: "DoD4"
         statement: |-
-          S4 (AC3): a pack answer with an empty or whitespace hash is refused and not dispatched; a non-empty hash is attached and dispatched; a class naming no profile is dispatched with no pack and no hash -- falsifier: test.
+          S4 (AC3): a pack answer with an empty or whitespace hash is refused and not dispatched; a non-empty hash with a measured assembled input within the routed ceiling is attached and dispatched; a class naming no profile is dispatched with no pack and no hash -- falsifier: test.
+  - id: "req-ta18-measured-pack-admission"
+    statement: "Pack admission requires the full assembled input to be measured and fit the routed ceiling."
+    acceptance:
+      - id: "DoD5"
+        statement: |-
+          S5 (AC1): a non-empty pack hash without an assembled-input count is refused, a count above the routed ceiling is refused, and a count equal to the ceiling is admitted; the result records the count -- falsifier: a counterexample in the handler or bus tests.
 evidence_requirements:
   - kind: "tests"
     description: "S1 and S2: the resolver tests and the task-class context_profile tests."
@@ -95,4 +101,18 @@ dod_evidence:
           assert (r["status"], r["token_budget_override"], r["dispatch_allowed"]) == ("request_pack", 5500, False), r
           print(r["status"], r["token_budget_override"])
           PY
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21119-s5-measured-admission"
+    description: "The handler and packaged runtime refuse unmeasured and overflowing pack inputs and admit a measured input at the ceiling. This proves admission behavior, not the remaining dispatch or session-resume wiring."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_context_pack_budget_compute/test_delegation_context_pack_budget.py tests/nodes/node_delegation_context_pack_budget_compute/test_golden_chain_delegation_context_pack_budget_compute.py -q --no-cov"
+    binds_ac: ["DoD5"]
+  - id: "dod-omn21119-deploy-measured-admission"
+    description: "Hosted-runner probe executes the three measured-admission cases through the packaged contract and in-memory bus. It fails at the merge base, which attaches a hash without a measurement and rejects the count field. No external service or credential is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run --frozen pytest tests/nodes/node_delegation_context_pack_budget_compute/test_golden_chain_delegation_context_pack_budget_compute.py -q -n 0 --no-cov -k bus_admission"
         cwd: "${OMNI_HOME}/omnimarket"
