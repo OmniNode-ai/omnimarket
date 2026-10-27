@@ -48,7 +48,7 @@ evidence_requirements:
   command: uv run pytest tests/nodes/node_remote_lane_close_compute -q --no-cov
 - kind: manual
   description: Hosted deploy check exercises the packaged node without network, broker, credentials or live services.
-  command: 'deploy: uv run pytest tests/nodes/node_remote_lane_close_compute -q --no-cov -k usage_through_runtime_local'
+  command: Packaged ONEX node dispatch and typed receipt readback in dod-omn21454-deploy-packaged-node.
 emergency_bypass:
   enabled: false
   justification: ''
@@ -118,8 +118,10 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_remote_lane_close_compute -q --no-cov -k attempt_id_in_receipt
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21454-deploy-packaged-node
-  description: 'Falsifiable hosted check: both native recorded streams traverse the packaged close-node contract
-    and preserve usage, omitted unknown cost and work identity in the serialized terminal.'
+  description: 'Hosted deploy smoke: dispatch both recorded native streams through the packaged close node using
+    the ONEX CLI and compare the typed receipt usage and ledger identity with the recorded expectations. Unknown
+    Codex cost must remain absent. Runs against the evaluated checkout without credentials, broker or lab services;
+    this verifies the packaged compute node, not launcher integration or a production rollout.'
   source: manual
   binds_ac:
   - AC1
@@ -130,6 +132,40 @@ dod_evidence:
   - AC6
   - AC7
   checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_remote_lane_close_compute -q --no-cov -k usage_through_runtime_local
+  - check_type: command
+    check_value: |
+      set -eu;
+      export PYTHONDONTWRITEBYTECODE=1;
+      probe_dir="$(mktemp -d)";
+      trap 'rm -rf "$probe_dir"' EXIT;
+      uv sync --locked;
+      runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+      for engine in claude codex; do
+        "$runtime_bin/python" -c '
+      import json
+      import sys
+      from pathlib import Path
+      engine, output = sys.argv[1:]
+      fixtures = Path("tests/nodes/node_remote_lane_close_compute/fixtures")
+      events = json.loads((fixtures / f"{engine}_recorded_events.json").read_text())["events"]
+      Path(output).write_text(json.dumps({"engine_exit_code": 0, "engine": engine, "engine_output": events, "brief": "Contract: work-42\nAttempt: attempt-2\n"}))
+      ' "$engine" "$probe_dir/$engine.input.json";
+        env ONEX_LANE=omn21454-deploy-probe "$runtime_bin/onex" node node_remote_lane_close_compute --input "$probe_dir/$engine.input.json" --state-root "$probe_dir/$engine.state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/$engine.receipt.json";
+        "$runtime_bin/python" -c '
+      import json
+      import sys
+      from pathlib import Path
+      engine, receipt_path = sys.argv[1:]
+      receipt = json.loads(Path(receipt_path).read_text())
+      assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+      expected = json.loads(Path("tests/nodes/node_remote_lane_close_compute/fixtures/recorded_expected.json").read_text())[engine]
+      identity = {"contract_id": "work-42", "attempt_id": "attempt-2"}
+      result = receipt["result"]
+      assert result["usage"] == {**expected, **identity}, result
+      assert result["ledger_cells"] == identity, result
+      if engine == "codex":
+          assert result["usage"]["cost_basis"] == "UNKNOWN" and "total_cost_usd" not in result["usage"], result
+      print(json.dumps({"engine": engine, "run_id": receipt["run_id"], "usage": result["usage"], "ledger_cells": result["ledger_cells"]}, sort_keys=True))
+      ' "$engine" "$probe_dir/$engine.receipt.json";
+      done
     cwd: ${OMNI_HOME}/omnimarket
