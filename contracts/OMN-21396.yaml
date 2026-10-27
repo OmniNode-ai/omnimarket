@@ -369,14 +369,16 @@ dod_evidence:
         cwd: "."
   - id: "dod-omn21396-codex-measurement"
     description: >
-      Hosted-runner check of the committed Codex cohort measurement taken on a
-      lab host where Codex starts: each of the seven task types has three fixed
-      and one receipt-derived Codex observation, every row is available and
-      carries a pass or a failure kind, and the proposed experiment rows number
-      twenty-eight. Reads committed JSON only; no login, credentials, broker or
-      lab service.
+      Hosted-runner deploy check of the committed h201 Codex measurement:
+      replay both cohorts through the installed eval and capability handlers,
+      reproduce summaries and proposed experiment STATUS rows, and verify
+      fixture identities, all seven task types, attempts 1-28, and recorded
+      rebase failures. Small samples must remain below the capability line.
+      The regression fails at the merge base without the measurement artifacts.
+      Reads committed JSON only; no login, credentials, broker or lab service.
     source: "manual"
+    binds_ac: ["AC3", "AC4"]
     checks:
-      - check_type: "command"
-        check_value: "python3 -c \"import json,pathlib;b=pathlib.Path('benchmarks/harness_evals/results/2026-10-27-h201-codex');f=json.loads((b/'fixed/summary.json').read_text());r=json.loads((b/'recent/summary.json').read_text());assert len(f)==7 and len(r)==7;assert all(c['harness']=='codex' and c['n']==3 and c['unavailable']==0 for c in f);assert all(c['n']==1 and c['unavailable']==0 for c in r);assert len(json.loads((b/'fixed/experiment-rows.json').read_text()))+len(json.loads((b/'recent/experiment-rows.json').read_text()))==28\""
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_codex_measurement_omn21396.py -q --no-cov --refuse-skips"
         cwd: "."
