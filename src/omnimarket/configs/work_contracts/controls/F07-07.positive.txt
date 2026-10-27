@@ -1,0 +1,1 @@
+{"source": "src/omnibase_core/models/security/model_backend_performance_profile.py", "old": "default=EnumLatencyLevel.MINIMAL,", "new": "default=\"unrecognized_latency\",", "defect": "latency defaults to an invalid string instead of EnumLatencyLevel; unvalidated default construction bypasses the enum boundary."}

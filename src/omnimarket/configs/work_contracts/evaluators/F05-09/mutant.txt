@@ -1,0 +1,21 @@
+from __future__ import annotations
+
+def parse_labels(raw: str) -> tuple[str, ...] | None:
+    """Parse a runner-variable JSON array. ``None`` on anything unusable.
+
+    An unusable seam is a config fault, not a licence to pick: the caller turns
+    ``None`` into a hosted placement with a named reason.
+    """
+    import json
+
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(parsed, list):
+        return None
+    if not all(isinstance(item, str) for item in parsed):
+        return None
+    return tuple(str(item) for item in parsed)

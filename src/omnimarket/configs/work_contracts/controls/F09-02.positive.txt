@@ -1,0 +1,1 @@
+{"scenario": "F09-02", "rows": [{"id": "L3677", "label": "question_guard"}, {"id": "L3675", "label": "judge_touch"}, {"id": "L3670", "label": "shell_shape"}]}

@@ -1,0 +1,1 @@
+{"diagnosis": "Thread gate refuses 13 blocking findings whose rejections the review bot has not judged; no reviewed code defect inferred."}

@@ -1,0 +1,1710 @@
+Read the complete public Python module below. Answer each question using the exact first line of the named definition's docstring. Give three lines labelled Q1, Q2, Q3. Copy the text exactly; do not paraphrase. The relevant definitions are in the latter part of the module.
+Q1: What is the first docstring line of the definition named _finish_native_call?
+Q2: What is the first docstring line of the definition named emit_escalation?
+Q3: What is the first docstring line of the definition named _credential_refusal_result?
+
+Public repository: OmniNode-ai/omnimarket
+Module: src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_llm_delegation_call.py
+Revision: 8ea4f7a0bc9794e48d6fe7d2a99d075f8c93a22a
+
+BEGIN PUBLIC SOURCE
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""HandlerLlmDelegationCall — executes one LLM API call with health probe, cost telemetry, and event emission.
+
+Health probe results are cached per endpoint URL with a 60-second TTL to avoid
+hammering unhealthy endpoints on every call.
+
+Endpoint URLs are supplied by routing/contract resolution before this effect runs.
+Raw prompt is NEVER logged, persisted, or emitted to Kafka — only prompt_hash.
+
+Transport is a runtime-profile-internal detail (OMN-13160): the ``transport``
+module selects curl on ``local_macos_claude_hooks`` (the only LAN-safe transport
+from uv-managed Python on the local Mac — httpx EHOSTUNREACHes on the example-endpoint LAN)
+and httpx everywhere else. The POST URL is the resolved ``endpoint_ref`` posted
+verbatim (OMN-12815/OMN-13159).
+
+Pricing for cost telemetry is resolved from routing_tiers.yaml (the model
+registry) at call time using the tier name from the request. The hardcoded
+_FALLBACK_PRICE_PER_1M dict is retained as a safe default when the tier is
+absent, unknown, or the registry is unavailable.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import logging
+import time
+from collections.abc import Callable
+from contextvars import ContextVar
+from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
+from pathlib import Path
+from typing import Any
+from uuid import UUID
+
+import httpx
+import yaml
+from omnibase_core.models.delegation.wire import ModelDelegationRawResponse
+
+from omnimarket.delegation.reasoning_preamble import strip_leading_inline_reasoning
+from omnimarket.enums.enum_cost_basis import EnumCostBasis
+from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
+from omnimarket.enums.enum_secret_source import EnumSecretSource
+from omnimarket.enums.enum_usage_source import EnumUsageSource
+from omnimarket.events.provider_quota import (
+    EnumProviderQuotaSource,
+    ModelProviderQuotaObserved,
+)
+from omnimarket.inference.local_byok_credential_adapter import (
+    MODEL_CHOSEN_BY_CATALOGUE,
+    record_local_byok_model,
+    resolve_local_byok_model_chooser,
+)
+from omnimarket.inference.provider_finish_reason import finish_reason_from_choice
+from omnimarket.inference.provider_quota_observation import (
+    build_quota_observation,
+    observe_failed_call,
+)
+from omnimarket.inference.provider_quota_policy import ModelQuotaVerdict
+from omnimarket.inference.provider_response_error import (
+    IN_BODY_ERROR_MESSAGE_PREFIX,
+    describe_provider_refusal,
+    failure_class_for_status,
+    provider_error_from_body,
+)
+from omnimarket.inference.secret_store_resolver import (
+    SecretResolutionError,
+    resolve_api_key_with_source_loop_safe,
+)
+from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_all_tiers_failed_event import (
+    ModelLlmDelegationAllTiersFailedEvent,
+)
+from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_completed_event import (
+    ModelLlmDelegationCompletedEvent,
+)
+from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
+    ModelLlmDelegationEscalationTriggeredEvent,
+)
+from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_model_degraded_event import (
+    ModelLlmDelegationModelDegradedEvent,
+)
+from omnimarket.models.delegation.local_credential_refusal import (
+    EnumLocalCredentialRefusalReason,
+    ModelLocalCredentialRefusal,
+)
+from omnimarket.nodes.contract_topics import (
+    contract_publish_topics,
+    contract_subscribe_topics,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
+    anthropic_messages,
+    transport,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.review_cost_recorder import (
+    TOPIC_REVIEW_CALL_COST_RECORDED,
+    attempt_counter,
+    cache_usage_figures,
+    next_attempt,
+    record_cancelled_review_attempt,
+    record_finished_attempt,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect.models.model_earlier_model_attempt import (
+    ModelEarlierModelAttempt,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_observation import (
+    ModelLlmDelegationCallObservation,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_request import (
+    ModelLlmDelegationCallRequest,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_result import (
+    ModelLlmDelegationCallResult,
+)
+from omnimarket.routing.byok_model_discovery import (
+    describe_discovery_refusal,
+    discover_byok_model_sync,
+    model_not_chosen_message,
+)
+from omnimarket.routing.byok_provider_backends import (
+    BYOK_MODEL_UNRESOLVED,
+    ModelByokProviderBackend,
+    byok_backend_provider,
+    byok_declared_price_per_1m,
+    byok_model_price_per_1m,
+    resolve_byok_backend_by_endpoint,
+    token_limit_field_for_endpoint,
+)
+from omnimarket.tenant_credential_ref import is_tenant_credential_ref
+
+_CONTRACT = Path(__file__).parent.parent / "contract.yaml"
+
+#: Who is told about each provider call while the effect is still running. A
+#: caller that can cancel the effect (the delegation handler's execution
+#: budget) binds one so the calls already made survive the cancellation: on a
+#: customer route the effect may call a second model after a 429 on the first,
+#: and both calls exist only here until the effect returns. ``None`` (the
+#: default) reports nothing.
+current_call_observer: ContextVar[
+    Callable[[ModelLlmDelegationCallObservation], None] | None
+] = ContextVar("llm_delegation_call_observer", default=None)
+
+
+def _report_call(observation: ModelLlmDelegationCallObservation) -> None:
+    """Hand ``observation`` to the bound observer; a failing observer never fails the call."""
+    observer = current_call_observer.get()
+    if observer is None:
+        return
+    try:
+        observer(observation)
+    except Exception:  # evidence reporting must never change the call
+        logger.warning("delegation call observer failed", exc_info=True)
+
+
+_subscribe = contract_subscribe_topics(_CONTRACT)
+_publish = contract_publish_topics(_CONTRACT)
+
+_DELEGATION_EXECUTE_SUFFIX = (
+    "delegation-execute.v1"  # onex-topic-allow: suffix used for contract lookup
+)
+_DELEGATION_CALL_COMPLETED_SUFFIX = (
+    "delegation-call-completed.v1"  # onex-topic-allow: suffix used for contract lookup
+)
+_DELEGATION_ESCALATION_TRIGGERED_SUFFIX = "delegation-escalation-triggered.v1"  # onex-topic-allow: suffix used for contract lookup
+_DELEGATION_ALL_TIERS_FAILED_SUFFIX = "delegation-all-tiers-failed.v1"  # onex-topic-allow: suffix used for contract lookup
+_DELEGATION_MODEL_DEGRADED_SUFFIX = (
+    "delegation-model-degraded.v1"  # onex-topic-allow: suffix used for contract lookup
+)
+
+
+def _single_contract_topic(topics: tuple[str, ...], suffix: str, section: str) -> str:
+    matches = tuple(topic for topic in topics if topic.endswith(suffix))
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"Contract {_CONTRACT} must declare exactly one event_bus.{section} "
+            f"topic ending with {suffix!r}; found {matches!r}."
+        )
+    return matches[0]
+
+
+TOPIC_DELEGATION_EXECUTE = _single_contract_topic(
+    _subscribe, _DELEGATION_EXECUTE_SUFFIX, "subscribe_topics"
+)
+TOPIC_DELEGATION_CALL_COMPLETED = _single_contract_topic(
+    _publish, _DELEGATION_CALL_COMPLETED_SUFFIX, "publish_topics"
+)
+TOPIC_DELEGATION_ESCALATION_TRIGGERED = _single_contract_topic(
+    _publish, _DELEGATION_ESCALATION_TRIGGERED_SUFFIX, "publish_topics"
+)
+TOPIC_DELEGATION_ALL_TIERS_FAILED = _single_contract_topic(
+    _publish, _DELEGATION_ALL_TIERS_FAILED_SUFFIX, "publish_topics"
+)
+TOPIC_DELEGATION_MODEL_DEGRADED = _single_contract_topic(
+    _publish, _DELEGATION_MODEL_DEGRADED_SUFFIX, "publish_topics"
+)
+
+__all__ = [
+    "TOPIC_REVIEW_CALL_COST_RECORDED",
+    "HandlerLlmDelegationCall",
+    "record_cancelled_review_attempt",
+]
+
+logger = logging.getLogger(__name__)
+
+_HEALTH_CACHE_TTL_SECONDS = 60
+# (endpoint_url, timestamp_of_check, is_healthy)
+_health_cache: dict[str, tuple[float, bool]] = {}
+
+# OMN-16419: the GET /v1/models cache lives in ``transport`` (OMN-17098: shared
+# with ``HandlerInferenceIntent``); this alias keeps one cache object so a
+# ``.clear()`` here clears the one both handlers read.
+_served_models_cache = transport.served_models_cache
+
+
+def _get_served_model_ids(endpoint_url: str) -> frozenset[str] | None:
+    """Return cached (or freshly probed) served model ids for ``endpoint_url``.
+
+    OMN-16419: backs the fail-closed model-attribution guard in
+    ``_execute_call``. See ``transport.probe_served_models`` for why this reads
+    ``/v1/models`` rather than trusting the chat-completion response's echoed
+    ``model`` field.
+    """
+    return transport.get_served_model_ids(endpoint_url)
+
+
+# Pricing is expressed as cost per 1M tokens in USD.
+# These are FALLBACK values used when the tier is unknown or the routing
+# registry is unavailable. Registry-sourced pricing from routing_tiers.yaml
+# (via _get_tier_price_per_1m) takes precedence at call time.
+_FALLBACK_PRICE_PER_1M: dict[str, tuple[Decimal, Decimal]] = {
+    # tier_name -> (price_in_per_1M, price_out_per_1M)
+    # Values derived from routing_tiers.yaml cost_per_1k_tokens * 1000.
+    "local": (Decimal("0.00"), Decimal("0.00")),
+    "cheap_cloud": (Decimal("2.00"), Decimal("2.00")),
+    "claude": (Decimal("15.00"), Decimal("75.00")),
+    # OMN-13215: the shelled ``cli_agents`` tier was removed.
+    # Generic default for unknown tiers
+    "default": (Decimal("0.15"), Decimal("0.60")),
+}
+
+# Path to the routing registry (routing_tiers.yaml).
+_ROUTING_TIERS_PATH = (
+    Path(__file__).parent.parent.parent.parent / "configs" / "routing_tiers.yaml"
+)
+
+# Opus 3.5 pricing for savings calculation baseline (per 1M tokens)
+_OPUS_PRICE_IN_PER_1M = Decimal("15.00")
+_OPUS_PRICE_OUT_PER_1M = Decimal("75.00")
+
+
+def _get_tier_price_per_1m(tier_name: str) -> tuple[Decimal, Decimal] | None:
+    """Look up per-1M token pricing for a tier from routing_tiers.yaml.
+
+    Reads the registry directly via yaml.safe_load to avoid cross-node imports.
+    Returns (price_in_per_1M, price_out_per_1M) derived from the tier's
+    cost_per_1k_tokens field (multiplied by 1000), or None when the tier
+    cannot be resolved from the registry. Callers must fall back to
+    _FALLBACK_PRICE_PER_1M when this returns None.
+    """
+    try:
+        raw = yaml.safe_load(_ROUTING_TIERS_PATH.read_text())
+        if not isinstance(raw, dict):
+            return None
+        for tier in raw.get("tiers") or []:
+            if isinstance(tier, dict) and tier.get("name") == tier_name:
+                cost_per_1k = tier.get("cost_per_1k_tokens")
+                if cost_per_1k is None:
+                    return None
+                # cost_per_1k_tokens → per-1M by multiplying by 1000
+                price_per_1m = Decimal(str(cost_per_1k)) * Decimal("1000")
+                return (price_per_1m, price_per_1m)
+    except Exception:
+        logger.debug(
+            "routing_tiers.yaml unavailable — falling back to hardcoded pricing for tier %r",
+            tier_name,
+        )
+    return None
+
+
+def _resolve_endpoint(endpoint_ref: str) -> str:
+    """Validate the route-supplied COMPLETE endpoint URL (OMN-12815).
+
+    ``endpoint_ref`` is the COMPLETE chat-completions URL resolved by the
+    routing authority and posted VERBATIM — the handler appends no path and
+    never strips the trailing chat path. Fail-closed if it is not an http(s)
+    URL.
+    """
+    value = endpoint_ref.strip()
+    if not value.startswith(("http://", "https://")):
+        raise ValueError("endpoint_ref must be a resolved http(s) endpoint URL")
+    return value
+
+
+def _is_endpoint_healthy(endpoint_url: str) -> bool:
+    """Return cached health status or probe /health, caching result for 60s.
+
+    The probe is routed through the transport module so the LAN-safe curl
+    transport is exercised on the ``local_macos_claude_hooks`` profile and httpx
+    everywhere else (OMN-13160).
+    """
+    now = time.monotonic()
+    cached = _health_cache.get(endpoint_url)
+    if cached is not None:
+        ts, healthy = cached
+        if now - ts < _HEALTH_CACHE_TTL_SECONDS:
+            return healthy
+
+    healthy = transport.probe_health(endpoint_url)
+    _health_cache[endpoint_url] = (now, healthy)
+    return healthy
+
+
+def _sha256(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def _extract_usage(response_json: dict[str, Any]) -> tuple[int, int]:
+    usage = response_json.get("usage") or {}
+    tokens_in = int(usage.get("prompt_tokens") or 0)
+    tokens_out = int(usage.get("completion_tokens") or 0)
+    return tokens_in, tokens_out
+
+
+def _compute_cost(
+    model_id: str,
+    tokens_in: int,
+    tokens_out: int,
+    model_tier: str = "unknown",
+    endpoint_url: str | None = None,
+    provider: str | None = None,
+) -> tuple[Decimal, Decimal, Decimal, EnumCostBasis]:
+    """Return (actual_cost, opus_equivalent_cost, savings, cost_basis).
+
+    A call on a customer's own key (``provider`` is a BYOK backend id) is priced
+    by its model only: the catalogue's declared price, else the model
+    registry's price (OMN-21260). A model with neither is unpriced: zero cost,
+    zero savings and cost basis UNKNOWN, never the tier's rate, which once
+    booked a paid OpenRouter model at cheap_frontier's 0.0.
+
+    A house call's pricing is resolved in priority order:
+      0. a price the BYOK catalogue declares for this endpoint and model (OMN-20154:
+         a free model inside a metered tier is booked at its own zero, never at
+         the tier's rate)
+      1. routing_tiers.yaml registry lookup by tier name (authoritative)
+      2. _FALLBACK_PRICE_PER_1M[tier_name] (hardcoded mirror of registry values)
+      3. _FALLBACK_PRICE_PER_1M["default"] (generic catch-all)
+
+    The registry path gracefully degrades to fallback when the YAML file is
+    missing or the tier is not declared.
+    """
+    if byok_backend_provider(provider) is not None:
+        model_price = byok_model_price_per_1m(provider, endpoint_url, model_id)
+        if model_price is None:
+            return Decimal("0"), Decimal("0"), Decimal("0"), EnumCostBasis.UNKNOWN
+        declared_price: tuple[Decimal, Decimal] | None = model_price
+    else:
+        declared_price = byok_declared_price_per_1m(endpoint_url, model_id)
+    registry_price = (
+        declared_price
+        if declared_price is not None
+        else _get_tier_price_per_1m(model_tier)
+    )
+    if registry_price is not None:
+        price_in, price_out = registry_price
+    else:
+        price_in, price_out = _FALLBACK_PRICE_PER_1M.get(
+            model_tier, _FALLBACK_PRICE_PER_1M["default"]
+        )
+
+    try:
+        actual = (
+            Decimal(tokens_in) * price_in + Decimal(tokens_out) * price_out
+        ) / Decimal("1000000")
+        opus_equiv = (
+            Decimal(tokens_in) * _OPUS_PRICE_IN_PER_1M
+            + Decimal(tokens_out) * _OPUS_PRICE_OUT_PER_1M
+        ) / Decimal("1000000")
+        savings = opus_equiv - actual
+        cost_basis = (
+            EnumCostBasis.ZERO_MARGINAL_API_COST
+            if declared_price is not None and actual == 0
+            else EnumCostBasis.CLOUD_API_COST
+        )
+    except InvalidOperation:
+        actual = Decimal("0")
+        opus_equiv = Decimal("0")
+        savings = Decimal("0")
+        cost_basis = EnumCostBasis.UNKNOWN
+
+    return actual, opus_equiv, savings, cost_basis
+
+
+def _cost_usage_source(cost_basis: EnumCostBasis) -> EnumUsageSource:
+    """MEASURED when the call was priced, UNKNOWN when it was not (OMN-21260).
+
+    The tokens are always the provider's own counts; this says whether the cost
+    is, so an unpriced call's zero reads as unknown rather than free.
+    """
+    if cost_basis is EnumCostBasis.UNKNOWN:
+        return EnumUsageSource.UNKNOWN
+    return EnumUsageSource.MEASURED
+
+
+def _uuid_or_none(value: str | None) -> UUID | None:
+    """The request's correlation id as a UUID, or None when it is not one."""
+    try:
+        return UUID(str(value)) if value else None
+    except ValueError:
+        return None
+
+
+def _is_transient_model_failure(result: ModelLlmDelegationCallResult) -> bool:
+    """Whether the model is throttled (429) or its upstream is down (OMN-19205).
+
+    The 429 class, or the provider-unavailable error an aggregator delivers in
+    a 200 body. Every other failure (a timeout, a refused connection, billing,
+    auth, a missing model) is not a verdict on this model and keeps its path.
+    """
+    if result.failure_class is EnumDelegationFailureClass.RATE_LIMITED:
+        return True
+    return result.failure_class is EnumDelegationFailureClass.MODEL_UNAVAILABLE and (
+        result.error_message or ""
+    ).startswith(IN_BODY_ERROR_MESSAGE_PREFIX)
+
+
+class HandlerLlmDelegationCall:
+    """Executes a single LLM API call and returns a typed result with cost telemetry.
+
+    Does NOT own retry logic, tier escalation, or routing decisions — those
+    belong to the delegation orchestrator. This handler executes exactly one
+    HTTP call and emits exactly one terminal event.
+    """
+
+    def _observe_quota(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        endpoint_url: str,
+        *,
+        succeeded: bool,
+        latency_ms: int,
+        error_message: str = "",
+        http_status: int | None = None,
+        body: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> tuple[ModelProviderQuotaObserved | None, ModelQuotaVerdict | None]:
+        """Build this call's quota observation and its 429 verdict.
+
+        OMN-20154: the observation rides the RESULT rather than being emitted
+        here. On the in-process path this handler runs in a spawned child
+        process, and the dispatch port in the parent is what delivers it and
+        what must see it before its next routing decision. Never raises:
+        observation enriches a call that has already happened.
+        """
+        verdict: ModelQuotaVerdict | None = None
+        observation: ModelProviderQuotaObserved | None = None
+        try:
+            now = datetime.now(UTC)
+            correlation = _uuid_or_none(request.correlation_id)
+            if succeeded:
+                observation = build_quota_observation(
+                    tenant_id=None,
+                    endpoint_url=endpoint_url,
+                    api_key_ref=request.secret_ref,
+                    model_name=request.model_id,
+                    succeeded=True,
+                    observed_at=now,
+                    latency_ms=latency_ms,
+                    source=EnumProviderQuotaSource.INPROCESS_EFFECT,
+                    correlation_id=correlation,
+                    http_status=200,
+                )
+            else:
+                observation, verdict = observe_failed_call(
+                    tenant_id=None,
+                    endpoint_url=endpoint_url,
+                    api_key_ref=request.secret_ref,
+                    model_name=request.model_id,
+                    error_message=error_message,
+                    observed_at=now,
+                    latency_ms=latency_ms,
+                    source=EnumProviderQuotaSource.INPROCESS_EFFECT,
+                    correlation_id=correlation,
+                    http_status=http_status,
+                    body=body,
+                    headers=headers,
+                )
+        except Exception as exc:
+            logger.warning("provider quota observation skipped: %s", exc)
+        return observation, verdict
+
+    def handle(
+        self,
+        request: ModelLlmDelegationCallRequest,
+    ) -> (
+        ModelLlmDelegationCompletedEvent
+        | ModelLlmDelegationAllTiersFailedEvent
+        | ModelLlmDelegationCallResult
+    ):
+        """Runtime dispatch entrypoint (handler_wiring resolves handle, not __call__).
+
+        Executes the delegation call and RETURNS the terminal event/result; the
+        runtime dispatch-result applier publishes the returned model to the
+        contract's published_events topic. The handler does not publish directly.
+
+        The dispatch path emits exactly one terminal event:
+        - success → ModelLlmDelegationCompletedEvent (→ delegation-call-completed.v1)
+        - endpoint unhealthy → ModelLlmDelegationAllTiersFailedEvent (→ all-tiers-failed.v1)
+        - other failure (timeout, http error, invalid json) → ModelLlmDelegationCallResult
+          (no event publish; the failure is the returned result for the caller)
+
+        emit_escalation / emit_model_degraded remain separate methods invoked by
+        the swarm orchestrator outside this dispatch path.
+        """
+        try:
+            endpoint_url = _resolve_endpoint(request.endpoint_ref)
+        except (KeyError, ValueError) as exc:
+            logger.error("endpoint resolution failed: %s", exc)
+            return self._failure_result(
+                request,
+                EnumDelegationFailureClass.MODEL_UNAVAILABLE,
+                str(exc),
+                endpoint_healthy=False,
+            )
+
+        healthy = _is_endpoint_healthy(endpoint_url)
+        if not healthy:
+            logger.warning("health probe failed for %s — skipping call", endpoint_url)
+            return self._build_all_tiers_failed(request)
+        return self._execute_call_for_handle(request, endpoint_url)
+
+    def __call__(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        *,
+        event_publisher: Any = None,
+    ) -> ModelLlmDelegationCallResult:
+        """Execute the delegation call synchronously.
+
+        event_publisher is optional — when provided it must expose a
+        .publish(topic: str, payload: BaseModel) method. When absent,
+        events are only logged (useful for tests and local invocation).
+        """
+        try:
+            endpoint_url = _resolve_endpoint(request.endpoint_ref)
+        except (KeyError, ValueError) as exc:
+            logger.error("endpoint resolution failed: %s", exc)
+            return self._failure_result(
+                request,
+                EnumDelegationFailureClass.MODEL_UNAVAILABLE,
+                str(exc),
+                endpoint_healthy=False,
+            )
+
+        healthy = _is_endpoint_healthy(endpoint_url)
+        if not healthy:
+            logger.warning("health probe failed for %s — skipping call", endpoint_url)
+            result = self._failure_result(
+                request,
+                EnumDelegationFailureClass.MODEL_UNAVAILABLE,
+                f"endpoint {request.endpoint_ref} failed health probe",
+                endpoint_healthy=False,
+            )
+            self._emit_all_tiers_failed(request, event_publisher)
+            return result
+
+        return self._execute_call(request, endpoint_url, event_publisher)
+
+    def _execute_call_for_handle(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        endpoint_url: str,
+    ) -> ModelLlmDelegationCompletedEvent | ModelLlmDelegationCallResult:
+        """Execute the call and RETURN the terminal event/result (no publish).
+
+        Used by handle(): the runtime publishes the returned model via the
+        contract's published_events. Returns the completed event on success, or
+        a failure result on timeout/http/invalid-json (no event published for
+        those — the failure is the returned result).
+        """
+        result = self._execute_call(request, endpoint_url, event_publisher=None)
+        if not result.success:
+            return result
+        return self._build_completed_event(request, result)
+
+    def _execute_call(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        endpoint_url: str,
+        event_publisher: Any,
+    ) -> ModelLlmDelegationCallResult:
+        """Run one invocation, numbering its provider attempts from 1 (OMN-20910)."""
+        token = attempt_counter.set(iter(range(1, 1_000_000)))
+        try:
+            return self._execute_call_attempts(request, endpoint_url, event_publisher)
+        finally:
+            attempt_counter.reset(token)
+
+    def _execute_call_attempts(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        endpoint_url: str,
+        event_publisher: Any,
+    ) -> ModelLlmDelegationCallResult:
+        """Execute the call, resolving a customer route's model from its key.
+
+        OMN-20157. A customer's BYOK route (a tenant-shaped credential reference
+        on an endpoint the BYOK catalogue declares) runs the model its key
+        resolved from the provider's own model list. These cases are settled here,
+        at the one boundary that holds the key:
+
+        * the route carries the unresolved marker (the list could not be read at
+          registration, or the credential predates model discovery): the model
+          is resolved BEFORE the call, so no request is sent for a model nobody
+          chose;
+        * the provider answers 404 model-not-found: the model is re-resolved
+          ONCE from the same list, excluding the one that failed, and the call
+          is re-issued with it. A second 404, or a list naming no other
+          preferred model, is the typed ``PROVIDER_MODEL_NOT_FOUND`` refusal;
+        * OMN-19205: the catalogue pick is throttled (429) or its upstream is down
+          (an "Upstream error from ..." inside a 200): the same one-shot
+          re-resolve, excluding the failed model. A free slug's mood is not the
+          customer's route. A second failure is the typed refusal naming both
+          models, and never a third call.
+
+        OMN-21078: where the customer chooses the model, these re-aims require
+        a credential that records a catalogue pick. A customer's chosen model,
+        including a ``:free`` one, or one with no chooser record gets one call.
+        OMN-21059: every catalogue row now has the customer choose, and a
+        credential that records a catalogue pick is refused with
+        BYOK_MODEL_NOT_CHOSEN before any call.
+
+        This is not a transport retry and it never changes backend: it is the
+        same customer route asking its own provider which model it offers. A
+        house route (house-shaped reference) is never touched.
+        """
+        byok = self._customer_byok_row(request, endpoint_url)
+        if byok is None:
+            return self._execute_call_once(request, endpoint_url, event_publisher)
+        if byok.customer_chooses_model:
+            # OMN-20844: the customer chooses this provider's model. A credential
+            # with none is refused rather than given a catalogue pick, and a
+            # model the customer named is called once and never swapped.
+            if request.model_id == BYOK_MODEL_UNRESOLVED:
+                return self._failure_result(
+                    request,
+                    EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND,
+                    model_not_chosen_message(byok.provider),
+                )
+            # OMN-21078: a chosen :free model matches a preference pattern;
+            # the pattern is not evidence of who chose it. No record means
+            # customer choice, including hosted refs and older local rows.
+            # OMN-21059: a model the catalogue picked is not one the customer
+            # chose, so that credential is refused like one with no model.
+            if (
+                resolve_local_byok_model_chooser(request.secret_ref)
+                == MODEL_CHOSEN_BY_CATALOGUE
+            ):
+                return self._failure_result(
+                    request,
+                    EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND,
+                    model_not_chosen_message(byok.provider),
+                )
+            return self._execute_call_once(request, endpoint_url, event_publisher)
+        configured = request.model_id
+        if request.model_id == BYOK_MODEL_UNRESOLVED:
+            resolved = self._resolve_byok_model(request, byok, exclude=())
+            if isinstance(resolved, ModelLlmDelegationCallResult):
+                return resolved
+            request = resolved
+        result = self._execute_call_once(request, endpoint_url, event_publisher)
+        if (
+            not result.success
+            and result.failure_class
+            is EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND
+        ):
+            retry = self._resolve_byok_model(
+                request, byok, exclude=(request.model_id,), refused=result
+            )
+            if isinstance(retry, ModelLlmDelegationCallResult):
+                return retry
+            request = retry
+            result = self._execute_call_once(request, endpoint_url, event_publisher)
+        elif not result.success and _is_transient_model_failure(result):
+            result, request = self._retry_on_another_model(
+                request, byok, endpoint_url, event_publisher, first=result
+            )
+        if (
+            result.success
+            and request.model_id != configured
+            and result.served_model_id is None
+        ):
+            # The model came off the provider's own list for this key and just
+            # answered, so it is the attribution, not the route's stale value.
+            result = result.model_copy(update={"served_model_id": request.model_id})
+        return result
+
+    def _retry_on_another_model(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        byok: ModelByokProviderBackend,
+        endpoint_url: str,
+        event_publisher: Any,
+        *,
+        first: ModelLlmDelegationCallResult,
+    ) -> tuple[ModelLlmDelegationCallResult, ModelLlmDelegationCallRequest]:
+        """Re-aim a throttled or unavailable customer call ONCE; return result and request.
+
+        OMN-19205. Same backend, same key, same customer route: only the model
+        changes, chosen from the key's own list excluding the one that failed
+        and every listed model of its preference family.
+        When the list offers nothing else the first result stands as the typed
+        refusal. The retry is not remembered as the key's model, since a
+        throttle is momentary and says nothing about the model's availability
+        to this key.
+        """
+        # The throttle or the overload belongs to the slug's upstream, which its
+        # preference-family siblings share (2026-10-02: both google/gemma-4 free
+        # slugs 429 at once), so the one switch leaves the whole family.
+        retry = self._resolve_byok_model(
+            request,
+            byok,
+            exclude=(request.model_id,),
+            exclude_families_of=(request.model_id,),
+            refused=first,
+            remember=False,
+        )
+        if isinstance(retry, ModelLlmDelegationCallResult):
+            return retry, request
+        earlier = ModelEarlierModelAttempt(
+            model_id=request.model_id,
+            failure_class=first.failure_class or EnumDelegationFailureClass.UNKNOWN,
+            error_message=first.error_message or "",
+            http_status=first.http_status,
+        )
+        second = self._execute_call_once(retry, endpoint_url, event_publisher)
+        update: dict[str, Any] = {
+            "earlier_model_attempts": (*first.earlier_model_attempts, earlier)
+        }
+        if not second.success:
+            update["error_message"] = (
+                f"{second.error_message} | models tried on this key's own list: "
+                f"{earlier.model_id} ({earlier.failure_class.value}), "
+                f"{retry.model_id} "
+                f"({second.failure_class.value if second.failure_class else 'unknown'})"
+            )
+        return second.model_copy(update=update), retry
+
+    @staticmethod
+    def _customer_byok_row(
+        request: ModelLlmDelegationCallRequest, endpoint_url: str
+    ) -> ModelByokProviderBackend | None:
+        """The BYOK catalogue row this call is a customer route on, or ``None``."""
+        if not is_tenant_credential_ref(request.secret_ref):
+            return None
+        return resolve_byok_backend_by_endpoint(endpoint_url)
+
+    def _resolve_byok_model(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        byok: ModelByokProviderBackend,
+        *,
+        exclude: tuple[str, ...],
+        exclude_families_of: tuple[str, ...] = (),
+        refused: ModelLlmDelegationCallResult | None = None,
+        remember: bool = True,
+    ) -> ModelLlmDelegationCallRequest | ModelLlmDelegationCallResult:
+        """Ask the provider which model this key may use; return the re-aimed request.
+
+        Returns a failure result instead when no model can be resolved:
+        ``refused`` (the provider's own 404 refusal) when the list was read and
+        offers nothing else, the discovery's typed refusal when the provider
+        refused the key or its billing, and a retryable ``MODEL_UNAVAILABLE``
+        when the list could not be read at all.
+        """
+        try:
+            api_key, _source = resolve_api_key_with_source_loop_safe(
+                request.secret_ref, env_var_fallback=None
+            )
+        except SecretResolutionError as exc:
+            return self._credential_refusal_result(
+                request,
+                EnumLocalCredentialRefusalReason.CREDENTIAL_ABSENT,
+                detail_text=str(exc),
+            )
+        if api_key is None:
+            return self._credential_refusal_result(
+                request,
+                EnumLocalCredentialRefusalReason.CREDENTIAL_ABSENT,
+                detail_text="",
+            )
+        # OMN-20967: the model list is read with the key and with the workspace
+        # the call already names, so a workspace key's list is not refused.
+        workspace_id = (
+            request.extra_headers.get(byok.workspace_header)
+            if byok.workspace_header is not None
+            else None
+        )
+        discovery = discover_byok_model_sync(
+            byok,
+            api_key,
+            exclude=exclude,
+            exclude_families_of=exclude_families_of,
+            workspace_id=workspace_id,
+        )
+        if discovery.model is not None:
+            logger.info(
+                "byok model resolved from the provider's list provider=%s plan=%s "
+                "model=%s (was %s) correlation=%s",
+                byok.provider,
+                byok.plan,
+                discovery.model,
+                request.model_id,
+                request.correlation_id,
+            )
+            if remember and request.secret_ref is not None:
+                # A local credential remembers it, so the next delegation runs
+                # it without re-learning. A hosted reference has no local row
+                # and updates nothing.
+                record_local_byok_model(request.secret_ref, discovery.model)
+            return request.model_copy(
+                update={
+                    "model_id": discovery.model,
+                    "model_id_source": (
+                        f"{byok.models_url} (the key's own model list, "
+                        "byok_provider_backends.v1.yaml model_preference)"
+                    ),
+                }
+            )
+        if discovery.outcome == "rejected":
+            return self._credential_refusal_result(
+                request,
+                EnumLocalCredentialRefusalReason.CREDENTIAL_REJECTED,
+                detail_text=discovery.provider_message or "",
+            )
+        if discovery.outcome == "billing":
+            return self._failure_result(
+                request,
+                EnumDelegationFailureClass.PROVIDER_BILLING,
+                describe_discovery_refusal(discovery) or "PROVIDER_BILLING",
+            )
+        if refused is not None:
+            return refused
+        if discovery.outcome == "no_match":
+            return self._failure_result(
+                request,
+                EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND,
+                describe_discovery_refusal(discovery) or "PROVIDER_MODEL_NOT_FOUND",
+            )
+        return self._failure_result(
+            request,
+            EnumDelegationFailureClass.MODEL_UNAVAILABLE,
+            f"could not read {byok.provider}'s model list at {byok.models_url} to "
+            "resolve this route's model; no request was sent",
+        )
+
+    def _execute_call_once(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        endpoint_url: str,
+        event_publisher: Any,
+    ) -> ModelLlmDelegationCallResult:
+        """Make one provider call and report it to the bound observer when it ends.
+
+        OMN-20910: the same ``finished`` observation is the cost record's
+        source, so the attempt is recorded here, as it ends, whatever becomes of
+        the invocation after it.
+        """
+        attempt = next_attempt()
+        result = self._post_one_call(
+            request, endpoint_url, event_publisher, attempt=attempt
+        )
+        observation = ModelLlmDelegationCallObservation(
+            phase="finished",
+            model_id=request.model_id,
+            attempt=attempt,
+            served_model_id=result.served_model_id,
+            secret_source=result.secret_source,
+            success=result.success,
+            failure_class=result.failure_class,
+            http_status=result.http_status,
+            error_message=result.error_message or "",
+            tokens_in=result.tokens_in,
+            tokens_out=result.tokens_out,
+            cache_read_tokens=result.cache_read_tokens,
+            cache_write_5m_tokens=result.cache_write_5m_tokens,
+            cache_write_1h_tokens=result.cache_write_1h_tokens,
+            finish_reason=(
+                result.finish_reason.value
+                if result.finish_reason is not EnumProviderFinishReason.ABSENT
+                else None
+            ),
+            latency_ms=result.latency_ms,
+            cost_usd=result.actual_cost_usd,
+            stop_reason=result.stop_reason,
+            cache_creation_input_tokens=result.cache_creation_input_tokens,
+            cache_read_input_tokens=result.cache_read_input_tokens,
+        )
+        _report_call(observation)
+        record_finished_attempt(request, endpoint_url, observation, event_publisher)
+        return result
+
+    def _post_one_call(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        endpoint_url: str,
+        event_publisher: Any,
+        *,
+        attempt: int = 1,
+    ) -> ModelLlmDelegationCallResult:
+        # OMN-20910: the native Messages protocol builds its own body (system and
+        # message blocks with cache breakpoints, a forced tool); every other call
+        # keeps the OpenAI-compatible body below, byte for byte.
+        native = request.inference_protocol == "anthropic_messages"
+        payload: dict[str, Any]
+        if native:
+            payload = anthropic_messages.build_messages_payload(request)
+        else:
+            messages: list[dict[str, str]] = []
+            if request.system_prompt:
+                messages.append({"role": "system", "content": request.system_prompt})
+            messages.append({"role": "user", "content": request.prompt})
+            # OMN-21257: the endpoint's catalogue row names the token-limit field.
+            payload = {
+                "model": request.model_id,
+                "messages": messages,
+                token_limit_field_for_endpoint(endpoint_url): request.max_tokens,
+                "temperature": request.temperature,
+            }
+            if request.provider_request_options:
+                payload.update(request.provider_request_options)
+            # OMN-15482: the caller's response-format directive is applied AFTER
+            # the inference-protocol options so a consumer requirement can never
+            # be silently overwritten by backend shaping. The two cannot actually
+            # collide today -- ``LocalDelegationDispatchPort`` reserves the
+            # ``response_format`` key against ``provider_request_options`` -- so
+            # this ordering is a belt-and-braces statement of precedence, not a
+            # live conflict resolution.
+            if request.response_format is not None:
+                payload["response_format"] = request.response_format
+
+        # OMN-16419: fail-closed model-attribution guard. A live GET
+        # /v1/models reconciliation runs BEFORE the chat-completion POST —
+        # never after — because the response body's echoed ``model`` field is
+        # not trustworthy evidence (SGLang echoes whatever was requested,
+        # served or not; see transport.probe_served_models). ``served_ids`` is
+        # None when the endpoint offers no evidence either way (most cloud
+        # backends don't expose this path), in which case the guard is a
+        # no-op and behavior is unchanged from before this ticket. When
+        # ``served_ids`` IS available and does not contain the configured
+        # model_id, the call never reaches the network — this repo's own
+        # config no longer silently attributes to a model that isn't running.
+        # The native endpoint has no GET /v1/models next to ``/v1/messages`` to
+        # reconcile against; its reply names the model that served it instead,
+        # read below.
+        served_ids = None if native else _get_served_model_ids(endpoint_url)
+        if served_ids is not None and request.model_id not in served_ids:
+            # Reconcile a possible model replacement before refusing the call.
+            # An unreadable refresh retains the known mismatch evidence.
+            served_ids = (
+                transport.get_served_model_ids(endpoint_url, refresh=True) or served_ids
+            )
+        served_model_id: str | None = None
+        if served_ids is not None:
+            if request.model_id not in served_ids:
+                # OMN-18670: name the SOURCE of the configured literal, not
+                # only the literal. The 2026-09-18 outage was caused by an
+                # untracked ``~/.omninode/delegation/bifrost_overrides.yaml``
+                # that still pinned a retired model four days after every
+                # committed surface had been repointed; this message named the
+                # value and the endpoint, so three lanes re-derived the
+                # resolution path by hand to find a file no repo grep can see.
+                # ``model_id_source`` is empty when the caller resolved the
+                # backend outside the routing authority — the refusal still
+                # fires, it just cannot attribute what it was never told.
+                attribution = (
+                    f" The configured value came from: {request.model_id_source}."
+                    if request.model_id_source
+                    else (
+                        " The caller supplied no config provenance for this "
+                        "model_id, so this refusal cannot name the file that "
+                        "supplied it; resolve the backend through the routing "
+                        "authority (resolve_delegation_backend) to get one, or "
+                        "run `python -m omnimarket.cli.cli_explain_routing` to "
+                        "print the merged routing with a per-key source."
+                    )
+                )
+                return self._failure_result(
+                    request,
+                    EnumDelegationFailureClass.MODEL_ATTRIBUTION_MISMATCH,
+                    f"model_attribution_mismatch: configured model_name="
+                    f"{request.model_id!r} is not in the served ids "
+                    f"{sorted(served_ids)!r} reported by "
+                    f"{transport.served_models_url(endpoint_url)} (OMN-16419 "
+                    "fail-closed guard — refusing to silently attribute this "
+                    f"call to a model that is not running).{attribution}",
+                )
+            served_model_id = request.model_id
+
+        secret_source: EnumSecretSource | None = None
+        request_left_at: float | None = None
+        try:
+            # OMN-13861: resolve the backend's API key from ``secret_ref`` and merge
+            # ``Authorization: Bearer <key>`` into the outbound headers BEFORE the
+            # POST. Without this the bus-less local path posted only the static
+            # bifrost headers (HTTP-Referer / X-Title), so every authenticated cloud
+            # tier 400'd with "Missing or invalid Authorization header". A declared
+            # ref that cannot be resolved fails closed (raises → caught below as a
+            # transport failure), never a silent unauthenticated call.
+            outbound_headers, secret_source = self._resolve_outbound_headers(request)
+            _report_call(
+                ModelLlmDelegationCallObservation(
+                    phase="started",
+                    model_id=request.model_id,
+                    attempt=attempt,
+                    secret_source=secret_source,
+                )
+            )
+            request_left_at = time.monotonic()
+            # OMN-12815/OMN-13159: the transport posts the COMPLETE endpoint URL
+            # VERBATIM — no append, no construction — using curl on the macOS LAN
+            # profile and httpx elsewhere.
+            # OMN-13170: thread the contract-resolved per-backend timeout so large
+            # generations are not capped by a hardcoded transport default.
+            response = transport.post_chat_completion(
+                endpoint_url=endpoint_url,
+                payload=payload,
+                timeout_seconds=request.timeout_seconds,
+                extra_headers=outbound_headers,
+            )
+            latency_ms = response.latency_ms
+            response_json: dict[str, Any] = response.json_body
+        except (asyncio.CancelledError, KeyboardInterrupt):
+            # OMN-20910: the invocation ended while this attempt was in flight.
+            # Its usage is unknown, but it was made, so it is recorded as cancelled.
+            if request_left_at is not None:
+                record_cancelled_review_attempt(
+                    request,
+                    ModelLlmDelegationCallObservation(
+                        phase="started", model_id=request.model_id, attempt=attempt
+                    ),
+                    elapsed_ms=int((time.monotonic() - request_left_at) * 1000),
+                    event_publisher=event_publisher,
+                )
+            raise
+        except httpx.TimeoutException:
+            observation, _ = self._observe_quota(
+                request,
+                endpoint_url,
+                succeeded=False,
+                latency_ms=int(request.timeout_seconds * 1000),
+                error_message="request timed out",
+            )
+            return self._failure_result(
+                request,
+                EnumDelegationFailureClass.TIMEOUT,
+                "request timed out",
+                quota_observation=observation,
+                secret_source=secret_source,
+            )
+        except httpx.HTTPStatusError as exc:
+            # OMN-18696: classified by the SAME function the 200-body path uses
+            # (``failure_class_for_status``), so a 401 in a status line and a 401
+            # declared inside a 200 cannot land in different classes. This branch
+            # previously special-cased 429 alone and swept 401/403 into
+            # MODEL_UNAVAILABLE, which is the class an UNREACHABLE endpoint
+            # returns -- so a rejected credential was indistinguishable from an
+            # outage, and being retryable it escalated up the ladder instead of
+            # refusing. MODEL_UNAVAILABLE remains the fallback for every status
+            # the shared classifier does not name, unchanged.
+            raw_text = exc.response.text
+            status_text = raw_text if isinstance(raw_text, str) else ""
+            # OMN-20157: the body is read too, so a 402, a billing refusal on a
+            # 400/403, Google's 400 "API key not valid" and a 404 model-not-found
+            # each land in their own non-retryable class instead of the
+            # retryable MODEL_UNAVAILABLE catch-all below.
+            failure_class = (
+                failure_class_for_status(exc.response.status_code, status_text)
+                or EnumDelegationFailureClass.MODEL_UNAVAILABLE
+            )
+            # OMN-16530: ``str(exc)`` alone is a bare "Client error '400 ...'"
+            # — httpx's default HTTPStatusError message never includes the
+            # response body, and the curl transport used to discard it
+            # entirely (see transport._curl_post). Append the provider's own
+            # body text when one was captured, so an authenticated-but-
+            # rejected call (e.g. a resolved secret whose VALUE the provider
+            # rejects — "Please pass a valid API key", live-reproduced
+            # off-box on this exact call path) names the real problem instead
+            # of a bare status code. ``response.text`` on a real httpx/curl
+            # response is always a str; the isinstance guard only protects
+            # unit tests that pass a bare MagicMock() as the response.
+            response_text = exc.response.text
+            detail = response_text.strip() if isinstance(response_text, str) else ""
+            error_message = str(exc)
+            if detail:
+                error_message = f"{error_message} | provider response: {detail[:2000]}"
+            # OMN-16891: a 429 is not one failure class. Classify it against the
+            # contract-declared provider_quota_policy so a periodic cap
+            # (disable until the provider's stated reset) and a billing gap
+            # (no reset will ever arrive — alert, never retry) are told apart
+            # from an ordinary throttle. The verdict's reason rides the failure
+            # message so the escalation record says WHY the tier stopped being
+            # usable instead of just "429".
+            # OMN-16891/OMN-20154: a 429 is classified against the
+            # contract-declared provider_quota_policy, and every failed call is
+            # observed. The observation, not process memory, is what the next
+            # routing decision reads (through the provider_quota_state
+            # projection); the verdict's reason rides the failure message so
+            # the escalation record says WHY the rung stopped being usable.
+            try:
+                error_body = exc.response.json()
+            except Exception:
+                error_body = None
+            try:
+                error_headers = {
+                    str(k): str(v) for k, v in dict(exc.response.headers).items()
+                }
+            except Exception:
+                error_headers = {}
+            observation, verdict = self._observe_quota(
+                request,
+                endpoint_url,
+                succeeded=False,
+                latency_ms=0,
+                error_message=error_message,
+                http_status=exc.response.status_code,
+                body=error_body if isinstance(error_body, dict) else None,
+                headers=error_headers,
+            )
+            if verdict is not None and not verdict.retryable:
+                error_message = f"{error_message} | quota: {verdict.reason}"
+                if verdict.alert:
+                    # An operator must act; retries cannot clear this.
+                    logger.error(
+                        "delegation_quota_alert backend=%s provider=%s code=%s: %s",
+                        request.model_id,
+                        verdict.provider_id,
+                        verdict.provider_code,
+                        verdict.reason,
+                    )
+                else:
+                    logger.warning(
+                        "delegation_quota_block backend=%s provider=%s code=%s "
+                        "until=%s",
+                        request.model_id,
+                        verdict.provider_id,
+                        verdict.provider_code,
+                        verdict.disabled_until,
+                    )
+            if failure_class is EnumDelegationFailureClass.PROVIDER_AUTH_FAILED:
+                # OMN-18696 AC1/AC2: a rejected credential is refused with a
+                # typed payload naming the reference and the action, not with a
+                # status line the caller would have to parse.
+                return self._credential_refusal_result(
+                    request,
+                    EnumLocalCredentialRefusalReason.CREDENTIAL_REJECTED,
+                    detail_text=detail,
+                    secret_source=secret_source,
+                )
+            if failure_class in (
+                EnumDelegationFailureClass.PROVIDER_BILLING,
+                EnumDelegationFailureClass.PROVIDER_MODEL_NOT_FOUND,
+            ):
+                # OMN-20157: a typed refusal about the account or the model. The
+                # message leads with the class, quotes the provider verbatim
+                # (credential shapes scrubbed) and says what the customer can do,
+                # so the receipt and the CLI carry the provider's own words
+                # rather than a timeout several retries later.
+                return self._failure_result(
+                    request,
+                    failure_class,
+                    describe_provider_refusal(
+                        failure_class,
+                        status_code=exc.response.status_code,
+                        provider_text=status_text,
+                        model_id=request.model_id,
+                    ),
+                    http_status=exc.response.status_code,
+                    provider_code=verdict.provider_code
+                    if verdict is not None
+                    else None,
+                    quota_observation=observation,
+                    secret_source=secret_source,
+                )
+            return self._failure_result(
+                request,
+                failure_class,
+                error_message,
+                http_status=exc.response.status_code,
+                provider_code=verdict.provider_code if verdict is not None else None,
+                quota_observation=observation,
+                secret_source=secret_source,
+            )
+        except SecretResolutionError as exc:
+            # OMN-18696 AC1: the backend DECLARES a credential and nothing
+            # resolves for it, so no call was made. Caught here, ahead of the
+            # bare ``except Exception`` below, which used to classify it
+            # ``UNKNOWN`` -- a retryable class, so the ladder escalated on a
+            # configuration fact that no higher tier can change.
+            return self._credential_refusal_result(
+                request,
+                EnumLocalCredentialRefusalReason.CREDENTIAL_ABSENT,
+                detail_text=str(exc),
+            )
+        except Exception as exc:
+            observation, _ = self._observe_quota(
+                request,
+                endpoint_url,
+                succeeded=False,
+                latency_ms=0,
+                error_message=str(exc),
+            )
+            return self._failure_result(
+                request,
+                EnumDelegationFailureClass.UNKNOWN,
+                str(exc),
+                quota_observation=observation,
+                secret_source=secret_source,
+            )
+
+        # OMN-18265: a top-level ``error`` object inside a 2xx body is the
+        # PROVIDER telling us its upstream broke, not the model answering with
+        # nothing. Classified from what the vendor said (typically
+        # MODEL_UNAVAILABLE / RATE_LIMITED), it is retryable on the bus-less
+        # local path too, where INVALID_JSON below is deliberately terminal.
+        # Read before the empty-choices branch so the two facts cannot be
+        # conflated (live: correlation c1838c39, 2026-09-12T19:11:59Z).
+        provider_error = provider_error_from_body(response_json)
+        if provider_error is not None:
+            # OMN-20154: an aggregator's in-body refusal is a provider call
+            # like any other; a rate-limit class inside a 200 is classified
+            # as the 429 it is.
+            observation, _ = self._observe_quota(
+                request,
+                endpoint_url,
+                succeeded=False,
+                latency_ms=latency_ms,
+                error_message=provider_error.as_error_message(),
+                http_status=(
+                    429
+                    if provider_error.failure_class
+                    is EnumDelegationFailureClass.RATE_LIMITED
+                    else 200
+                ),
+                body=response_json,
+            )
+            return self._failure_result(
+                request,
+                provider_error.failure_class,
+                provider_error.as_error_message(),
+                quota_observation=observation,
+                secret_source=secret_source,
+            )
+
+        if native:
+            return self._finish_native_call(
+                request,
+                endpoint_url,
+                response_json,
+                latency_ms=latency_ms,
+                secret_source=secret_source,
+                event_publisher=event_publisher,
+            )
+
+        choices = response_json.get("choices") or []
+        if not choices:
+            return self._failure_result(
+                request,
+                EnumDelegationFailureClass.INVALID_JSON,
+                "API returned empty choices array",
+                secret_source=secret_source,
+            )
+
+        # OMN-18278: read the provider's own stop reason off the SAME choice the
+        # content comes from, and carry it on the typed result. This boundary
+        # does NOT refuse a truncated call the way ``HandlerInferenceIntent``
+        # does: on the bus-less local path a truncated draft is still evidence
+        # worth projecting and its metered cost is still real, and the
+        # accept-or-climb verdict belongs to the quality gate, which is where
+        # the local dispatch port applies it. Dropping the signal here is what
+        # made a scratchpad score 1.0.
+        finish_reason = finish_reason_from_choice(choices[0])
+        content: str = choices[0].get("message", {}).get("content") or ""
+        raw_response = ModelDelegationRawResponse.from_provider_content(
+            content, source_field="choices[0].message.content"
+        )
+        content, reasoning_stripped_chars = strip_leading_inline_reasoning(
+            content, request.inline_reasoning_terminator
+        )
+        output_hash = _sha256(content)
+        tokens_in, tokens_out = _extract_usage(response_json)
+        cache_read, cache_write_5m, cache_write_1h = cache_usage_figures(
+            response_json.get("usage") or {}
+        )
+        actual_cost, opus_cost, savings, cost_basis = _compute_cost(
+            request.model_id,
+            tokens_in,
+            tokens_out,
+            model_tier=request.model_tier,
+            endpoint_url=endpoint_url,
+            provider=request.provider,
+        )
+
+        result = ModelLlmDelegationCallResult(
+            request_id=request.request_id,
+            success=True,
+            # OMN-18695: stamp the credential's PROVENANCE onto the result, so
+            # the receipt can say the customer's own store answered rather
+            # than an ambient environment variable. Read off the resolution
+            # that happened, never inferred from the ref.
+            secret_source=secret_source,
+            secret_ref=request.secret_ref,
+            content=content,
+            raw_response=raw_response,
+            reasoning_stripped_chars=reasoning_stripped_chars,
+            output_hash=output_hash,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cache_read_tokens=cache_read,
+            cache_write_5m_tokens=cache_write_5m,
+            cache_write_1h_tokens=cache_write_1h,
+            latency_ms=latency_ms,
+            actual_cost_usd=actual_cost,
+            opus_equivalent_cost_usd=opus_cost,
+            savings_usd=savings,
+            usage_source=_cost_usage_source(cost_basis),
+            cost_basis=cost_basis,
+            quality_gate_passed=True,
+            endpoint_healthy=True,
+            served_model_id=served_model_id,
+            finish_reason=finish_reason,
+            http_status=200,
+        )
+
+        observation, _ = self._observe_quota(
+            request, endpoint_url, succeeded=True, latency_ms=latency_ms
+        )
+        result = result.model_copy(update={"quota_observation": observation})
+        self._publish(
+            TOPIC_DELEGATION_CALL_COMPLETED,
+            self._build_completed_event(request, result),
+            event_publisher,
+        )
+
+        return result
+
+    def _finish_native_call(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        endpoint_url: str,
+        response_json: dict[str, Any],
+        *,
+        latency_ms: int,
+        secret_source: EnumSecretSource | None,
+        event_publisher: Any,
+    ) -> ModelLlmDelegationCallResult:
+        """Turn one native Messages reply into the typed result (OMN-20910).
+
+        A ``max_tokens`` stop is a success with the cut text and the typed stop
+        reason, exactly as an OpenAI-compatible ``length`` is: the verdict on
+        whether a cut reply is usable belongs to the caller's parser, which
+        receives it typed and not as a string it would have to recognise.
+        """
+        reading = anthropic_messages.parse_messages_response(response_json)
+        if reading is None:
+            return self._failure_result(
+                request,
+                EnumDelegationFailureClass.INVALID_JSON,
+                "API returned empty content array",
+                secret_source=secret_source,
+            )
+        content = reading.content
+        raw_response = ModelDelegationRawResponse.from_provider_content(
+            content, source_field=reading.source_field
+        )
+        content, reasoning_stripped_chars = strip_leading_inline_reasoning(
+            content, request.inline_reasoning_terminator
+        )
+        # Billed at the cache's own multipliers, not at the plain input price.
+        actual_cost, opus_cost, savings, cost_basis = _compute_cost(
+            request.model_id,
+            reading.input_price_equivalent_tokens,
+            reading.output_tokens,
+            model_tier=request.model_tier,
+            endpoint_url=endpoint_url,
+            provider=request.provider,
+        )
+        cache_read, cache_write_5m, cache_write_1h = cache_usage_figures(
+            response_json.get("usage") or {}
+        )
+        result = ModelLlmDelegationCallResult(
+            request_id=request.request_id,
+            success=True,
+            secret_source=secret_source,
+            secret_ref=request.secret_ref,
+            content=content,
+            raw_response=raw_response,
+            reasoning_stripped_chars=reasoning_stripped_chars,
+            output_hash=_sha256(content),
+            tokens_in=reading.prompt_tokens,
+            tokens_out=reading.output_tokens,
+            cache_read_tokens=cache_read,
+            cache_write_5m_tokens=cache_write_5m,
+            cache_write_1h_tokens=cache_write_1h,
+            latency_ms=latency_ms,
+            actual_cost_usd=actual_cost,
+            opus_equivalent_cost_usd=opus_cost,
+            savings_usd=savings,
+            usage_source=_cost_usage_source(cost_basis),
+            cost_basis=cost_basis,
+            quality_gate_passed=True,
+            endpoint_healthy=True,
+            served_model_id=reading.served_model,
+            finish_reason=reading.stop_reason.to_finish_reason(),
+            stop_reason=reading.stop_reason,
+            cache_creation_input_tokens=reading.cache_creation_input_tokens,
+            cache_creation_5m_input_tokens=reading.cache_creation_5m_input_tokens,
+            cache_creation_1h_input_tokens=reading.cache_creation_1h_input_tokens,
+            cache_read_input_tokens=reading.cache_read_input_tokens,
+            http_status=200,
+        )
+        observation, _ = self._observe_quota(
+            request, endpoint_url, succeeded=True, latency_ms=latency_ms
+        )
+        result = result.model_copy(update={"quota_observation": observation})
+        self._publish(
+            TOPIC_DELEGATION_CALL_COMPLETED,
+            self._build_completed_event(request, result),
+            event_publisher,
+        )
+        return result
+
+    def _build_completed_event(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        result: ModelLlmDelegationCallResult,
+    ) -> ModelLlmDelegationCompletedEvent:
+        """Build the call-completed event from the request + successful result."""
+        # OMN-8022 preferred the caller-configured name over the server's
+        # response-echoed ``model`` field (that field was, and remains,
+        # untrustworthy — see transport.probe_served_models). OMN-16419 adjusts
+        # that preference one step further: when the fail-closed guard above
+        # has LIVE-CONFIRMED the configured name against GET /v1/models,
+        # ``result.served_model_id`` carries that confirmed value and is used
+        # here; when no such confirmation exists (guard was a no-op — no
+        # /v1/models evidence for this backend), attribution falls back to the
+        # configured name exactly as OMN-8022 left it. Either way this is
+        # never the raw response-echoed string.
+        attributed_model_id = result.served_model_id or request.model_id
+        return ModelLlmDelegationCompletedEvent(
+            correlation_id=request.correlation_id,
+            causation_id=request.causation_id,
+            request_id=request.request_id,
+            task_type=request.task_type,
+            task_id=request.task_id,
+            selected_model=attributed_model_id,
+            model_id=attributed_model_id,
+            model_tier=request.model_tier,
+            provider=request.provider,
+            endpoint_ref=request.endpoint_ref,
+            tokens_in=result.tokens_in,
+            tokens_out=result.tokens_out,
+            latency_ms=result.latency_ms,
+            actual_cost_usd=result.actual_cost_usd,
+            opus_equivalent_cost_usd=result.opus_equivalent_cost_usd,
+            savings_usd=result.savings_usd,
+            usage_source=result.usage_source,
+            cost_basis=result.cost_basis,
+            pricing_manifest_version=request.pricing_manifest_version,
+            pricing_manifest_hash=request.pricing_manifest_hash,
+            output_hash=result.output_hash,
+            prompt_hash=request.prompt_hash,
+            routing_policy_hash=request.routing_policy_hash,
+            policy_hash=request.routing_policy_hash,
+            registry_hash=request.registry_hash,
+            success=True,
+            quality_score=None,
+            escalated_to=None,
+            escalation_reason=None,
+            redacted_summary=None,
+            created_at=datetime.now(UTC),
+        )
+
+    def _build_all_tiers_failed(
+        self,
+        request: ModelLlmDelegationCallRequest,
+    ) -> ModelLlmDelegationAllTiersFailedEvent:
+        """Build the all-tiers-failed event (returned by handle on unhealthy endpoint)."""
+        return ModelLlmDelegationAllTiersFailedEvent(
+            correlation_id=request.correlation_id,
+            causation_id=request.causation_id,
+            request_id=request.request_id,
+            task_type=request.task_type,
+            task_id=request.task_id,
+            attempted_models=(request.model_id,),
+            failure_classes=(EnumDelegationFailureClass.MODEL_UNAVAILABLE,),
+            created_at=datetime.now(UTC),
+        )
+
+    def emit_escalation(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        failure_class: EnumDelegationFailureClass,
+        escalation_reason: str,
+        next_model_id: str | None,
+        event_publisher: Any,
+    ) -> None:
+        """Emit escalation event when quality gate fails or call fails mid-tier."""
+        event = ModelLlmDelegationEscalationTriggeredEvent(
+            correlation_id=request.correlation_id,
+            causation_id=request.causation_id,
+            request_id=request.request_id,
+            task_type=request.task_type,
+            task_id=request.task_id,
+            model_id=request.model_id,
+            attempt_number=request.attempt_number,
+            failure_class=failure_class,
+            escalation_reason=escalation_reason,
+            next_model_id=next_model_id,
+            created_at=datetime.now(UTC),
+        )
+        self._publish(
+            TOPIC_DELEGATION_ESCALATION_TRIGGERED,
+            event,
+            event_publisher,
+        )
+
+    def emit_model_degraded(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        window_start: datetime,
+        window_end: datetime,
+        attempt_count: int,
+        escalation_count: int,
+        threshold: float,
+        expires_at: datetime,
+        reason: str,
+        event_publisher: Any,
+    ) -> None:
+        """Emit degradation event when escalation rate exceeds threshold."""
+        event = ModelLlmDelegationModelDegradedEvent(
+            correlation_id=request.correlation_id,
+            causation_id=request.causation_id,
+            task_type=request.task_type,
+            model_id=request.model_id,
+            window_start=window_start,
+            window_end=window_end,
+            attempt_count=attempt_count,
+            escalation_count=escalation_count,
+            threshold=threshold,
+            expires_at=expires_at,
+            reason=reason,
+            created_at=datetime.now(UTC),
+        )
+        self._publish(
+            TOPIC_DELEGATION_MODEL_DEGRADED,
+            event,
+            event_publisher,
+        )
+
+    def _emit_all_tiers_failed(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        event_publisher: Any,
+    ) -> None:
+        event = ModelLlmDelegationAllTiersFailedEvent(
+            correlation_id=request.correlation_id,
+            causation_id=request.causation_id,
+            request_id=request.request_id,
+            task_type=request.task_type,
+            task_id=request.task_id,
+            attempted_models=(request.model_id,),
+            failure_classes=(EnumDelegationFailureClass.MODEL_UNAVAILABLE,),
+            created_at=datetime.now(UTC),
+        )
+        self._publish(
+            TOPIC_DELEGATION_ALL_TIERS_FAILED,
+            event,
+            event_publisher,
+        )
+
+    @staticmethod
+    def _resolve_outbound_headers(
+        request: ModelLlmDelegationCallRequest,
+    ) -> tuple[dict[str, str], EnumSecretSource | None]:
+        """Return the outbound headers and WHERE the credential came from.
+
+        OMN-13861: the routing authority carries only the logical ``secret_ref``
+        (e.g. ``llm.glm.api_key``); the literal API-key VALUE is resolved HERE, at
+        the effect boundary, through the canonical ``ProtocolSecretStore`` — the
+        same fail-closed resolution ``HandlerInferenceIntent`` performs for its
+        sibling path. ``resolve_api_key_with_source_loop_safe`` is used (not the bare sync
+        variant) so resolution works whether the effect runs standalone (no event
+        loop, in the local port's child process) or is dispatched on the runtime
+        loop. A ``None`` ``secret_ref`` (unauthenticated local backend) adds no
+        header; a declared-but-unresolvable ref fails closed (raises), so a cloud
+        call is never made silently without credentials.
+
+        OMN-13943: ``request.api_key_env`` (the backend's own contract-declared
+        literal env-var name, e.g. ``GEMINI_API_KEY``) is passed as an
+        ADDITIONAL fallback — checked only when the ``secret_ref`` convention
+        mapping misses. This closes the secret-name drift between the dotted
+        ``llm.*.api_key`` convention (which maps to ``LLM_*_API_KEY``) and the
+        canonical env vars already defined in ``~/.omnibase/.env``.
+        """
+        api_key, source = resolve_api_key_with_source_loop_safe(
+            request.secret_ref, env_var_fallback=request.api_key_env
+        )
+        if request.inference_protocol == "anthropic_messages":
+            # OMN-20910: the native API takes the key in ``x-api-key`` and needs
+            # ``anthropic-version``; a Bearer header is not accepted there.
+            return anthropic_messages.native_headers(
+                request, None if api_key is None else api_key.get_secret_value()
+            ), source
+        headers = {**request.extra_headers, **request.provider_headers}
+        if api_key is not None:
+            headers["Authorization"] = f"Bearer {api_key.get_secret_value()}"
+        return headers, source
+
+    @staticmethod
+    def _credential_refusal_result(
+        request: ModelLlmDelegationCallRequest,
+        reason: EnumLocalCredentialRefusalReason,
+        *,
+        detail_text: str,
+        secret_source: EnumSecretSource | None = None,
+    ) -> ModelLlmDelegationCallResult:
+        """Build the typed, non-retryable credential refusal (OMN-18696).
+
+        The refusal OBJECT is the authority for the class, the remediation and
+        the retryability -- this method never restates any of them, so the
+        result and the payload cannot disagree. Reference NAMES are carried;
+        no secret value is read here or anywhere downstream of here.
+        """
+        refusal = ModelLocalCredentialRefusal(
+            reason=reason,
+            credential_ref=request.secret_ref,
+            credential_env=request.api_key_env,
+            backend_ref=request.endpoint_ref,
+            model_id=request.model_id,
+            correlation_id=request.correlation_id,
+            detail=detail_text.strip()[:2000],
+        )
+        logger.error(
+            "delegation_credential_refusal reason=%s class=%s backend=%s "
+            "correlation=%s credential=%s",
+            refusal.reason.value,
+            refusal.failure_class.value,
+            refusal.backend_ref,
+            refusal.correlation_id,
+            refusal.named_credential,
+        )
+        return ModelLlmDelegationCallResult(
+            request_id=request.request_id,
+            success=False,
+            failure_class=refusal.failure_class,
+            secret_source=secret_source,
+            secret_ref=request.secret_ref if secret_source is not None else None,
+            error_message=refusal.message,
+            credential_refusal=refusal,
+            endpoint_healthy=True,
+        )
+
+    @staticmethod
+    def _failure_result(
+        request: ModelLlmDelegationCallRequest,
+        failure_class: EnumDelegationFailureClass,
+        error_message: str,
+        *,
+        endpoint_healthy: bool = True,
+        http_status: int | None = None,
+        provider_code: str | None = None,
+        quota_observation: ModelProviderQuotaObserved | None = None,
+        secret_source: EnumSecretSource | None = None,
+    ) -> ModelLlmDelegationCallResult:
+        return ModelLlmDelegationCallResult(
+            request_id=request.request_id,
+            success=False,
+            failure_class=failure_class,
+            secret_source=secret_source,
+            secret_ref=request.secret_ref if secret_source is not None else None,
+            error_message=error_message,
+            endpoint_healthy=endpoint_healthy,
+            http_status=http_status,
+            provider_code=provider_code,
+            quota_observation=quota_observation,
+        )
+
+    @staticmethod
+    def _publish(topic: str, payload: Any, event_publisher: Any) -> None:
+        if event_publisher is not None:
+            try:
+                event_publisher.publish(topic, payload)
+            except Exception as exc:
+                logger.warning("event publish failed for topic %s: %s", topic, exc)
+        else:
+            logger.debug("no event_publisher — event for %s logged only", topic)
+
+END PUBLIC SOURCE

@@ -1,0 +1,6 @@
+{
+  "mode": "module_tests",
+  "module": "omnibase_core.models.nodes.sprint_roll.model_sprint_roll_plan",
+  "test": "src/omnimarket/configs/work_contracts/evaluators/F06-03/test_frozen.txt",
+  "test_layout": "tests/unit/nodes/node_sprint_roll_compute/test_node_sprint_roll_compute.py"
+}

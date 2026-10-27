@@ -1,0 +1,55 @@
+contract_id: F07-06
+task_kind: code_review
+inputs:
+- path: src/omnimarket/configs/work_contracts/inputs/F07-06.txt
+  sha256: 97fa1371033b7b4d796a58dbaa2439197f306ffecd596830f1df3ab717a4c2bc
+acceptance:
+  kind: schema
+  spec:
+    schema:
+      type: object
+      required:
+      - source
+      - old
+      - new
+      - defect
+      properties:
+        source:
+          type: string
+          const: src/omnibase_core/models/core/model_extracted_block.py
+        old:
+          type: string
+          const: 'metadata: ModelNodeMetadataBlock | None'
+        new:
+          type: string
+          const: 'metadata: str | None'
+        defect:
+          type: string
+          const: ExtractedBlock.metadata is a string rather than canonical ModelNodeMetadataBlock,
+            so actual metadata model/dict payloads cannot parse or roundtrip.
+      additionalProperties: false
+    expected_json: '{"defect": "ExtractedBlock.metadata is a string rather than canonical
+      ModelNodeMetadataBlock, so actual metadata model/dict payloads cannot parse
+      or roundtrip.", "new": "metadata: str | None", "old": "metadata: ModelNodeMetadataBlock
+      | None", "source": "src/omnibase_core/models/core/model_extracted_block.py"}'
+budgets:
+  max_output_tokens: 8192
+  max_wall_s: 180
+  max_turns: 8
+  max_usd: 5
+controls:
+  positive:
+    path: src/omnimarket/configs/work_contracts/controls/F07-06.positive.txt
+    sha256: d9d4be2e2784adc5a91adf78fb906fe53774b7b5e88920afc5a433d02c8c0adc
+  negative:
+    path: src/omnimarket/configs/work_contracts/controls/F07-06.negative.txt
+    sha256: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+evaluators:
+- path: src/omnimarket/handlers/work_contracts/control_evaluator.py
+  sha256: 35beec5a332b646a0c1a696407f0b4a1f5a683269b19e9f782af9df0ee662d7d
+provenance:
+  source: 2026-10-27-deleg-sc-d-1100.md
+  source_sha256: e9ea31b55d2bedfed466bc0d2d3a9761081d1150c30ecc2426454cc8d0740f8f
+  adaptation: Manual seeded review rubric converted to exact structured defect and
+    consequence fields. The contract requires a JSON finding; historical free text
+    is not equivalent.

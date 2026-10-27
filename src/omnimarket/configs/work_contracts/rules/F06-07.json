@@ -1,0 +1,6 @@
+{
+  "mode": "module_tests",
+  "module": "omnibase_core.models.security.model_backend_performance_profile",
+  "test": "src/omnimarket/configs/work_contracts/evaluators/F06-07/test_frozen.txt",
+  "test_layout": "tests/unit/models/security/test_omn17732_security_leaf_configs.py"
+}

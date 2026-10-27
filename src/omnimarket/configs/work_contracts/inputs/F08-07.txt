@@ -1,0 +1,24 @@
+Diagnose this real failed GitHub Actions job. Name the job and the failing step, identify the direct cause, and distinguish the direct failure from any downstream symptom or misleading successful output. Cite the supplied evidence. Propose a bounded remedy without executing it; do not change checks, rerun CI, or assume a newer head is still red.
+Source: https://github.com/OmniNode-ai/omnimarket/actions/runs/40258414605/job/121365562739
+Failing step from GitHub job metadata: Refuse when the test shards did not run
+The log download labels steps UNKNOWN STEP; the exact name above is authoritative.
+Same-head upstream job metadata: repo-evidence / dod-verify failed; Repo Evidence Dependency failed; Detect Changes skipped.
+Log excerpt (original timestamps, with gaps):
+Coverage Sweep Gate	UNKNOWN STEP	2026-10-26T02:19:35.0671882Z Download action repository 'astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a' (SHA:38f3f104447c67c051c4a08e39b64a148898af3a)
+Coverage Sweep Gate	UNKNOWN STEP	2026-10-26T02:19:35.7998462Z Download action repository 'actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093' (SHA:d3f86a106a0bac45b974a628896c90dbdf5c8093)
+Coverage Sweep Gate	UNKNOWN STEP	2026-10-26T02:19:36.6416196Z Complete job name: Coverage Sweep Gate
+Coverage Sweep Gate	UNKNOWN STEP	2026-10-26T02:19:36.7114432Z ##[group]Run if [ "$DETECT_RESULT" != "success" ] || [ -z "$SPLIT_COUNT" ]; then
+Coverage Sweep Gate	UNKNOWN STEP	2026-10-26T02:19:36.7116046Z ^[[36;1mif [ "$DETECT_RESULT" != "success" ] || [ -z "$SPLIT_COUNT" ]; then^[[0m
+Coverage Sweep Gate	UNKNOWN STEP	2026-10-26T02:19:36.7118904Z ^[[36;1m  echo "::error::coverage census refused: detect-changes=${DETECT_RESULT} split_count='${SPLIT_COUNT}' test=${TEST_RESULT}. The test shards did not run, so there are no shard artifacts to combine."^[[0m
+Coverage Sweep Gate	UNKNOWN STEP	2026-10-26T02:19:36.7121263Z ^[[36;1m  exit 1^[[0m
+Coverage Sweep Gate	UNKNOWN STEP	2026-10-26T02:19:36.7121973Z ^[[36;1mfi^[[0m
+Coverage Sweep Gate	UNKNOWN STEP	2026-10-26T02:19:36.7309080Z shell: /usr/bin/bash -e {0}
+Coverage Sweep Gate	UNKNOWN STEP	2026-10-26T02:19:36.7310190Z env:
+Coverage Sweep Gate	UNKNOWN STEP	2026-10-26T02:19:36.7310867Z   UV_HTTP_TIMEOUT: 600
+Coverage Sweep Gate	UNKNOWN STEP	2026-10-26T02:19:36.7311645Z   DETECT_RESULT: skipped
+Coverage Sweep Gate	UNKNOWN STEP	2026-10-26T02:19:36.7312423Z   TEST_RESULT: skipped
+Coverage Sweep Gate	UNKNOWN STEP	2026-10-26T02:19:36.7313180Z   SPLIT_COUNT: 
+Coverage Sweep Gate	UNKNOWN STEP	2026-10-26T02:19:36.7313879Z ##[endgroup]
+Coverage Sweep Gate	UNKNOWN STEP	2026-10-26T02:19:36.7481273Z ##[error]coverage census refused: detect-changes=skipped split_count='' test=skipped. The test shards did not run, so there are no shard artifacts to combine.
+Coverage Sweep Gate	UNKNOWN STEP	2026-10-26T02:19:36.7493955Z ##[error]Process completed with exit code 1.
+Coverage Sweep Gate	UNKNOWN STEP	2026-10-26T02:19:36.7706849Z Cleaning up orphan processes

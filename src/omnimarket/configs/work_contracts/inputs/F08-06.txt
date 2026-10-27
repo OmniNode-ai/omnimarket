@@ -1,0 +1,27 @@
+Diagnose this real failed GitHub Actions job. Name the job and the failing step, identify the direct cause, and distinguish the direct failure from any downstream symptom or misleading successful output. Cite the supplied evidence. Propose a bounded remedy without executing it; do not change checks, rerun CI, or assume a newer head is still red.
+Source: https://github.com/OmniNode-ai/omnimarket/actions/runs/40170913718/job/121101437631
+Failing step from GitHub job metadata: Set up CI Python environment
+The log download labels steps UNKNOWN STEP; the exact name above is authoritative.
+Log excerpt (original timestamps, with gaps):
+Trigger node_redeploy Start / Trigger node_redeploy Start (sibling)	UNKNOWN STEP	﻿2026-10-25T06:57:02.2859836Z Current runner version: '2.338.0'
+Trigger node_redeploy Start / Trigger node_redeploy Start (sibling)	UNKNOWN STEP	2026-10-25T06:57:02.2864147Z Runner name: 'h203-light-7'
+Trigger node_redeploy Start / Trigger node_redeploy Start (sibling)	UNKNOWN STEP	2026-10-25T06:57:02.2864707Z Runner group name: 'omnibase-ci'
+Trigger node_redeploy Start / Trigger node_redeploy Start (sibling)	UNKNOWN STEP	2026-10-25T06:57:02.2865447Z Machine name: 'riverraftlabs-0000-NUC13ANHH7'
+Trigger node_redeploy Start / Trigger node_redeploy Start (sibling)	UNKNOWN STEP	2026-10-25T06:57:02.2867561Z ##[group]GITHUB_TOKEN Permissions
+Trigger node_redeploy Start / Trigger node_redeploy Start (sibling)	UNKNOWN STEP	2026-10-25T06:57:02.2869135Z Contents: read
+Trigger node_redeploy Start / Trigger node_redeploy Start (sibling)	UNKNOWN STEP	2026-10-25T06:57:32.1652158Z ^[[36;1m^[[0m
+Trigger node_redeploy Start / Trigger node_redeploy Start (sibling)	UNKNOWN STEP	2026-10-25T06:57:32.1652399Z ^[[36;1mrunner_environment="${RUNNER_ENVIRONMENT:-}"^[[0m
+Trigger node_redeploy Start / Trigger node_redeploy Start (sibling)	UNKNOWN STEP	2026-10-25T06:57:32.1652716Z ^[[36;1mif [ "${runner_environment}" != "github-hosted" ]; then^[[0m
+Trigger node_redeploy Start / Trigger node_redeploy Start (sibling)	UNKNOWN STEP	2026-10-25T06:57:32.1653581Z ^[[36;1m  echo "::error::uv is not on PATH and RUNNER_ENVIRONMENT is '${runner_environment:-<unset>}' (expected 'github-hosted'). Self-hosted runner images bake uv in, so a missing uv is corrupt runner state, not a fresh VM. Refusing to self-provision; rebuild or redeploy the runner image (OMN-16555)."^[[0m
+Trigger node_redeploy Start / Trigger node_redeploy Start (sibling)	UNKNOWN STEP	2026-10-25T06:57:32.1654572Z ^[[36;1m  exit 2^[[0m
+Trigger node_redeploy Start / Trigger node_redeploy Start (sibling)	UNKNOWN STEP	2026-10-25T06:57:32.1654797Z ^[[36;1mfi^[[0m
+Trigger node_redeploy Start / Trigger node_redeploy Start (sibling)	UNKNOWN STEP	2026-10-25T06:57:32.1654984Z ^[[36;1m^[[0m
+Trigger node_redeploy Start / Trigger node_redeploy Start (sibling)	UNKNOWN STEP	2026-10-25T06:57:32.1655162Z ^[[36;1mif [ -z "${SHARED_ENV_ROOT}" ]; then^[[0m
+Trigger node_redeploy Start / Trigger node_redeploy Start (sibling)	UNKNOWN STEP	2026-10-25T06:57:32.1665065Z env:
+Trigger node_redeploy Start / Trigger node_redeploy Start (sibling)	UNKNOWN STEP	2026-10-25T06:57:32.1665270Z   SHARED_ENV_ROOT: fixture-root
+Trigger node_redeploy Start / Trigger node_redeploy Start (sibling)	UNKNOWN STEP	2026-10-25T06:57:32.1665514Z ##[endgroup]
+Trigger node_redeploy Start / Trigger node_redeploy Start (sibling)	UNKNOWN STEP	2026-10-25T06:57:32.1703831Z ##[error]uv is not on PATH and RUNNER_ENVIRONMENT is 'self-hosted' (expected 'github-hosted'). Self-hosted runner images bake uv in, so a missing uv is corrupt runner state, not a fresh VM. Refusing to self-provision; rebuild or redeploy the runner image (OMN-16555).
+Trigger node_redeploy Start / Trigger node_redeploy Start (sibling)	UNKNOWN STEP	2026-10-25T06:57:32.1705747Z ##[error]Process completed with exit code 2.
+Trigger node_redeploy Start / Trigger node_redeploy Start (sibling)	UNKNOWN STEP	2026-10-25T06:57:32.1710380Z ##[end-action id=__self.ephemeral_toolchain;outcome=failure;conclusion=failure;duration_ms=7]
+Trigger node_redeploy Start / Trigger node_redeploy Start (sibling)	UNKNOWN STEP	2026-10-25T06:57:32.1712755Z ##[start-action display=Set up Python (ephemeral runner);id=__self.__actions_setup-python_2]
+Trigger node_redeploy Start / Trigger node_redeploy Start (sibling)	UNKNOWN STEP	2026-10-25T06:57:32.1715404Z ##[end-action id=__self.__actions_setup-python_2;outcome=skipped;conclusion=skipped;duration_ms=0]

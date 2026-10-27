@@ -1,0 +1,57 @@
+contract_id: F07-01
+task_kind: code_review
+inputs:
+- path: src/omnimarket/configs/work_contracts/inputs/F07-01.txt
+  sha256: ae46d2036a84ea498c4803def5619ac05ae5f8a1ffeb820d80878eda81998cd4
+acceptance:
+  kind: schema
+  spec:
+    schema:
+      type: object
+      required:
+      - source
+      - old
+      - new
+      - defect
+      properties:
+        source:
+          type: string
+          const: src/omnibase_core/models/orchestrator/payloads/model_action_typed_payload.py
+        old:
+          type: string
+          const: 'ModelOperationalActionPayload,  # execute, run (the EFFECT default)'
+        new:
+          type: string
+          const: 'ModelDataActionPayload,  # execute, run (the EFFECT default)'
+        defect:
+          type: string
+          const: The EFFECT recommendation list substitutes ModelDataActionPayload
+            for ModelOperationalActionPayload, so default execute effects emit the
+            payload warning and fail under Werror.
+      additionalProperties: false
+    expected_json: '{"defect": "The EFFECT recommendation list substitutes ModelDataActionPayload
+      for ModelOperationalActionPayload, so default execute effects emit the payload
+      warning and fail under Werror.", "new": "ModelDataActionPayload,  # execute,
+      run (the EFFECT default)", "old": "ModelOperationalActionPayload,  # execute,
+      run (the EFFECT default)", "source": "src/omnibase_core/models/orchestrator/payloads/model_action_typed_payload.py"}'
+budgets:
+  max_output_tokens: 8192
+  max_wall_s: 180
+  max_turns: 8
+  max_usd: 5
+controls:
+  positive:
+    path: src/omnimarket/configs/work_contracts/controls/F07-01.positive.txt
+    sha256: bf05bcd30d9812c024f3c33b8f581d04911704b3a6a05d94802ffe98e2a29a70
+  negative:
+    path: src/omnimarket/configs/work_contracts/controls/F07-01.negative.txt
+    sha256: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+evaluators:
+- path: src/omnimarket/handlers/work_contracts/control_evaluator.py
+  sha256: 35beec5a332b646a0c1a696407f0b4a1f5a683269b19e9f782af9df0ee662d7d
+provenance:
+  source: 2026-10-27-deleg-sc-d-1100.md
+  source_sha256: e9ea31b55d2bedfed466bc0d2d3a9761081d1150c30ecc2426454cc8d0740f8f
+  adaptation: Manual seeded review rubric converted to exact structured defect and
+    consequence fields. The contract requires a JSON finding; historical free text
+    is not equivalent.

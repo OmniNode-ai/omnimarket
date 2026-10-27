@@ -1,0 +1,8 @@
+{
+  "mode": "phrases",
+  "required": [
+    "Match author-declared AC bindings to protected checks and test bytes.",
+    "Digest one typed check value using canonical compact JSON bytes.",
+    "Validate PR merge eligibility against a pinned OCC evidence snapshot."
+  ]
+}

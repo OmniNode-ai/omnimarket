@@ -1,0 +1,1 @@
+raise ImportError("deliberately missing required handler")

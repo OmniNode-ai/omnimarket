@@ -1,0 +1,8 @@
+{
+  "mode": "phrases",
+  "required": [
+    "Traverse the graph from a starting node.",
+    "Execute graph.create_node operation.",
+    "Build standardized ModelGraphHandlerResponse wrapped in ModelHandlerOutput."
+  ]
+}

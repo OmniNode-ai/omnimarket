@@ -113,7 +113,7 @@ dependencies = [
     # verdict). Migration 0045 filters on exactly that pair and omnibase_infra
     # vendors it from here. Raised in BOTH places in lockstep.
     # OMN-19961: floor raised 0.47.23 -> 0.47.24, the first release that
-    # registers the per-host dev lane compose-dev-202 (core#1771).
+    # registers the per-host dev lane the configured runtime profile (core#1771).
     # node_projection_lab_container_memory scopes itself to that lane, and an
     # older core refuses the contract at discovery. Raised in BOTH places.
     # OMN-20025: floor raised 0.47.24 -> 0.47.25, the first release with the
@@ -313,6 +313,7 @@ Homepage = "https://github.com/OmniNode-ai/omnimarket"
 Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
+node_model_work_contract_compute = "omnimarket.nodes.node_model_work_contract_compute"
 node_brief_prerequisites_compute = "omnimarket.nodes.node_brief_prerequisites_compute"
 node_codex_gitlink_compute = "omnimarket.nodes.node_codex_gitlink_compute"
 node_codex_landing_compute = "omnimarket.nodes.node_codex_landing_compute"
@@ -1234,7 +1235,7 @@ omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", ta
 # (non-fatal "clone_ahead") — the failure mode that keeps recurring for a
 # git-rev pin (fatal when the immutable rev falls behind), so registry
 # resolution is the steady-state fix here, not another rev bump. Reintroduce a
-# git-rev override only for an unreleased fix the onex-dev deploy needs ahead
+# git-rev override only for an unreleased fix the the configured runtime deploy needs ahead
 # of the next PyPI publish (matching the OMN-16077/16086/16089 pattern), and
 # document the specific unreleased commit's justification in the same edit.
 # omninode-memory git-rev override REMOVED (OMN-16191 repin, 2026-08-20): the
@@ -1324,7 +1325,7 @@ override-dependencies = [
     # verdict). Migration 0045 filters on exactly that pair and omnibase_infra
     # vendors it from here. Raised in BOTH places in lockstep.
     # OMN-19961: floor raised 0.47.23 -> 0.47.24, the first release that
-    # registers the per-host dev lane compose-dev-202 (core#1771).
+    # registers the per-host dev lane the configured runtime profile (core#1771).
     # node_projection_lab_container_memory scopes itself to that lane, and an
     # older core refuses the contract at discovery. Raised in BOTH places.
     # OMN-20025: raised in lockstep so the override also resolves the published

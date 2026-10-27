@@ -1,0 +1,1 @@
+{"diagnosis": "Explicit inmemory wins; absent explicit, configured kafka wins; ONEX_EVENT_BUS_TYPE ignored with warning; ONEX_CONTRACTS_DIR only points to config; core template uses ./contracts fallback; onboarding removes stale env. Cite core, infra, omniclaude. Receipt trace required.", "evidence_scope": "offline diagnosis; no live model escalation proven"}

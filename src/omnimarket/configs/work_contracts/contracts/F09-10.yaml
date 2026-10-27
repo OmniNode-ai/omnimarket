@@ -1,0 +1,87 @@
+contract_id: F09-10
+task_kind: classification
+inputs:
+- path: src/omnimarket/configs/work_contracts/inputs/F09-10.json
+  sha256: 834384a13a23ec7d03d76768d0634b00263b6d9d8ea846690d7bade26023580a
+acceptance:
+  kind: schema
+  spec:
+    schema:
+      type: object
+      additionalProperties: false
+      required:
+      - scenario
+      - rows
+      properties:
+        scenario:
+          const: F09-10
+        rows:
+          type: array
+          minItems: 50
+          maxItems: 50
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - id
+            - label
+            properties:
+              id:
+                type: string
+              label:
+                enum:
+                - handed-off
+                - partial
+                - done
+                - failed
+                - blocked
+                - DELIVERED
+                - skipped-owned
+                - ended-waiting
+                - unknown
+    expected_json: '{"rows": [{"id": "L3722", "label": "handed-off"}, {"id": "L3634",
+      "label": "partial"}, {"id": "L3606", "label": "done"}, {"id": "L3461", "label":
+      "failed"}, {"id": "L3333", "label": "blocked"}, {"id": "L3171", "label": "DELIVERED"},
+      {"id": "L2538", "label": "skipped-owned"}, {"id": "L1705", "label": "ended-waiting"},
+      {"id": "L1351", "label": "unknown"}, {"id": "L3721", "label": "handed-off"},
+      {"id": "L3620", "label": "partial"}, {"id": "L3519", "label": "done"}, {"id":
+      "L3225", "label": "failed"}, {"id": "L3112", "label": "blocked"}, {"id": "L2249",
+      "label": "skipped-owned"}, {"id": "L1349", "label": "unknown"}, {"id": "L3697",
+      "label": "handed-off"}, {"id": "L3472", "label": "partial"}, {"id": "L3503",
+      "label": "done"}, {"id": "L3208", "label": "failed"}, {"id": "L3048", "label":
+      "blocked"}, {"id": "L1633", "label": "skipped-owned"}, {"id": "L3672", "label":
+      "handed-off"}, {"id": "L3363", "label": "partial"}, {"id": "L3484", "label":
+      "done"}, {"id": "L3199", "label": "failed"}, {"id": "L2999", "label": "blocked"},
+      {"id": "L1542", "label": "skipped-owned"}, {"id": "L3671", "label": "handed-off"},
+      {"id": "L3300", "label": "partial"}, {"id": "L3402", "label": "done"}, {"id":
+      "L3026", "label": "failed"}, {"id": "L2839", "label": "blocked"}, {"id": "L1537",
+      "label": "skipped-owned"}, {"id": "L3662", "label": "handed-off"}, {"id": "L3298",
+      "label": "partial"}, {"id": "L3330", "label": "done"}, {"id": "L3020", "label":
+      "failed"}, {"id": "L2829", "label": "blocked"}, {"id": "L1519", "label": "skipped-owned"},
+      {"id": "L3660", "label": "handed-off"}, {"id": "L3205", "label": "partial"},
+      {"id": "L3314", "label": "done"}, {"id": "L2835", "label": "failed"}, {"id":
+      "L2755", "label": "blocked"}, {"id": "L1181", "label": "skipped-owned"}, {"id":
+      "L3659", "label": "handed-off"}, {"id": "L3196", "label": "partial"}, {"id":
+      "L3195", "label": "done"}, {"id": "L2814", "label": "failed"}], "scenario":
+      "F09-10"}'
+budgets:
+  max_output_tokens: 8192
+  max_wall_s: 180
+  max_turns: 8
+  max_usd: 5
+controls:
+  positive:
+    path: src/omnimarket/configs/work_contracts/controls/F09-10.positive.txt
+    sha256: 1df54cb676154b5a46eae0a7c668040d03e3657680d0c6133edc5326495754c0
+  negative:
+    path: src/omnimarket/configs/work_contracts/controls/F09-10.negative.txt
+    sha256: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+evaluators:
+- path: src/omnimarket/handlers/work_contracts/control_evaluator.py
+  sha256: 35beec5a332b646a0c1a696407f0b4a1f5a683269b19e9f782af9df0ee662d7d
+provenance:
+  source: 2026-10-27-deleg-sc-b-1100.md
+  source_sha256: 0483ba868fbaa3852282cf543dd824bc2f79fc946515bdc8769ed581bdffde0a
+  adaptation: Frozen JSON ground truth and schema. F03 summary constrained to a known-good
+    reference. F09 uses deidentified fixture rows with original ids and labels; historical
+    inputs are not equivalent.

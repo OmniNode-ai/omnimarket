@@ -1,0 +1,1820 @@
+Read the complete public Python module below. Answer each question using the exact first line of the named definition's docstring. Give three lines labelled Q1, Q2, Q3. Copy the text exactly; do not paraphrase. The relevant definitions are in the latter part of the module.
+Q1: What is the first docstring line of the definition named get_registration?
+Q2: What is the first docstring line of the definition named validate_payload?
+Q3: What is the first docstring line of the definition named get_partition_key?
+
+Public repository: OmniNode-ai/omniclaude
+Module: src/omniclaude/hooks/event_registry.py
+Revision: b6ca3729f2a9b70ae6518a8c46d08f3c1ebb8c60
+
+BEGIN PUBLIC SOURCE
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Event registry defining daemon routing and fan-out rules.
+
+The event registry for the emit daemon, defining how
+hook events are routed to Kafka topics. The key feature is **fan-out support**:
+a single event type can be published to multiple topics with different
+payload transformations.
+
+Architecture:
+    ```
+    Hook Script (user-prompt-submit.sh)
+           |
+           | emit_daemon_send(event_type="prompt.submitted", payload={...})
+           v
+    +-------------+
+    | Emit Daemon |
+    +-------------+
+           |
+           | EVENT_REGISTRY lookup for "prompt.submitted"
+           v
+    +------------------+
+    | FanOutRegistry   |
+    +------------------+
+           |
+           +------------------+------------------+
+           |                                     |
+           v                                     v
+    +----------------------+         +------------------------+
+    | CLAUDE_HOOK_EVENT    |         | PROMPT_SUBMITTED       |
+    | (full prompt)        |         | (sanitized preview)    |
+    +----------------------+         +------------------------+
+           |                                     |
+           v                                     v
+    onex.cmd.omniintelligence.     onex.evt.omniclaude.
+    claude-hook-event.v1           prompt-submitted.v1
+    ```
+
+Key Design Decisions:
+    - **Fan-out at daemon level**: The hook sends one event; the daemon handles
+      duplication and transformation. This keeps hooks simple and fast.
+    - **Transform functions**: Each fan-out rule can specify an optional
+      transform function that modifies the payload before publishing.
+    - **Passthrough by default**: If no transform is specified, the payload
+      is published as-is.
+
+Privacy Considerations:
+    - The observability topic receives a sanitized, truncated prompt preview
+    - The intelligence topic receives the full prompt for analysis
+    - This separation allows different retention/access policies per topic
+
+Single-owner registry (OMN-15967 / OMN-13146):
+    ``EVENT_REGISTRY`` below is a **generated projection**, not a hand-maintained
+    second copy. omnimarket's ``topics.yaml``
+    (``src/omnimarket/nodes/node_emit_daemon/registries/topics.yaml``) is the
+    single canonical source the emit daemon actually loads at runtime.
+    ``scripts/validation/generate_event_registry.py`` is the one place that
+    projects that file's event/fan-out/partition-key/required-field data into
+    the Python literal committed here, and the "Registry Consistency" CI job
+    (``.github/workflows/ci.yml``) re-runs it with ``--check`` against a fresh
+    ``omnimarket@dev`` checkout on every PR, failing the build on any
+    unbaselined drift. Do not hand-edit ``fan_out`` / ``partition_key_field`` /
+    ``required_fields`` below without also updating the daemon registry (or the
+    two documented exceptions in the generator) — the CI gate will reject a
+    drifted commit.
+
+    Two intentional, documented exceptions keep this from being a strict
+    mirror of the daemon registry:
+
+    1. ``daemon.health.probe``, ``delegation.request``, ``pr.state.observed``,
+       the ``work.ledger.*`` row events (OMN-19513), and the OMN-20154
+       ``provider.quota.observed`` / ``delegate_skill.*`` terminals, and
+       ``delegation.disposition_recorded``, are
+       daemon-internal event types — the daemon handles/emits them entirely internally, no
+       hook client ever constructs them, so there is no client-side
+       registration to project. See
+       ``generate_event_registry.DAEMON_INTERNAL_EVENT_TYPES``.
+    2. ``diagnostic.daemon.health`` fans out, daemon-side, to one extra topic
+       (``onex.evt.diagnostic.daemon-health.v1``) that is not ONEX-canonical
+       format and has no ``TopicBase`` member — the daemon is the runtime
+       routing authority and is allowed to fan out wider than the hook-side
+       registration (see ``tests/hooks/test_registry_consistency.py``). See
+       ``generate_event_registry.NON_CANONICAL_DAEMON_TOPICS``.
+
+Related Tickets:
+    - OMN-1631: Emit daemon fan-out support
+    - OMN-1632: Event registry for omniclaude hooks
+    - OMN-13146: omnimarket topics.yaml established as canonical source
+    - OMN-15967: single-owner registry — this file generated/CI-verified, not
+      hand-maintained
+
+.. versionadded:: 0.2.0
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Protocol, cast
+
+from omniclaude.hooks.capture_redaction import redact_capture
+from omniclaude.hooks.schemas import (
+    PROMPT_PREVIEW_MAX_LENGTH,
+    _sanitize_prompt_preview,
+)
+from omniclaude.hooks.topics import TopicBase
+
+# Type alias for payload transform functions
+# Transform: dict -> dict (receives payload, returns transformed payload)
+PayloadTransform = Callable[[dict[str, object]], dict[str, object]]
+
+
+class TopicScopedTransform(Protocol):
+    """A transform whose behaviour is declared per target topic (OMN-17959).
+
+    ``redact_capture`` is the first of these: the capture-redaction contract
+    declares a different field policy for each governed topic, so a
+    topic-blind ``dict -> dict`` transform could not select the right one.
+    The keyword name is part of the contract this Protocol pins, not an
+    incidental parameter name.
+    """
+
+    def __call__(
+        self, payload: dict[str, object], *, topic: str
+    ) -> dict[str, object]: ...
+
+
+#: Transforms that take their rule's target topic. ``FanOutRule.apply_transform``
+#: consults this rather than inspecting a signature, so registering a
+#: topic-scoped transform is an explicit act.
+TOPIC_SCOPED_TRANSFORMS: frozenset[object] = frozenset({redact_capture})
+
+
+# =============================================================================
+# Transform Functions
+# =============================================================================
+
+
+def transform_for_observability(payload: dict[str, object]) -> dict[str, object]:
+    """Transform prompt payload for observability topic.
+
+    Handles two payload shapes:
+
+    **New shape** (OMN-2027): Hook sends ``prompt_preview``, ``prompt_length``,
+    and ``prompt_b64``. This transform strips ``prompt_b64`` (full prompt) and
+    re-sanitizes ``prompt_preview`` for defense-in-depth.
+
+    **Legacy shape**: Hook sends a raw ``prompt`` field. This transform creates
+    a sanitized preview, records original length, and removes the full prompt.
+
+    The resulting payload is suitable for the observability topic where
+    we want metadata about prompts without storing full content.
+
+    Args:
+        payload: Original event payload (new or legacy shape).
+
+    Returns:
+        Transformed payload with:
+        - prompt_preview: Sanitized, truncated preview (max 100 chars)
+        - prompt_length: Original prompt length in characters
+        - All other original fields preserved
+        - Full prompt fields removed (prompt, prompt_b64)
+
+    Example:
+        >>> payload = {"prompt_preview": "Fix the bug...", "prompt_b64": "RnVsbA==", "prompt_length": 42, "session_id": "xyz"}
+        >>> result = transform_for_observability(payload)
+        >>> "prompt_b64" not in result  # Full prompt removed
+        True
+        >>> "prompt_preview" in result  # Preview preserved
+        True
+    """
+    # Create a copy to avoid mutating the original
+    result: dict[str, object] = dict(payload)
+
+    # New payload shape (OMN-2027): hook sends prompt_preview + prompt_b64
+    # instead of a raw "prompt" field. Detect via prompt_b64 presence.
+    if "prompt_b64" in payload:
+        # prompt_preview and prompt_length are already set by the hook.
+        # Just strip the full-prompt fields that must not reach the evt topic.
+        result.pop("prompt_b64", None)
+        result.pop("prompt", None)
+
+        # Re-sanitize prompt_preview for defense-in-depth (hook truncates
+        # to 100 chars but does not run full secret redaction).
+        preview = payload.get("prompt_preview", "")
+        if not isinstance(preview, str):
+            preview = str(preview) if preview is not None else ""
+        result["prompt_preview"] = _sanitize_prompt_preview(
+            preview, max_length=PROMPT_PREVIEW_MAX_LENGTH
+        )
+        return result
+
+    # Legacy payload shape: raw "prompt" field (backwards compatibility)
+    full_prompt = payload.get("prompt", "")
+    if not isinstance(full_prompt, str):
+        full_prompt = str(full_prompt) if full_prompt is not None else ""
+
+    # Record the original length before any processing
+    result["prompt_length"] = len(full_prompt)
+
+    # Create sanitized, truncated preview
+    # _sanitize_prompt_preview handles both secret redaction and truncation
+    result["prompt_preview"] = _sanitize_prompt_preview(
+        full_prompt, max_length=PROMPT_PREVIEW_MAX_LENGTH
+    )
+
+    # Remove the full prompt from the payload
+    # The observability topic should only have the preview
+    result.pop("prompt", None)
+
+    return result
+
+
+def transform_passthrough(payload: dict[str, object]) -> dict[str, object]:
+    """Passthrough transform - returns payload unchanged.
+
+    This is the default transform when no modification is needed.
+    Explicitly defined for clarity and testability.
+
+    Args:
+        payload: Original event payload.
+
+    Returns:
+        The original payload unchanged.
+    """
+    return payload
+
+
+def _transform_chat_broadcast(payload: dict[str, object]) -> dict[str, object]:
+    """Sanitize chat broadcast payload before publishing to Kafka.
+
+    Strips the raw ``body`` field (which may contain PII, secrets, or
+    sensitive operational context) and replaces it with a length and a
+    sanitized preview.  All other fields are passed through unchanged.
+
+    Args:
+        payload: Original chat broadcast payload containing ``body``.
+
+    Returns:
+        Transformed payload with ``body`` removed and ``body_length`` /
+        ``body_preview`` added.
+    """
+    result: dict[str, object] = dict(payload)
+    body = payload.get("body", "")
+    if not isinstance(body, str):
+        body = str(body) if body is not None else ""
+    result["body_length"] = len(body)
+    result["body_preview"] = _sanitize_prompt_preview(body, max_length=200)
+    result.pop("body", None)
+    return result
+
+
+# =============================================================================
+# Fan-Out Rule Models
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class FanOutRule:
+    """A single fan-out rule specifying a target topic and optional transform.
+
+    Attributes:
+        topic_base: The base topic name from TopicBase enum.
+            TopicBase values ARE the wire topic names (no environment prefix per OMN-1972).
+        transform: Optional function to transform the payload before publishing.
+            If None, the payload is passed through unchanged.
+            Transform signature: (dict[str, object]) -> dict[str, object]
+        description: Human-readable description of what this rule does.
+            Used for logging and debugging.
+
+    Example:
+        >>> rule = FanOutRule(
+        ...     topic_base=TopicBase.PROMPT_SUBMITTED,
+        ...     transform=transform_for_observability,
+        ...     description="Sanitized preview for observability",
+        ... )
+    """
+
+    topic_base: TopicBase
+    transform: PayloadTransform | TopicScopedTransform | None = None
+    description: str = ""
+
+    def apply_transform(self, payload: dict[str, object]) -> dict[str, object]:
+        """Apply the transform to the payload.
+
+        A transform registered in ``TOPIC_SCOPED_TRANSFORMS`` is handed this
+        rule's own target topic, because its posture is declared per topic
+        (OMN-17959). Every other transform keeps the plain ``dict -> dict``
+        signature.
+
+        Args:
+            payload: The original event payload.
+
+        Returns:
+            Transformed payload, or original if no transform is defined.
+        """
+        if self.transform is None:
+            return dict(payload)
+        if self.transform in TOPIC_SCOPED_TRANSFORMS:
+            scoped = cast("TopicScopedTransform", self.transform)
+            return scoped(payload, topic=str(self.topic_base.value))
+        plain = cast("PayloadTransform", self.transform)
+        return plain(payload)
+
+
+@dataclass(frozen=True)
+class EventRegistration:
+    """Registration for a single event type with fan-out rules.
+
+    Each event type can have multiple fan-out rules, allowing the daemon
+    to publish the same event to multiple topics with different payloads.
+
+    Attributes:
+        event_type: The semantic event type identifier (e.g., "prompt.submitted").
+            This matches the event_type field in ModelDaemonEmitRequest.
+        fan_out: List of fan-out rules defining target topics and transforms.
+            Events are published to ALL targets in this list.
+        partition_key_field: Optional field name to use as Kafka partition key.
+            Events with the same partition key go to the same partition,
+            ensuring ordering for that key.
+        required_fields: List of field names that must be present in the payload.
+            Validation fails if any required field is missing.
+
+    Example:
+        >>> reg = EventRegistration(
+        ...     event_type="prompt.submitted",
+        ...     fan_out=[
+        ...         FanOutRule(topic_base=TopicBase.CLAUDE_HOOK_EVENT),
+        ...         FanOutRule(topic_base=TopicBase.PROMPT_SUBMITTED, transform=transform_for_observability),
+        ...     ],
+        ...     partition_key_field="session_id",
+        ...     required_fields=["prompt_preview", "session_id"],
+        ... )
+    """
+
+    event_type: str
+    fan_out: list[FanOutRule] = field(default_factory=list)
+    partition_key_field: str | None = None
+    required_fields: list[str] = field(default_factory=list)
+
+
+# =============================================================================
+# Event Registry
+# =============================================================================
+
+# GENERATED PROJECTION — DO NOT HAND-EDIT (OMN-15967 / OMN-13146).
+#
+# The event_type keys, fan_out topics/transforms, partition_key_field, and
+# required_fields below are mechanically projected from omnimarket's
+# topics.yaml (the daemon's actual runtime registry) by
+# scripts/validation/generate_event_registry.py. The "Registry Consistency"
+# CI job re-runs that script with --check against a fresh omnimarket@dev
+# checkout on every PR and fails the build on any drift — see the module
+# docstring above for the full single-owner-registry rationale and the two
+# documented daemon-internal/non-canonical exceptions.
+#
+# To pick up a daemon-side registry change: regenerate with
+#   uv run python scripts/validation/generate_event_registry.py \
+#       --daemon-registry <path/to/omnimarket/topics.yaml> --write
+# and splice the projected fields into the matching EventRegistration entries
+# below, then run `uv run python scripts/validation/generate_event_registry.py
+# --daemon-registry <path> --check` to confirm zero drift before committing.
+#
+# Registry mapping event types to their fan-out rules
+# This is the central configuration for the emit daemon's routing logic
+EVENT_REGISTRY: dict[str, EventRegistration] = {
+    # OMN-20001: generated typed row routing projection of omnimarket topics.yaml.
+    "work.ledger.typed.ack": EventRegistration(
+        event_type="work.ledger.typed.ack",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.WORK_LEDGER_ACK_V2,
+                description="A core typed ack work-ledger event",
+            ),
+        ],
+        partition_key_field="ledger_id",
+        required_fields=[
+            "ledger_id",
+            "event_id",
+            "row_id",
+            "raw_row",
+            "source",
+            "provenance_kind",
+            "event",
+            "row_schema",
+        ],
+    ),
+    "work.ledger.typed.claim": EventRegistration(
+        event_type="work.ledger.typed.claim",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.WORK_LEDGER_CLAIM_V2,
+                description="A core typed claim work-ledger event",
+            ),
+        ],
+        partition_key_field="ledger_id",
+        required_fields=[
+            "ledger_id",
+            "event_id",
+            "row_id",
+            "raw_row",
+            "source",
+            "provenance_kind",
+            "event",
+            "row_schema",
+        ],
+    ),
+    "work.ledger.typed.correction": EventRegistration(
+        event_type="work.ledger.typed.correction",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.WORK_LEDGER_CORRECTION_V2,
+                description="A core typed correction work-ledger event",
+            ),
+        ],
+        partition_key_field="ledger_id",
+        required_fields=[
+            "ledger_id",
+            "event_id",
+            "row_id",
+            "raw_row",
+            "source",
+            "provenance_kind",
+            "event",
+            "row_schema",
+        ],
+    ),
+    "work.ledger.typed.friction": EventRegistration(
+        event_type="work.ledger.typed.friction",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.WORK_LEDGER_FRICTION_V2,
+                description="A core typed friction work-ledger event",
+            ),
+        ],
+        partition_key_field="ledger_id",
+        required_fields=[
+            "ledger_id",
+            "event_id",
+            "row_id",
+            "raw_row",
+            "source",
+            "provenance_kind",
+            "event",
+            "row_schema",
+        ],
+    ),
+    "work.ledger.typed.hold": EventRegistration(
+        event_type="work.ledger.typed.hold",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.WORK_LEDGER_HOLD_V2,
+                description="A core typed hold work-ledger event",
+            ),
+        ],
+        partition_key_field="ledger_id",
+        required_fields=[
+            "ledger_id",
+            "event_id",
+            "row_id",
+            "raw_row",
+            "source",
+            "provenance_kind",
+            "event",
+            "row_schema",
+        ],
+    ),
+    "work.ledger.typed.msg": EventRegistration(
+        event_type="work.ledger.typed.msg",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.WORK_LEDGER_MSG_V2,
+                description="A core typed msg work-ledger event",
+            ),
+        ],
+        partition_key_field="ledger_id",
+        required_fields=[
+            "ledger_id",
+            "event_id",
+            "row_id",
+            "raw_row",
+            "source",
+            "provenance_kind",
+            "event",
+            "row_schema",
+        ],
+    ),
+    "work.ledger.typed.operator_consent": EventRegistration(
+        event_type="work.ledger.typed.operator_consent",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.WORK_LEDGER_OPERATOR_CONSENT_V2,
+                description="A core typed operator-consent work-ledger event",
+            ),
+        ],
+        partition_key_field="ledger_id",
+        required_fields=[
+            "ledger_id",
+            "event_id",
+            "row_id",
+            "raw_row",
+            "source",
+            "provenance_kind",
+            "event",
+            "row_schema",
+        ],
+    ),
+    "work.ledger.typed.release": EventRegistration(
+        event_type="work.ledger.typed.release",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.WORK_LEDGER_RELEASE_V2,
+                description="A core typed release work-ledger event",
+            ),
+        ],
+        partition_key_field="ledger_id",
+        required_fields=[
+            "ledger_id",
+            "event_id",
+            "row_id",
+            "raw_row",
+            "source",
+            "provenance_kind",
+            "event",
+            "row_schema",
+        ],
+    ),
+    "work.ledger.typed.ruling": EventRegistration(
+        event_type="work.ledger.typed.ruling",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.WORK_LEDGER_RULING_V2,
+                description="A core typed ruling work-ledger event",
+            ),
+        ],
+        partition_key_field="ledger_id",
+        required_fields=[
+            "ledger_id",
+            "event_id",
+            "row_id",
+            "raw_row",
+            "source",
+            "provenance_kind",
+            "event",
+            "row_schema",
+        ],
+    ),
+    "work.ledger.typed.status": EventRegistration(
+        event_type="work.ledger.typed.status",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.WORK_LEDGER_STATUS_V2,
+                description="A core typed status work-ledger event",
+            ),
+        ],
+        partition_key_field="ledger_id",
+        required_fields=[
+            "ledger_id",
+            "event_id",
+            "row_id",
+            "raw_row",
+            "source",
+            "provenance_kind",
+            "event",
+            "row_schema",
+        ],
+    ),
+    "work.ledger.typed.terminal": EventRegistration(
+        event_type="work.ledger.typed.terminal",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.WORK_LEDGER_TERMINAL_V2,
+                description="A core typed terminal work-ledger event",
+            ),
+        ],
+        partition_key_field="ledger_id",
+        required_fields=[
+            "ledger_id",
+            "event_id",
+            "row_id",
+            "raw_row",
+            "source",
+            "provenance_kind",
+            "event",
+            "row_schema",
+        ],
+    ),
+    # =========================================================================
+    # Session Events
+    # =========================================================================
+    "session.started": EventRegistration(
+        event_type="session.started",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.SESSION_STARTED,
+                transform=redact_capture,
+                description="Contract-redacted session start telemetry (OMN-16979)",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id"],
+    ),
+    "session.ended": EventRegistration(
+        event_type="session.ended",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.SESSION_ENDED,
+                transform=redact_capture,
+                description="Contract-redacted session end telemetry (OMN-16979)",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id"],
+    ),
+    # Session outcome event (OMN-1735, FEEDBACK-008)
+    # Fan-out to BOTH intelligence (CMD) and observability (EVT):
+    #   - CMD: triggers pattern_feedback_effect in omniintelligence
+    #   - EVT: dashboards, monitoring, generic subscribers
+    "session.outcome": EventRegistration(
+        event_type="session.outcome",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.SESSION_OUTCOME_CMD,
+                transform=None,  # Passthrough — full payload to intelligence
+                description="Session outcome for intelligence feedback loop",
+            ),
+            FanOutRule(
+                topic_base=TopicBase.SESSION_OUTCOME_EVT,
+                transform=None,  # Passthrough — same payload for observability
+                description="Session outcome for dashboards and monitoring",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id", "outcome"],
+    ),
+    # Utilization scoring command (OMN-5505)
+    # Emitted by Stop hook when patterns were injected during the session.
+    # Routes to omniintelligence for LLM-based utilization scoring.
+    "utilization.scoring.requested": EventRegistration(
+        event_type="utilization.scoring.requested",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.UTILIZATION_SCORING_CMD,
+                transform=None,  # Passthrough — full payload to intelligence
+                description="Utilization scoring command to omniintelligence",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id", "injected_pattern_ids"],
+    ),
+    # =========================================================================
+    # Work Obligation Events
+    # =========================================================================
+    "work.obligation.abandoned": EventRegistration(
+        event_type="work.obligation.abandoned",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.WORK_OBLIGATION_ABANDONED,
+                transform=None,
+                description=(
+                    "Closed without delivery, with a recorded reason -- never a silent drop"
+                ),
+            ),
+        ],
+        partition_key_field="obligation_id",
+        required_fields=["obligation_id", "actor_id", "summary", "abandon_reason"],
+    ),
+    "work.obligation.created": EventRegistration(
+        event_type="work.obligation.created",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.WORK_OBLIGATION_CREATED,
+                transform=None,
+                description=(
+                    "An obligation is opened: who asked, who owes, what would satisfy it"
+                ),
+            ),
+        ],
+        partition_key_field="obligation_id",
+        required_fields=[
+            "obligation_id",
+            "actor_id",
+            "summary",
+            "asked_by",
+            "owed_by",
+            "acceptance_condition",
+        ],
+    ),
+    "work.obligation.satisfied": EventRegistration(
+        event_type="work.obligation.satisfied",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.WORK_OBLIGATION_SATISFIED,
+                transform=None,
+                description="Closed by delivery: artifact reference plus delivery state",
+            ),
+        ],
+        partition_key_field="obligation_id",
+        required_fields=[
+            "obligation_id",
+            "actor_id",
+            "summary",
+            "evidence_uri",
+            "delivery_state",
+        ],
+    ),
+    "work.obligation.superseded": EventRegistration(
+        event_type="work.obligation.superseded",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.WORK_OBLIGATION_SUPERSEDED,
+                transform=None,
+                description="Closed because a named successor obligation replaced it",
+            ),
+        ],
+        partition_key_field="obligation_id",
+        required_fields=[
+            "obligation_id",
+            "actor_id",
+            "summary",
+            "superseded_by_obligation_id",
+        ],
+    ),
+    "work.obligation.transferred": EventRegistration(
+        event_type="work.obligation.transferred",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.WORK_OBLIGATION_TRANSFERRED,
+                transform=None,
+                description="The debt moves to a different owner; the obligation survives",
+            ),
+        ],
+        partition_key_field="obligation_id",
+        required_fields=["obligation_id", "actor_id", "summary", "owed_by"],
+    ),
+    # =========================================================================
+    # Prompt Events (Fan-out to TWO topics)
+    # =========================================================================
+    "prompt.submitted": EventRegistration(
+        event_type="prompt.submitted",
+        fan_out=[
+            # Target 1: Intelligence topic - Full prompt for analysis
+            # The intelligence service needs the complete prompt to:
+            # - Classify user intent
+            # - Learn workflow patterns
+            # - Optimize RAG retrieval
+            FanOutRule(
+                topic_base=TopicBase.CLAUDE_HOOK_EVENT,
+                transform=None,  # Passthrough - full prompt
+                description="Full prompt to intelligence service for analysis",
+            ),
+            # Target 2: Observability topic - contract-redacted telemetry.
+            # OMN-17209 superseded strip_prompt (transform_for_observability)
+            # on this rule: it kept the 100-char preview that OMN-16019 named
+            # as the disclosure surface. The capture-redaction contract
+            # reduces that preview to a shape and drops the prompt outright.
+            FanOutRule(
+                topic_base=TopicBase.PROMPT_SUBMITTED,
+                transform=redact_capture,
+                description="Contract-redacted prompt telemetry (OMN-17209)",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["prompt_preview", "session_id"],
+    ),
+    # =========================================================================
+    # Tool Events
+    # =========================================================================
+    # OMN-19551 (topic and contract owned by omnimarket, OMN-19550): full
+    # session content -- the complete prompt, tool input, tool result and
+    # assistant reply -- one item or one chunk per record. OMN-19513: the
+    # producer journals it raw (operator RULING 2026-10-15T04:24:42Z: no
+    # redaction); the pinned omnimarket emit registry declares passthrough on
+    # the publish side, and Registry Consistency refuses any other projection.
+    # Raw publish is the ruled policy, not a dropped control: production's
+    # option is payload encryption at the producer (``payload_encryption`` in
+    # contract_hook_claude_capture.yaml, handler_hook_payload_encryption.py).
+    # Both producers call hook_content_capture.payload_sealer before journalling:
+    # only explicit enabled:false permits plaintext, invalid settings refuse
+    # capture, and enabled:true requires a usable secret-store key. Passthrough
+    # preserves the sealed envelope; redaction would corrupt its ciphertext.
+    "content.captured": EventRegistration(
+        event_type="content.captured",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.CONTENT_CAPTURED,
+                transform=None,
+                description="Raw full session content (OMN-19550, OMN-19513)",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id", "content_kind"],
+    ),
+    # OMN-19513 (topic and capture policy owned by omnimarket's emit
+    # registry): the all-hooks capture. One lineage-carrying event per Claude
+    # Code hook call, every hook type on one topic, content fields raw from the
+    # producer; the publish transform is projected from omnimarket's emit
+    # registry, which declares passthrough at the pinned rev (operator RULING
+    # 2026-10-15T04:24:42Z: capture raw; encryption is the production option,
+    # as for content.captured above). Partitioned by session so a session's
+    # hooks stay ordered.
+    "hook.event": EventRegistration(
+        event_type="hook.event",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.HOOK_EVENT,
+                transform=None,
+                description=(
+                    "Lineage-carrying Claude Code hook event, all hook types "
+                    "(OMN-19513)"
+                ),
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id", "event_id", "hook_event_name", "lineage"],
+    ),
+    "tool.executed": EventRegistration(
+        event_type="tool.executed",
+        fan_out=[
+            # OMN-17209: previously no transform at all. This topic is one of
+            # the two OMN-16979 widens onto the cloud relay, so it crosses the
+            # trust boundary and needs a declared capture posture, not an
+            # omitted one.
+            FanOutRule(
+                topic_base=TopicBase.TOOL_EXECUTED,
+                transform=redact_capture,
+                description="Contract-redacted tool telemetry (OMN-17209)",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["tool_name", "session_id"],
+    ),
+    # Tool content (OMN-10837): full tool execution content for pattern learning.
+    # Routes through node_emit_daemon, eliminating the legacy embedded EventBusKafka path.
+    "tool.content": EventRegistration(
+        event_type="tool.content",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.TOOL_CONTENT,
+                transform=None,  # Passthrough — restricted cmd topic, full content safe
+                description="Tool execution content for omniintelligence pattern learning",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["tool_name_raw", "session_id"],
+    ),
+    # =========================================================================
+    # Routing Feedback Events (OMN-1892)
+    # =========================================================================
+    "routing.feedback": EventRegistration(
+        event_type="routing.feedback",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.ROUTING_FEEDBACK,
+                transform=None,  # Passthrough
+                description="Routing feedback for reinforcement learning",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id", "outcome", "feedback_status"],
+    ),
+    # TOMBSTONED (OMN-2622): routing.skipped folded into routing.feedback via
+    # feedback_status="skipped" + skip_reason fields on ModelRoutingFeedbackPayload.
+    # Topic onex.evt.omniclaude.routing-feedback-skipped.v1 is no longer provisioned.
+    #
+    # TOMBSTONED (OMN-2622): routing.outcome.raw deprecated — no named consumer,
+    # raw/unnormalized signals not suitable for long-term storage.
+    # Topic onex.evt.omniclaude.routing-outcome-raw.v1 is no longer provisioned.
+    # =========================================================================
+    # Injection Tracking Events (OMN-1673 INJECT-004)
+    # =========================================================================
+    "injection.recorded": EventRegistration(
+        event_type="injection.recorded",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.INJECTION_RECORDED,
+                transform=None,  # Passthrough - full payload
+                description="Injection tracking for A/B analysis and outcome attribution",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["injection_id", "session_id", "cohort"],
+    ),
+    # =========================================================================
+    # Metrics Events (OMN-1889)
+    # =========================================================================
+    "context.utilization": EventRegistration(
+        event_type="context.utilization",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.CONTEXT_UTILIZATION,
+                transform=None,  # Passthrough
+                description="Context utilization metrics for observability",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id"],
+    ),
+    "agent.match": EventRegistration(
+        event_type="agent.match",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.AGENT_MATCH,
+                transform=None,  # Passthrough
+                description="Agent match metrics for observability",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id"],
+    ),
+    "latency.breakdown": EventRegistration(
+        event_type="latency.breakdown",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.LATENCY_BREAKDOWN,
+                transform=None,  # Passthrough
+                description="Latency breakdown metrics for observability",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id"],
+    ),
+    # =========================================================================
+    # Routing Decision (PR-92)
+    # =========================================================================
+    "routing.decision": EventRegistration(
+        event_type="routing.decision",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.ROUTING_DECISION,
+                transform=None,  # Passthrough
+                description="Routing decision event for observability",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id"],
+    ),
+    # =========================================================================
+    # LLM Routing Observability Events (OMN-2273)
+    # =========================================================================
+    "llm.routing.decision": EventRegistration(
+        event_type="llm.routing.decision",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.LLM_ROUTING_DECISION,
+                transform=None,  # Passthrough — no sensitive data in routing metadata
+                description="LLM routing decision with determinism audit fields",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id", "selected_agent", "routing_prompt_version"],
+    ),
+    "llm.routing.fallback": EventRegistration(
+        event_type="llm.routing.fallback",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.LLM_ROUTING_FALLBACK,
+                transform=None,  # Passthrough
+                description="LLM routing fallback — pipeline fell through to fuzzy matching",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id", "fallback_reason", "routing_prompt_version"],
+    ),
+    # =========================================================================
+    # Stop Hook Events (STOP-HOOK-FIX)
+    # =========================================================================
+    # Emitted by the Stop hook after each assistant turn completion.
+    # Routed to the intelligence service cmd topic for pattern learning trigger.
+    # No payload transform — event contains only session metadata (no prompts).
+    "response.stopped": EventRegistration(
+        event_type="response.stopped",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.CLAUDE_HOOK_EVENT,
+                transform=None,
+                description="Stop hook event routed to intelligence service for pattern learning trigger",
+            ),
+        ],
+        required_fields=["session_id", "event_type"],
+    ),
+    # =========================================================================
+    # Context Enrichment Observability Events (OMN-2274, OMN-2441)
+    # =========================================================================
+    "context.enrichment": EventRegistration(
+        event_type="context.enrichment",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.CONTEXT_ENRICHMENT,
+                transform=None,  # Passthrough — no sensitive data in enrichment metadata
+                description="Per-channel enrichment observability event",
+            ),
+        ],
+        partition_key_field="session_id",
+        # OMN-2441: 'channel' replaces 'enrichment_type' — payloads without 'channel' are intentionally rejected.
+        # Audited: no caller invokes validate_payload("context.enrichment", ...) with the old
+        # 'enrichment_type' field — the only call site is embedded_publisher.py which forwards
+        # the payload as-is from enrichment_observability_emitter.py (which already emits
+        # 'channel').  No callers need updating.
+        # Manually verified at OMN-2441; re-audit if new validate_payload("context.enrichment", ...) call sites are added.
+        # Migration hint: if validation fails with "missing field: channel", the caller was built
+        # against the old contract ('enrichment_type'); migrate to 'channel' per OMN-2441 and
+        # see OMN-2473 for the legacy field removal timeline.
+        required_fields=["session_id", "channel"],
+    ),
+    # =========================================================================
+    # Notification Events (OMN-1831)
+    # =========================================================================
+    "notification.blocked": EventRegistration(
+        event_type="notification.blocked",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.NOTIFICATION_BLOCKED,
+                transform=None,  # Passthrough
+                description="Notification blocked event for observability",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id"],
+    ),
+    "notification.completed": EventRegistration(
+        event_type="notification.completed",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.NOTIFICATION_COMPLETED,
+                transform=None,  # Passthrough
+                description="Notification completed event for observability",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id"],
+    ),
+    # =========================================================================
+    # Phase Metrics (OMN-2027 - pipeline measurement)
+    # =========================================================================
+    "phase.metrics": EventRegistration(
+        event_type="phase.metrics",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.PHASE_METRICS,
+                transform=None,  # Passthrough (pre-sanitized by metrics_emitter)
+                description="Phase instrumentation metrics for pipeline observability",
+            ),
+        ],
+        partition_key_field=None,  # No partition key; events are round-robin distributed
+        required_fields=["event_id", "event_type", "timestamp_iso", "payload"],
+    ),
+    # =========================================================================
+    # Pattern Compliance (OMN-2263 → OMN-2256)
+    # =========================================================================
+    # No fan-out, no payload transform — full content goes to the intelligence
+    # cmd topic which is already access-restricted. Content must reach
+    # omniintelligence intact for content-aware compliance checking.
+    "compliance.evaluate": EventRegistration(
+        event_type="compliance.evaluate",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.COMPLIANCE_EVALUATE,
+                transform=None,  # Passthrough — full content to intelligence
+                description="Compliance evaluation request to omniintelligence",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id", "source_path", "applicable_patterns"],
+    ),
+    # =========================================================================
+    # Static Context Edit Detection (OMN-2237)
+    # =========================================================================
+    "static.context.edit.detected": EventRegistration(
+        event_type="static.context.edit.detected",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.STATIC_CONTEXT_EDIT_DETECTED,
+                transform=None,  # Passthrough — no content, only paths and stats
+                description="Static context file change detected between sessions",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id", "changed_file_count"],
+    ),
+    # =========================================================================
+    # Task Delegation Observability (OMN-2281 / OMN-5610)
+    # =========================================================================
+    # Emitted by delegation_orchestrator.py on every delegation attempt (success
+    # or failure). Consumed by omnidash /delegation dashboard via delegation_events
+    # table. No payload transform — event contains only delegation metadata
+    # (task_type, handler, model, quality gate result, latency, savings).
+    "task.delegated": EventRegistration(
+        event_type="task.delegated",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.TASK_DELEGATED,
+                transform=None,  # Passthrough — no sensitive data in delegation metadata
+                description="Task delegation event for omnidash delegation dashboard",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id", "correlation_id", "task_type", "delegated_to"],
+    ),
+    # =========================================================================
+    # Delegation Request Command (OMN-7040)
+    # =========================================================================
+    # Emitted by the /delegate skill to trigger task delegation through the
+    # node-based pipeline. The payload is a ModelEventEnvelope-compatible dict
+    # so the runtime consumer can deserialize it directly.
+    # Event type renamed from "delegation.request" → "delegate.task" in OMN-10050
+    # to align with node_delegation_orchestrator contract topic.
+    "delegate.task": EventRegistration(
+        event_type="delegate.task",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.DELEGATE_TASK,
+                transform=None,  # Passthrough — payload is already envelope-shaped
+                description="Delegation request command for node_delegation_orchestrator",
+            ),
+        ],
+        partition_key_field="correlation_id",
+        required_fields=["payload", "correlation_id"],
+    ),
+    # =========================================================================
+    # Delegation Shadow Validation (OMN-2283)
+    # =========================================================================
+    "delegation.shadow.comparison": EventRegistration(
+        event_type="delegation.shadow.comparison",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.DELEGATION_SHADOW_COMPARISON,
+                transform=None,  # Passthrough — no sensitive data in comparison metrics
+                description="Shadow validation comparison result for quality monitoring",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id", "correlation_id"],
+    ),
+    # =========================================================================
+    # Pattern Enforcement Observability (OMN-2442)
+    # =========================================================================
+    # Emitted by pattern_enforcement.py on each enforcement evaluation.
+    # Consumed by omnidash /enforcement dashboard via pattern_enforcement_events table.
+    # No payload transform — event is safe for observability (no file contents,
+    # only metadata: pattern_name, language, domain, outcome, confidence).
+    "pattern.enforcement": EventRegistration(
+        event_type="pattern.enforcement",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.PATTERN_ENFORCEMENT,
+                transform=None,  # Passthrough — no sensitive content, only enforcement metadata
+                description=(
+                    "Pattern enforcement evaluation result for omnidash /enforcement dashboard. "
+                    "correlation_id matches the corresponding compliance.evaluate event when the "
+                    "daemon is up; in daemon-down cases the correlation_id is orphaned (no matching "
+                    "compliance.evaluate row) — omnidash LEFT JOINs should handle nulls."
+                ),
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=[
+            "session_id",
+            "correlation_id",
+            "timestamp",
+            "language",
+            "domain",
+            "pattern_name",
+            "outcome",
+        ],
+    ),
+    # =========================================================================
+    # Agent Status (OMN-1848 - agent lifecycle reporting)
+    # =========================================================================
+    # NOTE: agent_name and session_id may carry the sentinel value "unknown".
+    # This indicates the caller did not provide these fields explicitly and
+    # the corresponding environment variables (AGENT_NAME, CLAUDE_CODE_SESSION_ID) were
+    # also unset. Consumers should treat "unknown" as "not provided", not as
+    # a literal agent name or session identifier.
+    "agent.status": EventRegistration(
+        event_type="agent.status",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.AGENT_STATUS,
+                transform=None,  # Passthrough (pre-validated by agent_status_emitter)
+                description="Agent lifecycle status for observability and coordination",
+            ),
+        ],
+        # Known limitation: when session_id falls back to "unknown" (env var
+        # unset and caller omits it), all such events hash to the same Kafka
+        # partition, creating a hot-partition.  Acceptable for low-volume
+        # fallback traffic; revisit if "unknown" events become frequent.
+        partition_key_field="session_id",
+        required_fields=["agent_name", "session_id", "state", "message"],
+    ),
+    # =========================================================================
+    # Agent Action (wire-missing-producers - per-tool agent action observability)
+    # =========================================================================
+    # Emitted by post-tool-use-quality.sh for every tool call.
+    # Routes to onex.evt.omniclaude.agent-actions.v1 consumed by the
+    # omninode-agent-actions-consumer and projected into the agent_actions table.
+    "agent.action": EventRegistration(
+        event_type="agent.action",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.AGENT_ACTIONS,
+                transform=None,  # Passthrough — no sensitive data in tool metadata
+                description="Per-tool agent action event for omnidash agent_actions projection",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["correlation_id", "agent_name", "action_type", "session_id"],
+    ),
+    # =========================================================================
+    # Intent-to-Commit Binding (OMN-2492)
+    # =========================================================================
+    # Emitted by commit_intent_binder.py when a Bash PostToolUse output
+    # contains a git commit SHA.  Links the commit to the active intent_id
+    # from the correlation state file.  Preview-safe: no prompt content.
+    "intent.commit.bound": EventRegistration(
+        event_type="intent.commit.bound",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.INTENT_COMMIT_BOUND,
+                transform=None,  # Passthrough — no sensitive data in binding record
+                description="Intent-to-commit binding record for audit trail",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["commit_sha", "session_id"],
+    ),
+    # =========================================================================
+    # ChangeFrame Emission (OMN-2651)
+    # =========================================================================
+    # Emitted by frame_assembler.py after JSONL persistence.
+    # Payload is frame.model_dump() — the flat Pydantic dict of ChangeFrame.
+    # No payload transform — ChangeFrame contains only code metadata
+    # (diff patches, check results, outcome status), no secrets or prompts.
+    # Consumed by omnidash for real-time ChangeFrame display.
+    "change.frame.emitted": EventRegistration(
+        event_type="change.frame.emitted",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.CHANGE_FRAME_EMITTED,
+                transform=None,  # Passthrough — ChangeFrame contains no secrets
+                description="ChangeFrame emitted after JSONL persist for omnidash consumption",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["frame_id", "trace_id", "session_id"],
+    ),
+    # =========================================================================
+    # Skill Lifecycle Events (OMN-2773)
+    # =========================================================================
+    # Partition key: run_id (guarantees ordered join within a single invocation).
+    # Both started and completed for the same run_id land on the same partition.
+    "skill.started": EventRegistration(
+        event_type="skill.started",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.SKILL_STARTED,
+                transform=redact_capture,
+                description="Contract-redacted skill start telemetry (OMN-16979)",
+            ),
+        ],
+        partition_key_field="run_id",
+        required_fields=["run_id", "skill_name", "correlation_id"],
+    ),
+    "skill.completed": EventRegistration(
+        event_type="skill.completed",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.SKILL_COMPLETED,
+                transform=redact_capture,
+                description="Contract-redacted skill completion telemetry (OMN-16979)",
+            ),
+            # OMN-6800: Fan-out to skill-invoked topic for omnidash skill_invocations projection.
+            # The skill-invoked topic carries the same payload as skill-completed — omnidash
+            # projectSkillInvoked handler reads skill_name, session_id, duration_ms, status.
+            FanOutRule(
+                topic_base=TopicBase.SKILL_INVOKED,
+                transform=None,  # Passthrough — same payload fields consumed by omnidash
+                description="Skill invocation record for omnidash skill_invocations table (OMN-6800)",
+            ),
+        ],
+        partition_key_field="run_id",
+        required_fields=["run_id", "skill_name", "correlation_id", "status"],
+    ),
+    "skill.friction_recorded": EventRegistration(
+        event_type="skill.friction_recorded",
+        fan_out=[],  # Side-channel only — no Kafka fan-out (OMN-5442)
+        partition_key_field="session_id",
+        required_fields=["skill", "session_id"],
+    ),
+    "friction.observed": EventRegistration(
+        event_type="friction.observed",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.FRICTION_OBSERVED,
+                transform=None,
+                description="Friction observation event — contract-driven classification output (OMN-5747)",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id", "surface", "severity"],
+    ),
+    # =========================================================================
+    # Wave 2 Pipeline Observability Events (OMN-2922)
+    # Consumed by omnidash Wave 2 projection nodes.
+    # =========================================================================
+    "epic.run.updated": EventRegistration(
+        event_type="epic.run.updated",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.EPIC_RUN_UPDATED,
+                transform=None,  # Passthrough — state table (upsert by run_id)
+                description="Epic run state update for omnidash epic-pipeline view",
+            ),
+        ],
+        partition_key_field="run_id",
+        required_fields=["run_id", "epic_id", "status"],
+    ),
+    "pr.watch.updated": EventRegistration(
+        event_type="pr.watch.updated",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.PR_WATCH_UPDATED,
+                transform=None,  # Passthrough — state table (upsert by run_id)
+                description="PR watch state update for omnidash pr-watch view",
+            ),
+        ],
+        partition_key_field="run_id",
+        required_fields=["run_id", "pr_number", "repo", "status"],
+    ),
+    "gate.decision": EventRegistration(
+        event_type="gate.decision",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.GATE_DECISION,
+                transform=None,  # Passthrough — append-only event table
+                description="Slack gate decision outcome for omnidash gate-decisions view",
+            ),
+        ],
+        partition_key_field="gate_id",
+        required_fields=["gate_id", "decision", "correlation_id"],
+    ),
+    "budget.cap.hit": EventRegistration(
+        event_type="budget.cap.hit",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.BUDGET_CAP_HIT,
+                transform=None,  # Passthrough — state table (upsert by run_id)
+                description="Token budget cap hit for omnidash pipeline-budget view",
+            ),
+        ],
+        partition_key_field="run_id",
+        required_fields=["run_id", "tokens_used", "tokens_budget"],
+    ),
+    "circuit.breaker.tripped": EventRegistration(
+        event_type="circuit.breaker.tripped",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.CIRCUIT_BREAKER_TRIPPED,
+                transform=None,  # Passthrough — no sensitive data
+                description="Kafka circuit breaker opened; emitted on threshold breach",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id", "failure_count", "threshold"],
+    ),
+    # =========================================================================
+    # PR Validation Rollup (OMN-3930 - MEI pipeline measurement)
+    # =========================================================================
+    "pr.validation.rollup": EventRegistration(
+        event_type="pr.validation.rollup",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.PR_VALIDATION_ROLLUP,
+                transform=None,  # Passthrough — no sensitive data in rollup metrics
+                description="PR validation rollup with VTS at pipeline completion",
+            ),
+        ],
+        partition_key_field="run_id",
+        required_fields=["run_id", "ticket_id", "model_id", "metric_version"],
+    ),
+    # =========================================================================
+    # DoD Telemetry Events (OMN-5197)
+    # =========================================================================
+    # The verification-completed event is omnimarket's, published by
+    # node_dod_verify and stored by node_projection_dod_verdict (OMN-19153).
+    "dod.guard.fired": EventRegistration(
+        event_type="dod.guard.fired",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.DOD_GUARD_FIRED,
+                transform=None,  # Passthrough — no sensitive data in guard metadata
+                description="DoD completion guard interception event for omnidash /dod dashboard",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id", "ticket_id"],
+    ),
+    "dod.sweep.completed": EventRegistration(
+        event_type="dod.sweep.completed",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.DOD_SWEEP_COMPLETED,
+                transform=None,  # Passthrough — sweep metadata contains no secrets
+                description="DoD batch sweep result for omnidash /dod dashboard",
+            ),
+        ],
+        partition_key_field="run_id",
+        required_fields=["run_id", "overall_status", "total_tickets"],
+    ),
+    # =========================================================================
+    # Correlation Trace Spans (OMN-5047 - omnidash /trace page)
+    # =========================================================================
+    # Emitted during active Claude Code sessions by correlation_trace_emitter.py.
+    # Consumed by omnidash ReadModelConsumer to project into correlation_trace_spans table.
+    # No payload transform — span metadata contains no secrets or prompt content.
+    "correlation.trace.span": EventRegistration(
+        event_type="correlation.trace.span",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.CORRELATION_TRACE,
+                transform=None,  # Passthrough — no sensitive data in span metadata
+                description="Trace span event for omnidash /trace page",
+            ),
+        ],
+        partition_key_field="trace_id",
+        required_fields=[
+            "span_id",
+            "trace_id",
+            "session_id",
+            "span_kind",
+            "operation_name",
+        ],
+    ),
+    # =========================================================================
+    # Context Integrity Audit Events (OMN-5230 / OMN-5235)
+    # =========================================================================
+    # Emitted by correlation manager push_task (dispatch validated) and on
+    # duplicate task push detection (scope violation). Consumed by omnidash
+    # /context-audit page via context_audit_events table.
+    "audit.dispatch.validated": EventRegistration(
+        event_type="audit.dispatch.validated",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.AUDIT_DISPATCH_VALIDATED,
+                transform=None,  # No sensitive data in dispatch metadata
+                description="Task dispatch validation result for context integrity audit",
+            ),
+        ],
+        partition_key_field="task_id",
+        required_fields=["task_id", "contract_id", "agent_type"],
+    ),
+    "audit.scope.violation": EventRegistration(
+        event_type="audit.scope.violation",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.AUDIT_SCOPE_VIOLATION,
+                transform=None,  # No sensitive data in violation metadata
+                description="Scope boundary violation for context integrity audit",
+            ),
+        ],
+        partition_key_field="task_id",
+        required_fields=["task_id", "violation_type", "enforcement_action"],
+    ),
+    # =========================================================================
+    # Plan Review Completed (OMN-6128)
+    # =========================================================================
+    # Emitted by the hostile-reviewer skill after convergence loop completes.
+    # Consumed by omnidash /plan-reviewer page via plan_review_runs table.
+    "plan.review.completed": EventRegistration(
+        event_type="plan.review.completed",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.PLAN_REVIEW_COMPLETED,
+                transform=None,  # Passthrough — no sensitive data in review metadata
+                description="Plan review strategy run result for omnidash /plan-reviewer page",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id", "plan_file", "total_rounds", "final_status"],
+    ),
+    # =========================================================================
+    # Multi-model hostile reviewer events (OMN-6188)
+    # Emitted by aggregate_reviews.py on review completion or failure.
+    # =========================================================================
+    "hostile.reviewer.completed": EventRegistration(
+        event_type="hostile.reviewer.completed",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.HOSTILE_REVIEWER_COMPLETED,
+                transform=None,  # Passthrough — review findings are not sensitive
+                description="Multi-model hostile review aggregated result",
+            ),
+        ],
+        partition_key_field="pr_number",
+        required_fields=["pr_number", "repo", "verdict"],
+    ),
+    "hostile.reviewer.failed": EventRegistration(
+        event_type="hostile.reviewer.failed",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.HOSTILE_REVIEWER_FAILED,
+                transform=None,  # Passthrough — failure metadata is not sensitive
+                description="Multi-model hostile review failure event",
+            ),
+        ],
+        partition_key_field="pr_number",
+        required_fields=["pr_number", "repo"],
+    ),
+    # =========================================================================
+    # Agent chat broadcast (OMN-3972)
+    # Emitted by HandlerChatPublisher for multi-terminal coordination.
+    # =========================================================================
+    "agent.chat.broadcast": EventRegistration(
+        event_type="agent.chat.broadcast",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.AGENT_CHAT_BROADCAST,
+                transform=_transform_chat_broadcast,
+                description="Agent chat broadcast for multi-terminal coordination",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id", "agent_id", "body"],
+    ),
+    # =========================================================================
+    # Coordination Signal Events (OMN-6857)
+    # Multi-session awareness signals. Fan-out to SESSION_COORDINATION_SIGNAL
+    # for projector consumption.
+    # =========================================================================
+    "coordination.signal": EventRegistration(
+        event_type="coordination.signal",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.SESSION_COORDINATION_SIGNAL,
+                transform=None,  # Passthrough — no sensitive data in coordination signals
+                description="Coordination signal for session registry projector",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id", "signal_type", "task_id"],
+    ),
+    # =========================================================================
+    # Team Lifecycle Events (OMN-7022)
+    # Agent team dispatch monitoring. Fan-out to team-specific topics for
+    # omnidash team dashboard projections.
+    # =========================================================================
+    "team.task.assigned": EventRegistration(
+        event_type="team.task.assigned",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.TEAM_TASK_ASSIGNED,
+                transform=None,
+                description="Team task assignment for dashboard projection",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id"],
+    ),
+    "team.task.progress": EventRegistration(
+        event_type="team.task.progress",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.TEAM_TASK_PROGRESS,
+                transform=None,
+                description="Team task progress update for dashboard projection",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id", "task_id"],
+    ),
+    "team.task.completed": EventRegistration(
+        event_type="team.task.completed",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.TEAM_TASK_COMPLETED,
+                transform=None,
+                description="Team task completion for dashboard projection",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id", "task_id"],
+    ),
+    "team.evidence.written": EventRegistration(
+        event_type="team.evidence.written",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.TEAM_EVIDENCE_WRITTEN,
+                transform=None,
+                description="Team evidence artifact written for dashboard projection",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id", "task_id"],
+    ),
+    # =========================================================================
+    # Hook Health Observability (OMN-7158)
+    # =========================================================================
+    "hook.health.error": EventRegistration(
+        event_type="hook.health.error",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.HOOK_HEALTH_ERROR,
+                transform=None,
+                description="Structured hook error event for health observability",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["hook_name", "error_tier", "error_category", "session_id"],
+    ),
+    # =========================================================================
+    # Diagnostic Daemon Health (OMN-10126)
+    # =========================================================================
+    "diagnostic.daemon.health": EventRegistration(
+        event_type="diagnostic.daemon.health",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.DIAGNOSTIC_DAEMON_HEALTH,
+                transform=None,
+                description="Portable daemon health diagnostic event",
+            ),
+        ],
+        partition_key_field="daemon_id",
+        required_fields=[
+            "daemon_id",
+            "pid",
+            "socket_path",
+            "kafka_offset",
+            "round_trip_ms",
+            "status",
+        ],
+    ),
+    # =========================================================================
+    # Durable Capture Events (OMN-13092)
+    # =========================================================================
+    # Duty-critical capture trail for the skill-output-suppression slice:
+    # suppression of tool output from the LLM context is only allowed when the
+    # full bytes are content-addressed in the artifact store and an event
+    # records the capture (no-hidden-loss invariant).
+    "artifact.captured": EventRegistration(
+        event_type="artifact.captured",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.ARTIFACT_CAPTURED,
+                transform=None,  # Passthrough — event carries refs/hashes, never raw bytes
+                description="Content-addressed artifact captured in the artifact store",
+            ),
+        ],
+        partition_key_field="correlation_id",
+        required_fields=[
+            "artifact_ref",
+            "artifact_hash",
+            "artifact_size_bytes",
+            "artifact_kind",
+            "source_system",
+            "correlation_id",
+        ],
+    ),
+    "tool.output.captured": EventRegistration(
+        event_type="tool.output.captured",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.TOOL_OUTPUT_CAPTURED,
+                transform=redact_capture,
+                description="Contract-redacted tool output capture telemetry (OMN-16979)",
+            ),
+        ],
+        partition_key_field="correlation_id",
+        required_fields=["tool_name", "suppression_decision", "correlation_id"],
+    ),
+    # =========================================================================
+    # LLM Cost Telemetry (OMN-7570)
+    # =========================================================================
+    # Emitted by session-end hook with session-level token usage and cost data.
+    # Routes to onex.evt.omniintelligence.llm-call-completed.v1 which omnidash
+    # projects into llm_cost_aggregates table for /cost-trends dashboard.
+    "llm.cost.completed": EventRegistration(
+        event_type="llm.cost.completed",
+        fan_out=[
+            FanOutRule(
+                topic_base=TopicBase.LLM_CALL_COMPLETED,
+                transform=None,  # Passthrough — no sensitive data in cost metadata
+                description="LLM cost telemetry for omnidash llm_cost_aggregates projection",
+            ),
+        ],
+        partition_key_field="session_id",
+        required_fields=["session_id", "model_id", "total_tokens"],
+    ),
+}
+
+
+# =============================================================================
+# Registry Helper Functions
+# =============================================================================
+
+
+def get_registration(event_type: str) -> EventRegistration | None:
+    """Get the registration for an event type.
+
+    Args:
+        event_type: The semantic event type identifier.
+
+    Returns:
+        The EventRegistration if found, None otherwise.
+
+    Example:
+        >>> reg = get_registration("prompt.submitted")
+        >>> reg is not None
+        True
+        >>> len(reg.fan_out)
+        2
+    """
+    return EVENT_REGISTRY.get(event_type)
+
+
+def list_event_types() -> list[str]:
+    """List all registered event types.
+
+    Returns:
+        List of registered event type identifiers.
+
+    Example:
+        >>> types = list_event_types()
+        >>> "prompt.submitted" in types
+        True
+        >>> "session.started" in types
+        True
+    """
+    return list(EVENT_REGISTRY.keys())
+
+
+def validate_payload(event_type: str, payload: dict[str, object]) -> list[str]:
+    """Validate that a payload has all required fields for an event type.
+
+    Args:
+        event_type: The semantic event type identifier.
+        payload: The event payload to validate.
+
+    Returns:
+        List of missing field names (empty if valid).
+
+    Raises:
+        KeyError: If the event type is not registered.
+
+    Example:
+        >>> missing = validate_payload("prompt.submitted", {"prompt_preview": "hello"})
+        >>> "session_id" in missing  # session_id is required
+        True
+        >>> missing = validate_payload("prompt.submitted", {"prompt_preview": "hello", "session_id": "xyz"})
+        >>> len(missing)
+        0
+    """
+    registration = EVENT_REGISTRY.get(event_type)
+    if registration is None:
+        raise KeyError(f"Unknown event type: {event_type}")
+
+    missing = [field for field in registration.required_fields if field not in payload]
+    return missing
+
+
+def get_partition_key(event_type: str, payload: dict[str, object]) -> str | None:
+    """Extract the partition key from a payload based on the event registration.
+
+    Args:
+        event_type: The semantic event type identifier.
+        payload: The event payload.
+
+    Returns:
+        The partition key value as a string, or None if not configured.
+
+    Raises:
+        KeyError: If the event type is not registered.
+
+    Example:
+        >>> key = get_partition_key("prompt.submitted", {"session_id": "abc123", "prompt_preview": "hello"})
+        >>> key
+        'abc123'
+    """
+    registration = EVENT_REGISTRY.get(event_type)
+    if registration is None:
+        raise KeyError(f"Unknown event type: {event_type}")
+
+    if registration.partition_key_field is None:
+        return None
+
+    value = payload.get(registration.partition_key_field)
+    if value is None:
+        return None
+
+    return str(value)
+
+
+__all__ = [
+    # Transform functions
+    "transform_for_observability",
+    "transform_passthrough",
+    # Data classes
+    "FanOutRule",
+    "EventRegistration",
+    # Registry
+    "EVENT_REGISTRY",
+    # Helper functions
+    "get_registration",
+    "list_event_types",
+    "validate_payload",
+    "get_partition_key",
+    # Type aliases
+    "PayloadTransform",
+]
+
+END PUBLIC SOURCE

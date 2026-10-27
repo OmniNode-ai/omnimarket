@@ -1,0 +1,12 @@
+{
+  "cues": [
+    ".github/workflows/ci.yml",
+    "contracts/OMN-21331.yaml",
+    "tests/ci/test_canonical_file_shape_dev_tag_omn21331.py",
+    "_workflow",
+    "test_canonical_validator_uses_a_dev_merge_tag",
+    "test_pull_request_and_merge_queue_run_the_planted_sample"
+  ],
+  "mode": "summary",
+  "prompt": "src/omnimarket/configs/work_contracts/inputs/F01-07.txt"
+}

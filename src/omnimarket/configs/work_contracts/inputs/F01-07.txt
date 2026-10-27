@@ -1,0 +1,157 @@
+Summarize the merged PR diff below in at most 3 sentences and at most 90 words. State the concrete behavior changed, including a changed file or symbol from the diff. Use only facts from this input; do not introduce any number or identifier absent from it. Return only the summary.
+
+Public repository: OmniNode-ai/omnibase_spi
+Merged PR: omnibase_spi#407
+Title: ci(OMN-21331): canonical file shape reads omnibase_core through the dev-merge tag
+Merged at: 2026-10-23T16:24:11Z
+Merge SHA: 30458337aca722f90cb480dacf1758ff93cf56a4
+
+BEGIN PUBLIC SOURCE
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index ab96adb3..e8540820 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -518,7 +518,7 @@ jobs:
+     runs-on: ubuntu-latest
+     timeout-minutes: 15
+     env:
+-      CANONICAL_FILE_SHAPE_CORE: "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@f50d00fc7918d0b12ccd0d3497160325e32e7ac5"
++      CANONICAL_FILE_SHAPE_CORE: "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261023085853-9d65b648bff5"
+     steps:
+       - name: Checkout code
+         uses: actions/checkout@v7
+diff --git a/contracts/OMN-21331.yaml b/contracts/OMN-21331.yaml
+new file mode 100644
+index 00000000..26e9a079
+--- /dev/null
++++ b/contracts/OMN-21331.yaml
+@@ -0,0 +1,45 @@
++schema_version: "1.0.0"
++ticket_id: OMN-21331
++title: omnibase_spi reads omnibase_core through its dev-merge tag for the canonical file shape check
++summary: The Canonical File Shape job in omnibase_spi reads omnibase_core through a dev-merge tag instead of a commit sha. The job already runs on pull requests and the merge queue; this pull request carries AC2 and AC4 for omnibase_spi. AC1 is the validator change in omnibase_core and AC3 is a ruleset change per repository.
++is_seam_ticket: false
++interface_change: false
++interfaces_touched: []
++requirements:
++  - id: req-omn21331-omnibase-spi-canonical-file-shape
++    statement: The canonical file shape check runs on pull requests and the merge queue in omnibase_spi, refuses a planted new script, and reads omnibase_core through its dev-merge tag.
++    acceptance:
++      - id: AC2
++        statement: "AC2: omnibase_spi runs the canonical file shape check on pull requests and the merge queue and a planted new script is refused there -- falsifier: the planted-sample output in the rollout PR body, and the job's own planted-sample step"
++      - id: AC4
++        statement: "AC4: the canonical file shape workflow in omnibase_spi reads omnibase_core through the dev-merge tag, not a commit sha -- falsifier: git grep for a 40-hex omnibase_core reference on the CANONICAL_FILE_SHAPE_CORE line returns nothing"
++evidence_requirements:
++  - kind: ci
++    description: The workflow uses the dev-merge tag on pull requests and the merge queue, and its real planted-sample step refuses bad code and accepts canonical test code.
++    command: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_canonical_file_shape_dev_tag_omn21331.py -q
++  - kind: ci
++    description: The canonical file shape workflow names a dev-merge tag and no commit sha for omnibase_core.
++    command: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_canonical_file_shape_dev_tag_omn21331.py -q
++emergency_bypass:
++  enabled: false
++  justification: ""
++  follow_up_ticket_id: ""
++dod_evidence:
++  - id: dod-omn21331-ac2
++    description: The workflow uses the dev-merge tag on pull requests and the merge queue, and its real planted-sample step refuses bad code and accepts canonical test code.
++    source: manual
++    checks:
++      - check_type: test_passes
++        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_canonical_file_shape_dev_tag_omn21331.py -q
++        cwd: ${OMNI_HOME}/omnibase_spi
++    binds_ac:
++      - AC2
++  - id: dod-omn21331-ac4
++    description: The canonical file shape workflow names a dev-merge tag and no commit sha for omnibase_core.
++    source: manual
++    checks:
++      - check_type: test_passes
++        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_canonical_file_shape_dev_tag_omn21331.py -q
++        cwd: ${OMNI_HOME}/omnibase_spi
++    binds_ac:
++      - AC4
+diff --git a/tests/ci/test_canonical_file_shape_dev_tag_omn21331.py b/tests/ci/test_canonical_file_shape_dev_tag_omn21331.py
+new file mode 100644
+index 00000000..f310e01e
+--- /dev/null
++++ b/tests/ci/test_canonical_file_shape_dev_tag_omn21331.py
+@@ -0,0 +1,76 @@
++# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
++# SPDX-License-Identifier: MIT
++"""OMN-21331: exercise the canonical-file-shape job through its dev-merge tag."""
++
++from __future__ import annotations
++
++import os
++import re
++import shutil
++import subprocess
++from pathlib import Path
++from typing import Any
++
++import pytest
++import yaml
++
++pytestmark = pytest.mark.unit
++
++WORKFLOW = Path(__file__).resolve().parents[2] / ".github/workflows/ci.yml"
++
++
++def _workflow() -> dict[Any, Any]:
++    loaded = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
++    assert isinstance(loaded, dict)
++    return loaded
++
++
++def test_canonical_validator_uses_a_dev_merge_tag() -> None:
++    job = _workflow()["jobs"]["canonical-file-shape"]
++    reference = job["env"]["CANONICAL_FILE_SHAPE_CORE"]
++    assert re.fullmatch(
++        r"omnibase-core @ git\+https://github\.com/OmniNode-ai/omnibase_core"
++        r"@dev-[0-9]{14}-[0-9a-f]{12}",
++        reference,
++    ), f"canonical validator must use a dev-merge tag: {reference}"
++    validator_steps = [step for step in job["steps"] if "run" in step]
++    assert validator_steps
++    for step in validator_steps:
++        assert '--with "$CANONICAL_FILE_SHAPE_CORE"' in step["run"]
++
++
++def test_pull_request_and_merge_queue_run_the_planted_sample(tmp_path: Path) -> None:
++    workflow = _workflow()
++    # PyYAML's YAML 1.1 safe loader also accepts `on` as the boolean True.
++    events = workflow.get("on", workflow.get(True))
++    assert isinstance(events, dict)
++    assert {"pull_request", "merge_group"} <= events.keys()
++    job = workflow["jobs"]["canonical-file-shape"]
++    assert "if" not in job
++    assert "needs" not in job
++    (control,) = [
++        step
++        for step in job["steps"]
++        if step.get("name", "").startswith("Positive control")
++    ]
++    assert "if" not in control
++    git = shutil.which("git")
++    bash = shutil.which("bash")
++    assert git is not None
++    assert bash is not None
++    subprocess.run([git, "init", "--quiet", str(tmp_path)], check=True)
++    result = subprocess.run(
++        [bash, "-e", "-c", control["run"]],
++        cwd=tmp_path,
++        env={**os.environ, **job["env"], "PYTHONDONTWRITEBYTECODE": "1"},
++        capture_output=True,
++        text=True,
++        timeout=180,
++        check=False,
++    )
++    assert result.returncode == 0, result.stdout + result.stderr
++    assert "positive control: planted bad sample refused" in result.stdout
++    assert "positive control: clean sample accepted" in result.stdout
++    assert "bin/zz_canary_planted: [noncanonical-file]" in result.stderr
++    assert not (tmp_path / "bin/zz_canary_planted").exists()
++    assert not (tmp_path / "tests/zz_canary_clean.py").exists()
+
+END PUBLIC SOURCE

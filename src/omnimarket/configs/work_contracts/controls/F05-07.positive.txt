@@ -1,0 +1,3 @@
+from solution import scopes_cover_scope as f, ModelHoldScope
+def test_value():
+ assert not f([ModelHoldScope(lanes=frozenset({"y"}))],ModelHoldScope(lanes=frozenset({"x"})))

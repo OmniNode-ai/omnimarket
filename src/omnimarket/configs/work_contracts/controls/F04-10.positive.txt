@@ -1,0 +1,12 @@
+from __future__ import annotations
+
+import unicodedata
+
+def canonical_criterion_text(item: str) -> str:
+    """The form a criterion is hashed in.
+
+    Unicode NFC, whitespace runs collapsed to single spaces, ends stripped --
+    and nothing else. See the module docstring for why the normalisation is
+    this narrow.
+    """
+    return " ".join(unicodedata.normalize("NFC", item).split())

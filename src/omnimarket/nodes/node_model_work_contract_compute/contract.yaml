@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_model_work_contract_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: 1.0.0
+description: Validate frozen model work and compare a recorded external acceptance check with its pinned expectation.
+input_model:
+  name: ModelCheckRequest
+  module: omnimarket.nodes.node_model_work_contract_compute.models.model_check
+output_model:
+  name: ModelCheckVerdict
+  module: omnimarket.nodes.node_model_work_contract_compute.models.model_check
+handler:
+  module: omnimarket.nodes.node_model_work_contract_compute.handlers.checks
+  class: HandlerModelWorkContract
+  input_model: omnimarket.nodes.node_model_work_contract_compute.models.model_check.ModelCheckRequest
+  output_model: omnimarket.nodes.node_model_work_contract_compute.models.model_check.ModelCheckVerdict
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerModelWorkContract
+        module: omnimarket.nodes.node_model_work_contract_compute.handlers.checks
+      event_model:
+        name: ModelCheckRequest
+        module: omnimarket.nodes.node_model_work_contract_compute.models.model_check
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Phase 1 file receipts; existing lab runner supplies recorded check results.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+metadata:
+  transport_type: local
+work_contracts:
+  corpus_directory: src/omnimarket/configs/work_contracts
+  contract_glob: contracts/*.yaml
+  required_scenario_families: 10
+  required_scenarios_per_family: 10
+  minimum_dod_contracts: 20
+  evaluator_access: read_only_outside_candidate_worktree
+  command_executor: existing_lab_runner
+  max_output_tokens: 1000000
+  max_wall_s: 86400
+  max_turns: 1000
+  max_usd: 10000
