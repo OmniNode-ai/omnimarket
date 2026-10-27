@@ -936,3 +936,10 @@ dod_evidence:
         check_value: >-
           bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/bifrost_delegation.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | uv run python -c '\''import sys, yaml; c=yaml.safe_load(sys.stdin.read()); dead="openrouter-nemotron-super"; assert dead not in {b["backend_id"] for b in c["backends"]}; assert all(dead not in r["backend_ids"] for r in c["routing_rules"]); assert dead not in c["default_backends"]'\'''
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19998-retirement-pr-evidence-bindings"
+    description: "The retirement PR's Split 11 also exercises all repository evidence bindings. The sampled-revocation bindings keep frozen dependency resolution through UV_FROZEN while using the verifier's accepted env-prefixed pytest form. This repairs repository evidence only; it does not certify the separate landing-controller or launchd criteria."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env UV_FROZEN=true uv run pytest tests/ci/test_repo_evidence_caller_workflow.py tests/nodes/node_exemplar_registry_reconcile_compute/test_sampled_revocation.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
