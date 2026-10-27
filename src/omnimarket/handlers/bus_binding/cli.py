@@ -17,6 +17,7 @@ from omnimarket.handlers.bus_binding.select import (
     default_state_dir,
     open_bound_bus,
     read_state,
+    replay_outbox,
 )
 from omnimarket.lab_work.cli import _with_bus_options
 from omnimarket.models.bus_binding import EnumBusBinding, EnumBusBindingState
@@ -84,8 +85,10 @@ def replay_command(
                 return 75
             caller = WorkLedgerAppendCaller(bound.bus, principal=bound_lane_principal())
             try:
-                result = await outbox.drain(
-                    state_dir, lambda queued: caller.append(queued, timeout_s=60.0)
+                result = await replay_outbox(
+                    bound,
+                    state_dir,
+                    lambda queued: caller.append(queued, timeout_s=60.0),
                 )
             finally:
                 await caller.stop()

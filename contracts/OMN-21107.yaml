@@ -122,3 +122,36 @@ dod_evidence:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_work_ledger/parity.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'def load_projection_raw_rows_json'"
         cwd: "${OMNI_HOME}/omnimarket"
+
+  - id: "dod-omn21107-ac3-required-parity-evidence"
+    description: "TA.5 code contribution: exact parity refuses absent or partial projected text through the in-memory bus, injected spool transport and JSON CLI; changed words and dropped correction links remain mismatches. The full UTC-day live projection proof remains a separate required check."
+    source: "manual"
+    binds_ac: ["AC3", "AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity_required_text.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+
+  - id: "dod-omn21107-deploy-required-parity-evidence"
+    description: "Hosted-runner probe reads the published parity module at the checked-out head and executes its missing-text negative control. The old module returns no missing-text mismatch and fails. No runtime host or application credential is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          set -euo pipefail
+          probe=$(mktemp -d)
+          trap 'rm -rf "$probe"' EXIT
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_work_ledger/parity.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d > "$probe/parity.py"
+          uv run --frozen python - "$probe/parity.py" <<'PYPROBE'
+          import hashlib
+          import runpy
+          import sys
+          from datetime import UTC, datetime
+          compare = runpy.run_path(sys.argv[1])["compare"]
+          raw = "2026-10-01T12:00:00Z | STATUS | lane=probe | evidence"
+          rid = hashlib.sha256(raw.encode()).hexdigest()
+          result = compare(file_rows=[raw], projection_rows={rid: raw[:20]}, projection_state={}, since=datetime(2026, 10, 1, tzinfo=UTC), until=datetime(2026, 10, 2, tzinfo=UTC))
+          assert not result.exact
+          assert [(m.kind.value, m.key) for m in result.mismatches] == [("row_text_missing_in_projection", rid)]
+          PYPROBE
+        cwd: "${OMNI_HOME}/omnimarket"

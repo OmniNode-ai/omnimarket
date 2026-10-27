@@ -78,6 +78,15 @@ requirements:
       - id: "AC23"
         statement: |-
           AC23: a degraded episode writes a degraded state file and exactly one exception-queue alarm, recovery writes healthy, and a second episode raises a second alarm -- falsifier: uv run pytest tests/unit/work_ledger_bus/test_consume_watch.py -q -k one_alarm_per_episode
+  - id: "req-bus-binding-exception-recovery"
+    statement: "The bus-binding fallback is self-healing: normal episodes stay with the orchestrator, complete recovery resolves their queue rows in code, and only outages beyond the node contract's bound escalate to the orchestrator."
+    acceptance:
+      - id: "AC24"
+        statement: |-
+          AC24: a failed durable read emits one non-decision bus-binding-degraded exception, and a subsequent healthy read plus complete outbox replay resolves that same row with the healthy observation and replay counts; failed, partial, refused or unreadable replays and newer failed reads cannot produce a recovery receipt -- falsifier: uv run pytest tests/unit/bus_binding/test_bus_binding_exceptions.py -q -k "not contract_bound and not bound_is_loaded"
+      - id: "AC25"
+        statement: |-
+          AC25: only an outage strictly longer than recovery_policy.escalate_after_seconds in node_bus_binding_reducer/contract.yaml emits one bus-binding-outage exception to the orchestrator with outage_seconds; repeated reads retain the start, recovery resolves both rows, and a new episode starts a fresh clock -- falsifier: uv run pytest tests/unit/bus_binding/test_bus_binding_exceptions.py -q -k "contract_bound or bound_is_loaded or fresh_clock"
 evidence_requirements:
   - kind: "tests"
     description: "AC6 to AC9: handler, bus host, CLI and lane-principal tests."
@@ -277,4 +286,31 @@ dod_evidence:
       - check_type: "command"
         check_value: |-
           env docker run --rm --user "$(id -u):$(id -g)" -v "${PWD}:/workspace:ro" -w /workspace -v "$(uv cache dir):/uv-cache" -v "$(command -v uv):/usr/local/bin/uv:ro" -e UV_LINK_MODE=copy -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0="*" -e PYTHONDONTWRITEBYTECODE=1 -e UV_PROJECT_ENVIRONMENT=/tmp/consume-watch-venv -e UV_PYTHON_INSTALL_DIR=/tmp/consume-watch-python -e UV_CACHE_DIR=/uv-cache ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a uv run --frozen --python 3.12 pytest tests/unit/work_ledger_bus/test_consume_watch.py -q -p no:cacheprovider --basetemp=/tmp/consume-watch-tests
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-ac24-binding-exception-recovery"
+    description: "AC24: run the real binding selector, durable local outbox and exception emit/list/resolve API on the in-memory bus and the Kafka binding with a recorded producer connection. The new regression file fails before this change; no broker or credentials are used."
+    source: "manual"
+    binds_ac: ["AC24"]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/unit/bus_binding/test_bus_binding_exceptions.py -q -n 0 -p no:randomly --no-cov -k "not contract_bound and not bound_is_loaded"'
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-ac25-binding-outage-bound"
+    description: "AC25: retain the episode start across independent commands, test below/at/above the contract bound, report outage length only to the orchestrator, resolve on recovery, and prove changing the contract changes the loaded bound."
+    source: "manual"
+    binds_ac: ["AC25"]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/unit/bus_binding/test_bus_binding_exceptions.py -q -n 0 -p no:randomly --no-cov -k "contract_bound or bound_is_loaded or fresh_clock"'
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20275-deploy-binding-exception-recovery"
+    description: "Deploy probe: a disposable Python container runs the real binding and exception-queue handlers from a read-only checkout, including healthy replay, partial replay, refused requests and strictly bounded orchestrator escalation on in-memory and recorded Kafka connections. Falsifier: the new test file is absent at the merge base. No lab service, broker or credential is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "docker pull -q ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: |-
+          env docker run --rm --user "$(id -u):$(id -g)" -v "${PWD}:/workspace:ro" -w /workspace -v "$(uv cache dir):/uv-cache" -v "$(command -v uv):/usr/local/bin/uv:ro" -e UV_LINK_MODE=copy -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0="*" -e PYTHONDONTWRITEBYTECODE=1 -e UV_PROJECT_ENVIRONMENT=/tmp/binding-exception-venv -e UV_PYTHON_INSTALL_DIR=/tmp/binding-exception-python -e UV_CACHE_DIR=/uv-cache ghcr.io/astral-sh/uv@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a uv run --frozen --python 3.12 pytest tests/unit/bus_binding/test_bus_binding_exceptions.py -q -n 0 -p no:randomly -p no:cacheprovider --no-cov --basetemp=/tmp/binding-exception-tests
         cwd: "${OMNI_HOME}/omnimarket"

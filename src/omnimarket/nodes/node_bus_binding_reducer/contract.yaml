@@ -58,6 +58,12 @@ descriptor:
 replay:
   deterministic: true
 
+# A normal fallback is resolved in code after the healthy read and complete replay.
+# Only an outage strictly longer than this bound escalates, to the orchestrator.
+recovery_policy:
+  escalate_after_seconds: 900
+  escalation_audience: orchestrator
+
 state_machine:
   version: {major: 1, minor: 0, patch: 0}
   state_machine_name: bus_binding_fsm
