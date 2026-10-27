@@ -104,7 +104,7 @@ dod_evidence:
     binds_ac: ["AC12"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/nodes/node_exemplar_registry_reconcile_compute/test_sampled_revocation.py -q -n 0 -p no:randomly --no-cov"
+        check_value: "env UV_FROZEN=true uv run pytest tests/nodes/node_exemplar_registry_reconcile_compute/test_sampled_revocation.py -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21128-deploy-sampled-revocation"
     description: "Hosted-runner packaged-handler and in-memory-runtime probe checks the sampled revocation behavior, strict evidence validation and checked-in contract/overlay parity. A head without this implementation fails these tests. No live services or credentials are required."
