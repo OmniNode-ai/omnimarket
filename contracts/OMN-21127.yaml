@@ -97,7 +97,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/unit/nodes/node_context_source_ledger_effect/test_ledger_provenance.py -q -p no:randomly --no-cov"
+        check_value: "env UV_FROZEN=1 uv run pytest tests/unit/nodes/node_context_source_ledger_effect/test_ledger_provenance.py -q -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-omn21127-ac5-reader-unavailable"
@@ -105,7 +105,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/unit/nodes/node_context_source_ledger_effect/test_context_source_ledger.py tests/test_golden_chain_context_source_ledger_pinned.py -q -p no:randomly --no-cov -k 'refusals or contract_dispatch'"
+        check_value: "env UV_FROZEN=1 uv run pytest tests/unit/nodes/node_context_source_ledger_effect/test_context_source_ledger.py tests/test_golden_chain_context_source_ledger_pinned.py -q -p no:randomly --no-cov -k 'refusals or contract_dispatch'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
   - id: "dod-omn21127-ac6-manifest-root"
@@ -113,7 +113,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/unit/nodes/node_context_source_ledger_effect/test_ledger_pinned_root.py -q -p no:randomly --no-cov"
+        check_value: "env UV_FROZEN=1 uv run pytest tests/unit/nodes/node_context_source_ledger_effect/test_ledger_pinned_root.py -q -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC6"]
   - id: "dod-omn21127-deploy-pinned-dispatch"
