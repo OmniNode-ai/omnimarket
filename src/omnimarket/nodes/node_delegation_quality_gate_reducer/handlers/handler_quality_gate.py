@@ -80,6 +80,7 @@ from omnimarket.delegation.content_grounding import (
     evaluate_entry_cites_evidence,
     evaluate_name_resolution,
     evaluate_numeric_grounding,
+    evaluate_required_input_content,
     resolve_claim_grounding_policy,
     resolve_evidence_comment_policy,
     resolve_name_resolution_policy,
@@ -455,6 +456,7 @@ _REJECT_ONLY_DETERMINISTIC_CHECKS: frozenset[str] = frozenset(
         # says nothing about whether the code does the task, so it may fail an
         # answer but never promote one (OMN-13370).
         "names_resolve",
+        "required_input_content",
     }
 )
 
@@ -2221,7 +2223,14 @@ def _evaluate_deterministic_checks(
     evaluations: list[ModelQualityRuleEvaluation] = []
     for check in dod_deterministic:
         reason: str | None = None
-        if check == "names_resolve":
+        if check == "required_input_content":
+            reason, evaluated = evaluate_required_input_content(
+                content, grounding_source
+            )
+            if not evaluated:
+                skipped.append(check)
+                continue
+        elif check == "names_resolve":
             # OMN-19529: needs the input as well as the response, so with no
             # grounding source it is SKIPPED -- recorded, excluded from the
             # fraction, never a pass.
@@ -2323,6 +2332,7 @@ SUPPORTED_DETERMINISTIC_CHECKS: frozenset[str] = frozenset(
         "code_artifact_present",
         "docstring_present",
         "names_resolve",
+        "required_input_content",
         "exactly_two_sentences",
         "final_artifact_only",
         "no_refusal",
@@ -2865,7 +2875,8 @@ def _evaluate_response_contract(
     This is a HARD REPLACEMENT for this request: ``dod_deterministic`` /
     ``dod_heuristic`` / ``acceptance_criteria`` / the LLM-judge combine are not
     consulted at all when a contract is declared -- the schema is the sole
-    acceptance authority.
+    acceptance authority for shape. The calling branch separately retains
+    declared input-content obligations over the extracted deliverable.
     """
     deliverable_contract = resolve_deliverable_contract(response_contract)
     extraction = extract_deliverable(
@@ -3860,7 +3871,41 @@ def _delta_over_answer_segment(
         A quality gate result with pass/fail, fail_category, score, and reasons.
     """
     if response_contract is not None:
-        return _evaluate_response_contract(gate_input, response_contract)
+        result = _evaluate_response_contract(gate_input, response_contract)
+        if (
+            not result.passed
+            or "required_input_content" not in gate_input.dod_deterministic
+        ):
+            return result
+        extraction = extract_deliverable(
+            gate_input.llm_response_content,
+            resolve_deliverable_contract(response_contract),
+        )
+        content = (
+            gate_input.llm_response_content
+            if gate_input.deliverable_evidence is not None
+            else extraction.deliverable
+        )
+        failures, skipped, evaluations = _evaluate_deterministic_checks(
+            content,
+            ("required_input_content",),
+            grounding_source=grounding_source,
+        )
+        # A caller schema describes the answer's shape, not permission to omit
+        # an explicit input obligation declared by its task class.
+        return result.model_copy(
+            update={
+                "passed": result.passed and not failures,
+                "fail_category": "fail_deterministic"
+                if failures
+                else result.fail_category,
+                "quality_score": 0.0 if failures else result.quality_score,
+                "failure_reasons": result.failure_reasons + tuple(failures),
+                "fallback_recommended": result.fallback_recommended or bool(failures),
+                "skipped_checks": result.skipped_checks + tuple(skipped),
+                "rule_evaluations": result.rule_evaluations + tuple(evaluations),
+            }
+        )
 
     if gate_input.quality_contract_mode == "replace_task_class":
         dod_deterministic, dod_heuristic = _merge_rule_sets(

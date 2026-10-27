@@ -22,11 +22,13 @@ from typing import Any
 import pytest
 import yaml
 
+from tests.placed_routing_config import placed_tiers_raw
+
 pytestmark = pytest.mark.unit
 
 _CONFIGS = Path(__file__).resolve().parents[3] / "src" / "omnimarket" / "configs"
 _CLASSES = ("review", "reasoning")
-_FREE_RUNG = "openrouter-nemotron-ultra"
+_FREE_RUNG = "openrouter-north-mini-code"
 
 
 def _task_classes() -> dict[str, Any]:
@@ -37,10 +39,7 @@ def _task_classes() -> dict[str, Any]:
 
 
 def _tiers() -> dict[str, Any]:
-    loaded = yaml.safe_load(
-        (_CONFIGS / "routing_tiers.yaml").read_text(encoding="utf-8")
-    )
-    return {tier["name"]: tier for tier in loaded["tiers"]}
+    return placed_tiers_raw()
 
 
 @pytest.mark.parametrize("task_class", _CLASSES)
@@ -75,7 +74,7 @@ def test_a_class_this_change_did_not_touch_keeps_its_ladder() -> None:
 
 
 _SIBLING = "openrouter-nemotron-super"
-_PEER = "openrouter-north-mini-code"
+_ULTRA = "openrouter-nemotron-ultra"
 
 
 def _bifrost_backends() -> dict[str, Any]:
@@ -85,24 +84,23 @@ def _bifrost_backends() -> dict[str, Any]:
     return {b["backend_id"]: b for b in loaded["backends"]}
 
 
-def test_the_withdrawn_sibling_is_absent_from_the_free_tier() -> None:
-    """The withdrawn sibling is neither a tier entry nor a declared backend."""
+def test_the_withdrawn_siblings_are_absent_from_the_free_tier() -> None:
+    """Super is neither a tier entry nor a declared backend; Ultra is no tier entry (OMN-20376)."""
     refs = [m["backend_id"] for m in _tiers()["cheap_frontier"]["models"]]
     assert refs == [_FREE_RUNG]
     assert _SIBLING not in _bifrost_backends()
+    assert _ULTRA not in refs
 
 
-def test_the_third_free_model_leaves_out_the_class_it_measured_weak_on() -> None:
+def test_the_free_rung_leaves_out_the_class_it_measured_weak_on() -> None:
     """north-mini-code passed 2 of 5 code_review tasks, so that class is not offered to it."""
     models = {m["backend_id"]: m for m in _tiers()["cheap_frontier"]["models"]}
-    assert _PEER not in models
-    backend = _bifrost_backends()[_PEER]
+    backend = _bifrost_backends()[_FREE_RUNG]
     assert backend["tier"] == "cheap_frontier"
-    placement = backend["placement"]
-    assert placement["mode"] == "spread"
-    assert placement["fallback_for"] == [_FREE_RUNG]
-    assert placement["tier"] == "cheap_frontier"
-    assert "use_for" not in placement  # The mirror carries ultra's whole use_for.
+    # OMN-20376: a standalone placement, its own use_for written out, no rung
+    # to mirror.
+    assert "fallback_for" not in backend["placement"]
+    assert backend["placement"]["use_for"] == models[_FREE_RUNG]["use_for"]
     assert "code_review" not in models[_FREE_RUNG]["use_for"]
     assert "review" in models[_FREE_RUNG]["use_for"]
 
@@ -111,8 +109,8 @@ def test_only_free_slugs_are_named_on_the_free_tier() -> None:
     """CONTROL: a paid slug on this tier would spend money under a zero-cost label."""
     backends = _bifrost_backends()
     refs = [m["backend_id"] for m in _tiers()["cheap_frontier"]["models"]]
-    assert _PEER not in refs
-    for ref in [*refs, _PEER]:
+    assert refs
+    for ref in refs:
         backend = backends[ref]
         assert backend["tier"] == "cheap_frontier"
         assert backend["provider"] == "openrouter"
@@ -120,6 +118,6 @@ def test_only_free_slugs_are_named_on_the_free_tier() -> None:
         assert backend["secret_ref"] == "llm.openrouter.api_key"
 
 
-def test_the_remaining_free_rung_can_judge_adequacy() -> None:
-    backend = _bifrost_backends()[_FREE_RUNG]
+def test_the_parked_ultra_backend_can_still_judge_adequacy() -> None:
+    backend = _bifrost_backends()[_ULTRA]
     assert "judge_adequacy" in backend["capabilities"]

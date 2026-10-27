@@ -417,6 +417,16 @@ checks:
       (reports/2026-09-30-delegation-gate-false-pass-first-run.md) scores the gate's accept or
       refuse verdict per class, not each check's catches, wrong refusals or skips
 
+  - check_id: delegation.acceptance.gate.required_input_content
+    check_class: gate
+    blocks:
+      - delegation acceptance
+    source: >-
+      The contract-declared required_input_content floor compares explicit,
+      unambiguous source obligations with the answer. The seeded destructive-read
+      and CI field omission cases have positive and negative regression controls;
+      population false-pass/false-refusal calibration remains unmeasured.
+
   - check_id: delegation.acceptance.gate.response_non_empty
     check_class: gate
     blocks:

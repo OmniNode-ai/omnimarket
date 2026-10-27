@@ -155,7 +155,7 @@ def test_exact_literal_wins_over_single_word() -> None:
 def test_research_dod_is_unchanged_without_a_prompt() -> None:
     """The prompt-less signature keeps the class rubric byte-for-byte."""
     det, heur = resolve_task_class_dod_checks("research")
-    assert det == ("response_non_empty",)
+    assert det == ("required_input_content", "response_non_empty")
     assert heur == (
         "no_refusal",
         "cites_sources",
@@ -175,7 +175,7 @@ def test_research_dod_drops_the_prose_rubric_for_a_declared_literal() -> None:
     """
     det, heur = resolve_task_class_dod_checks("research", prompt=LIVE_PROMPT)
     # The deterministic floor is NEVER lowered by a shape directive.
-    assert det == ("response_non_empty",)
+    assert det == ("required_input_content", "response_non_empty")
     assert "cites_sources" not in heur
     assert "methodical_analysis" not in heur
     assert heur == ("no_refusal", "short_form_adequacy")
@@ -548,7 +548,7 @@ def test_single_word_phrasings_all_resolve_constrained(prompt: str) -> None:
 def test_rollup_row1_prompt_gets_the_short_form_band() -> None:
     """The row-1 prompt selects the short-form adequacy authority, not the rubric."""
     det, heur = resolve_task_class_dod_checks("research", prompt=ROLLUP_ROW1_PROMPT)
-    assert det == ("response_non_empty",)
+    assert det == ("required_input_content", "response_non_empty")
     assert heur == ("no_refusal", "short_form_adequacy")
 
 

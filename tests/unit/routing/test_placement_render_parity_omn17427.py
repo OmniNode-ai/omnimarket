@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Committed backend placements survive the runtime's contract renderer."""
+"""Declared backend placements survive the runtime's contract renderer."""
 
 from __future__ import annotations
 
@@ -34,10 +34,26 @@ _CONTRACT = (
 @pytest.mark.parametrize(
     "serving", [None, True, False], ids=["unbound", "serving", "dark"]
 )
-def test_every_committed_placement_survives_rendering(
+def test_every_declared_placement_survives_rendering(
     tmp_path: Path, locale: str, serving: bool | None
 ) -> None:
     source = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
+    # OMN-20376: the committed contract declares no placement now that
+    # north-mini-code is a tier rung of its own, so the renderer guard declares
+    # one on a cloud peer in a copy of the contract and renders that.
+    carrier = next(
+        backend
+        for backend in source["backends"]
+        if backend["backend_id"] == "openrouter-north-mini-code"
+    )
+    carrier["placement"] = {
+        "tier": "cheap_frontier",
+        "fallback_for": ["cloud-gemini-2-5-flash"],
+        "max_context_tokens": 256000,
+        "mode": "spread",
+    }
+    contract = tmp_path / "bifrost_with_placement.yaml"
+    contract.write_text(yaml.safe_dump(source), encoding="utf-8")
     expected = {
         backend["backend_id"]: backend["placement"]
         for backend in source["backends"]
@@ -81,7 +97,7 @@ def test_every_committed_placement_survives_rendering(
     target = tmp_path / "rendered.yaml"
     assert (
         render_bifrost_delegation_contract(
-            source_path=_CONTRACT,
+            source_path=contract,
             overlay_path=overlay,
             target_path=target,
             environ={},

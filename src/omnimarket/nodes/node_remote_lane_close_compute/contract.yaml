@@ -15,7 +15,10 @@ description: >
   message, without I/O: failed, rejected-no-delegation, or the outcome its final
   report declares. A clean exit alone never proves the work is done. Its own
   command topic, apart from the placement decision of node_remote_lane_compute,
-  so the runtime seeds this decision's request model.
+  so the runtime seeds this decision's request model. Native engine_output events
+  populate a typed usage block; missing measurements remain UNKNOWN. Unfenced
+  Contract and Attempt brief lines populate usage identity and ledger_cells for
+  the runner to copy into its receipt and CLAIM/TERMINAL rows.
 handler_routing:
   routing_strategy: operation_match
   handlers:

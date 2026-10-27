@@ -525,9 +525,10 @@ backends:
     model_name: "nvidia/nemotron-3-ultra-550b-a55b:free"
     secret_ref: llm.openrouter.api_key
     # Parked 2026-10-25: 6 of 10 accepted on the cheap_frontier smoke, under the
-    # bar of 7 (tests/fixtures/receipts/cheap_frontier_smokes_2026_10_25.json). The
-    # endpoint stays so an explicit pin, the default judge, can still reach it;
-    # the ordinary ladder cannot.
+    # bar of 7 (tests/fixtures/receipts/cheap_frontier_smokes_2026_10_25.json).
+    # OMN-20376: withdrawn from routing_tiers.yaml too, so no tier names it. The
+    # declaration stays only so an explicit pin and the default judge
+    # (adapter_routing_resolved_judge, judge_adequacy) can still reach it.
     explicit_pin_only: true
     # OMN-17372: this backend's `api_key_env: OPENROUTER_API_KEY` was deleted
     # along with every other one in this file. A customer reaches OpenRouter on
@@ -563,9 +564,16 @@ backends:
   # delegate's own gate, judge off, over 29 of the 2026-09-30 delegated tasks it passed
   # 25 at p50 17 s, all 10 document tasks, 4 of 5 review and 3 of 3 reasoning; it is
   # weak on code_review (2 of 5), so the mirrored entry leaves that class off.
-  # A spread peer of the ultra rung (OMN-17427: it had 0 attempts in 7 days as a
-  # last fallback), with default weight 1.0 from the delegate-gate measurement
-  # (25 of 29 passed). A refusal on the pick still retries the other member.
+  # OMN-20376: it was a spread peer mirrored from the ultra rung (OMN-17427: 0
+  # attempts in 7 days as a last fallback). Ultra is withdrawn from
+  # routing_tiers.yaml, so the placement names no rung to mirror and instead
+  # declares north-mini-code as the cheap_frontier tier's only rung, with its own
+  # use_for written out here, the classes the mirror served: code_review stays off
+  # (withheld, task_class_contracts.v1.yaml code_review.routing_availability) and
+  # the prose classes are OMN-13640's. Placed here rather than in routing_tiers.yaml
+  # because the deployment-fact gate admits no new vendor value in that file.
+  # Free-tier reasoning models are a POOR fit for terse, tightly-budgeted output
+  # (OMN-12717): do not narrow max_tokens below.
   - backend_id: openrouter-north-mini-code
     provider: openrouter
     endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
@@ -574,10 +582,19 @@ backends:
     tier: cheap_frontier
     placement:
       tier: cheap_frontier
-      fallback_for:
-        - openrouter-nemotron-ultra
       max_context_tokens: 256000
-      mode: spread
+      fast_path_threshold_tokens: 8192
+      use_for:
+        - code_generation
+        - reasoning
+        - review
+        - research
+        - refactor
+        - test
+        - validator_generation
+        - document
+        - documentation
+        - summarization
     timeout_ms: 300000
     max_tokens: 64000
     capabilities:

@@ -25,7 +25,7 @@ released consumer already accepts.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.enums.enum_backend_placement_mode import EnumBackendPlacementMode
 
@@ -39,11 +39,12 @@ class ModelDelegationBackendPlacement(BaseModel):
         ..., min_length=1, description="Name of the routing tier to join."
     )
     fallback_for: tuple[str, ...] = Field(
-        ...,
-        min_length=1,
+        default=(),
         description=(
             "backend_refs of rungs already in that tier. Each yields one "
-            "mirrored entry carrying the rung's use_for."
+            "mirrored entry carrying the rung's use_for. Empty (OMN-20376) "
+            "declares the backend as a rung of its own: the tier file names no "
+            "vendor backend and ``use_for`` below is the whole class list."
         ),
     )
     max_context_tokens: int = Field(
@@ -69,7 +70,18 @@ class ModelDelegationBackendPlacement(BaseModel):
             "Task classes this backend is offered for, narrowing each rung it "
             "mirrors: the mirrored entry carries the rung's use_for restricted "
             "to these. None keeps the rung's whole use_for. A backend measured "
-            "good at some of a rung's classes and not others names the good ones."
+            "good at some of a rung's classes and not others names the good ones. "
+            "A placement with no ``fallback_for`` has no rung to narrow, so it "
+            "must name every class it serves here."
+        ),
+    )
+    fast_path_threshold_tokens: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Prompt size at or under which this backend is the fast-path pick. "
+            "Used only by a placement with no ``fallback_for``; a mirrored entry "
+            "takes its rung's threshold."
         ),
     )
     weight: float = Field(
@@ -82,6 +94,15 @@ class ModelDelegationBackendPlacement(BaseModel):
             "not from preference. Ignored in fallback mode."
         ),
     )
+
+    @model_validator(mode="after")
+    def _standalone_names_its_classes(self) -> ModelDelegationBackendPlacement:
+        if not self.fallback_for and self.use_for is None:
+            raise ValueError(
+                "a placement with no fallback_for is a rung of its own and must "
+                "name the task classes it serves in use_for"
+            )
+        return self
 
 
 class ModelPlacedDelegationBackend(BaseModel):

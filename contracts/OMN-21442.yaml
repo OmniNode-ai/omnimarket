@@ -1,0 +1,130 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21442"
+title: "T-A1: TLA+ model and design-review verdict for the andon stop record"
+summary: "formal/andon_stop models the andon stop (open, swarming, fixed, stale, cleared, declared_false) and the lane lease (claimed to released) in TLA+, with a design config, a liveness config, thirty-three one-knob mutants and two witnesses, and tests that compare the model's states, triggers, transitions and constants with each machine's contract. Formal files and tests only: no runtime code, so no deploy check applies."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21442-andon-stop-model"
+    statement: "The andon stop and its lane lease are modelled and checked before they are built, and the model is tied to the contracts of the two machines."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the design configs pass every property with no counterexample; the committed TLC outputs end exit=0 with No error has been found."
+      - id: "AC2"
+        statement: "AC2: the mutants that drop the lease_granted guard, the exhaustion guard or reset the budget on reopen each produce the counterexample to ReplacementsBounded; the budget grows only by the operator's replacements_extended record."
+      - id: "AC3"
+        statement: "AC3: the mutant that drops the generation check produces the counterexample to StaleGenerationWriteRefused."
+      - id: "AC4"
+        statement: "AC4: the mutant that ties revocation to replacement produces the counterexample to WriteOnlyUnderActiveLease; a write is accepted only under an active lease."
+      - id: "AC5"
+        statement: "AC5: a hand-fixed stop reaches cleared only through the consecutive readings (witness W1); the hand fix guard, anchor and target mutants each fail."
+      - id: "AC6"
+        statement: "AC6: each property fails on its one-knob mutation and the results match the committed model, configs and outputs."
+      - id: "AC7"
+        statement: "AC7: each guard of the stop's guard section and each recovery rule is a property or an action of the model, read by name against the model."
+      - id: "AC8"
+        statement: "AC8: the model has liveness checks (eventual clear or decision row) with the fairness assumption stated; the design_live config passes and its mutants fail."
+      - id: "AC9"
+        statement: "AC9: each machine's states, triggers and transitions are those of its own contract, including the reopen from fixed on a mismatched readback."
+      - id: "AC10"
+        statement: "AC10: every cfg constant is the value of config.andon_stop and the comparison fails when a cfg constant, a state name or a trigger name differs."
+      - id: "AC11"
+        statement: "AC11: the model and its configs name no store, bus, host or path."
+evidence_requirements:
+  - kind: "tests"
+    description: "The andon stop model test over the committed TLC results, the mutants and the contract comparison."
+    command: "uv run pytest tests/formal/test_andon_stop_model.py -q -n 0 -p no:randomly --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21442-ac1-design-passes"
+    description: "AC1: the design configs pass every property with no counterexample; the committed TLC outputs end exit=0 with No error has been found."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/formal/test_andon_stop_model.py -q -n 0 -p no:randomly --no-cov -k 'design_passes or results_are_for'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21442-ac2-replacement-budget"
+    description: "AC2: the mutants that drop the lease_granted guard, the exhaustion guard or reset the budget on reopen each produce the counterexample to ReplacementsBounded; the budget grows only by the operator's replacements_extended record."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/formal/test_andon_stop_model.py -q -n 0 -p no:randomly --no-cov -k 'M1_ or M2_ or M3_'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21442-ac3-generation-fence"
+    description: "AC3: the mutant that drops the generation check produces the counterexample to StaleGenerationWriteRefused."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/formal/test_andon_stop_model.py -q -n 0 -p no:randomly --no-cov -k 'M27_'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21442-ac4-write-authority"
+    description: "AC4: the mutant that ties revocation to replacement produces the counterexample to WriteOnlyUnderActiveLease; a write is accepted only under an active lease."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/formal/test_andon_stop_model.py -q -n 0 -p no:randomly --no-cov -k 'M28_ or M26_'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21442-ac5-hand-fix"
+    description: "AC5: a hand-fixed stop reaches cleared only through the consecutive readings (witness W1); the hand fix guard, anchor and target mutants each fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/formal/test_andon_stop_model.py -q -n 0 -p no:randomly --no-cov -k 'M4_ or M8_ or M9_ or M10_ or hand_fixed'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn21442-ac6-one-knob-mutants"
+    description: "AC6: each property fails on its one-knob mutation and the results match the committed model, configs and outputs."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/formal/test_andon_stop_model.py -q -n 0 -p no:randomly --no-cov -k 'one_knob or every_property_has or results_are_for or witness'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn21442-ac7-guards-in-model"
+    description: "AC7: each guard of the stop's guard section and each recovery rule is a property or an action of the model, read by name against the model."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/formal/test_andon_stop_model.py -q -n 0 -p no:randomly --no-cov -k 'each_guard_and_recovery_rule'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
+  - id: "dod-omn21442-ac8-liveness"
+    description: "AC8: the model has liveness checks (eventual clear or decision row) with the fairness assumption stated; the design_live config passes and its mutants fail."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/formal/test_andon_stop_model.py -q -n 0 -p no:randomly --no-cov -k 'design_live or M29_ or M30_ or M31_ or M32_ or M33_'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC8"]
+  - id: "dod-omn21442-ac9-machines-are-contracts"
+    description: "AC9: each machine's states, triggers and transitions are those of its own contract, including the reopen from fixed on a mismatched readback."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/formal/test_andon_stop_model.py -q -n 0 -p no:randomly --no-cov -k 'stop_machine_is or lease_machine_is or reopens_from_fixed or comparison_fails'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC9"]
+  - id: "dod-omn21442-ac10-configuration"
+    description: "AC10: every cfg constant is the value of config.andon_stop and the comparison fails when a cfg constant, a state name or a trigger name differs."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/formal/test_andon_stop_model.py -q -n 0 -p no:randomly --no-cov -k 'every_cfg_constant or comparison_fails'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC10"]
+  - id: "dod-omn21442-ac11-no-environment"
+    description: "AC11: the model and its configs name no store, bus, host or path."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/formal/test_andon_stop_model.py -q -n 0 -p no:randomly --no-cov -k 'names_no_store'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC11"]

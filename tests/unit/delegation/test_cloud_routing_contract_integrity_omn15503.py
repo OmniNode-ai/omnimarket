@@ -29,8 +29,8 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_delegation_config import (
     ModelDelegationConfig,
-    parse_delegation_config_yaml,
 )
+from tests.placed_routing_config import placed_routing_config
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _DELEGATE_CONTRACT_PATH = (
@@ -58,7 +58,7 @@ def _allowed_task_types() -> tuple[str, ...]:
 
 
 def _routing_config() -> ModelDelegationConfig:
-    return parse_delegation_config_yaml(_ROUTING_TIERS_PATH.read_text())
+    return placed_routing_config()
 
 
 def _synthetic_available_backends(

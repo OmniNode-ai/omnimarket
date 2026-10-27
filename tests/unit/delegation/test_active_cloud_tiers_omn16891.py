@@ -29,6 +29,8 @@ from typing import Any
 import pytest
 import yaml
 
+from tests.placed_routing_config import placed_tiers_raw
+
 _CONFIGS = Path(__file__).resolve().parents[3] / "src" / "omnimarket" / "configs"
 _ROUTING_TIERS = _CONFIGS / "routing_tiers.yaml"
 _BIFROST = _CONFIGS / "bifrost_delegation.yaml"
@@ -52,7 +54,7 @@ _CODE_CLASSES: tuple[str, ...] = (
     "test",
 )
 
-_OPENROUTER_CODER_BACKEND = "openrouter-nemotron-ultra"
+_OPENROUTER_CODER_BACKEND = "openrouter-north-mini-code"
 
 # OMN-12717 reasoning-burn: the free OpenRouter coder spent 18 reasoning tokens
 # on a 16-token budget and returned preamble instead of the answer. A generous
@@ -70,7 +72,7 @@ def _backends() -> dict[str, dict[str, Any]]:
 
 
 def _tiers() -> dict[str, dict[str, Any]]:
-    return {t["name"]: t for t in _load(_ROUTING_TIERS)["tiers"]}
+    return placed_tiers_raw()
 
 
 def _tier_order(task_type: str) -> list[str]:

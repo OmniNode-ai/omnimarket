@@ -1,0 +1,4 @@
+Reconstructed equivalents, not retained 1325 answers. Those receipts are absent on this host.
+Review: F07-05 seed and rubric recovered from the earlier h105 scenario bundle (deleg-sc-d-1100): get_filter changed self.filters.get(name) to self.filters.pop(name, None); non-destructive reads required; review must explain deletion on read. The source is reduced to the changed operation.
+CI: F08-02 omission class reconstructed from the lane brief: diagnosis must include the supplied failing-step name and upstream run ID. Step and ID here are synthetic fixture values, not claims about the original run.
+Both wrong answers deliberately satisfy the old prose/citation checks while missing the required content.

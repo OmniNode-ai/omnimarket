@@ -1,12 +1,12 @@
 name: node_llm_delegation_call_effect
 version: "0.1.0"
-description: "Delegation call effect — model routing, generic inference and local and cloud coding-session adapters with lab job receipts and bounded operator evaluation subprocesses"
+description: "Delegation call effect — model routing, generic inference and local and cloud coding-session adapters with lab job receipts and bounded operator evaluation subprocesses and typed Codex harness attempts"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
     node_llm_delegation_call_effect: "omnimarket.nodes.node_llm_delegation_call_effect"
 capabilities:
-  standalone: false
+  standalone: true
   full_runtime: true
   requires_network: true
   requires_repo: true

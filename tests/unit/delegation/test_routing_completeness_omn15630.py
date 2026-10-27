@@ -50,7 +50,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_delegation_config import (
     ModelDelegationConfig,
-    parse_delegation_config_yaml,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_tier import (
     ModelRoutingTier,
@@ -59,6 +58,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_tier_model im
     ModelTierModel,
 )
 from tests.constants import MODEL_LOCAL_201_SERVED_ID
+from tests.placed_routing_config import placed_routing_config
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _ROUTING_TIERS_PATH = _PROJECT_ROOT / "src/omnimarket/configs/routing_tiers.yaml"
@@ -83,7 +83,7 @@ def _yaml_mapping(path: Path) -> dict[str, object]:
 
 
 def _routing_config() -> ModelDelegationConfig:
-    return parse_delegation_config_yaml(_ROUTING_TIERS_PATH.read_text())
+    return placed_routing_config()
 
 
 def _synthetic_available_backends(

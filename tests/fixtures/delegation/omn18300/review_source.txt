@@ -1,0 +1,9 @@
+Review this candidate for the deliberately seeded correctness bug. Report its location, consequence and minimal correction.
+Requirements: preserve non-destructive reads.
+Candidate diff:
+```diff
+@@ -115,3 +115,3 @@
+ def get_filter(self, name: str):
+-    return self.filters.get(name)
++    return self.filters.pop(name, None)
+```

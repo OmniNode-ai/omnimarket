@@ -40,6 +40,17 @@ description: |
   commands and environments supplied by the offline test runner. It has no
   customer bus route.
 
+  HandlerCodexHarnessAttempt runs a single Codex attempt through this existing
+  effect's host dispatcher. It takes prompt, model and timeout_seconds and
+  returns ModelCodexHarnessReceipt (answer, tokens_in, tokens_out, tokens_cached,
+  wall_seconds, model, model_source, exit_cause, exit_code). Missing usage is
+  null, never a measured zero. The CLI reads the prompt only from stdin.
+  Invoke the dispatcher on the host, outside the caller agent's tool sandbox;
+  Codex's child workspace-write sandbox and approval_policy=never stay on.
+  Codex 0.160 opens CODEX_HOME/installation_id read/write before thread startup;
+  nested tool sandboxes can refuse that open. Startup refusal is a typed result,
+  never grounds to change credentials, CODEX_HOME or sandbox permissions.
+
   Endpoint authority is resolved by routing/contract configuration before this
   effect runs; the handler consumes the route-supplied endpoint URL.
 
@@ -147,6 +158,9 @@ service_configuration:
   requires_external_dependencies: true
 
 config_dependencies:
+  - key: "CODEX_HARNESS_OVERLAY_PATH"
+    required: false
+    description: "Host policy overlay for the direct Codex harness operation; no credential values."
   - key: "DELEGATION_ADAPTER_CONFIG_PATH"
     required: false
     description: "Deployment contract overlay: repository/work roots, call-site routing and generation parameters, honored provider capabilities, secret references. No credential values."
@@ -457,3 +471,15 @@ db_io:
 metadata:
   transport_type: kafka
   demo_path: true  # OMN-12777: demo-path topic coherence gate scope marker
+
+# Direct host operation, deliberately no customer bus topic carrying prompts.
+# CLI: python -m omnimarket.nodes.node_llm_delegation_call_effect codex-harness
+#      --model <model> --timeout <seconds> (prompt on stdin).
+codex_harness:
+  executable: codex
+  sandbox: workspace-write
+  approval_policy: never
+  network_access: true
+  reasoning_effort: high
+  max_timeout_seconds: 600
+  terminate_grace_seconds: 5

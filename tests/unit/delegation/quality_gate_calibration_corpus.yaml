@@ -32,6 +32,7 @@
 task_classes:
   document:
     deterministic:
+      - required_input_content
       - response_non_empty
     heuristic:
       - no_refusal
@@ -95,6 +96,8 @@ task_classes:
   # (Author, 2020) / URL / DOI) and `methodical_analysis` (reasoning structure).
   research:
     deterministic:
+      # Input-aware floor: skipped when this calibration supplies no prompt.
+      - required_input_content
       - response_non_empty
     heuristic:
       - no_refusal

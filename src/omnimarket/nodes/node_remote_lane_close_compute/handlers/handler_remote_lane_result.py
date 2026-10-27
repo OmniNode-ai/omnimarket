@@ -23,6 +23,7 @@ from ..models import (
     ModelRemoteLaneResult,
     ModelRemoteLaneResultRequest,
 )
+from .receipt_usage import receipt_usage
 
 DELEGATION_LINE_RE = re.compile(r"^[^\S\r\n]*`?DELEGATION[^\S\r\n]+(.*)$", re.M)
 DELEGATION_REASON_RE = re.compile(
@@ -151,10 +152,19 @@ class HandlerRemoteLaneResult:
             outcome = REJECTED_OUTCOME
         else:
             outcome = declared
+        usage = receipt_usage(
+            request.engine, request.engine_output, request.brief, request.wall_seconds
+        )
         return ModelRemoteLaneResult(
             outcome=outcome,
             problem=problem,
             declared_outcome=declared,
             delegation=parse_delegation_line(message),
             waiting_on_background=waiting_on_background(message),
+            usage=usage,
+            ledger_cells={
+                key: value
+                for key in ("contract_id", "attempt_id")
+                if (value := getattr(usage, key)) is not None
+            },
         )

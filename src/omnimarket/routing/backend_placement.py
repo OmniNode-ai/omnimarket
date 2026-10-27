@@ -91,6 +91,24 @@ def _mirror(
     )
 
 
+def _standalone(
+    backend: ModelPlacedDelegationBackend,
+    placement: ModelDelegationBackendPlacement,
+) -> ModelTierModel:
+    """A rung declared by the placement alone (OMN-20376), with its own use_for."""
+    assert placement.use_for is not None  # the placement model enforces it
+    fast_path = placement.fast_path_threshold_tokens
+    return ModelTierModel(
+        id=backend.model_name,
+        backend_ref=backend.backend_id,
+        max_context_tokens=placement.max_context_tokens,
+        use_for=placement.use_for,
+        fast_path_threshold_tokens=(
+            None if fast_path is None else min(fast_path, placement.max_context_tokens)
+        ),
+    )
+
+
 def apply_backend_placements(
     config: ModelDelegationConfig,
     placed: Sequence[ModelPlacedDelegationBackend],
@@ -128,6 +146,8 @@ def apply_backend_placements(
                 f"tier {tier.name!r} already carries this backend",
             )
         mirrors: list[ModelTierModel] = []
+        if not placement.fallback_for:
+            mirrors.append(_standalone(backend, placement))
         for rung_ref in placement.fallback_for:
             rung = declared.get(rung_ref)
             if rung is None:

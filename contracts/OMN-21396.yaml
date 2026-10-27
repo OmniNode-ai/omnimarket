@@ -54,6 +54,25 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn21396-recent-harness-cohort"
+    description: >
+      Hosted deploy check for the receipt-derived harness cohort and startup
+      classification fix. Each lane task type has a frozen source receipt in
+      the declared preceding-day window. Its checker rejects the initial state,
+      accepts an independent correct edit and rejects protected-input tampering;
+      standalone checker invocation and actual rebase ancestry are exercised.
+      Codex app-server initialization refused with Operation not permitted is
+      unavailable, while a tool permission denial remains a task attempt.
+      Existing placement, escalation, two-attempt STATUS replay and throughput
+      checks retain AC1 through AC4 coverage. Runs from the hosted checkout with
+      temporary worktrees and no model login, credentials, broker or lab service.
+      The new startup error regression fails before this change.
+    source: "manual"
+    binds_ac: ["AC1", "AC2", "AC3", "AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_harness_eval.py tests/unit/delegation/test_harness_eval_fixtures.py tests/unit/delegation/test_harness_eval_recent.py tests/nodes/node_remote_lane_compute/test_engine_ladder_remote_lane_compute.py tests/nodes/node_remote_lane_compute/test_engine_experiment_rows.py -q --no-cov --refuse-skips -n 0"
+        cwd: "."
   - id: "dod-omn21396-fill-fixer-holds"
     description: >
       Deploy check: the tick's lab-fill effect reads active scope=fixer HOLDs
