@@ -42,6 +42,7 @@ from omnimarket.handlers.bus_binding.select import (
     default_state_dir,
     open_bound_bus,
     positional_opener,
+    replay_outbox,
 )
 from omnimarket.handlers.work_ledger_consume.consume_watch import (
     ConsumeWatch,
@@ -337,7 +338,8 @@ def append_command(
             )
             try:
                 if bound.decision.binding is EnumBusBinding.DURABLE:
-                    replay = await outbox.drain(
+                    replay = await replay_outbox(
+                        bound,
                         state_dir,
                         lambda queued: caller.append(queued, timeout_s=timeout_s),
                     )
