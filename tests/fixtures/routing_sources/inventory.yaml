@@ -114,6 +114,15 @@ sources:
     resolution_sites: []
     precedence:
       probe: inference_bridge_endpoints
+  - id: adr_segmentation_bridge_key
+    selects: the bridge lookup key for ADR segmentation
+    resolver: omnimarket.nodes.node_adr_segmentation_llm_effect.handlers.handler_segmentation:_segmentation_model_key
+    packaged_defaults:
+      - src/omnimarket/configs/adr_segmentation.v1.yaml
+    overlay: the contract config segmentation_model_key.default_ref names the packaged config; explicit constructor injection wins
+    resolution_sites: []
+    precedence:
+      probe: adr_segmentation_bridge_key
 not_routing_resolution_sites:
   - site: "src/omnimarket/nodes/node_idle_slot_fill_effect/handlers/ruling_live_checks.py:find_node_overlay('node_review_voters_overlay_compute')"
     reason: observes the currently declared required review voter identities to report ruling drift; it never invokes a voter, chooses an inference route or changes the roster

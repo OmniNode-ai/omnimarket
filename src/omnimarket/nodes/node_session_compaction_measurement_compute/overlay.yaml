@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Offline-only selection: no live exposure or arm assignment.
+node: node_session_compaction_measurement_compute
+enabled: false
+runtime_profiles: []
+retention_policy: lexical_casefold_all_spans
+usage_policy: final_snapshot_per_message_id
+summary_policy: marked_only

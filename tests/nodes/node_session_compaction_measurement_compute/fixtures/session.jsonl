@@ -1,0 +1,7 @@
+{"type":"user","uuid":"u1","sessionId":"session-a","timestamp":"2026-01-01T00:00:00Z","message":{"content":"Use the blue adapter. The fixture contains seven records."}}
+{"type":"assistant","uuid":"a1","sessionId":"session-a","timestamp":"2026-01-01T00:00:01Z","message":{"id":"m1","content":[{"type":"text","text":"Acknowledged."}],"usage":{"input_tokens":100,"output_tokens":5,"cache_read_input_tokens":20,"cache_creation_input_tokens":10}}}
+{"type":"assistant","uuid":"a2","sessionId":"session-a","timestamp":"2026-01-01T00:00:02Z","message":{"id":"m1","content":[{"type":"text","text":"Acknowledged."}],"usage":{"input_tokens":100,"output_tokens":8,"cache_read_input_tokens":20,"cache_creation_input_tokens":10}}}
+{"type":"system","subtype":"compact_boundary","uuid":"b1","sessionId":"session-a","timestamp":"2026-01-01T00:00:10Z","compactMetadata":{"trigger":"auto","preTokens":1000,"postTokens":100,"durationMs":300}}
+{"type":"user","uuid":"s1","sessionId":"session-a","timestamp":"2026-01-01T00:00:11Z","isCompactSummary":true,"message":{"content":"The fixture contains seven records."}}
+{"type":"assistant","uuid":"a3","sessionId":"session-a","timestamp":"2026-01-01T00:00:12Z","message":{"id":"m2","content":[{"type":"text","text":"Continuing."}],"usage":{"input_tokens":40,"output_tokens":3}}}
+{"type":"user","uuid":"u2","sessionId":"session-a","timestamp":"2026-01-01T00:00:20Z","message":{"content":"Stop."}}

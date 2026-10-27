@@ -210,6 +210,54 @@ dod_evidence:
         check_value: "uv run --locked pytest tests/unit/nodes/node_context_source_ledger_effect/test_ledger_sequence_watermark.py -q -p no:randomly --no-cov -k 'complete_sequence or reached_prefix'"
         cwd: "${OMNI_HOME}/omnimarket"
 
+  - id: "dod-omn21090-ac1-measurement-record-validation"
+    description: "This change's foundation only: invalid transcript identity, usage and label evidence fail loudly. Epic child completion still requires the criterion's Linear read."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_session_compaction_measurement_compute/test_measurement.py -q --no-cov -k invalid_inputs"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21090-ac2-measurement-boundaries"
+    description: "This change's compaction measurement seam only: marked summaries, boundary isolation and lexical decision loss controls. Does not claim Track A complete."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_session_compaction_measurement_compute/test_measurement.py -q --no-cov -k 'dropped_decision or missing_summary or two_boundaries'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21090-ac3-measurement-canonical-node"
+    description: "This change's portable measurement node shape only: contract, explicit disabled offline overlay and package entry point resolve. Does not claim Track B complete."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_session_compaction_measurement_compute/test_measurement.py -q --no-cov -k node_contract_and_overlay"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21090-ac4-measurement-labelled-facts"
+    description: "This change's information-retention measurement only: a retained fact passes and its removal is detected. Does not claim Track C complete."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_session_compaction_measurement_compute/test_measurement.py -q --no-cov -k positive_control_and_dropped_fact"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21090-ac5-measurement-accounting"
+    description: "This change's evaluation foundation only: deterministic wall time, streaming usage deduplication, missing usage and a disabled-detector mutant. Does not claim Track E complete."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_session_compaction_measurement_compute/test_measurement.py -q --no-cov -k 'wall_time or missing_usage or boundary_sizes or disabled_mutant'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn21090-deploy-session-measurement-probe"
+    description: "Hosted-runner offline probe of the packaged measurement handler: the transcript fixture must report adapter-choice dropped and measured usage. Fails on a head without this node. No runtime, network or credentials are needed."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run --frozen pytest tests/nodes/node_session_compaction_measurement_compute/test_measurement.py -q --no-cov -k 'dropped_decision_negative_control or wall_time_and_usage_stream_dedup or node_contract_and_overlay'"
+        cwd: "${OMNI_HOME}/omnimarket"
+
   - id: "dod-omn21090-ac4-pinned-ledger-source"
     description: "Track C TC.4 repository contribution: pinned ledger reads are confined to their explicit manifest root and provenance labels require both linking cells. This does not assert every Track C child is Done; epic completion remains a Linear state audit."
     source: "manual"

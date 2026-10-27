@@ -26,14 +26,14 @@ from __future__ import annotations
 import statistics
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime, timedelta
-from functools import lru_cache
-from pathlib import Path
 from typing import Any
 
-import yaml
 from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
-from pydantic import ValidationError
 
+from omnimarket.handlers.handler_measured_selection_config import (
+    MeasuredSelectionContractError,
+    load_measured_selection_contract,
+)
 from omnimarket.models.delegation.model_measured_selection import (
     ModelCandidateMeasures,
     ModelCandidateRule,
@@ -49,13 +49,6 @@ from omnimarket.models.delegation.wire.model_measured_selection_decided_event im
     ModelMeasuredSelectionDecidedEvent,
     ModelMeasuredSelectionRequest,
 )
-from omnimarket.routing.routing_tiers_path import resolve_routing_tiers_path
-
-CONTRACT_PATH: Path = Path(__file__).resolve().parent.parent / "contract.yaml"
-
-
-class MeasuredSelectionContractError(ValueError):
-    """The node contract's ``measured_selection`` block is absent or mis-shaped."""
 
 
 class MeasureMissingError(ValueError):
@@ -69,28 +62,6 @@ class MeasureMissingError(ValueError):
             f"candidate {candidate!r} has no measured {measure}: {reason}. "
             "The selector does not fall back to the declared order."
         )
-
-
-def read_selection_contract(path: Path) -> ModelMeasuredSelectionContract:
-    """Read the ``measured_selection`` block of a node contract file."""
-    raw: Any = yaml.safe_load(path.read_text(encoding="utf-8"))
-    block = raw.get("measured_selection") if isinstance(raw, dict) else None
-    if not isinstance(block, dict):
-        raise MeasuredSelectionContractError(
-            f"{path} has no measured_selection mapping"
-        )
-    try:
-        return ModelMeasuredSelectionContract.model_validate(block)
-    except ValidationError as exc:
-        raise MeasuredSelectionContractError(
-            f"{path} measured_selection is mis-shaped: {exc}"
-        ) from exc
-
-
-@lru_cache(maxsize=1)
-def load_measured_selection_contract() -> ModelMeasuredSelectionContract:
-    """The shipped selection rules."""
-    return read_selection_contract(CONTRACT_PATH)
 
 
 def candidates_from_routing_tiers(
@@ -130,16 +101,6 @@ def candidates_from_routing_tiers(
                 ),
             )
     return tuple(candidates.values())
-
-
-def routing_contract_candidates() -> tuple[ModelSelectionCandidate, ...]:
-    """The shipped rule applied to the routing contract in force."""
-    routing_tiers: Any = yaml.safe_load(
-        resolve_routing_tiers_path().read_text(encoding="utf-8")
-    )
-    return candidates_from_routing_tiers(
-        load_measured_selection_contract().candidates, routing_tiers
-    )
 
 
 def priced_models_from_manifest(
@@ -283,13 +244,26 @@ def select_by_measure(
 
 
 class HandlerMeasuredModelSelection:
-    """Rank on the shipped rules; the decided event carries every measure read."""
+    """Rank on the shipped rules; the decided event carries every measure read.
+
+    The rules are injected at construction and loaded outside this node, so
+    ``handle`` reads no file and the request keeps its released wire shape.
+    """
+
+    def __init__(
+        self, selection_contract: ModelMeasuredSelectionContract | None = None
+    ) -> None:
+        self._selection_contract = (
+            selection_contract
+            if selection_contract is not None
+            else load_measured_selection_contract()
+        )
 
     def handle(
         self, request: ModelMeasuredSelectionRequest
     ) -> ModelMeasuredSelectionDecidedEvent:
         selection = select_by_measure(
-            load_measured_selection_contract(),
+            self._selection_contract,
             request.candidates,
             request.pricing,
             request.runs,
@@ -303,16 +277,11 @@ class HandlerMeasuredModelSelection:
 
 
 __all__ = [
-    "CONTRACT_PATH",
     "HandlerMeasuredModelSelection",
     "MeasureMissingError",
-    "MeasuredSelectionContractError",
     "candidates_from_routing_tiers",
-    "load_measured_selection_contract",
     "measure_candidates",
     "priced_models_from_manifest",
-    "read_selection_contract",
     "recorded_runs_from_rows",
-    "routing_contract_candidates",
     "select_by_measure",
 ]

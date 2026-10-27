@@ -19,7 +19,10 @@ import hashlib
 import json
 import logging
 import time
+from pathlib import Path
 from typing import Any, Final, Literal
+
+import yaml
 
 from omnimarket.inference.adapter_inference_bridge import (
     AdapterInferenceBridge,
@@ -39,6 +42,25 @@ from omnimarket.nodes.node_adr_segmentation_llm_effect.models.model_segmentation
     ModelLLMCallEvidence,
     ModelSegmentationResult,
 )
+
+_SEGMENTATION_CONFIG_ROOT = Path(__file__).resolve().parents[3] / "configs"
+
+
+def _segmentation_model_key(reference: str = "adr_segmentation.v1.yaml") -> str:
+    """Resolve the bridge lookup key from the declared configuration."""
+    if not reference or Path(reference).name != reference:
+        raise ValueError("segmentation default_ref must name a configuration file")
+    raw = yaml.safe_load(
+        (_SEGMENTATION_CONFIG_ROOT / reference).read_text(encoding="utf-8")
+    )
+    key = raw.get("segmentation_model_key") if isinstance(raw, dict) else None
+    if not isinstance(key, str) or not key.strip():
+        raise ValueError(f"{reference} must declare segmentation_model_key")
+    return key
+
+
+_DEFAULT_SEGMENTATION_MODEL_KEY = _segmentation_model_key()
+
 
 logger = logging.getLogger(__name__)
 
@@ -221,7 +243,7 @@ class HandlerSegmentation:
     def __init__(
         self,
         inference_bridge: ModelInferenceAdapter | None = None,
-        segmentation_model_key: str = "qwen3-coder",
+        segmentation_model_key: str = _DEFAULT_SEGMENTATION_MODEL_KEY,
         segmentation_temperature: float = 0.1,
         segmentation_timeout_seconds: float = 120.0,
         low_confidence_threshold: float = 0.4,
@@ -401,8 +423,8 @@ class HandlerSegmentation:
         """Build from a loaded contract.yaml config block."""
         cfg = contract.get("config", {})
         return cls(
-            segmentation_model_key=str(
-                cfg.get("segmentation_model_key", {}).get("default", "adr_segmentation")
+            segmentation_model_key=_segmentation_model_key(
+                cfg["segmentation_model_key"]["default_ref"]
             ),
             segmentation_temperature=float(
                 cfg.get("segmentation_temperature", {}).get("default", 0.1)

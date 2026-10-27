@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_session_compaction_measurement_compute
+version: 1.0.0
+description: Offline deterministic measurements from frozen session transcripts and audited labels.
+pack: core
+node_role: compute
+display_name: Session Compaction Measurement Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_session_compaction_measurement_compute: omnimarket.nodes.node_session_compaction_measurement_compute
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - omnibase_core>=0.39.0
+  - pydantic>=2.11.0
+license: MIT
+tags: [compute, compaction, measurement]

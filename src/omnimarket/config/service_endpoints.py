@@ -56,6 +56,11 @@ def _require(mapping: dict[str, Any], *keys: str) -> str:
     return obj
 
 
+def service_endpoint_url(reference: str) -> str:
+    """Resolve a dotted service endpoint reference, failing closed on any gap."""
+    return _require(_cfg, *reference.split("."))
+
+
 _cfg = _load_config()
 
 #: GitHub REST API base URL — e.g. ``https://api.github.com``
@@ -87,4 +92,5 @@ __all__ = [
     "SLACK_AUTH_TEST_URL",
     "SLACK_CHAT_POST_MESSAGE_URL",
     "SLACK_CONVERSATIONS_INFO_URL",
+    "service_endpoint_url",
 ]

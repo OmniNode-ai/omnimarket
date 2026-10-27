@@ -36,6 +36,7 @@ from typing import Any, Protocol, runtime_checkable
 
 import yaml
 
+from omnimarket.config.service_endpoints import service_endpoint_url
 from omnimarket.handlers.handler_lane_intake import (
     LaneIntakeGate,
     declared_lane,
@@ -73,10 +74,12 @@ def _contract_linear_graphql_url(contract_path: Path) -> str:
     linear = integrations.get("linear")
     if not isinstance(linear, dict):
         raise ValueError(f"{contract_path} missing integrations.linear mapping")
-    graphql_url = linear.get("graphql_url")
+    graphql_url = linear.get("graphql_url_ref")
     if not isinstance(graphql_url, str) or not graphql_url.strip():
-        raise ValueError(f"{contract_path} integrations.linear.graphql_url must be set")
-    return graphql_url
+        raise ValueError(
+            f"{contract_path} integrations.linear.graphql_url_ref must be set"
+        )
+    return service_endpoint_url(graphql_url)
 
 
 _LINEAR_GRAPHQL_URL = _contract_linear_graphql_url(_CONTRACT_PATH)

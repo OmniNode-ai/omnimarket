@@ -24,6 +24,7 @@ from uuid import uuid4
 import pytest
 import yaml
 
+from omnimarket.config.service_endpoints import service_endpoint_url
 from omnimarket.models.enum_consumer_flow_state import EnumConsumerFlowState
 from omnimarket.nodes.node_consumer_flow_stall_alert_effect.handlers import (
     build_slack_command,
@@ -120,7 +121,11 @@ def test_the_publish_node_still_posts_through_chat_postmessage() -> None:
     publish = _contract(_PUBLISH_CONTRACT)
     endpoints = publish["endpoints"]
     assert isinstance(endpoints, dict)
-    urls = {entry["url"] for entry in endpoints.values() if isinstance(entry, dict)}
+    urls = {
+        service_endpoint_url(entry["url_ref"])
+        for entry in endpoints.values()
+        if isinstance(entry, dict)
+    }
     assert "https://slack.com/api/chat.postMessage" in urls
     secrets = publish["secrets"]
     assert isinstance(secrets, dict)

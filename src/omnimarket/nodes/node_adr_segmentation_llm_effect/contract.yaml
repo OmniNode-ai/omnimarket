@@ -43,7 +43,7 @@ event_bus:
 config:
   segmentation_model_key:
     description: "Logical route key to use for segmentation (must be in AdapterInferenceBridge config)."
-    default: "qwen3-coder"
+    default_ref: adr_segmentation.v1.yaml
   segmentation_temperature:
     description: "Temperature for the segmentation LLM call."
     default: 0.1

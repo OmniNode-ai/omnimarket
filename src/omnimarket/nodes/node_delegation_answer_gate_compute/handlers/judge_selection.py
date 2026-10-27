@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """The independent judge: which model judges, what it is asked, what it said (OMN-20489).
 
-Everything here is read from this node's contract.yaml: the model families, the
+The model families come from the independent-judge configuration; the
 judge capability a routing-contract backend declares, and the judge prompt. No
 judge backend or model is named in code; the caller passes the routing
 contract's backends and this module picks the first one declaring the judge
@@ -57,7 +57,7 @@ def independent_judge_config() -> dict[str, Any]:
 def model_family(model_id: str) -> str | None:
     """The declared family of ``model_id``, or ``None`` when no family matches."""
     lowered = model_id.lower()
-    for entry in answer_gate_contract()["model_families"]:
+    for entry in independent_judge_config()["model_families"]:
         if any(token in lowered for token in entry["match"]):
             return str(entry["family"])
     return None
