@@ -279,7 +279,7 @@ dod_evidence:
     binds_ac: ["AC4"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/nodes/node_exemplar_registry_reconcile_compute/test_sampled_revocation.py -q -n 0 -p no:randomly --no-cov"
+        check_value: "env UV_FROZEN=true uv run pytest tests/nodes/node_exemplar_registry_reconcile_compute/test_sampled_revocation.py -q -n 0 -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21090-deploy-sampled-exemplar-revocation"
     description: "Hosted-runner probe executes the packaged exemplar reconcile handler and in-memory runtime against count-based revocation controls; a head without the change fails. No runtime host or credentials are used."
