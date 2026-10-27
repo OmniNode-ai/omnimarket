@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_context_source_git_effect
+version: 1.0.0
+description: Tenant-scoped immutable Git context source with pinned blob provenance.
+omnibase_core_compat: '>=0.47.53,<1.0.0'
+pack: context
+node_role: effect
+display_name: Context Source Git Effect
+entry_points:
+  onex.nodes:
+    node_context_source_git_effect: omnimarket.nodes.node_context_source_git_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - omnibase-core>=0.47.53
+  - pyyaml>=6.0
+tags: [effect, context, git]
+license: MIT

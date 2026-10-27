@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_context_source_git_effect
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Read named regular files as immutable Git blobs at an overlay's exact commit,
+  behind ProtocolContextSource. The deployment overlay supplies every repository,
+  path, pin, factor, allowed tenant and freshness policy; no private names ship.
+  Return exact UTF-8 bytes, blob and commit stamps and the pinned tree index.
+  Missing objects, symlinks or invalid UTF-8 yield unavailable with no partial
+  entries. Missing or malformed overlays return unavailable at request time;
+  registration requires no deployment configuration. Denied tenants never reach
+  the reader. Age is a flag, never a filter.
+  Selection, token budget and pack hash belong to downstream computes.
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  side_effects: [reads_git_objects]
+  runtime_profiles: [effects]
+  timeout_ms: 30000
+runtime_profiles: [effects]
+input_model: omnibase_core.models.context.model_context_source_request.ModelContextSourceRequest
+output_model: omnimarket.nodes.node_context_source_git_effect.models.model_git_source.ModelGitSourceResult
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    - operation: context_source_git_requested
+      topic: onex.cmd.omnimarket.context-source-git-requested.v1
+      message_category: command
+      event_model: omnibase_core.models.context.model_context_source_request.ModelContextSourceRequest
+      handler:
+        name: HandlerContextSourceGit
+        module: omnimarket.nodes.node_context_source_git_effect.handlers.handler_context_source_git
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.context-source-git-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.context-source-git-completed.v1
+terminal_event: onex.evt.omnimarket.context-source-git-completed.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.context-source-git-requested.v1]
+  publish_topics: [onex.evt.omnimarket.context-source-git-completed.v1]
+context_source_git:
+  timeout_seconds: 10
+metadata:
+  ticket: OMN-21126
+  transport_type: kafka

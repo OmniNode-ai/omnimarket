@@ -38,6 +38,21 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn21090-ac4-pinned-git-source"
+    description: "TC.3 repository contribution: a canonical pinned Git source returns exact bytes and provenance, denies unauthorized tenants and fails closed on unreadable objects. This does not assert that every Track C child is Done; that epic criterion remains a Linear API check. Existing evidence for each epic acceptance criterion is preserved."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env UV_FROZEN=true uv run pytest tests/nodes/node_context_source_git_effect/test_golden_chain_context_source_git.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn21090-git-source-deploy-probe"
+    description: "Hosted-runner probe executes the packaged Git source through the local runtime and in-memory bus using a temporary repository and overlay, then checks exact pinned bytes. No runtime host or credential is required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run --frozen pytest tests/nodes/node_context_source_git_effect/test_golden_chain_context_source_git.py -q -n 0 --no-cov -k packaged_node_cli_inmemory"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21090-ac1-current-context-fold"
     description: "Track T0 rides on the install-confirm compute and the adapter's capture. This repository's part here: results of the merged install-confirm compute over a growing P6-shaped capture fold to the custom activation retired at the native boundary. The test module fails at the merge base, where the fold does not exist. The child-ticket state this criterion names is read through the Linear API and is not bound here."
     source: "manual"
