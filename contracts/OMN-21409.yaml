@@ -76,9 +76,14 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_idle_slot_fill_effect/test_codex_capacity_route.py -q"
   - id: "dod-omn21409-deploy-import"
-    description: "Hosted deploy check, runnable with no lab route, broker or database: the node package resolves its onex.nodes entry point and the fill dispatches the declared available model. The regression fails at the merge base, where shared Codex capacity selected Sonnet."
+    description: "Hosted published-artifact readback, runnable with the runner GitHub token and no lab route, broker or database: fetch this revision's handler from GitHub and require shared Codex capacity in the policy input. Fails against the merge-base handler, which exposes only Codex-only capacity. This checks the published revision, not a running service. The import and dispatch regression checks below remain required evidence."
     source: "manual"
     checks:
+      - check_type: "command"
+        check_value: >-
+          set -o pipefail; gh api
+          "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_idle_slot_fill_effect/handlers/handler_idle_slot_fill.py?ref=$(git rev-parse HEAD)"
+          --jq .content | base64 -d | grep -F '"codex": codex_left + shared_left,' > /dev/null
       - check_type: "command"
         check_value: "uv run --locked python -c \"from importlib.metadata import entry_points; eps={e.name: e for e in entry_points(group='onex.nodes')}; eps['node_idle_slot_fill_effect'].load()\""
       - check_type: "test_passes"
