@@ -68,6 +68,10 @@ from omnimarket.enums.enum_requested_response_shape import (
     EnumRequestedResponseShape,
 )
 from omnimarket.enums.enum_routing_exclusion import EnumRoutingExclusionReason
+from omnimarket.handlers.handler_capability_start import (
+    ModelCapabilityMapRead,
+    resolve_capability_start,
+)
 from omnimarket.handlers.handler_size_band_measurement import measure_size_band
 from omnimarket.inference.delegation_config_provenance import (
     resolve_bifrost_path_binding,
@@ -2867,6 +2871,7 @@ def delta(
     tenant_overlay: ModelTenantRoutingOverlayBackend | None = None,
     surface: EnumDelegationSurface = EnumDelegationSurface.CLOUD,
     quota_state: ModelProviderQuotaSnapshot | None = None,
+    capability_map: ModelCapabilityMapRead | None = None,
 ) -> ModelRoutingDecision:
     """Compute routing decision for a delegation request.
 
@@ -2962,6 +2967,12 @@ def delta(
             iteration order. Used by the escalation path after quality gate failure.
         roi_overlay: When set, the resolved captured-ROI signal used to demote
             proven-failing tiers before the static order.
+        capability_map: When set (OMN-20170), the capability-map read for this
+            request. A first, unpinned request starts at the cheapest tier in
+            the tier order measured MET for its class and band, and falls back to
+            the static order when that tier routes nothing; an unreadable map, a
+            class whose eval false-pass line is not MET, an unmeasured band or no
+            MET cell keep the static order. The read is logged either way.
         excluded_backend_refs: Backend refs to skip in every tier's selection
             (OMN-14402 same-tier backend fallback).
         tenant_overlay: When set, the resolved tenant-scoped backend override
@@ -3190,14 +3201,24 @@ def delta(
         task_type, contract
     )
 
-    def _route(roi_skip: frozenset[str]) -> ModelRoutingDecision | None:
+    def _route(
+        roi_skip: frozenset[str], start_tier: str | None = None
+    ) -> ModelRoutingDecision | None:
         # Escalation support (OMN-12254): skip tiers before min_tier_name.
         skip_until_found = min_tier_name is not None
+        # OMN-20170: on a first request, start at the cheapest tier the
+        # capability map measures MET for the class and band.
+        before_start = start_tier is not None
 
         for tier in tiers:
             if skip_until_found:
                 if tier.name == min_tier_name:
                     skip_until_found = False
+                else:
+                    continue
+            if before_start:
+                if tier.name == start_tier:
+                    before_start = False
                 else:
                     continue
 
@@ -3309,6 +3330,8 @@ def delta(
                 )
             if min_tier_name is not None:
                 rationale += f" Escalated: min_tier_name='{min_tier_name}'."
+            if start_tier is not None and capability_start is not None:
+                rationale += f" Capability-start: {capability_start.describe()}."
             if roi_skip:
                 # Reached only for a tier NOT in roi_skip (suppressed tiers are
                 # skipped above) — record that captured ROI demoted past them.
@@ -3384,7 +3407,34 @@ def delta(
         if requested_backend_ref is not None
         else _roi_suppressed_tiers(roi_overlay)
     )
-    decision = _route(suppressed)
+    # OMN-20170: a measured start applies only to a first, unpinned request; an
+    # escalation keeps its own floor and a caller's pin keeps its backend.
+    capability_start = (
+        resolve_capability_start(
+            tiers,
+            capability_map.cells,
+            task_class=task_type,
+            size_band=size_band.band if size_band is not None else None,
+            eval_line_verdict=capability_map.eval_line_verdict,
+        )
+        if capability_map is not None
+        and min_tier_name is None
+        and requested_backend_ref is None
+        else None
+    )
+    if capability_start is not None:
+        _logger.info(
+            "delegation routing: correlation_id=%s %s",
+            request.correlation_id,
+            capability_start.describe(),
+        )
+    start_tier = (
+        capability_start.start_tier_name if capability_start is not None else None
+    )
+    decision = _route(suppressed, start_tier)
+    if decision is None and start_tier is not None:
+        # Fail-safe: the measured tier routes nothing here; take the static order.
+        decision = _route(suppressed)
     if decision is None and suppressed:
         # Fail-safe: ROI suppression would leave no routable tier — honour the
         # static order rather than fail a request the static path would serve.

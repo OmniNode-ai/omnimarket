@@ -28,7 +28,9 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from functools import lru_cache
 from pathlib import Path
 from queue import Queue
@@ -612,6 +614,72 @@ def _load_lane_resolver_config(config_path: str) -> ModelSecretResolverConfig:
         ) from exc
 
 
+_INJECTED_STORE: ContextVar[ProtocolSecretStore | None] = ContextVar(
+    "omnimarket_injected_secret_store", default=None
+)
+
+
+@contextmanager
+def injected_secret_store(store: ProtocolSecretStore | None) -> Iterator[None]:
+    """Resolve every un-stored ref in this context through ``store`` (OMN-20275).
+
+    The bus binding opens one resolver for the lane and injects it here, so a handler hosted in
+    process on the in-memory binding reads the same secrets the durable runtime reads, instead of
+    the process environment. ``None`` leaves resolution unchanged.
+    """
+    token = _INJECTED_STORE.set(store)
+    try:
+        yield
+    finally:
+        _INJECTED_STORE.reset(token)
+
+
+class _LazyConfiguredSecretStore:
+    """Builds the lane store on the first read, so a command that never resolves a secret in process
+    (the durable route resolves it on the runtime) needs no machine identity (OMN-20275)."""
+
+    def __init__(self, config: ModelSecretResolverConfig) -> None:
+        self._config = config
+        self._store: ProtocolSecretStore | None = None
+
+    def _built(self) -> ProtocolSecretStore:
+        if self._store is None:
+            resolver = SecretResolver(
+                config=self._config,
+                infisical_handler=_lane_infisical_handler(self._config),
+            )
+            self._store = _MappedSecretStore(resolver)
+        return self._store
+
+    async def get_secret(self, key: str) -> str | None:
+        return await self._built().get_secret(key)
+
+    async def set_secret(self, key: str, value: str) -> bool:
+        raise RuntimeError("Lane secret store is read-only")
+
+    async def delete_secret(self, key: str) -> bool:
+        raise RuntimeError("Lane secret store is read-only")
+
+    async def list_keys(self, prefix: str | None = None) -> list[str]:
+        del prefix
+        return []
+
+    async def health_check(self) -> bool:
+        return True
+
+    async def close(self, timeout_seconds: float = 30.0) -> None:
+        del timeout_seconds
+        return
+
+
+def secret_store_from_resolver_config(
+    config: ModelSecretResolverConfig,
+) -> ProtocolSecretStore:
+    """A store over a typed resolver config (the shape a lane overlay declares), built on first read."""
+    store: ProtocolSecretStore = _LazyConfiguredSecretStore(config)
+    return store
+
+
 @lru_cache(maxsize=1)
 def _configured_secret_store() -> ProtocolSecretStore | None:
     """Return a lane-configured logical secret store when one is declared."""
@@ -810,6 +878,9 @@ def _select_resolver(
     1. an INJECTED store wins outright. A caller passing one is naming the
        surface to resolve through, and the deployed BYOK path injects the
        Infisical-backed store for exactly these refs;
+    1a. the store the bus binding injected for this context
+       (:func:`injected_secret_store`, OMN-20275), so the in-memory binding
+       resolves what the durable runtime resolves;
     2. a lane-CONFIGURED store (``ONEX_SECRET_RESOLVER_CONFIG_PATH``) wins next,
        for the same reason -- the lane declared its own mapping;
     3. otherwise this is the LOCAL path, and a provider or tenant ref
@@ -818,6 +889,9 @@ def _select_resolver(
     """
     if store is not None:
         return store, EnumSecretSource.LANE_SECRET_STORE, False
+    injected = _INJECTED_STORE.get()
+    if injected is not None:
+        return injected, EnumSecretSource.LANE_SECRET_STORE, False
     configured = _configured_secret_store()
     if configured is not None:
         return configured, EnumSecretSource.LANE_SECRET_STORE, False

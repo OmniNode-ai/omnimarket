@@ -1,0 +1,25 @@
+{
+  "source": "Exact brief names and kinds extracted from the 2026-10-26 ledger snapshot. Full unchanged rows accompany the private lane handoff.",
+  "records": [
+    {
+      "brief_name": "fill-cause-red-omnimarket-20261026T1959Z.brief.md",
+      "kind": "cause-red",
+      "observed_model": "opus"
+    },
+    {
+      "brief_name": "fill-defect-execution-adapter-20261026T1959Z.brief.md",
+      "kind": "defect",
+      "observed_model": "opus"
+    },
+    {
+      "brief_name": "fill-defect-unit-installers-20261026T1959Z.brief.md",
+      "kind": "defect",
+      "observed_model": "opus"
+    },
+    {
+      "brief_name": "fill-ticket-OMN-19013-20261026T1959Z.brief.md",
+      "kind": "ticket",
+      "observed_model": "opus"
+    }
+  ]
+}

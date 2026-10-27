@@ -1,0 +1,68 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_retired_model_reference_check_effect
+node_type: effect
+runtime_profiles:
+- effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Read repository files and refuse retired-model references in names, comments,
+  historical content and decoded YAML/JSON keys and values. Deployment identifiers
+  belong in external overlays; no local file is exempt.
+input_model:
+  name: ModelRetiredModelReferenceCheckRequest
+  module: omnimarket.nodes.node_retired_model_reference_check_effect.models.model_retired_model_reference_check
+output_model:
+  name: ModelRetiredModelReferenceCheckResult
+  module: omnimarket.nodes.node_retired_model_reference_check_effect.models.model_retired_model_reference_check
+handler:
+  module: omnimarket.nodes.node_retired_model_reference_check_effect.handlers.handler_retired_model_reference_check
+  class: HandlerRetiredModelReferenceCheck
+  input_model: omnimarket.nodes.node_retired_model_reference_check_effect.models.model_retired_model_reference_check.ModelRetiredModelReferenceCheckRequest
+  output_model: omnimarket.nodes.node_retired_model_reference_check_effect.models.model_retired_model_reference_check.ModelRetiredModelReferenceCheckResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_retired_model_reference_check_effect.handlers.handler_retired_model_reference_check:HandlerRetiredModelReferenceCheck
+  handlers:
+  - operation: check_retired_model_references
+    handler:
+      name: HandlerRetiredModelReferenceCheck
+      module: omnimarket.nodes.node_retired_model_reference_check_effect.handlers.handler_retired_model_reference_check
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 120000
+  runtime_profiles:
+  - effects
+inputs:
+  repo_root:
+    type: str
+    required: true
+    description: Repository checkout to scan.
+  paths:
+    type: list
+    required: false
+    description: Explicit paths; otherwise scan tracked and unignored files.
+outputs:
+  admitted:
+    type: bool
+  exit_code:
+    type: int
+  output_lines:
+    type: list
+metadata:
+  transport_type: inmemory
+terminal_event: onex.evt.omnimarket.retired-model-reference-check-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.retired-model-reference-check-requested.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.retired-model-reference-check-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.retired-model-reference-check-completed.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.retired-model-reference-check-completed.v1

@@ -422,7 +422,9 @@ class NodeRetentionCleanup:
                 only=request.file_only,
             )
         )
-        failed = [i for i in files.items if i.status == "error"]
+        failed = [
+            i for i in files.items if i.status in {"error", "archive_unavailable"}
+        ]
         status = result.status
         if status == EnumCleanupStatus.NO_DB:
             status = (
@@ -430,7 +432,13 @@ class NodeRetentionCleanup:
             )
         if failed:
             status = EnumCleanupStatus.ERROR
-        verb = "would retire" if request.dry_run else "retired"
+        verb = "eligible" if request.dry_run else "retired"
+        report_files = files.files_eligible if request.dry_run else files.files_removed
+        report_bytes = (
+            sum(item.bytes_eligible for item in files.items)
+            if request.dry_run
+            else files.bytes_removed
+        )
         return result.model_copy(
             update={
                 "status": status,
@@ -440,8 +448,8 @@ class NodeRetentionCleanup:
                 "files_archived": files.files_archived,
                 "bytes_archived": files.bytes_archived,
                 "message": (
-                    f"{result.message}; files: {verb} {files.files_removed} files, "
-                    f"{files.bytes_removed} bytes, archived {files.bytes_archived} bytes"
+                    f"{result.message}; files: {verb} {report_files} files, "
+                    f"{report_bytes} bytes, archived {files.bytes_archived} bytes"
                     + (f"; {len(failed)} entries failed" if failed else "")
                 ),
             }

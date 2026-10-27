@@ -140,7 +140,12 @@ def test_original_workflow_decision_parity(case: dict[str, JsonValue]) -> None:
     )
     dumped["dryRun"] = dumped.pop("dry_run")
     assert dumped == case["value"]
-    assert gateway.calls == case["calls"]
+    # OMN-21396: the captured trace predates the Sonnet ceiling; all other cells remain exact.
+    expected_calls = [
+        {**call, "model": "sonnet" if call["model"] == "opus" else call["model"]}
+        for call in case["calls"]
+    ]
+    assert gateway.calls == expected_calls
     assert gateway.peak == (5 if result.short_circuited is None else 0)
 
 

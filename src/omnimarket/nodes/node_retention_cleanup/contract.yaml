@@ -2,12 +2,12 @@
 name: retention_cleanup
 contract_version:
   major: 1
-  minor: 4
+  minor: 5
   patch: 0
 node_type: effect
 node_version:
   major: 1
-  minor: 3
+  minor: 4
   patch: 0
 description: >
   Prunes stale records from projection tables per declarative retention policy.
@@ -151,17 +151,26 @@ retention_policy:
         path: $OMNI_HOME/.onex_state/lane_scratch
         pattern: "*"
         keep_days: 14
-        action: delete
+        action: archive
         readers: [lane_scratch.py, the lane that minted the path]
       # Readers: node_lab_fill_effect reads */*.json to see running lanes and
       # node_throughput_tick_decision_compute reads receipts inside its window
       # (hours). The ledger STATUS and TERMINAL rows are the durable record.
       - name: remote-lane-receipts
         path: ~/.local/state/omni/remote-lanes
-        pattern: "*/*"
+        pattern: "*/*.json"
         keep_days: 14
-        action: delete
+        action: archive
         readers: [node_lab_fill_effect, node_throughput_tick_decision_compute]
+      # Launching-host run outputs live beside receipts, outside ~/lab-run/runs.
+      # They are history: archive at seven days, never the receipts' plain delete.
+      - name: remote-lane-outputs
+        path: ~/.local/state/omni/remote-lanes
+        pattern: "*/*.out"
+        keep_days: 7
+        action: archive
+        readers: [onex-remote-lane output, operator lane history]
+        consent_ref: "OPERATOR-CONSENT 2026-10-17T00:06:56Z"
       # Readers: the lane's own session while it runs; onex-lane-closeout
       # archives and removes the worktree trees (skipped here by their .git).
       - name: lab-run-lane-dirs

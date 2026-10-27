@@ -1,5 +1,5 @@
 name: node_delegation_experiment_record_compute
-contract_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 2, minor: 0, patch: 0}
 node_type: compute
 node_version: {major: 1, minor: 0, patch: 0}
 description: >
@@ -51,8 +51,8 @@ inputs:
     description: Substrings that mark the dev-lane overlay and the bifrost contract path.
   retired_models:
     type: tuple
-    required: false
-    description: Model names no experiment may measure.
+    required: true
+    description: Nonempty retired-model policy supplied by the deployment overlay.
 
 outputs:
   accepted_experiment_ids:

@@ -231,7 +231,12 @@ def test_dispatch_matches_the_workflow(index: int) -> None:
     got = _sweep(case)
     expected = case["expected"]
     assert got["events"] == expected["events"]
-    assert got["commands"] == expected["commands"]
+    # The trace predates the ceiling; keep all other command cells and effects exact.
+    expected_commands = {
+        name: [cmd.replace("--model opus", "--model sonnet") for cmd in commands]
+        for name, commands in expected["commands"].items()
+    }
+    assert got["commands"] == expected_commands
     assert got["briefs"] == expected["briefs"]
     assert got["receipts"] == expected["receipts"]
     assert got["deferred"] == expected["deferred"]

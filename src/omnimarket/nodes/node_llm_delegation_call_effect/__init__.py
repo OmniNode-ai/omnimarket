@@ -26,6 +26,9 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_delegatio
     HandlerDelegationModelCall,
     HandlerDelegationTarget,
 )
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_harness_eval_process import (
+    HandlerHarnessEvalProcess,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_lab_job_delegation import (
     HandlerLabJobDelegation,
 )
@@ -54,6 +57,7 @@ __all__ = [
     "HandlerCodexArguments",
     "HandlerDelegationModelCall",
     "HandlerDelegationTarget",
+    "HandlerHarnessEvalProcess",
     "HandlerLabJobDelegation",
     "HandlerLlmDelegationCall",
     "ModelLlmDelegationCallObservation",

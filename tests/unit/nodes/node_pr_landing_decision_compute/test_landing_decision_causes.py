@@ -395,7 +395,7 @@ def test_replay_tick722_cause_dispatch_comes_first_with_one_bounded_lease() -> N
     leases = [le for le in decision.next_state.leases if le.pr == key]
     assert len(leases) == 1
     assert leases[0].deadline_at - facts.observed_at == timedelta(seconds=5400)
-    assert leases[0].engine.value == "claude_opus"
+    assert leases[0].engine.value == "claude_sonnet"
     brief = decision.actions[
         [a.subject for a in decision.actions].index(key)
     ].cause_brief
@@ -529,7 +529,7 @@ def test_cause_scenario_s21_cluster_of_three_gets_one_lease_and_no_per_pr_dispat
     assert action.cause_brief is not None
     assert action.cause_brief.brief_class.value == "shared_cause"
     assert action.cause_brief.attempt == 1
-    assert action.cause_brief.engine.value == "claude_opus"
+    assert action.cause_brief.engine.value == "codex_high"
     assert member_prs(action) == [f"{REPO}#1", f"{REPO}#2", f"{REPO}#3"]
     lease = world.lease(key)
     assert lease.deadline_at - lease.dispatched_at == timedelta(seconds=5400)
@@ -711,7 +711,7 @@ def test_cause_scenario_s27_cause_not_shared_returns_members_to_per_pr_rung_zero
     assert sorted(a.subject for a in per_pr) == [p.key for p in prs]
     for action in per_pr:
         assert action.brief is not None
-        assert action.brief.engine.value == "claude_sonnet"
+        assert action.brief.engine.value == "codex_high"
         assert action.brief.brief_class.value == "real_red"
     records = {r.pr: r for r in world.state.records}
     assert all(records[p.key].ladder_index == 0 for p in prs)
@@ -1255,7 +1255,7 @@ def _assert_fallback_once(
     assert sorted(per_pr_dispatched(park)) == members
     for action in actions_of(park, "dispatch_worker"):
         assert action.brief is not None
-        assert action.brief.engine.value == "claude_sonnet"
+        assert action.brief.engine.value == "codex_high"
         assert action.brief.brief_class.value == "real_red"
     assert world.cause(key).parked_until is not None
     for _ in range(3):  # parked, members working: no cause worker, no second ticket
@@ -1477,11 +1477,11 @@ def test_park_default_third_attempt_is_one_opus_diagnosis_with_no_operator_msg()
     brief = third.actions[0].cause_brief
     assert brief is not None
     assert brief.attempt == 3
-    assert brief.engine.value == "claude_opus"
+    assert brief.engine.value == "claude_sonnet"
     assert brief.brief_class.value == "cause_diagnosis"
     assert [a.engine.value for a in brief.prior_attempts] == [
-        "claude_opus",
-        "claude_opus",
+        "codex_high",
+        "claude_sonnet",
     ]
     assert {a.outcome.value for a in brief.prior_attempts} == {"external_blocker"}
     assert actions_of(third, "escalate_operator") == []
@@ -1497,7 +1497,7 @@ def test_park_default_third_attempt_needs_the_opus_engine() -> None:
     key = key_for()
     world.step()
     _fail_attempt(world, key)
-    world.extra["available_engines"] = ["claude_sonnet", "codex_high"]
+    world.extra["available_engines"] = ["claude_opus", "codex_high"]
     waiting = _fail_attempt(world, key)
     assert cause_dispatched(waiting) == []
     assert world.cause(key).parked_until is None
@@ -1522,9 +1522,9 @@ def test_park_default_files_ticket_after_a_third_failure_and_asks_nobody() -> No
     assert ticket.dedupe_key == f"{key}@{rec.parked_until.isoformat()}"
     assert [m.pr for m in ticket.members] == [p.key for p in three()]
     assert [a.engine.value for a in ticket.attempts] == [
-        "claude_opus",
-        "claude_opus",
-        "claude_opus",
+        "codex_high",
+        "claude_sonnet",
+        "claude_sonnet",
     ]
     assert {a.blocker_ref for a in ticket.attempts} == {"acme/lib#7"}
     assert cause_dispatched(park) == []
@@ -1570,7 +1570,7 @@ def test_park_retry_on_base_head_waits_for_the_head_to_move() -> None:
     assert dispatched(retry) == [key]
     brief = retry.actions[0].cause_brief
     assert brief is not None
-    assert brief.engine.value == "claude_opus"
+    assert brief.engine.value == "claude_sonnet"
     assert brief.brief_class.value == "cause_diagnosis"
     assert world.cause(key).parked_until is None
 

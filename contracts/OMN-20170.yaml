@@ -1,0 +1,66 @@
+schema_version: 1.0.0
+ticket_id: OMN-20170
+title: delegation routing picks the cheapest model whose measured pass rate at the request's size band meets the class threshold
+summary: omnimarket.handlers.handler_capability_start resolves, at the caller's I/O boundary, the cheapest tier in the tier order that serves a backend whose capability cell (delegation_capability_cells, RS.5) is MET for the request's task class and measured size band; delta() takes the read as a pure input (ModelCapabilityMapRead) and starts a first, unpinned request at that tier, with a fail-safe pass in the static order. A band with no MET cell, an unreadable map, an unmeasured band, and a class whose eval false-pass line is not MET (EV.9) keep the static order; an escalation floor and a caller pin are untouched. HandlerRoutingIntent reads the latest map run of the tenant under the DoD overlay's tenant. The decision is logged with class, band, chosen cell, n and bound.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn20170-cheapest-met-start
+  statement: Routing starts at the cheapest tier measured good enough for the request's class and size band, and keeps the static order wherever that is not measured.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: for a class and band, routing starts the chain at the cheapest tier in the class tier order whose cell is MET -- falsifier: uv run pytest tests/unit/routing -k band_cheapest_met -v in omnimarket'
+  - id: AC2
+    statement: 'AC2: a band with no MET cell, an unreadable map, or a class whose false-pass line is not MET falls back to the static tier order -- falsifier: uv run pytest tests/unit/routing -k "band_no_met_static or map_unreadable_static or class_line_not_met_static" -v in omnimarket'
+  - id: AC3
+    statement: 'AC3: the routing log line names the class, band, chosen cell, its n and its bound -- falsifier: uv run pytest tests/unit/routing -k band_routing_log_line -v in omnimarket'
+evidence_requirements:
+- kind: tests
+  description: The capability-start tests pass at the head; at the merge base routing.capability_start does not exist.
+  command: uv run pytest tests/unit/routing/test_capability_start_omn20170.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn20170-ac1-cheapest-met
+  description: 'AC1: the start is the first tier in the tier order with a MET cell for the class and band (a cheaper MISSED tier is passed over, other bands and classes are ignored, the highest-bound cell of the tier is chosen), delta() routes a request to that tier, and an escalation floor is left alone.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/routing/test_capability_start_omn20170.py -q -p no:randomly -k "band_cheapest_met"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn20170-ac2-static-fallbacks
+  description: 'AC2: no MET cell, an unreadable map (a reader that raises reads as None), and a class whose eval line is missed, refused, missing or unreadable keep the static start, and delta() then routes the static tier.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/routing/test_capability_start_omn20170.py -q -p no:randomly -k "band_no_met_static or map_unreadable_static or class_line_not_met_static"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2
+- id: dod-omn20170-ac3-routing-log-line
+  description: 'AC3: the routing log line names the class, band, start tier, chosen cell (model, backend, configuration), its n, its bound, the map run and the reason; a static start names its reason.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/routing/test_capability_start_omn20170.py -q -p no:randomly -k "band_routing_log_line"
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC3
+- id: dod-omn20170-deploy-probe
+  description: Deploy probe. Read the routing reducer from GitHub at the checked-out commit and require it to resolve the capability start, with the AC1 tests passing beside it. At the merge base the reducer has no such call and the test module does not exist.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/routing/test_capability_start_omn20170.py -q -p no:randomly -k band_cheapest_met
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_routing_reducer/handlers/handler_delegation_routing.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "resolve_capability_start(" > /dev/null'
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+

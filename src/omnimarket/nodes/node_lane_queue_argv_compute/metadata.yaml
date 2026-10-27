@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_queue_argv_compute
+version: 1.0.0
+description: Build the remote-lane runner's own command for a lane again, for the
+  lane queue a no-host lane waits in, from the run's inputs, the brief the run pinned
+  and never --host, whose pin is the queue entry's and ages out.
+pack: distributed_validation
+node_role: compute
+display_name: Lane Queue Argv Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_lane_queue_argv_compute: omnimarket.nodes.node_lane_queue_argv_compute
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- remote-lane

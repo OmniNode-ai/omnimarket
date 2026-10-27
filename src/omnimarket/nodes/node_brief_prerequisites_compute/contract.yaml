@@ -1,0 +1,92 @@
+{
+  "name": "node_brief_prerequisites_compute",
+  "node_type": "COMPUTE_GENERIC",
+  "node_version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "description": "Read the host a lane brief requires from its column-zero task metadata (a Required host line and Host-local inputs; a merge-sweep diagnose lane pins a host only by its own Required host line, OMN-17427) and the host-local input paths it names.",
+  "input_model": {
+    "name": "ModelBriefPrerequisitesRequest",
+    "module": "omnimarket.nodes.node_brief_prerequisites_compute.models.model_brief_prerequisites"
+  },
+  "output_model": {
+    "name": "ModelBriefPrerequisitesResult",
+    "module": "omnimarket.nodes.node_brief_prerequisites_compute.models.model_brief_prerequisites"
+  },
+  "handler_routing": {
+    "routing_strategy": "operation_match",
+    "default_handler": "omnimarket.nodes.node_brief_prerequisites_compute.handlers.handler_brief_prerequisites:HandlerBriefPrerequisites",
+    "handlers": [
+      {
+        "operation": "handle",
+        "handler": {
+          "name": "HandlerBriefPrerequisites",
+          "module": "omnimarket.nodes.node_brief_prerequisites_compute.handlers.handler_brief_prerequisites"
+        },
+        "topic": "onex.cmd.omnimarket.brief-prerequisites-requested.v1"
+      }
+    ]
+  },
+  "entrypoint": {
+    "name": "NodeBriefPrerequisitesCompute",
+    "module": "omnimarket.nodes.node_brief_prerequisites_compute"
+  },
+  "execution": {
+    "deterministic": true,
+    "side_effects": false,
+    "caller": "remote-lane runner brief_prerequisites, before placement"
+  },
+  "contract_version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "handler": {
+    "module": "omnimarket.nodes.node_brief_prerequisites_compute.handlers.handler_brief_prerequisites",
+    "class": "HandlerBriefPrerequisites",
+    "input_model": "omnimarket.nodes.node_brief_prerequisites_compute.models.model_brief_prerequisites.ModelBriefPrerequisitesRequest",
+    "output_model": "omnimarket.nodes.node_brief_prerequisites_compute.models.model_brief_prerequisites.ModelBriefPrerequisitesResult"
+  },
+  "event_bus": {
+    "subscribe_topics": [
+      "onex.cmd.omnimarket.brief-prerequisites-requested.v1"
+    ],
+    "publish_topics": [
+      "onex.evt.omnimarket.brief-prerequisites-completed.v1"
+    ]
+  },
+  "runtime_dispatch": {
+    "command_topic": "onex.cmd.omnimarket.brief-prerequisites-requested.v1"
+  },
+  "descriptor": {
+    "node_archetype": "compute",
+    "purity": "pure",
+    "runtime_profiles": [
+      "main"
+    ],
+    "idempotent": true,
+    "timeout_ms": 5000
+  },
+  "replay": {
+    "requires_validator_version": true,
+    "timestamp_authority": "ingest_sequence",
+    "deterministic": true
+  },
+  "terminal_event": "onex.evt.omnimarket.brief-prerequisites-completed.v1",
+  "metadata": {
+    "transport_type": "inmemory"
+  },
+  "externally_consumed_topics": [
+    "onex.evt.omnimarket.brief-prerequisites-completed.v1"
+  ],
+  "runtime_profiles": [
+    "main"
+  ]
+}

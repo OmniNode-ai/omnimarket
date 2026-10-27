@@ -30,6 +30,9 @@ from omnimarket.nodes.node_dev_cause_lane_receiver_effect.protocols import (
     ProtocolCauseLaneStarter,
     ProtocolDispatchKeyLedger,
 )
+from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
+    lane_model_refusal,
+)
 
 _FLAG_WORDS = {"true": True, "false": False}
 _BRIEF = """\
@@ -127,6 +130,8 @@ class HandlerDevCauseLaneStart:
             )
         if self._ledger is None or self._runner is None:
             raise ValueError("an acting receiver needs its ledger and its starter")
+        if refusal := lane_model_refusal(request.model, lane_kind="cause-red"):
+            return self._answer(request, EnumDevCauseLaneStartOutcome.FAILED, refusal)
         if not self._ledger.claim(request.dispatch_key, request.lane):
             return self._answer(request, EnumDevCauseLaneStartOutcome.DUPLICATE)
         brief = _BRIEF.format(

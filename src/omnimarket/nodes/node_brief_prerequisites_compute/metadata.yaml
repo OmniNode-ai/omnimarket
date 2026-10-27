@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_brief_prerequisites_compute
+version: 1.0.0
+description: Read the host a lane brief requires from its column-zero task metadata
+  (a Required host line and Host-local inputs; a merge-sweep diagnose lane pins a
+  host only by its own Required host line, OMN-17427) and the host-local input paths
+  it names.
+pack: distributed_validation
+node_role: compute
+display_name: Brief Prerequisites Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_brief_prerequisites_compute: omnimarket.nodes.node_brief_prerequisites_compute
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- remote-lane

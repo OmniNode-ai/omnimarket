@@ -193,7 +193,7 @@ def test_codex_accepts_other_declared_capabilities(
     assert result.rung == "codex"
 
 
-def test_claude_failure_escalates_to_opus() -> None:
+def test_claude_failure_stops_at_sonnet_under_background_ruling() -> None:
     result = place(
         ladder={
             "claude_required": True,
@@ -208,7 +208,10 @@ def test_claude_failure_escalates_to_opus() -> None:
             }
         ],
     )
-    assert (result.rung, result.engine) == ("opus", "claude_opus")
+    assert (result.host, result.rung) == (None, None)
+    assert "RULING 2026-10-26T11:31:48Z" in result.rungs[-1].reason
+    assert result.experiment is not None
+    assert result.experiment.next_engine == "none"
 
 
 def test_pinned_route_only_uses_ceiling() -> None:
@@ -216,8 +219,9 @@ def test_pinned_route_only_uses_ceiling() -> None:
         ladder={"pinned": True, "ceiling": "opus"},
         readings=[{"name": "h201", "engines": ["claude_opus"], "lane_slots": 2}],
     )
-    assert result.rung == "opus"
+    assert (result.host, result.rung) == (None, None)
     assert [v.reason for v in result.rungs[:-1]] == ["pinned-to-route"] * 4
+    assert "RULING 2026-10-26T11:31:48Z" in result.rungs[-1].reason
 
 
 @pytest.mark.parametrize(
@@ -308,3 +312,32 @@ def test_lane_kind_stands_in_for_an_undeclared_risk_class() -> None:
         ("code-edit", "risk-class"),
         ("glm", "risk-class"),
     ]
+
+
+def test_no_opus_ladder_escalation_is_refused_with_ruling() -> None:
+    result = place(
+        ladder={
+            "claude_required": True,
+            "ceiling": "opus",
+            "attempts": [{"engine": "sonnet", "model": "sonnet", "outcome": "failed"}],
+        },
+        readings=[{"name": "h201", "engines": ["claude_opus"], "lane_slots": 2}],
+    )
+    assert result.host is None
+    assert result.rung is None
+    assert "RULING 2026-10-26T11:31:48Z" in result.rungs[-1].reason
+    assert result.experiment is not None
+    assert result.experiment.next_engine == "none"
+
+
+@pytest.mark.parametrize("engine", ["claude_opus", "claude-opus", "opus"])
+def test_no_opus_legacy_placement_is_refused_with_ruling(engine: str) -> None:
+    result = HandlerRemoteLanePlacement().handle(
+        ModelRemoteLanePlacementRequest(
+            engine=engine,
+            readings=[{"name": "h201", "engines": [engine], "lane_slots": 2}],
+        )
+    )
+    assert result.host is None
+    assert result.outcome == EnumRemoteLaneOutcome.NO_HOST
+    assert "RULING 2026-10-26T11:31:48Z" in result.verdicts[0].reason

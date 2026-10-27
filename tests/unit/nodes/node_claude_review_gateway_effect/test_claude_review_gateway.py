@@ -297,6 +297,21 @@ def test_explicit_reasoning_off_disables_native_thinking() -> None:
     }
 
 
+def test_opus_review_request_never_sends_disabled_thinking() -> None:
+    request = translate_chat_request(
+        _marked_payload(chat_template_kwargs={"enable_thinking": False}),
+        model="claude-opus-5-5",
+        endpoint_url=_URL,
+        secret_ref="cred_ref",
+        timeout_seconds=30,
+        thinking_mode="adaptive",
+    )
+    assert request.model_id == "claude-opus-5-5"
+    payload = anthropic_messages.build_messages_payload(request)
+    assert payload["thinking"] == {"type": "adaptive"}
+    assert payload["output_config"] == {"effort": "low"}
+
+
 @pytest.mark.parametrize(
     "extra",
     [
@@ -805,8 +820,9 @@ def test_dry_run_with_no_key_bound_here_would_answer_503() -> None:
     assert call.calls == []
 
 
+@pytest.mark.parametrize("thinking_mode", ["disabled", "adaptive"])
 def test_dry_run_command_reads_this_machines_catalog_and_store(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, thinking_mode: str
 ) -> None:
     store = LocalByokCredentialStore(db_path=tmp_path / "delegation.sqlite")
     ref = f"cred_{_TENANT}_anthropic_" + "a" * 32
@@ -852,6 +868,8 @@ def test_dry_run_command_reads_this_machines_catalog_and_store(
         "--privacy-overlay",
         str(overlay),
         "--dry-run",
+        "--thinking-mode",
+        thinking_mode,
     ]
     result = CliRunner().invoke(
         cli_secret.models_group, [*command, "--repository", _ALLOWED_REPO]
@@ -862,6 +880,9 @@ def test_dry_run_command_reads_this_machines_catalog_and_store(
     assert plan["chosen_key_ref"] == ref
     assert plan["would_answer"] == 200
     assert plan["upstream_url"].startswith("https://")
+    assert plan["translated_request"]["thinking"] == (
+        {"type": "adaptive"} if thinking_mode == "adaptive" else None
+    )
     assert "sk-ant-fake-never-printed" not in result.output
 
     refused = CliRunner().invoke(
@@ -888,3 +909,95 @@ def test_privacy_the_command_will_not_start_without_a_refused_list(
     result = CliRunner().invoke(cli_secret.models_group, command)
     assert result.exit_code != 0
     assert "would_answer" not in result.output
+
+
+@pytest.mark.parametrize("thinking", [False, True])
+def test_adaptive_gateway_translates_the_review_reasoning_budget(
+    thinking: bool,
+) -> None:
+    request = translate_chat_request(
+        _marked_payload(chat_template_kwargs={"enable_thinking": thinking}),
+        model=_MODEL,
+        endpoint_url=_URL,
+        secret_ref="cred_ref",
+        timeout_seconds=30,
+        thinking_mode="adaptive",
+    )
+    payload = anthropic_messages.build_messages_payload(request)
+    assert payload["thinking"] == {"type": "adaptive"}
+    if thinking is False:
+        assert payload["output_config"] == {"effort": "low"}
+    else:
+        assert "output_config" not in payload
+
+
+def test_gateway_thinking_mode_is_a_validated_deployment_fact() -> None:
+    with pytest.raises(ValidationError):
+        ModelClaudeReviewGatewayRequest(
+            host=_HOST,
+            tenant_id=_TENANT,
+            model=_MODEL,
+            cloud_refused_repositories=_REFUSED,
+            thinking_mode="invented",
+        )
+
+
+def test_adaptive_gateway_plan_and_call_use_the_declared_mode() -> None:
+    from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
+        HandlerClaudeReviewGateway,
+    )
+
+    _unused_gateway, values, call = _gateway([_row("key-a")], [FakeOutcome()])
+    adaptive = HandlerClaudeReviewGateway(
+        catalog=FakeCatalog([_row("key-a")]),
+        key_values=values,
+        call=call,
+        endpoint_url=_URL,
+    ).gateway(
+        ModelClaudeReviewGatewayRequest(
+            host=_HOST,
+            tenant_id=_TENANT,
+            model="claude-opus-5-5",
+            cloud_refused_repositories=_REFUSED,
+            thinking_mode="adaptive",
+        )
+    )
+    payload = _marked_payload(chat_template_kwargs={"enable_thinking": False})
+    plan = asyncio.run(adaptive.plan(payload))
+    assert plan.translated_request["thinking"] == {"type": "adaptive"}
+    assert plan.translated_request["output_config"] == {"effort": "low"}
+    status, _reply = asyncio.run(adaptive.complete(payload))
+    assert status == 200
+    assert call.calls[0].provider_request_options == {
+        "thinking": {"type": "adaptive"},
+        "output_config": {"effort": "low"},
+    }
+    native = anthropic_messages.build_messages_payload(call.calls[0])
+    assert native["model"] == "claude-opus-5-5"
+    assert native["thinking"] == {"type": "adaptive"}
+    assert native["output_config"] == {"effort": "low"}
+
+
+def test_gateway_target_changes_only_with_its_declared_model() -> None:
+    models = [_MODEL, "claude-opus-5-5"]
+    requests = [
+        translate_chat_request(
+            _marked_payload(chat_template_kwargs={"enable_thinking": False}),
+            model=model,
+            endpoint_url=_URL,
+            secret_ref="cred_ref",
+            timeout_seconds=30,
+            thinking_mode="adaptive",
+        )
+        for model in models
+    ]
+    assert [request.model_id for request in requests] == models
+    assert all(request.endpoint_ref == _URL for request in requests)
+    assert all(
+        request.provider_request_options
+        == {
+            "thinking": {"type": "adaptive"},
+            "output_config": {"effort": "low"},
+        }
+        for request in requests
+    )

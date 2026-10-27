@@ -25,6 +25,7 @@ from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Literal
 
+from omnibase_infra.errors import InfraConnectionError
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.delegated_test_loop.lab_run_bus import (
@@ -119,7 +120,12 @@ async def open_lab_run_bus(
     )
     with binding:
         kafka = EventBusKafka.from_bootstrap(bootstrap)
-        await kafka.start()
+        try:
+            await kafka.start()
+        except InfraConnectionError as exc:
+            # OMN-20275: a refused or unreachable broker is the bus being unavailable (exit 69 at every
+            # caller), never an uncaught traceback that a ledger writer cannot tell from a crash.
+            raise LabRunBusError(f"{type(exc).__name__}: {exc}") from exc
         try:
             yield kafka
         finally:

@@ -372,6 +372,10 @@ jobs:
         run: uv sync --locked
       - name: Ruff check
         run: uv run ruff check src/ tests/ benchmarks/
+      - name: Retired model references (including dated history)
+        run: uv run --frozen python -m omnimarket.nodes.node_retired_model_reference_check_effect
+      - name: Retired model and archive safety negative controls
+        run: uv run pytest tests/ci/test_retired_model_references.py tests/nodes/test_file_retention_archive_safety.py -q --no-cov
       - name: Queue full-suite admission policy (OMN-19998)
         run: uv run pytest tests/ci/test_queue_run_once_omn19998.py -q -n 0 -p no:randomly --no-cov
       - name: Ruff format check

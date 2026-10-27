@@ -1,0 +1,204 @@
+{
+  "version": "harness-lanes-v2",
+  "fixture_sha256": "9d59328a396486c1b5bbffbf11f3e2e219e95b1985e453eaef878f2ac0f8ec64",
+  "items": [
+    {
+      "item_key": "rebase-conflict-1",
+      "task_class": "rebase-conflict",
+      "variant": 1,
+      "files": {
+        "limits.py": "def clamp(n):\n    return max(n, 0)\n",
+        "README.md": "clamp must return 0 for negatives, n inside [0,10], and 10 above it.\n"
+      },
+      "prompt": "Resolve the in-progress rebase conflict in limits.py. Preserve both the lower bound from the topic and the upper bound from upstream, then finish the rebase. Do not drop the topic commit."
+    },
+    {
+      "item_key": "rebase-conflict-2",
+      "task_class": "rebase-conflict",
+      "variant": 2,
+      "files": {
+        "limits.py": "def clamp(n):\n    return max(n, 0)\n",
+        "README.md": "clamp must return 0 for negatives, n inside [0,20], and 20 above it.\n"
+      },
+      "prompt": "Resolve the in-progress rebase conflict in limits.py. Preserve both the lower bound from the topic and the upper bound from upstream, then finish the rebase. Do not drop the topic commit."
+    },
+    {
+      "item_key": "rebase-conflict-3",
+      "task_class": "rebase-conflict",
+      "variant": 3,
+      "files": {
+        "limits.py": "def clamp(n):\n    return max(n, 0)\n",
+        "README.md": "clamp must return 0 for negatives, n inside [0,30], and 30 above it.\n"
+      },
+      "prompt": "Resolve the in-progress rebase conflict in limits.py. Preserve both the lower bound from the topic and the upper bound from upstream, then finish the rebase. Do not drop the topic commit."
+    },
+    {
+      "item_key": "failing-test-fix-1",
+      "task_class": "failing-test-fix",
+      "variant": 1,
+      "files": {
+        "subject.py": "def enabled(row):\n    return 'endpoint_url' in row\n",
+        "test_subject.py": "from subject import *\nassert enabled({'endpoint_url': 'https://example.invalid'})\nassert not enabled({'endpoint_url': None})\nassert not enabled({})\n"
+      },
+      "prompt": "Fix subject.py so python3 test_subject.py passes. Preserve the tests unchanged."
+    },
+    {
+      "item_key": "failing-test-fix-2",
+      "task_class": "failing-test-fix",
+      "variant": 2,
+      "files": {
+        "subject.py": "def next_engine(engine):\n    return engine\n",
+        "test_subject.py": "from subject import *\nassert next_engine('code-edit') == 'glm'\nassert next_engine('glm') == 'codex'\nassert next_engine('sonnet') is None\n"
+      },
+      "prompt": "Fix subject.py so python3 test_subject.py passes. Preserve the tests unchanged."
+    },
+    {
+      "item_key": "failing-test-fix-3",
+      "task_class": "failing-test-fix",
+      "variant": 3,
+      "files": {
+        "subject.py": "def active(head, base):\n    return bool(head)\n",
+        "test_subject.py": "from subject import *\nassert active('abc', 'abc')\nassert not active('abc', 'def')\nassert not active('', '')\n"
+      },
+      "prompt": "Fix subject.py so python3 test_subject.py passes. Preserve the tests unchanged."
+    },
+    {
+      "item_key": "ci-log-diagnosis-1",
+      "task_class": "ci-log-diagnosis",
+      "variant": 1,
+      "files": {
+        "ci.log": "collecting ... collected 203 items\nPASSED tests/test_control.py::test_control\nFAILED tests/test_lane.py::test_disabled_added_backend_is_excluded - AssertionError: expected refusal\n1 failed, 202 passed\nwarning: optional telemetry unavailable\n"
+      },
+      "prompt": "Read ci.log. Write answer.json containing exactly failing_test (the complete pytest node id) and failure_kind='assertion'. Name the failing test, not the telemetry warning."
+    },
+    {
+      "item_key": "ci-log-diagnosis-2",
+      "task_class": "ci-log-diagnosis",
+      "variant": 2,
+      "files": {
+        "ci.log": "collecting ... collected 203 items\nPASSED tests/test_control.py::test_control\nFAILED tests/test_lane.py::test_execution_adapter_preserves_result - AssertionError: expected refusal\n1 failed, 202 passed\nwarning: optional telemetry unavailable\n"
+      },
+      "prompt": "Read ci.log. Write answer.json containing exactly failing_test (the complete pytest node id) and failure_kind='assertion'. Name the failing test, not the telemetry warning."
+    },
+    {
+      "item_key": "ci-log-diagnosis-3",
+      "task_class": "ci-log-diagnosis",
+      "variant": 3,
+      "files": {
+        "ci.log": "collecting ... collected 203 items\nPASSED tests/test_control.py::test_control\nFAILED tests/test_lane.py::test_docs_only_floor_matches_runtime - AssertionError: expected refusal\n1 failed, 202 passed\nwarning: optional telemetry unavailable\n"
+      },
+      "prompt": "Read ci.log. Write answer.json containing exactly failing_test (the complete pytest node id) and failure_kind='assertion'. Name the failing test, not the telemetry warning."
+    },
+    {
+      "item_key": "ticket-evidence-fix-1",
+      "task_class": "ticket-evidence-fix",
+      "variant": 1,
+      "files": {
+        "contract.json": "{\"ticket_id\": \"FIXTURE-1\", \"acceptance\": [\"AC1\"], \"dod_evidence\": []}",
+        "test_subject.py": "assert 2 + 2 == 4\n"
+      },
+      "prompt": "Repair contract.json by adding one dod_evidence entry with binds_ac=['AC1'], and checks=[{'check_type':'test_passes','check_value':'python3 test_subject.py','cwd':'.'}]. Preserve the acceptance criterion and ticket id."
+    },
+    {
+      "item_key": "ticket-evidence-fix-2",
+      "task_class": "ticket-evidence-fix",
+      "variant": 2,
+      "files": {
+        "contract.json": "{\"ticket_id\": \"FIXTURE-1\", \"acceptance\": [\"AC2\"], \"dod_evidence\": []}",
+        "test_subject.py": "assert 2 + 2 == 4\n"
+      },
+      "prompt": "Repair contract.json by adding one dod_evidence entry with binds_ac=['AC2'], and checks=[{'check_type':'test_passes','check_value':'python3 test_subject.py','cwd':'.'}]. Preserve the acceptance criterion and ticket id."
+    },
+    {
+      "item_key": "ticket-evidence-fix-3",
+      "task_class": "ticket-evidence-fix",
+      "variant": 3,
+      "files": {
+        "contract.json": "{\"ticket_id\": \"FIXTURE-1\", \"acceptance\": [\"AC3\"], \"dod_evidence\": []}",
+        "test_subject.py": "assert 2 + 2 == 4\n"
+      },
+      "prompt": "Repair contract.json by adding one dod_evidence entry with binds_ac=['AC3'], and checks=[{'check_type':'test_passes','check_value':'python3 test_subject.py','cwd':'.'}]. Preserve the acceptance criterion and ticket id."
+    },
+    {
+      "item_key": "review-thread-reply-1",
+      "task_class": "review-thread-reply",
+      "variant": 1,
+      "files": {
+        "thread.json": "{\"thread_id\": \"thread-1\", \"path\": \"subject.py\", \"finding\": \"disabled backend admitted\", \"fixed_head\": \"fixture-head-1\", \"test\": \"test_disabled_backend_refused\", \"observed\": \"1 passed\"}"
+      },
+      "prompt": "Draft the reply to thread.json in answer.json. Use exactly thread_id, head, test, observed, reply. Copy the first four facts (head is fixed_head) exactly. reply must say 'Disabled backends are excluded.' Do not claim a merge, deployment, or actual posting."
+    },
+    {
+      "item_key": "review-thread-reply-2",
+      "task_class": "review-thread-reply",
+      "variant": 2,
+      "files": {
+        "thread.json": "{\"thread_id\": \"thread-2\", \"path\": \"subject.py\", \"finding\": \"disabled backend admitted\", \"fixed_head\": \"fixture-head-2\", \"test\": \"test_disabled_backend_refused\", \"observed\": \"1 passed\"}"
+      },
+      "prompt": "Draft the reply to thread.json in answer.json. Use exactly thread_id, head, test, observed, reply. Copy the first four facts (head is fixed_head) exactly. reply must say 'Disabled backends are excluded.' Do not claim a merge, deployment, or actual posting."
+    },
+    {
+      "item_key": "review-thread-reply-3",
+      "task_class": "review-thread-reply",
+      "variant": 3,
+      "files": {
+        "thread.json": "{\"thread_id\": \"thread-3\", \"path\": \"subject.py\", \"finding\": \"disabled backend admitted\", \"fixed_head\": \"fixture-head-3\", \"test\": \"test_disabled_backend_refused\", \"observed\": \"1 passed\"}"
+      },
+      "prompt": "Draft the reply to thread.json in answer.json. Use exactly thread_id, head, test, observed, reply. Copy the first four facts (head is fixed_head) exactly. reply must say 'Disabled backends are excluded.' Do not claim a merge, deployment, or actual posting."
+    },
+    {
+      "item_key": "docs-edit-1",
+      "task_class": "docs-edit",
+      "variant": 1,
+      "files": {
+        "brief.md": "# Lane brief\n\nRequired host: h202\nFinal check: python3 test_subject.py\nNever weaken a hook.\n"
+      },
+      "prompt": "Edit brief.md so Required host is h201. Keep every other line byte-for-byte unchanged."
+    },
+    {
+      "item_key": "docs-edit-2",
+      "task_class": "docs-edit",
+      "variant": 2,
+      "files": {
+        "brief.md": "# Lane brief\n\nRequired host: h203\nFinal check: python3 test_subject.py\nNever weaken a hook.\n"
+      },
+      "prompt": "Edit brief.md so Required host is h201. Keep every other line byte-for-byte unchanged."
+    },
+    {
+      "item_key": "docs-edit-3",
+      "task_class": "docs-edit",
+      "variant": 3,
+      "files": {
+        "brief.md": "# Lane brief\n\nRequired host: h204\nFinal check: python3 test_subject.py\nNever weaken a hook.\n"
+      },
+      "prompt": "Edit brief.md so Required host is h201. Keep every other line byte-for-byte unchanged."
+    },
+    {
+      "item_key": "host-read-only-1",
+      "task_class": "host-read-only",
+      "variant": 1,
+      "files": {
+        "host-request.json": "{\"fields\": [\"hostname\", \"kernel\", \"python_major\"], \"mutations_allowed\": false}"
+      },
+      "prompt": "Read this host using Python os.uname() and sys.version_info.major. Write answer.json with exactly hostname (uname.nodename), kernel (uname.release), python_major (integer). Do not change any other file or host state."
+    },
+    {
+      "item_key": "host-read-only-2",
+      "task_class": "host-read-only",
+      "variant": 2,
+      "files": {
+        "host-request.json": "{\"fields\": [\"hostname\", \"kernel\", \"python_major\"], \"mutations_allowed\": false}"
+      },
+      "prompt": "Read this host using Python os.uname() and sys.version_info.major. Write answer.json with exactly hostname (uname.nodename), kernel (uname.release), python_major (integer). Do not change any other file or host state."
+    },
+    {
+      "item_key": "host-read-only-3",
+      "task_class": "host-read-only",
+      "variant": 3,
+      "files": {
+        "host-request.json": "{\"fields\": [\"hostname\", \"kernel\", \"python_major\"], \"mutations_allowed\": false}"
+      },
+      "prompt": "Read this host using Python os.uname() and sys.version_info.major. Write answer.json with exactly hostname (uname.nodename), kernel (uname.release), python_major (integer). Do not change any other file or host state."
+    }
+  ]
+}

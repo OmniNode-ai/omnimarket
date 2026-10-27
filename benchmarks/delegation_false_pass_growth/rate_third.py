@@ -1,6 +1,6 @@
 # ruff: noqa: SIM115, E741, E402, T201, B007
-"""OMN-20032: third blind rater, gpt-oss-120b on the .200 planner host (local, keyless), same rubric ev4-blind-v1, one item per call.
-usage: python3 rate_third.py <workdir> <sample.json> <content.jsonl> <out.json> [concurrency]
+"""OMN-20032: third blind rater, deployment-selected model, same rubric ev4-blind-v1, one item per call.
+usage: python3 rate_third.py <workdir> <sample.json> <content.jsonl> <out.json> <overlay.json> [concurrency]
 Content stays on the lab; out.json holds ids, labels and reasons on the lab host."""
 
 import json
@@ -10,8 +10,12 @@ import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
-W, sample_path, content_path, out_path = sys.argv[1:5]
-conc = int(sys.argv[5]) if len(sys.argv) > 5 else 2
+W, sample_path, content_path, out_path, overlay_path = sys.argv[1:6]
+conc = int(sys.argv[6]) if len(sys.argv) > 6 else 2
+with open(overlay_path) as overlay_file:
+    rater_model = json.load(overlay_file)["model"]
+if not isinstance(rater_model, str) or not rater_model.strip():
+    raise ValueError("overlay must declare a nonempty model")
 import os
 
 URL = os.environ["THIRD_RATER_URL"]  # url-authority-ok: lab one-shot
@@ -39,7 +43,7 @@ def one(cid):
     c = content[cid]
     body = json.dumps(
         {
-            "model": "gpt-oss-120b",
+            "model": rater_model,
             "messages": [
                 {"role": "system", "content": rubric},
                 {"role": "user", "content": user_text(i, c)},

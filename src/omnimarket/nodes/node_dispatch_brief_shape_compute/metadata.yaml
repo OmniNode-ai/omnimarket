@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_dispatch_brief_shape_compute
+version: 1.0.0
+description: Refuse a remote lane before placement when its brief asks a lab lane
+  to mint a ticket, pastes the standing rules block with no task of its own, or names
+  a pf-drive driver lane with no PR target.
+pack: distributed_validation
+node_role: compute
+display_name: Dispatch Brief Shape Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_dispatch_brief_shape_compute: omnimarket.nodes.node_dispatch_brief_shape_compute
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- remote-lane

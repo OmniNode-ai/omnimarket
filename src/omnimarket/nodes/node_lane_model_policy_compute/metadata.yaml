@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_model_policy_compute
+version: 1.0.0
+pack: distributed_validation
+node_role: compute
+display_name: Lane Model Policy Compute
+description: Declared lane and worker model ceiling and cheapest allowed selection.
+owner: omnimarket

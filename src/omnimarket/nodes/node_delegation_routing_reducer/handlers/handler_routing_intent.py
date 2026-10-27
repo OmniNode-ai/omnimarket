@@ -21,6 +21,12 @@ from pathlib import Path
 from omnibase_core.models.delegation.wire import ModelRoutingIntent
 
 from omnimarket.config.settings import get_settings
+from omnimarket.handlers.handler_capability_start import (
+    ModelCapabilityMapRead,
+    ProtocolCapabilityCellReader,
+    read_capability_cells,
+    resolve_capability_cell_reader,
+)
 from omnimarket.inference import provider_quota_state
 from omnimarket.inference.provider_quota_state import (
     ProtocolProviderQuotaReader,
@@ -97,6 +103,7 @@ class HandlerRoutingIntent:
         dod_outcome_reader: ProtocolDodOutcomeReader | None = None,
         eval_line_reader: ProtocolEvalLineReader | None = None,
         quota_reader: ProtocolProviderQuotaReader | None = None,
+        capability_cell_reader: ProtocolCapabilityCellReader | None = None,
     ) -> None:
         # OMN-15631 v1(a): resolved lazily (once, at construction — not per
         # request) via resolve_tenant_overlay_db(), which is itself gated on
@@ -126,6 +133,14 @@ class HandlerRoutingIntent:
             eval_line_reader
             if eval_line_reader is not None
             else resolve_eval_line_reader()
+        )
+        # OMN-20170: the capability map, read once per request under the same
+        # tenant as the DoD overlay. Without a reader routing keeps the static
+        # tier order; an unreadable map does too.
+        self._capability_cell_reader = (
+            capability_cell_reader
+            if capability_cell_reader is not None
+            else resolve_capability_cell_reader()
         )
         # OMN-20154: provider quota state is read from the durable projection
         # once per request, through the lane's topology overlay and secret store.
@@ -183,6 +198,18 @@ class HandlerRoutingIntent:
                 dod_overlay.tenant_id,
                 dod_overlay.describe(),
             )
+        capability_map = (
+            ModelCapabilityMapRead(
+                cells=read_capability_cells(
+                    self._capability_cell_reader,
+                    task_class=intent.payload.task_type,
+                    tenant_id=dod_overlay.tenant_id,
+                ),
+                eval_line_verdict=dod_overlay.eval_line_verdict,
+            )
+            if dod_overlay is not None and self._capability_cell_reader is not None
+            else None
+        )
         quota_snapshot = read_provider_quota_snapshot(
             self._quota_reader, tenant_id=tenant_id
         )
@@ -223,6 +250,7 @@ class HandlerRoutingIntent:
                 runtime_tenant_id=get_settings().onex_tenant_id,
             ),
             quota_state=quota_snapshot,
+            capability_map=capability_map,
         )
         logger.info(
             "HandlerRoutingIntent resolved: model=%s endpoint=%s tier=%s correlation_id=%s",

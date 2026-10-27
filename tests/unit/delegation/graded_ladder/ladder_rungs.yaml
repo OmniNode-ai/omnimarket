@@ -70,7 +70,7 @@ rungs:
   #
   # FALLBACK NOTE (recorded 2026-07-04): the canonical reserved free model
   # `qwen/qwen3-coder:free` — and every larger free model on OpenRouter
-  # (qwen3-next-80b:free, llama-3.3-70b:free, gpt-oss-120b:free,
+  # (qwen3-next-80b:free, llama-3.3-70b:free, [retired lab model]:free,
   # nemotron-3-ultra-550b:free) — returned HTTP 429 "Provider returned error"
   # from the upstream provider at record time (a global free-tier throttle, NOT
   # an account limit: the key is a paid key with headroom). Per the operator

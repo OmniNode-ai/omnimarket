@@ -105,7 +105,7 @@ def test_discovery_matches_captured_legacy_trace(name: str) -> None:
         )
         assert hashlib.sha256(prompt.encode()).hexdigest() == call["prompt_sha256"]
         assert actual == {
-            k: v
+            k: ("sonnet" if k == "model" and v == "opus" else v)
             for k, v in call.items()
             if k not in {"prompt_sha256", "raw_prompt_sha256", "legacy_prompt_sha256"}
         }

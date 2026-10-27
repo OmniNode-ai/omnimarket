@@ -80,14 +80,14 @@ def test_golden_chain_places_a_lane_then_closes_it() -> None:
     )
     assert request_type is ModelRemoteLanePlacementRequest
     reading = {
-        "engines": ["claude_opus"],
+        "engines": ["claude_sonnet"],
         "lane_slots": 2,
         "lane_cap": 4,
         "mem_avail_gb": 64.0,
     }
     placed = handler().handle(
         request_type(
-            engine="claude_opus",
+            engine="claude_sonnet",
             limited_hosts=("host_b",),
             readings=(
                 {**reading, "name": "host_local", "local": True, "rank_free": 30.0},
@@ -99,7 +99,7 @@ def test_golden_chain_places_a_lane_then_closes_it() -> None:
     assert isinstance(placed, result_type)
     assert (placed.host, placed.engine, placed.local) == (
         "host_a",
-        "claude_opus",
+        "claude_sonnet",
         False,
     )
     assert [(v.host, v.reason) for v in placed.verdicts] == [

@@ -4292,7 +4292,8 @@
         "SELECT, INSERT, UPDATE TO tenant_projection_writer"
       ],
       "indexes": [
-        "delegation_eval_results_class_latest_idx"
+        "delegation_eval_results_class_latest_idx",
+        "delegation_eval_results_harness_class_idx"
       ],
       "internal_tenant_column_transform": null,
       "keys": [

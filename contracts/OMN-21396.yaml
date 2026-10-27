@@ -54,6 +54,63 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn21396-fill-fixer-holds"
+    description: >
+      Deploy check: the tick's lab-fill effect reads active scope=fixer HOLDs
+      from the declared ledger before dispatching dev-red, process-fix,
+      shared-red, stored backlog or generated work. Drops name the repository,
+      HOLD and RULING 2026-10-26T17:22:56Z in lab-fill-dropped and its receipt.
+      RELEASE restores admission; expiry, archived HOLDs, arbitrary repositories,
+      repo-less generated tickets and unread-ledger refusal are covered.
+      Eight regression cases failed before the change by actually reaching the
+      dispatch seam. Runs on the hosted runner using the checked-out package
+      and temporary ledger files, without credentials, network or lab services.
+      This is admission evidence for AC1; existing ladder and attempt evidence
+      for AC1 through AC4 is retained below.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_idle_slot_fill_effect/test_fixer_holds_fill_omn21396.py -q --no-cov -n 0 --refuse-skips"
+        cwd: "."
+  - id: "dod-omn21396-background-no-opus"
+    description: >
+      Deploy check for RULING 2026-10-26T11:31:48Z lane=orchestrator-31d9:
+      exercise the checked-out fill and placement handlers with real typed requests.
+      Claude fill briefs and runner arguments must name Sonnet. Explicit Opus
+      requirements must skip with the ruling and preserve capacity for other work.
+      Legacy remote placement, pinned Opus routes, escalation after failed Sonnet,
+      and cloud routing must refuse Opus. The existing cheapest-engine, escalation,
+      two-attempt experiment ledger replay and throughput checks cover AC1-AC4.
+      The new no_opus regressions fail before this fix (15 failures observed).
+      Hermetic hosted-runner check: temporary files and a recording runner only;
+      no lab endpoint, credentials, broker, Docker or GitHub read is required.
+    source: "manual"
+    binds_ac: ["AC1", "AC2", "AC3", "AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: >-
+          uv run pytest
+          tests/nodes/node_cloud_session_placement_effect/test_cloud_accounts.py
+          tests/nodes/node_cloud_session_placement_effect/test_cloud_session.py
+          tests/nodes/node_cloud_session_placement_effect/test_handler_cloud_session_placement.py
+          tests/nodes/node_cloud_session_placement_effect/test_harness_boundary.py
+          tests/nodes/node_idle_slot_fill_effect/test_cloud_backlog_fill.py
+          tests/nodes/node_idle_slot_fill_effect/test_fixer_holds_fill_omn21396.py
+          tests/nodes/node_idle_slot_fill_effect/test_golden_chain_idle_slot_fill_effect.py
+          tests/nodes/node_idle_slot_fill_effect/test_idle_slot_fill_node.py
+          tests/nodes/node_idle_slot_fill_effect/test_idle_turn_guard.py
+          tests/nodes/node_idle_slot_fill_effect/test_overlay_refusals.py
+          tests/nodes/node_remote_lane_compute/test_engine_experiment_rows.py
+          tests/nodes/node_remote_lane_compute/test_engine_ladder_remote_lane_compute.py
+          tests/nodes/node_remote_lane_compute/test_error_chain_remote_lane_compute.py
+          tests/nodes/node_remote_lane_compute/test_golden_chain_remote_lane_compute.py
+          tests/nodes/node_remote_lane_compute/test_remote_lane_parity.py
+          tests/nodes/node_remote_lane_compute/test_runtime_local_remote_lane.py
+          tests/nodes/node_remote_lane_compute/test_unranked_host_placement.py
+          tests/nodes/node_remote_lane_compute/test_venv_drift_placement.py
+          -q --no-cov --refuse-skips
+        cwd: "."
   - id: "dod-omn21396-merge-attribution-producers"
     description: >
       Deploy check: actual executor identity stamps result and TERMINAL cells
@@ -198,3 +255,96 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run --locked python -c 'from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_placement import HandlerRemoteLanePlacement as H; from omnimarket.nodes.node_remote_lane_compute.models import ModelRemoteLanePlacementRequest as R; r=H().handle(R.model_validate({\"engine\":\"codex\",\"readings\":[{\"name\":\"h201\",\"engines\":[\"codex\",\"claude_sonnet\"],\"lane_slots\":2,\"lane_cap\":4,\"rank_free\":10.0}],\"ladder\":{\"lane\":\"probe\",\"ceiling\":\"sonnet\",\"risk_class\":\"feature\",\"required_capabilities\":[\"nested-sandbox\"]}})); assert r.rung==\"sonnet\", r; assert [v.reason for v in r.rungs if v.engine==\"codex\"]==[\"sandbox-capability\"], r.rungs; print(\"ac6-probe ok\")'"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21396-harness-eval-extension"
+    description: >
+      Hosted preparation check for the harness measurement extension. The fixed
+      suite has three items per lane task type; all initial states are rejected
+      and known correct edits pass. A real conflicted linked worktree requires a
+      finished rebase on the expected upstream parent. Harness, model and
+      configuration separate eval run ids while legacy ids are unchanged; the
+      existing writer persists identity, duration and failure kind and refuses
+      redelivery. Existing capability-map bounds refuse three-item cells. Startup
+      unavailability is excluded from model pass rates. The original cheapest
+      placement, escalation and two-attempt ledger replay tests also run. This
+      check launches no subject model and claims no live database or runtime rollout.
+    source: "manual"
+    binds_ac: ["AC1", "AC2", "AC3", "AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_harness_eval.py tests/unit/delegation/test_harness_eval_fixtures.py tests/nodes/node_remote_lane_compute/test_engine_ladder_remote_lane_compute.py tests/nodes/node_remote_lane_compute/test_engine_experiment_rows.py -q --no-cov --refuse-skips -n 0"
+        cwd: "."
+
+  - id: "dod-omn21396-model-policy-ac1"
+    description: >
+      The declared lane-model policy selects local code-edit when ready, GLM
+      for low-risk work, then Codex and Claude Sonnet, using supplied capacity
+      and never allowing a ROUTE or B4/B5 request to lift the packaged ceiling.
+      The new policy tests fail at the dispatched base, which has no policy node.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lane_model_policy_compute/test_golden_chain_lane_model_policy_compute.py tests/nodes/node_remote_lane_compute/test_engine_ladder_remote_lane_compute.py -q --no-cov --refuse-skips"
+        cwd: "."
+  - id: "dod-omn21396-model-policy-ac2"
+    description: >
+      A failed local attempt escalates to GLM; required-Claude lanes stay on
+      Claude and failed Sonnet never escalates to Opus, including a requested
+      Opus ceiling. Exact Opus pins refuse before reserving a fill slot.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lane_model_policy_compute/test_golden_chain_lane_model_policy_compute.py tests/nodes/node_remote_lane_compute/test_engine_ladder_remote_lane_compute.py tests/nodes/node_idle_slot_fill_effect/test_recorded_opus_fill.py -q --no-cov --refuse-skips"
+        cwd: "."
+  - id: "dod-omn21396-model-policy-ac3"
+    description: >
+      Replay two attempts and read exactly two kind=experiment STATUS rows
+      with all required cells; the same run verifies the declared policy
+      ceiling. The new policy probe refuses the dispatched base.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lane_model_policy_compute/test_golden_chain_lane_model_policy_compute.py tests/nodes/node_remote_lane_compute/test_engine_experiment_rows.py -q --no-cov --refuse-skips"
+        cwd: "."
+  - id: "dod-omn21396-model-policy-ac4"
+    description: >
+      Replay AC3's rows into the 24-hour throughput report and require nonzero
+      attempts, successes and escalations while verifying the packaged policy
+      entry point; no live broker, lab account or production access is used.
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lane_model_policy_compute/test_golden_chain_lane_model_policy_compute.py tests/nodes/node_remote_lane_compute/test_engine_experiment_rows.py -q --no-cov --refuse-skips"
+        cwd: "."
+  - id: "dod-omn21396-model-policy-deploy"
+    description: >
+      Hosted-runner deploy check against the checked-out installed package:
+      contract binding and the onex.nodes entry point resolve; exhausting the
+      declared input combinations yields no Opus; lowering the one declared
+      ceiling changes consumer refusals. Replaying the exact 2026-10-26
+      19:59 fill brief names and kinds extracted from the ledger plans Sonnet
+      instead of Opus; raw ledger rows remain unchanged in the private handoff.
+      The regression failed first at 509fa44ab with four planned Opus fills.
+      No credentials, remote host, live model, broker or deployment required.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lane_model_policy_compute/test_golden_chain_lane_model_policy_compute.py tests/nodes/node_idle_slot_fill_effect/test_recorded_opus_fill.py -q --no-cov --refuse-skips"
+        cwd: "."
+  - id: "dod-omn21396-fill-policy-effect-deploy"
+    description: >
+      Hosted-runner check of the throughput fill effect: the packaged policy's
+      selected model reaches runner argv, brief ROUTE, sent state, ledger callback
+      and NOTE together. Lowering the declared ceiling below Claude prevents
+      dispatch and recording and preserves the free slot. Uses temporary state
+      and a captured runner boundary; no broker, credentials or live dispatch.
+      This synthetic boundary probe does not claim replay of the original NOTE.
+    source: "manual"
+    binds_ac: ["AC1", "AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_idle_slot_fill_effect/test_lab_fill_model_policy_effect.py -q --no-cov --refuse-skips"
+        cwd: "."

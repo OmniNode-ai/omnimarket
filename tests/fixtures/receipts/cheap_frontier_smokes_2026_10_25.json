@@ -1,4 +1,5 @@
 {
+  "redaction_note": "Retired lab model identifiers are replaced with [retired lab model]; measurement counts and verdicts are preserved.",
   "measured_on": "2026-10-25",
   "bar_accepted_of_10": 7,
   "path": "onex delegate in-process (--bus inmemory --locus in-process), customer OpenRouter key, per-candidate model stored with the credential in a scratch HOME; acceptance is the delegate contract's own quality gate (status completed and quality_gate_passed)",
@@ -71,7 +72,7 @@
       "qualifies": false
     },
     {
-      "model": "openai/gpt-oss-20b",
+      "model": "openai/[retired lab model]",
       "accepted": 5,
       "tasks": 10,
       "p50_seconds": 1.1,

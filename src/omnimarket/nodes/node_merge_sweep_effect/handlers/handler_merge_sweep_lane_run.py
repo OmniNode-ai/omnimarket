@@ -15,6 +15,10 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
+    resolve_lane_model,
+)
+
 from ..models import ModelMergeSweepLaneRunRequest, ModelMergeSweepLaneRunResult
 from ..protocols import (
     MergeSweepPortError,
@@ -84,6 +88,13 @@ class HandlerMergeSweepLaneRun:
                 status=status,
                 result=text[:600],
             )
+
+        decision = resolve_lane_model(
+            requested_engine=request.model, lane_kind="merge-sweep"
+        )
+        if decision.model is None:
+            return failed(78, decision.reason, "model-policy-refused")
+        argv[argv.index("--model") + 1] = decision.model
 
         try:
             self._files.write_text(request.brief_path, request.brief_text)

@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_model_policy_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: 1.0.0
+description: >
+  The single declared lane and worker model policy. Select the cheapest allowed
+  model with supplied capacity, honoring exact pins, kind, risk, ROUTE and band
+  ceilings. Consumers read this packaged contract; no dispatcher owns a ceiling.
+input_model:
+  name: ModelLaneModelPolicyRequest
+  module: omnimarket.nodes.node_lane_model_policy_compute.models.model_lane_model_policy_request
+output_model:
+  name: ModelLaneModelPolicyResult
+  module: omnimarket.nodes.node_lane_model_policy_compute.models.model_lane_model_policy_result
+handler:
+  module: omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy
+  class: HandlerLaneModelPolicy
+  input_model: omnimarket.nodes.node_lane_model_policy_compute.models.model_lane_model_policy_request.ModelLaneModelPolicyRequest
+  output_model: omnimarket.nodes.node_lane_model_policy_compute.models.model_lane_model_policy_result.ModelLaneModelPolicyResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy:HandlerLaneModelPolicy
+  handlers:
+    - operation: resolve
+      topic: onex.cmd.omnimarket.lane-model-policy-requested.v1
+      handler:
+        module: omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy
+        name: HandlerLaneModelPolicy
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lane-model-policy-requested.v1
+terminal_event: onex.evt.omnimarket.lane-model-policy-resolved.v1
+lane_model_policy:
+  version: "2026-10-26.1"
+  ruling: "RULING 2026-10-26T11:31:48Z lane=orchestrator-31d9 (OMN-17427)"
+  ceiling: sonnet
+  order: [code-edit, glm, codex, sonnet, opus]
+  engines: {code-edit: code-edit, glm: glm, codex: codex, sonnet: claude, opus: claude}
+  aliases:
+    claude-sonnet: sonnet
+    claude-opus: opus
+    codex-high: codex
+    codex-xhigh: codex
+  band_ceilings: {B0: null, B1: glm, B1c: code-edit, B2: sonnet, B3: sonnet, B4: sonnet, B5: sonnet}
+  low_risk_classes: [doc, test, lint, small-fix]
+  claude_only_kinds: [host-tick-repair, claude-workflow]
+metadata:
+  ticket: OMN-21396

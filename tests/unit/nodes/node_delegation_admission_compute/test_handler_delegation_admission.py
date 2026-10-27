@@ -17,6 +17,7 @@ from omnimarket.nodes.node_delegation_admission_compute import (
 from omnimarket.nodes.node_delegation_admission_compute.handlers.handler_delegation_admission import (
     DEFAULT_ADMISSION_POLICY,
     HandlerDelegationAdmission,
+    effective_admission_policy,
 )
 from omnimarket.nodes.node_delegation_admission_compute.models.model_delegation_admission import (
     EnumAdmissionReason,
@@ -99,6 +100,11 @@ def test_classifier_rows_reproduce_omniclaude_verdicts(
 ) -> None:
     result = handler.handle(_request(row["tool_input"]))
     expected = row["omniclaude"]
+    if row["tool_input"].get("model") == "opus":
+        assert result.admitted is False
+        assert result.reason is EnumAdmissionReason.GUARD_MODEL_NOT_ALLOWED
+        assert result.task_type == "unknown"
+        return
     assert result.admitted is expected["delegatable"]
     assert result.task_type == expected["classified_intent"]
     assert result.reason is (
@@ -119,10 +125,21 @@ def test_guard_rows_keep_parity_with_the_agent_model_guard(
         assert result.admitted is False
         assert result.reason is _LISTED_DISAGREEMENTS[row["id"]]
         return
+    if row["tool_input"].get("model") == "opus":
+        assert result.admitted is False
+        assert result.reason is EnumAdmissionReason.GUARD_MODEL_NOT_ALLOWED
+        assert result.reason_details == (
+            "model 'opus' is not an allowed background model (allowed: sonnet)",
+        )
+        return
     if expected["guard_reason"] is not None:
         assert result.admitted is False
         assert result.reason.value.startswith("guard_")
-        assert result.reason_details == (expected["guard_reason"],)
+        assert result.reason_details == (
+            expected["guard_reason"].replace(
+                "allowed: opus, sonnet", "allowed: sonnet"
+            ),
+        )
         return
     assert result.admitted is expected["delegatable"]
     assert result.task_type == expected["classified_intent"]
@@ -232,12 +249,31 @@ def test_contract_admission_policy_equals_the_handler_policy() -> None:
     )
     contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
     stated = ModelDelegationAdmissionPolicy.model_validate(contract["admission_policy"])
-    assert stated == DEFAULT_ADMISSION_POLICY
+    assert effective_admission_policy(stated) == DEFAULT_ADMISSION_POLICY
 
 
 def test_policy_matches_the_guard_allowlist_and_routing_bands() -> None:
     policy = DEFAULT_ADMISSION_POLICY
-    assert set(policy.allowed_models) == {"opus", "sonnet"}
+    assert set(policy.allowed_models) == {"sonnet"}
+    assert policy.route_bands["B4"].models == ("sonnet",)
+    assert policy.route_bands["B5"].models == ("sonnet",)
     assert policy.model_raised_origin == _MODEL_RAISED
     assert policy.route_required is True
     assert set(policy.route_bands) == {"B0", "B1", "B1c", "B2", "B3", "B4", "B5"}
+
+
+def test_b4_sonnet_is_admitted_and_opus_is_refused(handler):
+    prompt = "ROUTE: band=B4 score=14 dims=S2A2R2V2N2C2J2 dest=lane model=sonnet effort=high\nResearch routing."
+    admitted = handler.handle(_request({**_delegatable_input(), "prompt": prompt}))
+    assert admitted.admitted
+    refused = handler.handle(
+        _request(
+            {
+                **_delegatable_input(),
+                "model": "opus",
+                "prompt": prompt.replace("model=sonnet", "model=opus"),
+            }
+        )
+    )
+    assert not refused.admitted
+    assert refused.reason is EnumAdmissionReason.GUARD_MODEL_NOT_ALLOWED

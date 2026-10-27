@@ -1,0 +1,92 @@
+{
+  "name": "node_ticket_text_effect",
+  "node_type": "EFFECT_GENERIC",
+  "node_version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "description": "Read one ticket's title, state, description and acceptance criteria from Linear (read-only, the key resolved by the caller on the launching host) and append them to a lane brief as a quoted block, so a headless lab lane with no Linear tool reads its criteria from its prompt (OMN-17427). A verbatim request preserves the authored task without resolving the key or reading Linear, and records source=verbatim. A ticket Linear cannot answer (ticket-unreadable) or one with no description (ticket-text-empty) is a named refusal, never a note, because a headless lab lane has no Linear key or tool to read it itself (OMN-20607).",
+  "input_model": {
+    "name": "ModelTicketTextRequest",
+    "module": "omnimarket.nodes.node_ticket_text_effect.models.model_ticket_text"
+  },
+  "output_model": {
+    "name": "ModelTicketTextResult",
+    "module": "omnimarket.nodes.node_ticket_text_effect.models.model_ticket_text"
+  },
+  "handler_routing": {
+    "routing_strategy": "operation_match",
+    "default_handler": "omnimarket.nodes.node_ticket_text_effect.handlers.handler_ticket_text:HandlerTicketText",
+    "handlers": [
+      {
+        "operation": "handle",
+        "handler": {
+          "name": "HandlerTicketText",
+          "module": "omnimarket.nodes.node_ticket_text_effect.handlers.handler_ticket_text"
+        },
+        "topic": "onex.cmd.omnimarket.ticket-text-requested.v1"
+      }
+    ]
+  },
+  "entrypoint": {
+    "name": "NodeTicketTextEffect",
+    "module": "omnimarket.nodes.node_ticket_text_effect"
+  },
+  "execution": {
+    "deterministic": false,
+    "side_effects": false,
+    "caller": "onex_remote_lane dispatch and lane_brief ticket-text and check --lab"
+  },
+  "contract_version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "handler": {
+    "module": "omnimarket.nodes.node_ticket_text_effect.handlers.handler_ticket_text",
+    "class": "HandlerTicketText",
+    "input_model": "omnimarket.nodes.node_ticket_text_effect.models.model_ticket_text.ModelTicketTextRequest",
+    "output_model": "omnimarket.nodes.node_ticket_text_effect.models.model_ticket_text.ModelTicketTextResult"
+  },
+  "event_bus": {
+    "subscribe_topics": [
+      "onex.cmd.omnimarket.ticket-text-requested.v1"
+    ],
+    "publish_topics": [
+      "onex.evt.omnimarket.ticket-text-completed.v1"
+    ]
+  },
+  "runtime_dispatch": {
+    "command_topic": "onex.cmd.omnimarket.ticket-text-requested.v1"
+  },
+  "descriptor": {
+    "node_archetype": "effect",
+    "purity": "side_effecting",
+    "runtime_profiles": [
+      "effects"
+    ],
+    "idempotent": false,
+    "timeout_ms": 300000
+  },
+  "replay": {
+    "requires_validator_version": true,
+    "timestamp_authority": "ingest_sequence",
+    "deterministic": false
+  },
+  "terminal_event": "onex.evt.omnimarket.ticket-text-completed.v1",
+  "metadata": {
+    "transport_type": "inmemory"
+  },
+  "externally_consumed_topics": [
+    "onex.evt.omnimarket.ticket-text-completed.v1"
+  ],
+  "runtime_profiles": [
+    "effects"
+  ]
+}

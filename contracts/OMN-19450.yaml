@@ -11,7 +11,7 @@ requirements:
     statement: "Each of the five injected faults ends in a terminal with a distinct cause and none reads provider_error."
     acceptance:
       - id: "AC1"
-        statement: "AC1: each of the five injected faults ends in a terminal with a distinct cause and none reads provider_error -- falsifier: env -u PYTHONPATH uv run pytest tests/chains/fault_suite -q -m 'not kafka' -k 'decides_its_own_cause or pairwise_distinct'"
+        statement: "AC1: each of the five injected faults ends in a terminal with a distinct cause and none reads provider_error -- falsifier: env -u PYTHONPATH uv run pytest tests/chains/fault_suite/test_bus_path_faults_omn19450.py tests/chains/fault_suite/test_local_path_faults_omn19450.py tests/chains/fault_suite/test_five_faults_told_apart_omn19450.py -q -m 'not kafka' -k 'decides_its_own_cause or pairwise_distinct'"
   - id: "req-scheduled-and-published"
     statement: "The suite runs on a schedule and its result is published."
     acceptance:
@@ -21,7 +21,7 @@ requirements:
     statement: "The wrong-key, 429 and timeout faults end in auth_failed, provider_quota_exhausted and timeout; the gate-veto and truncation faults both end in quality_gate_refused and are told apart by typed evidence on the deciding attempt."
     acceptance:
       - id: "AC3"
-        statement: "AC3: the gate-veto and truncation faults are told apart by finish_reason length plus the truncated flag on the deciding attempt, on the canonical terminal and on the caller's attempt record, against the named vetoing rule -- falsifier: env -u PYTHONPATH uv run pytest tests/chains/fault_suite -q -m 'not kafka' -k 'told_apart or stop_reason_and_the_flag or finish_reason_length or pairwise_distinct'"
+        statement: "AC3: the gate-veto and truncation faults are told apart by finish_reason length plus the truncated flag on the deciding attempt, on the canonical terminal and on the caller's attempt record, against the named vetoing rule -- falsifier: env -u PYTHONPATH uv run pytest tests/chains/fault_suite/test_bus_path_faults_omn19450.py tests/chains/fault_suite/test_local_path_faults_omn19450.py tests/chains/fault_suite/test_five_faults_told_apart_omn19450.py -q -m 'not kafka' -k 'told_apart or stop_reason_and_the_flag or finish_reason_length or pairwise_distinct'"
 evidence_requirements:
   - kind: "ci"
     description: "PR #3239 product diff scope present"
@@ -77,10 +77,14 @@ dod_evidence:
     description: >-
       AC2: the nightly workflow delegation-fault-suite-nightly.yml (cron, dev) has a scheduled run younger than 8 days
       that concluded success; each run publishes a per-case job summary and the JUnit report as an artifact.
+      The bus-path tests below exercise the five faults that workflow runs; the freshness command checks its published run.
     source: "manual"
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/chains/fault_suite/test_five_faults_told_apart_omn19450.py -q -p no:randomly --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/chains/fault_suite/test_bus_path_faults_omn19450.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
         check_value: >-
@@ -99,7 +103,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/chains/fault_suite/test_bus_path_faults_omn19450.py tests/chains/fault_suite/test_five_faults_told_apart_omn19450.py tests/chains/fault_suite/test_local_path_faults_omn19450.py -q -m 'not kafka' -k 'decides_its_own_cause or pairwise_distinct'"
+        check_value: "uv run pytest tests/chains/fault_suite/test_bus_path_faults_omn19450.py tests/chains/fault_suite/test_five_faults_told_apart_omn19450.py tests/chains/fault_suite/test_local_path_faults_omn19450.py -q -n 0 --no-cov -m 'not kafka' -k 'decides_its_own_cause or pairwise_distinct'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn19450-ac2-scheduled-nightly"
@@ -109,8 +113,14 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/chains/fault_suite/test_five_faults_told_apart_omn19450.py -q -p no:randomly --no-cov --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/chains/fault_suite/test_bus_path_faults_omn19450.py -q -m 'not kafka' --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
         check_value: "grep -c -e \"cron: '45 6\" -e 'GITHUB_STEP_SUMMARY' -e 'name: delegation-fault-suite-junit' .github/workflows/delegation-fault-suite-nightly.yml"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/chains/fault_suite/test_nightly_workflow_omn19450.py -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn19450-ac3-typed-evidence"
@@ -118,6 +128,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/chains/fault_suite/test_bus_path_faults_omn19450.py tests/chains/fault_suite/test_five_faults_told_apart_omn19450.py tests/chains/fault_suite/test_local_path_faults_omn19450.py -q -m 'not kafka' -k 'told_apart or stop_reason_and_the_flag or finish_reason_length or pairwise_distinct'"
+        check_value: "uv run pytest tests/chains/fault_suite/test_bus_path_faults_omn19450.py tests/chains/fault_suite/test_five_faults_told_apart_omn19450.py tests/chains/fault_suite/test_local_path_faults_omn19450.py -q -n 0 --no-cov -m 'not kafka' -k 'told_apart or stop_reason_and_the_flag or finish_reason_length or pairwise_distinct'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]

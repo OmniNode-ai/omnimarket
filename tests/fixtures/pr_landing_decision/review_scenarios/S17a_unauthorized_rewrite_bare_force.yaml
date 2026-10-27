@@ -22,4 +22,4 @@ ticks:
       actions: ["dispatch_worker acme/app#1 real_red"]
       recorded: ["acme/app#1 invalid unauthorized_rewrite"]
       violations: 1
-      engine: {acme/app#1: claude_opus}
+      engine: {acme/app#1: claude_sonnet}

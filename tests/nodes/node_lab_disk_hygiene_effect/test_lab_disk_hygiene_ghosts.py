@@ -91,6 +91,41 @@ def test_inspect_failure_without_rows_keeps_every_candidate(
     assert result.errors[0].startswith("docker inspect exit 1")
 
 
+def test_only_ghost_candidates_when_the_engine_names_each_as_unknown(
+    tmp_path: Path,
+) -> None:
+    """The engine prints nothing on stdout and exits 1 when every id is unknown."""
+    ghost_a = "4a4825418e3e" + "0" * 52
+    ghost_b = "2fe876bf5180" + "0" * 52
+
+    def run(argv: Sequence[str], **_: Any) -> subprocess.CompletedProcess[str]:
+        argv = list(argv)
+        if argv[1] == "version":
+            return subprocess.CompletedProcess(argv, 0, "29.2.1\n", "")
+        if argv[1] == "ps":
+            out = f"{ghost_a}\t\tdead\t\n{ghost_b}\t\tdead\t\n"
+            return subprocess.CompletedProcess(argv, 0, out, "")
+        if argv[1] == "inspect":
+            err = (
+                f"error: no such object: {ghost_a}\nerror: no such object: {ghost_b}\n"
+            )
+            return subprocess.CompletedProcess(argv, 1, "", err)
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    census = tmp_path / "census.yaml"
+    census.write_text("lanes: {}\n")
+    handler = HandlerLabDiskHygiene(
+        run=run,
+        disk_free=lambda _: 100,
+        which=lambda _: "docker",
+        now=lambda: datetime(2026, 10, 26, tzinfo=UTC),
+    )
+    result = handler.handle(ModelLabDiskHygieneRequest(tmp_path, census=census))
+    assert result.errors == ()
+    assert result.ghost_containers == (ghost_a[:12], ghost_b[:12])
+    assert result.removed_containers == ()
+
+
 def test_line_reports_ghost_count(tmp_path: Path) -> None:
     result = _handle(tmp_path, FakeDocker(OLD_ROW))
     assert "ghost_containers=1" in result.line()

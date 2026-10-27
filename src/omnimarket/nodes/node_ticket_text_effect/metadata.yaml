@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_ticket_text_effect
+version: 1.0.0
+description: Read one ticket's title, state, description and acceptance criteria from
+  Linear (read-only, the key resolved by the caller on the launching host) and append
+  them to a lane brief as a quoted block, so a headless lab lane with no Linear tool
+  reads its criteria from its prompt (OMN-17427). A verbatim request preserves the
+  authored task without resolving the key or reading Linear, and records source=verbatim.
+  A ticket Linear cannot answer (ticket-unreadable) or one with no description (ticket-text-empty)
+  is a named refusal, never a note, because a headless lab lane has no Linear key
+  or tool to read it itself (OMN-20607).
+pack: distributed_validation
+node_role: effect
+display_name: Ticket Text Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_ticket_text_effect: omnimarket.nodes.node_ticket_text_effect
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: read_write
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- remote-lane

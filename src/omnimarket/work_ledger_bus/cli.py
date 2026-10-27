@@ -37,8 +37,15 @@ from omnimarket.events.topics import (
     PR_HANDOFF_HANDED_OFF_TOPIC_V1,
     PR_HANDOFF_REQUESTED_TOPIC_V1,
 )
+from omnimarket.handlers.bus_binding import outbox
+from omnimarket.handlers.bus_binding.select import (
+    default_state_dir,
+    open_bound_bus,
+    positional_opener,
+)
 from omnimarket.lab_work.bus import _bytes, _subscribe
 from omnimarket.lab_work.cli import _with_bus_options
+from omnimarket.models.bus_binding import EnumBusBinding
 from omnimarket.models.pr_handoff import (
     ModelPrHandoffAccepted,
     ModelPrHandoffFailed,
@@ -275,20 +282,56 @@ def append_command(
     except (OSError, ValidationError) as exc:
         raise click.ClickException(str(exc)) from exc
 
+    state_dir = default_state_dir()
+
     async def main() -> int:
-        async with open_lab_run_bus(
+        # OMN-20275: the lane overlay orders the bindings. A durable bus that fails its health read puts this
+        # append in the local outbox (the in-memory binding has no ledger host), where the next healthy
+        # command replays it under the same request id.
+        async with open_bound_bus(
+            open_bus=positional_opener(open_lab_run_bus),
             bus=bus,
             lane=bus_lane,
             kafka_bootstrap=kafka_bootstrap,
-            omni_home=omnibase_path,
-        ) as opened:
+            workspace_root=omnibase_path,
+            state_dir=state_dir,
+            pending_outbox=lambda: outbox.pending_count(state_dir),
+        ) as bound:
+            if bound.decision.degraded:
+                queued = outbox.queue_request(state_dir, request)
+                click.echo(
+                    json.dumps(
+                        {
+                            "request_id": str(request_id),
+                            "status": "queued",
+                            "exit_code": 0,
+                            "binding": bound.decision.binding.value,
+                            "bus_state": bound.decision.state.value,
+                            "outbox": queued.name,
+                            "message": "durable bus unavailable; queued for replay under this request id",
+                        },
+                        sort_keys=True,
+                    )
+                )
+                return 0
             caller = WorkLedgerAppendCaller(
-                opened,
+                bound.bus,
                 principal=principal
                 if principal is not None
                 else bound_lane_principal(),
             )
             try:
+                if bound.decision.binding is EnumBusBinding.DURABLE:
+                    replay = await outbox.drain(
+                        state_dir,
+                        lambda queued: caller.append(queued, timeout_s=timeout_s),
+                    )
+                    if replay.replayed or replay.duplicates or replay.refused:
+                        click.echo(
+                            f"bus-binding outbox replayed={replay.replayed} duplicates={replay.duplicates} "
+                            f"refused={replay.refused} remaining={replay.remaining}",
+                            err=True,
+                        )
                 receipt = await caller.append(request, timeout_s=timeout_s)
             except TimeoutError:
                 click.echo(

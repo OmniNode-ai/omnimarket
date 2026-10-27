@@ -80,7 +80,7 @@ def test_cloud_refusal_names_why_a_lane_cannot_run_in_the_cloud(
     given = {
         "brief": KIND_BRIEF,
         "repo": "repo_a",
-        "model": "opus",
+        "model": "sonnet",
         "placement": "auto",
         "pinned_host": None,
         "inputs": [],

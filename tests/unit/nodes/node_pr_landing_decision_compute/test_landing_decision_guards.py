@@ -743,14 +743,14 @@ def test_rule_r1_escalation_ladder_parks_after_three() -> None:
             "id": "R1-ladder",
             "world": {"prs": [_pr("acme/app#1", **RED)]},
             "ticks": [
-                {"expect": {"engine": {"acme/app#1": "claude_sonnet"}}},
+                {"expect": {"engine": {"acme/app#1": "codex_high"}}},
                 {
                     "events": _invalid_then_exit(),
-                    "expect": {"engine": {"acme/app#1": "claude_opus"}},
+                    "expect": {"engine": {"acme/app#1": "claude_sonnet"}},
                 },
                 {
                     "events": _invalid_then_exit("report_only"),
-                    "expect": {"engine": {"acme/app#1": "codex_high"}},
+                    "expect": {"engine": {"acme/app#1": "claude_sonnet"}},
                 },
                 {
                     "events": _invalid_then_exit("blocked"),
@@ -779,7 +779,7 @@ def test_rule_r1_escalation_ladder_parks_after_three() -> None:
                     ],
                     "expect": {
                         "actions": ["dispatch_worker acme/app#1 real_red"],
-                        "engine": {"acme/app#1": "claude_sonnet"},
+                        "engine": {"acme/app#1": "codex_high"},
                         "degraded": [],
                     },
                 },
@@ -800,7 +800,7 @@ def test_rule_r1_failed_attempt_escalates_new_red_does_not() -> None:
             "id": "R1-failed-attempt",
             "world": {"prs": [_pr("acme/app#1", **RED)]},
             "ticks": [
-                {"expect": {"engine": {"acme/app#1": "claude_sonnet"}}},
+                {"expect": {"engine": {"acme/app#1": "codex_high"}}},
                 {
                     "events": fix,
                     "expect": {
@@ -818,7 +818,7 @@ def test_rule_r1_failed_attempt_escalates_new_red_does_not() -> None:
                             }
                         }
                     ],
-                    "expect": {"engine": {"acme/app#1": "claude_opus"}},
+                    "expect": {"engine": {"acme/app#1": "claude_sonnet"}},
                 },
             ],
         }
@@ -828,7 +828,7 @@ def test_rule_r1_failed_attempt_escalates_new_red_does_not() -> None:
             "id": "R1-new-red",
             "world": {"prs": [_pr("acme/app#1", **RED)]},
             "ticks": [
-                {"expect": {"engine": {"acme/app#1": "claude_sonnet"}}},
+                {"expect": {"engine": {"acme/app#1": "codex_high"}}},
                 {"events": fix, "expect": {"actions": []}},
                 {
                     "events": [
@@ -840,7 +840,7 @@ def test_rule_r1_failed_attempt_escalates_new_red_does_not() -> None:
                             }
                         }
                     ],
-                    "expect": {"engine": {"acme/app#1": "claude_sonnet"}},
+                    "expect": {"engine": {"acme/app#1": "codex_high"}},
                 },
             ],
         }
@@ -872,7 +872,7 @@ def test_rule_r1_invalid_results(kind: str, reason: str) -> None:
                     "expect": {
                         "recorded": [f"acme/app#1 invalid {reason}"],
                         "violations": 1,
-                        "engine": {"acme/app#1": "claude_opus"},
+                        "engine": {"acme/app#1": "claude_sonnet"},
                     },
                 },
             ],

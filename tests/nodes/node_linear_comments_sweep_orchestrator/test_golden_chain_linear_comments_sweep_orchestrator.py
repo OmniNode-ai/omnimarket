@@ -171,7 +171,7 @@ def test_one_sweep_runs_the_captured_window_to_a_typed_terminal() -> None:
         "medium",
     )
     assert by_prefix["delegate"].task_type == "document"
-    assert (by_prefix["verify"].model, by_prefix["verify"].effort) == ("opus", "high")
+    assert (by_prefix["verify"].model, by_prefix["verify"].effort) == ("sonnet", "high")
     assert (by_prefix["write"].model, by_prefix["write"].effort) == ("sonnet", "medium")
     assert decisions.kinds[0] == "decide_items"
     assert decisions.kinds[-1] == "tally"

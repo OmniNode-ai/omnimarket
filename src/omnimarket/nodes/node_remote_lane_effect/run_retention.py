@@ -284,3 +284,36 @@ except (OSError, ValueError) as exc:
 LANE_RETENTION_PY
 """
     )
+
+
+def main() -> int:
+    """Build the host payload in the dispatch interpreter, without deleting locally.
+
+    The stdlib launcher invokes this module through its dispatch venv instead of
+    importing Market into the launcher's unrelated system Python. Only the emitted
+    script is sent to the host, where the existing ownership/archive guards apply.
+    """
+    import argparse
+    import sys
+
+    from .models.model_remote_lane_retention import ModelRemoteLaneRetentionRequest
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--script", required=True, type=Path, help="JSON retention request"
+    )
+    args = parser.parse_args()
+    try:
+        request = ModelRemoteLaneRetentionRequest.model_validate_json(
+            args.script.read_text(), strict=True
+        )
+        script = retention_script(**request.model_dump())
+    except (OSError, ValueError) as exc:
+        sys.stderr.write(f"LANE-RETENTION-KEPT {exc}\n")
+        return 1
+    sys.stdout.write(script)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

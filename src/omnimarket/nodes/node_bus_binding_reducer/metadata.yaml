@@ -1,0 +1,22 @@
+name: node_bus_binding_reducer
+version: "0.1.0"
+description: "the bus binding FSM: healthy, degraded on the in-memory bus with an alarm, recovering; pure transitions"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_bus_binding_reducer: "omnimarket.nodes.node_bus_binding_reducer"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["reducer", "bus", "fallback", "fsm", "pure"]
+pack: "routing"
+display_name: "Bus Binding Reducer"
+node_role: "reducer"

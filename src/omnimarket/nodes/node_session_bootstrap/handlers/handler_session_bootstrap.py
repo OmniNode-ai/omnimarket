@@ -36,6 +36,9 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
+    require_lane_model,
+)
 from omnimarket.nodes.node_session_bootstrap.models.model_session_contract import (
     ModelSessionContract,
 )
@@ -229,7 +232,7 @@ def build_pulse_prompt(
     # Derive fallback agent string from routing preference.
     _routing_to_agent = {
         "local-first": "Agent(model=local)",
-        "frontier-only": "Agent(model=opus)",
+        "frontier-only": f"Agent(model={require_lane_model(requested_engine='claude', lane_kind='claude-workflow')})",
         "hybrid": "Agent(model=sonnet)",
     }
     fallback_agent = _routing_to_agent.get(

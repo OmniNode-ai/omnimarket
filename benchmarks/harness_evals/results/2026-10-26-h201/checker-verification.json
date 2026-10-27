@@ -1,0 +1,296 @@
+[
+  {
+    "harness": "claude-glm",
+    "item_key": "ci-log-diagnosis-1",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "claude-glm",
+    "item_key": "ci-log-diagnosis-2",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "claude-glm",
+    "item_key": "ci-log-diagnosis-3",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "claude-glm",
+    "item_key": "docs-edit-1",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "claude-glm",
+    "item_key": "docs-edit-2",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "claude-glm",
+    "item_key": "docs-edit-3",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "claude-glm",
+    "item_key": "failing-test-fix-1",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "claude-glm",
+    "item_key": "failing-test-fix-2",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "claude-glm",
+    "item_key": "failing-test-fix-3",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "claude-glm",
+    "item_key": "host-read-only-1",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "claude-glm",
+    "item_key": "host-read-only-2",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "claude-glm",
+    "item_key": "host-read-only-3",
+    "checker_passed": true,
+    "harness_succeeded": false,
+    "recorded_pass": false
+  },
+  {
+    "harness": "claude-glm",
+    "item_key": "rebase-conflict-1",
+    "checker_passed": false,
+    "harness_succeeded": false,
+    "recorded_pass": false
+  },
+  {
+    "harness": "claude-glm",
+    "item_key": "rebase-conflict-2",
+    "checker_passed": false,
+    "harness_succeeded": false,
+    "recorded_pass": false
+  },
+  {
+    "harness": "claude-glm",
+    "item_key": "rebase-conflict-3",
+    "checker_passed": false,
+    "harness_succeeded": true,
+    "recorded_pass": false
+  },
+  {
+    "harness": "claude-glm",
+    "item_key": "review-thread-reply-1",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "claude-glm",
+    "item_key": "review-thread-reply-2",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "claude-glm",
+    "item_key": "review-thread-reply-3",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "claude-glm",
+    "item_key": "ticket-evidence-fix-1",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "claude-glm",
+    "item_key": "ticket-evidence-fix-2",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "claude-glm",
+    "item_key": "ticket-evidence-fix-3",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "local-agent",
+    "item_key": "ci-log-diagnosis-1",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "local-agent",
+    "item_key": "ci-log-diagnosis-2",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "local-agent",
+    "item_key": "ci-log-diagnosis-3",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "local-agent",
+    "item_key": "docs-edit-1",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "local-agent",
+    "item_key": "docs-edit-2",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "local-agent",
+    "item_key": "docs-edit-3",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "local-agent",
+    "item_key": "failing-test-fix-1",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "local-agent",
+    "item_key": "failing-test-fix-2",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "local-agent",
+    "item_key": "failing-test-fix-3",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "local-agent",
+    "item_key": "host-read-only-1",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "local-agent",
+    "item_key": "host-read-only-2",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "local-agent",
+    "item_key": "host-read-only-3",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "local-agent",
+    "item_key": "rebase-conflict-1",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "local-agent",
+    "item_key": "rebase-conflict-2",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "local-agent",
+    "item_key": "rebase-conflict-3",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "local-agent",
+    "item_key": "review-thread-reply-1",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "local-agent",
+    "item_key": "review-thread-reply-2",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "local-agent",
+    "item_key": "review-thread-reply-3",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "local-agent",
+    "item_key": "ticket-evidence-fix-1",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "local-agent",
+    "item_key": "ticket-evidence-fix-2",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  },
+  {
+    "harness": "local-agent",
+    "item_key": "ticket-evidence-fix-3",
+    "checker_passed": true,
+    "harness_succeeded": true,
+    "recorded_pass": true
+  }
+]

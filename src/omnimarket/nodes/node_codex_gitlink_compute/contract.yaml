@@ -1,0 +1,92 @@
+{
+  "name": "node_codex_gitlink_compute",
+  "node_type": "COMPUTE_GENERIC",
+  "node_version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "description": "Render the shell lines that set a Codex lane's worktree .git link aside, put it back and unset the core.worktree the run left in its clone's shared config.",
+  "input_model": {
+    "name": "ModelCodexGitlinkRequest",
+    "module": "omnimarket.nodes.node_codex_gitlink_compute.models.model_codex_gitlink"
+  },
+  "output_model": {
+    "name": "ModelCodexGitlinkResult",
+    "module": "omnimarket.nodes.node_codex_gitlink_compute.models.model_codex_gitlink"
+  },
+  "handler_routing": {
+    "routing_strategy": "operation_match",
+    "default_handler": "omnimarket.nodes.node_codex_gitlink_compute.handlers.handler_codex_gitlink:HandlerCodexGitlink",
+    "handlers": [
+      {
+        "operation": "handle",
+        "handler": {
+          "name": "HandlerCodexGitlink",
+          "module": "omnimarket.nodes.node_codex_gitlink_compute.handlers.handler_codex_gitlink"
+        },
+        "topic": "onex.cmd.omnimarket.codex-gitlink-requested.v1"
+      }
+    ]
+  },
+  "entrypoint": {
+    "name": "NodeCodexGitlinkCompute",
+    "module": "omnimarket.nodes.node_codex_gitlink_compute"
+  },
+  "execution": {
+    "deterministic": true,
+    "side_effects": false,
+    "caller": "remote-lane runner CodexEngine setup, put-back and cleanup lines"
+  },
+  "contract_version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "handler": {
+    "module": "omnimarket.nodes.node_codex_gitlink_compute.handlers.handler_codex_gitlink",
+    "class": "HandlerCodexGitlink",
+    "input_model": "omnimarket.nodes.node_codex_gitlink_compute.models.model_codex_gitlink.ModelCodexGitlinkRequest",
+    "output_model": "omnimarket.nodes.node_codex_gitlink_compute.models.model_codex_gitlink.ModelCodexGitlinkResult"
+  },
+  "event_bus": {
+    "subscribe_topics": [
+      "onex.cmd.omnimarket.codex-gitlink-requested.v1"
+    ],
+    "publish_topics": [
+      "onex.evt.omnimarket.codex-gitlink-completed.v1"
+    ]
+  },
+  "runtime_dispatch": {
+    "command_topic": "onex.cmd.omnimarket.codex-gitlink-requested.v1"
+  },
+  "descriptor": {
+    "node_archetype": "compute",
+    "purity": "pure",
+    "runtime_profiles": [
+      "main"
+    ],
+    "idempotent": true,
+    "timeout_ms": 5000
+  },
+  "replay": {
+    "requires_validator_version": true,
+    "timestamp_authority": "ingest_sequence",
+    "deterministic": true
+  },
+  "terminal_event": "onex.evt.omnimarket.codex-gitlink-completed.v1",
+  "metadata": {
+    "transport_type": "inmemory"
+  },
+  "externally_consumed_topics": [
+    "onex.evt.omnimarket.codex-gitlink-completed.v1"
+  ],
+  "runtime_profiles": [
+    "main"
+  ]
+}
