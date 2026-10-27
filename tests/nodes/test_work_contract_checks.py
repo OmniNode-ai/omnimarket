@@ -15,44 +15,46 @@ from omnimarket.nodes.node_model_work_contract_compute.models.model_check import
 
 ROOT = Path(__file__).parents[2]
 CORPUS = ROOT / "src/omnimarket/configs/work_contracts"
+CONTRACTS = load_corpus(CORPUS, input_root=ROOT)
 
 
-def test_negative_control_and_determinism():
+@pytest.mark.parametrize("contract", CONTRACTS, ids=lambda c: c.contract_id)
+def test_negative_control_and_determinism(contract):
     from tests.nodes.work_contract_support import run_control
 
-    contracts = load_corpus(CORPUS, input_root=ROOT)
-    assert {c.acceptance.kind for c in contracts} == {
+    assert {c.acceptance.kind for c in CONTRACTS} == {
         "command",
         "schema",
         "dod_evidence",
         "seeded_bug",
     }
-    for contract in contracts:
-        assert contract.controls is not None
-        for control, expected in [
-            (contract.controls.positive, True),
-            (contract.controls.negative, False),
-        ]:
-            first = run_control(contract, ROOT / control.path)
-            second = run_control(contract, ROOT / control.path)
-            assert first == second == expected, contract.contract_id
+    assert contract.controls is not None
+    for control, expected in [
+        (contract.controls.positive, True),
+        (contract.controls.negative, False),
+    ]:
+        first = run_control(contract, ROOT / control.path)
+        second = run_control(contract, ROOT / control.path)
+        assert first == second == expected, contract.contract_id
 
 
-def test_controls_and_evaluator_immutability(tmp_path):
-    import shutil
-
+@pytest.mark.parametrize("contract", CONTRACTS, ids=lambda c: c.contract_id)
+def test_controls_and_evaluator_immutability(contract):
     from tests.nodes.work_contract_support import run_control
 
-    contracts = load_corpus(CORPUS, input_root=ROOT)
-    for contract in contracts:
-        assert contract.controls
-        assert run_control(contract, ROOT / contract.controls.positive.path), (
-            contract.contract_id
-        )
-        assert not run_control(contract, ROOT / contract.controls.negative.path), (
-            contract.contract_id
-        )
-    contract = next(c for c in contracts if c.evaluators)
+    assert contract.controls
+    assert run_control(contract, ROOT / contract.controls.positive.path), (
+        contract.contract_id
+    )
+    assert not run_control(contract, ROOT / contract.controls.negative.path), (
+        contract.contract_id
+    )
+
+
+def test_controls_and_evaluator_immutability_tampering(tmp_path):
+    import shutil
+
+    contract = next(c for c in CONTRACTS if c.evaluators)
     copied = tmp_path / "corpus"
     for pin in (
         *contract.inputs,
