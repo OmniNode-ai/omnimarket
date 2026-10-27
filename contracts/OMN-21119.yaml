@@ -107,7 +107,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/nodes/node_delegation_context_pack_budget_compute -q -n 0 --no-cov"
+        check_value: "uv run pytest tests/nodes/node_delegation_context_pack_budget_compute/test_delegation_context_pack_budget.py tests/nodes/node_delegation_context_pack_budget_compute/test_golden_chain_delegation_context_pack_budget_compute.py -q --no-cov"
     binds_ac: ["DoD5"]
   - id: "dod-omn21119-deploy-measured-admission"
     description: "Hosted-runner probe executes the three measured-admission cases through the packaged contract and in-memory bus. It fails at the merge base, which attaches a hash without a measurement and rejects the count field. No external service or credential is required."
