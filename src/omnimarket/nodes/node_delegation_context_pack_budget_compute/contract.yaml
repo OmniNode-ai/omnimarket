@@ -3,14 +3,16 @@
 name: node_delegation_context_pack_budget_compute
 node_type: compute
 runtime_profiles: [main]
-contract_version: {major: 1, minor: 0, patch: 0}
-node_version: "1.0.0"
+contract_version: {major: 1, minor: 1, patch: 0}
+node_version: "1.1.0"
 description: >-
   The delegation orchestrator's context-pack budget and admission for a task class that
   names a context profile (TA.18 AC1/AC3): pack budget is the backend's grounded-input
   ceiling minus the request composed without the pack, never above the profile budget;
   no room means sent without a pack and recorded no_room; a pack answer with an empty
-  hash is refused. Deterministic, with no I/O, no clock and no randomness.
+  hash is refused. A non-empty hash permits dispatch only after the full serialized
+  input including the pack is measured with the same estimator and fits the ceiling.
+  Deterministic, with no I/O, no clock and no randomness.
 input_model:
   name: ModelDelegationContextPackBudgetRequest
   module: omnimarket.nodes.node_delegation_context_pack_budget_compute.models.model_delegation_context_pack_budget
@@ -44,17 +46,19 @@ inputs:
   max_grounded_input_tokens: {type: int, required: true, description: Routed backend's grounded-input token ceiling.}
   token_estimator: {type: str, required: true, description: Tokenizer or conservative estimate used to count the request.}
   context_pack_hash: {type: str, required: false, description: Pack orchestrator's answer; absent when no answer has arrived.}
+  assembled_request_tokens: {type: int, required: false, description: Full serialized input including the pack counted after assembly with token_estimator.}
 outputs:
   correlation_id: {type: str}
   task_class: {type: str}
   context_profile: {type: str}
-  status: {type: str, enum: [not_requested, request_pack, no_room, attach, refuse_empty_hash]}
+  status: {type: str, enum: [not_requested, request_pack, no_room, attach, refuse_empty_hash, refuse_unmeasured_input, refuse_input_overflow]}
   dispatch_allowed: {type: bool}
   token_budget_override: {type: int}
   context_pack_hash: {type: str}
   composed_request_tokens: {type: int}
   max_grounded_input_tokens: {type: int}
   token_estimator: {type: str}
+  assembled_request_tokens: {type: int}
   reason: {type: str}
 terminal_event: onex.evt.omnimarket.delegation-context-pack-budget-decided.v1
 runtime_dispatch:
