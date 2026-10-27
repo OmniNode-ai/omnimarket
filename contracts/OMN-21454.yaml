@@ -45,7 +45,7 @@ requirements:
 evidence_requirements:
 - kind: tests
   description: Focused usage, native fixture and packaged RuntimeLocal tests.
-  command: uv run pytest tests/nodes/node_remote_lane_close_compute -q --no-cov
+  command: uv run pytest tests/nodes/node_remote_lane_close_compute/test_receipt_usage.py -q --no-cov
 - kind: manual
   description: Hosted deploy check exercises the packaged node without network, broker, credentials or live services.
   command: Packaged ONEX node dispatch and typed receipt readback in dod-omn21454-deploy-packaged-node.
@@ -61,7 +61,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_remote_lane_close_compute -q --no-cov -k receipt_carries_claude_usage
+    check_value: uv run pytest tests/nodes/node_remote_lane_close_compute/test_receipt_usage.py -q --no-cov -k receipt_carries_claude_usage
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21454-ac2
   description: 'AC2 node-side proof: codex_cost_unknown_not_zero. Launcher integration is not claimed.'
@@ -70,7 +70,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_remote_lane_close_compute -q --no-cov -k codex_cost_unknown_not_zero
+    check_value: uv run pytest tests/nodes/node_remote_lane_close_compute/test_receipt_usage.py -q --no-cov -k codex_cost_unknown_not_zero
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21454-ac3
   description: 'AC3 node-side proof: contract_id_in_receipt. Launcher integration is not claimed.'
@@ -79,7 +79,7 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_remote_lane_close_compute -q --no-cov -k contract_id_in_receipt
+    check_value: uv run pytest tests/nodes/node_remote_lane_close_compute/test_receipt_usage.py -q --no-cov -k contract_id_in_receipt
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21454-ac4
   description: 'AC4 node-side proof: missing_usage_unknown. Launcher integration is not claimed.'
@@ -88,7 +88,7 @@ dod_evidence:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_remote_lane_close_compute -q --no-cov -k missing_usage_unknown
+    check_value: uv run pytest tests/nodes/node_remote_lane_close_compute/test_receipt_usage.py -q --no-cov -k missing_usage_unknown
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21454-ac5
   description: 'AC5 node-side proof: recorded_stream_fixtures. Launcher integration is not claimed.'
@@ -97,7 +97,7 @@ dod_evidence:
   - AC5
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_remote_lane_close_compute -q --no-cov -k recorded_stream_fixtures
+    check_value: uv run pytest tests/nodes/node_remote_lane_close_compute/test_receipt_usage.py -q --no-cov -k recorded_stream_fixtures
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21454-ac6
   description: 'AC6 node-side proof: counter_semantics_recorded_streams. Launcher integration is not claimed.'
@@ -106,7 +106,7 @@ dod_evidence:
   - AC6
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_remote_lane_close_compute -q --no-cov -k counter_semantics_recorded_streams
+    check_value: uv run pytest tests/nodes/node_remote_lane_close_compute/test_receipt_usage.py -q --no-cov -k counter_semantics_recorded_streams
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21454-ac7
   description: 'AC7 node-side proof: attempt_id_in_receipt. Launcher integration is not claimed.'
@@ -115,7 +115,7 @@ dod_evidence:
   - AC7
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_remote_lane_close_compute -q --no-cov -k attempt_id_in_receipt
+    check_value: uv run pytest tests/nodes/node_remote_lane_close_compute/test_receipt_usage.py -q --no-cov -k attempt_id_in_receipt
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21454-deploy-packaged-node
   description: 'Hosted deploy smoke: dispatch both recorded native streams through the packaged close node using
@@ -132,6 +132,9 @@ dod_evidence:
   - AC6
   - AC7
   checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_remote_lane_close_compute/test_usage_runtime_local.py -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
   - check_type: command
     check_value: |
       set -eu;

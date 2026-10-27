@@ -126,13 +126,16 @@ def test_contract_id_in_receipt() -> None:
         "contract_id": "contract-42",
         "attempt_id": "attempt-2",
     }
-    assert "contract_id" not in close()["usage"]
-    assert close()["ledger_cells"] == {}
+    without_identity = close()
+    assert "contract_id" not in without_identity["usage"]
+    assert without_identity["ledger_cells"] == {}
 
 
 def test_attempt_id_in_receipt() -> None:
-    assert close(brief="Attempt: attempt-2\n")["usage"]["attempt_id"] == "attempt-2"
-    assert "attempt_id" not in close()["usage"]
+    result = close(brief="Attempt: attempt-2\n")
+    without_identity = close()
+    assert result["usage"]["attempt_id"] == "attempt-2"
+    assert "attempt_id" not in without_identity["usage"]
 
 
 @pytest.mark.parametrize(
@@ -145,10 +148,8 @@ def test_ambiguous_brief_refused(brief: str) -> None:
 
 
 def test_metadata_in_fences_is_not_a_contract() -> None:
-    assert (
-        close(brief="```\nContract: example\nAttempt: example\n```")["ledger_cells"]
-        == {}
-    )
+    result = close(brief="```\nContract: example\nAttempt: example\n```")
+    assert result["ledger_cells"] == {}
 
 
 @pytest.mark.parametrize("engine", ["claude", "codex"])
