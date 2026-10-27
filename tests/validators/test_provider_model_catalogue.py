@@ -25,8 +25,16 @@ def _catalogue() -> dict[str, Any]:
     return json.loads(FIXTURE.read_text(encoding="utf-8"))
 
 
-def test_all_declared_models_and_defaults_are_listed() -> None:
-    assert not check.find_unlisted_models(_catalogue())
+@pytest.mark.parametrize("withdrawn_still_listed", [True, False])
+def test_all_declared_models_and_defaults_are_listed(
+    withdrawn_still_listed: bool,
+) -> None:
+    payload = _catalogue()
+    if not withdrawn_still_listed:
+        # The provider removed the already-withdrawn model on 2026-10-27.
+        # Its historical presence must not require a live declaration forever.
+        payload["data"] = [row for row in payload["data"] if row["id"] != DEAD_MODEL]
+    assert not check.find_unlisted_models(payload)
 
 
 @pytest.mark.parametrize(
@@ -81,17 +89,10 @@ def test_the_withdrawn_rung_is_unusable_and_not_recommended() -> None:
     """Fails on the old committed config, even though the stale list includes it."""
     assert DEAD_MODEL in check.catalogue_model_ids(_catalogue())
     contract = yaml.safe_load(check.BIFROST_CONTRACT_PATH.read_text())
-    parked = check.declared_backends()[DEAD_BACKEND]
-    assert parked["endpoint_url"] is None
-    assert parked["explicit_pin_only"] is True
+    assert DEAD_BACKEND not in check.declared_backends()
     for rule in contract["routing_rules"]:
-        runnable = [
-            backend
-            for backend in rule["backend_ids"]
-            if check.declared_backends()[backend].get("endpoint_url")
-            and not check.declared_backends()[backend].get("explicit_pin_only")
-        ]
-        assert DEAD_BACKEND not in runnable
+        assert DEAD_BACKEND not in rule["backend_ids"]
+    assert DEAD_BACKEND not in contract["default_backends"]
     tiers = yaml.safe_load(
         (check.BIFROST_CONTRACT_PATH.parent / "routing_tiers.yaml").read_text()
     )
@@ -103,6 +104,24 @@ def test_the_withdrawn_rung_is_unusable_and_not_recommended() -> None:
     for row in catalogue["providers"]:
         if row["provider"] == "openrouter":
             assert DEAD_MODEL not in row["default_models"]
+
+
+def test_retirement_leaves_neutral_packaged_rule_orders() -> None:
+    """Editing a vendor order must not mint another packaged deployment fact."""
+    from omnimarket.enums.enum_deployment_fact_kind import EnumDeploymentFactKind
+    from omnimarket.models.delegation.model_deployment_fact_marker import (
+        ORDER_JOINER,
+        is_neutral,
+    )
+
+    contract = yaml.safe_load(check.BIFROST_CONTRACT_PATH.read_text())
+    orders = [contract["default_backends"]]
+    orders.extend(rule["backend_ids"] for rule in contract["routing_rules"])
+    for order in orders:
+        assert order
+        assert is_neutral(
+            EnumDeploymentFactKind.ROUTING_ORDER, ORDER_JOINER.join(order)
+        )
 
 
 def test_cli_fails_closed_when_catalogue_read_fails(
