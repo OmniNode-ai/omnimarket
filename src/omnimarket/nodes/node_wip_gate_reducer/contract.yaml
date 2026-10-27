@@ -48,6 +48,7 @@ handler:
   module: "omnimarket.nodes.node_wip_gate_reducer.handlers.handler_wip_gate"
   class: "HandlerWipGate"
   input_model: "omnimarket.models.wip_gate.ModelWipGateRequest"
+  output_model: "omnimarket.models.wip_gate.ModelWipGateDecision"
 handler_routing:
   routing_strategy: "operation_match"
   default_handler: "omnimarket.nodes.node_wip_gate_reducer.handlers.handler_wip_gate:HandlerWipGate"
@@ -64,9 +65,15 @@ handler_routing:
       handler:
         name: "HandlerAuditAdmissions"
         module: "omnimarket.nodes.node_wip_gate_reducer.handlers.handler_audit_admissions"
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the fill or brief gate with supplied watcher state and policy.
 descriptor:
   node_archetype: reducer
   purity: pure
+  runtime_profiles: []
   idempotent: true
   timeout_ms: 2000
 replay:
@@ -79,6 +86,7 @@ config:
     reading_max_age_minutes: 10
     override_evidence_minutes: 10
 metadata:
+  transport_type: local
   description: "Admits, warns or refuses a PR-opening dispatch against a repository's WIP limit."
   author: "OmniNode Team"
   license: "MIT"
