@@ -634,14 +634,49 @@ def injected_secret_store(store: ProtocolSecretStore | None) -> Iterator[None]:
         _INJECTED_STORE.reset(token)
 
 
+class _LazyConfiguredSecretStore:
+    """Builds the lane store on the first read, so a command that never resolves a secret in process
+    (the durable route resolves it on the runtime) needs no machine identity (OMN-20275)."""
+
+    def __init__(self, config: ModelSecretResolverConfig) -> None:
+        self._config = config
+        self._store: ProtocolSecretStore | None = None
+
+    def _built(self) -> ProtocolSecretStore:
+        if self._store is None:
+            resolver = SecretResolver(
+                config=self._config,
+                infisical_handler=_lane_infisical_handler(self._config),
+            )
+            self._store = _MappedSecretStore(resolver)
+        return self._store
+
+    async def get_secret(self, key: str) -> str | None:
+        return await self._built().get_secret(key)
+
+    async def set_secret(self, key: str, value: str) -> bool:
+        raise RuntimeError("Lane secret store is read-only")
+
+    async def delete_secret(self, key: str) -> bool:
+        raise RuntimeError("Lane secret store is read-only")
+
+    async def list_keys(self, prefix: str | None = None) -> list[str]:
+        del prefix
+        return []
+
+    async def health_check(self) -> bool:
+        return True
+
+    async def close(self, timeout_seconds: float = 30.0) -> None:
+        del timeout_seconds
+        return
+
+
 def secret_store_from_resolver_config(
     config: ModelSecretResolverConfig,
 ) -> ProtocolSecretStore:
-    """Construct a store from a typed resolver config (the shape a lane overlay declares)."""
-    resolver = SecretResolver(
-        config=config, infisical_handler=_lane_infisical_handler(config)
-    )
-    store: ProtocolSecretStore = _MappedSecretStore(resolver)
+    """A store over a typed resolver config (the shape a lane overlay declares), built on first read."""
+    store: ProtocolSecretStore = _LazyConfiguredSecretStore(config)
     return store
 
 
