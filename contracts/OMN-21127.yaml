@@ -36,6 +36,12 @@ requirements:
           correction, or a span other than the typed one
       - id: "AC4"
         statement: "AC4: a projection behind the requested watermark returns stale with the watermark it reached, never a partial set labelled resolved -- falsifier: resolved with rows missing."
+      - id: "AC3"
+        statement: 'AC3: every entry is labelled "recorded, linked" only when its row carries prompt_id and covers, and "recorded, unlinked" otherwise -- falsifier: an unlinked row labelled linked.'
+      - id: "AC5"
+        statement: 'AC5: an unreachable projection returns unavailable, shown against a positive control in which the same query with the projection up returns rows -- falsifier: an empty resolved result while the projection is down.'
+      - id: "AC6"
+        statement: 'AC6: the node reads no file on the launching host and imports no private workspace package -- falsifier: a file read outside the manifest root in pinned mode, or such an import.'
 evidence_requirements:
   - kind: "tests"
     description: "AC1 and AC2: the ledger source's focused tests."
@@ -84,4 +90,36 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "uv run --locked pytest tests/unit/nodes/node_context_source_ledger_effect/test_ledger_sequence_watermark.py -q -p no:randomly --no-cov -k 'complete_sequence or reached_prefix'"
+        cwd: "${OMNI_HOME}/omnimarket"
+
+  - id: "dod-omn21127-ac3-provenance-label"
+    description: "Both typed prompt_id and covers are required for recorded, linked; missing, empty and prose-only cells remain recorded, unlinked. Forged labels fail validation."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env UV_FROZEN=1 uv run pytest tests/unit/nodes/node_context_source_ledger_effect/test_ledger_provenance.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn21127-ac5-reader-unavailable"
+    description: "An unavailable reader yields unavailable, never resolved, against the existing positive row control. Bus dispatch repeats missing-file and positive cases on both local bindings."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env UV_FROZEN=1 uv run pytest tests/unit/nodes/node_context_source_ledger_effect/test_context_source_ledger.py tests/test_golden_chain_context_source_ledger_pinned.py -q -p no:randomly --no-cov -k 'refusals or contract_dispatch'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn21127-ac6-manifest-root"
+    description: "Pinned configuration requires an absolute manifest root. Parent traversal, external absolute paths, file and directory symlinks, and a replaced file cannot be read. Existing source-import checks remain enforced."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env UV_FROZEN=1 uv run pytest tests/unit/nodes/node_context_source_ledger_effect/test_ledger_pinned_root.py -q -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn21127-deploy-pinned-dispatch"
+    description: "Hosted-runner probe of packaged handler via runtime contract discovery and typed dispatch on in-memory and broker-semantics bindings. It requires full correction output and refuses a manifest escape after a valid prefix without exposing partial entries. The merge base cannot load this pinned binding. No services or credentials required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run --frozen pytest tests/test_golden_chain_context_source_ledger_pinned.py -q -p no:randomly --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"

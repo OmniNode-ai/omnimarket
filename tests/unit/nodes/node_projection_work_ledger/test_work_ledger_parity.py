@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -71,6 +72,9 @@ def test_a_faithful_projection_has_zero_mismatches() -> None:
     file_rows = split_ledger_rows(LEDGER)
     log, state = _project(_canonical(file_rows))
     report = compare(
+        projection_raw_rows={
+            hashlib.sha256(raw.encode()).hexdigest(): raw for raw in file_rows
+        },
         file_rows=file_rows,
         projection_rows=log,
         projection_state=state,
@@ -90,6 +94,9 @@ def test_a_row_deleted_from_the_projection_is_named() -> None:
     lost = next(k for k in log if k)
     del log[lost]
     report = compare(
+        projection_raw_rows={
+            hashlib.sha256(raw.encode()).hexdigest(): raw for raw in file_rows
+        },
         file_rows=file_rows,
         projection_rows=log,
         projection_state=state,
@@ -107,6 +114,9 @@ def test_a_row_only_in_the_projection_is_named() -> None:
     log, state = _project(_canonical(file_rows))
     log["f" * 64] = "2026-09-28T12:00:00Z"
     report = compare(
+        projection_raw_rows={
+            hashlib.sha256(raw.encode()).hexdigest(): raw for raw in file_rows
+        },
         file_rows=file_rows,
         projection_rows=log,
         projection_state=state,
@@ -123,6 +133,9 @@ def test_a_wrong_close_time_is_a_state_mismatch() -> None:
     log, state = _project(_canonical(file_rows))
     state["claim:alpha"]["closed_at"] = datetime(2026, 9, 28, 10, 45, tzinfo=UTC)
     report = compare(
+        projection_raw_rows={
+            hashlib.sha256(raw.encode()).hexdigest(): raw for raw in file_rows
+        },
         file_rows=file_rows,
         projection_rows=log,
         projection_state=state,
@@ -136,7 +149,14 @@ def test_a_wrong_close_time_is_a_state_mismatch() -> None:
 
 def test_an_empty_window_is_not_parity() -> None:
     report = compare(
-        file_rows=[], projection_rows={}, projection_state={}, since=SINCE, until=UNTIL
+        projection_raw_rows={
+            hashlib.sha256(raw.encode()).hexdigest(): raw for raw in []
+        },
+        file_rows=[],
+        projection_rows={},
+        projection_state={},
+        since=SINCE,
+        until=UNTIL,
     )
     assert report.exact is False
 
@@ -152,7 +172,18 @@ def test_cli_exit_codes_and_typed_json(
     export.write_text(
         json.dumps(
             {
-                "rows": [{"row_id": k, "row_ts": v} for k, v in log.items()],
+                "rows": [
+                    {
+                        "row_id": k,
+                        "row_ts": v,
+                        "raw_row": next(
+                            raw
+                            for raw in _canonical(file_rows)
+                            if hashlib.sha256(raw.encode()).hexdigest() == k
+                        ),
+                    }
+                    for k, v in log.items()
+                ],
                 "state": [
                     {
                         "entity_key": k,

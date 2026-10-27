@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -63,6 +64,9 @@ def _project(rows: list[str]) -> tuple[dict[str, str], dict[str, dict[str, Any]]
 def test_later_claim_and_terminal_are_folded_for_historical_parity() -> None:
     log, state = _project(ROWS)
     report = compare(
+        projection_raw_rows={
+            hashlib.sha256(raw.encode()).hexdigest(): raw for raw in ROWS
+        },
         file_rows=ROWS,
         projection_rows=log,
         projection_state=state,
@@ -77,6 +81,9 @@ def test_later_claim_and_terminal_are_folded_for_historical_parity() -> None:
     assert report.state_entities_compared == 1
 
     historical = compare(
+        projection_raw_rows={
+            hashlib.sha256(raw.encode()).hexdigest(): raw for raw in ROWS
+        },
         file_rows=ROWS,
         projection_rows=log,
         projection_state=state,
@@ -91,6 +98,9 @@ def test_later_claim_and_terminal_are_folded_for_historical_parity() -> None:
 
     _, old_state = _project(ROWS[:2])
     stale = compare(
+        projection_raw_rows={
+            hashlib.sha256(raw.encode()).hexdigest(): raw for raw in ROWS
+        },
         file_rows=ROWS,
         projection_rows=log,
         projection_state=old_state,
@@ -116,6 +126,9 @@ def test_projection_later_than_file_is_counted_apart(
     log, state = _project([*ROWS, *later_rows])
     state[KEY]["closed_at"] = closed_at
     report = compare(
+        projection_raw_rows={
+            hashlib.sha256(raw.encode()).hexdigest(): raw for raw in ROWS
+        },
         file_rows=ROWS,
         projection_rows=log,
         projection_state=state,
@@ -149,6 +162,9 @@ def test_later_close_without_matching_row_evidence_is_a_mismatch(evidence: str) 
         state[KEY]["closed_row_id"] = file_row_id
         later_rows = {file_row_id: "2026-10-25T01:00:00Z"}
     report = compare(
+        projection_raw_rows={
+            hashlib.sha256(raw.encode()).hexdigest(): raw for raw in ROWS
+        },
         file_rows=ROWS,
         projection_rows=log,
         projection_state=state,
@@ -177,6 +193,9 @@ def test_wrong_close_time_within_horizon_is_still_a_mismatch(
     log, state = _project(ROWS)
     state[KEY]["closed_at"] = closed_at
     report = compare(
+        projection_raw_rows={
+            hashlib.sha256(raw.encode()).hexdigest(): raw for raw in ROWS
+        },
         file_rows=ROWS,
         projection_rows=log,
         projection_state=state,
@@ -193,6 +212,9 @@ def test_wrong_close_time_within_horizon_is_still_a_mismatch(
 def test_missing_entity_is_still_a_mismatch() -> None:
     log, _ = _project(ROWS)
     report = compare(
+        projection_raw_rows={
+            hashlib.sha256(raw.encode()).hexdigest(): raw for raw in ROWS
+        },
         file_rows=ROWS,
         projection_rows=log,
         projection_state={},
@@ -223,6 +245,9 @@ def test_only_window_entities_are_compared_and_unemittable_counts_stay_in_window
         ]
     )
     report = compare(
+        projection_raw_rows={
+            hashlib.sha256(raw.encode()).hexdigest(): raw for raw in rows
+        },
         file_rows=rows,
         projection_rows=log,
         projection_state=state,
@@ -244,6 +269,9 @@ def test_ack_after_window_advances_the_message_state() -> None:
     ]
     log, state = _project(rows)
     report = compare(
+        projection_raw_rows={
+            hashlib.sha256(raw.encode()).hexdigest(): raw for raw in rows
+        },
         file_rows=rows,
         projection_rows=log,
         projection_state=state,
@@ -261,6 +289,9 @@ def test_default_horizon_uses_maximum_timestamp_in_file_order() -> None:
     assert file_horizon(rows, UNTIL) == HORIZON
     log, state = _project(rows)
     report = compare(
+        projection_raw_rows={
+            hashlib.sha256(raw.encode()).hexdigest(): raw for raw in rows
+        },
         file_rows=rows,
         projection_rows=log,
         projection_state=state,
@@ -274,7 +305,12 @@ def test_default_horizon_uses_maximum_timestamp_in_file_order() -> None:
 def test_empty_file_defaults_horizon_to_until() -> None:
     assert file_horizon([], UNTIL) == UNTIL
     report = compare(
-        file_rows=[], projection_rows={}, projection_state={}, since=SINCE, until=UNTIL
+        projection_raw_rows={},
+        file_rows=[],
+        projection_rows={},
+        projection_state={},
+        since=SINCE,
+        until=UNTIL,
     )
     assert report.state_horizon == UNTIL
     assert report.state_after_horizon == ()
@@ -285,6 +321,9 @@ def test_after_horizon_exclusion_applies_only_to_the_later_field() -> None:
     log, state = _project([*ROWS, *LATER_ROWS[1:]])
     state[KEY]["opened_at"] = SINCE
     report = compare(
+        projection_raw_rows={
+            hashlib.sha256(raw.encode()).hexdigest(): raw for raw in ROWS
+        },
         file_rows=ROWS,
         projection_rows=log,
         projection_state=state,
@@ -307,6 +346,9 @@ def test_after_horizon_keys_are_unique_and_sorted() -> None:
     ]
     log, state = _project([*rows, *later_rows])
     report = compare(
+        projection_raw_rows={
+            hashlib.sha256(raw.encode()).hexdigest(): raw for raw in rows
+        },
         file_rows=rows,
         projection_rows=log,
         projection_state=state,
@@ -322,6 +364,9 @@ def test_wrong_timestamp_equal_to_horizon_is_not_excluded() -> None:
     log, state = _project(ROWS)
     state[KEY]["opened_at"] = HORIZON
     report = compare(
+        projection_raw_rows={
+            hashlib.sha256(raw.encode()).hexdigest(): raw for raw in ROWS
+        },
         file_rows=ROWS,
         projection_rows=log,
         projection_state=state,
@@ -357,7 +402,16 @@ def test_cli_reports_after_horizon_count_and_accepts_explicit_horizon(
         json.dumps(
             {
                 "rows": [
-                    {"row_id": key, "row_ts": value} for key, value in log.items()
+                    {
+                        "row_id": key,
+                        "row_ts": value,
+                        "raw_row": next(
+                            raw
+                            for raw in [*ROWS, *LATER_ROWS]
+                            if hashlib.sha256(raw.encode()).hexdigest() == key
+                        ),
+                    }
+                    for key, value in log.items()
                 ],
                 "state": [{"entity_key": key, **value} for key, value in state.items()],
             },

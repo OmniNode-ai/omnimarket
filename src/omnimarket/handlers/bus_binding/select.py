@@ -11,7 +11,7 @@ The lane declaration (``config/lab/ci_bus_lanes.yaml`` in the workspace config o
     resolves the secrets the durable runtime resolves.
 
 A client command opens the durable bus under a bounded health read. When the read fails the binding
-degrades to the in-memory bus (state DEGRADED in the binding FSM), a decision row goes to the
+degrades to the in-memory bus (state DEGRADED in the binding FSM), an orchestrator exception goes to the
 exception queue once per episode as the alarm, and a tick line names the binding. The next command that
 finds the durable bus healthy moves RECOVERING then HEALTHY on its own and the caller replays its outbox.
 Serve processes never come here: they stay on the durable bus or fail.
@@ -43,6 +43,8 @@ from omnimarket.delegated_test_loop.lane_bus import (
     LabRunBusError,
     open_lab_run_bus,
 )
+from omnimarket.handlers.bus_binding import outbox, recovery
+from omnimarket.handlers.bus_binding.recovery import ALARM_CLASS, raise_alarm
 from omnimarket.handlers.bus_binding.reducer import reduce_binding_state
 from omnimarket.inference.secret_store_resolver import (
     injected_secret_store,
@@ -56,7 +58,6 @@ from omnimarket.models.bus_binding import (
 )
 
 HEALTH_READ_TIMEOUT_S: Final[float] = 8.0
-ALARM_CLASS: Final[str] = "bus-binding-degraded"
 _FAILURES: Final = (LabRunBusError, InfraConnectionError, TimeoutError, OSError)
 
 OpenBus = Callable[
@@ -170,53 +171,15 @@ def read_state(state_dir: Path, lane: str) -> EnumBusBindingState:
         return EnumBusBindingState.HEALTHY
 
 
-def _write_state(
-    state_dir: Path, decision: ModelBusBindingDecision, *, since: str | None = None
-) -> None:
-    path = _state_path(state_dir, decision.lane)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    body = {
-        "lane": decision.lane,
-        "state": decision.state.value,
-        "binding": decision.binding.value,
-        "reason": decision.reason,
-        "observed_at": decision.observed_at.isoformat(),
-        "since": since or decision.observed_at.isoformat(),
-    }
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(body, sort_keys=True), encoding="utf-8")
-    tmp.replace(path)
-
-
-def raise_alarm(state_dir: Path, decision: ModelBusBindingDecision) -> str:
-    """One decision row on the exception queue for the episode; the same open key is the same case."""
-    from omnimarket.nodes.node_exception_queue_effect.handler import (
-        HandlerExceptionEmit,
-    )
-    from omnimarket.nodes.node_exception_queue_effect.models import (
-        ModelExceptionEmitRequest,
-        ModelExceptionRow,
-    )
-
-    result = HandlerExceptionEmit().handle(
-        ModelExceptionEmitRequest(
-            state_dir=state_dir / "exception-queue",
-            row=ModelExceptionRow(
-                cls=ALARM_CLASS,
-                key=f"lane={decision.lane}",
-                source="omnimarket.handlers.bus_binding",
-                evidence=f"durable bus health read failed: {decision.reason}",
-                tried="fell back to the in-memory event bus; ledger appends queue to the local outbox",
-                proposed_fix=(
-                    "restore the durable broker; the binding recovers on its own and replays "
-                    "the outbox on the next healthy command"
-                ),
-                decision=True,
-            ),
-            now=decision.observed_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        )
-    )
-    return f"{result.status}:{result.id}"
+async def replay_outbox(
+    bound: BoundBus, state_dir: Path, send: outbox.Sender, *, limit: int = 50
+) -> outbox.DrainResult:
+    """Replay under a healthy binding and close its episode only on complete recovery."""
+    if bound.decision.binding is not EnumBusBinding.DURABLE or bound.decision.degraded:
+        raise LabRunBusError("outbox replay requires a healthy durable binding")
+    result = await outbox.drain(state_dir, send, limit=limit)
+    recovery.record_replay(state_dir, bound.decision, result)
+    return result
 
 
 async def _health_read(
@@ -302,7 +265,7 @@ async def open_bound_bus(
                 observed_at=stamp,
                 pending_outbox=pending_outbox(),
             )
-            _write_state(directory, decision)
+            recovery.observe(directory, decision)
             say(decision.tick_line())
             if durable is not None:
                 if prior is not EnumBusBindingState.HEALTHY:
@@ -310,13 +273,17 @@ async def open_bound_bus(
                         f"bus-binding lane={lane} RECOVERY {prior.value}->{state.value}"
                     )
                 yield BoundBus(durable, decision)
+                recovery.resolve_if_recovered(directory, decision)
                 return
             if EnumBusBinding.INMEMORY not in order.fallback:
                 raise LabRunBusError(
                     f"durable bus unavailable and no fallback: {reason}"
                 )
+            alarm = raise_alarm(directory, decision)
             if prior is not EnumBusBindingState.DEGRADED:
-                say(f"bus-binding lane={lane} ALARM {raise_alarm(directory, decision)}")
+                say(f"bus-binding lane={lane} ALARM {alarm}")
+            if escalation := recovery.escalate_if_overdue(directory, decision):
+                say(f"bus-binding lane={lane} ESCALATION {escalation}")
             memory = await stack.enter_async_context(
                 opener("inmemory", None, None, None)
             )
@@ -344,4 +311,5 @@ __all__ = [
     "open_bound_bus",
     "raise_alarm",
     "read_state",
+    "replay_outbox",
 ]

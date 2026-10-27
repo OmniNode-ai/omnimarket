@@ -60,6 +60,7 @@ from omnimarket.models.model_work_ledger_fold_result import (
 from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_context_source_ledger_effect.handlers.ledger_row_reader import (
     LedgerSourceReadError,
+    MarkdownLedgerRowReader,
     ModelLedgerSourceRow,
     PostgresLedgerRowReader,
     ProtocolLedgerRowReader,
@@ -73,6 +74,7 @@ from omnimarket.nodes.node_context_source_ledger_effect.models.model_ledger_sour
     ModelLedgerCorrection,
     ModelLedgerSourceEntry,
     ModelLedgerSourceResult,
+    ledger_provenance_label,
 )
 
 _CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
@@ -126,9 +128,18 @@ class HandlerContextSourceLedger:
         self._tenant_ids = frozenset(
             tenant_ids if tenant_ids is not None else binding.tenant_ids
         )
-        self._reader = (
-            reader if reader is not None else PostgresLedgerRowReader(binding)
-        )
+        self._reader: ProtocolLedgerRowReader
+        if reader is not None:
+            self._reader = reader
+        elif binding.mode == "pinned":
+            # The binding model has already required an absolute manifest root.
+            assert binding.manifest_root is not None
+            self._reader = MarkdownLedgerRowReader(
+                [Path(path) for path in binding.ledger_paths],
+                manifest_root=Path(binding.manifest_root),
+            )
+        else:
+            self._reader = PostgresLedgerRowReader(binding)
         self._fold_memo = (
             fold_memo if fold_memo is not None else SHARED_WORK_LEDGER_FOLD_MEMO
         )
@@ -355,6 +366,7 @@ class HandlerContextSourceLedger:
             operator_words=operator_words,
             recorded_framing=framing,
             framing_label=label,
+            provenance_label=ledger_provenance_label(text),
         )
 
 

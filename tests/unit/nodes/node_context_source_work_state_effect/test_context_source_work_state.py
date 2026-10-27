@@ -84,7 +84,7 @@ ROWS = (
 def _ledger(tmp_path: Path, rows: tuple[str, ...] = ROWS) -> MarkdownLedgerRowReader:
     path = tmp_path / "ROLLING_WORK_LEDGER.md"
     path.write_text("# ledger\n\n" + "\n".join(rows) + "\n", encoding="utf-8")
-    return MarkdownLedgerRowReader([path])
+    return MarkdownLedgerRowReader([path], manifest_root=tmp_path)
 
 
 def _handler(
