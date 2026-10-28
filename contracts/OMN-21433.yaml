@@ -1,12 +1,14 @@
 schema_version: 1.0.0
 ticket_id: OMN-21433
-title: A delegation routing test leaves the routing handler's tier ladder bound, so the escalation test
-  after it in the same CI shard reads the wrong ladder
+title: Two tests fail by file order or timing on a loaded runner, so omnimarket Tests (Split 18/20) and Tests (Split 4/20)
+  go red on PRs that touch neither
 summary: test_delegation_refusal_reads_overlay routes through the handler, which binds the handler's
   process-global tier ladder and task-class contract cache. The test cleared only the bifrost endpoint
   cache, so test_cloud_escalation_omn13140 read cheap_cloud where it expected cheap_frontier whenever
   the shard planner dealt the two files to one shard in that order. The test now forgets all three
-  globals on setup and teardown.
+  globals on setup and teardown. The ledger reconcile contention test patched time.sleep for the whole
+  process, so the poll that subprocess.run makes while a child is slow to exit landed in its list of
+  backoff sleeps; the test now gives the adapter module its own stand-in time.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -23,6 +25,10 @@ requirements:
     statement: 'AC2: a focused test runs the two files in that order and fails on the tree without the
       fix -- falsifier: uv run pytest tests/unit/delegation/test_routing_globals_isolated_omn21433.py
       with the fix reverted exits non-zero'
+  - id: AC3
+    statement: 'AC3: a writer that closes its pipes and lingers does not add a polling sleep to the
+      recorded backoff -- falsifier: uv run pytest tests/nodes/node_ledger_reconcile_effect/test_local_adapters_ledger_reconcile_effect.py
+      -k slow_to_exit fails with [0.001, 0.002, ...] when the test patches time.sleep globally'
 evidence_requirements:
 - kind: tests
   description: Order isolation test.
@@ -49,4 +55,13 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/delegation/test_routing_globals_isolated_omn21433.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21433-ac3
+  description: AC3 bound to the ledger reconcile backoff tests.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_ledger_reconcile_effect/test_local_adapters_ledger_reconcile_effect.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
