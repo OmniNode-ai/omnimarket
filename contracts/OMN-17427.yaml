@@ -4082,3 +4082,10 @@ dod_evidence:
           uv build --wheel --out-dir "$probe_dir"
           uv run --no-project --with "$probe_dir"/*.whl python "$PWD/tests/ci/probe_ruling_drift_artifact.py"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-pr4543-rebuild-trigger-pin"
+    description: "The rebuild-trigger caller pins the omnibase_infra reusable workflow at the descendant that carries the arch-amd64 runner label and no longer names the old pin. The merge base still names the old pin, so the check fails there."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -q 'runtime-rebuild-trigger-reusable.yml@28a9da0e596ad834f06e8a3bd2549409e7b1aaca' .github/workflows/runtime-rebuild-trigger.yml && ! grep -q 'runtime-rebuild-trigger-reusable.yml@cb5c0cfd' .github/workflows/runtime-rebuild-trigger.yml"
+        cwd: "${OMNI_HOME}/omnimarket"
