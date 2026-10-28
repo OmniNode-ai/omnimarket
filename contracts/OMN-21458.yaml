@@ -1,0 +1,51 @@
+schema_version: 1.0.0
+ticket_id: OMN-21458
+title: 'T-S12: typed lane brief model and parser'
+summary: 'New COMPUTE node node_lane_brief_parse_compute (operation parse_lane_brief) and ModelLaneBrief in omnimarket.models.lane_brief,
+  parsed from a brief''s column-zero metadata lines, plus the contract of the brief gate orchestrator
+  node_lane_brief_gate_orchestrator with the parse node as its first edge. A missing or prose Required engine line
+  refuses the brief and names the line.'
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn21458-typed-brief
+  statement: A brief parses to a typed model, and a missing or prose engine line is refused by name.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: A brief with a missing or prose engine line fails the model and names the line -- falsifier: uv run pytest tests/nodes/node_lane_brief_parse_compute/test_parse_lane_brief.py'
+  - id: AC2
+    statement: 'AC2: The parser reads the briefs the assemble operation produces in its existing golden fixtures without change -- falsifier: uv run pytest case over those fixtures in tests/nodes/node_lane_brief_parse_compute'
+  - id: AC3
+    statement: 'AC3: Configuration: introduces no configured value; the request carries facts only -- falsifier: uv run pytest test asserting no field of the request or result models is named in the register of section 0c'
+  - id: AC4
+    statement: 'AC4: Bindings: depends on no protocol (it takes facts and now) -- falsifier: uv run pytest parity run (T-B2) gives byte-identical results in process and through the local in-process entry, and the conformance check (T-B1) fails if a protocol_dependencies entry appears in its contract'
+evidence_requirements:
+- kind: tests
+  description: Parse node and brief gate orchestrator tests.
+  command: uv run pytest tests/nodes/node_lane_brief_parse_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21458-parse-tests
+  description: 'Focused tests: engine line missing, empty, repeated or prose refuses and names the line; the briefs the assemble operation produces parse; request fields are facts only; the contract carries no protocol_dependencies; in-process and gate-routed results are byte-identical.'
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lane_brief_parse_compute -q --no-cov
+    cwd: .
+- id: dod-omn21458-deploy-parse-tests
+  description: 'Hosted deploy check: the focused tests run from the checked-out package with no credentials, network, broker or lab service.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lane_brief_parse_compute -q --no-cov
+    cwd: .
