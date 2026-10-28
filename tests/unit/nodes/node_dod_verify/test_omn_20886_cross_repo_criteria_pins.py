@@ -71,6 +71,8 @@ def _contract(ticket: str, item_id: str, labels: list[str]) -> str:
                         {
                             "label": label,
                             "criterion_hash": criterion_hash(_TEXT[label]),
+                            "proposed_by": "lane-author",
+                            "accepted_by": "lane-reviewer",
                         }
                         for label in labels
                     ],
