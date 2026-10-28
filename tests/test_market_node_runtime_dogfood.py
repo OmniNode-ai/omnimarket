@@ -369,7 +369,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # so it is experimental with no handler_routing: 24 -> 25.
     # node_adoption_recovery_effect is called in process by the throughput tick with an
     # injected launcher, so it is experimental with no handler_routing: 25 -> 26.
-    assert summary["skipped"] == 26
+    # node_seam_read_orchestrator is a graph contract only until its handler lands, so it is
+    # experimental with no handler_routing: 26 -> 27.
+    assert summary["skipped"] == 27
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {

@@ -1,0 +1,131 @@
+workflow_coordination:
+  workflow_definition:
+    workflow_metadata:
+      workflow_name: factory_line_seam_read
+      workflow_version: {major: 1, minor: 0, patch: 0}
+      description: Read every seam of the factory line from backlog to running, in line order.
+    execution_graph:
+      nodes:
+      - {node_id: backlog, node_type: EFFECT_GENERIC, description: Backlog (source)}
+      - node_id: sm_00_backlog_to_fill
+        node_type: COMPUTE_GENERIC
+        description: SM-00 backlog to fill
+        depends_on: [backlog]
+        step_config: {operation: classify_sm_00, gap: GAP-1}
+      - node_id: st01_fill
+        node_type: EFFECT_GENERIC
+        description: St1 Fill
+        depends_on: [sm_00_backlog_to_fill]
+      - node_id: sm_01_fill_to_brief
+        node_type: COMPUTE_GENERIC
+        description: SM-01 fill to brief
+        depends_on: [st01_fill]
+        step_config: {operation: classify_sm_01, shape: ModelIdleSlotFillResult, gap: GAP-2}
+      - node_id: st02_brief
+        node_type: EFFECT_GENERIC
+        description: St2 Brief
+        depends_on: [sm_01_fill_to_brief]
+      - node_id: sm_02_brief_to_runner
+        node_type: COMPUTE_GENERIC
+        description: SM-02 brief to runner
+        depends_on: [st02_brief]
+        step_config: {operation: classify_sm_02, shape: ModelWorkLedgerAppendRequest, gap: GAP-3}
+      - node_id: st03_runner
+        node_type: EFFECT_GENERIC
+        description: St3 Runner
+        depends_on: [sm_02_brief_to_runner]
+      - node_id: sm_03_runner_to_placement
+        node_type: COMPUTE_GENERIC
+        description: SM-03 runner to placement
+        depends_on: [st03_runner]
+        step_config: {operation: classify_sm_03, shape: ModelRemoteLanePlacementRequest, gap: GAP-4, bound_minutes: 5}
+      - node_id: st04_placement
+        node_type: EFFECT_GENERIC
+        description: St4 Placement
+        depends_on: [sm_03_runner_to_placement]
+      - node_id: sm_04_placement_to_lane_run
+        node_type: COMPUTE_GENERIC
+        description: SM-04 placement to lane run
+        depends_on: [st04_placement]
+        step_config: {operation: classify_sm_04, shape: ModelCodexSandboxProbeRequest, bound_minutes: 5}
+      - node_id: st05_lane_run
+        node_type: EFFECT_GENERIC
+        description: St5 Lane run
+        depends_on: [sm_04_placement_to_lane_run]
+      - node_id: sm_05_lane_run_to_commit
+        node_type: COMPUTE_GENERIC
+        description: SM-05 lane run to commit and push
+        depends_on: [st05_lane_run]
+        step_config: {operation: classify_sm_05, gap: GAP-5}
+      - node_id: st06_commit_push
+        node_type: EFFECT_GENERIC
+        description: St6 Commit and push
+        depends_on: [sm_05_lane_run_to_commit]
+      - node_id: sm_06_commit_to_handoff
+        node_type: COMPUTE_GENERIC
+        description: SM-06 commit and push to handoff
+        depends_on: [st06_commit_push]
+        step_config: {operation: classify_sm_06, shape: ModelPrHandoffDecisionRequest, bound_minutes: 30}
+      - node_id: st07_handoff
+        node_type: EFFECT_GENERIC
+        description: St7 Handoff
+        depends_on: [sm_06_commit_to_handoff]
+      - node_id: sm_07_handoff_to_controller
+        node_type: COMPUTE_GENERIC
+        description: SM-07 handoff to controller
+        depends_on: [st07_handoff]
+        step_config: {operation: classify_sm_07, shape: ModelWorkLedgerAppendRequest, gap: GAP-6, bound_minutes: 60}
+      - node_id: st08_landing_controller
+        node_type: EFFECT_GENERIC
+        description: St8 Landing controller
+        depends_on: [sm_07_handoff_to_controller]
+      - node_id: sm_08_controller_to_ci
+        node_type: COMPUTE_GENERIC
+        description: SM-08 controller to CI
+        depends_on: [st08_landing_controller]
+        step_config: {operation: classify_sm_08, shape: ModelLandingFacts}
+      - node_id: st09_ci
+        node_type: EFFECT_GENERIC
+        description: St9 CI
+        depends_on: [sm_08_controller_to_ci]
+      - node_id: sm_09_ci_to_merge
+        node_type: COMPUTE_GENERIC
+        description: SM-09 CI to merge
+        depends_on: [st09_ci]
+        step_config: {operation: classify_sm_09, shape: ModelLandingDecision, gap: GAP-10, bound_minutes: 30}
+      - node_id: st10_merge
+        node_type: EFFECT_GENERIC
+        description: St10 Merge
+        depends_on: [sm_09_ci_to_merge]
+      - node_id: sm_10_merge_to_release
+        node_type: COMPUTE_GENERIC
+        description: SM-10 merge to release
+        depends_on: [st10_merge]
+        step_config: {operation: classify_sm_10, shape: ModelPluginBumpStuckRequest, gap: GAP-7, bound_minutes: 90}
+      - node_id: st11_plugin_bump_release
+        node_type: EFFECT_GENERIC
+        description: St11 Plugin bump and release
+        depends_on: [sm_10_merge_to_release]
+      - node_id: sm_11_release_to_deploy
+        node_type: COMPUTE_GENERIC
+        description: SM-11 release to deploy
+        depends_on: [st11_plugin_bump_release]
+        step_config: {operation: classify_sm_11, gap: GAP-8, bound_minutes: 90}
+      - node_id: st12_deploy
+        node_type: EFFECT_GENERIC
+        description: St12 Deploy
+        depends_on: [sm_11_release_to_deploy]
+      - node_id: sm_12_deploy_to_adoption
+        node_type: COMPUTE_GENERIC
+        description: SM-12 deploy to adoption
+        depends_on: [st12_deploy]
+        step_config: {operation: classify_sm_12, shape: ModelAdoptionRecoveryRequest, bound_from: node_adoption_recovery_effect/stale_minutes}
+      - node_id: st13_adoption_running
+        node_type: EFFECT_GENERIC
+        description: St13 Adoption and running
+        depends_on: [sm_12_deploy_to_adoption]
+      - node_id: sm_13_adoption_to_running
+        node_type: COMPUTE_GENERIC
+        description: SM-13 adoption to running
+        depends_on: [st13_adoption_running]
+        step_config: {operation: classify_sm_13, shape: decide_running_vs_merged, bound_minutes: 60}
