@@ -82,7 +82,7 @@ dod_evidence:
   - AC5
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_remote_lane_compute tests/nodes/node_idle_slot_fill_effect/test_backlog_item_model.py -q --no-cov --tb=line -k "ladder or fixture_contract"
+    check_value: uv run pytest tests/nodes/node_remote_lane_compute/test_engine_ladder_contract.py tests/nodes/node_remote_lane_compute/test_engine_ladder_remote_lane_compute.py tests/nodes/node_idle_slot_fill_effect/test_backlog_item_model.py -q --no-cov --tb=line -k "ladder or fixture_contract"
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21475-ac6
   description: AC6 bound to its test.
