@@ -60,7 +60,10 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_contract_diagram_compute -q --no-cov -k 'fixture_copy or golden_diagram or seven_state_machines'
+    check_value: uv run pytest tests/nodes/node_contract_diagram_compute/test_check_document_diagrams.py -q --no-cov -k 'fixture_copy or seven_state_machines'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_contract_diagram_compute/test_render_contract_diagram.py -q --no-cov -k 'golden_diagram'
     cwd: .
 - id: dod-omn21476-ac4-missing-halves
   description: 'AC4: a diagram with no fragment and a fragment with no diagram each fail.'
