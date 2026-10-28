@@ -1,0 +1,129 @@
+schema_version: 1.0.0
+ticket_id: OMN-21460
+title: 'T-P1: design record checker and design process reducer'
+summary: 'Two new nodes: node_design_record_check_compute (R9 checker) and node_design_process_reducer (section 4.3 state
+  machine). Pure; no protocol dependencies.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-design-process
+  statement: R9 checker and design process reducer nodes.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: A design record with an empty failure-mode table is refused naming the missing part -- falsifier: the
+      pytest case in test_check_design_record.py'
+  - id: AC2
+    statement: 'AC2: A row with no detector and no GAP mark is refused -- falsifier: the pytest case in test_check_design_record.py'
+  - id: AC3
+    statement: 'AC3: Section 11.3 of the plan passes the checker -- falsifier: the pytest case over the text of that section,
+      kept as a fixture'
+  - id: AC4
+    statement: 'AC4: Any issue sets exit_code nonzero, so a caller that runs the node cannot report a plan with a defect --
+      falsifier: the pytest case on exit_code'
+  - id: AC5
+    statement: 'AC5: The reducer state_machine equals the fragment of section 4.3, passes analyze_fsm, and a record cannot
+      reach done without a healthy readback -- falsifier: the fixture-copy comparison test and the pytest case through core
+      execute_transition'
+  - id: AC6
+    statement: 'AC6: Severity levels are config.design_process.severity_levels (1, 2, 3) -- falsifier: the pytest case where
+      a row with severity 4 is refused under the committed contract and accepted under a fixture contract listing 1 to 4'
+  - id: AC7
+    statement: 'AC7: The nodes depend on no protocol (they take facts and now) -- falsifier: the pytest parity run gives byte-identical
+      results in process and through the local in-process entry, and the conformance check fails if a protocol_dependencies
+      entry appears in either contract'
+evidence_requirements:
+- kind: tests
+  description: Focused node tests.
+  command: uv run pytest tests/nodes/node_design_record_check_compute/test_check_design_record.py tests/nodes/node_design_process_reducer/test_design_process_fsm.py
+    -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21460-ac1
+  description: AC1 falsifier test passes.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_design_record_check_compute/test_check_design_record.py -q --no-cov --tb=line
+      -k empty_failure_mode_table
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21460-ac2
+  description: AC2 falsifier test passes.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_design_record_check_compute/test_check_design_record.py -q --no-cov --tb=line
+      -k no_detector_and_no_gap
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21460-ac3
+  description: AC3 falsifier test passes.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_design_record_check_compute/test_check_design_record.py -q --no-cov --tb=line
+      -k section_11_3
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21460-ac4
+  description: AC4 falsifier test passes.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_design_record_check_compute/test_check_design_record.py -q --no-cov --tb=line
+      -k exit_code
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21460-ac5
+  description: AC5 falsifier test passes.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_design_process_reducer/test_design_process_fsm.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21460-ac6
+  description: AC6 falsifier test passes.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_design_record_check_compute/test_check_design_record.py -q --no-cov --tb=line
+      -k severity
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21460-ac7
+  description: AC7 falsifier test passes.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_design_record_check_compute/test_check_design_record.py tests/nodes/node_design_process_reducer/test_design_process_fsm.py
+      -q --no-cov --tb=line -k 'protocol or byte_identical'
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21460-deploy
+  description: 'Hosted deploy check: both nodes'' focused tests run on the hosted runner with no live dependency.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_design_record_check_compute/test_check_design_record.py tests/nodes/node_design_process_reducer/test_design_process_fsm.py
+      -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21460-deploy-probe
+  description: 'Deploy probe: the design process reducer handler read from GitHub at the checked-out commit defines class HandlerDesignProcess. The merge base lacks the file, so the probe fails there.'
+  source: manual
+  execution_scope: hosted_and_local
+  checks:
+  - check_type: command
+    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_design_process_reducer/handlers/handler_design_process.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerDesignProcess'
+    cwd: ${OMNI_HOME}/omnimarket

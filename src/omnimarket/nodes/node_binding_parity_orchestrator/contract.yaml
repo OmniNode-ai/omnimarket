@@ -1,0 +1,132 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Binding Parity Orchestrator
+#
+# Run one scenario under the baseline profile and under every other profile the factory_bindings
+# overlay lists, then compare the semantic projection of the runs (verdicts, finding lines, rows
+# written and counts, with the provenance fields removed). The execution_graph below is the
+# binding-layers graph of the factory design; the handler walks it in dependency order and
+# dispatches each node by its step_config.operation, reading the raw mapping beside the
+# structural validation because the graph model drops step_config on load. A node with no
+# operation is a declared endpoint.
+#
+# Operation run_parity takes facts only: the scenario, the loaded overlay and a fixed clock.
+# The profile ids, which one is the baseline and each profile's bindings are overlay values.
+# The local entry (handlers/handler_run_local.py) runs one operation of any packaged node on the
+# container's in-memory bus; its topics and wait are config.run_local below.
+name: node_binding_parity_orchestrator
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: orchestrator
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+lifecycle: experimental
+description: >
+  Run one scenario under the baseline binding profile and under every other profile of the
+  factory_bindings overlay, and compare the semantic projection of the runs. The comparison names
+  the first difference: a verdict, a finding line, a row's content or order, a missing row or a
+  count. It refuses, naming the overlay key, when the overlay lists no baseline or no other profile.
+input_model:
+  name: ModelParityRequest
+  module: omnimarket.nodes.node_binding_parity_orchestrator.models.model_parity
+  description: The scenario, the loaded factory_bindings overlay and the fixed clock.
+output_model:
+  name: ModelParityResult
+  module: omnimarket.nodes.node_binding_parity_orchestrator.models.model_parity
+  description: Each profile's run, the comparison, the first difference and the graph steps walked.
+handler:
+  module: omnimarket.nodes.node_binding_parity_orchestrator.handlers.handler_parity_run
+  class: HandlerParityRun
+  input_model: omnimarket.nodes.node_binding_parity_orchestrator.models.model_parity.ModelParityRequest
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_binding_parity_orchestrator.handlers.handler_parity_run:HandlerParityRun
+  handlers:
+  - operation: run_parity
+    handler:
+      name: HandlerParityRun
+      module: omnimarket.nodes.node_binding_parity_orchestrator.handlers.handler_parity_run
+    input_model: omnimarket.nodes.node_binding_parity_orchestrator.models.model_parity.ModelParityRequest
+    output_model: omnimarket.nodes.node_binding_parity_orchestrator.models.model_parity.ModelParityResult
+protocol_dependencies:
+- name: ProtocolEventBus
+  protocol: omnibase_core.protocols.event_bus.protocol_event_bus:ProtocolEventBus
+  required: true
+  bind_as: bus
+- name: ProtocolClock
+  protocol: omnimarket.protocols.protocol_clock:ProtocolClock
+  required: true
+  bind_as: clock
+config:
+  run_local:
+    command_topic: onex.cmd.omnimarket.binding-parity-local-requested.v1
+    result_topic: onex.evt.omnimarket.binding-parity-local-completed.v1
+    consumer_group: binding-parity-local
+    timeout_seconds: 30
+workflow_coordination:
+  workflow_definition:
+    workflow_metadata:
+      workflow_name: binding_parity
+      workflow_version: {major: 1, minor: 0, patch: 0}
+      description: Run one scenario under the baseline profile and under every other profile the overlay lists, then compare the semantic projection of the runs.
+    execution_graph:
+      nodes:
+      - {node_id: contract, node_type: EFFECT_GENERIC, description: 'Contract: each node''s protocol_dependencies'}
+      - node_id: overlay
+        node_type: EFFECT_GENERIC
+        description: 'Overlay: binding profiles and values'
+        depends_on: [contract]
+      - node_id: resolve
+        node_type: COMPUTE_GENERIC
+        description: Resolve each protocol to one pinned binding per profile
+        depends_on: [overlay]
+        step_config: {operation: resolve_profile_bindings}
+      - node_id: run_baseline
+        node_type: EFFECT_GENERIC
+        description: 'Baseline binding, the local profile: in-memory bus, file or SQLite ledger, local git host, local models, one machine'
+        depends_on: [resolve]
+        step_config: {operation: run_scenario, profile_role: baseline}
+      - node_id: run_others
+        node_type: EFFECT_GENERIC
+        description: 'Every other profile the overlay lists, such as a lab binding (Kafka bus, pool hosts, lab models) or a cloud binding (managed bus, hosted git service, cloud sessions)'
+        depends_on: [resolve]
+        step_config: {operation: run_scenario, profile_role: each_other}
+      - node_id: parity
+        node_type: COMPUTE_GENERIC
+        description: Compare the semantic projection of every run
+        depends_on: [run_baseline, run_others]
+        step_config: {operation: compare_runs}
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.binding-parity-run-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.binding-parity-run-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.binding-parity-run-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.binding-parity-run-completed.v1
+    failure: onex.evt.omnimarket.binding-parity-run-failed.v1
+terminal_event: onex.evt.omnimarket.binding-parity-run-completed.v1
+published_events:
+- event_type: ModelParityResult
+  topic: onex.evt.omnimarket.binding-parity-run-completed.v1
+  description: The runs of every profile, their comparison and the first difference.
+externally_consumed_topics:
+- onex.evt.omnimarket.binding-parity-run-completed.v1
+- onex.evt.omnimarket.binding-parity-run-failed.v1
+metadata:
+  ticket: OMN-21474
+  transport_type: kafka
+  description: "Binding parity: one scenario under the baseline profile and every other profile, compared on the semantic projection"
+  author: OmniNode Team
+  tags: [orchestrator, binding, parity]
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: true
+  timeout_ms: 60000
+  runtime_profiles: [effects]

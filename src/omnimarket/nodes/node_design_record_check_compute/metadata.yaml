@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_design_record_check_compute
+version: 1.0.0
+description: Refuse a plan or ticket body whose design record lacks a failure-mode table, a detector or GAP per row, a valid severity or a live-check command.
+pack: operator_tooling
+node_role: compute
+display_name: Design Record Check Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_design_record_check_compute: omnimarket.nodes.node_design_record_check_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- design-record
+- OMN-21460
