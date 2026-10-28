@@ -884,6 +884,15 @@ def _show_model_test(result: ModelModelTestResult, as_json: bool) -> None:
     label = f"{_MODEL_LABELS[result.provider]:<11}"
     if result.status == "passed":
         click.echo(f"{label} ✓ answered ({result.model or result.backend_id})")
+    elif result.status == "throttled":
+        # OMN-21464: the provider answered 429. The key was not judged.
+        throttled_on = f"{result.model}: " if result.model else ""
+        click.echo(f"{label} ~ {throttled_on}{result.reason}")
+        click.echo(
+            "  The provider is throttling this model; that is not a verdict on "
+            "your key. Delegation still uses it."
+        )
+        click.echo(f"  Try again shortly: onex models test {result.provider}")
     elif result.status == "failed":
         failed_on = f"{result.model}: " if result.model else ""
         click.echo(f"{label} ✗ {failed_on}{result.reason}")

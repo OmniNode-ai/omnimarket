@@ -1,0 +1,120 @@
+schema_version: 1.0.0
+ticket_id: OMN-21458
+title: 'T-S12: typed lane brief model and parser'
+summary: 'New COMPUTE node node_lane_brief_parse_compute (operation parse_lane_brief) and ModelLaneBrief in omnimarket.models.lane_brief,
+  parsed from a brief''s column-zero metadata lines, plus the contract of the brief gate orchestrator
+  node_lane_brief_gate_orchestrator with the parse node as its first edge. A missing or prose Required engine line
+  refuses the brief and names the line.'
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn21458-typed-brief
+  statement: A brief parses to a typed model, and a missing or prose engine line is refused by name.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: A brief with a missing or prose engine line fails the model and names the line -- falsifier: uv run pytest tests/nodes/node_lane_brief_parse_compute/test_parse_lane_brief.py'
+  - id: AC2
+    statement: 'AC2: The parser reads the briefs the assemble operation produces in its existing golden fixtures without change -- falsifier: uv run pytest case over those fixtures in tests/nodes/node_lane_brief_parse_compute'
+  - id: AC3
+    statement: 'AC3: Configuration: introduces no configured value; the request carries facts only -- falsifier: uv run pytest test asserting no field of the request or result models is named in the register of section 0c'
+  - id: AC4
+    statement: 'AC4: Bindings: depends on no protocol (it takes facts and now) -- falsifier: uv run pytest parity run (T-B2) gives byte-identical results in process and through the local in-process entry, and the conformance check (T-B1) fails if a protocol_dependencies entry appears in its contract'
+evidence_requirements:
+- kind: tests
+  description: Parse node and brief gate orchestrator tests.
+  command: uv run pytest tests/nodes/node_lane_brief_parse_compute/test_parse_lane_brief.py tests/nodes/node_lane_brief_parse_compute/test_contracts.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21458-parse-tests
+  description: 'AC1: an engine line that is missing, empty, repeated or prose refuses the brief and names the line.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lane_brief_parse_compute/test_parse_lane_brief.py -q --no-cov -k 'engine_line or metadata_line'
+    cwd: .
+- id: dod-omn21458-ac2-assembled-brief
+  description: 'AC2: the parser reads the assemble operation output carrying the required metadata.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lane_brief_parse_compute/test_parse_lane_brief.py -q --no-cov -k parses_the_column_zero_metadata_lines
+    cwd: .
+- id: dod-omn21458-ac3-facts-only
+  description: 'AC3: request fields are exactly brief and now, and the models carry none of the configured names listed in the test.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lane_brief_parse_compute/test_contracts.py -q --no-cov -k no_field_of_the_request_or_result_models_is_a_configured_value
+    cwd: .
+- id: dod-omn21458-ac4-bindings-and-parity
+  description: 'AC4: the contract declares no protocol or config, the parse route resolves, and direct and gate-routed results are byte-identical.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lane_brief_parse_compute/test_contracts.py -q --no-cov -k 'not no_field'
+    cwd: .
+- id: dod-omn21458-deploy-parse-tests
+  description: 'Hosted package deploy smoke: dispatch the parser and gate through the installed ONEX CLI with an in-memory bus. Read the typed receipts for valid, missing-engine and prose-engine briefs, assert parsed fields and named refusals, and compare both routes. No credentials, broker or lab service is required. This checks the evaluated checkout package, not a production rollout.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      export PYTHONDONTWRITEBYTECODE=1;
+      probe_dir="$(mktemp -d)";
+      trap 'rm -rf "$probe_dir"' EXIT;
+      uv sync --locked;
+      runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+      "$runtime_bin/python" -c '
+      import json
+      import sys
+      from pathlib import Path
+      root = Path(sys.argv[1])
+      header = "# Lane demo: Wire it\nTicket: OMN-21458\nOpens PR in: omnimarket\n"
+      for case, engine in (("valid", "Required engine: codex\n"), ("missing", ""), ("prose", "Required engine: whichever engine is free\n")):
+          request = {"brief": header + engine, "now": "2026-10-27T12:00:00Z"}
+          (root / f"{case}.json").write_text(json.dumps(request))
+      ' "$probe_dir";
+      for node in node_lane_brief_parse_compute node_lane_brief_gate_orchestrator; do
+        for case in valid missing prose; do
+          env -u PYTHONPATH ONEX_LANE=omn21458-deploy-probe "$runtime_bin/onex" node "$node" --input "$probe_dir/$case.json" --state-root "$probe_dir/$node-$case.state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/$node-$case.receipt.json";
+        done;
+      done;
+      "$runtime_bin/python" -c '
+      import json
+      import sys
+      from pathlib import Path
+      root = Path(sys.argv[1])
+      results = {}
+      for node in ("node_lane_brief_parse_compute", "node_lane_brief_gate_orchestrator"):
+          for case in ("valid", "missing", "prose"):
+              receipt = json.loads((root / f"{node}-{case}.receipt.json").read_text())
+              assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+              result = receipt["result"]
+              assert result["parsed_at"] == "2026-10-27T12:00:00Z", result
+              if case == "valid":
+                  assert result["parsed"] is True and result["issues"] == [], result
+                  assert result["brief"] == {"task": "Wire it", "engine": "codex", "required_host": "", "ticket": "OMN-21458", "opens_pr_in": "omnimarket", "proves": "", "quoted_criteria": []}, result
+              else:
+                  assert result["parsed"] is False and result["brief"] is None, result
+                  assert [issue["line"] for issue in result["issues"]] == ["Required engine"], result
+                  assert result["issues"][0]["detail"], result
+              results[node, case] = result
+      for case in ("valid", "missing", "prose"):
+          assert results["node_lane_brief_parse_compute", case] == results["node_lane_brief_gate_orchestrator", case], case
+      print("packaged parser and gate: 6 receipts verified")
+      ' "$probe_dir"
+    cwd: .

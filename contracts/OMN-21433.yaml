@@ -1,0 +1,121 @@
+schema_version: 1.0.0
+ticket_id: OMN-21433
+title: Two tests fail by file order or timing on a loaded runner, so omnimarket Tests (Split 18/20) and Tests (Split 4/20)
+  go red on PRs that touch neither
+summary: test_delegation_refusal_reads_overlay routes through the handler, which binds the handler's
+  process-global tier ladder and task-class contract cache. The test cleared only the bifrost endpoint
+  cache, so test_cloud_escalation_omn13140 read cheap_cloud where it expected cheap_frontier whenever
+  the shard planner dealt the two files to one shard in that order. The test now forgets all three
+  globals on setup and teardown. The ledger reconcile contention test patched time.sleep for the whole
+  process, so the poll that subprocess.run makes while a child is slow to exit landed in its list of
+  backoff sleeps; the test now gives the adapter module its own stand-in time.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-routing-test-leaves-no-global
+  statement: A routing test that binds the handler's globals restores them, so file order does not
+    change another file's result.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the overlay refusal file followed by the cloud escalation file passes in one pytest
+      process -- falsifier: uv run pytest tests/test_delegation_refusal_reads_overlay.py tests/unit/delegation/test_cloud_escalation_omn13140.py
+      fails with cheap_cloud == cheap_frontier on the tree without the fix'
+  - id: AC2
+    statement: 'AC2: a focused test runs the two files in that order and fails on the tree without the
+      fix -- falsifier: uv run pytest tests/unit/delegation/test_routing_globals_isolated_omn21433.py
+      with the fix reverted exits non-zero'
+  - id: AC3
+    statement: 'AC3: a writer that closes its pipes and lingers does not add a polling sleep to the
+      recorded backoff -- falsifier: uv run pytest tests/nodes/node_ledger_reconcile_effect/test_local_adapters_ledger_reconcile_effect.py
+      -k slow_to_exit fails with [0.001, 0.002, ...] when the test patches time.sleep globally'
+evidence_requirements:
+- kind: tests
+  description: Order isolation test.
+  command: uv run pytest tests/unit/delegation/test_routing_globals_isolated_omn21433.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21433-ac1
+  description: AC1 checks the committed fixture resets all routing globals on setup and teardown,
+    then runs the two files in the failing order. The source check reads HEAD because the merge-base
+    control overlays the fixed tests into its working tree.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: |-
+      python3 - <<'PYCODE'
+      import ast
+      import subprocess
+      source = subprocess.check_output(["git", "show", "HEAD:tests/test_delegation_refusal_reads_overlay.py"], text=True)
+      tree = ast.parse(source)
+      reset = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "_reset_routing_caches")
+      assert {"routing._load_bifrost_endpoints.cache_clear()", "routing._get_task_class_contract.cache_clear()", "routing._config = None"} <= {ast.unparse(node) for node in reset.body}
+      fixture = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "contract_without_overlay")
+      assert any(isinstance(node, ast.Expr) and ast.unparse(node) == "_reset_routing_caches()" for node in fixture.body)
+      cleanup = next(node for node in fixture.body if isinstance(node, ast.Try))
+      assert any(isinstance(node, ast.Expr) and ast.unparse(node) == "_reset_routing_caches()" for node in cleanup.finalbody)
+      print("committed overlay fixture resets all three routing globals before and after the test")
+      PYCODE
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_delegation_refusal_reads_overlay.py tests/unit/delegation/test_cloud_escalation_omn13140.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21433-ac2
+  description: AC2 checks the committed regression executes both files in order and asserts the child
+    exit status, then runs that regression. The source check distinguishes the committed test from
+    the head test overlaid by the merge-base control.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: |-
+      python3 - <<'PYCODE'
+      import ast
+      import subprocess
+      source = subprocess.check_output(["git", "show", "HEAD:tests/unit/delegation/test_routing_globals_isolated_omn21433.py"], text=True)
+      tree = ast.parse(source)
+      assignments = {node.targets[0].id: ast.literal_eval(node.value) for node in tree.body if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name) and isinstance(node.value, ast.Constant)}
+      assert assignments["POLLUTER"] == "tests/test_delegation_refusal_reads_overlay.py"
+      assert assignments["VICTIM"] == "tests/unit/delegation/test_cloud_escalation_omn13140.py"
+      call = next(node for node in ast.walk(tree) if isinstance(node, ast.Call) and ast.unparse(node.func) == "subprocess.run")
+      assert [ast.unparse(node) for node in call.args[0].elts[3:5]] == ["POLLUTER", "VICTIM"]
+      assert any(isinstance(node, ast.Assert) and ast.unparse(node.test) == "result.returncode == 0" for node in ast.walk(tree))
+      print("committed regression executes the polluter then victim and asserts the child exit status")
+      PYCODE
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_routing_globals_isolated_omn21433.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21433-ac3
+  description: AC3 checks the committed contention tests patch only the adapter time and assert the
+    exact backoff delays, then runs the ledger reconcile tests, including the slow-exit writer.
+    The source check distinguishes the original test from the overlaid fixed test.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: |-
+      python3 - <<'PYCODE'
+      import ast
+      import subprocess
+      source = subprocess.check_output(["git", "show", "HEAD:tests/nodes/node_ledger_reconcile_effect/test_local_adapters_ledger_reconcile_effect.py"], text=True)
+      tree = ast.parse(source)
+      helper = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "_record_backoff_sleeps")
+      assert any(isinstance(node, ast.Call) and ast.unparse(node) == "monkeypatch.setattr(adapters, 'time', types.SimpleNamespace(sleep=sleeps.append))" for node in ast.walk(helper))
+      for name in ("test_contention_is_retried_then_given_up_with_the_attempt_count", "test_a_writer_slow_to_exit_adds_no_polling_sleep_to_the_backoff"):
+          test = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == name)
+          assert any(isinstance(node, ast.Call) and ast.unparse(node) == "_record_backoff_sleeps(monkeypatch)" for node in ast.walk(test))
+          assert any(isinstance(node, ast.Assert) and ast.unparse(node.test) == "sleeps == [2.0, 4.0, 6.0, 8.0]" for node in ast.walk(test))
+      print("committed contention tests record adapter-local backoff and assert the exact delays")
+      PYCODE
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_ledger_reconcile_effect/test_local_adapters_ledger_reconcile_effect.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
