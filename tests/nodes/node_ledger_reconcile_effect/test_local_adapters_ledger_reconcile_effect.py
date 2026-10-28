@@ -9,7 +9,7 @@ import os
 import shlex
 import subprocess
 import sys
-import threading
+import types
 from pathlib import Path
 
 import pytest
@@ -437,21 +437,41 @@ def test_a_row_is_appended_by_the_ledger_writer(
     ]
 
 
+def _record_backoff_sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """Capture the adapter's own backoff sleeps and no other.
+
+    Patching ``time.sleep`` itself is process-wide: ``subprocess.run`` polls the
+    child with ``time.sleep`` on the main thread when the child is slow to exit,
+    so a ``0.001`` poll landed in the list on a loaded runner (Tests (Split 4/20)
+    on omnimarket#4521). The adapter module gets a stand-in ``time`` instead.
+    """
+    sleeps: list[float] = []
+    monkeypatch.setattr(adapters, "time", types.SimpleNamespace(sleep=sleeps.append))
+    return sleeps
+
+
 def test_contention_is_retried_then_given_up_with_the_attempt_count(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     writer = _writer(tmp_path, "import sys\nsys.exit(75)\n")
     monkeypatch.setenv(adapters.APPEND_COMMAND_ENV, writer)
-    sleeps: list[float] = []
-
-    def record_sleep(seconds: float) -> None:
-        # time.sleep is patched process-wide: ignore sleeps from other threads.
-        if threading.current_thread() is threading.main_thread():
-            sleeps.append(seconds)
-
-    monkeypatch.setattr(adapters.time, "sleep", record_sleep)
+    sleeps = _record_backoff_sleeps(monkeypatch)
     error = LedgerWriterAppender().append(tmp_path / "ledger.md", "row")
     assert error == "exit 75 (contention) after 5 attempts"
+    assert sleeps == [2.0, 4.0, 6.0, 8.0]
+
+
+def test_a_writer_slow_to_exit_adds_no_polling_sleep_to_the_backoff(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A child that closes its pipes and then lingers makes ``subprocess.run`` poll."""
+    writer = _writer(
+        tmp_path,
+        "import os, sys, time\nos.close(1)\nos.close(2)\ntime.sleep(0.05)\nsys.exit(75)\n",
+    )
+    monkeypatch.setenv(adapters.APPEND_COMMAND_ENV, writer)
+    sleeps = _record_backoff_sleeps(monkeypatch)
+    LedgerWriterAppender().append(tmp_path / "ledger.md", "row")
     assert sleeps == [2.0, 4.0, 6.0, 8.0]
 
 

@@ -1,0 +1,54 @@
+schema_version: 1.0.0
+ticket_id: OMN-21434
+title: 'The capability map reads graded runs that record the machine that served each model, so it writes rated cells on the dev lane'
+summary: 'A graded grid run records, on every capability verdict row, the backend it asked (backend_id), the host that backend''s endpoint lives on (host) and the backend that answered (answering_backend). The grid handler takes a grade that names the serving machine and stamps the answering backend and the served model into the row identity, so an answer from another backend or model is refused as identity_mismatch and one with no answering backend as identity_field_missing. A committed lab command, python -m omnimarket.nodes.node_projection_delegation_capability_map.lab_grid_run grid-run, answers each distinct stored prompt of delegation_eval_items on each backend of a backends file through that backend''s endpoint, grades the answer with the class rubric, writes the content-free verdict rows as JSON lines and hands the map run to the capability map writer. The labelled-item seed also carries host and answering_backend from delegation_events.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21434-graded-run-serving-identity
+  statement: Graded runs record the machine that served each answer, so the capability map writes rated cells on the dev lane.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a graded run on the dev lane produces verdict rows whose backend_id, host and answering_backend are all non-empty -- falsifier: a query of the run''s verdict rows that counts any row with one of the three empty'
+  - id: AC2
+    statement: 'AC2: the capability map run over those rows writes at least one cell and refuses none as identity_field_missing -- falsifier: the map_run summary shows 0 cells written or a non-zero identity_field_missing count'
+evidence_requirements:
+- kind: tests
+  description: The graded-run serving identity tests pass at the head; at the merge base the grade model and the grid lab command do not exist, so the module fails to import.
+  command: uv run pytest tests/nodes/node_delegation_capability_map_compute/test_graded_run_serving_identity_omn21434.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21434-ac1-serving-fields
+  description: 'AC1: every verdict row of a graded run names the backend asked, the endpoint host and the answering backend; the endpoint call records the host from the endpoint URL and the model the endpoint reported; a row with no answering backend is reported as a gap.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_capability_map_compute/test_graded_run_serving_identity_omn21434.py -k "record_backend_host_and_answering_backend or records_the_endpoint_host or three_serving_fields_are_non_empty" -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn21434-ac2-cells-no-identity-missing
+  description: 'AC2: graded-run rows fold into a cell with no row refused as identity_field_missing; an answer from another backend or model is refused as identity_mismatch and a row with no answering backend as identity_field_missing.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_capability_map_compute/test_graded_run_serving_identity_omn21434.py -k "fold_into_cells or identity_mismatch or identity_field_missing or three_serving_fields_are_non_empty" -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2
+- id: dod-omn21434-deploy-probe
+  description: 'Deploy probe: the packaged grid handler takes a grade that names the serving machine and writes host and answering_backend on the row, and the lab command module ships with its entry point. At the merge base neither the grade type nor the module exists.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_capability_map_compute/test_graded_run_serving_identity_omn21434.py -k deploy_probe -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_delegation_capability_map/handlers/handler_capability_grid_run.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "ModelCapabilityGridGrade" > /dev/null'
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1

@@ -68,7 +68,7 @@ event_bus:
     - onex.dlq.omnimarket.projection-delegation-capability-map-malformed.v1
 externally_produced_topics:
   - topic: onex.evt.omnimarket.delegation-capability-map-run-recorded.v1
-    producer: "the offline map run, python -m omnimarket.nodes.node_projection_delegation_capability_map.lab_run, not a node contract"
+    producer: "the offline map runs, python -m omnimarket.nodes.node_projection_delegation_capability_map.lab_run and .lab_grid_run, not a node contract"
 externally_consumed_topics:
   - onex.evt.omnimarket.projection-delegation-capability-map-applied.v1
 metadata:

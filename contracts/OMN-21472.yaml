@@ -1,0 +1,141 @@
+schema_version: 1.0.0
+ticket_id: OMN-21472
+title: 'T-S8: refuse a handoff the controller will not land'
+summary: The handoff decision takes an optional landing_scope tuple the caller reads from its overlay. A
+  repository outside a given scope is refused with the new error code repo-out-of-landing-scope, and the
+  decision carries the refusal as a ledger row for the caller to append. An absent scope leaves the decision
+  as it was. Pure local invocation; hosted deploy smoke exercises the packaged node without external services.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-handoff-landing-scope
+  statement: The handoff decision refuses a repository the controller will not land and returns the refusal row as data.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: The decision for an out-of-scope repository is refuse with the named reason'
+  - id: AC2
+    statement: 'AC2: A refused handoff yields a refusal row as data in the decision result, which the caller
+      appends through the work ledger append effect; the decision node writes nothing'
+  - id: AC3
+    statement: 'AC3: An in-scope repository is unchanged'
+  - id: AC4
+    statement: 'AC4: The landing scope is passed in by the caller and the node carries no repository name'
+  - id: AC5
+    statement: 'AC5: The node depends on no protocol; it takes facts and now'
+evidence_requirements:
+- kind: tests
+  description: Focused landing scope tests and the existing handoff decision tests.
+  command: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_pr_handoff_decision_compute/test_landing_scope.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21472-ac1
+  description: AC1 runs the out-of-scope refusal cases, including the refusal with no observation.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_pr_handoff_decision_compute/test_landing_scope.py -q --no-cov --tb=line -k "out_of_scope"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21472-ac2
+  description: AC2 runs the refusal row case and the case that appends the row through the real work ledger append effect.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_pr_handoff_decision_compute/test_landing_scope.py -q --no-cov --tb=line -k "refusal_row"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21472-ac3
+  description: AC3 compares the in-scope decision with the absent-scope decision and runs the existing handoff
+    decision, orchestrator and golden chain tests unchanged. The comparison supplies landing_scope, so the
+    merge-base implementation cannot pass this binding.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_pr_handoff_decision_compute/test_landing_scope.py::test_in_scope_decision_is_the_decision_of_an_absent_scope tests/unit/nodes/node_pr_handoff_decision_compute/test_handler_pr_handoff_decision.py tests/unit/nodes/node_pr_handoff_orchestrator/test_pr_handoff_orchestrator_contract.py tests/chains/pr_handoff/test_golden_chain_pr_handoff.py tests/chains/pr_handoff/test_obligation_binding.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21472-ac4
+  description: AC4 runs the case where one request is refused under one fixture overlay and ready under another,
+    and the exact-match and empty-scope cases.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_pr_handoff_decision_compute/test_landing_scope.py -q --no-cov --tb=line -k "overlay or exact or absent"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21472-ac5
+  description: AC5 covers the part present in this tree - the contract declares no protocol_dependencies and the
+    decision is byte-identical across evaluations. The conformance check and the parity harness named by the
+    criterion are not in the tree.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_pr_handoff_decision_compute/test_landing_scope.py -q --no-cov --tb=line -k "protocol or byte_identical"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21472-deploy-packaged-decision
+  description: Hosted deploy smoke dispatches the installed decision node through the ONEX CLI with an in-memory
+    backend. Typed receipts must refuse an out-of-scope repository before an observation and preserve the
+    no-observation wait for an in-scope or absent scope. No broker, credentials or lab service is required;
+    this checks the packaged checkout rather than a production rollout.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      export PYTHONDONTWRITEBYTECODE=1;
+      probe_dir="$(mktemp -d)";
+      trap 'rm -rf "$probe_dir"' EXIT;
+      uv sync --locked;
+      runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+      "$runtime_bin/python" -c '
+      import json
+      import sys
+      from pathlib import Path
+      root = Path(sys.argv[1])
+      request = {"request": {"correlation_id": "6f0c3a52-8d2b-4a51-9a50-55a1d3f2b0c4", "repo": "scope-probe", "pr_number": 1, "expected_head_sha": "abcdef0", "lane": "deploy-probe", "requesting_host": "hosted-runner", "requested_at": "2026-10-28T00:00:00Z"}, "now": "2026-10-28T00:01:00Z"}
+      for case, scope in (("refused", ["other-probe"]), ("in_scope", ["scope-probe"]), ("absent", None)):
+          payload = dict(request)
+          if scope is not None:
+              payload["landing_scope"] = scope
+          (root / f"{case}.json").write_text(json.dumps(payload))
+      ' "$probe_dir";
+      for case in refused in_scope absent; do
+        env -u PYTHONPATH ONEX_LANE=omn21472-deploy-probe "$runtime_bin/onex" node node_pr_handoff_decision_compute --input "$probe_dir/$case.json" --state-root "$probe_dir/$case.state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/$case.receipt.json";
+      done;
+      "$runtime_bin/python" -c '
+      import json
+      import sys
+      from pathlib import Path
+      from omnimarket.models.pr_handoff import ModelPrHandoffDecision
+      root = Path(sys.argv[1])
+      results = {}
+      for case in ("refused", "in_scope", "absent"):
+          receipt = json.loads((root / f"{case}.receipt.json").read_text())
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          decision = ModelPrHandoffDecision.model_validate(receipt["result"])
+          results[case] = decision.model_dump(mode="json")
+          if case == "refused":
+              assert decision.verdict.value == "refuse", decision
+              assert decision.error_code.value == "repo-out-of-landing-scope", decision
+              assert decision.rows is None and decision.refusal_row is not None, decision
+              assert "handoff-refused=scope-probe#1" in decision.refusal_row, decision
+          else:
+              assert decision.verdict.value == "wait", decision
+              assert decision.wait_reason.value == "pr_not_observed", decision
+              assert decision.refusal_row is None, decision
+          print(json.dumps({"case": case, "run_id": receipt["run_id"], "decision": results[case]}, sort_keys=True))
+      assert results["in_scope"] == results["absent"], results
+      print("packaged handoff decision: 3 receipts verified")
+      ' "$probe_dir"
+    cwd: ${OMNI_HOME}/omnimarket

@@ -1,0 +1,66 @@
+# The protocol table, the concrete bindings, and the checked set that the binding conformance
+# check takes as data. Each later task that creates or edits a node of the table adds that node
+# to `checked_nodes` in its own change and the node must pass. Import paths of protocols that do
+# not exist yet are their planned homes.
+protocols:
+  - {code: BUS, protocol: "omnibase_core.protocols.event_bus.protocol_event_bus:ProtocolEventBus"}
+  - {code: LED, protocol: "omnimarket.protocols.protocol_work_ledger_store:ProtocolWorkLedgerStore"}
+  - {code: STO, protocol: "omnibase_core.protocols.storage.protocol_state_store:ProtocolStateStore"}
+  - {code: CHG, protocol: "omnimarket.protocols.protocol_change_source:ProtocolChangeSource"}
+  - {code: BKL, protocol: "omnimarket.protocols.protocol_backlog_source:ProtocolBacklogSource"}
+  - {code: MDL, protocol: "omnimarket.protocols.protocol_model_engine:ProtocolModelEngine"}
+  - {code: HST, protocol: "omnimarket.protocols.protocol_lane_host_pool:ProtocolLaneHostPool"}
+  - {code: SRC, protocol: "omnimarket.protocols.protocol_fact_source:ProtocolFactSource"}
+  - {code: SEC, protocol: "omnibase_spi.protocols.services.protocol_secret_store:ProtocolSecretStore"}
+  - {code: CLK, protocol: "omnimarket.protocols.protocol_clock:ProtocolClock"}
+rows:
+  # pure nodes: the caller supplies facts and now
+  - {node: node_binding_conformance_compute, protocols: []}
+  - {node: node_lane_brief_parse_compute, protocols: []}
+  - {node: node_wip_gate_reducer, protocols: []}
+  - {node: node_flow_measures_compute, protocols: []}
+  - {node: node_remote_lane_compute, protocols: []}
+  - {node: node_pr_handoff_decision_compute, protocols: []}
+  - {node: node_plugin_bump_stuck_compute, protocols: []}
+  - {node: node_landing_worker_engine_compute, protocols: []}
+  - {node: node_throughput_tick_decision_compute, protocols: []}
+  # effects of the table that exist; none declares its row yet, so none is in the checked set
+  - {node: node_exception_queue_effect, protocols: [LED, STO, CHG, HST, CLK]}
+  - {node: node_work_ledger_append_effect, protocols: [BUS, LED, CLK]}
+  - {node: node_work_ledger_query_effect, protocols: [BUS, LED, CLK]}
+  - {node: node_dev_cause_lane_receiver_effect, protocols: [BUS, LED, HST, CLK]}
+  - {node: node_remote_lane_effect, protocols: [CHG, CLK]}
+  - {node: node_idle_slot_fill_effect, protocols: [BKL, LED, CHG, HST, SRC, BUS, CLK]}
+  - {node: node_lane_placement_recovery_effect, protocols: [HST, STO, SRC, LED, CLK]}
+  - {node: node_adoption_recovery_effect, protocols: [LED, CHG, BUS, SRC, STO, HST, CLK]}
+concrete_bindings:
+  - code: BUS
+    modules: [aiokafka, confluent_kafka, kafka, omnibase_infra.event_bus]
+    classes: [EventBusKafka]
+  - code: LED
+    modules: [psycopg, psycopg2, asyncpg, sqlite3]
+    classes: [PostgresSyncProjectionAdapter, SqliteDatabaseAdapter, LocalLedgerFile]
+    allowed_path_prefixes: [src/omnimarket/adapters/]
+  - code: STO
+    modules: [omnibase_infra.state]
+    classes: [StatePostgres, ServiceStateDisk]
+    allowed_path_prefixes: [src/omnimarket/adapters/]
+pure_forbidden_modules:
+  - omnimarket.handlers.node_overlay_reader
+  - omnimarket.handlers.work_contracts.loader
+  - omnibase_core.contracts.contract_loader
+  - omnibase_core.utils.util_contract_loader
+checked_nodes:
+  - node_binding_conformance_compute
+  - node_lane_brief_parse_compute
+  - node_wip_gate_reducer
+  - node_flow_measures_compute
+  - node_remote_lane_compute
+  - node_pr_handoff_decision_compute
+  - node_plugin_bump_stuck_compute
+  - node_landing_worker_engine_compute
+  - node_throughput_tick_decision_compute
+# Shared model packages that a checked node's models live in, read as model sources.
+model_dirs:
+  node_binding_conformance_compute:
+    - src/omnimarket/models/binding_conformance
