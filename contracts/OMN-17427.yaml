@@ -954,6 +954,11 @@ requirements:
     acceptance:
     - id: AC4400
       statement: 'AC4400: config/test_file_durations.json leaves fewer than 50 test files unrecorded -- falsifier: uv run pytest tests/unit/test_ci_shard_plan_record_freshness_omn17427.py -q fails at the merge base (162 unrecorded) and passes at the head (6).'
+  - id: req-live-events-poison-quarantine
+    statement: The live-events projection writer dead-letters a poison event to the contract's dlq topic and advances the offset instead of crash-looping, and projects a list-valued source as a string.
+    acceptance:
+    - id: AC21288
+      statement: 'AC21288: an oversize snapshot delta and a validation error are published to the contract dlq topic and the offset is committed, a missing publisher holds the offset, and a list source projects a comma-joined string source row -- falsifier: the focused pytest fails at the merge base.'
 evidence_requirements:
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
@@ -4081,4 +4086,15 @@ dod_evidence:
           trap 'rm -rf "$probe_dir"' EXIT
           uv build --wheel --out-dir "$probe_dir"
           uv run --no-project --with "$probe_dir"/*.whl python "$PWD/tests/ci/probe_ruling_drift_artifact.py"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-omn17427-live-events-poison-quarantine
+    description: "This pull request makes the live-events runner return the contract's dlq topics as poison_dlq_topics, publish through the runtime producer and commit the offset after a dead-letter, hold the offset when no publisher exists, and project a list source as a string. Nine of the new tests fail at the merge base."
+    source: "manual"
+    binds_ac: ["AC21288"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest src/omnimarket/nodes/node_projection_live_events/tests/test_handler_live_events.py -q -p no:randomly --no-cov --refuse-skips -k 'TestLiveEventsPoisonQuarantine or TestLiveEventSourceNormalisation'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "rg -n 'poison_dlq_topics' src/omnimarket/nodes/node_projection_live_events/handlers/handler_live_events.py"
         cwd: "${OMNI_HOME}/omnimarket"
