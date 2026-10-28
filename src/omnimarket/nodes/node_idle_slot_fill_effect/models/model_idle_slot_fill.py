@@ -7,7 +7,7 @@ Frozen dataclasses, not pydantic: the request carries callables and the tick pas
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -163,6 +163,9 @@ class ModelIdleSlotFillRequest:
     )  # experiment key -> "<lane> at <ended_at>"
     fixer_holds: Mapping[str, str] = field(default_factory=dict)
     fixer_holds_unread: str = ""
+    # Kinds whose items must name a repository (ModelBacklogItem), read by the caller from the
+    # idle_slot_fill overlay; none by default.
+    repo_required_kinds: Collection[str] = ()
 
 
 @dataclass(frozen=True)

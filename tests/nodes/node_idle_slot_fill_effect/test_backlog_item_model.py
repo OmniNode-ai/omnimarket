@@ -13,7 +13,7 @@ from pydantic import ValidationError
 
 from omnimarket.handlers.handler_engine_ladder import load_engine_ladder
 from omnimarket.models.model_engine_ladder import CONTEXT_KEY
-from omnimarket.nodes.node_idle_slot_fill_effect import models
+from omnimarket.nodes.node_idle_slot_fill_effect import models, overlay
 from omnimarket.nodes.node_idle_slot_fill_effect.handlers import (
     handler_idle_slot_fill as handler,
 )
@@ -50,7 +50,9 @@ def item(key: str, **fields: Any) -> dict[str, Any]:
     }
 
 
-def fill(*backlog: dict[str, Any]) -> models.ModelIdleSlotFillResult:
+def fill(
+    *backlog: dict[str, Any], repo_required_kinds: frozenset[str] = frozenset()
+) -> models.ModelIdleSlotFillResult:
     return handler.HandlerIdleSlotFill().handle(
         models.ModelIdleSlotFillRequest(
             now=NOW,
@@ -58,6 +60,7 @@ def fill(*backlog: dict[str, Any]) -> models.ModelIdleSlotFillResult:
             lines=LINES,
             backlog=list(backlog),
             standing_tickets={"ticket": "OMN-9101"},
+            repo_required_kinds=repo_required_kinds,
         )
     )
 
@@ -161,7 +164,9 @@ def test_the_overlay_decides_which_kind_needs_a_repository(
         tmp_path, idle_slot_fill={**IDLE_SLOT_FILL, "repo_required_kinds": ["ticket"]}
     )
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", env["ONEX_SKILL_OVERLAY_ROOTS"])
-    result = fill(item("norepo", repo=""))
+    kinds = overlay.repo_required_kinds()
+    assert kinds == frozenset({"ticket"})
+    result = fill(item("norepo", repo=""), repo_required_kinds=kinds)
     assert result.backlog_mismatched == 1
     assert "repo is required for kind 'ticket'" in result.skipped[0]["why"]
     assert result.sends == []

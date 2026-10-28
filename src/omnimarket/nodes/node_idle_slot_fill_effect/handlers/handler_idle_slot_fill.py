@@ -733,7 +733,7 @@ class HandlerIdleSlotFill:
         skipped: list[dict[str, str]] = []
         dropped: list[dict[str, str]] = []
         backlog_mismatched = 0
-        item_context = {REPO_KINDS_CONTEXT_KEY: overlay.repo_required_kinds()}
+        item_context = {REPO_KINDS_CONTEXT_KEY: tuple(request.repo_required_kinds)}
         for item in candidates(
             request.lines,
             request.backlog,
@@ -2045,6 +2045,7 @@ class HandlerLabFill:
                 completed=completed,
                 fixer_holds=holds,
                 fixer_holds_unread=holds_unread,
+                repo_required_kinds=overlay.repo_required_kinds(),
             )
         )
         found: list[tuple[str, str, str, str]] = list(recovery.found)
@@ -2109,6 +2110,7 @@ class HandlerLabFill:
                         completed=completed,
                         fixer_holds=holds,
                         fixer_holds_unread=holds_unread,
+                        repo_required_kinds=overlay.repo_required_kinds(),
                     )
                 )
         if decision.dropped:
