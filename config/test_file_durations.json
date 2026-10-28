@@ -644,6 +644,7 @@
   "tests/nodes/node_delegation_rubric_check_compute/test_tool_use_rubric.py": 4.82,
   "tests/nodes/node_delegation_rubric_check_compute/test_tool_use_traceability_real_runs_omn20233.py": 0.59,
   "tests/nodes/node_delegation_seam_measure_compute/test_workflow_registry.py": 2.95,
+  "tests/nodes/node_delegation_seam_orchestrator/test_plan_seam_reads.py": 0.5,
   "tests/nodes/node_delegation_size_band_compute/test_delegation_size_band.py": 14.86,
   "tests/nodes/node_delegation_size_band_compute/test_golden_chain_delegation_size_band_compute.py": 0.6,
   "tests/nodes/node_delegation_split_compute/test_delegation_split.py": 0.13,

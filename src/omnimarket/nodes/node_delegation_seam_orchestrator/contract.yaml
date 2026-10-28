@@ -62,6 +62,8 @@ externally_consumed_topics:
 descriptor:
   node_archetype: orchestrator
   purity: effectful
+  runtime_profiles:
+    - effects
   idempotent: true
   side_effects: []
 
