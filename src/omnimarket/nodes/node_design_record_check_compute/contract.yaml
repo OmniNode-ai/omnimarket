@@ -1,0 +1,86 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Design Record Check Compute (OMN-21460)
+#
+# Pure compute: handle(ModelDesignRecordCheckRequest) -> ModelDesignRecordCheckResult.
+# It takes text and `now`, reads no clock, file, network or protocol, and so declares
+# no protocol_dependencies.
+name: node_design_record_check_compute
+contract_name: node_design_record_check_compute
+node_name: node_design_record_check_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Rule R9: a plan or ticket body that designs a mechanism carries a design record
+  before the mechanism is built. The record holds (1) an `Intended state:` sentence a
+  reader can measure, (2) a live check, with a `Live check command:` line and a
+  `Live check failing reading:` line that shows the check reading unhealthy before the
+  build, and (3) a failure-mode table with a mode, a severity and a detector column,
+  one row per way the mechanism can fail. A row names the detector that covers it, or
+  carries the mark `GAP` and becomes a task; a row with neither is refused. A severity
+  is one of config.design_process.severity_levels. Operation check_design_record
+  returns the issues, each naming the missing part, and exit_code, which is nonzero
+  when any issue exists, so a caller that runs the node cannot report a plan with a
+  defect. It also returns the facts the design process reducer's guards read:
+  record_issue_count, failure_mode_rows, rows_without_detector_or_gap,
+  live_check_command_present and live_check_failing_reading.
+
+handler:
+  module: omnimarket.nodes.node_design_record_check_compute.handlers.handler_design_record_check
+  class: HandlerDesignRecordCheck
+  input_model: omnimarket.nodes.node_design_record_check_compute.models.model_design_record_check.ModelDesignRecordCheckRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: check_design_record
+      topic: onex.cmd.omnimarket.design-record-check-requested.v1
+      handler:
+        name: HandlerDesignRecordCheck
+        module: omnimarket.nodes.node_design_record_check_compute.handlers.handler_design_record_check
+      input_model: omnimarket.nodes.node_design_record_check_compute.models.model_design_record_check.ModelDesignRecordCheckRequest
+      output_model: omnimarket.nodes.node_design_record_check_compute.models.model_design_record_check.ModelDesignRecordCheckResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 2000
+
+input_model:
+  name: ModelDesignRecordCheckRequest
+  module: omnimarket.nodes.node_design_record_check_compute.models.model_design_record_check
+  description: The text of a plan or ticket body and `now`.
+output_model:
+  name: ModelDesignRecordCheckResult
+  module: omnimarket.nodes.node_design_record_check_compute.models.model_design_record_check
+  description: The issues, exit_code and the facts the design process reducer reads.
+
+terminal_event: onex.evt.omnimarket.design-record-checked.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.design-record-check-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.design-record-checked.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.design-record-check-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.design-record-checked.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.design-record-checked.v1
+
+config:
+  design_process:
+    severity_levels: [1, 2, 3]
+
+metadata:
+  ticket: OMN-21460
+  transport_type: inmemory

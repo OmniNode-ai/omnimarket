@@ -128,6 +128,23 @@ _BIFROST_LAB_AND_HOUSE = textwrap.dedent(
 )
 
 
+def _reset_routing_state() -> None:
+    """Forget every process-global the routing handler fills from the environment.
+
+    ``delta`` binds ``_config`` (the tier ladder, with the placements of the
+    contract this file wrote) and the spread groups derived from it, and caches
+    the task-class contract. Left set, the next test file in the same pytest
+    process routes on this file's ladder: the tier escalation tests read
+    ``cheap_cloud`` where they expect ``cheap_frontier`` whenever the CI shard
+    planner dealt the two files to one shard in this order (OMN-21469).
+    """
+    routing._load_bifrost_endpoints.cache_clear()
+    routing._get_task_class_contract.cache_clear()
+    routing._config = None
+    routing._config_spread_peers = None
+    routing._config_spread_weights = None
+
+
 @pytest.fixture
 def lab_and_house_backends(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -137,11 +154,11 @@ def lab_and_house_backends(
     contract_path.write_text(_BIFROST_LAB_AND_HOUSE)
     monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract_path))
     monkeypatch.delenv("BIFROST_OVERLAY_PATH", raising=False)
-    routing._load_bifrost_endpoints.cache_clear()
+    _reset_routing_state()
     try:
         yield
     finally:
-        routing._load_bifrost_endpoints.cache_clear()
+        _reset_routing_state()
 
 
 def _request(tenant_id: str | None) -> ModelDelegationRequest:

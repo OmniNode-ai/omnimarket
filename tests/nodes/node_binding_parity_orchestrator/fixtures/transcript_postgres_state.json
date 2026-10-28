@@ -1,0 +1,896 @@
+{
+  "sessions": {
+    "data_survives_restart": [
+      {
+        "args": {
+          "envelope": {
+            "contract_fingerprint": "sto-conformance-v1",
+            "data": {
+              "nested": {
+                "values": [
+                  1,
+                  "two",
+                  null
+                ]
+              },
+              "version": 1
+            },
+            "node_id": "sample",
+            "scope_id": "2",
+            "written_at": "2026-01-01T00:00:00Z"
+          },
+          "node_id": null,
+          "scope_id": "default"
+        },
+        "op": "put",
+        "result": null
+      },
+      {
+        "args": {
+          "envelope": {
+            "contract_fingerprint": "sto-conformance-v1",
+            "data": {
+              "nested": {
+                "values": [
+                  1,
+                  "two",
+                  null
+                ]
+              },
+              "version": 2
+            },
+            "node_id": "sample",
+            "scope_id": "10",
+            "written_at": "2026-01-01T00:00:00Z"
+          },
+          "node_id": null,
+          "scope_id": "default"
+        },
+        "op": "put",
+        "result": null
+      },
+      {
+        "args": {
+          "envelope": null,
+          "node_id": null,
+          "scope_id": "default"
+        },
+        "op": "restart",
+        "result": null
+      },
+      {
+        "args": {
+          "envelope": null,
+          "node_id": "sample",
+          "scope_id": "2"
+        },
+        "op": "get",
+        "result": {
+          "contract_fingerprint": "sto-conformance-v1",
+          "data": {
+            "nested": {
+              "values": [
+                1,
+                "two",
+                null
+              ]
+            },
+            "version": 1
+          },
+          "node_id": "sample",
+          "scope_id": "2",
+          "written_at": "2026-01-01T00:00:00Z"
+        }
+      },
+      {
+        "args": {
+          "envelope": null,
+          "node_id": "sample",
+          "scope_id": "10"
+        },
+        "op": "get",
+        "result": {
+          "contract_fingerprint": "sto-conformance-v1",
+          "data": {
+            "nested": {
+              "values": [
+                1,
+                "two",
+                null
+              ]
+            },
+            "version": 2
+          },
+          "node_id": "sample",
+          "scope_id": "10",
+          "written_at": "2026-01-01T00:00:00Z"
+        }
+      }
+    ],
+    "delete_reports_whether_a_key_existed": [
+      {
+        "args": {
+          "envelope": null,
+          "node_id": "sample",
+          "scope_id": "default"
+        },
+        "op": "delete",
+        "result": false
+      },
+      {
+        "args": {
+          "envelope": {
+            "contract_fingerprint": "sto-conformance-v1",
+            "data": {
+              "nested": {
+                "values": [
+                  1,
+                  "two",
+                  null
+                ]
+              },
+              "version": 1
+            },
+            "node_id": "sample",
+            "scope_id": "default",
+            "written_at": "2026-01-01T00:00:00Z"
+          },
+          "node_id": null,
+          "scope_id": "default"
+        },
+        "op": "put",
+        "result": null
+      },
+      {
+        "args": {
+          "envelope": null,
+          "node_id": "sample",
+          "scope_id": "other"
+        },
+        "op": "delete",
+        "result": false
+      },
+      {
+        "args": {
+          "envelope": null,
+          "node_id": "sample",
+          "scope_id": "default"
+        },
+        "op": "delete",
+        "result": true
+      },
+      {
+        "args": {
+          "envelope": null,
+          "node_id": "sample",
+          "scope_id": "default"
+        },
+        "op": "get",
+        "result": null
+      },
+      {
+        "args": {
+          "envelope": null,
+          "node_id": "sample",
+          "scope_id": "default"
+        },
+        "op": "delete",
+        "result": false
+      }
+    ],
+    "exists_tracks_put_and_delete": [
+      {
+        "args": {
+          "envelope": null,
+          "node_id": "sample",
+          "scope_id": "default"
+        },
+        "op": "exists",
+        "result": false
+      },
+      {
+        "args": {
+          "envelope": {
+            "contract_fingerprint": "sto-conformance-v1",
+            "data": {
+              "nested": {
+                "values": [
+                  1,
+                  "two",
+                  null
+                ]
+              },
+              "version": 1
+            },
+            "node_id": "sample",
+            "scope_id": "default",
+            "written_at": "2026-01-01T00:00:00Z"
+          },
+          "node_id": null,
+          "scope_id": "default"
+        },
+        "op": "put",
+        "result": null
+      },
+      {
+        "args": {
+          "envelope": null,
+          "node_id": "sample",
+          "scope_id": "default"
+        },
+        "op": "exists",
+        "result": true
+      },
+      {
+        "args": {
+          "envelope": null,
+          "node_id": "sample",
+          "scope_id": "other"
+        },
+        "op": "exists",
+        "result": false
+      },
+      {
+        "args": {
+          "envelope": null,
+          "node_id": "sample",
+          "scope_id": "default"
+        },
+        "op": "delete",
+        "result": true
+      },
+      {
+        "args": {
+          "envelope": null,
+          "node_id": "sample",
+          "scope_id": "default"
+        },
+        "op": "exists",
+        "result": false
+      }
+    ],
+    "get_missing_returns_none": [
+      {
+        "args": {
+          "envelope": null,
+          "node_id": "missing",
+          "scope_id": "default"
+        },
+        "op": "get",
+        "result": null
+      }
+    ],
+    "head_witness_highest_sequence_is_integer": [
+      {
+        "args": {
+          "envelope": {
+            "contract_fingerprint": "sto-conformance-v1",
+            "data": {
+              "nested": {
+                "values": [
+                  1,
+                  "two",
+                  null
+                ]
+              },
+              "version": 7
+            },
+            "node_id": "head_witness",
+            "scope_id": "7",
+            "written_at": "2026-01-01T00:00:00Z"
+          },
+          "node_id": null,
+          "scope_id": "default"
+        },
+        "op": "put",
+        "result": null
+      },
+      {
+        "args": {
+          "envelope": {
+            "contract_fingerprint": "sto-conformance-v1",
+            "data": {
+              "nested": {
+                "values": [
+                  1,
+                  "two",
+                  null
+                ]
+              },
+              "version": 2
+            },
+            "node_id": "head_witness",
+            "scope_id": "2",
+            "written_at": "2026-01-01T00:00:00Z"
+          },
+          "node_id": null,
+          "scope_id": "default"
+        },
+        "op": "put",
+        "result": null
+      },
+      {
+        "args": {
+          "envelope": {
+            "contract_fingerprint": "sto-conformance-v1",
+            "data": {
+              "nested": {
+                "values": [
+                  1,
+                  "two",
+                  null
+                ]
+              },
+              "version": 12
+            },
+            "node_id": "head_witness",
+            "scope_id": "12",
+            "written_at": "2026-01-01T00:00:00Z"
+          },
+          "node_id": null,
+          "scope_id": "default"
+        },
+        "op": "put",
+        "result": null
+      },
+      {
+        "args": {
+          "envelope": {
+            "contract_fingerprint": "sto-conformance-v1",
+            "data": {
+              "nested": {
+                "values": [
+                  1,
+                  "two",
+                  null
+                ]
+              },
+              "version": 1
+            },
+            "node_id": "head_witness",
+            "scope_id": "1",
+            "written_at": "2026-01-01T00:00:00Z"
+          },
+          "node_id": null,
+          "scope_id": "default"
+        },
+        "op": "put",
+        "result": null
+      },
+      {
+        "args": {
+          "envelope": {
+            "contract_fingerprint": "sto-conformance-v1",
+            "data": {
+              "nested": {
+                "values": [
+                  1,
+                  "two",
+                  null
+                ]
+              },
+              "version": 9
+            },
+            "node_id": "head_witness",
+            "scope_id": "9",
+            "written_at": "2026-01-01T00:00:00Z"
+          },
+          "node_id": null,
+          "scope_id": "default"
+        },
+        "op": "put",
+        "result": null
+      },
+      {
+        "args": {
+          "envelope": {
+            "contract_fingerprint": "sto-conformance-v1",
+            "data": {
+              "nested": {
+                "values": [
+                  1,
+                  "two",
+                  null
+                ]
+              },
+              "version": 4
+            },
+            "node_id": "head_witness",
+            "scope_id": "4",
+            "written_at": "2026-01-01T00:00:00Z"
+          },
+          "node_id": null,
+          "scope_id": "default"
+        },
+        "op": "put",
+        "result": null
+      },
+      {
+        "args": {
+          "envelope": {
+            "contract_fingerprint": "sto-conformance-v1",
+            "data": {
+              "nested": {
+                "values": [
+                  1,
+                  "two",
+                  null
+                ]
+              },
+              "version": 10
+            },
+            "node_id": "head_witness",
+            "scope_id": "10",
+            "written_at": "2026-01-01T00:00:00Z"
+          },
+          "node_id": null,
+          "scope_id": "default"
+        },
+        "op": "put",
+        "result": null
+      },
+      {
+        "args": {
+          "envelope": {
+            "contract_fingerprint": "sto-conformance-v1",
+            "data": {
+              "nested": {
+                "values": [
+                  1,
+                  "two",
+                  null
+                ]
+              },
+              "version": 6
+            },
+            "node_id": "head_witness",
+            "scope_id": "6",
+            "written_at": "2026-01-01T00:00:00Z"
+          },
+          "node_id": null,
+          "scope_id": "default"
+        },
+        "op": "put",
+        "result": null
+      },
+      {
+        "args": {
+          "envelope": {
+            "contract_fingerprint": "sto-conformance-v1",
+            "data": {
+              "nested": {
+                "values": [
+                  1,
+                  "two",
+                  null
+                ]
+              },
+              "version": 3
+            },
+            "node_id": "head_witness",
+            "scope_id": "3",
+            "written_at": "2026-01-01T00:00:00Z"
+          },
+          "node_id": null,
+          "scope_id": "default"
+        },
+        "op": "put",
+        "result": null
+      },
+      {
+        "args": {
+          "envelope": {
+            "contract_fingerprint": "sto-conformance-v1",
+            "data": {
+              "nested": {
+                "values": [
+                  1,
+                  "two",
+                  null
+                ]
+              },
+              "version": 11
+            },
+            "node_id": "head_witness",
+            "scope_id": "11",
+            "written_at": "2026-01-01T00:00:00Z"
+          },
+          "node_id": null,
+          "scope_id": "default"
+        },
+        "op": "put",
+        "result": null
+      },
+      {
+        "args": {
+          "envelope": {
+            "contract_fingerprint": "sto-conformance-v1",
+            "data": {
+              "nested": {
+                "values": [
+                  1,
+                  "two",
+                  null
+                ]
+              },
+              "version": 5
+            },
+            "node_id": "head_witness",
+            "scope_id": "5",
+            "written_at": "2026-01-01T00:00:00Z"
+          },
+          "node_id": null,
+          "scope_id": "default"
+        },
+        "op": "put",
+        "result": null
+      },
+      {
+        "args": {
+          "envelope": {
+            "contract_fingerprint": "sto-conformance-v1",
+            "data": {
+              "nested": {
+                "values": [
+                  1,
+                  "two",
+                  null
+                ]
+              },
+              "version": 8
+            },
+            "node_id": "head_witness",
+            "scope_id": "8",
+            "written_at": "2026-01-01T00:00:00Z"
+          },
+          "node_id": null,
+          "scope_id": "default"
+        },
+        "op": "put",
+        "result": null
+      },
+      {
+        "args": {
+          "envelope": null,
+          "node_id": "head_witness",
+          "scope_id": "default"
+        },
+        "op": "list_keys",
+        "result": [
+          [
+            "head_witness",
+            "7"
+          ],
+          [
+            "head_witness",
+            "2"
+          ],
+          [
+            "head_witness",
+            "12"
+          ],
+          [
+            "head_witness",
+            "1"
+          ],
+          [
+            "head_witness",
+            "9"
+          ],
+          [
+            "head_witness",
+            "4"
+          ],
+          [
+            "head_witness",
+            "10"
+          ],
+          [
+            "head_witness",
+            "6"
+          ],
+          [
+            "head_witness",
+            "3"
+          ],
+          [
+            "head_witness",
+            "11"
+          ],
+          [
+            "head_witness",
+            "5"
+          ],
+          [
+            "head_witness",
+            "8"
+          ]
+        ]
+      }
+    ],
+    "list_keys_complete_and_filtered": [
+      {
+        "args": {
+          "envelope": null,
+          "node_id": null,
+          "scope_id": "default"
+        },
+        "op": "list_keys",
+        "result": []
+      },
+      {
+        "args": {
+          "envelope": {
+            "contract_fingerprint": "sto-conformance-v1",
+            "data": {
+              "nested": {
+                "values": [
+                  1,
+                  "two",
+                  null
+                ]
+              },
+              "version": 1
+            },
+            "node_id": "alpha",
+            "scope_id": "10",
+            "written_at": "2026-01-01T00:00:00Z"
+          },
+          "node_id": null,
+          "scope_id": "default"
+        },
+        "op": "put",
+        "result": null
+      },
+      {
+        "args": {
+          "envelope": {
+            "contract_fingerprint": "sto-conformance-v1",
+            "data": {
+              "nested": {
+                "values": [
+                  1,
+                  "two",
+                  null
+                ]
+              },
+              "version": 1
+            },
+            "node_id": "alpha",
+            "scope_id": "2",
+            "written_at": "2026-01-01T00:00:00Z"
+          },
+          "node_id": null,
+          "scope_id": "default"
+        },
+        "op": "put",
+        "result": null
+      },
+      {
+        "args": {
+          "envelope": {
+            "contract_fingerprint": "sto-conformance-v1",
+            "data": {
+              "nested": {
+                "values": [
+                  1,
+                  "two",
+                  null
+                ]
+              },
+              "version": 1
+            },
+            "node_id": "beta",
+            "scope_id": "2",
+            "written_at": "2026-01-01T00:00:00Z"
+          },
+          "node_id": null,
+          "scope_id": "default"
+        },
+        "op": "put",
+        "result": null
+      },
+      {
+        "args": {
+          "envelope": null,
+          "node_id": null,
+          "scope_id": "default"
+        },
+        "op": "list_keys",
+        "result": [
+          [
+            "alpha",
+            "10"
+          ],
+          [
+            "alpha",
+            "2"
+          ],
+          [
+            "beta",
+            "2"
+          ]
+        ]
+      },
+      {
+        "args": {
+          "envelope": null,
+          "node_id": "alpha",
+          "scope_id": "default"
+        },
+        "op": "list_keys",
+        "result": [
+          [
+            "alpha",
+            "10"
+          ],
+          [
+            "alpha",
+            "2"
+          ]
+        ]
+      },
+      {
+        "args": {
+          "envelope": null,
+          "node_id": "missing",
+          "scope_id": "default"
+        },
+        "op": "list_keys",
+        "result": []
+      },
+      {
+        "args": {
+          "envelope": null,
+          "node_id": "alpha",
+          "scope_id": "2"
+        },
+        "op": "delete",
+        "result": true
+      },
+      {
+        "args": {
+          "envelope": null,
+          "node_id": null,
+          "scope_id": "default"
+        },
+        "op": "list_keys",
+        "result": [
+          [
+            "alpha",
+            "10"
+          ],
+          [
+            "beta",
+            "2"
+          ]
+        ]
+      }
+    ],
+    "overwrite_reads_latest_write": [
+      {
+        "args": {
+          "envelope": {
+            "contract_fingerprint": "sto-conformance-v1",
+            "data": {
+              "nested": {
+                "values": [
+                  1,
+                  "two",
+                  null
+                ]
+              },
+              "version": 1
+            },
+            "node_id": "sample",
+            "scope_id": "default",
+            "written_at": "2026-01-01T00:00:00Z"
+          },
+          "node_id": null,
+          "scope_id": "default"
+        },
+        "op": "put",
+        "result": null
+      },
+      {
+        "args": {
+          "envelope": {
+            "contract_fingerprint": "sto-conformance-v1",
+            "data": {
+              "nested": {
+                "values": [
+                  1,
+                  "two",
+                  null
+                ]
+              },
+              "version": 2
+            },
+            "node_id": "sample",
+            "scope_id": "default",
+            "written_at": "2026-01-01T00:00:00Z"
+          },
+          "node_id": null,
+          "scope_id": "default"
+        },
+        "op": "put",
+        "result": null
+      },
+      {
+        "args": {
+          "envelope": null,
+          "node_id": "sample",
+          "scope_id": "default"
+        },
+        "op": "get",
+        "result": {
+          "contract_fingerprint": "sto-conformance-v1",
+          "data": {
+            "nested": {
+              "values": [
+                1,
+                "two",
+                null
+              ]
+            },
+            "version": 2
+          },
+          "node_id": "sample",
+          "scope_id": "default",
+          "written_at": "2026-01-01T00:00:00Z"
+        }
+      }
+    ],
+    "put_then_get_roundtrip": [
+      {
+        "args": {
+          "envelope": {
+            "contract_fingerprint": "sto-conformance-v1",
+            "data": {
+              "nested": {
+                "values": [
+                  1,
+                  "two",
+                  null
+                ]
+              },
+              "version": 1
+            },
+            "node_id": "sample",
+            "scope_id": "default",
+            "written_at": "2026-01-01T00:00:00Z"
+          },
+          "node_id": null,
+          "scope_id": "default"
+        },
+        "op": "put",
+        "result": null
+      },
+      {
+        "args": {
+          "envelope": null,
+          "node_id": "sample",
+          "scope_id": "default"
+        },
+        "op": "get",
+        "result": {
+          "contract_fingerprint": "sto-conformance-v1",
+          "data": {
+            "nested": {
+              "values": [
+                1,
+                "two",
+                null
+              ]
+            },
+            "version": 1
+          },
+          "node_id": "sample",
+          "scope_id": "default",
+          "written_at": "2026-01-01T00:00:00Z"
+        }
+      }
+    ]
+  },
+  "source": "Postgres-style state transcript. Generated by the recorder from the reference binding; not a live capture."
+}

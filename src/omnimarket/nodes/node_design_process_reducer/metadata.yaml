@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_design_process_reducer
+version: 1.0.0
+description: Fold the events of one design record into its state; a record reaches done only when its readback reads healthy.
+pack: operator_tooling
+node_role: reducer
+display_name: Design Process Reducer
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_design_process_reducer: omnimarket.nodes.node_design_record_check_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- reducer
+- design-process
+- OMN-21460

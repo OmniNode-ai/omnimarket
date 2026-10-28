@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_binding_parity_orchestrator
+version: "0.1.0"
+description: "Orchestrator: runs one scenario under the baseline binding profile and every other profile of the factory_bindings overlay, compares the semantic projection of the runs and names the first difference. Carries the bus and state-store conformance suites and the in-process entry that runs any packaged node on the in-memory bus."
+pack: routing
+node_role: orchestrator
+display_name: "Binding Parity Orchestrator"
+omnibase_core_compat: ">=0.47.31,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_binding_parity_orchestrator: "omnimarket.nodes.node_binding_parity_orchestrator"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+- PyYAML>=6.0.3
+- pydantic>=2.0
+license: "MIT"
+authors: ["OmniNode Team"]
+tags: ["orchestrator", "binding", "parity", "conformance"]
