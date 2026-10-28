@@ -1869,13 +1869,9 @@ class TestHandlerWithCollector:
         assert state.status == EnumDodVerifyStatus.VERIFIED
         assert state.verified_count == 1
 
-    def test_handler_no_contract_skipped(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Handler returns SKIPPED when contract can't be found."""
-        # Missing-contract behavior is independent of the host's OCC clone.
-        monkeypatch.setattr(EvidenceCollector, "_resolve_occ_root", lambda _self: None)
-        monkeypatch.setattr(
-            EvidenceCollector, "_find_contract", lambda _self, _ticket: None
-        )
+    def test_handler_no_contract_failed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Handler returns FAILED when no product repository governs the ticket."""
+        monkeypatch.delenv("OMNI_HOME", raising=False)
         handler = HandlerDodVerify()
         result = handler.handle(
             {
@@ -1887,4 +1883,4 @@ class TestHandlerWithCollector:
             }
         )
         assert isinstance(result, dict)
-        assert result["status"] == "skipped"
+        assert result["status"] == "failed"

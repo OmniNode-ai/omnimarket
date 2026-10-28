@@ -1,25 +1,19 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""OMN-13888 — durable-evidence tombstone honoring + dod_verify dev-resolution rider.
+"""OMN-13888 — durable-evidence tombstone honoring + product contract resolution.
 
 * apply_supersessions drops tombstoned base receipts and substitutes replacements.
 * DurableEvidenceGate Check 2 fails a closed-unmerged citation and passes once a
   supersession re-binds the key to the merged PR (the OMN-13899 acceptance case).
-* EvidenceCollector resolves a dev-only contract from an origin/dev worktree.
+* EvidenceCollector resolves contracts from merged product-repository PRs.
 """
 
 from __future__ import annotations
 
-import os
-import subprocess
 from pathlib import Path
 
 import pytest
-import yaml
-from omnibase_core.validators.no_unguarded_git_subprocess import (
-    scrub_git_location_env,
-)
 
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumEvidenceCheckStatus,
@@ -37,6 +31,7 @@ from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
 from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
     EvidenceCollector,
 )
+from tests.unit.nodes.node_dod_verify.omn_20886_repo_world import World, contract
 
 _OCC_REPO = "/fake/onex_change_control"
 _DEV_REF = DEFAULT_OCC_GOVERNANCE_REF
@@ -317,138 +312,45 @@ def test_tombstone_only_yields_no_citation() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Rider — EvidenceCollector resolves a dev-only contract from origin/dev
+# EvidenceCollector resolves merged product contracts
 # --------------------------------------------------------------------------- #
 
 
-def _git(repo: Path, *args: str) -> None:
-    subprocess.run(
-        ["git", "-C", str(repo), *args],
-        check=True,
-        capture_output=True,
-        text=True,
-        env=scrub_git_location_env(os.environ),
-    )
-
-
 @pytest.mark.unit
-def test_evidence_collector_resolves_dev_only_contract(
+def test_evidence_collector_resolves_product_contract(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Build a git repo whose `dev` branch carries a contract that the working
-    # tree (checked out to `main`) does NOT have — the OMN-13899 shape.
-    occ = tmp_path / "onex_change_control"
-    occ.mkdir()
-    _git(occ, "init", "-q")
-    _git(occ, "config", "user.email", "t@t.co")
-    _git(occ, "config", "user.name", "t")
-    _git(occ, "checkout", "-q", "-b", "main")
-    (occ / "README.md").write_text("root\n", encoding="utf-8")
-    _git(occ, "add", "-A")
-    _git(occ, "commit", "-q", "-m", "init")
-
-    _git(occ, "checkout", "-q", "-b", "dev")
-    contract = {
-        "schema_version": "1.0.0",
-        "ticket_id": _TICKET,
-        "dod_evidence": [
-            {
-                "id": "dod-a",
-                "description": "trivially true",
-                "checks": [{"check_type": "command", "check_value": "true"}],
-            }
-        ],
-    }
-    (occ / "contracts").mkdir()
-    (occ / "contracts" / f"{_TICKET}.yaml").write_text(
-        yaml.safe_dump(contract, sort_keys=True), encoding="utf-8"
+    world = World(tmp_path)
+    world.merge(
+        "omnimarket",
+        11,
+        f"feat({_TICKET}): product contract",
+        {f"contracts/{_TICKET}.yaml": contract(_TICKET, "dod-a", [])},
     )
-    _git(occ, "add", "-A")
-    _git(occ, "commit", "-q", "-m", "dev contract")
-    # Back to main so the working tree lacks the contract.
-    _git(occ, "checkout", "-q", "main")
+    world.install(monkeypatch)
 
-    monkeypatch.setenv("CONTRACT_REPO_DIR", str(occ))
-    monkeypatch.setenv(
-        "OCC_GOVERNANCE_REF", "dev"
-    )  # local branch stands in for origin/dev
-    monkeypatch.delenv("OMNI_HOME", raising=False)
+    results = EvidenceCollector().collect(_TICKET)
 
-    collector = EvidenceCollector()
-    results = collector.collect(_TICKET)
-
-    # Contract was resolved from the dev worktree and its check ran (VERIFIED),
-    # not the "No contract found" SKIPPED verdict.
     assert len(results) == 1
     assert results[0].evidence_id == "dod-a", results[0].message
     assert results[0].status == EnumEvidenceCheckStatus.VERIFIED, results[0].message
-    # worktree cleaned up
-    assert collector._occ_dev_root is None
 
 
 @pytest.mark.unit
-def test_evidence_collector_prefers_dev_over_stale_main_copy(
+def test_evidence_collector_prefers_product_contract_over_stale_occ_copy(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """OMN-13888 round-1 residual edge: a STALE contract copy present on the
-    ``main`` working tree must NOT shadow the fresher ``dev`` version. The rider
-    now ALWAYS prefers dev when the contract is present there.
-    """
-    occ = tmp_path / "onex_change_control"
-    occ.mkdir()
-    _git(occ, "init", "-q")
-    _git(occ, "config", "user.email", "t@t.co")
-    _git(occ, "config", "user.name", "t")
-    _git(occ, "checkout", "-q", "-b", "main")
-    (occ / "contracts").mkdir()
-
-    # STALE main copy: a dod_evidence item whose id is dod-STALE.
-    stale = {
-        "schema_version": "1.0.0",
-        "ticket_id": _TICKET,
-        "dod_evidence": [
-            {
-                "id": "dod-STALE",
-                "description": "stale main copy",
-                "checks": [{"check_type": "command", "check_value": "true"}],
-            }
-        ],
-    }
-    (occ / "contracts" / f"{_TICKET}.yaml").write_text(
-        yaml.safe_dump(stale, sort_keys=True), encoding="utf-8"
+    world = World(tmp_path)
+    world.occ({_TICKET: contract(_TICKET, "dod-STALE", [])})
+    world.merge(
+        "omnimarket",
+        12,
+        f"feat({_TICKET}): current product contract",
+        {f"contracts/{_TICKET}.yaml": contract(_TICKET, "dod-FRESH", [])},
     )
-    _git(occ, "add", "-A")
-    _git(occ, "commit", "-q", "-m", "stale main contract")
+    world.install(monkeypatch)
 
-    # FRESH dev copy: item id dod-FRESH — the version that must be used.
-    _git(occ, "checkout", "-q", "-b", "dev")
-    fresh = {
-        "schema_version": "1.0.0",
-        "ticket_id": _TICKET,
-        "dod_evidence": [
-            {
-                "id": "dod-FRESH",
-                "description": "fresh dev copy",
-                "checks": [{"check_type": "command", "check_value": "true"}],
-            }
-        ],
-    }
-    (occ / "contracts" / f"{_TICKET}.yaml").write_text(
-        yaml.safe_dump(fresh, sort_keys=True), encoding="utf-8"
-    )
-    _git(occ, "add", "-A")
-    _git(occ, "commit", "-q", "-m", "fresh dev contract")
-    # Working tree back on main → the STALE copy is present on disk.
-    _git(occ, "checkout", "-q", "main")
+    results = EvidenceCollector().collect(_TICKET)
 
-    monkeypatch.setenv("CONTRACT_REPO_DIR", str(occ))
-    monkeypatch.setenv("OCC_GOVERNANCE_REF", "dev")
-    monkeypatch.delenv("OMNI_HOME", raising=False)
-
-    collector = EvidenceCollector()
-    results = collector.collect(_TICKET)
-
-    # The FRESH dev item resolved, not the stale main copy.
     assert len(results) == 1
     assert results[0].evidence_id == "dod-FRESH", results[0].message
-    assert collector._occ_dev_root is None
