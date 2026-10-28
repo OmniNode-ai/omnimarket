@@ -1,0 +1,151 @@
+schema_version: 1.0.0
+ticket_id: OMN-21473
+title: 'T-B1: dependencies declared in contracts and a check that nothing assumes our setup'
+summary: 'New pure COMPUTE node node_binding_conformance_compute (operation check_bindings) with its contract, metadata,
+  handler, models and tests. The caller supplies node contracts, handler and model sources, the protocol table, the concrete
+  bindings, the modules a pure node may not import and the deployment''s private names as data; the check fails a contract
+  that declares a different protocol set than its row, a handler that constructs a concrete binding, reads an environment
+  variable or holds a path, URL or private name, and a pure handler or model that imports the overlay reader or the contract
+  loader. The checked set is a data list in the test data.'
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn21473-binding-conformance
+  statement: A node's contract declares exactly its row of protocols and its shipped files assume no deployment's setup, checked by a pure node.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: A fixture effect that constructs a concrete bus adapter fails naming the line -- falsifier: the pytest case'
+  - id: AC2
+    statement: 'AC2: A fixture contract missing a protocol its 0d.3 row requires fails naming the protocol -- falsifier: the pytest case'
+  - id: AC3
+    statement: 'AC3: A fixture handler containing an invented repository name, an invented host name or an `os.environ` read fails -- falsifier: three pytest cases'
+  - id: AC4
+    statement: 'AC4: A pure handler or model that imports the overlay reader or the contract loader fails, and a pure handler''s execution under a guard that raises on any filesystem or environment read still passes with injected configuration -- falsifier: the pytest cases, and a fixture handler that loads its own overlay, which fails'
+  - id: AC5
+    statement: 'AC5: Every node row of 0d.3 whose node exists when the PR lands passes against its real contract, and the checked set is a data list that each later task extends in its own PR and must pass -- falsifier: the pytest case over the repository''s contracts, which fails for a listed node that declares a different set'
+  - id: AC6
+    statement: 'AC6: Configuration: the protocol table is data supplied by the caller (it is the 0d.3 table), and the private names come from the caller''s overlays; none is a literal in the node -- falsifier: a fixture table that adds a protocol to a node makes the same contract fail'
+  - id: AC7
+    statement: 'AC7: Bindings: the node depends on no protocol -- falsifier: identical issues in process and through the local in-process entry of the parity harness (T-B2)'
+evidence_requirements:
+- kind: tests
+  description: Binding conformance node tests.
+  command: uv run pytest tests/nodes/node_binding_conformance_compute/test_check_bindings.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21473-ac1-concrete-bus-adapter
+  description: 'AC1: an effect that constructs a concrete bus adapter fails and the issue names the import line and the construction line.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_binding_conformance_compute/test_check_bindings.py -q --no-cov -k concrete_bus_adapter
+    cwd: .
+- id: dod-omn21473-ac2-missing-protocol
+  description: 'AC2: a contract missing a protocol its row requires fails and the issue names the protocol.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_binding_conformance_compute/test_check_bindings.py -q --no-cov -k 'missing_a_protocol_its_row_requires or does_not_give or the_table_does_not_know'
+    cwd: .
+- id: dod-omn21473-ac3-names-and-environment
+  description: 'AC3: a handler with an invented repository name, an invented host name or an os.environ read fails, in three cases.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_binding_conformance_compute/test_check_bindings.py -q --no-cov -k 'invented_repository_name or invented_host_name or reads_os_environ'
+    cwd: .
+- id: dod-omn21473-ac4-purity
+  description: 'AC4: a pure handler or model that imports the overlay reader or the contract loader fails, a handler that loads its own overlay fails, and the check runs under a filesystem and environment guard with injected configuration.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_binding_conformance_compute/test_check_bindings.py -q --no-cov -k 'overlay_reader_or_loader or loads_its_own_overlay or guard'
+    cwd: .
+- id: dod-omn21473-ac5-checked-set
+  description: 'AC5: every node in the checked-set data list passes against its real contract and sources, and a listed node whose contract declares a different set fails.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_binding_conformance_compute/test_check_bindings.py -q --no-cov -k 'every_listed_node or declares_a_different_set or row_gains_a_protocol'
+    cwd: .
+- id: dod-omn21473-ac6-configuration
+  description: 'AC6: a fixture table that adds a protocol makes the same contract fail, the private names and concrete bindings come from the request, and the node ships none of them.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_binding_conformance_compute/test_check_bindings.py -q --no-cov -k 'adds_a_protocol_to_a_node or concrete_binding_list or ships_no_protocol_table or come_from_the_request'
+    cwd: .
+- id: dod-omn21473-ac7-bindings
+  description: 'AC7: the contract declares no protocol and is pure, the node is registered and routes check_bindings to its handler, and direct and contract-routed results are byte-identical JSON. The parity harness (T-B2) is not in the tree; the route is the one the contract resolves for the run-node entry.'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_binding_conformance_compute/test_check_bindings.py -q --no-cov -k 'declares_no_protocol or registered_and_routes or byte_identical'
+    cwd: .
+- id: dod-omn21473-deploy-check-bindings
+  description: 'Hosted package deploy smoke: dispatch the node through the installed ONEX CLI with an in-memory bus. Read the typed receipts for a conforming request and for a request with a missing protocol, an invented host name and an environment read, and assert the verdicts and the named lines. No credentials, broker or lab service is required. This checks the evaluated checkout package, not a production rollout.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      export PYTHONDONTWRITEBYTECODE=1;
+      probe_dir="$(mktemp -d)";
+      trap 'rm -rf "$probe_dir"' EXIT;
+      uv sync --locked;
+      runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+      "$runtime_bin/python" -c '
+      import json
+      import sys
+      from pathlib import Path
+      root = Path(sys.argv[1])
+      table = {"protocols": [{"code": "BUS", "protocol": "fixture.protocols:ProtocolBus"}], "rows": [{"node": "node_fixture_pure", "protocols": []}]}
+      contract = {"node": "node_fixture_pure", "path": "contract.yaml", "kind": "contract", "text": "name: node_fixture_pure\n"}
+      ok_handler = {"node": "node_fixture_pure", "path": "handlers/handler.py", "kind": "handler", "text": "class H:\n    pass\n"}
+      bad_handler = {"node": "node_fixture_pure", "path": "handlers/handler.py", "kind": "handler", "text": "import os\nHOST = \"box-17.fixture.invalid\"\nV = os.environ[\"X\"]\n"}
+      ok = {"checked_nodes": ["node_fixture_pure"], "protocol_table": table, "sources": [contract, ok_handler]}
+      bad_table = {"protocols": table["protocols"], "rows": [{"node": "node_fixture_pure", "protocols": ["BUS"]}]}
+      bad = {"checked_nodes": ["node_fixture_pure"], "protocol_table": bad_table, "private_names": [{"kind": "host", "value": "box-17.fixture.invalid"}], "sources": [contract, bad_handler]}
+      (root / "ok.json").write_text(json.dumps(ok))
+      (root / "bad.json").write_text(json.dumps(bad))
+      ' "$probe_dir";
+      for case in ok bad; do
+        env -u PYTHONPATH ONEX_LANE=omn21473-deploy-probe "$runtime_bin/onex" node node_binding_conformance_compute --input "$probe_dir/$case.json" --state-root "$probe_dir/$case.state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/$case.receipt.json";
+      done;
+      "$runtime_bin/python" -c '
+      import json
+      import sys
+      from pathlib import Path
+      root = Path(sys.argv[1])
+      receipts = {case: json.loads((root / f"{case}.receipt.json").read_text()) for case in ("ok", "bad")}
+      for case, receipt in receipts.items():
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+      ok = receipts["ok"]["result"]
+      assert ok["conforming"] is True and ok["issues"] == [], ok
+      bad = receipts["bad"]["result"]
+      assert bad["conforming"] is False, bad
+      found = sorted((issue["rule"], issue["line"]) for issue in bad["issues"])
+      assert found == [("contract_missing_protocol", 0), ("env_read", 3), ("private_name", 2)], found
+      assert "box-17.fixture.invalid" not in json.dumps(bad), bad
+      print("packaged binding conformance check: 2 receipts verified")
+      ' "$probe_dir"
+    cwd: .
