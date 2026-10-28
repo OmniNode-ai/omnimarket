@@ -81,7 +81,7 @@ GRID_HARNESS_REVISION = "capability_grid_run"
 GRID_GRADER_REVISION = "rubric_check"
 #: The three fields that name the machine that served a graded answer.
 SERVING_FIELDS: tuple[str, ...] = ("backend_id", "host", "answering_backend")
-_RUBRIC_PASS = "PASS"
+_RUBRIC_FAIL = "FAIL"
 _THINK_END = "</think>"
 
 _GRID_ITEMS_SQL = """
@@ -120,6 +120,7 @@ class ModelGridAnswer(BaseModel):
     host: str | None
     answering_backend: str | None
     served_model: str | None
+    finish_reason: str | None = None
 
 
 def row_identity_gaps(row: ModelCapabilityVerdictRow) -> tuple[str, ...]:
@@ -170,11 +171,13 @@ def call_grid_backend(
         timeout,
     )
     served = str(response.get("model") or "") or None
+    choices = response.get("choices") or [{}]
     return ModelGridAnswer(
         answer_text=_answer_text(response),
         host=urlparse(backend.endpoint_url).hostname or None,
         answering_backend=backend.backend_id,
         served_model=served,
+        finish_reason=str(choices[0].get("finish_reason") or "") or None,
     )
 
 
@@ -289,7 +292,61 @@ def build_grid_map_run(
     }
 
 
+def _gate_accepts(task_class: str, prompt: str, answer: ModelGridAnswer) -> bool:
+    """Whether the live acceptance gate accepts the answer.
+
+    The deterministic quality gate with the task class's DoD checks and response
+    contract, then the class's required bar, as the bus-less delegation port
+    decides acceptance (without its independent answer judge).
+    """
+    from omnibase_core.models.delegation.wire import ModelQualityGateInput
+
+    from omnimarket.inference.provider_finish_reason import parse_finish_reason
+    from omnimarket.nodes.node_delegation_orchestrator.quality_bar_authority import (
+        RequiredBarAuthorityError,
+        is_quality_accepted,
+        resolve_required_bar_authority,
+    )
+    from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
+        delta as evaluate_quality_gate,
+    )
+    from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+        resolve_task_class_dod_checks,
+        resolve_task_class_response_contract,
+    )
+
+    deterministic, heuristic = resolve_task_class_dod_checks(task_class, prompt=prompt)
+    result = evaluate_quality_gate(
+        ModelQualityGateInput(
+            correlation_id=uuid5(
+                NAMESPACE_URL, f"omn-21434:gate:{task_class}:{prompt}"
+            ),
+            task_type=task_class,
+            llm_response_content=answer.answer_text,
+            dod_deterministic=deterministic,
+            dod_heuristic=heuristic,
+            quality_contract_mode="extend_task_class",
+            acceptance_criteria=(),
+        ),
+        response_contract=resolve_task_class_response_contract(task_class),
+        grounding_source=prompt,
+        finish_reason=parse_finish_reason(answer.finish_reason),
+    )
+    try:
+        authority = resolve_required_bar_authority(task_type=task_class)
+    except RequiredBarAuthorityError:
+        return result.fail_category != "fail_deterministic" and result.passed
+    declared, _ = resolve_task_class_dod_checks(task_class)
+    return is_quality_accepted(result, authority, declared_deterministic=declared)
+
+
 def _rubric_grade(task_class: str, prompt: str, answer: ModelGridAnswer) -> bool:
+    """A pass is an answer the acceptance gate accepts and the class rubric does not fail.
+
+    The class rubric is UNDETERMINED where it has no rubric for the class or
+    cannot check a criterion without the task's sources, so it decides only
+    where it can; the acceptance gate decides every class.
+    """
     from omnimarket.delegation.rubric.attempt_verdict import (
         record_attempt_rubric_verdict,
     )
@@ -297,7 +354,9 @@ def _rubric_grade(task_class: str, prompt: str, answer: ModelGridAnswer) -> bool
     verdict = record_attempt_rubric_verdict(
         task_class=task_class, request_text=prompt, answer_text=answer.answer_text
     )
-    return verdict.outcome == _RUBRIC_PASS
+    if verdict.outcome == _RUBRIC_FAIL:
+        return False
+    return _gate_accepts(task_class, prompt, answer)
 
 
 def _load_cache(path: Path | None) -> dict[tuple[str, str], ModelCapabilityGridGrade]:
