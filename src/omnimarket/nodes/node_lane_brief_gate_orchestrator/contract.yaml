@@ -1,0 +1,93 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: the brief gate orchestrator of the Small-Batch Factory (OMN-21458, factory task T-S12).
+# This task adds only its own edge, parse_brief. Later tasks add their edges below it. The orchestrator
+# calls the edge in process through the sibling's own contract and holds none of its logic.
+name: node_lane_brief_gate_orchestrator
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: orchestrator
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+lifecycle: experimental
+description: >
+  The brief gate: a lane brief passes through its edges, in order, before it is dispatched. The
+  first edge parses the brief into the typed ModelLaneBrief through node_lane_brief_parse_compute;
+  a missing or prose engine line refuses the brief and names the line.
+input_model:
+  name: ModelLaneBriefParseRequest
+  module: omnimarket.models.lane_brief.model_lane_brief_parse_request
+  description: The brief text and the time of the gate run.
+output_model:
+  name: ModelLaneBriefParseResult
+  module: omnimarket.models.lane_brief.model_lane_brief_parse_result
+  description: The typed brief, or the metadata lines that refused it.
+handler:
+  module: omnimarket.nodes.node_lane_brief_gate_orchestrator.handlers.handler_lane_brief_gate_run
+  class: HandlerLaneBriefGateRun
+  input_model: omnimarket.models.lane_brief.model_lane_brief_parse_request.ModelLaneBriefParseRequest
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_lane_brief_gate_orchestrator.handlers.handler_lane_brief_gate_run:HandlerLaneBriefGateRun
+  handlers:
+  - operation: run_lane_brief_gate
+    handler:
+      name: HandlerLaneBriefGateRun
+      module: omnimarket.nodes.node_lane_brief_gate_orchestrator.handlers.handler_lane_brief_gate_run
+    input_model: omnimarket.models.lane_brief.model_lane_brief_parse_request.ModelLaneBriefParseRequest
+    output_model: omnimarket.models.lane_brief.model_lane_brief_parse_result.ModelLaneBriefParseResult
+workflow_coordination:
+  workflow_definition:
+    workflow_metadata:
+      workflow_name: lane_brief_gate
+      workflow_version:
+        major: 1
+        minor: 0
+        patch: 0
+      description: Parse the brief; later tasks add the edges that check it.
+    execution_graph:
+      nodes:
+      - node_id: parse_brief
+        node_type: COMPUTE_GENERIC
+        description: Parse the brief's column-zero metadata lines into ModelLaneBrief.
+        step_config:
+          node: node_lane_brief_parse_compute
+          operation: parse_lane_brief
+    coordination_rules:
+      execution_mode: sequential
+      parallel_execution_allowed: false
+      failure_recovery_strategy: fail_fast
+      recovery_enabled: false
+descriptor:
+  node_archetype: orchestrator
+  purity: pure
+  idempotent: true
+  timeout_ms: 10000
+  runtime_profiles: [main]
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.lane-brief-gate-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.lane-brief-gate-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lane-brief-gate-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.lane-brief-gate-completed.v1
+terminal_event: onex.evt.omnimarket.lane-brief-gate-completed.v1
+published_events:
+- event_type: ModelLaneBriefParseResult
+  topic: onex.evt.omnimarket.lane-brief-gate-completed.v1
+  description: The typed brief, or the lines that refused it.
+externally_consumed_topics:
+- onex.evt.omnimarket.lane-brief-gate-completed.v1
+metadata:
+  ticket: OMN-21458
+  transport_type: kafka
+  author: OmniNode Team
+  tags: [orchestrator, lane-brief, factory]

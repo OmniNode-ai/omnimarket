@@ -1,0 +1,78 @@
+name: node_lane_brief_parse_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure parse of a lane brief into ModelLaneBrief (OMN-21458, factory task T-S12). The parse_lane_brief
+  operation reads the brief's column-zero metadata lines outside code fences: the lane title (task),
+  Required engine, Required host, the ticket, Opens PR in, Proves and the quoted ticket criteria.
+  A missing, repeated, empty or prose Required engine line refuses the brief and the issue names the
+  line; the header the assemble operation of node_lane_brief_draft_compute writes supplies the task,
+  ticket and repository when the brief states none. The request carries the brief text and the time
+  of the parse and nothing configured. Reads no file, calls no model, depends on no protocol.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: parse_lane_brief
+      handler:
+        name: HandlerLaneBriefParse
+        module: omnimarket.nodes.node_lane_brief_parse_compute.handlers.handler_lane_brief_parse
+      input_model: omnimarket.models.lane_brief.model_lane_brief_parse_request.ModelLaneBriefParseRequest
+      output_model: omnimarket.models.lane_brief.model_lane_brief_parse_result.ModelLaneBriefParseResult
+
+handler:
+  module: omnimarket.nodes.node_lane_brief_parse_compute.handlers.handler_lane_brief_parse
+  class: HandlerLaneBriefParse
+  input_model: omnimarket.models.lane_brief.model_lane_brief_parse_request.ModelLaneBriefParseRequest
+  output_model: omnimarket.models.lane_brief.model_lane_brief_parse_result.ModelLaneBriefParseResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+  runtime_profiles: [main]
+
+inputs:
+  brief:
+    type: str
+    required: true
+    description: The brief text, as the assemble operation or a writer produced it.
+  now:
+    type: datetime
+    required: true
+    description: The time of the parse, stamped on the result.
+
+outputs:
+  parsed:
+    type: bool
+  brief:
+    type: object
+  issues:
+    type: tuple
+  parsed_at:
+    type: datetime
+
+terminal_event: onex.evt.omnimarket.lane-brief-parsed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.lane-brief-parse-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.lane-brief-parsed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.lane-brief-parsed.v1
+
+published_events:
+  - event_type: LaneBriefParsed
+    topic: onex.evt.omnimarket.lane-brief-parsed.v1
+    description: The typed lane brief, or the metadata lines that refused it.
+
+metadata:
+  ticket: OMN-21458
+  transport_type: kafka
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lane-brief-parse-requested.v1

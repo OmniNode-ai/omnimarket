@@ -1,0 +1,20 @@
+name: node_lane_brief_gate_orchestrator
+version: "1.0.0"
+description: "The brief gate: a lane brief passes its edges in order; the first edge parses it into a typed ModelLaneBrief"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_lane_brief_gate_orchestrator: "omnimarket.nodes.node_lane_brief_gate_orchestrator"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "lane-brief", "factory"]
+pack: "core"
+display_name: "Lane Brief Gate Orchestrator"
+node_role: "orchestrator"
+tickets: ["OMN-21458"]
