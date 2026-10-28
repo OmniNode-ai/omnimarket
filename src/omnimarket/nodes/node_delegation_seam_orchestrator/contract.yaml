@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Delegation Seam Orchestrator (skeleton)
+#
+# Skeleton only: it declares the orchestrator and its edge to the registry node. The
+# delegation line as an execution_graph, the readers' bindings and the handler land
+# with the graph-contract and runner tasks; nothing here wires a handler yet.
+name: node_delegation_seam_orchestrator
+contract_name: node_delegation_seam_orchestrator
+node_name: node_delegation_seam_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Orchestrate the delegation seam readings. This skeleton names the one reader node it
+  reads from so far: node_delegation_seam_measure_compute, whose first operation
+  load_delegation_workflows returns the typed delegation workflow rows.
+
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: true
+  side_effects: []
+
+edges:
+  - from: node_delegation_seam_orchestrator
+    to: node_delegation_seam_measure_compute
+    operation: load_delegation_workflows

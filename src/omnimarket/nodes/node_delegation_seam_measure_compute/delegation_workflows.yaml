@@ -1,0 +1,1028 @@
+# Delegation workflow registry: the 19 workflows, re-read at current heads.
+# Each cell is a value plus `verified_by: <command> => <observation>`. Commands are
+# written relative to a checkout of each named repository and the plugin's skills
+# directory (<plugin>/skills); `knowledge-plan` stands for the factory plan's task text.
+station_shapes:
+- station: DSt1
+  seam: DS-1
+  name: Entry
+  shape:
+    value: 'ModelDelegateSkillRequest (omnimarket.models.delegation.wire.model_delegate_skill_request):
+      prompt, task_type, source (closed set claude-code, codex, external-client), plus the caller-lane
+      type in models/delegation/delegation_caller_lane.py.'
+    verified_by: 'rg -n ''class ModelDelegateSkillRequest|source: Literal'' src/omnimarket/models/delegation/wire/model_delegate_skill_request.py;
+      ls src/omnimarket/models/delegation/delegation_caller_lane.py => class at line 66, source is a Literal
+      of three adapter names at line 100, caller-lane module present'
+- station: DSt2
+  seam: DS-2
+  name: Admission and routing
+  shape:
+    value: ModelDelegationRequest (wire/model_delegation_request.py) to ModelRoutingDecision (wire/model_routing_decision.py),
+      routed by node_delegation_routing_reducer; the routing-decision event topic onex.evt.omnibase-infra.routing-decision.v1
+      is consumed by node_projection_live_events.
+    verified_by: rg -n 'class ModelDelegationRequest|class ModelRoutingDecision' src/omnimarket/models/delegation/wire;
+      rg -n 'routing-decision.v1' src/omnimarket/nodes/node_projection_live_events/contract.yaml => ModelDelegationRequest
+      at model_delegation_request.py:74, ModelRoutingDecision at model_routing_decision.py:19, topic subscribed
+      at contract.yaml:84
+- station: DSt3
+  seam: DS-3
+  name: Call
+  shape:
+    value: ModelInferenceIntent (omnibase_core.models.delegation.wire) published on onex.cmd.omnibase-infra.delegation-inference-request.v1
+      and executed by HandlerInferenceIntent of node_llm_delegation_call_effect, which answers with ModelInferenceResponseData
+      on onex.evt.omnibase-infra.inference-response.v1. This names the request model that the first inventory
+      left open.
+    verified_by: rg -n 'delegation-inference-request|ModelInferenceIntent|inference-response.v1' src/omnimarket/nodes/node_llm_delegation_call_effect/contract.yaml
+      => subscribe topic at line 206, schema_ref omnibase_core.models.delegation.wire.ModelInferenceIntent
+      at line 237, publish topic inference-response.v1 at line 209
+- station: DSt4
+  seam: DS-4
+  name: Quality gate
+  shape:
+    value: ModelQualityGateInput to ModelQualityGateResult (wire/model_quality_gate.py), reduced by node_delegation_quality_gate_reducer.
+    verified_by: rg -n 'class ModelQualityGateInput|class ModelQualityGateResult' src/omnimarket/models/delegation/wire/model_quality_gate.py;
+      ls src/omnimarket/nodes | rg quality_gate_reducer => classes at lines 108 and 157, node_delegation_quality_gate_reducer
+      present
+- station: DSt5
+  seam: DS-5
+  name: Escalation and terminal
+  shape:
+    value: 'node_delegation_escalation_decision_compute decides the next rung; the terminal carries terminal_failure_cause,
+      an optional field whose closed set is EnumDelegationTerminalFailureCause (omnibase_core enums/enum_delegation_terminal_failure_cause.py):
+      nine members, none named unknown, returned_to_caller ends the ladder. A failed run with the field
+      absent is the null case that DS-5 counts.'
+    verified_by: 'rg -n ''^    [A-Z_]* = '' omnibase_core/src/omnibase_core/enums/enum_delegation_terminal_failure_cause.py
+      | wc -l; rg -n -i unknown omnibase_core/src/omnibase_core/enums/enum_delegation_terminal_failure_cause.py;
+      rg -n ''terminal_failure_cause'' -A3 src/omnimarket/nodes/node_delegate_skill_orchestrator/contract.yaml
+      => 9 members, no unknown member, the contract field is required: false with the same nine values
+      enumerated'
+- station: DSt6
+  seam: DS-6
+  name: Receipt
+  shape:
+    value: ModelDelegateSkillResponse (provider, model, response, metrics, quality gate) and ModelDelegateSkillTerminalProjection,
+      a subclass of the response.
+    verified_by: rg -n 'class ModelDelegateSkillResponse|class ModelDelegateSkillTerminalProjection' src/omnimarket/models/delegation/wire
+      => response at model_delegate_skill_response.py:442, projection at model_delegate_skill_terminal_projection.py:84
+      extends ModelDelegateSkillResponse
+- station: DSt7
+  seam: DS-7
+  name: Usage record
+  shape:
+    value: ModelProjectionTaskDelegatedEvent into node_projection_delegation (the delegation_events rows);
+      node_work_ledger_delegation_mirror maps a completed or failed terminal to one ModelWorkLedgerAppendRequest
+      STATUS append.
+    verified_by: rg -n 'class ModelProjectionTaskDelegatedEvent' src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py;
+      rg -n 'class ModelWorkLedgerAppendRequest' src/omnimarket/models/work_ledger_append; sed -n 9,12p
+      src/omnimarket/nodes/node_work_ledger_delegation_mirror/contract.yaml => event model at line 322,
+      append request at model_work_ledger_append.py:22, mirror described as a pure mapping of a terminal
+      to one STATUS append request
+- station: DSt8
+  seam: DS-8
+  name: Dashboard read
+  shape:
+    value: 'Declared endpoints /api/delegation/summary, /recent, /model-routing, /quality-gate and /savings
+      (node_projection_delegation api_contract.yaml, five rather than four); dashboard pages: DelegationEvidencePage.tsx
+      and the local pages overview, runs, usage, workflow, credentials, api-keys. Row provenance is data_source
+      in real, experiment or fixture (omnimarket.projection.envelope).'
+    verified_by: 'rg -n ''path: /api/delegation'' src/omnimarket/nodes/node_projection_delegation/api_contract.yaml;
+      ls omnidash/src/pages/local/*.page.yaml; rg -n ''DATA_SOURCES'' src/omnimarket/projection/envelope.py
+      => five paths at lines 12, 18, 24, 30, 36; six local page files; DATA_SOURCES holds real, fixture,
+      experiment'
+workflows:
+- id: W1
+  name: onex delegate on the deployed-lane locus (the product path)
+  entry:
+    value: onex delegate publishes a ModelDelegateSkillRequest to node_delegate_skill_orchestrator, which
+      hands a ModelDelegationRequest to node_delegation_orchestrator; the workflow handler emits the inference
+      intent on the delegation-inference-request topic.
+    verified_by: rg -n 'delegation-inference-request' src/omnimarket/nodes/node_delegation_orchestrator/contract.yaml;
+      ls src/omnimarket/nodes/node_delegate_skill_orchestrator/handlers => topic declared in the orchestrator
+      contract, handler_delegate_skill.py present
+  routing_fallback:
+    value: Routing reducer by task-class tier order, escalation up the ladder by node_delegation_escalation_decision_compute;
+      the ladder ends at returned_to_caller, which is a member of the terminal-cause enum.
+    verified_by: rg -n 'returned_to_caller' src/omnimarket/nodes/node_delegate_skill_orchestrator/contract.yaml;
+      ls src/omnimarket/nodes | rg 'delegation_(routing_reducer|escalation_decision)' => returned_to_caller
+      is the last enumerated cause; both nodes present
+  quality_gate:
+    value: node_delegation_quality_gate_reducer, ModelQualityGateInput to ModelQualityGateResult.
+    verified_by: ls src/omnimarket/nodes | rg quality_gate_reducer => node present
+  receipt:
+    value: CLI run directory under the state root plus the delegate-skill terminal events.
+    verified_by: rg -n 'delegate-skill-completed' src/omnimarket/nodes/node_projection_delegation/contract.yaml
+      => the projection subscribes to the completed terminal at line 269
+  usage_record:
+    value: One delegation_events row per correlation id through node_projection_delegation; node_work_ledger_delegation_mirror
+      maps each terminal to a ledger STATUS append.
+    verified_by: ls src/omnimarket/nodes | rg 'projection_delegation$|work_ledger_delegation_mirror' =>
+      both nodes present
+  dashboard_read:
+    value: The /api/delegation endpoints and the Runs and Usage pages.
+    verified_by: 'rg -n ''path: /api/delegation'' src/omnimarket/nodes/node_projection_delegation/api_contract.yaml
+      => five endpoints declared'
+  stations: &id001
+  - DSt1
+  - DSt2
+  - DSt3
+  - DSt4
+  - DSt5
+  - DSt6
+  - DSt7
+  - DSt8
+  seams: &id002
+  - DS-1
+  - DS-2
+  - DS-3
+  - DS-4
+  - DS-5
+  - DS-6
+  - DS-7
+  - DS-8
+  shapes:
+    value: ModelDelegateSkillRequest, ModelRoutingDecision, ModelQualityGateResult, ModelDelegateSkillResponse,
+      delegation_events row.
+    verified_by: ls src/omnimarket/models/delegation/wire | rg 'skill_request|routing_decision|quality_gate|skill_response'
+      => all four wire modules present
+  measurement: DS-6
+  criteria:
+  - C11
+  - C12
+  - C15
+  - C16
+  - C28
+  canary:
+    family: existing_producer
+    ref: chain canary producer of C15 and the producers of C11, C12, C16 and C28
+    verified_by: rg -n 'delegation' src/omnimarket/nodes/node_golden_chain_sweep/golden_chains.yaml |
+      head -3 => golden chain entries for the delegation topics exist in node_golden_chain_sweep
+  owner: delegation owner
+- id: W2
+  name: onex delegate in-process locus, customer-local
+  entry:
+    value: The in-process locus dispatches through LocalDelegationDispatchPort in node_delegate_skill_orchestrator/ports.
+    verified_by: rg -n 'class LocalDelegationDispatchPort' src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch.py
+      => class found
+  routing_fallback:
+    value: The same ladder resolved from the task-class contract (tier_order, required_bar) a second time,
+      in the port.
+    verified_by: rg -n 'tier_order|required_bar' src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch.py
+      | head -3 => both names occur in the port
+  quality_gate:
+    value: The port imports the gate's helper functions and the answer-gate rules.
+    verified_by: rg -n 'quality|gate' src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch.py
+      | head -3 => quality-gate references occur in the port
+  receipt:
+    value: CLI run directory <state root>/runs/<correlation id>/ with receipt.json (the loop CLIs add
+      loop_receipt.json there).
+    verified_by: rg -n 'receipt.json' src/omnimarket/delegated_code_edit/loop_ports.py src/omnimarket/cli/cli_code_edit.py
+      | head -3 => receipt.json and loop_receipt.json are read and written under the run directory
+  usage_record:
+    value: A delegation_events row in the SQLite target when no overlay is configured, or the overlay
+      Postgres.
+    verified_by: rg -n 'SQLite' src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch.py
+      | head -2 => the port docstring names a SQLite target when no overlay is configured, and line 1580
+      notes the evidence database target is no longer a hard-coded SQLite default
+  dashboard_read:
+    value: The local dashboard pages (overview, runs, usage, workflow).
+    verified_by: ls omnidash/src/pages/local/*.page.yaml => runs.page.yaml, usage.page.yaml, overview.page.yaml,
+      workflow.page.yaml present
+  stations: *id001
+  seams: *id002
+  shapes:
+    value: As W1.
+    verified_by: ls src/omnimarket/models/delegation/wire | rg skill_request => shared wire models
+  measurement: DS-2
+  criteria:
+  - C12
+  - C13
+  - C14
+  canary:
+    family: canary_customer_local_and_plugin
+    ref: canary_customer_local_and_plugin; producers of C13 and C14
+    verified_by: read the plan task text for family canary_customer_local_and_plugin => the task names
+      operation canary_customer_local_and_plugin
+  owner: customer path owner
+- id: W3
+  name: /onex:delegate skill in Claude Code (the first-hour path)
+  entry:
+    value: The plugin skill onex:delegate runs `onex delegate ... --json` inline (no subagent) and shows
+      the answer and a Run line.
+    verified_by: 'read the onex:delegate entry of the lane''s skill listing => described as single-command
+      delegation, handled inline, no subagent, one Run: <correlation_id> line after the answer'
+  routing_fallback:
+    value: 'By locus, as W1 or W2: --locus deployed-lane goes to the bus, --locus in-process uses the
+      local dispatch port.'
+    verified_by: rg -n -- '--locus' <plugin>/skills/merge-drain/scripts/landing_text.py | head -1 => landing_text
+      documents the route as --bus kafka --lane dev --locus deployed-lane, with the in-memory form as
+      its fallback
+  quality_gate:
+    value: As the locus.
+    verified_by: ls src/omnimarket/nodes | rg quality_gate_reducer => gate node present
+  receipt:
+    value: 'Receipt shown to the session: the answer and one Run: <correlation_id> line.'
+    verified_by: 'read the onex:delegate entry of the lane''s skill listing => one Run: <correlation_id>
+      line follows the answer'
+  usage_record:
+    value: A delegation_events row.
+    verified_by: ls src/omnimarket/nodes | rg 'projection_delegation$' => node present
+  dashboard_read:
+    value: The local dashboard Runs exposure by correlation id.
+    verified_by: ls omnidash/src/pages/local/runs.page.yaml => page file present
+  stations: *id001
+  seams: *id002
+  shapes:
+    value: ModelDelegateSkillRequest source claude-code, ModelDelegateSkillResponse, the Runs endpoints.
+    verified_by: rg -n 'claude-code' src/omnimarket/models/delegation/wire/model_delegate_skill_request.py
+      | head -1 => claude-code is a registered source
+  measurement: DS-8
+  criteria:
+  - C12
+  - C17
+  - C30
+  - C31
+  canary:
+    family: canary_customer_local_and_plugin
+    ref: canary_customer_local_and_plugin; producer of C30
+    verified_by: read the plan task text for family canary_customer_local_and_plugin => the task names
+      operation canary_customer_local_and_plugin
+  owner: customer path owner
+- id: W4
+  name: customer with their own provider key
+  entry:
+    value: A provider-keyed delegation goes through the same request; a keyless run is a typed refusal
+      (local_credential_refusal).
+    verified_by: ls src/omnimarket/models/delegation | rg 'credential' => local_credential_refusal.py
+      and credential_withheld_rung.py present
+  routing_fallback:
+    value: The key's chosen order; the routed rung is withheld when no credential resolves.
+    verified_by: rg -n 'class' src/omnimarket/models/delegation/credential_withheld_rung.py | head -2
+      => a typed withheld-rung model exists
+  quality_gate:
+    value: As W1.
+    verified_by: ls src/omnimarket/nodes | rg quality_gate_reducer => gate node present
+  receipt:
+    value: Receipt names provider and model (ModelDelegateSkillResponse).
+    verified_by: rg -n '^    (provider|model_name)' src/omnimarket/models/delegation/wire/model_delegate_skill_response.py
+      => the response declares its provider and model_name fields
+  usage_record:
+    value: A delegation_events row.
+    verified_by: ls src/omnimarket/nodes | rg 'projection_delegation$' => node present
+  dashboard_read:
+    value: The local dashboard credentials and api-keys pages.
+    verified_by: ls omnidash/src/pages/local/credentials.page.yaml omnidash/src/pages/local/api-keys.page.yaml
+      => both page files present
+  stations: *id001
+  seams: *id002
+  shapes:
+    value: As W1.
+    verified_by: ls src/omnimarket/models/delegation/wire | rg skill_response => shared
+  measurement: DS-6
+  criteria:
+  - C12
+  - C29
+  canary:
+    family: canary_customer_local_and_plugin
+    ref: canary_customer_local_and_plugin; producer of C29
+    verified_by: read the plan task text for family canary_customer_local_and_plugin => the task names
+      operation canary_customer_local_and_plugin
+  owner: customer path owner
+- id: W5
+  name: lane text steps, delegation_step.py text
+  entry:
+    value: The plugin script merge-drain/scripts/delegation_step.py, subcommand text (cmd_text).
+    verified_by: rg -n 'def cmd_text' <plugin>/skills/merge-drain/scripts/delegation_step.py => cmd_text
+      at line 1250
+  routing_fallback:
+    value: 'Corrected: GLM through Claude Code first (glm-5.3-flash, then glm-5.3), then the lab; `--first
+      lab` keeps the older lab-first order. A fallback is a new run.'
+    verified_by: sed -n 8,11p <plugin>/skills/merge-drain/scripts/delegation_step.py => text goes to GLM
+      through Claude Code first, then the lab
+  quality_gate:
+    value: 'Per path: a goal contract built from the task-class template; a call with no contract is refused.'
+    verified_by: sed -n 19,21p <plugin>/skills/merge-drain/scripts/delegation_step.py => text builds a
+      goal contract from the task-class template; a call with no contract is refused with exit 2
+  receipt:
+    value: delegation-receipt/2 JSON file at <scratch root>/delegation-receipts/<lane>/<utc>-<engine>-<step>.json
+      with goal fields goal_id, parent_goal_id, contract_items, contract_sha256, gate_reject_only, skipped,
+      judged_by_caller_only.
+    verified_by: rg -n 'delegation-receipt/2' <plugin>/skills/merge-drain/scripts/delegation_step.py;
+      sed -n 34,38p <plugin>/skills/merge-drain/scripts/delegation_step.py => schema key at line 438;
+      path and goal fields listed in the module docstring
+  usage_record:
+    value: 'Corrected: a row per run, and a fallback attempt is now linked: delegation_step passes --parent-correlation-id,
+      --lineage-kind (fallback or escalation) and --parent-failure-cause, which delegation_events stores.
+      The first inventory''s ''no link'' reading is stale for this script.'
+    verified_by: rg -n 'class Lineage|def flags|--lineage-kind' <plugin>/skills/merge-drain/scripts/delegation_step.py
+      | head -4 => Lineage dataclass at line 513 builds the three flags; harness_delegate accepts --lineage-kind
+      with choices fallback and escalation
+  dashboard_read:
+    value: Runs page.
+    verified_by: ls omnidash/src/pages/local/runs.page.yaml => page present
+  stations:
+  - DSt1
+  - DSt5
+  - DSt6
+  - DSt7
+  seams:
+  - DS-1
+  - DS-5
+  - DS-6
+  - DS-7
+  shapes:
+    value: Request, then the delegation-receipt/2 file whose shape is named in the receipt cell.
+    verified_by: rg -n 'goal_id' <plugin>/skills/merge-drain/scripts/delegation_step.py | head -1 => goal
+      fields written into the receipt
+  measurement: DS-7
+  criteria:
+  - C16
+  canary:
+    family: canary_lane_tooling
+    ref: canary_lane_tooling
+    verified_by: read the plan task text for family canary_lane_tooling => the task names operation canary_lane_tooling
+  owner: lane tooling owner
+- id: W6
+  name: landing text, landing_text.py (landing fix workers)
+  entry:
+    value: The plugin script merge-drain/scripts/landing_text.py with --prompt-file, optional --pr-body.
+    verified_by: rg -n 'LANDING_DELEGATION_LOG' <plugin>/skills/merge-drain/scripts/landing_text.py |
+      head -2 => the script reads the log path from the environment
+  routing_fallback:
+    value: GLM through Claude Code first, then the lab in two forms (dev bus, then in-memory) with a time
+      budget per rung.
+    verified_by: rg -n 'args.first == "glm"|for name, form, cap in FORMS' <plugin>/skills/merge-drain/scripts/landing_text.py
+      => glm_draft first, then the FORMS loop
+  quality_gate:
+    value: 'Per path: the delegate wrapper''s own task-class gate on the lab rung.'
+    verified_by: rg -n 'wrapper_cmd' <plugin>/skills/merge-drain/scripts/landing_text.py | head -1 =>
+      wrapper_cmd takes the task type and builds the delegate command; the lab rung is graded by the task
+      class's own contract
+  receipt:
+    value: One JSON line per attempt appended to $LANDING_DELEGATION_LOG with keys ts, step, task_type,
+      engine, form, run_id, status, error (sort_keys).
+    verified_by: rg -n 'log_line\(log, \{' <plugin>/skills/merge-drain/scripts/landing_text.py | head
+      -1; rg -n 'json.dumps\(entry, sort_keys=True\)' <plugin>/skills/merge-drain/scripts/landing_text.py
+      => skip line shows the key set; the writer dumps with sort_keys at line 376
+  usage_record:
+    value: A row from the lab rung; the GLM rung leaves the log line only. landing_text passes no lineage
+      flags, so a fallback attempt is not linked to the attempt it replaced.
+    verified_by: 'rg -c ''lineage|parent_correlation'' <plugin>/skills/merge-drain/scripts/landing_text.py
+      => no match (rg exits 1): landing_text.py has no lineage handling'
+  dashboard_read:
+    value: Runs page for lab rung rows.
+    verified_by: ls omnidash/src/pages/local/runs.page.yaml => page present
+  stations:
+  - DSt1
+  - DSt6
+  - DSt7
+  seams:
+  - DS-1
+  - DS-6
+  - DS-7
+  shapes:
+    value: Landing log line (the JSON object named in the receipt cell), then a row.
+    verified_by: rg -n 'sort_keys=True' <plugin>/skills/merge-drain/scripts/landing_text.py | head -1
+      => writer found
+  measurement: DS-7
+  criteria:
+  - C16
+  canary:
+    family: canary_lane_tooling
+    ref: canary_lane_tooling
+    verified_by: read the plan task text for family canary_lane_tooling => the task names operation canary_lane_tooling
+  owner: lane tooling owner
+- id: W7
+  name: lane code steps, delegation_step.py code
+  entry:
+    value: Subcommand code (cmd_code) of the same script.
+    verified_by: rg -n 'def cmd_code' <plugin>/skills/merge-drain/scripts/delegation_step.py => cmd_code
+      at line 1706
+  routing_fallback:
+    value: 'Corrected: Codex on a host the table allows, then GLM through Claude Code in the worktree,
+      then the code-edit node, then the lab agent (crush); `--glm last` restores the plan''s older order
+      with GLM last.'
+    verified_by: sed -n 12,15p <plugin>/skills/merge-drain/scripts/delegation_step.py => docstring states
+      the four routes in this order and --glm last
+  quality_gate:
+    value: The lane's declared argv checks (--check NAME=<argv>), run without a shell.
+    verified_by: rg -n -- '--check' <plugin>/skills/merge-drain/scripts/delegation_step.py | head -2 =>
+      --check is an option of code
+  receipt:
+    value: 'Drain receipt: a delegation-receipt/2 file per attempt, and crush leaves one LAB-CRUSH session=<id>
+      exit=<n> changed=<yes|no> line.'
+    verified_by: rg -n '_LAB_CRUSH_RE' <plugin>/skills/merge-drain/scripts/delegation_step.py | head -1
+      => regex at line 1611 matches that line
+  usage_record:
+    value: 'None for the crush route: it leaves no delegation_events row (counted as a DS-7 mismatch by
+      design until a row exists).'
+    verified_by: rg -n 'delegation_events' <plugin>/skills/merge-drain/scripts/delegation_step.py | head
+      -1 => the only match is a comment at line 501 about a run's correlation id; the script itself writes
+      no row, and the crush route runs no onex delegate
+  dashboard_read:
+    value: None for crush; the code-edit node's turns appear on Runs.
+    verified_by: ls omnidash/src/pages/local/runs.page.yaml => page present
+  stations:
+  - DSt1
+  - DSt6
+  - DSt7
+  seams:
+  - DS-1
+  - DS-6
+  - DS-7
+  shapes:
+    value: Drain receipt shape is delegation-receipt/2 (named in the receipt cell); crush line shape is
+      the LAB-CRUSH line.
+    verified_by: rg -n 'LAB-CRUSH session' <plugin>/skills/merge-drain/scripts/delegation_step.py | head
+      -1 => delegation_step parses the line 'LAB-CRUSH session=<id> exit=<n> changed=<yes|no>' with the
+      regex at line 1611
+  measurement: DS-7
+  criteria:
+  - C16
+  canary:
+    family: canary_lane_tooling
+    ref: 'canary_lane_tooling; expected finding: the crush DS-7 mismatch while no row exists'
+    verified_by: read the plan task text for family canary_lane_tooling => the task names operation canary_lane_tooling
+  owner: lane tooling owner
+- id: W8
+  name: typed decisions, delegation_step.py decide and node_typed_decision_effect
+  entry:
+    value: Subcommand decide (cmd_decide) builds a ModelTypedDecisionRequest and runs node_typed_decision_effect.
+    verified_by: rg -n 'def cmd_decide' <plugin>/skills/merge-drain/scripts/delegation_step.py; rg -n
+      'class ModelTypedDecisionRequest' src/omnimarket/nodes/node_typed_decision_effect/models/model_typed_decision.py
+      => cmd_decide at line 1431; request model at line 63
+  routing_fallback:
+    value: Jev first, then the lab (then GLM through Claude Code) when Jev refuses or on the one repository
+      Jev is refused for.
+    verified_by: sed -n 21,22p <plugin>/skills/merge-drain/scripts/delegation_step.py => Jev on every
+      repository but the one it is refused for, the lab then GLM through Claude Code on that one or when
+      Jev refuses
+  quality_gate:
+    value: A fixed answer set with a none_of_these abstain added by the step.
+    verified_by: sed -n 21,23p <plugin>/skills/merge-drain/scripts/delegation_step.py => every option
+      needs a description (--criterion) and a none_of_these option is added
+  receipt:
+    value: Stdout JSON (ModelTypedDecisionResult) and a delegation-receipt/2 file.
+    verified_by: rg -n 'class ModelTypedDecisionResult' src/omnimarket/nodes/node_typed_decision_effect/models/model_typed_decision.py
+      => result model at line 141
+  usage_record:
+    value: None (counted as a DS-7 mismatch by design until a row exists).
+    verified_by: ls src/omnimarket/nodes/node_typed_decision_effect => no projection node in the effect's
+      package
+  dashboard_read:
+    value: None.
+    verified_by: rg -l typed_decision omnidash/src/pages | wc -l => no dashboard page reads typed decisions
+      (count 0)
+  stations:
+  - DSt1
+  - DSt6
+  - DSt7
+  seams:
+  - DS-1
+  - DS-6
+  - DS-7
+  shapes:
+    value: Request shape ModelTypedDecisionRequest (fields work_unit_repository, state, kind, instructions,
+      criteria), result ModelTypedDecisionResult.
+    verified_by: rg -n 'work_unit_repository' <plugin>/skills/merge-drain/scripts/delegation_step.py |
+      head -1 => request is assembled with those keys
+  measurement: DS-7
+  criteria:
+  - C16
+  canary:
+    family: canary_lane_tooling
+    ref: 'canary_lane_tooling; expected finding: one DS-7 mismatch while no row exists, none after'
+    verified_by: read the plan task text for family canary_lane_tooling => the task names operation canary_lane_tooling
+  owner: lane tooling owner
+- id: W9
+  name: harness CLIs, harness_delegate.py
+  entry:
+    value: The plugin script harness-delegate/scripts/harness_delegate.py, subcommand run.
+    verified_by: rg -n 'add_argument\("--harness"' <plugin>/skills/harness-delegate/scripts/harness_delegate.py
+      => --harness default auto
+  routing_fallback:
+    value: Auto order by task class over claude, claude-glm, codex, gemini-vertex; gemini-google is excluded;
+      GLM only through Claude Code.
+    verified_by: rg -n '^HARNESSES|^EXCLUDED' <plugin>/skills/harness-delegate/scripts/harness_delegate.py
+      => four harnesses, one excluded
+  quality_gate:
+    value: The run's --check command.
+    verified_by: rg -n -- '--check' <plugin>/skills/harness-delegate/scripts/harness_delegate.py | head
+      -1 => option present
+  receipt:
+    value: answer.md and receipt.json under <out-dir>/<run id>/, receipt schema harness-delegate.receipt.v1
+      (keys include ticket_source and run_id).
+    verified_by: rg -n 'harness-delegate.receipt.v1' <plugin>/skills/harness-delegate/scripts/harness_delegate.py
+      | head -2 => written at lines 1263 and 1331
+  usage_record:
+    value: A delegate-skill terminal event with provider = harness:<name> and backend_id = harness:<name>:<model>,
+      handed to the bus through node_event_emit_effect; the backend lives in attempt_history because delegation_events
+      has no backend column yet.
+    verified_by: sed -n 24,28p <plugin>/skills/harness-delegate/scripts/harness_delegate.py => the docstring
+      states the event, the provider label and the missing backend column
+  dashboard_read:
+    value: Runs page for rows that exist.
+    verified_by: ls omnidash/src/pages/local/runs.page.yaml => page present
+  stations:
+  - DSt1
+  - DSt4
+  - DSt6
+  - DSt7
+  seams:
+  - DS-1
+  - DS-4
+  - DS-6
+  - DS-7
+  shapes:
+    value: harness-delegate.receipt.v1 JSON (named in the receipt cell), terminal event.
+    verified_by: rg -n 'HARNESS_RECEIPT_SCHEMA' <plugin>/skills/merge-drain/scripts/delegation_step.py
+      | head -1 => the drain reads the same schema string at line 158
+  measurement: DS-6
+  criteria:
+  - C16
+  canary:
+    family: canary_lane_tooling
+    ref: canary_lane_tooling
+    verified_by: read the plan task text for family canary_lane_tooling => the task names operation canary_lane_tooling
+  owner: lane tooling owner
+- id: W10
+  name: agentic loops, onex code-edit run and the delegated test loop
+  entry:
+    value: onex code-edit run (cli_code_edit.py) drives node_delegated_code_edit_orchestrator; the test
+      loop is cli_test_loop.py with node_delegated_test_loop_orchestrator.
+    verified_by: ls src/omnimarket/cli/cli_code_edit.py src/omnimarket/cli/cli_test_loop.py => both CLI
+      modules present
+  routing_fallback:
+    value: Each turn is one onex delegate run; --delegate-in-process runs the turn through the W2 path,
+      otherwise the W1 path.
+    verified_by: rg -n -- '--delegate-in-process' src/omnimarket/cli/cli_code_edit.py => documented at
+      line 18 and declared at line 225
+  quality_gate:
+    value: Declared checks per turn.
+    verified_by: sed -n 25,29p src/omnimarket/cli/cli_code_edit.py => each turn records the diff and check
+      results
+  receipt:
+    value: 'Per turn: the turn''s onex delegate run id, the diff, the check results and the tool_use record.'
+    verified_by: sed -n 25,29p src/omnimarket/cli/cli_code_edit.py => the loop receipt <state root>/runs/<correlation
+      id>/loop_receipt.json carries each turn's run id, the diff, the check results and the tool_use rubric
+      verdict
+  usage_record:
+    value: Per turn, a delegation_events row of that turn's run.
+    verified_by: ls src/omnimarket/nodes | rg 'projection_delegation$' => node present
+  dashboard_read:
+    value: Runs page.
+    verified_by: ls omnidash/src/pages/local/runs.page.yaml => page present
+  stations: *id001
+  seams: *id002
+  shapes:
+    value: As W1 per turn.
+    verified_by: ls src/omnimarket/nodes | rg 'delegated_(code_edit|test_loop)_orchestrator' => both orchestrators
+      present
+  measurement: DS-3
+  criteria:
+  - C16
+  canary:
+    family: canary_loops_composition_evaluation
+    ref: canary_loops_composition_evaluation
+    verified_by: read the plan task text for family canary_loops_composition_evaluation => the task names
+      operation canary_loops_composition_evaluation
+  owner: delegation owner
+- id: W11
+  name: whole-lane engines in the remote-lane runner and direct codex exec
+  entry:
+    value: The plugin remote-lane runner onex_remote_lane.py places a lane on a host and runs its engine.
+    verified_by: rg -n 'engine' <plugin>/skills/remote-lane/scripts/onex_remote_lane.py | head -3 => the
+      runner documents its placement engine and writes a CLAIM carrying host= before the engine starts
+  routing_fallback:
+    value: Placement by the remote-lane runner and engine policy nodes (node_lane_model_policy_compute,
+      node_landing_worker_engine_compute).
+    verified_by: ls src/omnimarket/nodes | rg 'lane_model_policy|landing_worker_engine' => both nodes
+      present
+  quality_gate:
+    value: The lane's pull-request gates.
+    verified_by: rg -n 'hook-preflight' <plugin>/skills/remote-lane/scripts/onex_remote_lane.py | head
+      -1 => commit hooks run through hook-preflight
+  receipt:
+    value: 'Lane ledger rows: a CLAIM before the engine starts and a TERMINAL when the lane ends.'
+    verified_by: sed -n 50,54p <plugin>/skills/remote-lane/scripts/onex_remote_lane.py => the CLAIM is
+      written before the engine starts and the TERMINAL when the lane ends, whatever the outcome
+  usage_record:
+    value: Counted from the caller's own count in the TERMINAL delegated= cells, not from the projection.
+    verified_by: rg -n 'cells' <plugin>/skills/merge-drain/scripts/delegation_step.py | head -2 => the
+      cells subcommand prints TERMINAL cells from receipts
+  dashboard_read:
+    value: None at lane level.
+    verified_by: rg -l lane omnidash/src/pages/local/*.page.yaml | wc -l => no local page reads lane rows
+      (count 0)
+  stations:
+  - DSt1
+  - DSt7
+  seams:
+  - DS-1
+  - DS-7
+  shapes:
+    value: CLAIM and TERMINAL ledger rows; the work-ledger append request ModelWorkLedgerAppendRequest.
+    verified_by: rg -n 'class ModelWorkLedgerAppendRequest' src/omnimarket/models/work_ledger_append =>
+      model present
+  measurement: DS-7
+  criteria:
+  - C16
+  canary:
+    family: canary_lane_tooling
+    ref: canary_lane_tooling
+    verified_by: read the plan task text for family canary_lane_tooling => the task names operation canary_lane_tooling
+  owner: lane tooling owner
+- id: W12
+  name: fan-out, node_delegate_fanout_effect
+  entry:
+    value: Operation delegate_fanout admits labeled tasks and publishes each once through the delegation
+      client.
+    verified_by: 'rg -n ''operation: "delegate_fanout"'' src/omnimarket/nodes/node_delegate_fanout_effect/contract.yaml
+      => operation declared at line 38'
+  routing_fallback:
+    value: 'Per task, as W1; no caller retries (retries: 0), the responder chain escalates inside one
+      call.'
+    verified_by: 'rg -n ''retries: 0'' src/omnimarket/nodes/node_delegate_fanout_effect/contract.yaml
+      => retries 0 at line 72'
+  quality_gate:
+    value: Per task.
+    verified_by: ls src/omnimarket/nodes | rg quality_gate_reducer => gate node present
+  receipt:
+    value: One receipt or refusal per task, rendered by the effect.
+    verified_by: rg -n 'receipt|refusal' src/omnimarket/nodes/node_delegate_fanout_effect/contract.yaml
+      | head -2 => the description names a receipt or refusal for every task
+  usage_record:
+    value: A row per task.
+    verified_by: ls src/omnimarket/nodes | rg 'projection_delegation$' => node present
+  dashboard_read:
+    value: Runs page.
+    verified_by: ls omnidash/src/pages/local/runs.page.yaml => page present
+  stations:
+  - DSt1
+  - DSt2
+  - DSt6
+  seams:
+  - DS-1
+  - DS-2
+  - DS-6
+  shapes:
+    value: ModelFanoutRequest (labeled tasks, declared lane) in; per task a delegate-skill request out
+      and a receipt or refusal back in ModelFanoutResult.
+    verified_by: 'rg -n ''name: "ModelFanout(Request|Result)"'' src/omnimarket/nodes/node_delegate_fanout_effect/contract.yaml
+      => ModelFanoutRequest in, ModelFanoutResult out; tasks are published to node_delegate_skill_orchestrator
+      through the delegation client'
+  measurement: DS-1
+  criteria:
+  - C11
+  canary:
+    family: canary_loops_composition_evaluation
+    ref: canary_loops_composition_evaluation
+    verified_by: read the plan task text for family canary_loops_composition_evaluation => the task names
+      operation canary_loops_composition_evaluation
+  owner: delegation owner
+- id: W13
+  name: swarm call (execute_delegation_call), no orchestrator
+  entry:
+    value: Command topic onex.cmd.omnimarket.delegation-execute.v1 into node_llm_delegation_call_effect;
+      request ModelLlmDelegationCallRequest.
+    verified_by: rg -n 'delegation-execute.v1' -A1 src/omnimarket/nodes/node_llm_delegation_call_effect/contract.yaml
+      | head -4 => schema_ref ModelLlmDelegationCallRequest at line 234
+  routing_fallback:
+    value: HandlerLlmDelegationCall tiers; a tier failure emits escalation-triggered and the next tier
+      is tried.
+    verified_by: rg -n 'escalation-triggered' src/omnimarket/nodes/node_llm_delegation_call_effect/contract.yaml
+      | head -1 => event declared
+  quality_gate:
+    value: None declared in the contract; the result carries quality_gate_passed defaulting to true.
+    verified_by: rg -n 'quality_gate_passed' src/omnimarket/nodes/node_llm_delegation_call_effect/models/model_llm_delegation_call_result.py
+      => field defaults to True at line 108
+  receipt:
+    value: 'Terminal events: ModelLlmDelegationCompletedEvent on delegation-call-completed.v1 and ModelLlmDelegationAllTiersFailedEvent
+      on delegation-all-tiers-failed.v1.'
+    verified_by: rg -n 'schema_ref' src/omnimarket/nodes/node_llm_delegation_call_effect/contract.yaml
+      | rg 'completed|all_tiers' => both schema refs under models/delegation/llm_cost_routing
+  usage_record:
+    value: 'Not traced into delegation_events: the call publishes cost and degradation events and no delegate-skill
+      terminal.'
+    verified_by: 'rg -n ''delegate-skill-(completed|failed)'' src/omnimarket/nodes/node_llm_delegation_call_effect/contract.yaml
+      | wc -l => count 0: the two other matches for delegate-skill are comments about wait times'
+  dashboard_read:
+    value: Not traced to a delegation page.
+    verified_by: rg -l delegation-call-completed omnidash/src | wc -l => count 0 in the dashboard source
+  stations:
+  - DSt1
+  - DSt2
+  - DSt3
+  - DSt5
+  seams:
+  - DS-1
+  - DS-2
+  - DS-3
+  - DS-5
+  shapes:
+    value: ModelLlmDelegationCallRequest, ModelInferenceIntent, then ModelLlmDelegationCompletedEvent
+      or ModelLlmDelegationAllTiersFailedEvent.
+    verified_by: ls src/omnimarket/models/delegation/llm_cost_routing | rg 'completed_event|all_tiers_failed_event'
+      => both event models present
+  measurement: DS-5
+  criteria:
+  - C16
+  canary:
+    family: canary_loops_composition_evaluation
+    ref: canary_loops_composition_evaluation
+    verified_by: read the plan task text for family canary_loops_composition_evaluation => the task names
+      operation canary_loops_composition_evaluation
+  owner: delegation owner
+- id: W14
+  name: node-driven callers with no bus
+  entry:
+    value: 'Corrected: the callers are node_pr_delegated_fix_effect (adapter_document_delegation.py, source
+      claude-code, task type document) and node_task_execution_orchestrator (handle takes a ModelDelegateSkillRequest).
+      node_delegation_hook_followup_compute is a subscriber of the delegate-skill completed and failed
+      events, not a caller.'
+    verified_by: rg -n 'ModelDelegateSkillRequest\(' src/omnimarket/nodes/node_pr_delegated_fix_effect/handlers/adapter_document_delegation.py;
+      rg -n 'subscribe_topics' -A3 src/omnimarket/nodes/node_delegation_hook_followup_compute/contract.yaml
+      => request built at line 128; hook follow-up subscribes to delegate-skill-completed.v1 and delegate-skill-failed.v1
+  routing_fallback:
+    value: A direct HandlerDelegateSkill call with no delivery bound, so it takes the default local dispatch
+      port (W2's ladder).
+    verified_by: rg -n 'direct delegate-skill call|handler_delegate_skill' src/omnimarket/nodes/node_pr_delegated_fix_effect/handlers/adapter_document_delegation.py
+      => the adapter imports HandlerDelegateSkill and comments that a direct call binds no delivery and
+      always returns a terminal
+  quality_gate:
+    value: As the locus.
+    verified_by: ls src/omnimarket/nodes | rg quality_gate_reducer => gate node present
+  receipt:
+    value: As the locus.
+    verified_by: rg -n 'ModelDelegateSkillResponse' src/omnimarket/nodes/node_task_execution_orchestrator
+      | head -1 => response consumed
+  usage_record:
+    value: A row.
+    verified_by: ls src/omnimarket/nodes | rg 'projection_delegation$' => node present
+  dashboard_read:
+    value: Runs page.
+    verified_by: ls omnidash/src/pages/local/runs.page.yaml => page present
+  stations:
+  - DSt1
+  - DSt2
+  - DSt3
+  - DSt4
+  - DSt5
+  - DSt6
+  - DSt7
+  seams:
+  - DS-1
+  - DS-2
+  - DS-3
+  - DS-4
+  - DS-5
+  - DS-6
+  - DS-7
+  shapes:
+    value: As W1.
+    verified_by: ls src/omnimarket/models/delegation/wire | rg skill_request => shared
+  measurement: DS-1
+  criteria:
+  - C16
+  canary:
+    family: canary_loops_composition_evaluation
+    ref: canary_loops_composition_evaluation
+    verified_by: read the plan task text for family canary_loops_composition_evaluation => the task names
+      operation canary_loops_composition_evaluation
+  owner: delegation owner
+- id: W15
+  name: scripted callers of onex delegate
+  entry:
+    value: 'Plugin scripts that name onex delegate: fan-out/wave.py, queue-status/queue_status.py, remote-lane/onex_remote_lane.py,
+      merge-drain (delegation_disposition, landing_text, delegation_step, landing_worker_run, landing_placement),
+      lane-brief/lane_brief.py, plans-today/plans_today.py, delegation-health/delegation_health.py. The
+      customer-path probes are the producers of C13.'
+    verified_by: rg -l 'onex delegate' <plugin>/skills --glob '*.py' --glob '!**/tests/**' | wc -l =>
+      11 plugin scripts
+  routing_fallback:
+    value: Entry 1 by locus.
+    verified_by: rg -n -- '--locus' <plugin>/skills/merge-drain/scripts/landing_text.py | head -1 => the
+      script documents --bus kafka --lane dev --locus deployed-lane as its route
+  quality_gate:
+    value: As the locus.
+    verified_by: ls src/omnimarket/nodes | rg quality_gate_reducer => gate node present
+  receipt:
+    value: Each script's own parse of the CLI result.
+    verified_by: rg -n 'json.loads' <plugin>/skills/queue-status/scripts/queue_status.py | head -1 =>
+      queue_status parses the result
+  usage_record:
+    value: A row.
+    verified_by: ls src/omnimarket/nodes | rg 'projection_delegation$' => node present
+  dashboard_read:
+    value: Runs page.
+    verified_by: ls omnidash/src/pages/local/runs.page.yaml => page present
+  stations: *id001
+  seams: *id002
+  shapes:
+    value: As W1.
+    verified_by: ls src/omnimarket/models/delegation/wire | rg skill_request => shared
+  measurement: DS-1
+  criteria:
+  - C13
+  canary:
+    family: canary_customer_local_and_plugin
+    ref: canary_customer_local_and_plugin; producer of C13 for the customer-path probes
+    verified_by: read the plan task text for family canary_customer_local_and_plugin => the task names
+      operation canary_customer_local_and_plugin
+  owner: customer path owner
+- id: W16
+  name: evaluation and measurement runs
+  entry:
+    value: node_delegation_ab_runner, node_delegation_eval_orchestrator, node_delegation_eval_run_orchestrator,
+      node_model_eval_orchestrator and the node_lab_fill_* nodes.
+    verified_by: ls src/omnimarket/nodes | rg 'delegation_ab_runner|delegation_eval|model_eval|lab_fill'
+      => all present
+  routing_fallback:
+    value: Their own handlers.
+    verified_by: ls src/omnimarket/nodes/node_delegation_ab_runner/handlers => handler_delegation_ab_runner.py
+  quality_gate:
+    value: Judged by node_delegation_acceptance_judge_compute and the gate-eval nodes.
+    verified_by: ls src/omnimarket/nodes | rg 'acceptance_judge_compute|gate_eval' => both present
+  receipt:
+    value: Experiment records (node_delegation_experiment_record_compute).
+    verified_by: ls src/omnimarket/nodes | rg experiment_record => present
+  usage_record:
+    value: Rows carry data_source real, experiment or fixture; experiment is typed synthetic traffic and
+      fixture is seed traffic, and measured sums exclude fixture rows unless a reader opts in.
+    verified_by: sed -n 182,186p src/omnimarket/projection/envelope.py => provenance enum documented
+  dashboard_read:
+    value: Runs, counted apart by data_source.
+    verified_by: rg -n 'envelope_data_source' src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py
+      => imported at line 117 and passed as data_source at line 813
+  stations:
+  - DSt1
+  - DSt7
+  - DSt8
+  seams:
+  - DS-1
+  - DS-7
+  - DS-8
+  shapes:
+    value: Row with data_source (real, experiment, fixture).
+    verified_by: rg -n 'DATA_SOURCE_' src/omnimarket/projection/envelope.py | head -4 => three constants
+      and DATA_SOURCES
+  measurement: DS-8
+  criteria:
+  - C31
+  canary:
+    family: canary_loops_composition_evaluation
+    ref: canary_loops_composition_evaluation; a W16 run counted in real totals reads a DS-8 mismatch
+    verified_by: read the plan task text for family canary_loops_composition_evaluation => the task names
+      operation canary_loops_composition_evaluation
+  owner: delegation owner
+- id: W17
+  name: cloud path, onex cloud delegate
+  entry:
+    value: 'cli_cloud.py: onex cloud delegate publishes through the cloud gateway; a sibling of onex delegate
+      rather than a flag on it.'
+    verified_by: rg -n 'onex cloud delegate' src/omnimarket/cli/cli_cloud.py | head -1 => documented at
+      line 7
+  routing_fallback:
+    value: The cloud gateway.
+    verified_by: sed -n 26,30p src/omnimarket/cli/cli_cloud.py => why it is a sibling, with its own transport
+  quality_gate:
+    value: Past the gateway, owned by the cloud owner; this repository holds the client side (ModelCloudQualityRuleEvaluation
+      in model_cloud_delegation.py) and no gate node for the cloud path.
+    verified_by: rg -n '^class ModelCloudQualityRuleEvaluation' src/omnimarket/cloud/model_cloud_delegation.py;
+      ls src/omnimarket/nodes | rg -c cloud => rule-evaluation shape at line 42; one cloud node, node_cloud_session_placement_effect,
+      which is placement and not a gate
+  receipt:
+    value: The gateway's workflow record; the client-side shapes are ModelCloudDelegationAck, ModelCloudDelegationStatus
+      and ModelCloudDelegationReceipt, plus the declared completion bound ModelDeclaredCompletionBound.
+    verified_by: rg -n '^class ' src/omnimarket/cloud/completion_bound.py src/omnimarket/cloud/model_cloud_delegation.py
+      => ModelCloudDelegationAck (67), ModelCloudDelegationStatus (79), ModelCloudDelegationReceipt (126)
+      and ModelDeclaredCompletionBound (43)
+  usage_record:
+    value: The gateway.
+    verified_by: ls src/omnimarket/nodes | rg cloud => node_cloud_session_placement_effect only
+  dashboard_read:
+    value: The cloud surface; proof owned by the cloud milestone. The delegation api_contract declares
+      no cloud endpoint.
+    verified_by: rg -c -i 'cloud|gateway' src/omnimarket/nodes/node_projection_delegation/api_contract.yaml
+      => no match (rg exits 1)
+  stations:
+  - DSt6
+  seams:
+  - DS-6
+  shapes:
+    value: Gateway record.
+    verified_by: rg -n '^class ' src/omnimarket/cloud/completion_bound.py => ModelDeclaredCompletionBound
+      at line 43
+  measurement: DS-6
+  criteria: []
+  canary:
+    family: canary_cloud_and_coding_agent
+    ref: 'canary_cloud_and_coding_agent; reads DS-6 on the gateway receipt route; blocker: the gateway
+      receipt is traced by the cloud owner, dated 2026-10-28'
+    verified_by: read the plan task text for family canary_cloud_and_coding_agent => the task names operation
+      canary_cloud_and_coding_agent
+  owner: cloud owner
+- id: W18
+  name: the coding-agent effect (node_coding_agent_orchestrator and node_coding_agent_invoke_effect)
+  entry:
+    value: 'Traced: the one caller found in omnimarket, omnibase_infra and the plugin is node_architecture_discovery_orchestrator,
+      through adapters/handler_coding_agent_bus.py, which publishes ModelCodingAgentInvokeCommand to onex.cmd.omnibase-infra.coding-agent-invoke.v1
+      and waits on the invoke-completed terminal. No other publisher of that topic exists in the three
+      trees.'
+    verified_by: rg -n 'coding-agent-invoke' src/omnimarket/nodes omnibase_infra/src omnibase_infra/scripts
+      <plugin> --glob '!**/tests/**' --glob '!**/node_coding_agent_*/**' => omnimarket matches only node_architecture_discovery_orchestrator/contract.yaml
+      (terminal_topic, line 59); omnibase_infra matches the generated topic enum, a publisher fixture
+      list and a wiring-health allowlist entry saying the topic is published by coding-agent workflow
+      clients; the plugin has none
+  routing_fallback:
+    value: The orchestrator validates the workspace first, then invokes the agent; the invoke effect builds
+      a codex exec argv per sandbox mode. No routing decision is made.
+    verified_by: rg -n 'codex exec' omnibase_infra/src/omnibase_infra/nodes/node_coding_agent_invoke_effect/handlers/handler_coding_agent_invoke.py
+      => argv documented for READ_ONLY and WORKSPACE_WRITE
+  quality_gate:
+    value: Not traced to a gate result; the workspace-validate compute is a pre-flight check, not a quality
+      gate.
+    verified_by: rg -n 'workspace-validate' omnibase_infra/src/omnibase_infra/nodes/node_coding_agent_orchestrator/contract.yaml
+      | head -1 => pre-flight command only
+  receipt:
+    value: 'Its own completion events: coding-agent-invoke-completed and coding-agent-invoke-failed.'
+    verified_by: rg -n 'invoke-completed|invoke-failed' omnibase_infra/src/omnibase_infra/nodes/node_coding_agent_orchestrator/contract.yaml
+      | head -2 => both topics declared
+  usage_record:
+    value: No delegation_events row.
+    verified_by: rg -l 'coding-agent' src/omnimarket/nodes/node_projection_delegation | wc -l => count
+      0
+  dashboard_read:
+    value: Not on any delegation page.
+    verified_by: rg -l 'coding-agent' omnidash/src | wc -l => count 0
+  stations: []
+  seams:
+  - DS-9
+  shapes:
+    value: ModelCodingAgentInvokeCommand and ModelCodingAgentResult (omnibase_infra.models.coding_agent),
+      ModelWorkspaceValidateCommand.
+    verified_by: rg -n 'ModelCodingAgentInvokeCommand' src/omnimarket/nodes/node_architecture_discovery_orchestrator/adapters/handler_coding_agent_bus.py
+      | head -1 => imported at line 22 of the adapter that publishes it
+  measurement: DS-9
+  criteria: []
+  canary:
+    family: canary_loops_composition_evaluation
+    ref: 'canary_loops_composition_evaluation: the single caller is a node-driven orchestrator with no
+      bus of its own, the W14 family; until it routes through a delegation station its measurement is
+      DS-9'
+    verified_by: read the plan task text for family canary_loops_composition_evaluation => the task names
+      operation canary_loops_composition_evaluation
+  owner: delegation owner
+- id: W19
+  name: direct provider calls that skip every station
+  entry:
+    value: No entry path; call sites POST to a provider directly (plugin, omnimarket, CI).
+    verified_by: rg -l '/chat/completions|/v1/messages' src/omnimarket --glob '*.py' --glob '!**/tests/**'
+      | wc -l => candidate call sites include cli_ab_compare_suite.py, assemble_live.py, adapter_inference_bridge.py,
+      rung_eval/runner.py and handler_llm_codegen.py; the plugin's harness_delegate.py and quota_status.py
+      and the CI workflow name provider hosts; the DS-9 reader separates stations from leaks and owns
+      the count and baseline
+  routing_fallback:
+    value: 'None: no routing decision. None of five sampled candidate sites names routing_decision.'
+    verified_by: rg -c routing_decision src/omnimarket/cli/cli_ab_compare_suite.py src/omnimarket/nodes/node_build_loop_orchestrator/assemble_live.py
+      src/omnimarket/inference/adapter_inference_bridge.py src/omnimarket/delegation/rung_eval/runner.py
+      src/omnimarket/nodes/node_llm_codegen_effect/handlers/handler_llm_codegen.py => no match (rg exits
+      1)
+  quality_gate:
+    value: None from the delegation station. Of the same five, only assemble_live.py names quality_gate
+      (one match).
+    verified_by: rg -c quality_gate src/omnimarket/cli/cli_ab_compare_suite.py src/omnimarket/nodes/node_build_loop_orchestrator/assemble_live.py
+      src/omnimarket/inference/adapter_inference_bridge.py src/omnimarket/delegation/rung_eval/runner.py
+      src/omnimarket/nodes/node_llm_codegen_effect/handlers/handler_llm_codegen.py => one match, in assemble_live.py
+  receipt:
+    value: None in the delegation sense; rung_eval/runner.py keeps its own receipts (6 matches), which
+      are not delegation receipts.
+    verified_by: rg -c receipt src/omnimarket/cli/cli_ab_compare_suite.py src/omnimarket/nodes/node_build_loop_orchestrator/assemble_live.py
+      src/omnimarket/inference/adapter_inference_bridge.py src/omnimarket/delegation/rung_eval/runner.py
+      src/omnimarket/nodes/node_llm_codegen_effect/handlers/handler_llm_codegen.py => 6 matches, all in
+      rung_eval/runner.py
+  usage_record:
+    value: 'None: no delegation_events row from these sites.'
+    verified_by: rg -c delegation_events src/omnimarket/cli/cli_ab_compare_suite.py src/omnimarket/nodes/node_build_loop_orchestrator/assemble_live.py
+      src/omnimarket/inference/adapter_inference_bridge.py src/omnimarket/delegation/rung_eval/runner.py
+      src/omnimarket/nodes/node_llm_codegen_effect/handlers/handler_llm_codegen.py => no match (rg exits
+      1)
+  dashboard_read:
+    value: 'None: no delegation endpoint serves these sites.'
+    verified_by: rg -c 'api/delegation' src/omnimarket/cli/cli_ab_compare_suite.py src/omnimarket/nodes/node_build_loop_orchestrator/assemble_live.py
+      src/omnimarket/inference/adapter_inference_bridge.py src/omnimarket/delegation/rung_eval/runner.py
+      src/omnimarket/nodes/node_llm_codegen_effect/handlers/handler_llm_codegen.py => no match (rg exits
+      1)
+  stations: []
+  seams:
+  - DS-9
+  shapes:
+    value: No canonical shape; the leak the other rows are measured against.
+    verified_by: rg -l '/chat/completions|/v1/messages' src/omnimarket --glob '*.py' --glob '!**/tests/**'
+      | wc -l => 25 candidate files name provider-shaped paths
+  measurement: DS-9
+  criteria: []
+  canary:
+    family: canary_cloud_and_coding_agent
+    ref: 'canary_cloud_and_coding_agent: carried by the DS-9 shrink-only baseline of the reader task'
+    verified_by: read the plan task text for the shrink-only baseline => the task names config.ds9_baseline
+  owner: delegation owner
