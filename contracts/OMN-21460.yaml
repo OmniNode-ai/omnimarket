@@ -119,3 +119,11 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_design_record_check_compute/test_check_design_record.py tests/nodes/node_design_process_reducer/test_design_process_fsm.py
       -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21460-deploy-probe
+  description: 'Deploy probe: the design process reducer handler read from GitHub at the checked-out commit defines class HandlerDesignProcess. The merge base lacks the file, so the probe fails there.'
+  source: manual
+  execution_scope: hosted_and_local
+  checks:
+  - check_type: command
+    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_design_process_reducer/handlers/handler_design_process.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerDesignProcess'
+    cwd: ${OMNI_HOME}/omnimarket
