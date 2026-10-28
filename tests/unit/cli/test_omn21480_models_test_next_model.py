@@ -122,7 +122,8 @@ def test_ac1_the_second_model_is_not_tried_when_the_first_answers(
     calls: list[str] = []
     shown = _test_json(monkeypatch, _stub(tmp_path, set(), calls))
     assert calls == [_FIRST]
-    assert shown["status"] == "passed" and shown["model"] == _FIRST
+    assert shown["status"] == "passed"
+    assert shown["model"] == _FIRST
 
 
 def test_ac2_every_stored_model_throttled_is_throttled_not_a_failed_key(
@@ -135,6 +136,7 @@ def test_ac2_every_stored_model_throttled_is_throttled_not_a_failed_key(
     assert shown["status"] == "throttled", shown
     assert shown["status"] != "failed"
     assert "every stored model is throttled upstream (HTTP 429)" in shown["reason"]
-    assert _FIRST in shown["reason"] and _SECOND in shown["reason"]
+    assert _FIRST in shown["reason"]
+    assert _SECOND in shown["reason"]
     assert local_byok_key_test_failed("openrouter") is False
     assert "FAILED" not in CliRunner().invoke(models_group, ["list"]).output
