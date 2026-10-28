@@ -40,3 +40,12 @@ dod_evidence:
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC2
+- id: dod-omn21434-deploy-probe
+  description: 'Deploy probe: the packaged grid handler takes a grade that names the serving machine and writes host and answering_backend on the row, and the lab command module ships with its entry point. At the merge base neither the grade type nor the module exists.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_capability_map_compute/test_graded_run_serving_identity_omn21434.py -k deploy_probe -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1

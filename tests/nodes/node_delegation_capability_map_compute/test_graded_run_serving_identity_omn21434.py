@@ -320,3 +320,28 @@ def test_grid_run_command_writes_rows_with_the_three_serving_fields(
     run = ModelCapabilityMapRunRecorded.model_validate_json(run_out.read_text())
     assert len(run.rows) == 3
     assert {a.backend_id for a in run.assignments} == {"local-coder"}
+
+
+def test_deploy_probe_the_packaged_grid_handler_and_lab_command_record_serving_identity() -> (
+    None
+):
+    """What a deployed omnimarket ships: the grid handler takes a grade naming
+    the serving machine, and the lab command module is importable as
+    ``python -m`` with its ``main``."""
+    import importlib
+    import inspect
+
+    from omnimarket.nodes.node_projection_delegation_capability_map.handlers import (
+        handler_capability_grid_run,
+    )
+
+    assert "ModelCapabilityGridGrade" in inspect.getsource(handler_capability_grid_run)
+    module = importlib.import_module(
+        "omnimarket.nodes.node_projection_delegation_capability_map.lab_grid_run"
+    )
+    assert callable(module.main)
+    rows = HandlerCapabilityGridRun(_served()).handle(_request(1))
+    assert (rows[0].host, rows[0].answering_backend) == (
+        "192.168.86.201",
+        "local-coder",
+    )
