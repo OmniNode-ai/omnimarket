@@ -253,7 +253,7 @@ async def test_a_new_failed_read_prevents_an_older_healthy_command_closing_the_r
     assert not any("resolves" in row for row in _history(tmp_path))
 
 
-@pytest.mark.parametrize("unreplayed", ["refused", "unreadable"])
+@pytest.mark.parametrize("unreplayed", ["unreadable"])
 async def test_unreplayed_outbox_never_produces_a_recovery_receipt(
     switch: _Switch,
     workspace: Path,
@@ -311,3 +311,115 @@ def test_escalation_bound_is_loaded_from_contract(
     (node / "contract.yaml").write_text(yaml.safe_dump(contract))
     monkeypatch.setattr(recovery.resources, "files", lambda _: node)
     assert recovery.escalation_bound_seconds() == 37
+
+
+async def _refuse_with(host, message: str):
+    from omnimarket.models.work_ledger_append import EnumWorkLedgerAppendStatus
+
+    async def refuse(request):
+        receipt = await host.append(request)
+        return receipt.model_copy(
+            update={
+                "status": EnumWorkLedgerAppendStatus.REFUSED,
+                "exit_code": 65,
+                "message": message,
+            }
+        )
+
+    return refuse
+
+
+async def test_a_refused_request_closes_the_episode_and_is_reported_as_its_own_case(
+    switch: _Switch,
+    workspace: Path,
+    tmp_path: Path,
+) -> None:
+    """A refusal is final and sits in refused/; it must not hold the binding episode open forever."""
+    async with _open(switch, workspace, tmp_path):
+        queued = outbox.queue_request(tmp_path, _request("malformed terminal row"))
+    request_id = str(outbox.request_id_of(queued))
+    switch.up = True
+    refuse = await _refuse_with(_LedgerHost(), "ledger_lock: friction guard rejected")
+    async with _open(switch, workspace, tmp_path, START + timedelta(seconds=10)) as b:
+        await select.replay_outbox(b, tmp_path, refuse)
+    rows = _rows(tmp_path)
+    assert [row["cls"] for row in rows] == ["bus-binding-outbox-refused"]
+    assert rows[0]["decision"] is False
+    assert request_id in rows[0]["key"]
+    assert "friction guard rejected" in rows[0]["evidence"]
+    resolution = next(row for row in _history(tmp_path) if "resolves" in row)
+    assert "refused=1" in resolution["how"]
+    # The next episode starts clean: the old refusal is not reported again.
+    switch.up = False
+    async with _open(switch, workspace, tmp_path, START + timedelta(minutes=5)):
+        pass
+    switch.up = True
+    async with _open(switch, workspace, tmp_path, START + timedelta(minutes=6)):
+        pass
+    assert [row["cls"] for row in _rows(tmp_path)] == ["bus-binding-outbox-refused"]
+
+
+async def test_replay_of_the_recorded_episode_from_2026_10_28_resolves_both_rows(
+    switch: _Switch,
+    workspace: Path,
+    tmp_path: Path,
+) -> None:
+    """The recorded state: episode open since 05:29:46Z, 52 replayed, one refusal filed at 05:29:53Z, rows open."""
+    from datetime import UTC, datetime
+
+    from omnimarket.handlers.bus_binding import recovery
+    from omnimarket.nodes.node_exception_queue_effect.handler import (
+        HandlerExceptionEmit,
+    )
+    from omnimarket.nodes.node_exception_queue_effect.models import (
+        ModelExceptionEmitRequest,
+        ModelExceptionRow,
+    )
+
+    started = datetime(2026, 10, 28, 5, 29, 46, tzinfo=UTC)
+    async with _open(switch, workspace, tmp_path, started):
+        pass
+    for cls, evidence in (
+        (
+            "bus-binding-outage",
+            "outage_seconds=1896.95; durable bus health read failed: Kafka",
+        ),
+    ):
+        HandlerExceptionEmit().handle(
+            ModelExceptionEmitRequest(
+                state_dir=tmp_path / "exception-queue",
+                row=ModelExceptionRow(
+                    cls=cls,
+                    key="lane=dev",
+                    source=recovery.SOURCE,
+                    evidence=evidence,
+                    tried="fell back to the in-memory event bus",
+                    proposed_fix="investigate",
+                ),
+                now="2026-10-28T06:01:23Z",
+            )
+        )
+    record = recovery.read_record(tmp_path, "dev")
+    recovery._write_record(
+        tmp_path, "dev", {**record, "replayed": 52, "duplicates": 1, "refused": 1}
+    )
+    refused = outbox.outbox_dir(tmp_path) / outbox.REFUSED_DIRNAME
+    refused.mkdir(parents=True)
+    ns = int(datetime(2026, 10, 28, 5, 29, 53, tzinfo=UTC).timestamp() * 1e9)
+    request = _request("TERMINAL row without a FRICTION row")
+    (refused / f"{ns:020d}_{request.request_id}.json").write_text(
+        json.dumps(
+            {
+                **json.loads(request.model_dump_json()),
+                "refusal": {"message": "friction guard rejected append"},
+            }
+        )
+    )
+    switch.up = True
+    async with _open(switch, workspace, tmp_path, started + timedelta(hours=8)):
+        pass
+    assert [row["cls"] for row in _rows(tmp_path)] == ["bus-binding-outbox-refused"]
+    assert not any(
+        row["cls"] in ("bus-binding-degraded", "bus-binding-outage")
+        for row in _rows(tmp_path)
+    )
