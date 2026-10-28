@@ -19,18 +19,29 @@ requirements:
           AC3: omnimarket dev pins dashboard_bundle version v1.1.11 with the sha256 of that published asset, and onex dashboard from that build serves the seven-page navigation with Settings -- falsifier: the pinned sha256 differs from sha256sum of the downloaded asset, or the served page read shows no Settings entry in its navigation
 evidence_requirements:
   - kind: "tests"
-    description: "onex dashboard pins omnidash v1.1.11 or later; the pinned asset downloads, verifies against the pinned sha256 through ensure_bundle, and carries the Settings navigation entry. At the v1.1.10 pin both cases fail."
-    command: "uv run pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -q -p no:randomly"
+    description: "AC2: the v1.1.11 tag peels to omnidash#471's merge commit 3149cd09 (git ls-remote), the release carries the bundle (verified by ensure_bundle against its digest) and the .sha256 sidecar naming that digest and asset, and the publish-dashboard-bundle run for the tag on that commit concluded success; with the pin floor, so the item is about the release omnimarket pins."
+    command: 'uv run pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -q -p no:randomly -k "seven_page_release or release_tag_peels or bundle_and_its_sidecar or publish_run_for_the_tag"'
+  - kind: "tests"
+    description: "AC3: the pin is v1.1.11 or later, and the pinned asset, fetched and verified through ensure_bundle, lists Settings in its navigation entries. At the v1.1.10 pin both fail."
+    command: 'uv run pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -q -p no:randomly -k "seven_page_release or lists_settings_in_its_navigation"'
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: "dod-omn21469-bundle-pin-1-1-11"
-    description: "onex dashboard pins omnidash v1.1.11 or later. The published v1.1.11 asset is fetched and verified by ensure_bundle, the path onex dashboard serves from, so a digest that differs from the published asset is refused by the product code, and the unpacked pages must carry the Settings navigation entry. At the v1.1.10 pin the floor case fails and the download verifies but has no Settings entry."
+  - id: "dod-omn21469-ac2-release-v1-1-11"
+    description: "AC2: the v1.1.11 tag peels to omnidash#471's merge commit 3149cd09 (git ls-remote), the release carries the bundle (fetched and verified by ensure_bundle against e231574d...) and the .sha256 sidecar naming that digest and asset, and the publish-dashboard-bundle run for the tag on that commit concluded success; and omnimarket's pin names that release (the floor case), so this item fails at a merge base still pinning v1.1.10. Each case fails when its part is missing or wrong: a tag on another commit, an absent or different sidecar, no successful run, or a pin below v1.1.11."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -q -p no:randomly"
+        check_value: 'uv run pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -q -p no:randomly -k "seven_page_release or release_tag_peels or bundle_and_its_sidecar or publish_run_for_the_tag"'
         cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC2", "AC3"]
+    binds_ac: ["AC2"]
+  - id: "dod-omn21469-ac3-bundle-pin-1-1-11"
+    description: "AC3: onex dashboard pins omnidash v1.1.11 or later, and the pinned asset, fetched and verified through ensure_bundle, the path onex dashboard serves from, carries the Settings entry in its primary navigation list (page local-settings, label Settings), not only the word, which the route map and page heading also use. At the v1.1.10 pin the floor case fails and the verified v1.1.10 bundle has no such entry."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -q -p no:randomly -k "seven_page_release or lists_settings_in_its_navigation"'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
