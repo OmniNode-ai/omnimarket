@@ -487,6 +487,7 @@ node_delegation_experiment_record_compute = "omnimarket.nodes.node_delegation_ex
 node_lane_brief_draft_compute = "omnimarket.nodes.node_lane_brief_draft_compute"
 node_lane_brief_gate_orchestrator = "omnimarket.nodes.node_lane_brief_gate_orchestrator"
 node_lane_brief_parse_compute = "omnimarket.nodes.node_lane_brief_parse_compute"
+node_binding_conformance_compute = "omnimarket.nodes.node_binding_conformance_compute"
 node_delegation_ground_truth_label_compute = "omnimarket.nodes.node_delegation_ground_truth_label_compute"
 node_delegation_rubric_check_compute = "omnimarket.nodes.node_delegation_rubric_check_compute"
 node_contract_projection_check_compute = "omnimarket.nodes.node_contract_projection_check_compute"
