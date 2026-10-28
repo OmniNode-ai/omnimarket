@@ -28,6 +28,17 @@ repos:
         files: ^(src/omnimarket/nodes/node_retention_cleanup/.*|scripts/retention/.*|tests/nodes/test_file_retention_archive_safety\.py|\.pre-commit-config\.yaml|\.github/workflows/ci\.yml)$
         pass_filenames: false
         stages: [pre-commit]
+  # OMN-17427: workflow action pins. omnibase_core's check-action-pins reads this
+  # repository's rule values from .action-pin-overlay.yaml: third-party refs are a
+  # full 40-hex sha, first-party refs are a dev-merge tag. rev is the dev-merge tag
+  # of the core commit that carries the hook. SYNC with the ci.yml step 'GitHub
+  # Actions pin check'.
+  - repo: https://github.com/OmniNode-ai/omnibase_core
+    rev: dev-20261028202452-b8b19b0b4bff
+    hooks:
+      - id: check-action-pins
+        files: ^\.github/workflows/[^/]+\.ya?ml$
+        require_serial: true
   # OMN-19998: public-repository runner placement (RULING 2026-10-16T07:07:09Z,
   # "Ci runners should be for private repos only"). CI twin job
   # public-runner-placement in .github/workflows/ci.yml; keep this rev equal to
