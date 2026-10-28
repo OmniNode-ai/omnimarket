@@ -1,0 +1,96 @@
+name: node_binding_conformance_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure check that nothing a node ships assumes one deployment's setup (OMN-21473, factory task T-B1).
+  The check_bindings operation takes the node contracts and the handler and model sources as text,
+  the protocol table (which node declares which protocols), the concrete bindings a handler may not
+  construct, the modules a pure node may not import and the deployment's private names, all as data
+  from the caller. It fails a contract that declares a protocol the table does not give its node or
+  omits one it gives, a handler that imports or constructs a concrete binding, a handler that reads
+  an environment variable or holds a path or URL literal, a pure handler or model that imports the
+  overlay reader or the contract loader, and any shipped file that holds a private name. The issue
+  names the node, the file and the line, and never echoes a private name. The checked set is a data
+  list the caller supplies. Reads no file, no environment variable, calls no model, depends on no
+  protocol.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: check_bindings
+      handler:
+        name: HandlerBindingConformance
+        module: omnimarket.nodes.node_binding_conformance_compute.handlers.handler_binding_conformance
+      input_model: omnimarket.models.binding_conformance.model_binding_conformance_request.ModelBindingConformanceRequest
+      output_model: omnimarket.models.binding_conformance.model_binding_conformance_result.ModelBindingConformanceResult
+
+handler:
+  module: omnimarket.nodes.node_binding_conformance_compute.handlers.handler_binding_conformance
+  class: HandlerBindingConformance
+  input_model: omnimarket.models.binding_conformance.model_binding_conformance_request.ModelBindingConformanceRequest
+  output_model: omnimarket.models.binding_conformance.model_binding_conformance_result.ModelBindingConformanceResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles: [main]
+
+inputs:
+  checked_nodes:
+    type: tuple
+    required: true
+    description: The nodes to check, a data list the caller supplies.
+  protocol_table:
+    type: object
+    required: true
+    description: Protocol codes with their import paths, and each node's row of codes.
+  concrete_bindings:
+    type: tuple
+    required: false
+    description: Concrete adapters a handler must not import or construct, by protocol code.
+  pure_forbidden_modules:
+    type: tuple
+    required: false
+    description: Module prefixes a pure handler or model must not import.
+  private_names:
+    type: tuple
+    required: false
+    description: The deployment's private names, taken from its overlays by the caller.
+  sources:
+    type: tuple
+    required: true
+    description: Contract, handler and model text of each checked node.
+
+outputs:
+  conforming:
+    type: bool
+  checked_nodes:
+    type: tuple
+  issues:
+    type: tuple
+
+terminal_event: onex.evt.omnimarket.binding-conformance-checked.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.binding-conformance-check-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.binding-conformance-checked.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.binding-conformance-checked.v1
+
+published_events:
+  - event_type: BindingConformanceChecked
+    topic: onex.evt.omnimarket.binding-conformance-checked.v1
+    description: The verdict and, for each failing node, the file and line of each issue.
+
+metadata:
+  ticket: OMN-21473
+  transport_type: kafka
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.binding-conformance-check-requested.v1
