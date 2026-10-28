@@ -2926,6 +2926,7 @@
   "tests/unit/nodes/node_pr_delegated_fix_effect/test_handler_delegated_fix.py": 0.05,
   "tests/unit/nodes/node_pr_delegated_fix_effect/test_handler_terminal_branches.py": 0.09,
   "tests/unit/nodes/node_pr_handoff_decision_compute/test_handler_pr_handoff_decision.py": 0.12,
+  "tests/unit/nodes/node_pr_handoff_decision_compute/test_landing_scope.py": 1.8,
   "tests/unit/nodes/node_pr_handoff_ledger_effect/test_handler_pr_handoff_ledger_effect.py": 0.06,
   "tests/unit/nodes/node_pr_handoff_orchestrator/test_pr_handoff_orchestrator_contract.py": 0.15,
   "tests/unit/nodes/node_pr_landing_class_plan_compute/test_landing_class_plan.py": 0.13,
