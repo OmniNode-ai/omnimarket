@@ -154,6 +154,7 @@ from omnimarket.nodes.node_dod_verify.services.criteria_drift import (
     ProtocolDodTicketCriteriaReader,
     evaluate_criteria,
     extract_criteria_pins,
+    merge_criteria_pins,
 )
 from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
     apply_supersessions,
@@ -2819,6 +2820,10 @@ class EvidenceCollector:
         results: list[ModelEvidenceCheckResult] = []
         summaries: list[ModelDodAcceptanceSummary] = []
         subjects: list[ModelDodContractSubject] = []
+        # OMN-20886: each contract's collection resets the criteria pins, so the
+        # pins of every contract are kept here and unioned after the loop.
+        pin_parts: list[tuple[str, ModelCriteriaPins]] = []
+        first_criteria_read: ModelTicketCriteriaRead | None = None
         for engaged in governing:
             pr = engaged.pr
             logger.info(
@@ -2838,10 +2843,14 @@ class EvidenceCollector:
                     _repo_contract_subject(pr.repo, pr.merge_commit_sha, ticket_id),
                 ),
             )
+            name = pr.repo.split("/", 1)[-1]
+            if self._criteria_pins is not None:
+                pin_parts.append((name, self._criteria_pins))
+                if first_criteria_read is None:
+                    first_criteria_read = self._criteria_read_before
             if multi:
                 # Two contracts may reuse an item id; the repository keeps them
                 # apart in one verdict.
-                name = pr.repo.split("/", 1)[-1]
                 item_results = [
                     result.model_copy(
                         update={"evidence_id": f"{name}:{result.evidence_id}"}
@@ -2863,6 +2872,8 @@ class EvidenceCollector:
                 repo_path=default_contract_path(ticket_id),
             )
             self.acceptance_summary = _merge_acceptance_summaries(summaries)
+            self._criteria_pins = merge_criteria_pins(pin_parts)
+            self._criteria_read_before = first_criteria_read if pin_parts else None
         elif subjects:
             self.contract_subject = subjects[0]
         self._durable_gate_inputs = ModelDurableEvidenceGateRunCommand(
