@@ -242,3 +242,81 @@ def test_build_grid_map_run_writes_rows_whose_three_serving_fields_are_non_empty
     result = HandlerDelegationCapabilityMap().handle(run.fold_request())
     assert len(result.cells) == 1
     assert result.inadmissible == ()
+
+
+def test_grid_run_command_writes_rows_with_the_three_serving_fields(
+    tmp_path, monkeypatch
+) -> None:
+    from omnimarket.models.delegation_capability_map.model_capability_map_run_recorded import (
+        ModelCapabilityMapRunRecorded,
+    )
+    from omnimarket.nodes.node_projection_delegation_capability_map import (
+        lab_grid_run,
+    )
+
+    items = tmp_path / "items.json"
+    items.write_text(
+        json.dumps(
+            [
+                {
+                    "item_key": f"k{i}",
+                    "task_class": "summarization",
+                    "prompt_snapshot": f"Summarize release note {i}.",
+                }
+                for i in range(3)
+            ]
+        )
+    )
+    backends = tmp_path / "backends.json"
+    backends.write_text(
+        json.dumps(
+            [
+                {
+                    "model_key": "Qwen3.8-27B",
+                    "backend_id": "local-coder",
+                    "endpoint_url": "http://192.168.86.201:8000/v1/chat/completions",
+                    "served_model_id": "Qwen3.8-27B",
+                }
+            ]
+        )
+    )
+
+    def post(url: str, body: dict[str, Any], timeout: float) -> dict[str, Any]:
+        del url, timeout
+        return {
+            "model": body["model"],
+            "choices": [{"message": {"content": "The release adds a cache."}}],
+        }
+
+    monkeypatch.setattr(lab_grid_run, "_http_post", post)
+    rows_out, run_out = tmp_path / "rows.jsonl", tmp_path / "run.json"
+    assert (
+        lab_grid_run.main(
+            [
+                "--tenant-id",
+                str(_TENANT),
+                "grid-run",
+                "--items-file",
+                str(items),
+                "--backends-file",
+                str(backends),
+                "--rows-out",
+                str(rows_out),
+                "--run-out",
+                str(run_out),
+                "--no-write",
+            ]
+        )
+        == 0
+    )
+    rows = [json.loads(line) for line in rows_out.read_text().splitlines()]
+    assert len(rows) == 3
+    empty = [
+        r
+        for r in rows
+        if not (r["backend_id"] and r["host"] and r["answering_backend"])
+    ]
+    assert empty == []
+    run = ModelCapabilityMapRunRecorded.model_validate_json(run_out.read_text())
+    assert len(run.rows) == 3
+    assert {a.backend_id for a in run.assignments} == {"local-coder"}

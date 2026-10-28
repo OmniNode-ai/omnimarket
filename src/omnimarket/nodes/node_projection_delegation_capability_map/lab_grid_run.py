@@ -14,7 +14,9 @@ node, the same writer the runtime dispatches in process.
 It runs offline, in batches, never on a live request. ``--rows-out`` keeps the
 content-free verdict rows (no prompt, no answer) as JSON lines,
 ``--grades-cache`` lets a stopped run resume without asking a backend again,
-and the receipt printed on stdout is content free.
+``--run-out`` keeps the map run the writer folds, and the receipt printed on
+stdout is content free. ``--items-file`` takes the stored prompts exported from
+``delegation_eval_items`` in place of the database read.
 
 DSNs come from environment variables named on the command line, with no default
 (root rule 8): ``--read-dsn-env`` reads the items, ``--write-dsn-env`` is the
@@ -318,13 +320,14 @@ def grade_grid(
     timeout: float,
     concurrency: int,
     cache_path: Path | None = None,
-    post: ProtocolGridPost = _http_post,
+    post: ProtocolGridPost | None = None,
 ) -> tuple[dict[tuple[str, str], ModelCapabilityGridGrade], dict[str, int]]:
     """Ask every backend every item once, grade each answer with the class rubric.
 
     A call that times out is a failed answer from the backend that was asked;
     any other transport error makes no grade and is counted.
     """
+    send = post or _http_post
     grades = _load_cache(cache_path)
     counts: Counter[str] = Counter(cached=len(grades))
     lock = threading.Lock()
@@ -338,7 +341,7 @@ def grade_grid(
     def one(pair: tuple[ModelCapabilityGridItem, ModelGridBackend]) -> None:
         item, backend = pair
         try:
-            answer = call_grid_backend(backend, item.prompt, timeout=timeout, post=post)
+            answer = call_grid_backend(backend, item.prompt, timeout=timeout, post=send)
             grade = ModelCapabilityGridGrade(
                 passed=_rubric_grade(item.task_class, item.prompt, answer),
                 host=answer.host,
@@ -402,7 +405,16 @@ def _grid_run(args: argparse.Namespace) -> dict[str, Any]:
         ModelGridBackend.model_validate(entry)
         for entry in json.loads(Path(args.backends_file).read_text())
     ]
-    items, skipped = grid_items(asyncio.run(_read_grid_items(args, str(tenant))))
+    if args.items_file:
+        raw = json.loads(Path(args.items_file).read_text())
+    else:
+        if not (args.read_dsn_env and args.rubric_version):
+            raise SystemExit(
+                "grid-run reads delegation_eval_items with --read-dsn-env and "
+                "--rubric-version, or takes --items-file"
+            )
+        raw = asyncio.run(_read_grid_items(args, str(tenant)))
+    items, skipped = grid_items(raw)
     if args.limit_per_cell:
         kept: Counter[tuple[str, str]] = Counter()
         limited = []
@@ -452,8 +464,14 @@ def _grid_run(args: argparse.Namespace) -> dict[str, Any]:
         },
         **counts,
     }
+    if args.run_out:
+        Path(args.run_out).write_text(run.model_dump_json() + "\n")
     if args.no_write:
         return receipt
+    if not args.write_dsn_env:
+        raise SystemExit(
+            "grid-run writes the map run with --write-dsn-env, or --no-write"
+        )
     writer = HandlerDelegationCapabilityMapWriter()
     writer.bind_projection_database_url(read_named_env(args.write_dsn_env))
     receipt["writer"] = writer.handle(run.model_dump(mode="json"))
@@ -463,11 +481,18 @@ def _grid_run(args: argparse.Namespace) -> dict[str, Any]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="delegation-capability-grid-run")
     parser.add_argument("--tenant-id", required=True)
-    parser.add_argument("--read-dsn-env", required=True)
-    parser.add_argument("--write-dsn-env", required=True)
+    parser.add_argument("--read-dsn-env")
+    parser.add_argument("--write-dsn-env")
     sub = parser.add_subparsers(dest="command", required=True)
     grid = sub.add_parser("grid-run")
-    grid.add_argument("--rubric-version", required=True)
+    grid.add_argument("--rubric-version")
+    grid.add_argument(
+        "--items-file",
+        help="JSON list of {item_key, task_class, prompt_snapshot} in place of the DB read",
+    )
+    grid.add_argument(
+        "--run-out", help="write the content-free map run (the writer's input) as JSON"
+    )
     grid.add_argument("--backends-file", required=True)
     grid.add_argument("--timeout-seconds", type=float, default=240.0)
     grid.add_argument("--concurrency", type=int, default=4)
