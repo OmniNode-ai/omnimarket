@@ -26,6 +26,11 @@ class ModelCapabilityVerdictRow(BaseModel):
     ``passed`` is a rubric pass on an accepted answer, or a hand, blind or DoD
     label of adequate. ``configuration`` is None when the producer recorded no
     configuration, and such a row folds into no cell.
+
+    ``host`` is the machine the backend's endpoint lives on and
+    ``answering_backend`` the backend that returned the answer. A graded run
+    records both for every row; a producer that did not record them leaves
+    them None.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -40,3 +45,5 @@ class ModelCapabilityVerdictRow(BaseModel):
     configuration: ModelCapabilityConfiguration | None = None
     identity: ModelCapabilityIdentity
     passed: bool
+    host: str | None = Field(default=None, min_length=1)
+    answering_backend: str | None = Field(default=None, min_length=1)

@@ -71,7 +71,9 @@ _LABELLED_SQL = """
     SELECT i.item_key, i.task_class, i.label, i.prompt_snapshot, i.observed_at,
            i.rubric_version, i.rater_role,
            NULLIF(COALESCE(e.routed_model, e.model_name), '') AS model_key,
-           NULLIF(e.backend_id, '') AS backend_id
+           NULLIF(e.backend_id, '') AS backend_id,
+           NULLIF(e.host, '') AS host,
+           NULLIF(e.answering_backend, '') AS answering_backend
     FROM public.delegation_eval_items AS i
     LEFT JOIN public.delegation_events AS e
       ON e.correlation_id = i.correlation_id AND e.tenant_id::text = i.tenant_id::text
@@ -144,6 +146,8 @@ def build_map_run(
                     harness_revision=HARNESS_REVISION,
                 ),
                 passed=passed,
+                host=item.get("host") or None,
+                answering_backend=item.get("answering_backend") or None,
             )
         )
     assignments = {

@@ -42,6 +42,22 @@ class ModelCapabilityGridModel(BaseModel):
     model_revision: str = Field(min_length=1)
 
 
+class ModelCapabilityGridGrade(BaseModel):
+    """A grader's verdict on one answer, with the machine that served it.
+
+    ``host`` is the machine the called endpoint lives on, ``answering_backend``
+    the backend that returned the answer and ``served_model`` the model the
+    endpoint reported serving. Each is None when the call did not record it.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    passed: bool
+    host: str | None = Field(default=None, min_length=1)
+    answering_backend: str | None = Field(default=None, min_length=1)
+    served_model: str | None = Field(default=None, min_length=1)
+
+
 class ModelCapabilityGridRequest(BaseModel):
     """Items, models and at most eight configurations, run offline once each."""
 
