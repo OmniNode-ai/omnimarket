@@ -18,12 +18,16 @@ class ModelModelTestResult(BaseModel):
 
     ``not_set_up`` means nothing was run: the provider has no key stored, or
     (Ollama) no local routes point at it, or (local) no URL is declared.
+
+    ``throttled`` (OMN-21464) means the provider answered HTTP 429: a retryable
+    condition of the provider or the model, and no verdict on the key. It is
+    never recorded, so the key's earlier verdict stands.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     provider: ModelProvider
-    status: Literal["passed", "failed", "not_set_up"]
+    status: Literal["passed", "failed", "throttled", "not_set_up"]
     tested_at: str
     backend_id: str | None = None
     model: str | None = None
