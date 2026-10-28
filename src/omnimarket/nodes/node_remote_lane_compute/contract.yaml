@@ -52,3 +52,14 @@ metadata:
   ticket: OMN-20669
   transport_type: kafka
 lifecycle: experimental
+config:
+  # The engine ladder (OMN-21475, T-S3): rungs from the cheapest to the dearest. Each rung pairs its
+  # ladder id with the host-engine id a placement request carries. The backlog item model, the
+  # placement model and handler, the experiment rows, the throughput tick and the seam readers read it
+  # through the contract loader; nothing in code holds a copy.
+  engine_ladder:
+  - {rung: code-edit, host_engine: claude_sonnet}
+  - {rung: glm, host_engine: claude_sonnet}
+  - {rung: codex, host_engine: codex}
+  - {rung: sonnet, host_engine: claude_sonnet}
+  - {rung: opus, host_engine: claude_opus}

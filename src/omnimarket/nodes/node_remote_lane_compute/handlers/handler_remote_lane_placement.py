@@ -35,18 +35,18 @@ requests and pinned routes alike; a failed Sonnet attempt is itself that reason.
 
 from __future__ import annotations
 
+from omnimarket.handlers.handler_engine_ladder import load_engine_ladder
 from omnimarket.models.model_engine_experiment import (
     CLAUDE_RUNGS,
     CODEX_UNGRANTABLE_CAPABILITIES,
-    ENGINE_LADDER,
     ESCALATING_OUTCOMES,
     LOW_RISK_CLASSES,
     NO_ENGINE,
     QUOTA_FREE_RUNGS,
     RUNG_GATES,
-    RUNG_HOST_ENGINE,
     ModelEngineExperimentRow,
 )
+from omnimarket.models.model_engine_ladder import ModelEngineLadder
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     lane_model_refusal,
 )
@@ -183,9 +183,11 @@ def _escalation_reason(ladder: ModelRemoteLaneLadder) -> str | None:
     return None
 
 
-def _rung_reason(ladder: ModelRemoteLaneLadder, rung: str) -> str | None:
+def _rung_reason(
+    engines: ModelEngineLadder, ladder: ModelRemoteLaneLadder, rung: str
+) -> str | None:
     """The first route or readiness rule that refuses a rung."""
-    if ENGINE_LADDER.index(rung) > ENGINE_LADDER.index(ladder.ceiling):
+    if engines.index(rung) > engines.index(ladder.ceiling):
         return "above-route-ceiling"
     if refusal := lane_model_refusal(
         rung, escalation_reason=_escalation_reason(ladder)
@@ -229,7 +231,14 @@ def _experiment(
 
 
 class HandlerRemoteLanePlacement:
-    """Choose the host for one remote lane from the pool's evaluated readings."""
+    """Choose the host for one remote lane from the pool's evaluated readings.
+
+    The engine ladder is the ``config.engine_ladder`` of this node's contract, read once at
+    composition (OMN-21475); a caller may inject a validated ladder.
+    """
+
+    def __init__(self, engines: ModelEngineLadder | None = None) -> None:
+        self._engines = load_engine_ladder() if engines is None else engines
 
     def handle(
         self, request: ModelRemoteLanePlacementRequest
@@ -245,16 +254,16 @@ class HandlerRemoteLanePlacement:
                 return last_result.model_copy(
                     update={"experiment": _experiment(ladder, None)}
                 )
-            start = ENGINE_LADDER.index(last.engine) + 1
+            start = self._engines.index(last.engine) + 1
         rungs: list[ModelRemoteLaneRungVerdict] = []
-        for rung in ENGINE_LADDER[start:]:
-            reason = _rung_reason(ladder, rung)
+        for rung in self._engines.rungs[start:]:
+            reason = _rung_reason(self._engines, ladder, rung)
             if reason is not None:
                 rungs.append(ModelRemoteLaneRungVerdict(engine=rung, reason=reason))
                 continue
             placement_request = request.model_copy(
                 update={
-                    "engine": RUNG_HOST_ENGINE[rung],
+                    "engine": self._engines.host_engine(rung),
                     "ladder": None,
                     "escalation_reason": _escalation_reason(ladder),
                     **(
@@ -270,7 +279,7 @@ class HandlerRemoteLanePlacement:
                 return result.model_copy(
                     update={
                         "rung": rung,
-                        "engine": RUNG_HOST_ENGINE[rung],
+                        "engine": self._engines.host_engine(rung),
                         "rungs": tuple(rungs),
                         "experiment": _experiment(ladder, rung),
                     }

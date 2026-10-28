@@ -100,6 +100,10 @@ from omnimarket.nodes.node_idle_slot_fill_effect.models import (
     ModelLabFillRequest,
     ModelLabFillResult,
 )
+from omnimarket.nodes.node_idle_slot_fill_effect.models.model_idle_slot_fill import (
+    REPO_KINDS_CONTEXT_KEY,
+    backlog_item_refusal,
+)
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     load_policy,
     resolve_lane_model,
@@ -728,11 +732,21 @@ class HandlerIdleSlotFill:
         sends: list[dict[str, Any]] = []
         skipped: list[dict[str, str]] = []
         dropped: list[dict[str, str]] = []
+        backlog_mismatched = 0
+        item_context = {REPO_KINDS_CONTEXT_KEY: overlay.repo_required_kinds()}
         for item in candidates(
             request.lines,
             request.backlog,
             request.generated,
         ):
+            # OMN-21475 (T-S3, SM-00): an item that is not a backlog item, a prose engine above all, is
+            # counted and skipped; the fill never picks an engine for it.
+            if why := backlog_item_refusal(item, context=item_context):
+                backlog_mismatched += 1
+                skipped.append(
+                    {"key": item["key"], "why": f"backlog-item-invalid: {why}"}
+                )
+                continue
             if item["kind"] == "ruling-relaunch" and not item["repo"]:
                 skipped.append(
                     {
@@ -992,6 +1006,7 @@ class HandlerIdleSlotFill:
             claude_left + codex_left + glm_left,
             glm_only,
             dropped,
+            backlog_mismatched,
         )
 
 
@@ -2200,6 +2215,11 @@ class HandlerLabFill:
                     f"free={decision.claude_free}+{decision.codex_only_free}"
                     + (f"+{decision.glm_only_free}" if decision.glm_only_free else "")
                     + f" sweep_planned={planned}"
+                    + (
+                        f" backlog_mismatched={decision.backlog_mismatched}"
+                        if decision.backlog_mismatched
+                        else ""
+                    )
                     + (
                         f" placing={'+'.join(f'{k}:{v}' for k, v in sorted(placing.items()))}"
                         if placing

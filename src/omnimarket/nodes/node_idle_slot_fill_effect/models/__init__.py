@@ -3,6 +3,7 @@
 """Packaged models for node_idle_slot_fill_effect."""
 
 from .model_idle_slot_fill import (
+    ModelBacklogItem,
     ModelBacklogSources,
     ModelIdleSlotFillRequest,
     ModelIdleSlotFillResult,
@@ -18,6 +19,7 @@ from .model_idle_slot_fill_overlay import (
 )
 
 __all__ = [
+    "ModelBacklogItem",
     "ModelBacklogSources",
     "ModelCloudBacklogOverlay",
     "ModelIdleSlotFillOverlay",

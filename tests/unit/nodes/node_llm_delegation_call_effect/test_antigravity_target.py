@@ -90,7 +90,7 @@ def test_environment_drops_every_key_and_adc_route() -> None:
 
 
 def test_measured_engine_rows_accept_antigravity_but_the_ladder_does_not() -> None:
-    from omnimarket.models.model_engine_experiment import ENGINE_LADDER
+    from omnimarket.handlers.handler_engine_ladder import load_engine_ladder
 
     row = ModelEngineExperimentRow(
         lane="antigravity-rung-1125",
@@ -101,7 +101,7 @@ def test_measured_engine_rows_accept_antigravity_but_the_ladder_does_not() -> No
         outcome="done",
         duration_s=12,
     )
-    assert "antigravity" not in ENGINE_LADDER
+    assert "antigravity" not in load_engine_ladder().rungs
     line = format_experiment_line(row, "2026-10-26T12:00:00Z")
     assert parse_experiment_rows(line + "\n") == [
         row.model_copy(update={"at": "2026-10-26T12:00:00Z"})
