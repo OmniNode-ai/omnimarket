@@ -115,10 +115,14 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21459-deploy-import"
     description: >-
-      Hosted deploy check: the three node packages resolve their onex.nodes entry points from the
-      installed omnimarket. Fails at the merge base, where the entry points are absent.
+      Hosted deploy check: the seam classify handler is present at the pull request head commit
+      read through the GitHub contents API, and the three node packages resolve their onex.nodes
+      entry points from the installed omnimarket. Both fail at the merge base, where the handler
+      and the entry points are absent.
     source: "manual"
     checks:
+      - check_type: "command"
+        check_value: "gh api repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_seam_classify_compute/handlers/handler_seam_classify.py?ref=c9a49ab206b71b120ab759855c23c8855e5ab8b6 --jq .content | base64 -d | grep -q 'class HandlerSeamClassify'"
       - check_type: "command"
         check_value: "uv run --locked python -c \"from importlib.metadata import entry_points; eps={e.name: e for e in entry_points(group='onex.nodes')}; [eps[n].load() for n in ('node_seam_read_orchestrator','node_seam_reading_compute','node_seam_classify_compute')]; print('entry points load')\""
         cwd: "${OMNI_HOME}/omnimarket"

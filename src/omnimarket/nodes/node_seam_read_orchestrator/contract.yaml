@@ -9,9 +9,9 @@
 # operation, its canonical `shape` or the named `gap` that stands in for one (a seam with a gap
 # reads as unbound), and, where it has one, `bound_minutes`.
 #
-# This task writes the contract only: the handler that walks the graph and the node that gathers
-# the facts arrive with the tasks that read the seams, so this node has no handler, topic or
-# entry point yet.
+# This task writes the contract and a pure handler that lists the seam readings in line order;
+# walking the graph and the node that gathers the facts arrive with the tasks that read the
+# seams, so this node has no topic yet.
 #
 # The graph is not the `seams:` declaration that node_seam_graph_compute extracts or the
 # projection that node_seam_match_compute compares: those are code seams between repositories
@@ -35,6 +35,11 @@ descriptor:
   purity: impure
   idempotent: false
   timeout_ms: 60000
+
+handler:
+  module: omnimarket.nodes.node_seam_read_orchestrator.handlers.handler_seam_read_plan
+  class: HandlerSeamReadPlan
+  input_model: omnimarket.nodes.node_seam_read_orchestrator.models.model_seam_read_plan.ModelSeamReadPlanRequest
 
 # Bindings: the event bus and the clock. The seam readers it calls take facts and `now` and
 # depend on no protocol.
