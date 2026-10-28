@@ -4093,8 +4093,15 @@ dod_evidence:
     binds_ac: ["AC21288"]
     checks:
       - check_type: "test_passes"
-        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest src/omnimarket/nodes/node_projection_live_events/tests/test_handler_live_events.py -q -p no:randomly --no-cov --refuse-skips -k 'TestLiveEventsPoisonQuarantine or TestLiveEventSourceNormalisation'"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest src/omnimarket/nodes/node_projection_live_events/tests/test_handler_live_events.py -q -p no:randomly -p tests.refuse_skips --no-cov --refuse-skips -k 'TestLiveEventsPoisonQuarantine or TestLiveEventSourceNormalisation'"
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
-        check_value: "rg -n 'poison_dlq_topics' src/omnimarket/nodes/node_projection_live_events/handlers/handler_live_events.py"
+        check_value: "grep -n 'poison_dlq_topics' src/omnimarket/nodes/node_projection_live_events/handlers/handler_live_events.py"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-omn17427-live-events-poison-deploy-probe
+    description: "Deploy probe. On the hosted runner, drive the checked-out live-events projection runner through poison deliveries with an in-process producer and consumer. Oversize and invalid events must reach the contract DLQ before committing their offsets, and a missing publisher must hold the offset. This needs the locked Python dependencies and checkout, with no broker or deployed lane access."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest src/omnimarket/nodes/node_projection_live_events/tests/test_handler_live_events.py -q -p no:randomly -p tests.refuse_skips --no-cov --refuse-skips -k TestLiveEventsPoisonQuarantine"
         cwd: "${OMNI_HOME}/omnimarket"
