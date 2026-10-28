@@ -35,7 +35,7 @@ emergency_bypass:
 dod_evidence:
 - id: dod-omn21469-ac1
   description: AC1 checks the committed fixture resets all five routing globals on setup and teardown,
-    then runs the leak probe. The source check reads HEAD because the merge-base control overlays the
+    then runs only the leak probe within one per-check budget. The source check reads HEAD because the merge-base control overlays the
     fixed tests into its working tree.
   source: manual
   binds_ac:
@@ -58,14 +58,19 @@ dod_evidence:
       PYCODE
     cwd: ${OMNI_HOME}/omnimarket
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/delegation/test_routing_globals_isolated_omn21433.py -k customer_never_lab -q --no-cov --tb=line
+    check_value: uv run pytest tests/unit/delegation/test_routing_globals_isolated_omn21433.py::test_the_customer_never_lab_file_leaves_no_routing_global_set -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21469-ac2
-  description: AC2 runs both orders of the two files in one pytest process.
+  description: AC2 runs both orders of the two files, each in one pytest process. Each order has its
+    own evidence check so subprocess startup and execution fit the per-check budget without
+    repeating AC1 or the unrelated OMN-21433 overlay regression.
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/delegation/test_routing_globals_isolated_omn21433.py -q --no-cov --tb=line
+    check_value: uv run pytest tests/unit/delegation/test_routing_globals_isolated_omn21433.py::test_the_customer_never_lab_file_does_not_change_the_tier_escalation_tests_after_it -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_routing_globals_isolated_omn21433.py::test_the_tier_escalation_tests_pass_before_the_customer_never_lab_file -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
