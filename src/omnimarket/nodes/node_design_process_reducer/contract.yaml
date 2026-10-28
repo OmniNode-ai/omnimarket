@@ -1,0 +1,180 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Design Process Reducer (OMN-21460)
+#
+# Pure reducer: folds the events of one design record into its state. The guards read
+# facts (the ones node_design_record_check_compute computes, plus the deploy receipt
+# and the readback status); the node takes facts and `now` and declares no
+# protocol_dependencies.
+name: node_design_process_reducer
+contract_name: node_design_process_reducer
+node_name: node_design_process_reducer
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: REDUCER_GENERIC
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Lifecycle of one design record: drafted, check_declared, failure_modes_rated, built,
+  readback_pending, done, with refused as the error state. A record reaches
+  check_declared only when its live check has a command and a failing reading before the
+  build, failure_modes_rated only when the table has rows and none lacks both a detector
+  and a GAP mark, built only with a deploy receipt, and done only when the readback
+  reads healthy; an unhealthy readback returns it to failure_modes_rated.
+
+handler:
+  module: omnimarket.nodes.node_design_process_reducer.handlers.handler_design_process
+  class: HandlerDesignProcess
+  input_model: omnimarket.nodes.node_design_process_reducer.models.model_design_process.ModelDesignProcessRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: design_process_transition
+      handler:
+        name: HandlerDesignProcess
+        module: omnimarket.nodes.node_design_process_reducer.handlers.handler_design_process
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 2000
+
+input_model:
+  name: ModelDesignProcessRequest
+  module: omnimarket.nodes.node_design_process_reducer.models.model_design_process
+  description: The prior state, one trigger, the facts the guards read and `now`.
+output_model:
+  name: ModelDesignProcessResult
+  module: omnimarket.nodes.node_design_process_reducer.models.model_design_process
+  description: The next state, whether it moved, and the guards that held it.
+
+terminal_event: onex.evt.omnimarket.design-process-transitioned.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.design-process-transition-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.design-process-transitioned.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.design-process-transition-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.design-process-transitioned.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.design-process-transitioned.v1
+
+replay:
+  deterministic: true
+
+state_machine:
+  version: {major: 1, minor: 0, patch: 0}
+  state_machine_name: design_process_fsm
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: 'Lifecycle of one design record: a mechanism is done only when its live check was declared first and reads healthy after it is built and deployed.'
+  initial_state: drafted
+  terminal_states: [done]
+  error_states: [refused]
+  persistence_enabled: false
+  states:
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: drafted
+    state_type: operational
+    description: The intended state is one measurable sentence.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: check_declared
+    state_type: operational
+    description: The live check is declared and reads as a failing reading before the build.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: failure_modes_rated
+    state_type: operational
+    description: Every failure mode has a detector or a named gap.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: built
+    state_type: operational
+    description: The mechanism is merged and deployed.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: readback_pending
+    state_type: operational
+    description: The live readback after deploy is waiting to be read.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: done
+    state_type: terminal
+    description: The readback read healthy on the live system.
+    is_terminal: true
+    is_recoverable: false
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: refused
+    state_type: error
+    description: The design record checker refused the record; it returns to drafted after the fix.
+  transitions:
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: drafted_to_check_declared_on_live_check_declared
+    from_state: drafted
+    to_state: check_declared
+    trigger: live_check_declared
+    conditions:
+    - {condition_name: check_command_present, condition_type: expression, expression: live_check_command_present == True}
+    - {condition_name: check_fails_first, condition_type: expression, expression: live_check_failing_reading == True}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: drafted_to_refused_on_record_checked
+    from_state: drafted
+    to_state: refused
+    trigger: record_checked
+    conditions:
+    - {condition_name: record_has_issue, condition_type: expression, expression: record_issue_count != 0}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: check_declared_to_refused_on_record_checked
+    from_state: check_declared
+    to_state: refused
+    trigger: record_checked
+    conditions:
+    - {condition_name: record_has_issue, condition_type: expression, expression: record_issue_count != 0}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: refused_to_drafted_on_record_revised
+    from_state: refused
+    to_state: drafted
+    trigger: record_revised
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: check_declared_to_failure_modes_rated_on_failure_modes_rated
+    from_state: check_declared
+    to_state: failure_modes_rated
+    trigger: failure_modes_rated
+    conditions:
+    - {condition_name: rows_exist, condition_type: expression, expression: failure_mode_rows != 0}
+    - {condition_name: rows_covered, condition_type: expression, expression: rows_without_detector_or_gap == 0}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: failure_modes_rated_to_built_on_countermeasure_deployed
+    from_state: failure_modes_rated
+    to_state: built
+    trigger: countermeasure_deployed
+    conditions:
+    - {condition_name: deploy_receipt, condition_type: expression, expression: deploy_receipt_present == True}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: built_to_readback_pending_on_readback_scheduled
+    from_state: built
+    to_state: readback_pending
+    trigger: readback_scheduled
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: readback_pending_to_done_on_readback_read
+    from_state: readback_pending
+    to_state: done
+    trigger: readback_read
+    priority: 1
+    conditions:
+    - {condition_name: healthy, condition_type: expression, expression: readback_status == healthy}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: readback_pending_to_failure_modes_rated_on_readback_unhealthy
+    from_state: readback_pending
+    to_state: failure_modes_rated
+    trigger: readback_read
+    conditions:
+    - {condition_name: unhealthy, condition_type: expression, expression: readback_status == unhealthy}
+
+metadata:
+  ticket: OMN-21460
+  transport_type: inmemory
