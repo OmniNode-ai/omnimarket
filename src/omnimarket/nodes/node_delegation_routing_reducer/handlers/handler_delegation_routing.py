@@ -720,9 +720,15 @@ def _select_primary_model_for_task(
 # files -- the same single-derivation rule OMN-15628 applied to routing_tiers.
 _DEFAULT_TASK_CLASS_CONTRACT_PATH = TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH
 
-# Module-level config singletons — loaded once on first call.
+# Module-level config singletons — reused while their bindings remain unchanged.
 # Tests can override by replacing these variables before calling delta().
 _config: ModelDelegationConfig | None = None
+# Placements belong to the bifrost binding as well as the tiers file. Reusing
+# a ladder across bindings can leave a newly placed tier empty, or retain a
+# backend the replacement contract withdrew.
+_config_binding: (
+    tuple[ModelDelegationConfig, tuple[Path, Path | None, Path | None]] | None
+) = None
 # OMN-19215 AC4: the spread groups of the placements _get_config applied, bound
 # to the exact config object they were derived from. A config installed any
 # other way (a test assigning ``_config``) has no recorded groups and routes
@@ -735,14 +741,26 @@ _config_spread_weights: tuple[ModelDelegationConfig, dict[str, float]] | None = 
 
 
 def _get_config() -> ModelDelegationConfig:
-    global _config, _config_spread_peers, _config_spread_weights
-    if _config is None:
+    global _config, _config_binding, _config_spread_peers, _config_spread_weights
+    # An explicitly installed config has no loader-owned binding to refresh.
+    if _config is not None and (
+        _config_binding is None or _config_binding[0] is not _config
+    ):
+        return _config
+
+    config_path = resolve_routing_tiers_path()
+    bifrost_binding = resolve_bifrost_path_binding()
+    binding_key = (
+        config_path,
+        bifrost_binding.contract_path,
+        bifrost_binding.overlay_path,
+    )
+    if _config is None or _config_binding is None or _config_binding[1] != binding_key:
         # OMN-16200: an unbound DELEGATION_ROUTING_TIERS_PATH resolves to the
         # packaged tiers file with a logged bootstrap_default provenance line
         # (resolve_routing_tiers_path), so a clean install routes on the ladder
         # it ships. A bound key is read verbatim, and a bound-but-unreadable
         # path still refuses below, naming the key and the path (OMN-15628).
-        config_path = resolve_routing_tiers_path()
         try:
             yaml_text = config_path.read_text()
         except OSError as exc:
@@ -772,6 +790,9 @@ def _get_config() -> ModelDelegationConfig:
         )
         _config_spread_peers = (_config, spread_groups(placed))
         _config_spread_weights = (_config, spread_weights(placed))
+        _config_binding = (_config, binding_key)
+        # Endpoint references must come from the same binding as placements.
+        _load_bifrost_endpoints.cache_clear()
     return _config
 
 
