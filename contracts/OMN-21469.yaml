@@ -1,19 +1,32 @@
 schema_version: 1.0.0
 ticket_id: OMN-21469
-title: The customer-never-lab routing test leaves routing state behind, so the tier escalation tests fail when it runs first
-summary: placeholder
+title: The customer-never-lab routing test leaves the routing globals bound, so tier escalation tests that run after it in one shard can read its ladder
+summary: test_omn17082_customer_never_lab_backend routes through delta, which binds the handler's
+  process-global tier ladder (_config), the spread groups derived from it and the task-class contract
+  cache. Its fixture cleared only the bifrost endpoint cache, so a later test file in the same pytest
+  process routed on the ladder that file wrote. On omnimarket#4524 the shard planner dealt it before
+  test_delegation_tier_escalation and three tests there read cheap_cloud where they expected
+  cheap_frontier. The fixture now forgets all five globals on setup and teardown.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
 - id: req-customer-never-lab-leaves-no-global
-  statement: placeholder
+  statement: The customer-never-lab routing tests restore the routing handler's globals, so file order
+    cannot change another file's result.
   acceptance:
   - id: AC1
-    statement: 'AC1: placeholder -- falsifier: placeholder'
+    statement: 'AC1: after the customer-never-lab file runs, no routing global is bound and no routing
+      cache is filled -- falsifier: uv run pytest tests/unit/delegation/test_customer_never_lab_leaves_no_routing_global_omn21469.py
+      -k leaves_no_routing_global_set fails with LEAKED _config on the tree without the fix'
+  - id: AC2
+    statement: 'AC2: the customer-never-lab file followed by the tier escalation file, and the reverse
+      order, both pass in one pytest process -- falsifier: uv run pytest tests/test_omn17082_customer_never_lab_backend.py
+      tests/unit/delegation/test_delegation_tier_escalation.py exits non-zero with cheap_cloud == cheap_frontier
+      when the routing globals leak and tests/unit/delegation/conftest.py does not reset them'
 evidence_requirements:
 - kind: tests
-  description: Order isolation test.
+  description: Order isolation tests.
   command: uv run pytest tests/unit/delegation/test_customer_never_lab_leaves_no_routing_global_omn21469.py -q --no-cov --tb=line
 emergency_bypass:
   enabled: false
@@ -21,10 +34,37 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn21469-ac1
-  description: placeholder
+  description: AC1 checks the committed fixture resets all five routing globals on setup and teardown,
+    then runs the leak probe. The source check reads HEAD because the merge-base control overlays the
+    fixed tests into its working tree.
   source: manual
   binds_ac:
   - AC1
+  checks:
+  - check_type: command
+    check_value: |-
+      python3 - <<'PYCODE'
+      import ast
+      import subprocess
+      source = subprocess.check_output(["git", "show", "HEAD:tests/test_omn17082_customer_never_lab_backend.py"], text=True)
+      tree = ast.parse(source)
+      reset = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "_reset_routing_state")
+      assert {"routing._load_bifrost_endpoints.cache_clear()", "routing._get_task_class_contract.cache_clear()", "routing._config = None", "routing._config_spread_peers = None", "routing._config_spread_weights = None"} <= {ast.unparse(node) for node in reset.body}
+      fixture = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "lab_and_house_backends")
+      assert any(isinstance(node, ast.Expr) and ast.unparse(node) == "_reset_routing_state()" for node in fixture.body)
+      cleanup = next(node for node in fixture.body if isinstance(node, ast.Try))
+      assert any(isinstance(node, ast.Expr) and ast.unparse(node) == "_reset_routing_state()" for node in cleanup.finalbody)
+      print("committed fixture resets all five routing globals before and after the test")
+      PYCODE
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_customer_never_lab_leaves_no_routing_global_omn21469.py -k leaves_no_routing_global_set -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21469-ac2
+  description: AC2 runs both orders of the two files in one pytest process.
+  source: manual
+  binds_ac:
+  - AC2
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/delegation/test_customer_never_lab_leaves_no_routing_global_omn21469.py -q --no-cov --tb=line
