@@ -1,0 +1,33 @@
+workflow_coordination:
+  workflow_definition:
+    workflow_metadata:
+      workflow_name: binding_parity
+      workflow_version: {major: 1, minor: 0, patch: 0}
+      description: Run one scenario under the baseline profile and under every other profile the overlay lists, then compare the semantic projection of the runs.
+    execution_graph:
+      nodes:
+      - {node_id: contract, node_type: EFFECT_GENERIC, description: 'Contract: each node''s protocol_dependencies'}
+      - node_id: overlay
+        node_type: EFFECT_GENERIC
+        description: 'Overlay: binding profiles and values'
+        depends_on: [contract]
+      - node_id: resolve
+        node_type: COMPUTE_GENERIC
+        description: Resolve each protocol to one pinned binding per profile
+        depends_on: [overlay]
+        step_config: {operation: resolve_profile_bindings}
+      - node_id: run_baseline
+        node_type: EFFECT_GENERIC
+        description: 'Baseline binding, the local profile: in-memory bus, file or SQLite ledger, local git host, local models, one machine'
+        depends_on: [resolve]
+        step_config: {operation: run_scenario, profile_role: baseline}
+      - node_id: run_others
+        node_type: EFFECT_GENERIC
+        description: 'Every other profile the overlay lists, such as a lab binding (Kafka bus, pool hosts, lab models) or a cloud binding (managed bus, hosted git service, cloud sessions)'
+        depends_on: [resolve]
+        step_config: {operation: run_scenario, profile_role: each_other}
+      - node_id: parity
+        node_type: COMPUTE_GENERIC
+        description: Compare the semantic projection of every run
+        depends_on: [run_baseline, run_others]
+        step_config: {operation: compare_runs}

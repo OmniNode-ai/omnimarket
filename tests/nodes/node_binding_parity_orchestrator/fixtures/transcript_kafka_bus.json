@@ -1,0 +1,701 @@
+{
+  "sessions": {
+    "delivers_each_message_once": [
+      {
+        "deliveries": [],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "start",
+        "topic": null,
+        "value": null
+      },
+      {
+        "deliveries": [],
+        "group_id": "dupes",
+        "headers": null,
+        "key": null,
+        "op": "subscribe",
+        "topic": "conformance.bus.main",
+        "value": null
+      },
+      {
+        "deliveries": [
+          {
+            "group_id": "dupes",
+            "offset": "1000",
+            "partition": 3,
+            "retry_count": 0,
+            "topic": "conformance.bus.main",
+            "value": "payload-0"
+          }
+        ],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-0"
+      },
+      {
+        "deliveries": [
+          {
+            "group_id": "dupes",
+            "offset": "1001",
+            "partition": 3,
+            "retry_count": 0,
+            "topic": "conformance.bus.main",
+            "value": "payload-1"
+          }
+        ],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-1"
+      },
+      {
+        "deliveries": [
+          {
+            "group_id": "dupes",
+            "offset": "1002",
+            "partition": 3,
+            "retry_count": 0,
+            "topic": "conformance.bus.main",
+            "value": "payload-2"
+          }
+        ],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-2"
+      },
+      {
+        "deliveries": [
+          {
+            "group_id": "dupes",
+            "offset": "1003",
+            "partition": 3,
+            "retry_count": 0,
+            "topic": "conformance.bus.main",
+            "value": "payload-3"
+          }
+        ],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-3"
+      },
+      {
+        "deliveries": [
+          {
+            "group_id": "dupes",
+            "offset": "1004",
+            "partition": 3,
+            "retry_count": 0,
+            "topic": "conformance.bus.main",
+            "value": "payload-4"
+          }
+        ],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-4"
+      },
+      {
+        "deliveries": [],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "close",
+        "topic": null,
+        "value": null
+      }
+    ],
+    "delivers_every_message": [
+      {
+        "deliveries": [],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "start",
+        "topic": null,
+        "value": null
+      },
+      {
+        "deliveries": [],
+        "group_id": "all",
+        "headers": null,
+        "key": null,
+        "op": "subscribe",
+        "topic": "conformance.bus.main",
+        "value": null
+      },
+      {
+        "deliveries": [
+          {
+            "group_id": "all",
+            "offset": "1000",
+            "partition": 3,
+            "retry_count": 0,
+            "topic": "conformance.bus.main",
+            "value": "payload-0"
+          }
+        ],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-0"
+      },
+      {
+        "deliveries": [
+          {
+            "group_id": "all",
+            "offset": "1001",
+            "partition": 3,
+            "retry_count": 0,
+            "topic": "conformance.bus.main",
+            "value": "payload-1"
+          }
+        ],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-1"
+      },
+      {
+        "deliveries": [
+          {
+            "group_id": "all",
+            "offset": "1002",
+            "partition": 3,
+            "retry_count": 0,
+            "topic": "conformance.bus.main",
+            "value": "payload-2"
+          }
+        ],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-2"
+      },
+      {
+        "deliveries": [
+          {
+            "group_id": "all",
+            "offset": "1003",
+            "partition": 3,
+            "retry_count": 0,
+            "topic": "conformance.bus.main",
+            "value": "payload-3"
+          }
+        ],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-3"
+      },
+      {
+        "deliveries": [
+          {
+            "group_id": "all",
+            "offset": "1004",
+            "partition": 3,
+            "retry_count": 0,
+            "topic": "conformance.bus.main",
+            "value": "payload-4"
+          }
+        ],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-4"
+      },
+      {
+        "deliveries": [],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "close",
+        "topic": null,
+        "value": null
+      }
+    ],
+    "delivers_in_publish_order": [
+      {
+        "deliveries": [],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "start",
+        "topic": null,
+        "value": null
+      },
+      {
+        "deliveries": [],
+        "group_id": "order",
+        "headers": null,
+        "key": null,
+        "op": "subscribe",
+        "topic": "conformance.bus.main",
+        "value": null
+      },
+      {
+        "deliveries": [
+          {
+            "group_id": "order",
+            "offset": "1000",
+            "partition": 3,
+            "retry_count": 0,
+            "topic": "conformance.bus.main",
+            "value": "payload-0"
+          }
+        ],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-0"
+      },
+      {
+        "deliveries": [
+          {
+            "group_id": "order",
+            "offset": "1001",
+            "partition": 3,
+            "retry_count": 0,
+            "topic": "conformance.bus.main",
+            "value": "payload-1"
+          }
+        ],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-1"
+      },
+      {
+        "deliveries": [
+          {
+            "group_id": "order",
+            "offset": "1002",
+            "partition": 3,
+            "retry_count": 0,
+            "topic": "conformance.bus.main",
+            "value": "payload-2"
+          }
+        ],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-2"
+      },
+      {
+        "deliveries": [
+          {
+            "group_id": "order",
+            "offset": "1003",
+            "partition": 3,
+            "retry_count": 0,
+            "topic": "conformance.bus.main",
+            "value": "payload-3"
+          }
+        ],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-3"
+      },
+      {
+        "deliveries": [
+          {
+            "group_id": "order",
+            "offset": "1004",
+            "partition": 3,
+            "retry_count": 0,
+            "topic": "conformance.bus.main",
+            "value": "payload-4"
+          }
+        ],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-4"
+      },
+      {
+        "deliveries": [],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "close",
+        "topic": null,
+        "value": null
+      }
+    ],
+    "offsets_strictly_increase": [
+      {
+        "deliveries": [],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "start",
+        "topic": null,
+        "value": null
+      },
+      {
+        "deliveries": [],
+        "group_id": "offsets",
+        "headers": null,
+        "key": null,
+        "op": "subscribe",
+        "topic": "conformance.bus.main",
+        "value": null
+      },
+      {
+        "deliveries": [
+          {
+            "group_id": "offsets",
+            "offset": "1000",
+            "partition": 3,
+            "retry_count": 0,
+            "topic": "conformance.bus.main",
+            "value": "payload-0"
+          }
+        ],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-0"
+      },
+      {
+        "deliveries": [
+          {
+            "group_id": "offsets",
+            "offset": "1001",
+            "partition": 3,
+            "retry_count": 0,
+            "topic": "conformance.bus.main",
+            "value": "payload-1"
+          }
+        ],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-1"
+      },
+      {
+        "deliveries": [
+          {
+            "group_id": "offsets",
+            "offset": "1002",
+            "partition": 3,
+            "retry_count": 0,
+            "topic": "conformance.bus.main",
+            "value": "payload-2"
+          }
+        ],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-2"
+      },
+      {
+        "deliveries": [
+          {
+            "group_id": "offsets",
+            "offset": "1003",
+            "partition": 3,
+            "retry_count": 0,
+            "topic": "conformance.bus.main",
+            "value": "payload-3"
+          }
+        ],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-3"
+      },
+      {
+        "deliveries": [
+          {
+            "group_id": "offsets",
+            "offset": "1004",
+            "partition": 3,
+            "retry_count": 0,
+            "topic": "conformance.bus.main",
+            "value": "payload-4"
+          }
+        ],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-4"
+      },
+      {
+        "deliveries": [],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "close",
+        "topic": null,
+        "value": null
+      }
+    ],
+    "topics_are_isolated": [
+      {
+        "deliveries": [],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "start",
+        "topic": null,
+        "value": null
+      },
+      {
+        "deliveries": [],
+        "group_id": "iso-main",
+        "headers": null,
+        "key": null,
+        "op": "subscribe",
+        "topic": "conformance.bus.main",
+        "value": null
+      },
+      {
+        "deliveries": [],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "start",
+        "topic": null,
+        "value": null
+      },
+      {
+        "deliveries": [],
+        "group_id": "iso-other",
+        "headers": null,
+        "key": null,
+        "op": "subscribe",
+        "topic": "conformance.bus.other",
+        "value": null
+      },
+      {
+        "deliveries": [
+          {
+            "group_id": "iso-main",
+            "offset": "1000",
+            "partition": 3,
+            "retry_count": 0,
+            "topic": "conformance.bus.main",
+            "value": "payload-0"
+          }
+        ],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-0"
+      },
+      {
+        "deliveries": [
+          {
+            "group_id": "iso-main",
+            "offset": "1001",
+            "partition": 3,
+            "retry_count": 0,
+            "topic": "conformance.bus.main",
+            "value": "payload-1"
+          }
+        ],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-1"
+      },
+      {
+        "deliveries": [
+          {
+            "group_id": "iso-main",
+            "offset": "1002",
+            "partition": 3,
+            "retry_count": 0,
+            "topic": "conformance.bus.main",
+            "value": "payload-2"
+          }
+        ],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-2"
+      },
+      {
+        "deliveries": [
+          {
+            "group_id": "iso-main",
+            "offset": "1003",
+            "partition": 3,
+            "retry_count": 0,
+            "topic": "conformance.bus.main",
+            "value": "payload-3"
+          }
+        ],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-3"
+      },
+      {
+        "deliveries": [
+          {
+            "group_id": "iso-main",
+            "offset": "1004",
+            "partition": 3,
+            "retry_count": 0,
+            "topic": "conformance.bus.main",
+            "value": "payload-4"
+          }
+        ],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-4"
+      },
+      {
+        "deliveries": [],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "close",
+        "topic": null,
+        "value": null
+      }
+    ],
+    "unsubscribe_stops_delivery": [
+      {
+        "deliveries": [],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "start",
+        "topic": null,
+        "value": null
+      },
+      {
+        "deliveries": [],
+        "group_id": "unsub",
+        "headers": null,
+        "key": null,
+        "op": "subscribe",
+        "topic": "conformance.bus.main",
+        "value": null
+      },
+      {
+        "deliveries": [],
+        "group_id": "unsub",
+        "headers": null,
+        "key": null,
+        "op": "unsubscribe",
+        "topic": "conformance.bus.main",
+        "value": null
+      },
+      {
+        "deliveries": [],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-0"
+      },
+      {
+        "deliveries": [],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-1"
+      },
+      {
+        "deliveries": [],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-2"
+      },
+      {
+        "deliveries": [],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-3"
+      },
+      {
+        "deliveries": [],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "publish",
+        "topic": "conformance.bus.main",
+        "value": "payload-4"
+      },
+      {
+        "deliveries": [],
+        "group_id": null,
+        "headers": null,
+        "key": null,
+        "op": "close",
+        "topic": null,
+        "value": null
+      }
+    ]
+  },
+  "source": "Kafka-style bus transcript. Generated by the recorder from the reference binding; not a live capture."
+}

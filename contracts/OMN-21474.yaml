@@ -1,0 +1,135 @@
+schema_version: 1.0.0
+ticket_id: OMN-21474
+title: 'T-B2: the parity run, one scenario under two or more binding profiles'
+summary: 'New orchestrator node node_binding_parity_orchestrator (operation run_parity) whose execution_graph is the binding-layers graph, with the compare_runs verdicts, stub bindings for the bus, state-store and clock protocols, the BUS and STO conformance suites with mutation stubs and recorded transcripts, and a run_local entry that runs any packaged node operation on the in-memory bus.'
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn21474-parity-run
+  statement: One scenario runs under the baseline profile and every other profile of the factory_bindings overlay, and the semantic projections are compared.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: The contract''s `execution_graph` equals the fragment of 0d.6 and loads with `ModelContractWorkflowDefinition` -- falsifier: the fixture-copy comparison test as in T-S1'
+  - id: AC2
+    statement: 'AC2: A scenario that gives identical semantic projections under the baseline and one other stub profile passes (the `binding=` and other provenance fields may differ and are validated on their own), and one that differs in a row''s content, a row order, a missing row or a count fails naming the first difference -- falsifier: five pytest cases, one passing and four failing'
+  - id: AC3
+    statement: 'AC3: A profile list without a baseline, or with no other profile, refuses naming the overlay key -- falsifier: two pytest cases'
+  - id: AC4
+    statement: 'AC4: The BUS and STO suites pass on the in-memory and disk bindings and on recorded Kafka and Postgres transcripts, and each stub of the 0d.4 matrix fails them; the STO suite covers `exists` and `list_keys` and the enumeration of head witnesses, where the highest sequence is chosen as an integer (sequence 10 outranks 9) -- falsifier: the suites'' parametrized runs, the mutation stubs, and a stub that orders keys as text'
+  - id: AC5
+    statement: 'AC5: Configuration: the profile ids and each profile''s bindings are the `factory_bindings` overlay; no profile name is a literal in the node -- falsifier: a fixture overlay with profiles `alpha` and `beta` runs, and the node source has no `local`, `lab` or `cloud` literal'
+  - id: AC6
+    statement: 'AC6: Bindings: this node is the check; its own dependencies are BUS and CLK -- falsifier: the parity run of its own stub scenario passes under the baseline and one other stub profile, and fails when one stub drops a row'
+evidence_requirements:
+- kind: tests
+  description: Parity and conformance tests of the node.
+  command: uv run pytest tests/nodes/node_binding_parity_orchestrator -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21474-ac1-graph
+  description: 'AC1: the contract graph equals the fixture copy of the fragment and loads with the workflow definition model.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_binding_parity_orchestrator/test_parity.py -q --no-cov -k 'execution_graph or loaded_graph'
+    cwd: .
+- id: dod-omn21474-ac2-compare
+  description: 'AC2: one identical projection passes; a changed row content, a row order, a missing row and a count each fail naming the first difference.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_binding_parity_orchestrator/test_parity.py -q --no-cov -k 'identical_projections or content_difference or order_difference or missing_row or count_difference or two_stub_bindings'
+    cwd: .
+- id: dod-omn21474-ac3-refusal
+  description: 'AC3: a profile list with no baseline, and one with no other profile, refuse naming factory_bindings.profiles.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_binding_parity_orchestrator/test_parity.py -q --no-cov -k 'without_a_baseline or no_other_profile'
+    cwd: .
+- id: dod-omn21474-ac4-suites
+  description: 'AC4: the BUS and STO suites on the in-memory and disk bindings and the recorded transcripts, every mutation stub, and the text-ordered head reader.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_binding_parity_orchestrator/test_conformance.py -q --no-cov
+    cwd: .
+- id: dod-omn21474-ac5-configuration
+  description: 'AC5: a fixture overlay with profiles alpha and beta runs and the node source holds no profile name.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_binding_parity_orchestrator/test_parity.py -q --no-cov -k 'fixture_overlay or no_profile_name_literal or changing_the_overlay'
+    cwd: .
+- id: dod-omn21474-ac6-bindings
+  description: 'AC6: the own stub scenario passes under two profiles and fails when one stub drops a row.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_binding_parity_orchestrator/test_parity.py -q --no-cov -k 'own_stub_scenario'
+    cwd: .
+- id: dod-omn21474-deploy-parity-run
+  description: 'Hosted package deploy smoke: dispatch run_parity through the installed ONEX CLI with an in-memory bus. The matching profiles pass and a profile whose bus drops a row fails, naming the first difference. No credentials, broker or lab service is required. This checks the evaluated checkout package, not a production rollout.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      export PYTHONDONTWRITEBYTECODE=1;
+      probe_dir="$(mktemp -d)";
+      trap 'rm -rf "$probe_dir"' EXIT;
+      uv sync --locked;
+      runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+      "$runtime_bin/python" -c '
+      import json
+      import sys
+      from pathlib import Path
+      root = Path(sys.argv[1])
+      for case, beta_bus in (("same", "reference"), ("drops", "drops_row")):
+          request = {
+              "scenario": {"kind": "stub_rows", "fixture": {"topic": "parity.demo", "messages": ["m1", "m2", "m3"]}},
+              "overlay": {
+                  "profiles": [{"id": "alpha", "baseline": True}, {"id": "beta"}],
+                  "bindings": {"alpha": {"BUS": "reference", "CLK": "fixed"}, "beta": {"BUS": beta_bus, "CLK": "fixed"}},
+                  "proof_bindings": ["alpha", "beta"],
+              },
+              "fixed_now": "2026-10-28T06:00:00Z",
+          }
+          (root / f"{case}.json").write_text(json.dumps(request))
+      ' "$probe_dir";
+      for case in same drops; do
+        env -u PYTHONPATH ONEX_LANE=omn21474-deploy-probe "$runtime_bin/onex" node node_binding_parity_orchestrator --input "$probe_dir/$case.json" --state-root "$probe_dir/$case.state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/$case.receipt.json";
+      done;
+      "$runtime_bin/python" -c '
+      import json
+      import sys
+      from pathlib import Path
+      root = Path(sys.argv[1])
+      same = json.loads((root / "same.receipt.json").read_text())
+      drops = json.loads((root / "drops.receipt.json").read_text())
+      for receipt in (same, drops):
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+      assert same["result"]["passed"] is True, same["result"]
+      assert drops["result"]["passed"] is False, drops["result"]
+      assert drops["result"]["first_difference"].startswith("beta: verdict at index 0"), drops["result"]
+      assert same["result"]["steps"] == ["contract", "overlay", "resolve", "run_baseline", "run_others", "parity"], same["result"]
+      print("packaged parity run: matching profiles pass, a dropped row fails")
+      ' "$probe_dir"
+    cwd: .

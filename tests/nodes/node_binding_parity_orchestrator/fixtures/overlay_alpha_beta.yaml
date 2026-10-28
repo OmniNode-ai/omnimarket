@@ -1,0 +1,7 @@
+profiles:
+- {id: alpha, baseline: true}
+- {id: beta}
+bindings:
+  alpha: {BUS: reference, CLK: fixed}
+  beta: {BUS: reference, CLK: fixed}
+proof_bindings: [alpha, beta]
