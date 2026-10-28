@@ -335,7 +335,7 @@ repos:
   # The private denylist is read from the file OMNI_HYGIENE_VOCAB_PATH names; a
   # commit made without it exits 2 ("THE GATE DID NOT RUN"), never a pass.
   - repo: https://github.com/OmniNode-ai/omniclaude
-    rev: 0c9f9146d8dd0446fc5c10952aa57247b3a880ae
+    rev: dev-20261023162355-3e657bae8f91
     hooks:
       # OMN-17427: .public-repo-hygiene.yaml declares enforce_scope: added-lines, so
       # the commit verdict is the findings on lines the index adds, and every such
@@ -983,18 +983,6 @@ repos:
         language: system
         entry: uv run python scripts/ci/check_coverage_ignore_parity.py
         files: ^(pyproject\.toml|scripts/ci/aggregate_coverage_artifacts\.py|scripts/ci/check_coverage_ignore_parity\.py)$
-        pass_filenames: false
-        stages: [pre-commit]
-
-      # OMN-14762 (F-19-A): GitHub Actions pin check. Every third-party `uses:`
-      # must be pinned to a 40-char SHA. OMN-20558 emptied and deleted the
-      # baseline: any unpinned ref fails. SYNC with ci.yml step 'GitHub Actions
-      # pin ratchet'. Fast, stdlib-only.
-      - id: check-action-pins
-        name: GitHub Actions pin ratchet (OMN-14762)
-        language: system
-        entry: uv run python scripts/ci/check_action_pins.py
-        files: ^(\.github/workflows/.*\.(yml|yaml)|scripts/ci/check_action_pins\.py)$
         pass_filenames: false
         stages: [pre-commit]
 

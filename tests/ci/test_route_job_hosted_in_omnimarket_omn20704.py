@@ -15,7 +15,8 @@ pytestmark = pytest.mark.unit
 
 CI_WORKFLOW = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "ci.yml"
 ROUTE_USES = re.compile(
-    r"^OmniNode-ai/omnimarket/\.github/workflows/route-runner-reusable\.yml@[0-9a-f]{40}$"
+    r"OmniNode-ai/omnimarket/\.github/workflows/route-runner-reusable\.yml"
+    r"@dev-\d{14}-[0-9a-f]{12}"
 )
 
 
@@ -24,8 +25,10 @@ def _route_job() -> dict[str, Any]:
     return cast(dict[str, Any], workflow["jobs"]["route"])
 
 
-def test_the_route_job_calls_the_omnimarket_hosted_reusable_at_a_full_sha() -> None:
-    assert ROUTE_USES.match(str(_route_job()["uses"]))
+def test_the_route_job_calls_the_omnimarket_hosted_reusable_at_a_dev_merge_tag() -> (
+    None
+):
+    assert ROUTE_USES.fullmatch(str(_route_job()["uses"]))
 
 
 def test_the_route_job_keeps_its_check_name() -> None:

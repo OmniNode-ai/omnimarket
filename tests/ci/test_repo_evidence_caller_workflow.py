@@ -45,9 +45,10 @@ def test_caller_workflow_shape() -> None:
     )
     job = data["jobs"]["repo-evidence"]
     assert re.fullmatch(
-        r"OmniNode-ai/omnibase_core/\.github/workflows/receipt-gate\.yml@[0-9a-f]{40}",
+        r"OmniNode-ai/omnibase_core/\.github/workflows/receipt-gate\.yml@"
+        r"dev-\d{14}-[0-9a-f]{12}",
         job["uses"],
-    ), "receipt-gate reusable must be pinned by an immutable full SHA"
+    ), "receipt-gate reusable must be pinned by a dev-merge tag"
     assert job["with"]["evidence-source"] == "caller", (
         "caller evidence mode is required"
     )
@@ -275,14 +276,14 @@ def test_contract_binds_reads_through_an_env_prefix(
 # Postgres service, the PG16 server tools and INTEGRATION_POSTGRES_*, so a bound
 # test that needs a database runs at the head and in the merge-base control.
 # The pin moved to a descendant (omnibase_core#1912, OMN-17427; then omnibase_core#1914, OMN-20074; then omnibase_core#1932, OMN-20032; then omnibase_core#1986, OMN-21146; then omnibase_core#2079, OMN-19513).
-_EXEMPT_REUSABLE_SHA = "5782289777210ca814c0e43b4f797826135dba78"
+_EXEMPT_REUSABLE_TAG = "dev-20261022114039-578228977721"
 
 
 def test_caller_pins_a_reusable_with_the_bot_bump_exemption() -> None:
     uses = yaml.safe_load(CALLER_PATH.read_text(encoding="utf-8"))["jobs"][
         "repo-evidence"
     ]["uses"]
-    assert uses.endswith(f"@{_EXEMPT_REUSABLE_SHA}"), (
+    assert uses.endswith(f"@{_EXEMPT_REUSABLE_TAG}"), (
         "pin the omnibase_core reusable at or past omnibase_core#1884"
     )
 
@@ -337,13 +338,13 @@ def test_caller_pins_a_verifier_that_refuses_unbound_criteria() -> None:
 # with none, so a contract can only scope it local_done_gate, which the hosted
 # control refuses as a control that did not run (omnimarket#3369).
 # The pin moved to a descendant (omnibase_core#1912, OMN-17427; then omnibase_core#1914, OMN-20074; then omnibase_core#1932, OMN-20032; then omnibase_core#1986, OMN-21146; then omnibase_core#2079, OMN-19513).
-_DATABASE_REUSABLE_SHA = "5782289777210ca814c0e43b4f797826135dba78"
+_DATABASE_REUSABLE_TAG = "dev-20261022114039-578228977721"
 
 
 def test_caller_pins_a_reusable_that_gives_bound_tests_a_database() -> None:
     uses = yaml.safe_load(CALLER_PATH.read_text(encoding="utf-8"))["jobs"][
         "repo-evidence"
     ]["uses"]
-    assert uses.endswith(f"@{_DATABASE_REUSABLE_SHA}"), (
+    assert uses.endswith(f"@{_DATABASE_REUSABLE_TAG}"), (
         "pin the omnibase_core reusable at or past omnibase_core#1886"
     )

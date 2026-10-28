@@ -20,6 +20,7 @@ specific list forever.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -198,7 +199,11 @@ def test_workflow_backstop_runs_the_same_reusable_on_every_pull_request(
         if hook.get("id") == hook_id
     }
     assert len(revs) == 1
-    assert str(job["uses"]).endswith(f"@{revs.pop()}"), (
+    rev = revs.pop()
+    assert re.fullmatch(r"dev-\d{14}-[0-9a-f]{12}", rev), (
+        f"{hook_id} must pin a first-party dev-merge tag"
+    )
+    assert str(job["uses"]).endswith(f"@{rev}"), (
         f"{hook_id} caller and hook are not at one revision"
     )
 

@@ -29,7 +29,7 @@ the explicit-trigger property that replaced its per-merge one:
     main-sync app-token mint, failed the whole release job, and silently SKIPPED
     Dependency Cascade.
   * every ``uses:`` SHA-pinned — the repo's own action-pin ratchet
-    (``scripts/ci/check_action_pins.py``), asserted here too so a regression is
+    (omnibase_core's ``check-action-pins``), asserted here too so a regression is
     reported against this file by name.
 """
 

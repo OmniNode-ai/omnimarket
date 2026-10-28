@@ -60,4 +60,4 @@ jobs:
   required-check-skip-guard:
     # pinned to omniclaude dev HEAD carrying OMN-14854 (not yet promoted to
     # main as of this PR) -- see PIN NOTE above. Re-pin to @main post-promotion.
-    uses: OmniNode-ai/omniclaude/.github/workflows/required-check-skip-guard-reusable.yml@5289b62c3eb7375de9b783e17f5f6d95805df9ca
+    uses: OmniNode-ai/omniclaude/.github/workflows/required-check-skip-guard-reusable.yml@dev-20261023162355-3e657bae8f91

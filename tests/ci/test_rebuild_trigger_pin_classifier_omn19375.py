@@ -53,9 +53,14 @@ _PINS_CARRYING_THE_CLASSIFIER_FIX: Final[dict[str, str]] = {
         "89d4dd6cf cb5c0cfd724905aec46d336dea84e8347cce9e20` -> exit 0, "
         "verified 2026-10-12"
     ),
+    "dev-20261028175438-79bc8a26389c": (
+        "omnibase_infra dev-merge tag of 79bc8a26389c; `git merge-base --is-ancestor "
+        "89d4dd6cf dev-20261028175438-79bc8a26389c` -> exit 0, verified 2026-10-28"
+    ),
 }
 
 _FULL_SHA: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{40}$")
+_DEV_MERGE_TAG: Final[re.Pattern[str]] = re.compile(r"^dev-\d{14}-[0-9a-f]{12}$")
 
 
 def _rebuild_job() -> dict[str, Any]:
@@ -74,7 +79,9 @@ def test_the_pin_carries_the_classifier_fixes() -> None:
     """RED at any pin below 89d4dd6cf, including the 3a7813cff it replaces."""
     uses = str(_rebuild_job()["uses"])
     _, _, ref = uses.partition("@")
-    assert _FULL_SHA.match(ref), f"`uses: ...@{ref}` is not a full commit SHA"
+    assert _FULL_SHA.match(ref) or _DEV_MERGE_TAG.match(ref), (
+        f"`uses: ...@{ref}` is not a full commit SHA or a dev-merge tag"
+    )
     assert ref in _PINS_CARRYING_THE_CLASSIFIER_FIX, (
         f"the reusable is pinned to {ref}, which is not recorded as carrying "
         f"omnibase_infra {_CLASSIFIER_FIX_COMMIT} (OMN-19375). Below it, a "

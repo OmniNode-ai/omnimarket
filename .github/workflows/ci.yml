@@ -111,7 +111,7 @@ jobs:
   # there.
   route:
     name: Runner Route (OMN-18031)
-    uses: OmniNode-ai/omnimarket/.github/workflows/route-runner-reusable.yml@01a0d1b3e7d7ba1a09012f9af245ba29afa000b5
+    uses: OmniNode-ai/omnimarket/.github/workflows/route-runner-reusable.yml@dev-20261016123308-0a385ce46cdf
     with:
       workflow_path: .github/workflows/ci.yml
     secrets:
@@ -237,7 +237,7 @@ jobs:
   zone-filter:
     needs: repo-evidence-preflight
     if: always()
-    uses: OmniNode-ai/omnibase_core/.github/workflows/zone-filter.yml@7631ef3321e1a6561f4b2c70019ee57d24160620
+    uses: OmniNode-ai/omnibase_core/.github/workflows/zone-filter.yml@dev-20261018024445-b6ee996befa1
     with:
       python-version: "3.12"
 
@@ -292,7 +292,7 @@ jobs:
       actions: read
       contents: read
       pull-requests: read
-    uses: OmniNode-ai/omnibase_core/.github/workflows/full-suite-reuse.yml@624e03f3d7797709879b6c410708be6cc1061261
+    uses: OmniNode-ai/omnibase_core/.github/workflows/full-suite-reuse.yml@dev-20261018024445-b6ee996befa1
 
   dev-suite-reuse-verdict:
     name: Dev Push Full Suite Reuse
@@ -471,12 +471,27 @@ jobs:
       # while the other stays green. SYNC with pre-commit hook 'coverage-ignore-parity'.
       - name: Coverage-json ignore-errors parity gate
         run: uv run python scripts/ci/check_coverage_ignore_parity.py
-      # OMN-14762 (F-19-A): every third-party `uses:` must be pinned to a 40-char
-      # SHA. OMN-20558 pinned every frozen ref to the commit its tag resolved to
-      # and deleted the baseline, so any unpinned, non-exempt ref fails.
-      # SYNC with pre-commit hook 'check-action-pins'.
-      - name: GitHub Actions pin ratchet
-        run: uv run python scripts/ci/check_action_pins.py
+      # OMN-17427: how every `uses:` ref is pinned is omnibase_core's check-action-pins,
+      # with this repository's rule values in .action-pin-overlay.yaml. A third-party
+      # ref is a full 40-hex commit sha; a first-party ref is a dev-merge tag. The
+      # core ref is the dev-merge tag the pre-commit hook's rev names. The overlay's
+      # known exceptions only shrink against the pull request base. SYNC with
+      # pre-commit hook 'check-action-pins'.
+      - name: GitHub Actions pin check
+        env:
+          ACTION_PINS_CORE: "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@__CORE_TAG__"
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          MQ_BASE: ${{ github.event.merge_group.base_sha }}
+        run: |
+          set -u
+          args=()
+          base="${PR_BASE:-${MQ_BASE:-}}"
+          if [ -n "$base" ] && git fetch --no-tags --depth=1 origin "$base"; then
+            args+=(--ratchet-base-ref "$base")
+          else
+            echo "no base revision on this event; checking the tree against the overlay only"
+          fi
+          uv run --no-project --with "$ACTION_PINS_CORE" check-action-pins "${args[@]}"
       # SYNC: Pre-commit hook 'validate-no-env-fallbacks' at pre-commit stage (OMN-10738)
       # Prevents silent fallback to localhost defaults via os.getenv/os.environ.get
       - name: Validate no silent env fallbacks
@@ -3108,21 +3123,21 @@ jobs:
 
   dep-health-findings-baseline-oneway:
     name: Dependency Findings Baseline One-way (OMN-19677)
-    uses: OmniNode-ai/omniclaude/.github/workflows/anti-growth-baseline-reusable.yml@3faefdcd5750b05f69d2efcb8cf200bc359483c3
+    uses: OmniNode-ai/omniclaude/.github/workflows/anti-growth-baseline-reusable.yml@dev-20261023162355-3e657bae8f91
     with:
       baseline-path: .onex_state/dep_health_baseline.json
       parser: json-list:findings
 
   dep-health-allowlist-oneway:
     name: Dependency Topic Allowlist One-way (OMN-19677)
-    uses: OmniNode-ai/omniclaude/.github/workflows/anti-growth-baseline-reusable.yml@3faefdcd5750b05f69d2efcb8cf200bc359483c3
+    uses: OmniNode-ai/omniclaude/.github/workflows/anti-growth-baseline-reusable.yml@dev-20261023162355-3e657bae8f91
     with:
       baseline-path: src/dep_health_allowlist.yaml
       parser: yaml-list:allowlist
 
   state-coverage-baseline-oneway:
     name: State Coverage Baseline One-way (OMN-19677)
-    uses: OmniNode-ai/omniclaude/.github/workflows/anti-growth-baseline-reusable.yml@3faefdcd5750b05f69d2efcb8cf200bc359483c3
+    uses: OmniNode-ai/omniclaude/.github/workflows/anti-growth-baseline-reusable.yml@dev-20261023162355-3e657bae8f91
     with:
       baseline-path: scripts/validation/state_coverage_baseline.txt
       parser: line-set

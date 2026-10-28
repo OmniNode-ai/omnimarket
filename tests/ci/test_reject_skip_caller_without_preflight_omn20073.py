@@ -31,8 +31,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 CALLER = REPO_ROOT / ".github" / "workflows" / "call-reject-skip.yml"
 REQUIRED_CHECKS = REPO_ROOT / ".github" / "required-checks.yaml"
 REUSABLE = "OmniNode-ai/omniclaude/.github/workflows/reject-deploy-gate-skip.yml"
-# The squash commit of omniclaude#2540 on omniclaude dev.
-PREFLIGHT_FREE_SHA = "4358450ccbba0cee11e390208dd0b8b1728e94ab"
+# The dev-merge tag carrying the omniclaude#2540 preflight removal.
+PREFLIGHT_FREE_TAG = "dev-20261023162355-3e657bae8f91"
 NESTED_PREFLIGHT = "call-reject-skip-token / occ-preflight / eligibility"
 SCAN = "call-reject-skip-token / scan / reject-skip-gate-token"
 STANDALONE_PREFLIGHT = "occ-preflight / eligibility"
@@ -49,7 +49,7 @@ def _caller_refs() -> list[str]:
 
 
 def test_caller_pins_the_reusable_without_the_change_control_preflight() -> None:
-    assert _caller_refs() == [PREFLIGHT_FREE_SHA]
+    assert _caller_refs() == [PREFLIGHT_FREE_TAG]
 
 
 def test_ci_summary_no_longer_expects_the_nested_preflight() -> None:

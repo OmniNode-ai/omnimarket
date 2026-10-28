@@ -293,7 +293,7 @@ def test_workflow_admission_and_marker_wiring():
         assert "github.ref == 'refs/heads/dev'" in jobs[key]["if"]
     assert "merge_group" not in jobs["dev-full-suite-reuse"]["if"]
     assert (
-        "full-suite-reuse.yml@624e03f3d7797709879b6c410708be6cc1061261"
+        "full-suite-reuse.yml@dev-20261018024445-b6ee996befa1"
         in jobs["dev-full-suite-reuse"]["uses"]
     )
     marker = next(
