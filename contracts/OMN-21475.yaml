@@ -73,7 +73,7 @@ dod_evidence:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_seam_classify_compute tests/nodes/node_seam_read_orchestrator -q --no-cov --tb=line
+    check_value: uv run pytest tests/nodes/node_seam_classify_compute/test_classify_backlog_engine_seams.py tests/nodes/node_seam_read_orchestrator/test_handler_seam_read_plan.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21475-ac5
   description: AC5 bound to its test.
