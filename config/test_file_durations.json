@@ -593,6 +593,7 @@
   "tests/nodes/node_delegation_acceptance_judged_replay_compute/test_replay.py": 0.1,
   "tests/nodes/node_delegation_availability_report_compute/test_golden_chain_delegation_availability_report_compute.py": 0.13,
   "tests/nodes/node_delegation_capability_map_compute/test_capability_map_fold.py": 0.15,
+  "tests/nodes/node_delegation_capability_map_compute/test_graded_run_serving_identity_omn21434.py": 3.1,
   "tests/nodes/node_delegation_client_verdict_compute/test_delegation_client_verdict_table.py": 1.9,
   "tests/nodes/node_delegation_client_verdict_compute/test_golden_chain_delegation_client_verdict_compute.py": 0.11,
   "tests/nodes/node_delegation_context_pack_budget_compute/test_delegation_context_pack_budget.py": 0.07,

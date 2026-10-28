@@ -4,9 +4,16 @@
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+)
 
 from omnimarket.models.delegation.model_size_band import EnumSizeBand
 from omnimarket.models.delegation_capability_map.enum_capability_source import (
@@ -47,3 +54,14 @@ class ModelCapabilityVerdictRow(BaseModel):
     passed: bool
     host: str | None = Field(default=None, min_length=1)
     answering_backend: str | None = Field(default=None, min_length=1)
+
+    @model_serializer(mode="wrap")
+    def _omit_unrecorded_serving_fields(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, Any]:
+        """A row whose producer recorded no serving machine keeps its prior wire shape."""
+        dumped: dict[str, Any] = handler(self)
+        for name in ("host", "answering_backend"):
+            if dumped.get(name) is None:
+                dumped.pop(name, None)
+        return dumped
