@@ -959,6 +959,11 @@ requirements:
     acceptance:
     - id: AC4401
       statement: 'AC4401: with GITHUB_TOKEN set, the gateway read client reports that the token resolves when asked from inside a running event loop -- falsifier: uv run pytest tests/unit/handlers/scm/test_handler_gateway_read_client.py -q -k token_that_resolves fails at the merge base and passes at the head.'
+  - id: req-live-events-poison-quarantine
+    statement: The live-events projection writer dead-letters a poison event to the contract's dlq topic and advances the offset instead of crash-looping, and projects a list-valued source as a string.
+    acceptance:
+    - id: AC21288
+      statement: 'AC21288: an oversize snapshot delta and a validation error are published to the contract dlq topic and the offset is committed, a missing publisher holds the offset, and a list source projects a comma-joined string source row -- falsifier: the focused pytest fails at the merge base.'
   - id: "req-pr4543-rebuild-amd64-runner"
     statement: "The runtime rebuild caller selects the immutable reusable revision carrying the arch-amd64 publisher runner label and passes the merge identity and overlay credentials."
     acceptance:
@@ -4104,6 +4109,24 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/handlers/scm/test_handler_gateway_read_client.py -q -p no:cacheprovider -k token_that_resolves"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-omn17427-live-events-poison-quarantine
+    description: "This pull request makes the live-events runner return the contract's dlq topics as poison_dlq_topics, publish through the runtime producer and commit the offset after a dead-letter, hold the offset when no publisher exists, and project a list source as a string. Nine of the new tests fail at the merge base."
+    source: "manual"
+    binds_ac: ["AC21288"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest src/omnimarket/nodes/node_projection_live_events/tests/test_handler_live_events.py -q -p no:randomly -p tests.refuse_skips --no-cov --refuse-skips -k 'TestLiveEventsPoisonQuarantine or TestLiveEventSourceNormalisation'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "grep -n 'poison_dlq_topics' src/omnimarket/nodes/node_projection_live_events/handlers/handler_live_events.py"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-omn17427-live-events-poison-deploy-probe
+    description: "Deploy probe. On the hosted runner, drive the checked-out live-events projection runner through poison deliveries with an in-process producer and consumer. Oversize and invalid events must reach the contract DLQ before committing their offsets, and a missing publisher must hold the offset. This needs the locked Python dependencies and checkout, with no broker or deployed lane access."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest src/omnimarket/nodes/node_projection_live_events/tests/test_handler_live_events.py -q -p no:randomly -p tests.refuse_skips --no-cov --refuse-skips -k TestLiveEventsPoisonQuarantine"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-pr4543-rebuild-trigger-pin"
     description: "The rebuild-trigger caller pins the omnibase_infra reusable workflow at the descendant that carries the arch-amd64 runner label and no longer names the old pin. The merge base still names the old pin, so the check fails there."
