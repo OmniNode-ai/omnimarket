@@ -423,3 +423,23 @@ async def test_replay_of_the_recorded_episode_from_2026_10_28_resolves_both_rows
         row["cls"] in ("bus-binding-degraded", "bus-binding-outage")
         for row in _rows(tmp_path)
     )
+
+
+async def test_a_partial_replay_with_a_refusal_keeps_the_episode_open_until_the_rest_replays(
+    switch: _Switch,
+    workspace: Path,
+    tmp_path: Path,
+) -> None:
+    async with _open(switch, workspace, tmp_path):
+        outbox.queue_request(tmp_path, _request("malformed row"))
+        outbox.queue_request(tmp_path, _request("good row"))
+    switch.up = True
+    refuse = await _refuse_with(_LedgerHost(), "ledger_lock: friction guard rejected")
+    async with _open(switch, workspace, tmp_path, START + timedelta(seconds=10)) as b:
+        await select.replay_outbox(b, tmp_path, refuse, limit=1)
+    assert [row["cls"] for row in _rows(tmp_path)] == ["bus-binding-degraded"]
+    assert not any("resolves" in row for row in _history(tmp_path))
+    async with _open(switch, workspace, tmp_path, START + timedelta(seconds=20)) as b:
+        await select.replay_outbox(b, tmp_path, _LedgerHost().append)
+    assert [row["cls"] for row in _rows(tmp_path)] == ["bus-binding-outbox-refused"]
+    assert any("resolves" in row for row in _history(tmp_path))

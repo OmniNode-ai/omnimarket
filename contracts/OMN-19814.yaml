@@ -50,7 +50,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/bus_binding/test_bus_binding_exceptions.py -q --no-cov --tb=short -k 'unreplayed_outbox_never_produces_a_recovery_receipt or failed_and_partial_replay_keep_exception_until_every_row_replays or a_new_failed_read_prevents_an_older_healthy_command_closing_the_row'"
+        check_value: "uv run pytest tests/unit/bus_binding/test_bus_binding_exceptions.py -q --no-cov --tb=short -k 'unreplayed_outbox_never_produces_a_recovery_receipt or failed_and_partial_replay_keep_exception_until_every_row_replays or a_new_failed_read_prevents_an_older_healthy_command_closing_the_row or a_partial_replay_with_a_refusal_keeps_the_episode_open_until_the_rest_replays'"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-deploy-source-readback"
     binds_ac:
@@ -64,5 +64,6 @@ dod_evidence:
           probe_file=$(mktemp);
           trap 'rm -f "$probe_file"' EXIT;
           curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/handlers/bus_binding/recovery.py" --output "$probe_file";
-          cmp "$probe_file" src/omnimarket/handlers/bus_binding/recovery.py
+          cmp "$probe_file" src/omnimarket/handlers/bus_binding/recovery.py;
+          grep -q 'REFUSED_CLASS = "bus-binding-outbox-refused"' "$probe_file"
         cwd: "${OMNI_HOME}/omnimarket"
