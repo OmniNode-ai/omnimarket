@@ -7,8 +7,10 @@ watcher's newest observation of the PR, the live ledger holds and the
 evaluating time, all handed in. It reads no clock, no file and no network.
 
 The rules are pr-handoff's handoff_row.sh readiness rules, in its order, with
-two changes that are the point of this node:
+these changes that are the point of this node:
 
+* a repository outside the landing scope the caller supplied is refused first,
+  without waiting for an observation, with a refusal ledger row for the caller;
 * the PR comes from the watcher's observation the orchestrator holds, never
   from a copy of the watcher's state file on the requesting host, so a PR the
   lane just opened is waited for instead of refused (exit 5 before);
@@ -103,13 +105,36 @@ def _wait(
 
 
 def _refuse(
-    code: EnumPrHandoffErrorCode, detail: str, head: str | None
+    code: EnumPrHandoffErrorCode,
+    detail: str,
+    head: str | None,
+    *,
+    refusal_row: str | None = None,
 ) -> ModelPrHandoffDecision:
     return ModelPrHandoffDecision(
         verdict=EnumPrHandoffVerdict.REFUSE,
         error_code=code,
         detail=detail,
         live_head_sha=head,
+        refusal_row=refusal_row,
+    )
+
+
+def _refusal_row(request: ModelPrHandoffRequested, now: datetime) -> str:
+    stamp = request.requested_at.strftime(_STAMP)
+    lane, repo, ref, head = (
+        request.lane,
+        request.repo,
+        request.handoff_key,
+        request.expected_head_sha,
+    )
+    now_stamp = now.strftime(_STAMP)
+    return (
+        f"{stamp} | STATUS | lane={lane} | repo={repo} | pr={ref} | head={head} | "
+        f"handoff-refused={ref} | reason={EnumPrHandoffErrorCode.REPO_OUT_OF_LANDING_SCOPE.value} | "
+        f"refused_to={request.to_lane} | Handoff of {ref} from {lane} refused: {repo} is outside "
+        "the landing scope the caller supplied, so the controller will not land it. "
+        f"Decided at {now_stamp} by node_pr_handoff_decision_compute.\n"
     )
 
 
@@ -224,6 +249,16 @@ def decide_handoff(
 ) -> ModelPrHandoffDecision:
     """The verdict for one evaluation of one handoff request."""
     request = decision_request.request
+    if (
+        decision_request.landing_scope is not None
+        and request.repo not in decision_request.landing_scope
+    ):
+        return _refuse(
+            EnumPrHandoffErrorCode.REPO_OUT_OF_LANDING_SCOPE,
+            f"{request.repo} is outside the landing scope the caller supplied",
+            None,
+            refusal_row=_refusal_row(request, decision_request.now),
+        )
     observation = decision_request.observation
     if observation is None:
         return _wait(

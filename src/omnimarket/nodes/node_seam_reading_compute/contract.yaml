@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Seam Reading Compute (OMN-21459)
+#
+# Pure compute: handle(ModelSeamReadingRequest) -> ModelSeamReadingResult. It takes readings and
+# `now`, reads no clock, file, network or protocol, and so declares no protocol_dependencies.
+# The seam nodes and the thresholds (config.seam_read) are read from the contract of
+# node_seam_read_orchestrator.
+name: node_seam_reading_compute
+contract_name: node_seam_reading_compute
+node_name: node_seam_reading_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Render seam readings as lines, in the order of the factory line graph: a SEAM line per
+  reading, then a line naming the seam when any crossing mismatched or when the reading is
+  unreadable, empty or under the minimum crossings. A seam of the graph with no reading prints
+  as unknown, never clean.
+
+handler:
+  module: omnimarket.nodes.node_seam_reading_compute.handlers.handler_seam_reading
+  class: HandlerSeamReading
+  input_model: omnimarket.nodes.node_seam_reading_compute.models.model_seam_reading_request.ModelSeamReadingRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: render_seam_readings
+      topic: onex.cmd.omnimarket.seam-reading-render-requested.v1
+      handler:
+        name: HandlerSeamReading
+        module: omnimarket.nodes.node_seam_reading_compute.handlers.handler_seam_reading
+      input_model: omnimarket.nodes.node_seam_reading_compute.models.model_seam_reading_request.ModelSeamReadingRequest
+      output_model: omnimarket.nodes.node_seam_reading_compute.models.model_seam_reading_request.ModelSeamReadingResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 2000
+
+input_model:
+  name: ModelSeamReadingRequest
+  module: omnimarket.nodes.node_seam_reading_compute.models.model_seam_reading_request
+  description: Seam readings and `now`.
+output_model:
+  name: ModelSeamReadingResult
+  module: omnimarket.nodes.node_seam_reading_compute.models.model_seam_reading_request
+  description: The rendered lines in line order.
+
+terminal_event: onex.evt.omnimarket.seam-reading-rendered.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.seam-reading-render-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.seam-reading-rendered.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.seam-reading-render-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.seam-reading-rendered.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.seam-reading-rendered.v1
+
+metadata:
+  ticket: OMN-21459
+  transport_type: inmemory

@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.models.pr_handoff.enum_pr_handoff_error_code import (
     DECISION_REFUSAL_CODES,
+    LANDING_SCOPE_REFUSAL_CODES,
     EnumPrHandoffErrorCode,
 )
 from omnimarket.models.pr_handoff.enum_pr_handoff_verdict import (
@@ -26,6 +27,8 @@ class ModelPrHandoffDecision(BaseModel):
     ``rows`` are the handoff MSG followed by the lane's closing row (TERMINAL,
     or STATUS in session mode, or nothing with msg_only), byte for byte what
     pr-handoff's handoff_row.sh prints, stamped with the evaluating time.
+    ``refusal_row`` is the ledger row, as data, that records a refused handoff
+    for the caller to append; the decision writes nothing.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -39,6 +42,7 @@ class ModelPrHandoffDecision(BaseModel):
     ticket_source: str | None = None
     msg_id: str | None = None
     rows: str | None = None
+    refusal_row: str | None = None
 
     @model_validator(mode="after")
     def _verdict_shape(self) -> Self:
@@ -53,8 +57,16 @@ class ModelPrHandoffDecision(BaseModel):
             raise ValueError("wait_reason is set exactly when the verdict is wait")
         if refuse != (self.error_code is not None):
             raise ValueError("error_code is set exactly when the verdict is refuse")
-        if refuse and self.error_code not in DECISION_REFUSAL_CODES:
+        if refuse and self.error_code not in (
+            DECISION_REFUSAL_CODES | LANDING_SCOPE_REFUSAL_CODES
+        ):
             raise ValueError(f"{self.error_code} is not a decision refusal code")
+        if (self.refusal_row is not None) != (
+            self.error_code is EnumPrHandoffErrorCode.REPO_OUT_OF_LANDING_SCOPE
+        ):
+            raise ValueError(
+                "refusal_row is set exactly when the error_code is repo-out-of-landing-scope"
+            )
         return self
 
 

@@ -10,6 +10,7 @@
 # names the error chain). No clock, no file, no network.
 #
 # Rule order (pr-handoff handoff_row.sh's, with the head rule split):
+#   landing scope given, repo not in it -> refuse repo-out-of-landing-scope (first, needs no observation)
 #   no observation              -> wait pr_not_observed
 #   closed or merged            -> refuse pr_not_open
 #   bot release-train PR        -> refuse withheld
@@ -61,6 +62,11 @@ handler_routing:
       handler:
         name: "HandlerPrHandoffDecision"
         module: "omnimarket.nodes.node_pr_handoff_decision_compute.handlers.handler_pr_handoff_decision"
+handler:
+  module: "omnimarket.nodes.node_pr_handoff_decision_compute.handlers.handler_pr_handoff_decision"
+  class: "HandlerPrHandoffDecision"
+  input_model: "omnimarket.models.pr_handoff.ModelPrHandoffDecisionRequest"
+  output_model: "omnimarket.models.pr_handoff.ModelPrHandoffDecision"
 metadata:
   description: "PR handoff readiness decider"
   author: "OmniNode Team"

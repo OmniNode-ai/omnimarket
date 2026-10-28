@@ -1,0 +1,20 @@
+name: node_binding_conformance_compute
+version: "1.0.0"
+description: "Pure check that a node's contract declares exactly its table row of protocols and that its handlers construct no concrete binding, read no environment variable, hold no path, URL or private name — text in, issues out, no I/O"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_binding_conformance_compute: "omnimarket.nodes.node_binding_conformance_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "bindings", "conformance", "deterministic"]
+pack: "core"
+display_name: "Binding Conformance"
+node_role: "compute"
+tickets: ["OMN-21473"]
