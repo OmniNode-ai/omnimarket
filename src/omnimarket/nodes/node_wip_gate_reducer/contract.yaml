@@ -1,0 +1,198 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeWipGateReducer
+#
+# The WIP gate: one PR-opening dispatch asks to enter a repository and the gate
+# answers admit, warn or refuse from the repository's open-PR count against its
+# limit. The decision order is the state_machine below, run by core's
+# execute_transition through omnimarket.handlers.rules_wip_gate, the one rule the
+# fill and the brief gate also call in process.
+#
+#   handle(ModelWipGateRequest) -> ModelWipGateDecision
+#
+# Two further pure operations a caller runs from the tick: read_wip (the WIP,
+# MISSING and UNKNOWN lines) and audit_admissions (the independent readback).
+# Facts only: the PR watcher state and now. The limits, the exempt roles and the
+# enforcing ruling come from the wip_limits overlay (overlay.py); the rule's
+# numbers are config.wip_gate below. No protocol dependency, no clock read.
+name: "node_wip_gate_reducer"
+contract_name: "node_wip_gate_reducer"
+node_name: "node_wip_gate_reducer"
+lifecycle: experimental
+node_type: "REDUCER_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure reducer deciding whether a PR-opening dispatch may enter a repository:
+  admits under the limit, on a validated exemption or on valid slot-reducer
+  override evidence, and otherwise refuses when enforcement is on and warns when
+  it is off. An unreadable, stale or missing reading or limit is never a count of
+  0: it refuses when enforcing and prints UNKNOWN otherwise.
+input_model:
+  name: "ModelWipGateRequest"
+  module: "omnimarket.models.wip_gate"
+  description: "One dispatch, the watcher state, now, the overlay policy, the config and any exemption or override evidence."
+output_model:
+  name: "ModelWipGateDecision"
+  module: "omnimarket.models.wip_gate"
+  description: "Admit, warn or refuse, the machine state, the reason and the printed line."
+handler:
+  module: "omnimarket.nodes.node_wip_gate_reducer.handlers.handler_wip_gate"
+  class: "HandlerWipGate"
+  input_model: "omnimarket.models.wip_gate.ModelWipGateRequest"
+  output_model: "omnimarket.models.wip_gate.ModelWipGateDecision"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_wip_gate_reducer.handlers.handler_wip_gate:HandlerWipGate"
+  handlers:
+    - operation: "wip_gate_decide"
+      handler:
+        name: "HandlerWipGate"
+        module: "omnimarket.nodes.node_wip_gate_reducer.handlers.handler_wip_gate"
+    - operation: "read_wip"
+      handler:
+        name: "HandlerReadWip"
+        module: "omnimarket.nodes.node_wip_gate_reducer.handlers.handler_read_wip"
+    - operation: "audit_admissions"
+      handler:
+        name: "HandlerAuditAdmissions"
+        module: "omnimarket.nodes.node_wip_gate_reducer.handlers.handler_audit_admissions"
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the fill or brief gate with supplied watcher state and policy.
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 2000
+replay:
+  deterministic: true
+config:
+  wip_gate:
+    limit_floor: 3
+    hours_of_landing: 3
+    trailing_days: 7
+    reading_max_age_minutes: 10
+    override_evidence_minutes: 10
+metadata:
+  transport_type: local
+  description: "Admits, warns or refuses a PR-opening dispatch against a repository's WIP limit."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-10-27"
+  tags:
+    - reducer
+    - wip
+    - gate
+    - pure
+state_machine:
+  version: {major: 1, minor: 0, patch: 0}
+  state_machine_name: wip_gate_fsm
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: 'Decision on one PR-opening dispatch request: admit, warn or refuse, from a repository''s open-PR count against its limit.'
+  initial_state: requested
+  terminal_states: [admitted, admitted_exempt, admitted_override, warned, refused]
+  error_states: []
+  persistence_enabled: false
+  states:
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: requested
+    state_type: operational
+    description: A PR-opening dispatch asks to enter a repository.
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: admitted
+    state_type: terminal
+    description: The repository is under its limit.
+    is_terminal: true
+    is_recoverable: false
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: admitted_exempt
+    state_type: terminal
+    description: The dispatch reduces work in progress and its exemption validated.
+    is_terminal: true
+    is_recoverable: false
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: admitted_override
+    state_type: terminal
+    description: The slot reducer chose a last-resort PR-opening item for an at-limit repository (the no-idle rule) and its dispatcher-written evidence validated; the audit counts it.
+    is_terminal: true
+    is_recoverable: false
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: warned
+    state_type: terminal
+    description: Enforcement is off, or the reading is unusable and enforcement is off; the dispatch proceeds and the line prints the warning.
+    is_terminal: true
+    is_recoverable: false
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: refused
+    state_type: terminal
+    description: Enforcement is on and the repository is at its limit or its reading is unusable; the fill diverts the slot.
+    is_terminal: true
+    is_recoverable: false
+  transitions:
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: requested_to_admitted_override_on_facts_evaluated
+    from_state: requested
+    to_state: admitted_override
+    trigger: facts_evaluated
+    priority: 6
+    conditions:
+    - {condition_name: override_valid, condition_type: expression, expression: override_valid == True}
+    - {condition_name: reading_usable, condition_type: expression, expression: reading_usable == True}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: requested_to_admitted_exempt_on_facts_evaluated
+    from_state: requested
+    to_state: admitted_exempt
+    trigger: facts_evaluated
+    priority: 5
+    conditions:
+    - {condition_name: exemption_valid, condition_type: expression, expression: exemption_valid == True}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: requested_to_refused_on_facts_evaluated_unusable
+    from_state: requested
+    to_state: refused
+    trigger: facts_evaluated
+    priority: 4
+    conditions:
+    - {condition_name: reading_unusable, condition_type: expression, expression: reading_usable == False}
+    - {condition_name: enforcing, condition_type: expression, expression: enforcement_on == True}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: requested_to_warned_on_facts_evaluated_unusable
+    from_state: requested
+    to_state: warned
+    trigger: facts_evaluated
+    priority: 3
+    conditions:
+    - {condition_name: reading_unusable, condition_type: expression, expression: reading_usable == False}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: requested_to_admitted_on_facts_evaluated
+    from_state: requested
+    to_state: admitted
+    trigger: facts_evaluated
+    priority: 2
+    conditions:
+    - {condition_name: under_limit, condition_type: expression, expression: repo_under_limit == True}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: requested_to_refused_on_facts_evaluated_at_limit
+    from_state: requested
+    to_state: refused
+    trigger: facts_evaluated
+    priority: 1
+    conditions:
+    - {condition_name: enforcing, condition_type: expression, expression: enforcement_on == True}
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: requested_to_warned_on_facts_evaluated_at_limit
+    from_state: requested
+    to_state: warned
+    trigger: facts_evaluated
