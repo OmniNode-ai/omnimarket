@@ -1,0 +1,128 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21459"
+title: "T-S1: factory line graph contract, seam reading record and verdict line"
+summary: >-
+  Task T-S1 adds the factory line graph contract of node_seam_read_orchestrator (contract only),
+  the shared seam reading record omnimarket.models.seam_reading, and the pure compute nodes
+  node_seam_reading_compute (renders the seam lines) and node_seam_classify_compute (operation_match
+  routing, no seam operations).
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn21459-factory-line"
+    statement: >-
+      The line is one graph contract, readings render as lines, thresholds come from the contract
+      and the compute nodes depend on no protocol.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: see ticket"
+      - id: "AC2"
+        statement: "AC2: see ticket"
+      - id: "AC3"
+        statement: "AC3: see ticket"
+      - id: "AC4"
+        statement: "AC4: see ticket"
+      - id: "AC5"
+        statement: "AC5: see ticket"
+      - id: "AC6"
+        statement: "AC6: see ticket"
+      - id: "AC7"
+        statement: "AC7: see ticket"
+      - id: "AC8"
+        statement: "AC8: see ticket"
+evidence_requirements:
+  - kind: "tests"
+    description: "The focused test files."
+    command: "uv run pytest tests/nodes/node_seam_reading_compute tests/nodes/node_seam_classify_compute tests/nodes/node_seam_read_orchestrator -q --no-cov --refuse-skips"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21459-ac1"
+    description: >-
+      A reading with mismatched 2 renders a line naming the seam id. Fails at the merge base, which has no seam reading node.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_seam_reading_compute/test_seam_reading.py::test_a_reading_with_mismatched_two_renders_a_named_line -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21459-ac2"
+    description: >-
+      Zero crossings and three unreadable read unknown, never clean. Fails at the merge base.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_seam_reading_compute/test_seam_reading.py::test_zero_crossings_and_three_unreadable_reads_unknown_never_ok -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21459-ac3"
+    description: >-
+      The execution graph parses with the core model, has 28 nodes and 27 edges, 14 seams, each with a shape or a gap. Fails at the merge base.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_seam_read_orchestrator/test_factory_line_contract.py::test_the_graph_parses_with_the_core_model_and_has_the_counts tests/nodes/node_seam_read_orchestrator/test_factory_line_contract.py::test_each_seam_has_a_shape_or_a_gap_and_a_classify_operation -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21459-ac4"
+    description: >-
+      The graph equals the fixture copy of the plan fragment and a changed seam id fails the comparison. Fails at the merge base.
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_seam_read_orchestrator/test_factory_line_contract.py::test_the_graph_equals_the_plan_fragment tests/nodes/node_seam_read_orchestrator/test_factory_line_contract.py::test_a_changed_seam_id_fails_the_comparison -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21459-ac5"
+    description: >-
+      An empty window and a partly unreadable window read unknown, and a window under the minimum never reads clean. Fails at the merge base.
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_seam_reading_compute/test_seam_reading.py::test_an_empty_window_reads_unknown tests/nodes/node_seam_reading_compute/test_seam_reading.py::test_a_partly_unreadable_window_reads_unknown tests/nodes/node_seam_reading_compute/test_seam_reading.py::test_a_window_under_its_minimum_never_reads_ok -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21459-ac6"
+    description: >-
+      The verdict string occurs in exactly one source file. Fails at the merge base, where it occurs in none.
+    source: "manual"
+    binds_ac: ["AC6"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_seam_reading_compute/test_seam_reading.py::test_the_verdict_word_lives_in_exactly_one_source_file -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21459-ac7"
+    description: >-
+      Thresholds come from config.seam_read of the contract (5 minimum: 6 reads clean, 4 reads unknown) and a seam node without expected_crossings refuses naming the key. Fails at the merge base.
+    source: "manual"
+    binds_ac: ["AC7"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_seam_reading_compute/test_seam_reading.py::test_the_minimum_is_read_from_the_contract tests/nodes/node_seam_reading_compute/test_seam_reading.py::test_a_seam_node_without_expected_crossings_refuses_naming_the_key tests/nodes/node_seam_reading_compute/test_seam_reading.py::test_a_missing_config_key_refuses_naming_it -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21459-ac8"
+    description: >-
+      The reading and classify contracts declare no protocol_dependencies, the orchestrator declares BUS and CLK, and results are byte-identical in process and after a round trip. The parity harness and conformance check of the plan do not exist in this repository yet; this is the in-repo falsifier. Fails at the merge base.
+    source: "manual"
+    binds_ac: ["AC8"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_seam_reading_compute/test_seam_reading.py::test_the_reading_and_classify_contracts_declare_no_protocol tests/nodes/node_seam_reading_compute/test_seam_reading.py::test_results_are_byte_identical_in_process_and_after_a_request_round_trip tests/nodes/node_seam_read_orchestrator/test_factory_line_contract.py::test_the_orchestrator_declares_bus_and_clock_exactly -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21459-deploy-import"
+    description: >-
+      Hosted deploy check: the seam classify handler is present at the pull request head commit
+      read through the GitHub contents API, and the three node packages resolve their onex.nodes
+      entry points from the installed omnimarket. Both fail at the merge base, where the handler
+      and the entry points are absent.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_seam_classify_compute/handlers/handler_seam_classify.py?ref=c9a49ab206b71b120ab759855c23c8855e5ab8b6 --jq .content | base64 -d | grep -q 'class HandlerSeamClassify'"
+      - check_type: "command"
+        check_value: "uv run --locked python -c \"from importlib.metadata import entry_points; eps={e.name: e for e in entry_points(group='onex.nodes')}; [eps[n].load() for n in ('node_seam_read_orchestrator','node_seam_reading_compute','node_seam_classify_compute')]; print('entry points load')\""
+        cwd: "${OMNI_HOME}/omnimarket"

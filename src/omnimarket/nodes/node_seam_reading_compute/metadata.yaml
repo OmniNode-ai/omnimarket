@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_seam_reading_compute
+version: 1.0.0
+description: Render seam readings as SEAM lines and verdict lines, unknown for an empty, unreadable or under-minimum window.
+pack: operator_tooling
+node_role: compute
+display_name: Seam Reading Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_seam_reading_compute: omnimarket.nodes.node_seam_reading_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- seam-read

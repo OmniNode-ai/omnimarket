@@ -75,6 +75,23 @@ _CLOUD_SECRET_ENV_VARS = (
 
 
 @pytest.fixture(autouse=True)
+def _fresh_routing_config() -> None:
+    """Route each test on the routing config its own environment resolves.
+
+    The routing reducer caches its parsed tiers in a module global. A test
+    elsewhere in the same process that built it under a temporary contract or
+    tiers file would otherwise decide this suite's tier order.
+    """
+    from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
+        handler_delegation_routing as routing,
+    )
+
+    routing._config = None
+    routing._config_spread_peers = None
+    routing._config_spread_weights = None
+
+
+@pytest.fixture(autouse=True)
 def _isolate_cloud_secret_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Make cloud-tier routability independent of ambient LLM credentials."""
     for name in _CLOUD_SECRET_ENV_VARS:
