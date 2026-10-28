@@ -253,6 +253,40 @@ def _failure_reason(stdout: str, stderr: str, exit_code: int) -> str:
     return f"the test delegation exited with status {exit_code}"
 
 
+#: OMN-21464. The typed classes that mean the provider throttled the call.
+_THROTTLE_FAILURE_CLASSES = frozenset({"rate_limited"})
+_THROTTLE_CAUSE_PREFIXES = ("rate_limited:", "provider_quota_exhausted:")
+
+
+def _was_throttled(stdout: str, stderr: str) -> bool:
+    """Whether the test delegation ended on a provider 429 (OMN-21464).
+
+    Read from the typed class of the attempt the run ended on, never from the
+    wording of a message. A run that carries a typed credential refusal was
+    rejected by the provider and is never a throttle.
+    """
+    for line in reversed(stdout.splitlines()):
+        if not line.startswith("{"):
+            continue
+        try:
+            result = json.loads(line).get("result") or {}
+        except ValueError:
+            continue
+        if not isinstance(result, dict):
+            continue
+        if result.get("credential_refusal"):
+            return False
+        attempts = [a for a in result.get("attempts") or [] if isinstance(a, dict)]
+        failed = [a for a in attempts if a.get("failure_class")]
+        if failed:
+            return str(failed[-1]["failure_class"]) in _THROTTLE_FAILURE_CLASSES
+    for line in reversed(stderr.splitlines()):
+        if line.startswith("onex delegate failed: "):
+            cause = line.removeprefix("onex delegate failed: ")
+            return cause.startswith(_THROTTLE_CAUSE_PREFIXES)
+    return False
+
+
 def _receipt(stderr: str) -> dict[str, object]:
     for token in reversed(stderr.split()):
         if token.endswith("/receipt.json"):
@@ -795,6 +829,18 @@ class HandlerModelSetup:
             reason = _failure_reason(stdout, stderr, exit_code)
             if exit_code == 0 and answered not in (None, backend_id):
                 reason = f"answered by {answered}, not {backend_id}"
+            elif exit_code != 0 and _was_throttled(stdout, stderr):
+                # OMN-21464: a 429 is the provider's or the model's condition,
+                # not the key's. It is reported but never recorded, so a valid
+                # key keeps its earlier verdict and stays routed.
+                return ModelModelTestResult(
+                    provider=provider,
+                    status="throttled",
+                    tested_at=now,
+                    backend_id=backend_id,
+                    model=chosen or self._stored_model(provider),
+                    reason=reason,
+                )
             # OMN-21259: name the model that failed, so the developer knows
             # which of the key's models to fix or replace.
             result = ModelModelTestResult(

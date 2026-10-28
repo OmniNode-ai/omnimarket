@@ -1,0 +1,74 @@
+schema_version: 1.0.0
+ticket_id: OMN-21464
+title: A local delegation that got an upstream 429 is reported as credential_rejected, so a valid key
+  is marked failed
+summary: A provider 429 from a pinned test delegation is reported as a retryable throttle and never recorded
+  as a failed key verdict, so a valid key stays routed. A genuine 401 or 403 still reports credential_rejected
+  and marks the key failed.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-429-not-credential-rejected
+  statement: A provider 429 is a retryable condition, not a rejected credential.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a local delegation whose provider answered 429 is classified as a retryable provider
+      condition and never as `credential_rejected` -- falsifier: uv run pytest on the dispatch classifier
+      with a recorded 429 provider response, asserting the refusal reason is not CREDENTIAL_REJECTED and
+      the failure class is retryable'
+  - id: AC2
+    statement: 'AC2: a 429 does not mark the stored key failed, so `onex models list` still offers that
+      provider -- falsifier: uv run pytest asserting the stored model''s test verdict is unchanged after
+      a 429 attempt, and changed after a 401'
+  - id: AC3
+    statement: 'AC3: a genuine 401 or 403 still reports `credential_rejected` -- falsifier: uv run pytest
+      on the same classifier with a recorded 401 response, asserting CREDENTIAL_REJECTED'
+evidence_requirements:
+- kind: tests
+  description: Throttled key tests.
+  command: uv run pytest tests/unit/cli/test_omn21464_throttled_key_not_failed.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21464-ac1
+  description: AC1 bound to the throttled-key test.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/cli/test_omn21464_throttled_key_not_failed.py -q --no-cov --tb=line
+      -k "ac1"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21464-ac2
+  description: AC2 bound to the throttled-key test.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/cli/test_omn21464_throttled_key_not_failed.py -q --no-cov --tb=line
+      -k "ac2"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21464-ac3
+  description: AC3 bound to the throttled-key test.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/cli/test_omn21464_throttled_key_not_failed.py -q --no-cov --tb=line
+      -k "ac3"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21464-deploy-source
+  description: 'Hosted deploy check: the setup effect source at the checked-out commit defines the throttle classifier the fix introduces. Needs no account, lab host or runtime.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_model_setup_effect/handlers/handler_model_setup.py" | grep "def _was_throttled" >/dev/null
+    cwd: .
