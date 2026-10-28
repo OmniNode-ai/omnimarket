@@ -1,0 +1,23 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-19814
+title: 'A refused outbox request no longer holds a bus-binding episode open'
+summary: 'The bus-binding recovery closes an episode on a healthy durable read and a drained outbox; each refused request is reported as its own bus-binding-outbox-refused case.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "ci"
+    description: "CI passes on merge PR"
+    command: "gh pr checks"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: "Bus-binding unit tests pass, including the replay of the recorded 2026-10-28 episode"
+    source: "generated"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/unit/bus_binding -q"
