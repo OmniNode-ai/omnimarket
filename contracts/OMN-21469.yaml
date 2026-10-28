@@ -1,0 +1,36 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21469"
+title: "onex dashboard serves the current OmniDash: omnidash v1.1.11 released and pinned by omnimarket"
+summary: "onex dashboard pins omnidash v1.1.11, the first bundle with the seven-page navigation and one Settings page; the pinned digest is the published asset's, verified through the bundle code. AC1 (the version bump) is bound in omnidash's contracts/OMN-21469.yaml."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-current-dashboard-bundle"
+    statement: |-
+      onex dashboard serves the omnidash release cut from the current dashboard, pinned by the digest of its published asset.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: tag v1.1.11 sits on that bump PR's merge commit, and its GitHub release carries omnidash-bundle-v1.1.11.tar.gz and omnidash-bundle-v1.1.11.tar.gz.sha256 from a successful publish-dashboard-bundle run -- falsifier: gh api repos/OmniNode-ai/omnidash/releases/tags/v1.1.11 lacks either asset, the tag commit differs from the merge commit, or the run for the tag did not conclude success
+      - id: "AC3"
+        statement: |-
+          AC3: omnimarket dev pins dashboard_bundle version v1.1.11 with the sha256 of that published asset, and onex dashboard from that build serves the seven-page navigation with Settings -- falsifier: the pinned sha256 differs from sha256sum of the downloaded asset, or the served page read shows no Settings entry in its navigation
+evidence_requirements:
+  - kind: "tests"
+    description: "onex dashboard pins omnidash v1.1.11 or later; the pinned asset downloads, verifies against the pinned sha256 through ensure_bundle, and carries the Settings navigation entry. At the v1.1.10 pin both cases fail."
+    command: "uv run pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21469-bundle-pin-1-1-11"
+    description: "onex dashboard pins omnidash v1.1.11 or later. The published v1.1.11 asset is fetched and verified by ensure_bundle, the path onex dashboard serves from, so a digest that differs from the published asset is refused by the product code, and the unpacked pages must carry the Settings navigation entry. At the v1.1.10 pin the floor case fails and the download verifies but has no Settings entry."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2", "AC3"]
