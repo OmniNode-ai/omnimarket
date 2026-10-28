@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Flow Measures Compute (OMN-21441)
+#
+# Pure definition-B compute: handle(ModelFlowMeasuresRequest) -> ModelFlowMeasuresResult.
+# It takes facts and `now`, reads no clock, file, network or protocol, and so declares
+# no protocol_dependencies. The tick and the queue-status replacement nodes call it.
+name: node_flow_measures_compute
+contract_name: node_flow_measures_compute
+node_name: node_flow_measures_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Compute the flow measures from supplied facts and `now`: merges per hour per
+  repository, the green-to-merged median, PRs held per repository (WIP over limit,
+  held for a person, held by the controller), detection-to-stop and stop-to-fix times
+  from the stop records, and the wip_diverted and wip_idle_override counts from the
+  fill. Each measure prints with its read time and basis. A repository no source read
+  prints `unread`, never 0. The trailing window is config.wip_gate.trailing_days. The
+  open-count trend and merges per two hours stay with their existing readers.
+
+handler:
+  module: omnimarket.nodes.node_flow_measures_compute.handlers.handler_flow_measures
+  class: HandlerFlowMeasures
+  input_model: omnimarket.nodes.node_flow_measures_compute.models.model_flow_measures.ModelFlowMeasuresRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: compute_flow_measures
+      topic: onex.cmd.omnimarket.flow-measures-compute-requested.v1
+      handler:
+        name: HandlerFlowMeasures
+        module: omnimarket.nodes.node_flow_measures_compute.handlers.handler_flow_measures
+      input_model: omnimarket.nodes.node_flow_measures_compute.models.model_flow_measures.ModelFlowMeasuresRequest
+      output_model: omnimarket.nodes.node_flow_measures_compute.models.model_flow_measures.ModelFlowMeasuresResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 2000
+
+input_model:
+  name: ModelFlowMeasuresRequest
+  module: omnimarket.nodes.node_flow_measures_compute.models.model_flow_measures
+  description: Facts per source (each with its read time and basis) and `now`.
+output_model:
+  name: ModelFlowMeasuresResult
+  module: omnimarket.nodes.node_flow_measures_compute.models.model_flow_measures
+  description: One reading per measure and subject, each with its read time and basis.
+
+terminal_event: onex.evt.omnimarket.flow-measures-computed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.flow-measures-compute-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.flow-measures-computed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.flow-measures-compute-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.flow-measures-computed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.flow-measures-computed.v1
+
+config:
+  # Declared here while no wip-gate reducer contract exists in this repository; the
+  # window is read through load_flow_measures_config, never a code default.
+  wip_gate:
+    trailing_days: 7
+
+metadata:
+  ticket: OMN-21441
+  transport_type: inmemory

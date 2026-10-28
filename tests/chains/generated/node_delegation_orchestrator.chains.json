@@ -86,7 +86,7 @@
         "failure_reason": "empty choices array",
         "operational_outcome": "inference_failed",
         "quality_passed": false,
-        "terminal_failure_reason": "non_retryable_inference_response"
+        "terminal_failure_reason": "no_higher_tier_available: task_class='test' exhausted escalation policy tier_order=['local', 'cheap_frontier', 'cheap_cloud', 'claude'] \u2014 current_tier='claude' is the final (ceiling) tier; no higher tier is declared for this task class"
       }
     },
     {

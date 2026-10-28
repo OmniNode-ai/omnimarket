@@ -133,14 +133,17 @@ async def test_quality_gate_leg_boundary_failure_fails() -> None:
 
 
 @chain_obligation("error:invocation_command_accepted>terminal_failure_no_escalation")
-async def test_non_retryable_inference_error_fails_without_escalating() -> None:
-    # "empty choices array" is a non-retryable marker, and with an empty backend ref
-    # there is no same-tier sibling either, so the workflow terminalises.
+@pytest.mark.usefixtures("stub_provider_quota_reader")
+async def test_inference_error_at_the_ceiling_fails_without_escalating() -> None:
+    # "empty choices array" is a no-answer failure that can move, so this path
+    # starts at the declared ceiling tier, where there is no later responder.
+    # With an empty backend ref there is no same-tier sibling either, so the
+    # workflow terminalises.
     cid, run = await b.drive(
         [
             lambda h, c: h.handle_delegation_request(b.request(c)),
             lambda h, c: h.handle_routing_decision(
-                b.routing_decision(c, tier_name="cheap_cloud", backend_ref="")
+                b.routing_decision(c, tier_name="claude", backend_ref="")
             ),
             lambda h, c: h.handle_inference_response(
                 b.inference_error(c, "empty choices array")
@@ -158,7 +161,12 @@ async def test_non_retryable_inference_error_fails_without_escalating() -> None:
         ],
         terminal_fields={
             "failure_reason": "empty choices array",
-            "terminal_failure_reason": "non_retryable_inference_response",
+            "terminal_failure_reason": (
+                "no_higher_tier_available: task_class='test' exhausted escalation "
+                "policy tier_order=['local', 'cheap_frontier', 'cheap_cloud', "
+                "'claude'] \u2014 current_tier='claude' is the final (ceiling) "
+                "tier; no higher tier is declared for this task class"
+            ),
             "operational_outcome": EnumDelegationOperationalOutcome.INFERENCE_FAILED,
         },
         correlation_id=cid,

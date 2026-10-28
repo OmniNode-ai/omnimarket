@@ -64,8 +64,8 @@ class ModelEscalationDecisionRequest(BaseModel):
             "Whether the underlying failure is retryable on a higher tier. The "
             "quality-gate path always passes True (a sub-bar score is retryable "
             "by definition). The inference-error path passes the classification "
-            "from ``_should_escalate_inference_error`` (False for empty body / "
-            "empty choices)."
+            "from ``_should_escalate_inference_error``; timeout and no-answer "
+            "failures can move within the declared budget."
         ),
     )
     next_tier_name: str | None = Field(

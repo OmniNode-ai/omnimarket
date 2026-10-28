@@ -1,0 +1,88 @@
+[
+  {
+    "configuration": "receipt-v1:effort-low:timeout-90s:adapter-cli",
+    "failure_kinds": {},
+    "harness": "codex",
+    "median_minutes": 0.14795942437679818,
+    "model": "configured-default",
+    "n": 1,
+    "pass_rate": 1.0,
+    "passes": 1,
+    "task_class": "ci-log-diagnosis",
+    "unavailable": 0
+  },
+  {
+    "configuration": "receipt-v1:effort-low:timeout-90s:adapter-cli",
+    "failure_kinds": {},
+    "harness": "codex",
+    "median_minutes": 0.12458899600120882,
+    "model": "configured-default",
+    "n": 1,
+    "pass_rate": 1.0,
+    "passes": 1,
+    "task_class": "docs-edit",
+    "unavailable": 0
+  },
+  {
+    "configuration": "receipt-v1:effort-low:timeout-90s:adapter-cli",
+    "failure_kinds": {},
+    "harness": "codex",
+    "median_minutes": 0.2322982888513555,
+    "model": "configured-default",
+    "n": 1,
+    "pass_rate": 1.0,
+    "passes": 1,
+    "task_class": "failing-test-fix",
+    "unavailable": 0
+  },
+  {
+    "configuration": "receipt-v1:effort-low:timeout-90s:adapter-cli",
+    "failure_kinds": {},
+    "harness": "codex",
+    "median_minutes": 0.11792468988957504,
+    "model": "configured-default",
+    "n": 1,
+    "pass_rate": 1.0,
+    "passes": 1,
+    "task_class": "host-read-only",
+    "unavailable": 0
+  },
+  {
+    "configuration": "receipt-v1:effort-low:timeout-90s:adapter-cli",
+    "failure_kinds": {
+      "checker-failed": 1
+    },
+    "harness": "codex",
+    "median_minutes": 0.2698062686715275,
+    "model": "configured-default",
+    "n": 1,
+    "pass_rate": 0.0,
+    "passes": 0,
+    "task_class": "rebase-conflict",
+    "unavailable": 0
+  },
+  {
+    "configuration": "receipt-v1:effort-low:timeout-90s:adapter-cli",
+    "failure_kinds": {},
+    "harness": "codex",
+    "median_minutes": 0.0886863972991705,
+    "model": "configured-default",
+    "n": 1,
+    "pass_rate": 1.0,
+    "passes": 1,
+    "task_class": "review-thread-reply",
+    "unavailable": 0
+  },
+  {
+    "configuration": "receipt-v1:effort-low:timeout-90s:adapter-cli",
+    "failure_kinds": {},
+    "harness": "codex",
+    "median_minutes": 0.1604856002687787,
+    "model": "configured-default",
+    "n": 1,
+    "pass_rate": 1.0,
+    "passes": 1,
+    "task_class": "ticket-evidence-fix",
+    "unavailable": 0
+  }
+]

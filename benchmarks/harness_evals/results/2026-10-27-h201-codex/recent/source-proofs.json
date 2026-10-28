@@ -1,0 +1,49 @@
+{
+  "cohort": "recent",
+  "excluded_trials": [],
+  "fixture_sha256": "0b116a8f8e35f118f6d779a6f5047daeba6630d2ec5dca3e719663734f82b7d2",
+  "harness_versions_sha256": "496fc3f796ec6d100d437abf1a924b843b03ea7a567b96bd4e2d15c2dda5cca0",
+  "runs": [
+    {
+      "files": [
+        {
+          "path": "ci-log-diagnosis-recent-1/process.log",
+          "sha256": "1e310c10b0c9d29617cc59d31131aae2fddfdc1f9f123c5958d9b98294a2ac2c"
+        },
+        {
+          "path": "docs-edit-recent-1/process.log",
+          "sha256": "fbd28247a411f2dc04218d021bf25d39517386a06134640d7e754f20cb3b8ce1"
+        },
+        {
+          "path": "failing-test-fix-recent-1/process.log",
+          "sha256": "fcd3056cb8da15793afedbe1dc1c897dbabd5c660a728e3227dafd96f7ef3f63"
+        },
+        {
+          "path": "host-read-only-recent-1/process.log",
+          "sha256": "67bc952356a3cd7c4618fe09ba742341f4266f6b255f3b5f3225e3b98a01715f"
+        },
+        {
+          "path": "observations.jsonl",
+          "sha256": "8b186226ad2d297956a4d7e707385546fbffb8ef651e13e5bd689a1fd75a1fa3"
+        },
+        {
+          "path": "provenance.json",
+          "sha256": "8bc5615ad5574bb89a0795758318dcf63f12b76d3f501e4e557dbd4cee2bd3aa"
+        },
+        {
+          "path": "rebase-conflict-recent-1/process.log",
+          "sha256": "f98c12651f41d717838dce4a96d698ebf991699f5744efed0279adb76b60a82b"
+        },
+        {
+          "path": "review-thread-reply-recent-1/process.log",
+          "sha256": "c8e0623d2bc50dc8dc2867f215704fdef386f2b9780391b8176a917340163a18"
+        },
+        {
+          "path": "ticket-evidence-fix-recent-1/process.log",
+          "sha256": "8c30b9be5ea66130f7b791e0c5684cd390f46569cf568bc5c223391d20040b0e"
+        }
+      ],
+      "run": "codex-recent"
+    }
+  ]
+}

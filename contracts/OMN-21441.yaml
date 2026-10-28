@@ -1,0 +1,91 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21441"
+title: "T-W4: flow measures"
+summary: >-
+  Task T-W4 adds node_flow_measures_compute to omnimarket: a pure compute node that takes
+  supplied facts and `now` and returns the factory flow measures, each with its read time and
+  basis. The trailing window is config.wip_gate.trailing_days of the node's own contract, read
+  through the loader, and the contract declares no protocol_dependencies.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn21441-flow-measures"
+    statement: >-
+      The node computes the five measures from facts and now, prints unread for a repository
+      nobody read, takes its window from config.wip_gate.trailing_days and depends on no protocol.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: Each of the five measures prints with its read time and basis"
+      - id: "AC2"
+        statement: "AC2: A repository with no data prints `unread`, not 0"
+      - id: "AC3"
+        statement: "AC3: Configuration: the measures' trailing window is `config.wip_gate.trailing_days`, read through the loader"
+      - id: "AC4"
+        statement: "AC4: Bindings: depends on no protocol (it takes facts and `now`)"
+evidence_requirements:
+  - kind: "tests"
+    description: "The node's focused test file."
+    command: "uv run pytest tests/nodes/node_flow_measures_compute/test_flow_measures.py -q --no-cov --refuse-skips"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21441-ac1-five-measures"
+    description: >-
+      The pytest case over a fixture prints each of the five measures with its read time and
+      basis. Fails at the merge base, which has no node_flow_measures_compute package.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_flow_measures_compute/test_flow_measures.py::test_each_of_the_five_measures_prints_with_its_read_time_and_basis -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21441-ac2-unread"
+    description: >-
+      The pytest case prints `unread` for a repository no source read and a real zero for a
+      repository a source read with nothing to count. Fails at the merge base.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_flow_measures_compute/test_flow_measures.py::test_a_repository_with_no_data_prints_unread_not_zero tests/nodes/node_flow_measures_compute/test_flow_measures.py::test_a_source_nobody_read_prints_unread_for_every_subject -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21441-ac3-window"
+    description: >-
+      The merges-per-hour figure changes when the fixture contract's window changes from 7 to 3
+      days, and a contract without the key fails closed. Fails at the merge base.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_flow_measures_compute/test_flow_measures.py::test_the_trailing_window_is_config_wip_gate_trailing_days tests/nodes/node_flow_measures_compute/test_flow_measures.py::test_a_contract_without_the_window_fails_closed -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21441-ac4-no-protocol"
+    description: >-
+      The contract carries no protocol_dependencies entry (the scan finds one in a synthetic
+      contract that has it) and the result is byte-identical in process, through the node entry
+      and after a request round trip. The parity harness and conformance check of the plan do
+      not exist in this repository yet; this is the in-repo falsifier. Fails at the merge base.
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_flow_measures_compute/test_flow_measures.py::test_the_contract_declares_no_protocol_dependencies tests/nodes/node_flow_measures_compute/test_flow_measures.py::test_results_are_byte_identical_in_process_and_through_the_node_entry -q --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21441-deploy-import"
+    description: >-
+      Hosted deploy check, runnable on the hosted runner with no lab route, broker or database:
+      the node package imports from the installed omnimarket and resolves its onex.nodes entry
+      point. Fails at the merge base, where the package and entry point are absent.
+      Hosted deploy probe: gh api reads pyproject.toml at the checked-out commit and finds the node_flow_measures_compute entry point; at the merge base the entry is absent, so the read finds nothing and the check exits nonzero.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run --locked python -c \"from importlib.metadata import entry_points; eps={e.name: e for e in entry_points(group='onex.nodes')}; eps['node_flow_measures_compute'].load(); print('entry point loads')\""
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/pyproject.toml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"node_flow_measures_compute = \" > /dev/null'"
+        cwd: "${OMNI_HOME}/omnimarket"

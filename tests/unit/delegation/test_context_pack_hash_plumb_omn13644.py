@@ -44,6 +44,10 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     _canonical_result_to_task_delegated_payload,
 )
 
+# A no-answer failure now reaches the escalation decision, which reads quota
+# state; these drive the terminal path, so they bind an empty quota reader.
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
 _CONTEXT_HASH = (
     "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 )

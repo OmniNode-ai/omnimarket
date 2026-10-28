@@ -470,9 +470,9 @@ def test_the_boundary_verdict_outranks_a_class_marker_in_vendor_prose() -> None:
     )
 
 
-def test_the_empty_choices_message_remains_non_retryable() -> None:
-    """The control for the assertion above: the marker set still bites."""
-    assert _should_escalate_inference_error("API returned empty choices array") is False
+def test_the_empty_choices_message_can_move_to_another_responder() -> None:
+    """No answer can spend the remaining ladder budget (OMN-18300)."""
+    assert _should_escalate_inference_error("API returned empty choices array") is True
 
 
 @pytest.mark.parametrize(
@@ -700,12 +700,15 @@ def test_a_backend_the_catalogue_does_not_declare_gets_no_retry() -> None:
     assert any(isinstance(e, ModelDelegationResult) for e in events)
 
 
-def test_an_empty_completion_on_a_customer_route_still_terminalises() -> None:
-    """Out of scope, bound so it cannot drift in unnoticed.
-
-    A genuinely blank completion is not an availability fact, and this change
-    does not make it one.
-    """
+def test_an_empty_completion_on_an_exhausted_customer_route_terminalises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A no-answer failure never escapes the customer's declared route."""
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_delegation_orchestrator.handlers."
+        "handler_delegation_workflow.byok_backend_max_retries",
+        lambda _backend: 0,
+    )
     handler = HandlerDelegationWorkflow()
     cid = uuid4()
     handler.handle_delegation_request(_request(cid))

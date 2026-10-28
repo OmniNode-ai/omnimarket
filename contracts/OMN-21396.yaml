@@ -367,3 +367,18 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_idle_slot_fill_effect/test_lab_fill_model_policy_effect.py -q --no-cov --refuse-skips"
         cwd: "."
+  - id: "dod-omn21396-codex-measurement"
+    description: >
+      Hosted-runner deploy check of the committed h201 Codex measurement:
+      replay both cohorts through the installed eval and capability handlers,
+      reproduce summaries and proposed experiment STATUS rows, and verify
+      fixture identities, all seven task types, attempts 1-28, and recorded
+      rebase failures. Small samples must remain below the capability line.
+      The regression fails at the merge base without the measurement artifacts.
+      Reads committed JSON only; no login, credentials, broker or lab service.
+    source: "manual"
+    binds_ac: ["AC3", "AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_codex_measurement_omn21396.py -q --no-cov --refuse-skips"
+        cwd: "."

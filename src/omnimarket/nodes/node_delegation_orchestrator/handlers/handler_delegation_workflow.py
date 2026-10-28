@@ -292,24 +292,10 @@ _HTTP_429_TOKEN_PATTERN = re.compile(r"(?<![\w.-])429(?![\w-]|\.\d)")
 # the ceiling (claude) — now executes through the canonical HTTP inference path, so
 # no tier is excluded from inference-error escalation.
 _INFERENCE_ERROR_EXCLUDED_TIERS: frozenset[str] = frozenset()
-# OMN-13140 GATE 1 classification. Inference effects (node_llm_delegation_call_effect)
-# raise three terminal-shaped errors for an otherwise-reachable provider:
-#   * "finish_reason=length"     — response TRUNCATED at the tier's max_tokens.
-#   * "empty message content"    — provider returned a blank message body.
-#   * "API returned empty choices array" — provider returned no choices.
-# `finish_reason=length` is a CONTEXT/output-budget limit, not a hard refusal:
-# a longer-context successor (the cheap_cloud Gemini route declares a 1M-token
-# window) can complete what a quantized local model truncated, so it is now
-# RETRYABLE and escalates. The original (truncated) and escalated models are both
-# recorded in escalation_history (one ModelDelegationEscalationAttempt per tier).
-# An empty body / empty choices is left NON-retryable: re-issuing the same prompt
-# to a higher tier is unlikely to turn a blank completion into content and would
-# burn cloud budget on a probable repeat — the minimal-safe classification.
-_NON_RETRYABLE_INFERENCE_ERROR_MARKERS: frozenset[str] = frozenset(
-    {
-        "empty message content",
-        "empty choices array",
-    }
+# No-answer markers identify a provider failure in the final receipt. They do
+# not veto escalation: a later responder may still produce an answer.
+_EMPTY_INFERENCE_RESPONSE_MARKERS: frozenset[str] = frozenset(
+    {"empty message content", "empty choices array", "empty content array"}
 )
 
 # OMN-18278 (bus half). The truncation marker is now BOUND to the constant the
@@ -795,13 +781,13 @@ def quality_result_cause(
 
 
 def _should_escalate_inference_error(error_message: str) -> bool:
-    """Return whether an inference error should retry on a higher tier."""
-    if provider_failure_class_from_error_message(error_message) is not None:
-        return True
-    normalized = error_message.lower()
-    return not any(
-        marker in normalized for marker in _NON_RETRYABLE_INFERENCE_ERROR_MARKERS
-    )
+    """A reported inference failure can move to another eligible responder.
+
+    Empty content and empty choices are no-answer failures, just like a
+    timeout. The decision node still enforces pins, the class's attempt budget
+    and ladder exhaustion; customer routes retain their own retry budget.
+    """
+    return bool(error_message.strip())
 
 
 def _finish_reason_of_failed_call(
@@ -1958,7 +1944,7 @@ def _inference_failure_cause(
     if workflow.escalation_history and any(
         marker in reason.lower()
         for reason in workflow.escalation_history[-1].failure_reasons
-        for marker in _NON_RETRYABLE_INFERENCE_ERROR_MARKERS
+        for marker in _EMPTY_INFERENCE_RESPONSE_MARKERS
     ):
         return EnumDelegationTerminalFailureCause.PROVIDER_ERROR
     return None
@@ -3540,12 +3526,8 @@ class HandlerDelegationWorkflow:
             # the SAME class the next branch treats as escalatable) gets one
             # attempt per untried sibling backend in the CURRENT tier before
             # ``next_eligible_tier`` walks to the next (possibly paid/cloud)
-            # tier below. A non-retryable error (empty content/choices) is
-            # unchanged — the existing minimal-safe classification still
-            # applies unmodified; a different local model is not assumed to
-            # fix a genuinely empty/malformed provider response either, so
-            # this stays scoped to the transport-failure class the ticket
-            # names.
+            # tier below. A no-answer response can also move to a different
+            # responder; it says nothing about whether that responder can answer.
             if error_retryable and not typed_account_or_model_refusal:
                 sibling_retry_intents = self._maybe_retry_sibling_backend(
                     workflow,
@@ -3560,7 +3542,7 @@ class HandlerDelegationWorkflow:
             # OMN-13476: the escalate-or-terminate decision is owned by the
             # node_delegation_escalation_decision_compute COMPUTE. Infra errors
             # (auth failure, connection refused, timeout) are retryable at the
-            # next tier; empty body / empty choices are not. The orchestrator
+            # next tier, including empty body / empty choices. The orchestrator
             # resolves the routing-contract inputs inside ``_decide_escalation``
             # and delegates the verdict — behavior identical to the prior inline
             # branch (retryability → budget → current-tier → ladder precedence).
@@ -4428,9 +4410,8 @@ class HandlerDelegationWorkflow:
         a ref the catalogue does not declare gets ``None`` and no retry at all,
         so this can never widen to a route the contract does not describe.
 
-        Only a RETRYABLE failure reaches here — the caller has already applied
-        ``_should_escalate_inference_error``, so a genuinely blank completion
-        still terminalises and this budget is not spent on it.
+        A no-answer failure can also spend this route's declared retry budget.
+        Exhaustion still cannot move customer work onto a house credential.
 
         Returns ``None`` (no retry) for a platform tier, an unidentified or
         undeclared backend, or an exhausted budget, so the caller falls through

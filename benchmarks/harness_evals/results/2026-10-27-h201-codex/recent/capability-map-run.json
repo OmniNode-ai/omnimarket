@@ -1,0 +1,217 @@
+{
+  "assignments": [
+    {
+      "backend_id": "harness:codex:receipt-v1:effort-low:timeout-90s:adapter-cli",
+      "configuration_id": "cfg-18638e0503f95f9f",
+      "identity": {
+        "backend": "harness:codex:receipt-v1:effort-low:timeout-90s:adapter-cli",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "codex:496fc3f796ec6d100d437abf1a924b843b03ea7a567b96bd4e2d15c2dda5cca0",
+        "inference_configuration": "cfg-18638e0503f95f9f",
+        "model_revision": "configured-default",
+        "suite_revision": "0b116a8f8e35f118f6d779a6f5047daeba6630d2ec5dca3e719663734f82b7d2"
+      },
+      "model_key": "configured-default"
+    }
+  ],
+  "line": {
+    "confidence": 0.95,
+    "floor": 0.9,
+    "margin": 0.07,
+    "power": 0.8
+  },
+  "map_run_id": "fdf10060-33c8-508a-9766-3d50eba0a52c",
+  "observed_at": "2026-10-27T22:36:04.856642Z",
+  "rows": [
+    {
+      "backend_id": "harness:codex:receipt-v1:effort-low:timeout-90s:adapter-cli",
+      "configuration": {
+        "parameters": {
+          "context_strategy_id": "full_context",
+          "max_tokens": null,
+          "reasoning_effort": null,
+          "temperature": null,
+          "top_p": null
+        }
+      },
+      "identity": {
+        "backend": "harness:codex:receipt-v1:effort-low:timeout-90s:adapter-cli",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "codex:496fc3f796ec6d100d437abf1a924b843b03ea7a567b96bd4e2d15c2dda5cca0",
+        "inference_configuration": "cfg-18638e0503f95f9f",
+        "model_revision": "configured-default",
+        "suite_revision": "0b116a8f8e35f118f6d779a6f5047daeba6630d2ec5dca3e719663734f82b7d2"
+      },
+      "item_key": "ci-log-diagnosis-recent-1",
+      "model_key": "configured-default",
+      "passed": true,
+      "size_band": "S",
+      "source": "labelled_item",
+      "task_class": "ci-log-diagnosis",
+      "tenant_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "backend_id": "harness:codex:receipt-v1:effort-low:timeout-90s:adapter-cli",
+      "configuration": {
+        "parameters": {
+          "context_strategy_id": "full_context",
+          "max_tokens": null,
+          "reasoning_effort": null,
+          "temperature": null,
+          "top_p": null
+        }
+      },
+      "identity": {
+        "backend": "harness:codex:receipt-v1:effort-low:timeout-90s:adapter-cli",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "codex:496fc3f796ec6d100d437abf1a924b843b03ea7a567b96bd4e2d15c2dda5cca0",
+        "inference_configuration": "cfg-18638e0503f95f9f",
+        "model_revision": "configured-default",
+        "suite_revision": "0b116a8f8e35f118f6d779a6f5047daeba6630d2ec5dca3e719663734f82b7d2"
+      },
+      "item_key": "docs-edit-recent-1",
+      "model_key": "configured-default",
+      "passed": true,
+      "size_band": "S",
+      "source": "labelled_item",
+      "task_class": "docs-edit",
+      "tenant_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "backend_id": "harness:codex:receipt-v1:effort-low:timeout-90s:adapter-cli",
+      "configuration": {
+        "parameters": {
+          "context_strategy_id": "full_context",
+          "max_tokens": null,
+          "reasoning_effort": null,
+          "temperature": null,
+          "top_p": null
+        }
+      },
+      "identity": {
+        "backend": "harness:codex:receipt-v1:effort-low:timeout-90s:adapter-cli",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "codex:496fc3f796ec6d100d437abf1a924b843b03ea7a567b96bd4e2d15c2dda5cca0",
+        "inference_configuration": "cfg-18638e0503f95f9f",
+        "model_revision": "configured-default",
+        "suite_revision": "0b116a8f8e35f118f6d779a6f5047daeba6630d2ec5dca3e719663734f82b7d2"
+      },
+      "item_key": "failing-test-fix-recent-1",
+      "model_key": "configured-default",
+      "passed": true,
+      "size_band": "S",
+      "source": "labelled_item",
+      "task_class": "failing-test-fix",
+      "tenant_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "backend_id": "harness:codex:receipt-v1:effort-low:timeout-90s:adapter-cli",
+      "configuration": {
+        "parameters": {
+          "context_strategy_id": "full_context",
+          "max_tokens": null,
+          "reasoning_effort": null,
+          "temperature": null,
+          "top_p": null
+        }
+      },
+      "identity": {
+        "backend": "harness:codex:receipt-v1:effort-low:timeout-90s:adapter-cli",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "codex:496fc3f796ec6d100d437abf1a924b843b03ea7a567b96bd4e2d15c2dda5cca0",
+        "inference_configuration": "cfg-18638e0503f95f9f",
+        "model_revision": "configured-default",
+        "suite_revision": "0b116a8f8e35f118f6d779a6f5047daeba6630d2ec5dca3e719663734f82b7d2"
+      },
+      "item_key": "host-read-only-recent-1",
+      "model_key": "configured-default",
+      "passed": true,
+      "size_band": "S",
+      "source": "labelled_item",
+      "task_class": "host-read-only",
+      "tenant_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "backend_id": "harness:codex:receipt-v1:effort-low:timeout-90s:adapter-cli",
+      "configuration": {
+        "parameters": {
+          "context_strategy_id": "full_context",
+          "max_tokens": null,
+          "reasoning_effort": null,
+          "temperature": null,
+          "top_p": null
+        }
+      },
+      "identity": {
+        "backend": "harness:codex:receipt-v1:effort-low:timeout-90s:adapter-cli",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "codex:496fc3f796ec6d100d437abf1a924b843b03ea7a567b96bd4e2d15c2dda5cca0",
+        "inference_configuration": "cfg-18638e0503f95f9f",
+        "model_revision": "configured-default",
+        "suite_revision": "0b116a8f8e35f118f6d779a6f5047daeba6630d2ec5dca3e719663734f82b7d2"
+      },
+      "item_key": "rebase-conflict-recent-1",
+      "model_key": "configured-default",
+      "passed": false,
+      "size_band": "S",
+      "source": "labelled_item",
+      "task_class": "rebase-conflict",
+      "tenant_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "backend_id": "harness:codex:receipt-v1:effort-low:timeout-90s:adapter-cli",
+      "configuration": {
+        "parameters": {
+          "context_strategy_id": "full_context",
+          "max_tokens": null,
+          "reasoning_effort": null,
+          "temperature": null,
+          "top_p": null
+        }
+      },
+      "identity": {
+        "backend": "harness:codex:receipt-v1:effort-low:timeout-90s:adapter-cli",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "codex:496fc3f796ec6d100d437abf1a924b843b03ea7a567b96bd4e2d15c2dda5cca0",
+        "inference_configuration": "cfg-18638e0503f95f9f",
+        "model_revision": "configured-default",
+        "suite_revision": "0b116a8f8e35f118f6d779a6f5047daeba6630d2ec5dca3e719663734f82b7d2"
+      },
+      "item_key": "review-thread-reply-recent-1",
+      "model_key": "configured-default",
+      "passed": true,
+      "size_band": "S",
+      "source": "labelled_item",
+      "task_class": "review-thread-reply",
+      "tenant_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "backend_id": "harness:codex:receipt-v1:effort-low:timeout-90s:adapter-cli",
+      "configuration": {
+        "parameters": {
+          "context_strategy_id": "full_context",
+          "max_tokens": null,
+          "reasoning_effort": null,
+          "temperature": null,
+          "top_p": null
+        }
+      },
+      "identity": {
+        "backend": "harness:codex:receipt-v1:effort-low:timeout-90s:adapter-cli",
+        "grader_revision": "deterministic-checker-v1",
+        "harness_revision": "codex:496fc3f796ec6d100d437abf1a924b843b03ea7a567b96bd4e2d15c2dda5cca0",
+        "inference_configuration": "cfg-18638e0503f95f9f",
+        "model_revision": "configured-default",
+        "suite_revision": "0b116a8f8e35f118f6d779a6f5047daeba6630d2ec5dca3e719663734f82b7d2"
+      },
+      "item_key": "ticket-evidence-fix-recent-1",
+      "model_key": "configured-default",
+      "passed": true,
+      "size_band": "S",
+      "source": "labelled_item",
+      "task_class": "ticket-evidence-fix",
+      "tenant_id": "00000000-0000-0000-0000-000000000001"
+    }
+  ],
+  "tenant_id": "00000000-0000-0000-0000-000000000001"
+}
