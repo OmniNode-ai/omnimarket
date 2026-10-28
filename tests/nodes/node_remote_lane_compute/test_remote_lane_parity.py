@@ -7,7 +7,7 @@
 and ``closing_outcome``, ``final_lane_outcome``, ``parse_delegation_line`` and
 ``waiting_on_background``) on generated inputs. Each placement case carries the
 readings' evaluated facts; the expected answer is the runner's.
-Opus expectations now require refusal under RULING 2026-10-26T11:31:48Z;
+Opus expectations now require refusal under RULING 2026-10-28T13:32:09Z;
 all non-Opus recorded answers remain unchanged.
 """
 

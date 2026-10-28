@@ -20,3 +20,5 @@ class ModelLaneModelPolicyRequest(BaseModel):
     available_models: tuple[str, ...] | None = None
     available_engines: tuple[str, ...] | None = None
     code_edit_ready: bool = False
+    # complexity:<band B4 or above> or sonnet-failed:<run or lane>; Opus needs one.
+    escalation_reason: str | None = None

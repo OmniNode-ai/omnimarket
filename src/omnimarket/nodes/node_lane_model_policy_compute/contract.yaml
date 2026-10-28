@@ -34,9 +34,12 @@ runtime_dispatch:
   command_topic: onex.cmd.omnimarket.lane-model-policy-requested.v1
 terminal_event: onex.evt.omnimarket.lane-model-policy-resolved.v1
 lane_model_policy:
-  version: "2026-10-26.1"
-  ruling: "RULING 2026-10-26T11:31:48Z lane=orchestrator-31d9 (OMN-17427)"
+  version: "2026-10-28.1"
+  ruling: "RULING 2026-10-28T13:32:09Z lane=orchestrator-31d9 (OMN-17427) amends=2026-10-26T11:31:48Z: Sonnet is the default for every lane; Opus only with an escalation_reason of complexity:<band B4 or above> or sonnet-failed:<run or lane>"
   ceiling: sonnet
+  escalation_ceiling: opus
+  escalation_models: [opus]
+  escalation_min_band: B4
   order: [code-edit, glm, codex, sonnet, opus]
   engines: {code-edit: code-edit, glm: glm, codex: codex, sonnet: claude, opus: claude}
   aliases:
@@ -44,7 +47,7 @@ lane_model_policy:
     claude-opus: opus
     codex-high: codex
     codex-xhigh: codex
-  band_ceilings: {B0: null, B1: glm, B1c: code-edit, B2: sonnet, B3: sonnet, B4: sonnet, B5: sonnet}
+  band_ceilings: {B0: null, B1: glm, B1c: code-edit, B2: sonnet, B3: sonnet, B4: opus, B5: opus}
   low_risk_classes: [doc, test, lint, small-fix]
   claude_only_kinds: [host-tick-repair, claude-workflow]
 metadata:
