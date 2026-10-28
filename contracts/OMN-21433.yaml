@@ -1,0 +1,52 @@
+schema_version: 1.0.0
+ticket_id: OMN-21433
+title: A delegation routing test leaves the routing handler's tier ladder bound, so the escalation test
+  after it in the same CI shard reads the wrong ladder
+summary: test_delegation_refusal_reads_overlay routes through the handler, which binds the handler's
+  process-global tier ladder and task-class contract cache. The test cleared only the bifrost endpoint
+  cache, so test_cloud_escalation_omn13140 read cheap_cloud where it expected cheap_frontier whenever
+  the shard planner dealt the two files to one shard in that order. The test now forgets all three
+  globals on setup and teardown.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-routing-test-leaves-no-global
+  statement: A routing test that binds the handler's globals restores them, so file order does not
+    change another file's result.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the overlay refusal file followed by the cloud escalation file passes in one pytest
+      process -- falsifier: uv run pytest tests/test_delegation_refusal_reads_overlay.py tests/unit/delegation/test_cloud_escalation_omn13140.py
+      fails with cheap_cloud == cheap_frontier on the tree without the fix'
+  - id: AC2
+    statement: 'AC2: a focused test runs the two files in that order and fails on the tree without the
+      fix -- falsifier: uv run pytest tests/unit/delegation/test_routing_globals_isolated_omn21433.py
+      with the fix reverted exits non-zero'
+evidence_requirements:
+- kind: tests
+  description: Order isolation test.
+  command: uv run pytest tests/unit/delegation/test_routing_globals_isolated_omn21433.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21433-ac1
+  description: AC1 bound to the two files run in the failing order.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_delegation_refusal_reads_overlay.py tests/unit/delegation/test_cloud_escalation_omn13140.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21433-ac2
+  description: AC2 bound to the order isolation test.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_routing_globals_isolated_omn21433.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
