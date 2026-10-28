@@ -97,7 +97,8 @@ def _add_two(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 def _test_json(monkeypatch: pytest.MonkeyPatch, run: Any) -> dict[str, Any]:
     monkeypatch.setattr(f"{_HANDLER}.run_pinned_delegation", run)
     result = CliRunner().invoke(models_group, ["test", "openrouter", "--json"])
-    return json.loads(result.output.strip().splitlines()[-1])  # type: ignore[no-any-return]
+    shown: dict[str, Any] = json.loads(result.output.strip().splitlines()[-1])
+    return shown
 
 
 def test_ac1_a_429_on_the_first_model_tries_the_next_and_the_provider_passes(
