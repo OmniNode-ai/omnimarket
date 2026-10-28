@@ -23,7 +23,7 @@ _WORKFLOW = (
 _REUSABLE = (
     "OmniNode-ai/omnibase_infra/.github/workflows/runtime-rebuild-trigger-reusable.yml"
 )
-_AMD64_PIN = "28a9da0e596ad834f06e8a3bd2549409e7b1aaca"
+_AMD64_PIN = "dev-20261028175438-79bc8a26389c"
 
 
 def _publisher() -> dict[str, Any]:

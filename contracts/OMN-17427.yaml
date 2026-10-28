@@ -963,7 +963,12 @@ requirements:
     statement: "The runtime rebuild caller selects the immutable reusable revision carrying the arch-amd64 publisher runner label and passes the merge identity and overlay credentials."
     acceptance:
       - id: "AC4543"
-        statement: "AC4543: the rebuild caller selects 28a9da0e596ad834f06e8a3bd2549409e7b1aaca and passes the merge revision and overlay app secrets without an infra_ref override -- falsifier: uv run pytest tests/ci/test_rebuild_trigger_arch_runner_pin_omn17427.py -q fails on the merge-base caller's old pin."
+        statement: "AC4543: the rebuild caller selects the dev-merge tag dev-20261028175438-79bc8a26389c of omnibase_infra and passes the merge revision and overlay app secrets without an infra_ref override -- falsifier: uv run pytest tests/ci/test_rebuild_trigger_arch_runner_pin_omn17427.py -q fails on the merge-base caller's old pin."
+  - id: "req-pr4543-first-party-dev-merge-tags"
+    statement: "Workflow references to our own repositories are dev-merge tags, and the pin check is omnibase_core's check-action-pins reading this repository's overlay."
+    acceptance:
+      - id: "AC4544"
+        statement: "AC4544: the pre-commit hook rev and the ci.yml step name the same omnibase_core dev-merge tag, the overlay lists only sha exceptions with a reason, and every first-party uses in the workflows is a dev-merge tag or a listed exception -- falsifier: uv run pytest tests/ci/test_action_pin_wiring_omn17427.py -q fails on the merge-base repository, which has no overlay."
 evidence_requirements:
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
@@ -4109,7 +4114,7 @@ dod_evidence:
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_rebuild_trigger_arch_runner_pin_omn17427.py -q --no-cov -p no:randomly --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
-        check_value: "grep -q 'runtime-rebuild-trigger-reusable.yml@28a9da0e596ad834f06e8a3bd2549409e7b1aaca' .github/workflows/runtime-rebuild-trigger.yml && ! grep -q 'runtime-rebuild-trigger-reusable.yml@cb5c0cfd' .github/workflows/runtime-rebuild-trigger.yml"
+        check_value: "grep -q 'runtime-rebuild-trigger-reusable.yml@dev-20261028175438-79bc8a26389c' .github/workflows/runtime-rebuild-trigger.yml && ! grep -q 'runtime-rebuild-trigger-reusable.yml@cb5c0cfd' .github/workflows/runtime-rebuild-trigger.yml"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-pr4543-rebuild-deploy-probe"
     description: "Hosted deployment wiring probe parses this checkout's rebuild caller and requires the amd64 reusable revision, merge identity and explicit overlay credentials. It fails on the merge-base pin and needs only the checkout and locked dependencies, with no lab access, network or secrets. This is a deployment configuration readback, not a claim that a runtime rebuild has run."
@@ -4117,4 +4122,12 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_rebuild_trigger_arch_runner_pin_omn17427.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-first-party-dev-merge-tags"
+    description: "The hook and the CI step run omnibase_core's check-action-pins at one dev-merge tag against this repository's overlay, and no first-party workflow ref is a sha outside the listed exceptions. The merge base has no overlay, so the test fails there."
+    source: "manual"
+    binds_ac: ["AC4544"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_action_pin_wiring_omn17427.py -q --no-cov -p no:randomly --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
