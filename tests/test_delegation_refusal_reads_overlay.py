@@ -121,6 +121,21 @@ _DEVELOPER_OVERLAY = textwrap.dedent(
 )
 
 
+def _reset_routing_caches() -> None:
+    """Forget every process-global the routing handler fills from the environment.
+
+    ``_route`` makes the handler bind ``_config`` (the tier ladder, with the
+    placements this file's contract produced) and cache the task-class
+    contract. Left set, the next test file in the same pytest process routes
+    on this file's ladder: ``test_cloud_escalation_omn13140`` read a
+    ``cheap_cloud`` ladder where it expected ``cheap_frontier`` whenever the
+    CI shard planner dealt the two files to one shard in this order.
+    """
+    routing._load_bifrost_endpoints.cache_clear()
+    routing._get_task_class_contract.cache_clear()
+    routing._config = None
+
+
 @pytest.fixture
 def contract_without_overlay(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -133,11 +148,11 @@ def contract_without_overlay(
     monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract_path))
     monkeypatch.setenv("BIFROST_OVERLAY_PATH", str(overlay_path))
     monkeypatch.delenv("OMNIDASH_ANALYTICS_DB_URL", raising=False)
-    routing._load_bifrost_endpoints.cache_clear()
+    _reset_routing_caches()
     try:
         yield overlay_path
     finally:
-        routing._load_bifrost_endpoints.cache_clear()
+        _reset_routing_caches()
 
 
 @pytest.fixture

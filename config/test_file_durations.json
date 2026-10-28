@@ -2474,6 +2474,7 @@
   "tests/unit/delegation/test_routing_complexity_trusted_inputs_omn18341.py": 8.15,
   "tests/unit/delegation/test_routing_contracts_match_the_recorded_probe_omn18626.py": 0.16,
   "tests/unit/delegation/test_routing_eval_line_gate_omn19797.py": 0.06,
+  "tests/unit/delegation/test_routing_globals_isolated_omn21433.py": 4.48,
   "tests/unit/delegation/test_rubric_acceptance_omn20166.py": 5.12,
   "tests/unit/delegation/test_rubric_recorded_not_deciding_omn20165.py": 21.74,
   "tests/unit/delegation/test_rung_call_timeout_capped.py": 11.71,
