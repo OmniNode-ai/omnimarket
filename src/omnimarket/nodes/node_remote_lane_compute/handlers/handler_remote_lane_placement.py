@@ -28,8 +28,9 @@ and places as before.
 OMN-21396: supplied ladder facts choose the cheapest eligible engine up to the route
 ceiling, escalating past failed attempts and returning one experiment row for the last.
 A lane declaring a capability the Codex sandbox cannot grant skips the Codex rung.
-RULING 2026-10-26T11:31:48Z disables Opus for these background lanes, including
-legacy requests and pinned routes; failed Sonnet attempts stop with no next engine.
+RULING 2026-10-28T13:32:09Z makes Sonnet the default and admits Opus only with an
+escalation_reason (complexity:<B4 or above> or sonnet-failed:<run or lane>), for legacy
+requests and pinned routes alike; a failed Sonnet attempt is itself that reason.
 """
 
 from __future__ import annotations
@@ -170,11 +171,25 @@ def _select(
     return pick, reasons
 
 
+def _escalation_reason(ladder: ModelRemoteLaneLadder) -> str | None:
+    """The declared reason, else the lane's own failed Sonnet attempt."""
+    if ladder.escalation_reason:
+        return ladder.escalation_reason
+    if any(
+        a.engine == "sonnet" and a.outcome in ESCALATING_OUTCOMES
+        for a in ladder.attempts
+    ):
+        return f"sonnet-failed:{ladder.lane}"
+    return None
+
+
 def _rung_reason(ladder: ModelRemoteLaneLadder, rung: str) -> str | None:
     """The first route or readiness rule that refuses a rung."""
     if ENGINE_LADDER.index(rung) > ENGINE_LADDER.index(ladder.ceiling):
         return "above-route-ceiling"
-    if refusal := lane_model_refusal(rung):
+    if refusal := lane_model_refusal(
+        rung, escalation_reason=_escalation_reason(ladder)
+    ):
         return refusal
     if ladder.pinned and rung != ladder.ceiling:
         return "pinned-to-route"
@@ -241,6 +256,7 @@ class HandlerRemoteLanePlacement:
                 update={
                     "engine": RUNG_HOST_ENGINE[rung],
                     "ladder": None,
+                    "escalation_reason": _escalation_reason(ladder),
                     **(
                         {"limited_hosts": (), "auth_expired_hosts": ()}
                         if rung in QUOTA_FREE_RUNGS
@@ -278,7 +294,9 @@ class HandlerRemoteLanePlacement:
     def _place(
         self, request: ModelRemoteLanePlacementRequest
     ) -> ModelRemoteLanePlacementResult:
-        if refusal := lane_model_refusal(request.engine):
+        if refusal := lane_model_refusal(
+            request.engine, escalation_reason=request.escalation_reason
+        ):
             return ModelRemoteLanePlacementResult(
                 host=None,
                 engine=request.engine,

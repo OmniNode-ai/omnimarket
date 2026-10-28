@@ -55,8 +55,8 @@ nothing (no Agent,
 Workflow, lane skill or remote-lane runner call), is refused with the lines it read. A tick whose own ``lab-fill``
 line sent lanes into every free slot (``idle_after=0``) answers the headroom by itself.
 
-RULING 2026-10-26T11:31:48Z: Claude fills use Sonnet. Explicit Opus requirements
-are skipped with the ruling in the existing backlog report, without consuming a slot.
+RULING 2026-10-28T13:32:09Z: Claude fills use Sonnet. Explicit Opus requirements
+(a fill carries no escalation_reason) are skipped with the ruling in the existing backlog report, without consuming a slot.
 
 OMN-21396: before selecting any candidate kind, the effect reads scope=fixer
 HOLDs from the declared ledger and its archives. Held work is reported with

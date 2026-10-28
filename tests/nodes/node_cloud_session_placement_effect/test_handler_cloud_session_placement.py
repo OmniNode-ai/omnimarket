@@ -400,4 +400,4 @@ def test_no_opus_cloud_route_is_refused(tmp_path: Path, model: str) -> None:
         tmp_path, "route", brief="Lane kind: small-code", repo="repo_a", model=model
     )
     assert result.refusal is not None
-    assert "RULING 2026-10-26T11:31:48Z" in result.refusal
+    assert "RULING 2026-10-28T13:32:09Z" in result.refusal

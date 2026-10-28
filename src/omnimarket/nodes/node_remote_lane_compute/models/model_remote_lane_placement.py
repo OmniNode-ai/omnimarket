@@ -99,6 +99,8 @@ class ModelRemoteLaneLadder(BaseModel):
     code_edit_ready: bool = False
     local_model_slots: int = Field(default=0, ge=0)
     attempts: tuple[ModelRemoteLaneAttempt, ...] = ()
+    # complexity:<band B4 or above> or sonnet-failed:<run or lane>; Opus needs one.
+    escalation_reason: str | None = None
 
     @field_validator("ceiling")
     @classmethod
@@ -134,6 +136,8 @@ class ModelRemoteLanePlacementRequest(BaseModel):
     launching_venv_hash: str | None = Field(default=None, min_length=1)
     dispatch_venv_required: bool = False
     ladder: ModelRemoteLaneLadder | None = None
+    # The same reason for a request without ladder facts (the legacy single-engine placement).
+    escalation_reason: str | None = None
 
 
 class ModelRemoteLaneHostVerdict(BaseModel):

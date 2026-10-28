@@ -1680,7 +1680,7 @@ def test_no_opus_required_engine_is_skipped_with_ruling(required):
     assert result.idle_after == 2
     assert result.skipped[0]["key"] == "opus-only"
     assert (
-        "RULING 2026-10-26T11:31:48Z lane=orchestrator-31d9" in result.skipped[0]["why"]
+        "RULING 2026-10-28T13:32:09Z lane=orchestrator-31d9" in result.skipped[0]["why"]
     )
 
 
@@ -1706,7 +1706,7 @@ def test_no_opus_brief_requirement_is_skipped_with_ruling(declaration):
         ],
     )
     assert result.sends == []
-    assert "RULING 2026-10-26T11:31:48Z" in result.skipped[0]["why"]
+    assert "RULING 2026-10-28T13:32:09Z" in result.skipped[0]["why"]
 
 
 def test_no_opus_skip_preserves_slot_for_the_next_item():
@@ -1805,7 +1805,7 @@ def test_no_opus_lab_fill_runner_gets_sonnet_and_reports_opus_skip(tmp_path: Pat
     assert "Required engine: claude" in brief
     missing = next(row for row in found if row[1] == "lab-fill-backlog")
     assert "opus-only" in missing[2]
-    assert "RULING 2026-10-26T11:31:48Z lane=orchestrator-31d9" in missing[2]
+    assert "RULING 2026-10-28T13:32:09Z lane=orchestrator-31d9" in missing[2]
 
 
 def test_retired_plugin_registry_environment_keeps_snapshot_sources(tmp_path):
@@ -1843,7 +1843,7 @@ def test_no_opus_brief_requirement_cannot_be_hidden_by_an_item_requirement():
     )
     assert result.sends == []
     assert result.idle_after == 2
-    assert "RULING 2026-10-26T11:31:48Z" in result.skipped[0]["why"]
+    assert "RULING 2026-10-28T13:32:09Z" in result.skipped[0]["why"]
 
 
 def test_glm_queue_entries_preserve_the_existing_claude_reservation_accounting():
