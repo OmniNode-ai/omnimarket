@@ -8,15 +8,15 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import TYPE_CHECKING, cast
 
+from omnimarket.models.model_backlog_item import (
+    REPO_KINDS_CONTEXT_KEY,
+    backlog_item_refusal,
+)
 from omnimarket.models.seam_reading import (
     EnumSeamCrossingState,
     ModelSeamCrossing,
     ModelSeamReading,
     ModelSeamWindow,
-)
-from omnimarket.nodes.node_idle_slot_fill_effect.models.model_idle_slot_fill import (
-    REPO_KINDS_CONTEXT_KEY,
-    backlog_item_refusal,
 )
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     resolve_lane_model,

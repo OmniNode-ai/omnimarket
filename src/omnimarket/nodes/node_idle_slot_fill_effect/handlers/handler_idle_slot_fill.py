@@ -90,6 +90,10 @@ from omnimarket.handlers.work_ledger_fixer_holds import fixer_hold_reasons
 from omnimarket.handlers.work_ledger_text import split_ledger_rows
 from omnimarket.models.lab_fill import ModelLabFillTicketFacts
 from omnimarket.models.landing_ledger_row import ModelLandingLedgerRow
+from omnimarket.models.model_backlog_item import (
+    REPO_KINDS_CONTEXT_KEY,
+    backlog_item_refusal,
+)
 from omnimarket.nodes.node_idle_slot_fill_effect import overlay
 from omnimarket.nodes.node_idle_slot_fill_effect.models import (
     ModelBacklogSources,
@@ -99,10 +103,6 @@ from omnimarket.nodes.node_idle_slot_fill_effect.models import (
     ModelIdleTurnGuardResult,
     ModelLabFillRequest,
     ModelLabFillResult,
-)
-from omnimarket.nodes.node_idle_slot_fill_effect.models.model_idle_slot_fill import (
-    REPO_KINDS_CONTEXT_KEY,
-    backlog_item_refusal,
 )
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     load_policy,

@@ -30,6 +30,9 @@ evidence_requirements:
 - kind: tests
   description: T-S3 tests.
   command: uv run pytest tests/nodes/node_idle_slot_fill_effect tests/nodes/node_remote_lane_compute tests/nodes/node_seam_classify_compute tests/nodes/node_seam_read_orchestrator -q --no-cov --tb=line
+- kind: manual
+  description: 'deploy: read the shared backlog crossing at this head from the public repository and run its fill and seam behavior tests on a hosted runner.'
+  command: uv run pytest tests/nodes/node_idle_slot_fill_effect/test_backlog_item_model.py tests/nodes/node_seam_classify_compute/test_classify_backlog_engine_seams.py -q --no-cov --tb=line
 emergency_bypass:
   enabled: false
   justification: ''
@@ -90,3 +93,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_idle_slot_fill_effect/test_fill_binding_parity.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21475-deploy-backlog-crossing
+  description: 'Hosted deploy readback: the public repository at this exact head must contain the shared backlog model; the fill and SM-00 must still reject malformed items and accept policy engines without cross-node model reach-ins. No lab service is required.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_no_cross_node_reach_in.py tests/nodes/node_idle_slot_fill_effect/test_backlog_item_model.py tests/nodes/node_seam_classify_compute/test_classify_backlog_engine_seams.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: |
+      set -eu;
+      curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/models/model_backlog_item.py" | grep -q '^class ModelBacklogItem(BaseModel):'
+    cwd: .

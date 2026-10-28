@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: MIT
 """Packaged models for node_idle_slot_fill_effect."""
 
+from omnimarket.models.model_backlog_item import ModelBacklogItem
+
 from .model_idle_slot_fill import (
-    ModelBacklogItem,
     ModelBacklogSources,
     ModelIdleSlotFillRequest,
     ModelIdleSlotFillResult,
