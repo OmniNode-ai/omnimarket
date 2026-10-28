@@ -954,6 +954,11 @@ requirements:
     acceptance:
     - id: AC4400
       statement: 'AC4400: config/test_file_durations.json leaves fewer than 50 test files unrecorded -- falsifier: uv run pytest tests/unit/test_ci_shard_plan_record_freshness_omn17427.py -q fails at the merge base (162 unrecorded) and passes at the head (6).'
+  - id: req-gateway-token-under-running-loop
+    statement: A host whose GitHub token resolves reads PR facts in process when the read runs under a running event loop, as dod_verify does.
+    acceptance:
+    - id: AC4401
+      statement: 'AC4401: with GITHUB_TOKEN set, the gateway read client reports that the token resolves when asked from inside a running event loop -- falsifier: uv run pytest tests/unit/handlers/scm/test_handler_gateway_read_client.py -q -k token_that_resolves fails at the merge base and passes at the head.'
   - id: req-live-events-poison-quarantine
     statement: The live-events projection writer dead-letters a poison event to the contract's dlq topic and advances the offset instead of crash-looping, and projects a list-valued source as a string.
     acceptance:
@@ -4086,6 +4091,14 @@ dod_evidence:
           trap 'rm -rf "$probe_dir"' EXIT
           uv build --wheel --out-dir "$probe_dir"
           uv run --no-project --with "$probe_dir"/*.whl python "$PWD/tests/ci/probe_ruling_drift_artifact.py"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-gateway-token-under-running-loop"
+    description: "The gateway read client resolves the GitHub token on a worker thread when a loop is running, so dod_verify on a host whose token resolves reads in process instead of falling back to the bus. The test fails against the merge-base client."
+    source: "manual"
+    binds_ac: ["AC4401"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/scm/test_handler_gateway_read_client.py -q -p no:cacheprovider -k token_that_resolves"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: dod-omn17427-live-events-poison-quarantine
     description: "This pull request makes the live-events runner return the contract's dlq topics as poison_dlq_topics, publish through the runtime producer and commit the offset after a dead-letter, hold the offset when no publisher exists, and project a list source as a string. Nine of the new tests fail at the merge base."
