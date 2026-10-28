@@ -1,0 +1,21 @@
+schema_version: 1.0.0
+ticket_id: OMN-21469
+title: The customer-never-lab routing test leaves routing state behind, so the tier escalation tests fail when it runs first
+summary: placeholder
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-customer-never-lab-leaves-no-global
+  statement: placeholder
+  acceptance:
+  - id: AC1
+    statement: 'AC1: placeholder -- falsifier: placeholder'
+evidence_requirements:
+- kind: tests
+  description: Order isolation test.
+  command: uv run pytest tests/unit/delegation/test_customer_never_lab_leaves_no_routing_global_omn21469.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
