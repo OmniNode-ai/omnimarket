@@ -2,10 +2,9 @@
 # SPDX-License-Identifier: MIT
 """Why a PR handoff ended without handing the PR off (OMN-20636).
 
-Every value is one error chain of node_pr_handoff_orchestrator. The refusal
-codes the decision compute returns map one to one onto the FSM trigger
-``evaluated_<code>`` from WAITING to REFUSED, so each has its own walker path
-and its own asserted chain.
+The refusal codes routed by node_pr_handoff_orchestrator map one to one onto
+the FSM trigger ``evaluated_<code>`` from WAITING to REFUSED, so each has its
+own walker path and its own asserted chain.
 """
 
 from __future__ import annotations
@@ -14,10 +13,13 @@ from enum import StrEnum
 
 
 class EnumPrHandoffErrorCode(StrEnum):
-    """The ``error_code`` of a failed handoff; one per error chain."""
+    """The ``error_code`` of a failed handoff."""
 
     INVALID_REQUEST = "invalid_request"
     """The request cannot be handed off as written (a lane handing to itself, a TERMINAL close with no delegation cell)."""
+
+    REPO_OUT_OF_LANDING_SCOPE = "repo-out-of-landing-scope"
+    """The request's repository is outside the landing scope the caller supplied, so the landing controller will not land it."""
 
     STALE_HEAD = "stale_head"
     """An observation made after the request shows a head other than the one the lane pushed: someone else pushed, or the push failed."""
@@ -53,7 +55,7 @@ class EnumPrHandoffErrorCode(StrEnum):
     """Every append attempt ended with no receipt; the rows may be in the ledger under this request id."""
 
 
-# The refusal codes the decision compute can return, each the suffix of its
+# The refusal codes the orchestrator routes, each the suffix of its
 # FSM trigger ``evaluated_<code>`` (WAITING to REFUSED).
 DECISION_REFUSAL_CODES: frozenset[EnumPrHandoffErrorCode] = frozenset(
     {
@@ -67,5 +69,14 @@ DECISION_REFUSAL_CODES: frozenset[EnumPrHandoffErrorCode] = frozenset(
     }
 )
 
+# The orchestrator does not pass a scope yet, so it has no trigger for this code.
+LANDING_SCOPE_REFUSAL_CODES: frozenset[EnumPrHandoffErrorCode] = frozenset(
+    {EnumPrHandoffErrorCode.REPO_OUT_OF_LANDING_SCOPE}
+)
 
-__all__: list[str] = ["DECISION_REFUSAL_CODES", "EnumPrHandoffErrorCode"]
+
+__all__: list[str] = [
+    "DECISION_REFUSAL_CODES",
+    "LANDING_SCOPE_REFUSAL_CODES",
+    "EnumPrHandoffErrorCode",
+]

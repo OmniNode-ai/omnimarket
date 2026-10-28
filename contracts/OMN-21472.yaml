@@ -1,0 +1,83 @@
+schema_version: 1.0.0
+ticket_id: OMN-21472
+title: 'T-S8: refuse a handoff the controller will not land'
+summary: The handoff decision takes an optional landing_scope tuple the caller reads from its overlay. A
+  repository outside a given scope is refused with the new error code repo-out-of-landing-scope, and the
+  decision carries the refusal as a ledger row for the caller to append. An absent scope leaves the decision
+  as it was. Pure local invocation; hosted deploy smoke exercises the packaged node without external services.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-handoff-landing-scope
+  statement: The handoff decision refuses a repository the controller will not land and returns the refusal row as data.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: The decision for an out-of-scope repository is refuse with the named reason'
+  - id: AC2
+    statement: 'AC2: A refused handoff yields a refusal row as data in the decision result, which the caller
+      appends through the work ledger append effect; the decision node writes nothing'
+  - id: AC3
+    statement: 'AC3: An in-scope repository is unchanged'
+  - id: AC4
+    statement: 'AC4: The landing scope is passed in by the caller and the node carries no repository name'
+  - id: AC5
+    statement: 'AC5: The node depends on no protocol; it takes facts and now'
+evidence_requirements:
+- kind: tests
+  description: Focused landing scope tests and the existing handoff decision tests.
+  command: uv run pytest tests/unit/nodes/node_pr_handoff_decision_compute -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21472-ac1
+  description: AC1 runs the out-of-scope refusal cases, including the refusal with no observation.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_pr_handoff_decision_compute/test_landing_scope.py -q --no-cov --tb=line -k "out_of_scope"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21472-ac2
+  description: AC2 runs the refusal row case and the case that appends the row through the real work ledger append effect.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_pr_handoff_decision_compute/test_landing_scope.py -q --no-cov --tb=line -k "refusal_row"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21472-ac3
+  description: AC3 runs the existing handoff decision, orchestrator and golden chain tests unchanged.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_pr_handoff_decision_compute/test_handler_pr_handoff_decision.py tests/unit/nodes/node_pr_handoff_orchestrator tests/chains/pr_handoff -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21472-ac4
+  description: AC4 runs the case where one request is refused under one fixture overlay and ready under another,
+    and the exact-match and empty-scope cases.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_pr_handoff_decision_compute/test_landing_scope.py -q --no-cov --tb=line -k "overlay or exact or absent"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21472-ac5
+  description: AC5 covers the part present in this tree - the contract declares no protocol_dependencies and the
+    decision is byte-identical across evaluations. The conformance check and the parity harness named by the
+    criterion are not in the tree.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_pr_handoff_decision_compute/test_landing_scope.py -q --no-cov --tb=line -k "protocol or byte_identical"
+    cwd: ${OMNI_HOME}/omnimarket
