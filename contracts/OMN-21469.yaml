@@ -17,8 +17,8 @@ requirements:
   acceptance:
   - id: AC1
     statement: 'AC1: after the customer-never-lab file runs, no routing global is bound and no routing
-      cache is filled -- falsifier: uv run pytest tests/unit/delegation/test_customer_never_lab_leaves_no_routing_global_omn21469.py
-      -k leaves_no_routing_global_set fails with LEAKED _config on the tree without the fix'
+      cache is filled -- falsifier: uv run pytest tests/unit/delegation/test_routing_globals_isolated_omn21433.py
+      -k customer_never_lab fails with LEAKED _config on the tree without the fix'
   - id: AC2
     statement: 'AC2: the customer-never-lab file followed by the tier escalation file, and the reverse
       order, both pass in one pytest process -- falsifier: uv run pytest tests/test_omn17082_customer_never_lab_backend.py
@@ -27,7 +27,7 @@ requirements:
 evidence_requirements:
 - kind: tests
   description: Order isolation tests.
-  command: uv run pytest tests/unit/delegation/test_customer_never_lab_leaves_no_routing_global_omn21469.py -q --no-cov --tb=line
+  command: uv run pytest tests/unit/delegation/test_routing_globals_isolated_omn21433.py -q --no-cov --tb=line
 emergency_bypass:
   enabled: false
   justification: ''
@@ -58,7 +58,7 @@ dod_evidence:
       PYCODE
     cwd: ${OMNI_HOME}/omnimarket
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/delegation/test_customer_never_lab_leaves_no_routing_global_omn21469.py -k leaves_no_routing_global_set -q --no-cov --tb=line
+    check_value: uv run pytest tests/unit/delegation/test_routing_globals_isolated_omn21433.py -k customer_never_lab -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21469-ac2
   description: AC2 runs both orders of the two files in one pytest process.
@@ -67,5 +67,5 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/delegation/test_customer_never_lab_leaves_no_routing_global_omn21469.py -q --no-cov --tb=line
+    check_value: uv run pytest tests/unit/delegation/test_routing_globals_isolated_omn21433.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
