@@ -70,5 +70,5 @@ dod_evidence:
   - check_type: command
     check_value: |
       set -eu;
-      curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_model_setup_effect/handlers/handler_model_setup.py" | grep -q "def _was_throttled"
+      curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_model_setup_effect/handlers/handler_model_setup.py" | grep "def _was_throttled" >/dev/null
     cwd: .
