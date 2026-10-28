@@ -14,7 +14,8 @@ This module proves, at three layers, that a missing/unresolvable contract
 (and, more generally, a verified_count == 0 outcome) is now fail-closed:
 
 1. ``HandlerDodVerify`` — inner state carries a distinct machine-checkable
-   reason (``CONTRACT_MISSING`` / ``NO_CHECKS_VERIFIED``) in ``error_message``.
+   reason (``CONTRACT_MISSING`` within ``EVIDENCE_CHECK_FAILED``, or
+   ``NO_CHECKS_VERIFIED``) in ``error_message``.
 2. ``RuntimeLocal._classify_result`` — the SAME generic classifier the
    ``onex skill dod_verify`` / RuntimeLocal-mediated envelope actually calls
    (not a reimplementation) maps the handler's dict result to FAILED, so the
@@ -67,7 +68,7 @@ class TestHandlerReportsDistinctReason:
         result = handler.handle(_no_contract_payload("OMN-NOEXIST-15380"))
 
         assert isinstance(result, dict)
-        assert result["status"] == "skipped"
+        assert result["status"] == "failed"
         assert result["verified_count"] == 0
         error_message = result.get("error_message")
         assert error_message is not None, (
@@ -75,7 +76,9 @@ class TestHandlerReportsDistinctReason:
             "status with no error_message is indistinguishable from a benign "
             "skip at every downstream consumer that only reads error_message"
         )
-        assert error_message.startswith("CONTRACT_MISSING"), error_message
+        assert error_message.startswith(
+            "EVIDENCE_CHECK_FAILED: contract: CONTRACT_MISSING:"
+        ), error_message
         assert "OMN-NOEXIST-15380" in error_message
 
     def test_all_checks_skipped_with_contract_present_sets_generic_reason(
@@ -227,8 +230,8 @@ class TestCliExitsNonZeroOnMissingContract:
     def test_no_contract_path_and_undiscoverable_ticket_exits_nonzero(
         self,
     ) -> None:
-        """No --contract-path and no discoverable OCC contract (no
-        CONTRACT_REPO_DIR / OMNI_HOME in the subprocess env) -> exit != 0.
+        """No --contract-path and no product repository contract (no
+        OMNI_HOME in the subprocess env) -> exit != 0.
         """
         result = self._run_main(ticket_id="OMN-NOEXIST-CLI-15380")
 
@@ -237,8 +240,10 @@ class TestCliExitsNonZeroOnMissingContract:
             f"contract; got 0\nstdout: {result.stdout}\nstderr: {result.stderr}"
         )
         state = json.loads(result.stdout)
-        assert state["status"] == "skipped"
-        assert state.get("error_message", "").startswith("CONTRACT_MISSING")
+        assert state["status"] == "failed"
+        assert state.get("error_message", "").startswith(
+            "EVIDENCE_CHECK_FAILED: contract: CONTRACT_MISSING:"
+        )
 
     def test_no_contract_path_receipt_is_fail_not_pass(self, tmp_path: Path) -> None:
         """When ONEX_EVIDENCE_ROOT is set, the persisted receipt for a

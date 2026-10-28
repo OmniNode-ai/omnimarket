@@ -220,7 +220,6 @@ def test_no_contract_anywhere_still_refuses(
     state = HandlerDodVerify().handle(
         ModelDodVerifyStartCommand(ticket_id=ticket, execution_audience=_AUDIENCE)
     )
-    collector.release_occ_dev_snapshot()
 
     assert isinstance(state, ModelDodVerifyState)
     assert state.status is not EnumDodVerifyStatus.VERIFIED

@@ -60,16 +60,22 @@ def test_contract_only_on_occ_is_missing_and_occ_is_never_touched(
 
     monkeypatch.setattr(subprocess, "run", spy)
 
+    def refuse_occ_root(_self: EvidenceCollector) -> Path | None:
+        raise AssertionError("missing product contract must not resolve the OCC root")
+
+    monkeypatch.setattr(EvidenceCollector, "_resolve_occ_root", refuse_occ_root)
     collector = EvidenceCollector()
     results = collector.collect(ticket, execution_audience=_AUDIENCE)
-    collector.release_occ_dev_snapshot()
 
     assert len(results) == 1
     assert results[0].evidence_id == "contract"
     assert results[0].status is EnumEvidenceCheckStatus.FAILED
     message = results[0].message or ""
-    assert message.startswith("CONTRACT_MISSING:")
-    assert f"contracts/{ticket}.yaml" in message
+    assert message.startswith(
+        "CONTRACT_MISSING: no product repository carries "
+        f"contracts/{ticket}.yaml in a merged pull request for {ticket}; "
+        "onex_change_control is not consulted."
+    )
     assert touched_occ == []
     assert collector.occ_refresh_outcome is None
     assert collector.occ_resolved_sha is None
