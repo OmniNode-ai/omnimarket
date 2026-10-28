@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_fsm_single_source_check_compute
+version: 1.0.0
+description: Refuse a reducer whose code keeps a second table of its state machine's states or transitions, or never calls execute_transition.
+pack: operator_tooling
+node_role: compute
+display_name: FSM Single Source Check Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_fsm_single_source_check_compute: omnimarket.nodes.node_fsm_single_source_check_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- fsm
+- single-source

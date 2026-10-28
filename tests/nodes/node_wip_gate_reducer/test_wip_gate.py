@@ -41,6 +41,7 @@ from omnimarket.models.wip_gate import (
     ModelWipPolicy,
     ModelWipReading,
     ModelWipReadRequest,
+    ModelWipStateOutcome,
 )
 from omnimarket.nodes.node_wip_gate_reducer.handlers.handler_wip_gate import (
     HandlerWipGate,
@@ -609,6 +610,19 @@ def test_ac11_committed_config_values() -> None:
             trailing_days=7,
             reading_max_age_minutes=10,
             override_evidence_minutes=10,
+            state_outcomes={
+                "admitted": ModelWipStateOutcome(
+                    outcome=EnumWipOutcome.ADMIT, reason=EnumWipReason.UNDER_LIMIT
+                ),
+                "admitted_exempt": ModelWipStateOutcome(
+                    outcome=EnumWipOutcome.ADMIT, reason=EnumWipReason.EXEMPT
+                ),
+                "admitted_override": ModelWipStateOutcome(
+                    outcome=EnumWipOutcome.ADMIT, reason=EnumWipReason.OVERRIDE
+                ),
+                "warned": ModelWipStateOutcome(outcome=EnumWipOutcome.WARN),
+                "refused": ModelWipStateOutcome(outcome=EnumWipOutcome.REFUSE),
+            },
         )
         == CONFIG
     )
@@ -673,3 +687,27 @@ def test_ac12_contract_fsm_loads_without_the_overlay_or_environment(
     fsm, config = load_wip_gate_contract()
     assert fsm.initial_state == "requested"
     assert config.limit_floor == 3
+
+
+def test_every_terminal_state_has_a_declared_outcome_in_the_contract() -> None:
+    terminal = {state.state_name for state in FSM.states if state.is_terminal}
+    assert set(CONFIG.state_outcomes) == terminal
+
+
+def test_the_outcome_of_a_state_is_read_from_the_contract_config() -> None:
+    request = _request(repo=REPO_A)
+    before = evaluate_wip_gate(request, FSM)
+    assert (before.fsm_state, before.outcome) == ("refused", EnumWipOutcome.REFUSE)
+    moved = CONFIG.model_copy(
+        update={
+            "state_outcomes": {
+                **CONFIG.state_outcomes,
+                "refused": ModelWipStateOutcome(
+                    outcome=EnumWipOutcome.WARN, reason=EnumWipReason.EXEMPT
+                ),
+            }
+        }
+    )
+    after = evaluate_wip_gate(request.model_copy(update={"config": moved}), FSM)
+    assert after.fsm_state == "refused"
+    assert (after.outcome, after.reason) == (EnumWipOutcome.WARN, EnumWipReason.EXEMPT)
