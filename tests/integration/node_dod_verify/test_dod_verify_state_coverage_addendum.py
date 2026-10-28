@@ -45,7 +45,7 @@ def test_dry_run_true_propagates_through_dict_path(
     # a locally-present OCC clone would let the rider materialise an origin/dev
     # worktree and resolve a REAL dev-only contract, flipping the verdict to
     # VERIFIED and making the test depend on ambient repo state. The intent here
-    # is only to prove dry_run threads through a SKIPPED verdict.
+    # is only to prove dry_run threads through a FAILED (CONTRACT_MISSING) verdict.
     monkeypatch.delenv("ONEX_CC_REPO_PATH", raising=False)
     monkeypatch.delenv("OMNI_HOME", raising=False)
 
@@ -62,9 +62,11 @@ def test_dry_run_true_propagates_through_dict_path(
 
     assert isinstance(result, dict)
     assert result["dry_run"] is True
-    # No contract resolvable for this synthetic ticket -> SKIPPED, but dry_run
-    # must still be threaded through regardless of the resulting verdict.
-    assert result["status"] == EnumDodVerifyStatus.SKIPPED.value
+    # No product repository carries a contract for this synthetic ticket ->
+    # fail closed (CONTRACT_MISSING), and dry_run must still be threaded
+    # through regardless of the resulting verdict.
+    assert result["status"] == EnumDodVerifyStatus.FAILED.value
+    assert "CONTRACT_MISSING" in result["error_message"]
 
 
 @pytest.mark.unit
