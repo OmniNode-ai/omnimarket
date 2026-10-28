@@ -86,7 +86,7 @@ def _served(
         del item, configuration
         return ModelCapabilityGridGrade(
             passed=True,
-            host="192.168.86.201",
+            host="model-host.example",
             answering_backend=answering_backend,
             served_model=served_model or model.model_revision,
         )
@@ -125,7 +125,7 @@ def test_graded_run_rows_record_backend_host_and_answering_backend() -> None:
     assert len(rows) == 5
     for row in rows:
         assert row.backend_id == "local-coder"
-        assert row.host == "192.168.86.201"
+        assert row.host == "model-host.example"
         assert row.answering_backend == "local-coder"
         assert row_identity_gaps(row) == ()
 
@@ -176,7 +176,7 @@ def test_call_grid_backend_records_the_endpoint_host_and_the_served_model() -> N
     backend = ModelGridBackend(
         model_key="Qwen3.8-27B",
         backend_id="local-coder",
-        endpoint_url="http://192.168.86.201:8000/v1/chat/completions",
+        endpoint_url="http://model-host.example:8000/v1/chat/completions",
         served_model_id="Qwen3.8-27B",
     )
     sent: list[dict[str, Any]] = []
@@ -191,7 +191,7 @@ def test_call_grid_backend_records_the_endpoint_host_and_the_served_model() -> N
     answer = call_grid_backend(backend, "summarize this", timeout=30.0, post=post)
     assert sent[0]["url"] == backend.endpoint_url
     assert sent[0]["body"]["model"] == "Qwen3.8-27B"
-    assert answer.host == "192.168.86.201"
+    assert answer.host == "model-host.example"
     assert answer.answering_backend == "local-coder"
     assert answer.served_model == "Qwen3.8-27B"
     assert answer.answer_text == "The answer."
@@ -216,7 +216,7 @@ def test_build_grid_map_run_writes_rows_whose_three_serving_fields_are_non_empty
     grades = {
         (item.item_key, _MODEL.backend_id): ModelCapabilityGridGrade(
             passed=True,
-            host="192.168.86.201",
+            host="model-host.example",
             answering_backend="local-coder",
             served_model="Qwen3.8-27B",
         )
@@ -274,7 +274,7 @@ def test_grid_run_command_writes_rows_with_the_three_serving_fields(
                 {
                     "model_key": "Qwen3.8-27B",
                     "backend_id": "local-coder",
-                    "endpoint_url": "http://192.168.86.201:8000/v1/chat/completions",
+                    "endpoint_url": "http://model-host.example:8000/v1/chat/completions",
                     "served_model_id": "Qwen3.8-27B",
                 }
             ]
@@ -342,6 +342,6 @@ def test_deploy_probe_the_packaged_grid_handler_and_lab_command_record_serving_i
     assert callable(module.main)
     rows = HandlerCapabilityGridRun(_served()).handle(_request(1))
     assert (rows[0].host, rows[0].answering_backend) == (
-        "192.168.86.201",
+        "model-host.example",
         "local-coder",
     )

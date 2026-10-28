@@ -47,5 +47,8 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_capability_map_compute/test_graded_run_serving_identity_omn21434.py -k deploy_probe -q --no-cov
     cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_delegation_capability_map/handlers/handler_capability_grid_run.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "ModelCapabilityGridGrade" > /dev/null'
+    cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC1
