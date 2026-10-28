@@ -1,128 +1,47 @@
 ---
-schema_version: 1.0.0
-ticket_id: OMN-21469
-title: 'onex dashboard serves the current OmniDash: omnidash v1.1.11 released and pinned by omnimarket'
-summary: 'onex dashboard pins omnidash v1.1.11, the first bundle with the seven-page navigation and one Settings page; the
-  pinned digest is the published asset''s, verified through the bundle code. AC1 (the version bump) is bound in omnidash''s
-  contracts/OMN-21469.yaml. AC4 and AC5 (from omnimarket#4530, renumbered from its AC1 and AC2 when this contract and #4530''s
-  met on dev) prove the customer-never-lab routing test restores the routing globals it binds, so file order cannot change
-  another file''s result.'
+schema_version: "1.0.0"
+ticket_id: "OMN-21469"
+title: "onex dashboard serves the current OmniDash: omnidash v1.1.11 released and pinned by omnimarket"
+summary: "onex dashboard pins omnidash v1.1.11, the first bundle with the seven-page navigation and one Settings page; the pinned digest is the published asset's, verified through the bundle code. AC1 (the version bump) is bound in omnidash's contracts/OMN-21469.yaml."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-- id: req-current-dashboard-bundle
-  statement: onex dashboard serves the omnidash release cut from the current dashboard, pinned by the digest of its published
-    asset.
-  acceptance:
-  - id: AC2
-    statement: 'AC2: tag v1.1.11 sits on that bump PR''s merge commit, and its GitHub release carries omnidash-bundle-v1.1.11.tar.gz
-      and omnidash-bundle-v1.1.11.tar.gz.sha256 from a successful publish-dashboard-bundle run -- falsifier: gh api repos/OmniNode-ai/omnidash/releases/tags/v1.1.11
-      lacks either asset, the tag commit differs from the merge commit, or the run for the tag did not conclude success'
-  - id: AC3
-    statement: 'AC3: omnimarket dev pins dashboard_bundle version v1.1.11 with the sha256 of that published asset, and onex
-      dashboard from that build serves the seven-page navigation with Settings -- falsifier: the pinned sha256 differs from
-      sha256sum of the downloaded asset, or the served page read shows no Settings entry in its navigation'
-- id: req-customer-never-lab-leaves-no-global
-  statement: The customer-never-lab routing tests restore the routing handler's globals, so file order cannot change another
-    file's result.
-  acceptance:
-  - id: AC4
-    statement: 'AC4: after the customer-never-lab file runs, no routing global is bound and no routing cache is filled --
-      falsifier: uv run pytest tests/unit/delegation/test_routing_globals_isolated_omn21433.py -k customer_never_lab fails
-      with LEAKED _config on the tree without the fix'
-  - id: AC5
-    statement: 'AC5: the customer-never-lab file followed by the tier escalation file, and the reverse order, both pass in
-      one pytest process -- falsifier: uv run pytest tests/test_omn17082_customer_never_lab_backend.py tests/unit/delegation/test_delegation_tier_escalation.py
-      exits non-zero with cheap_cloud == cheap_frontier when the routing globals leak and tests/unit/delegation/conftest.py
-      does not reset them'
+  - id: "req-current-dashboard-bundle"
+    statement: |-
+      onex dashboard serves the omnidash release cut from the current dashboard, pinned by the digest of its published asset.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: tag v1.1.11 sits on that bump PR's merge commit, and its GitHub release carries omnidash-bundle-v1.1.11.tar.gz and omnidash-bundle-v1.1.11.tar.gz.sha256 from a successful publish-dashboard-bundle run -- falsifier: gh api repos/OmniNode-ai/omnidash/releases/tags/v1.1.11 lacks either asset, the tag commit differs from the merge commit, or the run for the tag did not conclude success
+      - id: "AC3"
+        statement: |-
+          AC3: omnimarket dev pins dashboard_bundle version v1.1.11 with the sha256 of that published asset, and onex dashboard from that build serves the seven-page navigation with Settings -- falsifier: the pinned sha256 differs from sha256sum of the downloaded asset, or the served page read shows no Settings entry in its navigation
 evidence_requirements:
-- kind: tests
-  description: 'AC2: the v1.1.11 tag peels to omnidash#471''s merge commit 3149cd09 (git ls-remote), the release carries the
-    bundle (verified by ensure_bundle against its digest) and the .sha256 sidecar naming that digest and asset, and the publish-dashboard-bundle
-    run for the tag on that commit concluded success; with the pin floor, so the item is about the release omnimarket pins.'
-  command: uv run pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -q -p no:randomly -k "seven_page_release or
-    release_tag_peels or bundle_and_its_sidecar or publish_run_for_the_tag"
-- kind: tests
-  description: 'AC3: the pin is v1.1.11 or later, and the pinned asset, fetched and verified through ensure_bundle, lists
-    Settings in its navigation entries. At the v1.1.10 pin both fail.'
-  command: uv run pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -q -p no:randomly -k "seven_page_release or
-    lists_settings_in_its_navigation"
-- kind: tests
-  description: 'AC4 and AC5: Order isolation tests.'
-  command: uv run pytest tests/unit/delegation/test_routing_globals_isolated_omn21433.py -q --no-cov --tb=line
+  - kind: "tests"
+    description: "AC2: the v1.1.11 tag peels to omnidash#471's merge commit 3149cd09 (git ls-remote), the release carries the bundle (verified by ensure_bundle against its digest) and the .sha256 sidecar naming that digest and asset, and the publish-dashboard-bundle run for the tag on that commit concluded success; with the pin floor, so the item is about the release omnimarket pins."
+    command: 'uv run pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -q -p no:randomly -k "seven_page_release or release_tag_peels or bundle_and_its_sidecar or publish_run_for_the_tag"'
+  - kind: "tests"
+    description: "AC3: the pin is v1.1.11 or later, and the pinned asset, fetched and verified through ensure_bundle, lists Settings in its navigation entries. At the v1.1.10 pin both fail."
+    command: 'uv run pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -q -p no:randomly -k "seven_page_release or lists_settings_in_its_navigation"'
 emergency_bypass:
   enabled: false
-  justification: ''
-  follow_up_ticket_id: ''
+  justification: ""
+  follow_up_ticket_id: ""
 dod_evidence:
-- id: dod-omn21469-ac2-release-v1-1-11
-  description: 'AC2: the v1.1.11 tag peels to omnidash#471''s merge commit 3149cd09 (git ls-remote), the release carries the
-    bundle (fetched and verified by ensure_bundle against e231574d...) and the .sha256 sidecar naming that digest and asset,
-    and the publish-dashboard-bundle run for the tag on that commit concluded success; and omnimarket''s pin names that release
-    (the floor case), so this item fails at a merge base still pinning v1.1.10. Each case fails when its part is missing or
-    wrong: a tag on another commit, an absent or different sidecar, no successful run, or a pin below v1.1.11.'
-  source: manual
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -q -p no:randomly -k "seven_page_release
-      or release_tag_peels or bundle_and_its_sidecar or publish_run_for_the_tag"
-    cwd: ${OMNI_HOME}/omnimarket
-  binds_ac:
-  - AC2
-- id: dod-omn21469-ac3-bundle-pin-1-1-11
-  description: 'AC3: onex dashboard pins omnidash v1.1.11 or later, and the pinned asset, fetched and verified through ensure_bundle,
-    the path onex dashboard serves from, carries the Settings entry in its primary navigation list (page local-settings, label
-    Settings), not only the word, which the route map and page heading also use. At the v1.1.10 pin the floor case fails and
-    the verified v1.1.10 bundle has no such entry.'
-  source: manual
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -q -p no:randomly -k "seven_page_release
-      or lists_settings_in_its_navigation"
-    cwd: ${OMNI_HOME}/omnimarket
-  binds_ac:
-  - AC3
-- id: dod-omn21469-ac4-routing-globals-reset
-  description: AC4 checks the committed fixture resets all five routing globals on setup and teardown, then runs only the
-    leak probe within one per-check budget. The source check reads HEAD because the merge-base control overlays the fixed
-    tests into its working tree.
-  source: manual
-  binds_ac:
-  - AC4
-  checks:
-  - check_type: command
-    check_value: |-
-      python3 - <<'PYCODE'
-      import ast
-      import subprocess
-      source = subprocess.check_output(["git", "show", "HEAD:tests/test_omn17082_customer_never_lab_backend.py"], text=True)
-      tree = ast.parse(source)
-      reset = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "_reset_routing_state")
-      assert {"routing._load_bifrost_endpoints.cache_clear()", "routing._get_task_class_contract.cache_clear()", "routing._config = None", "routing._config_spread_peers = None", "routing._config_spread_weights = None"} <= {ast.unparse(node) for node in reset.body}
-      fixture = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "lab_and_house_backends")
-      assert any(isinstance(node, ast.Expr) and ast.unparse(node) == "_reset_routing_state()" for node in fixture.body)
-      cleanup = next(node for node in fixture.body if isinstance(node, ast.Try))
-      assert any(isinstance(node, ast.Expr) and ast.unparse(node) == "_reset_routing_state()" for node in cleanup.finalbody)
-      print("committed fixture resets all five routing globals before and after the test")
-      PYCODE
-    cwd: ${OMNI_HOME}/omnimarket
-  - check_type: test_passes
-    check_value: uv run pytest tests/unit/delegation/test_routing_globals_isolated_omn21433.py::test_the_customer_never_lab_file_leaves_no_routing_global_set
-      -q --no-cov --tb=line
-    cwd: ${OMNI_HOME}/omnimarket
-- id: dod-omn21469-ac5-both-orders-pass
-  description: AC5 runs both orders of the two files, each in one pytest process. Each order has its own evidence check so
-    subprocess startup and execution fit the per-check budget without repeating AC4 or the unrelated OMN-21433 overlay regression.
-  source: manual
-  binds_ac:
-  - AC5
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/unit/delegation/test_routing_globals_isolated_omn21433.py::test_the_customer_never_lab_file_does_not_change_the_tier_escalation_tests_after_it
-      -q --no-cov --tb=line
-    cwd: ${OMNI_HOME}/omnimarket
-  - check_type: test_passes
-    check_value: uv run pytest tests/unit/delegation/test_routing_globals_isolated_omn21433.py::test_the_tier_escalation_tests_pass_before_the_customer_never_lab_file
-      -q --no-cov --tb=line
-    cwd: ${OMNI_HOME}/omnimarket
+  - id: "dod-omn21469-ac2-release-v1-1-11"
+    description: "AC2: the v1.1.11 tag peels to omnidash#471's merge commit 3149cd09 (git ls-remote), the release carries the bundle (fetched and verified by ensure_bundle against e231574d...) and the .sha256 sidecar naming that digest and asset, and the publish-dashboard-bundle run for the tag on that commit concluded success; and omnimarket's pin names that release (the floor case), so this item fails at a merge base still pinning v1.1.10. Each case fails when its part is missing or wrong: a tag on another commit, an absent or different sidecar, no successful run, or a pin below v1.1.11."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -q -p no:randomly -k "seven_page_release or release_tag_peels or bundle_and_its_sidecar or publish_run_for_the_tag"'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21469-ac3-bundle-pin-1-1-11"
+    description: "AC3: onex dashboard pins omnidash v1.1.11 or later, and the pinned asset, fetched and verified through ensure_bundle, the path onex dashboard serves from, carries the Settings entry in its primary navigation list (page local-settings, label Settings), not only the word, which the route map and page heading also use. At the v1.1.10 pin the floor case fails and the verified v1.1.10 bundle has no such entry."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -q -p no:randomly -k "seven_page_release or lists_settings_in_its_navigation"'
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
