@@ -97,10 +97,20 @@ def local_routable(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[
     monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract_path))
     monkeypatch.delenv("BIFROST_OVERLAY_PATH", raising=False)
     routing._load_bifrost_endpoints.cache_clear()
+    _reset_routing_config()
     try:
         yield
     finally:
         routing._load_bifrost_endpoints.cache_clear()
+        # The routing config built under this contract must not outlive the
+        # test, or a later test in the same process routes on it.
+        _reset_routing_config()
+
+
+def _reset_routing_config() -> None:
+    routing._config = None
+    routing._config_spread_peers = None
+    routing._config_spread_weights = None
 
 
 _CONTRACT_PATH = (
