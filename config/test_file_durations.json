@@ -1147,6 +1147,7 @@
   "tests/projection/test_dashboard_bundle_pin_omn20753.py": 0.02,
   "tests/projection/test_dashboard_bundle_pin_omn20758.py": 0.02,
   "tests/projection/test_dashboard_bundle_pin_omn20759.py": 0.03,
+  "tests/projection/test_dashboard_bundle_pin_omn21469.py": 1.68,
   "tests/projection/test_dashboard_catalogue_serves_what_it_lists_omn20709.py": 0.45,
   "tests/projection/test_dashboard_decisions_serve_status_and_cost_omn20753.py": 0.17,
   "tests/projection/test_dashboard_serves_routing_and_quality_omn20754.py": 0.34,
