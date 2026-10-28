@@ -17,11 +17,15 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
 
 @pytest.mark.unit
 @pytest.mark.parametrize("start_with_placement", [False, True])
+@pytest.mark.parametrize("cached_endpoint_resolver", [False, True])
 def test_cached_ladder_follows_bifrost_contract_binding(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     start_with_placement: bool,
+    cached_endpoint_resolver: bool,
 ) -> None:
+    if not cached_endpoint_resolver:
+        monkeypatch.setattr(routing, "_load_bifrost_endpoints", lambda: {})
     with_placement = yaml.safe_load(_DEFAULT_CONFIG_PATH.read_text())
     without_placement = yaml.safe_load(_DEFAULT_CONFIG_PATH.read_text())
     for backend in without_placement["backends"]:

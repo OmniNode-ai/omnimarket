@@ -35,13 +35,40 @@ dod_evidence:
   source: manual
   binds_ac:
   - AC1
-  - AC2
-  - AC3
-  - AC4
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_seam_measure_compute/test_workflow_registry.py -q --no-cov
       --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21457-no-unread
+  description: Every registry cell has been read.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_seam_measure_compute/test_workflow_registry.py -q --no-cov
+      --tb=line -k test_no_cell_says_unread
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21457-no-deployment-name
+  description: The registry carries no private or deployment name.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_seam_measure_compute/test_workflow_registry.py -q --no-cov
+      --tb=line -k test_registry_holds_no_private_or_deployment_name
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21457-no-protocol-dependency
+  description: The compute node declares no protocol dependencies.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_seam_measure_compute/test_workflow_registry.py -q --no-cov
+      --tb=line -k test_contract_declares_no_protocol_dependencies
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21457-deploy-probe
   description: 'Hosted deploy probe: exercise the packaged registry handler and verify its source is readable at
@@ -61,9 +88,13 @@ dod_evidence:
     cwd: .
 - id: dod-omn21457-routing-binding
   description: 'Routing remediation: switching bifrost contract bindings adds or withdraws frontier placements
-    without retaining the prior cached ladder.'
+    without retaining the prior cached ladder, including with an uncached endpoint resolver. The local response
+    contract reaches the provider and the caller receives the conforming object.'
   source: manual
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/routing/test_routing_config_binding_omn21457.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest tests/chains/local/test_chain_l11_response_contract_omn18698.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket

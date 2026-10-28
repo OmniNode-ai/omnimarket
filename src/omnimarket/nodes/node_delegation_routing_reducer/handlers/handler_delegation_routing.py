@@ -792,7 +792,11 @@ def _get_config() -> ModelDelegationConfig:
         _config_spread_weights = (_config, spread_weights(placed))
         _config_binding = (_config, binding_key)
         # Endpoint references must come from the same binding as placements.
-        _load_bifrost_endpoints.cache_clear()
+        # A supplied endpoint resolver may be uncached; only cached resolvers
+        # need invalidating when the binding changes.
+        clear_endpoint_cache = getattr(_load_bifrost_endpoints, "cache_clear", None)
+        if callable(clear_endpoint_cache):
+            clear_endpoint_cache()
     return _config
 
 
