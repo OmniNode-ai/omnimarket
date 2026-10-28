@@ -1227,6 +1227,7 @@
   "tests/test_bus_write_budget_consumer_flow_snapshot_policy.py": 0.34,
   "tests/test_byok_gemini_glm_plans.py": 2.45,
   "tests/test_byok_plan_detection.py": 0.24,
+  "tests/test_capability_map_grid_run_real_postgres_omn21434.py": 2.0,
   "tests/test_capability_map_real_postgres_omn20169.py": 0.38,
   "tests/test_capture_item_identity_effect.py": 0.71,
   "tests/test_capture_topic_registry_contract.py": 0.14,
