@@ -86,7 +86,12 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
     ModelRoutingDecision,
 )
 
-pytestmark = pytest.mark.unit
+pytestmark = [
+    pytest.mark.unit,
+    # A no-answer failure now reaches the escalation decision, which reads
+    # quota state; the terminal-path tests bind an empty quota reader.
+    pytest.mark.usefixtures("stub_provider_quota_reader"),
+]
 
 _BACKEND_REF = "local-qwen3-coder-30b"
 _ENDPOINT = "http://192.168.86.201:8000"  # onex-allow-internal-ip OMN-10865 reason="delegation test fixture for a local LLM endpoint"

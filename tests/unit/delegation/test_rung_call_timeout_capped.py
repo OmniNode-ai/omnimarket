@@ -135,6 +135,56 @@ def _dispatch(port: LocalDelegationDispatchPort, *, budget: int) -> dict[str, An
     return result
 
 
+@pytest.mark.parametrize("max_escalations", [0, 1])
+@pytest.mark.parametrize("failure", ["empty_choices", "empty_body", "timeout"])
+def test_no_answer_obeys_the_ladder_attempt_budget(
+    tmp_path: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+    max_escalations: int,
+) -> None:
+    _install_ladder(monkeypatch, tiers=_LADDER, floor_seconds=1)
+    monkeypatch.setattr(
+        port_mod, "resolve_task_class_max_escalations", lambda _t: max_escalations
+    )
+    calls: list[str] = []
+
+    def provider(
+        request: ModelLlmDelegationCallRequest,
+    ) -> ModelLlmDelegationCallResult:
+        calls.append(request.model_tier)
+        if len(calls) == 1 and failure != "empty_body":
+            return ModelLlmDelegationCallResult(
+                request_id=request.request_id,
+                success=False,
+                failure_class=(
+                    EnumDelegationFailureClass.INVALID_JSON
+                    if failure == "empty_choices"
+                    else EnumDelegationFailureClass.TIMEOUT
+                ),
+                error_message=(
+                    "API returned empty choices array"
+                    if failure == "empty_choices"
+                    else "provider timed out"
+                ),
+            )
+        return ModelLlmDelegationCallResult(
+            request_id=request.request_id,
+            success=True,
+            content="" if len(calls) == 1 else _GOOD_ANSWER,
+        )
+
+    port = LocalDelegationDispatchPort(
+        effect_handler=provider,
+        evidence_db_path=tmp_path / "delegation.sqlite",
+        effect_process_boundary=False,
+    )
+    result = _dispatch(port, budget=240)
+    assert calls == (["local", "cheap_cloud"] if max_escalations else ["local"])
+    assert result["status"] == ("completed" if max_escalations else "failed")
+    assert result["escalation_count"] == max_escalations
+
+
 class _HangingProvider:
     """A provider stub run in the real effect child.
 

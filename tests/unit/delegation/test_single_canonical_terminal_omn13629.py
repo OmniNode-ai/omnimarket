@@ -71,6 +71,10 @@ from omnimarket.nodes.node_projection_savings.handlers.handler_savings import (
 )
 from omnimarket.projection.runner import MessageMeta
 
+# A no-answer failure now reaches the escalation decision, which reads quota
+# state; these drive the terminal path, so they bind an empty quota reader.
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
 _NON_RETRYABLE_ERROR = "empty message content from upstream model"
 _PROMPT_TOKENS = 88
 _COMPLETION_TOKENS = 9532

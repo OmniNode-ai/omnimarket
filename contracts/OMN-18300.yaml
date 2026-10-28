@@ -1,16 +1,13 @@
-# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
-# SPDX-License-Identifier: MIT
----
 schema_version: 1.0.0
 ticket_id: OMN-18300
-title: Measure and route delegation by task complexity
-summary: 'Lane scope: reject the F07-05 destructive-read miss and F08-02 CI field omissions using contract-declared
-  input content obligations. This patch does not complete the parent epic or prove C14. Original epic
-  criteria are retained below and explicitly unproven; gate regression checks make no claim to satisfy
-  them.'
-is_seam_ticket: false
-interface_change: false
-interfaces_touched: []
+title: Delegation inline-source serialization and bounded no-answer escalation
+summary: Runtime defect increment. Inline named-test sources survive dispatch serialization, and no-answer and
+  timeout failures escalate within the task-class budget. Does not claim a model qualification, a deployment, or
+  closure of the benchmark acceptance criteria; that evidence is not part of this change.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
 context:
   lane_scope: deleg-gate-falsepass-1440
   parent_epic_complete: false
@@ -45,16 +42,62 @@ requirements:
   - id: DoD3
     statement: 'The installed gate in a disposable container rejects an answer missing both explicitly
       supplied CI fields and recommends fallback. This is package behavior, not live service activation.'
+- id: req-runtime-defects
+  statement: Fix named-test serialization and allow no-answer escalation without bypassing the decision contract.
+  acceptance:
+  - id: DoD8
+    statement: Inline sources round-trip through the deployed wire decoder and nested runner request, retaining
+      path, source and execution result.
+  - id: DoD9
+    statement: No-answer and timeout failures advance on an eligible non-final rung and stop at the task-class escalation
+      limit.
 evidence_requirements:
 - kind: tests
-  description: Gate-only replay and correct-answer controls; not epic completion proof.
-  command: uv run pytest tests/unit/delegation/test_quality_gate_required_content_omn18300.py -q
-    -p no:randomly --no-cov
+  description: Inline tests survive dispatch serialization; no-answer and timeout failures obey the escalation budget.
+  command: uv run pytest tests/unit/delegation/test_inline_named_tests_roundtrip_omn18300.py tests/unit/delegation/test_delegation_orchestrator.py
+    tests/unit/delegation/test_rung_call_timeout_capped.py -q -n 0 -p no:randomly --no-cov
 emergency_bypass:
   enabled: false
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+- id: dod-omn18300-runtime-8
+  description: Actual infra wire conversion and nested runner execution preserve inline sources.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_inline_named_tests_roundtrip_omn18300.py -q -n 0 -p no:randomly
+      --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - DoD8
+- id: dod-omn18300-runtime-9
+  description: Timeout, empty content and empty choices move only within the declared escalation budget.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_delegation_orchestrator.py tests/unit/delegation/test_rung_call_timeout_capped.py
+      -k "no_answer or hanging_first_rung" -q -n 0 -p no:randomly --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - DoD9
+- id: dod-omn18300-deploy-wire
+  description: 'Hosted deploy probe: execute the inline-source boundary regression and read the model from GitHub
+    at the checked-out head. The base keeps test_files private and fails both checks. This verifies the shipped
+    source, not a live deployment.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_inline_named_tests_roundtrip_omn18300.py -q -n 0 -p no:randomly
+      --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: 'bash -o pipefail -c ''gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/models/delegation/wire/model_named_test_run_request.py?ref=$(git
+      rev-parse HEAD)" --jq .content | base64 -d | grep -F "    test_files: tuple[ModelNamedTestFile, ...] = Field("
+      > /dev/null'''
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - DoD8
 - id: dod-omn18300-gate-replays
   description: 'Gate-only evidence: the equivalent seeded destructive-read miss and CI missing fields
     are refused. Both tests failed before the patch because passed was True. These do not bind or prove

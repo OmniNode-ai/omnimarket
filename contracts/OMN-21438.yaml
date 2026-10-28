@@ -1,0 +1,249 @@
+schema_version: 1.0.0
+ticket_id: OMN-21438
+title: 'T-W1: WIP gate reducer, overlay limits, reader and admission audit'
+summary: New reducer node node_wip_gate_reducer with its contract state machine, shared rule rules_wip_gate, models
+  wip_gate, wip_limits overlay model, read_wip and audit_admissions. Pure local invocation; hosted deploy smoke
+  exercises the packaged node without external services.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-wip-gate
+  statement: WIP gate reducer, reader and admission audit.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: The reader counts drafts and prints both counts'
+  - id: AC2
+    statement: 'AC2: The line prints exempt=<n>'
+  - id: AC3
+    statement: 'AC3: The contract state_machine equals the fragment of section 6.7 and passes analyze_fsm with no
+      finding'
+  - id: AC4
+    statement: 'AC4: Every dispatchable repository in the overlay has a limit entry with its evidence; a missing
+      entry refuses naming the key'
+  - id: AC5
+    statement: 'AC5: With enforce_ruling empty wip_gate never refuses; with it set, a stale or unreadable reading
+      or a missing limit refuses naming the reason'
+  - id: AC6
+    statement: 'AC6: A watcher state that cannot be read prints UNKNOWN, never a count of 0'
+  - id: AC7
+    statement: 'AC7: Valid override evidence admits as admitted_override; six kinds of invalid evidence refuse at
+      the limit'
+  - id: AC8
+    statement: 'AC8: Valid override evidence with a stale, unreadable or missing reading refuses when enforcing
+      and warns otherwise'
+  - id: AC9
+    statement: 'AC9: audit_admissions counts CLAIM rows that opened a PR after the limit; valid exemptions read
+      0, forged and expired read 1'
+  - id: AC10
+    statement: 'AC10: No repository or host name is in the package'
+  - id: AC11
+    statement: 'AC11: Configuration values come from config.wip_gate and the wip_limits overlay'
+  - id: AC12
+    statement: 'AC12: Depends on no protocol'
+evidence_requirements:
+- kind: tests
+  description: Focused WIP gate tests.
+  command: uv run pytest tests/nodes/node_wip_gate_reducer/test_wip_gate.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21438-tests
+  description: All twelve acceptance criteria are covered by the focused test file.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  - AC4
+  - AC5
+  - AC6
+  - AC7
+  - AC8
+  - AC9
+  - AC10
+  - AC11
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_wip_gate_reducer/test_wip_gate.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21438-ac1
+  description: 'AC1: The reader counts drafts and prints both counts'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_wip_gate_reducer/test_wip_gate.py
+      -q --no-cov -k test_ac1_
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21438-ac2
+  description: 'AC2: The line prints exempt=<n>'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_wip_gate_reducer/test_wip_gate.py
+      -q --no-cov -k test_ac2_
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21438-ac3
+  description: 'AC3: The contract state_machine equals the fragment of section 6.7 and passes analyze_fsm with no
+    finding'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_wip_gate_reducer/test_wip_gate.py
+      -q --no-cov -k test_ac3_
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21438-ac4
+  description: 'AC4: Every dispatchable repository in the overlay has a limit entry with its evidence; a missing
+    entry refuses naming the key'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_wip_gate_reducer/test_wip_gate.py
+      -q --no-cov -k test_ac4_
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21438-ac5
+  description: 'AC5: With enforce_ruling empty wip_gate never refuses; with it set, a stale or unreadable reading
+    or a missing limit refuses naming the reason'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_wip_gate_reducer/test_wip_gate.py
+      -q --no-cov -k test_ac5_
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21438-ac6
+  description: 'AC6: A watcher state that cannot be read prints UNKNOWN, never a count of 0'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_wip_gate_reducer/test_wip_gate.py
+      -q --no-cov -k test_ac6_
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21438-ac7
+  description: 'AC7: Valid override evidence admits as admitted_override; six kinds of invalid evidence refuse at
+    the limit'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_wip_gate_reducer/test_wip_gate.py
+      -q --no-cov -k test_ac7_
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21438-ac8
+  description: 'AC8: Valid override evidence with a stale, unreadable or missing reading refuses when enforcing
+    and warns otherwise'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_wip_gate_reducer/test_wip_gate.py
+      -q --no-cov -k test_ac8_
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21438-ac9
+  description: 'AC9: audit_admissions counts CLAIM rows that opened a PR after the limit; valid exemptions read
+    0, forged and expired read 1'
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_wip_gate_reducer/test_wip_gate.py
+      -q --no-cov -k test_ac9_
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21438-ac10
+  description: 'AC10: No repository or host name is in the package'
+  source: manual
+  binds_ac:
+  - AC10
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_wip_gate_reducer/test_wip_gate.py
+      -q --no-cov -k test_ac10_
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21438-ac11
+  description: 'AC11: Configuration values come from config.wip_gate and the wip_limits overlay'
+  source: manual
+  binds_ac:
+  - AC11
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_wip_gate_reducer/test_wip_gate.py
+      -q --no-cov -k test_ac11_
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21438-ac12
+  description: 'AC12: Depends on no protocol'
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_wip_gate_reducer/test_wip_gate.py
+      -q --no-cov -k test_ac12_
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21438-deploy-local-runtime
+  description: Hosted deploy smoke dispatches the installed reducer through the ONEX CLI with an in-memory backend
+    and checks typed admission and missing-reading refusal readbacks. No broker, credentials, Docker or lab service
+    is required; this is packaged local execution, not a production rollout.
+  source: manual
+  binds_ac:
+  - AC5
+  - AC6
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_wip_gate_reducer/test_runtime_local.py
+      -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: |
+      set -eu;
+      export PYTHONDONTWRITEBYTECODE=1;
+      probe_dir="$(mktemp -d)";
+      trap 'rm -rf "$probe_dir"' EXIT;
+      uv sync --locked;
+      export PATH="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)'):$PATH";
+      python -c '
+      import json
+      import sys
+      from pathlib import Path
+      from omnimarket.handlers.rules_wip_gate import load_wip_gate_contract
+      root = Path(sys.argv[1])
+      request = {"repo": "example", "dispatch_id": "deploy-probe", "now": "2026-10-27T12:00:00Z", "state": {"prs": {}, "last_tick": "2026-10-27T12:00:00Z"}, "policy": {"enforce_ruling": "enforcing", "dispatchable_repos": ["example"], "limits": {"example": {"limit": 5, "merges_per_hour": 1.5, "method": "supplied measurement", "evidence": "supplied evidence"}}, "exempt_roles": []}, "config": load_wip_gate_contract()[1].model_dump()}
+      (root / "admit.json").write_text(json.dumps(request))
+      request["state"] = None
+      (root / "refuse.json").write_text(json.dumps(request))
+      ' "$probe_dir";
+      for expected in admit refuse; do
+        onex node node_wip_gate_reducer --input "$probe_dir/$expected.json" --state-root "$probe_dir/$expected.state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/$expected.receipt.json";
+        python -c '
+      import json
+      import sys
+      from pathlib import Path
+      expected, path = sys.argv[1:]
+      receipt = json.loads(Path(path).read_text())
+      assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+      result = receipt["result"]
+      assert result["outcome"] == expected, result
+      assert result["reason"] == {"admit": "under_limit", "refuse": "missing_reading"}[expected], result
+      assert result["open"] == (0 if expected == "admit" else None), result
+      print(json.dumps({"run_id": receipt["run_id"], "decision": result}, sort_keys=True))
+      ' "$expected" "$probe_dir/$expected.receipt.json";
+      done
+    cwd: ${OMNI_HOME}/omnimarket
