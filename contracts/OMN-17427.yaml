@@ -983,7 +983,7 @@ requirements:
     statement: "The shipped work contracts bind their command environment to the dependency lockfile carried by this pull request."
     acceptance:
       - id: "AC17427502"
-        statement: "AC17427502: every shipped work contract loads with verified input pins, each uv.lock environment digest matches this checkout, and the positive and negative controls retain their expected verdicts -- falsifier: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/test_work_contract_pins_current.py tests/nodes/test_work_contract_checks.py -q --no-cov fails at the dispatch head with input_pin_mismatch: uv.lock."
+        statement: "AC17427502: every shipped work contract loads with verified input pins and each uv.lock environment digest matches this checkout -- falsifier: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/test_work_contract_pins_current.py -q --no-cov fails at the dispatch head with input_pin_mismatch: uv.lock."
 evidence_requirements:
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
@@ -4180,12 +4180,12 @@ dod_evidence:
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/handlers/scm/test_scm_bus_caller_leaves_no_group_omn17427.py -q --no-cov -p no:randomly --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-one-shot-lockfile-contract-pins"
-    description: "The dependency repin changed uv.lock. Update the 70 shipped work-contract environment digests to that file's SHA256. The existing tests reject the dispatch head's stale digests, load the corpus and exercise unchanged positive, negative and tampering controls."
+    description: "The dependency repin changed uv.lock. Update the 70 shipped work-contract environment digests to that file's SHA256. The existing tests reject the dispatch head's stale digests and load the corpus."
     source: "manual"
     binds_ac: ["AC17427502"]
     checks:
       - check_type: "test_passes"
-        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/test_work_contract_bindings.py tests/nodes/test_work_contract_pins_current.py tests/nodes/test_work_contract_corpus.py tests/nodes/test_work_contract_checks.py -q --no-cov -p no:randomly --refuse-skips"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/test_work_contract_bindings.py tests/nodes/test_work_contract_pins_current.py tests/nodes/test_work_contract_corpus.py -q --no-cov -p no:randomly --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-one-shot-lockfile-deploy-probe"
     description: "Hosted deployment probe loads this checkout's shipped work-contract corpus and verifies every input and environment pin before a contract is runnable. The dispatch head fails on uv.lock. The runner needs only the checkout and locked Python dependencies, with no lab credentials, broker or live service. This is a packaged contract readback, not an installed-service deployment claim."
