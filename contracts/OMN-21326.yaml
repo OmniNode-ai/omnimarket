@@ -38,12 +38,6 @@ requirements:
         statement: >-
           AC3: Over a 24 h window of deployed-lane receipts after the fix is deployed, no completed run has
           execution_duration_ms above (execution_timeout_seconds + grace) * 1000
-      - id: "AC4"
-        statement: >-
-          The AC3 receipt-window readback is importable from the delegation node package and returns exit 0 for a
-          measured window within budget plus declared grace, 1 for a completed run over that bound, 2 for no measured
-          runs, and 3 for a missing state root or an ambiguous grace declaration. This validates the readback;
-          the deployed 24 h observation in AC3 still requires the host that holds the receipts.
 evidence_requirements:
   - kind: "tests"
     description: "Requested-timeout grace tests pass"
@@ -135,3 +129,30 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/scripts/test_verify_omn21326_ac3_budget_bound.py -q --no-cov -k default_state_roots"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21326-ac3-readback-fails-on-its-falsifier"
+    description: >-
+      AC4 was never a criterion of OMN-21326: the ticket carries AC1 to AC3, so the AC4 claims of
+      dod-omn21326-ac3-exit-coded-readback and dod-omn21326-readback-shared-state-root are retired and the AC4
+      requirement is dropped. Their readback is AC3's check, so this item binds it there: the budget-readback handler's
+      tests show the AC3 readback exits 1 for a completed run over (execution_timeout_seconds + grace) * 1000 and 2 for
+      an empty window. The deployed 24 h observation still runs on the host whose state root holds the receipts, as
+      `uv run python -m omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_budget_readback`.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/scripts/test_verify_omn21326_ac3_budget_bound.py -q --no-cov -k 'inside_the_bound or past_budget_plus_grace or empty_window'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    supersedes_ac_binding:
+      - item: dod-omn21326-ac3-exit-coded-readback
+        label: AC4
+        reason_kind: no_longer_applicable
+        reason: OMN-21326 carries no AC4; the label was added to the contract only, so the item proved a criterion the ticket never had.
+        retired_by: claude-code-omn21326-ac4-retirement
+        retired_at: '2026-10-29T16:30:00Z'
+      - item: dod-omn21326-readback-shared-state-root
+        label: AC4
+        reason_kind: no_longer_applicable
+        reason: OMN-21326 carries no AC4; the label was added to the contract only, so the item proved a criterion the ticket never had.
+        retired_by: claude-code-omn21326-ac4-retirement
+        retired_at: '2026-10-29T16:30:00Z'
