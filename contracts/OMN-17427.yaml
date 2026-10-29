@@ -980,10 +980,10 @@ requirements:
       - id: "AC17427501"
         statement: "AC17427501: N SCM calls, N work-ledger appends and a timed-out call leave the bus with the consumer groups it started with, and a bus without the group-less read is refused at construction -- falsifier: uv run pytest tests/unit/handlers/scm/test_scm_bus_caller_leaves_no_group_omn17427.py -q fails at the merge base, whose callers mint a group per call."
   - id: "req-one-shot-lockfile-contract-pins"
-    statement: "The shipped work contracts bind their command environment to the dependency lockfile carried by this pull request."
+    statement: "The shipped work contracts bind their command environment to the lockfile carrying the omnibase_infra revision that provides subscribe_ungrouped."
     acceptance:
       - id: "AC17427502"
-        statement: "AC17427502: every shipped work contract loads with verified input pins and each uv.lock environment digest matches this checkout -- falsifier: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/test_work_contract_pins_current.py -q --no-cov fails at the dispatch head with input_pin_mismatch: uv.lock."
+        statement: "AC17427502: uv.lock selects omnibase_infra commit 541485405dbcd61b8d6ba2effde34cb37f1b7102, every shipped work contract loads with verified input pins, and each uv.lock environment digest matches this checkout -- falsifier: the locked source revision check fails at the merge base, which selects dev-20261027104820-3540659c6633; the focused corpus tests reject stale environment digests."
 evidence_requirements:
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
@@ -4180,10 +4180,13 @@ dod_evidence:
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/handlers/scm/test_scm_bus_caller_leaves_no_group_omn17427.py -q --no-cov -p no:randomly --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-one-shot-lockfile-contract-pins"
-    description: "The dependency repin changed uv.lock. Update the 70 shipped work-contract environment digests to that file's SHA256. The existing tests reject the dispatch head's stale digests and load the corpus."
+    description: "The locked omnibase_infra source must carry subscribe_ungrouped at commit 541485405dbcd61b8d6ba2effde34cb37f1b7102, and all shipped work-contract pins must match that lockfile. The merge base has internally consistent pins but selects the older infra revision, so the explicit source check fails there. The focused tests also reject stale digests and load the corpus."
     source: "manual"
     binds_ac: ["AC17427502"]
     checks:
+      - check_type: "command"
+        check_value: "grep -Fq 'omnibase_infra.git?tag=dev-20261029084637-541485405dbc#541485405dbcd61b8d6ba2effde34cb37f1b7102' uv.lock"
+        cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "test_passes"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/test_work_contract_bindings.py tests/nodes/test_work_contract_pins_current.py tests/nodes/test_work_contract_corpus.py -q --no-cov -p no:randomly --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
