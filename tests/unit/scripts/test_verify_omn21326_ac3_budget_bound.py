@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.nodes.node_delegate_skill_orchestrator import runtime_budget_readback
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers import (
     handler_budget_readback as readback,
 )
@@ -60,7 +61,9 @@ def _run(
 
 
 def _main(root: Path, capsys: pytest.CaptureFixture[str]) -> tuple[int, dict]:
-    code = readback.main(["--state-root", str(root), "--until", NOW.isoformat()])
+    code = runtime_budget_readback.main(
+        ["--state-root", str(root), "--until", NOW.isoformat()]
+    )
     return code, json.loads(capsys.readouterr().out)
 
 
@@ -193,7 +196,7 @@ def test_packaged_module_preserves_process_exit_status(
         [
             sys.executable,
             "-m",
-            readback.__name__,
+            runtime_budget_readback.__name__,
             "--state-root",
             str(state_root),
             "--until",

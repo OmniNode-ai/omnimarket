@@ -116,7 +116,7 @@ dod_evidence:
       plus the task-class declaration's grace, 2 when none was measured, and 3 when it cannot run. Tests exercise the
       exit-coded readback, including its packaged module entry point. They fail at the merge base where the handler
       does not exist. AC3's deployed observation remains a separate lab readback using
-      `uv run python -m omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_budget_readback`
+      `uv run python -m omnimarket.nodes.node_delegate_skill_orchestrator.runtime_budget_readback`
       on the host whose state root holds the receipts.
     source: "manual"
     binds_ac: ["AC4"]
