@@ -93,13 +93,13 @@ dod_evidence:
     check_value: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_lab_proof.py -q --no-cov --tb=line -k "byte_identical"
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21507-delegation-join
-  description: 'Delegation join: every delegation run whose output is in the PR head has a receipt under the lane''s state root; the run ids are listed in the pull request body and the terminal ledger row.'
+  description: 'Delegation join: the code of the head was drafted by codex thread 01a1851c-814c-7093-b908-5cfcd88316e3 (receipt 2026-10-29T004540Z-codex-fix.json, accepted at commit ad3823d5380206753ec169b7c24f80407c2f3ebd); the commit messages came from text runs 5af4129f-a106-4a53-b140-452fd9b2db53 (commit 708f777bd7a893b460f6d46763d95dbdb954fbd3), 09a45b12-70ea-4dac-8b11-5d2e6b7e7068 (commit ad3823d5380206753ec169b7c24f80407c2f3ebd) and ba4aff47-b6f3-4576-88e2-4e5b7e173370 (the commit that names it); each run has a receipt under the lane state root and a disposition event.'
   source: manual
   checks:
   - check_type: command
     check_value: |
       set -eu;
-      test -f contracts/OMN-21507.yaml
+      grep -q 01a1851c-814c-7093-b908-5cfcd88316e3 contracts/OMN-21507.yaml
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21507-deploy-lab-proof-models
   description: 'Hosted deploy readback: the public repository at this exact head must contain the lab-proof receipt model, and the landing decision tests must pass on a hosted runner. No lab service is required.'
