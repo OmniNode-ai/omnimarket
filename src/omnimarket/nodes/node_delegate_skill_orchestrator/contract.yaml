@@ -611,3 +611,16 @@ metadata:
     - "OMN-10889"
     - "OMN-10903"
     - "OMN-10604"
+
+# The receipt-window readback belongs to the delegation node, alongside the
+# requested-timeout policy it measures. It reads local state and never dispatches.
+budget_readback:
+  module: omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_budget_readback
+  state_root: "--state-root, else shared runtime resolver (ONEX_STATE_DIR, then ONEX_STATE_ROOT), else ~/.onex_state"
+  window_hours: 24
+  grace_source: configs/task_class_contracts.v1.yaml
+  exit_codes:
+    pass: 0
+    over_budget_plus_grace: 1
+    nothing_measured: 2
+    unrunnable: 3
