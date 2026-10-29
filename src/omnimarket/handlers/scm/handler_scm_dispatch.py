@@ -22,7 +22,6 @@ from importlib import resources
 from typing import Final
 
 import yaml
-from omnibase_core.event_bus.util_consumer_group import derive_service_group_id
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from pydantic import BaseModel, JsonValue
 
@@ -31,7 +30,8 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolLabRunBus,
     event_type_for,
 )
-from omnimarket.lab_work.bus import _bytes, _subscribe, _uuid_or_none
+from omnimarket.delegated_test_loop.lane_bus import require_one_shot_reply_bus
+from omnimarket.lab_work.bus import _bytes, _uuid_or_none
 from omnimarket.models.scm import (
     EnumScmLocalRead,
     EnumScmNode,
@@ -42,8 +42,6 @@ from omnimarket.models.scm import (
     ModelScmTopics,
     ModelScmVerb,
 )
-
-GROUP_SERVICE: Final[str] = "omnimarket"
 
 _G = EnumScmNode.GATEWAY
 _W = EnumScmNode.WRITE
@@ -284,13 +282,11 @@ class ScmBusCaller:
     """Publish one node command and await the terminal event naming it."""
 
     def __init__(self, bus: ProtocolLabRunBus) -> None:
-        self._bus = bus
-        # One group per call, never shared: every caller sees every terminal
-        # and picks out its own.
-        self._group = (
-            f"{derive_service_group_id('scm_command_client', service=GROUP_SERVICE)}"
-            f".{uuid.uuid4().hex[:12]}"
-        )
+        # The terminal read joins no consumer group (OMN-17427): this caller
+        # exists for one call, and a group minted per call stays on the broker
+        # after it leaves. Every caller still sees every terminal and picks out
+        # its own; the read starts at the log end before the command is sent.
+        self._bus = require_one_shot_reply_bus(bus)
 
     async def call(
         self,
@@ -387,9 +383,7 @@ class ScmBusCaller:
                 if topic is None:
                     continue
                 unsubscribes.append(
-                    await _subscribe(
-                        self._bus, topic, on_terminal(topic), self._group, "latest"
-                    )
+                    await self._bus.subscribe_ungrouped(topic, on_terminal(topic))
                 )
             await self._bus.publish(
                 topics.command, str(correlation_id).encode("utf-8"), _bytes(envelope)

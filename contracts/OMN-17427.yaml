@@ -974,6 +974,11 @@ requirements:
     acceptance:
       - id: "AC4544"
         statement: "AC4544: the pre-commit hook rev and the ci.yml step name the same omnibase_core dev-merge tag, the overlay lists only sha exceptions with a reason, and every first-party uses in the workflows is a dev-merge tag or a listed exception -- falsifier: uv run pytest tests/ci/test_action_pin_wiring_omn17427.py -q fails on the merge-base repository, which has no overlay."
+  - id: "req-one-shot-reply-reads-no-group"
+    statement: "A caller that reads one reply and leaves joins no consumer group, so the broker keeps no group for it."
+    acceptance:
+      - id: "AC17427501"
+        statement: "AC17427501: N SCM calls, N work-ledger appends and a timed-out call leave the bus with the consumer groups it started with, and a bus without the group-less read is refused at construction -- falsifier: uv run pytest tests/unit/handlers/scm/test_scm_bus_caller_leaves_no_group_omn17427.py -q fails at the merge base, whose callers mint a group per call."
 evidence_requirements:
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
@@ -4153,4 +4158,19 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_action_pin_wiring_omn17427.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-one-shot-reply-no-group"
+    description: "The three one-shot reply callers read their terminals through subscribe_ungrouped and mint no consumer group. N calls leave the in-memory bus with the groups it started with, a timed-out call leaves none, and a bus without the group-less read is refused at construction. The merge-base callers mint a group per call, so the tests fail there."
+    source: "manual"
+    binds_ac: ["AC17427501"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/handlers/scm/test_scm_bus_caller_leaves_no_group_omn17427.py tests/unit/work_ledger_bus/test_work_ledger_append_bus.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-one-shot-reply-deploy-probe"
+    description: "Hosted wiring probe. On the hosted runner, drive the checked-out SCM caller N times against the in-process bus and require that the set of consumer groups is unchanged and the reply topics are read through subscribe_ungrouped. It needs only this checkout and the locked dependencies, with no broker or credentials. The broker group-count proof is the kafka-marked integration test run on the lab, not this probe."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/handlers/scm/test_scm_bus_caller_leaves_no_group_omn17427.py -q --no-cov -p no:randomly --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"

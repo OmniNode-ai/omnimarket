@@ -32,6 +32,7 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolLabRunBus,
     event_type_for,
 )
+from omnimarket.delegated_test_loop.lane_bus import require_one_shot_reply_bus
 from omnimarket.lab_work.bus import _bytes, _subscribe, _uuid_or_none
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillTerminalProjection,
@@ -667,13 +668,11 @@ class WorkLedgerAppendCaller:
         topics: ModelWorkLedgerAppendTopics | None = None,
         principal: str,
     ) -> None:
-        self._bus = bus
+        # The terminal read joins no consumer group (OMN-17427): the caller
+        # lives for one append, and a group minted per call stays on the broker.
+        self._bus = require_one_shot_reply_bus(bus)
         self._topics = topics or load_work_ledger_append_topics()
         self._command_topic = self._topics.writer_command_topic(principal)
-        self._group = (
-            f"{derive_service_group_id('work_ledger_append_client', service=GROUP_SERVICE)}"
-            f".{uuid.uuid4().hex[:12]}"
-        )
         self._pending: dict[
             uuid.UUID, asyncio.Future[tuple[str, dict[str, object]]]
         ] = {}
@@ -688,9 +687,7 @@ class WorkLedgerAppendCaller:
             return
         for topic in (self._topics.success, self._topics.failure):
             self._unsubscribes.append(
-                await _subscribe(
-                    self._bus, topic, self._terminal(topic), self._group, "latest"
-                )
+                await self._bus.subscribe_ungrouped(topic, self._terminal(topic))
             )
 
     async def stop(self) -> None:

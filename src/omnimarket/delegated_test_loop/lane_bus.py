@@ -33,6 +33,7 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     FocusedRunHost,
     ProtocolFocusedRunHandler,
     ProtocolLabRunBus,
+    ProtocolOneShotReplyBus,
 )
 from omnimarket.nodes.node_push_validation_effect import (
     ModelFocusedTestRunReceipt,
@@ -45,6 +46,21 @@ _READY_TIMEOUT_SECONDS = 120
 
 class LabRunBusError(RuntimeError):
     """The bus could not be selected or opened."""
+
+
+def require_one_shot_reply_bus(bus: ProtocolLabRunBus) -> ProtocolOneShotReplyBus:
+    """The bus a one-shot request/reply caller reads its reply from (OMN-17427).
+
+    A caller that reads one reply and leaves must not join a consumer group: the
+    group outlives it on the broker. The bus either answers the group-less read
+    or the caller is refused here, at construction, never at the broker.
+    """
+    if not isinstance(bus, ProtocolOneShotReplyBus):
+        raise LabRunBusError(
+            f"{type(bus).__name__} has no group-less reply read (subscribe_ungrouped); "
+            "a one-shot caller would leave a consumer group on the broker"
+        )
+    return bus
 
 
 def bound_lane_principal() -> str:
@@ -217,4 +233,5 @@ __all__ = [
     "LabRunBusError",
     "bound_lane_principal",
     "open_lab_run_bus",
+    "require_one_shot_reply_bus",
 ]
