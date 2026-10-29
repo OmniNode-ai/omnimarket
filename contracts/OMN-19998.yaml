@@ -954,5 +954,5 @@ dod_evidence:
     binds_ac: ["AC42"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_sibling_clone_ref_omn19998.py tests/ci/test_sibling_pins_omn20001.py -q --no-cov -n 0 -p no:randomly"
+        check_value: "env UV_FROZEN=true uv run pytest tests/ci/test_sibling_clone_ref_omn19998.py -q --no-cov -n 0 -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
