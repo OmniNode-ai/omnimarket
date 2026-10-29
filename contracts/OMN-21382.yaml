@@ -40,3 +40,31 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_team_identity_compute/test_golden_chain_team_identity_compute.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21382-deploy-team-identity-node
+  description: 'Hosted deploy smoke, runnable on the hosted runner with no lab route, broker or database: dispatch the packaged node_team_identity_compute through the in-process ONEX runtime against the fake fixture declaration and require a successful typed receipt resolving the fixture operator, with the resolved source hash equal to the fixture bytes.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      export PYTHONDONTWRITEBYTECODE=1;
+      probe_dir="$(mktemp -d)";
+      trap 'rm -rf "$probe_dir"' EXIT;
+      runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+      mkdir -p "$probe_dir/roots/team_identity";
+      cp tests/fixtures/team_identity/valid.yaml "$probe_dir/roots/team_identity/overlay.yaml";
+      printf '{"claims": [{"source": "github_auth", "value": "fixture-operator-gh"}], "overlay_roots": ["%s"]}' "$probe_dir/roots" > "$probe_dir/input.json";
+      env ONEX_LANE=omn21382-deploy-probe "$runtime_bin/onex" node node_team_identity_compute --input "$probe_dir/input.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+      uv run --locked python -c '
+      import hashlib
+      import json
+      import sys
+      from pathlib import Path
+      receipt = json.loads(Path(sys.argv[1]).read_text())
+      assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+      result = receipt["result"]
+      assert result["privileges"] == "operator" and result["entry_id"] == "fixture-operator", result
+      assert result["source"]["sha256"] == hashlib.sha256(Path(sys.argv[2]).read_bytes()).hexdigest(), result
+      print(json.dumps({"run_id": receipt["run_id"], "privileges": result["privileges"], "sha256": result["source"]["sha256"]}))
+      ' "$probe_dir/receipt.json" tests/fixtures/team_identity/valid.yaml;
+    cwd: ${OMNI_HOME}/omnimarket
