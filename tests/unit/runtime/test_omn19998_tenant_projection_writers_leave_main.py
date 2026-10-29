@@ -98,7 +98,6 @@ def test_derived_writers_and_exemptions_have_positive_controls(
     in_process, exempt = tenant_projection_writers
     assert in_process
     assert {
-        "projection_run_trace",
         "projection_delegation_disposition",
         "projection_delegation_eval",
         "projection_metering_summary",
@@ -106,3 +105,7 @@ def test_derived_writers_and_exemptions_have_positive_controls(
         "projection_routing_feedback",
     } <= in_process.keys()
     assert "node_delegation_routing_reducer" in exempt
+    # OMN-19972: the run-trace writer is a standalone runner under its own
+    # profile, so it is exempt here, not an in-process tenant-projection writer.
+    assert "projection_run_trace" in exempt
+    assert "projection_run_trace" not in in_process

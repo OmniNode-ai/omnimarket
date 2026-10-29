@@ -172,3 +172,11 @@ dod_evidence:
         check_value: |-
           docker run --rm -v "${PWD}:/workspace:ro" -w /workspace -e UV_PROJECT_ENVIRONMENT=/tmp/run-trace-venv -e UV_CACHE_DIR=/tmp/uv-cache ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 uv run --frozen pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_runtime_dispatch_run_steps_omn19972.py::test_a_deployed_runs_published_steps_fold_into_run_trace_rows -q -p no:randomly -p no:cacheprovider --basetemp=/tmp/run-trace-tests --refuse-skips
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19972-run-trace-writer-standalone"
+    binds_ac: ["AC3"]
+    description: "The run-trace contract is owned by runtime profile projection-writer-run-trace and the writer is configured for standalone execution (Jonah's ruling a6967cf0); booting it is left to the lab readback. The runtime ownership function gives the contract to that profile and not to tenant-projection, main or effects; the writer resolves a step's tenant slug through the tenant mirror's own read binding, never the writer pool; and an unknown slug is refused before the writer pool is touched. The file fails at the merge base, where the contract names tenant-projection and the writer reads the mirror through the writer's own pool. This is the writer half of AC3's Runs readback; the lab readback lands separately."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_run_trace/test_writer_runs_standalone_omn19972.py -q -p no:cacheprovider -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"

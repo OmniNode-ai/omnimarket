@@ -484,8 +484,15 @@ def test_the_step_event_topic_is_what_the_writer_subscribes_to() -> None:
     ]
 
 
-def test_the_writer_declares_in_process_dispatch() -> None:
-    assert RunTraceProjectionWriter.onex_runtime_inprocess_dispatch is True
+def test_the_writer_runs_standalone_not_in_process() -> None:
+    # OMN-19972: its own process under its own profile, so the shared runtime
+    # neither dispatches it in-process nor consumes its topic beside it.
+    assert (
+        getattr(RunTraceProjectionWriter, "onex_runtime_inprocess_dispatch", False)
+        is False
+    )
+    contract = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))
+    assert contract["runtime_profiles"] == ["projection-writer-run-trace"]
 
 
 def test_no_postgres_only_sql_is_reachable_from_the_store_neutral_path() -> None:

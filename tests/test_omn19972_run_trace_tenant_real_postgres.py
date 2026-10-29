@@ -16,7 +16,8 @@ Failure modes each test is written against:
 * (F5) the session's tenant and the row's disagree, so the forced row-level
   security refuses the insert;
 * (F6) another tenant's step with the same run id and sequence joins this
-  tenant's run.
+  tenant's run;
+* (F7) the writer only works because its role was granted the mirror by hand, which no lane does (the deployed role holds nothing on it).
 """
 
 from __future__ import annotations
@@ -54,6 +55,7 @@ _CHAIN = json.loads(
 _SLUG_A, _UUID_A = "local-ee67b16e7aab", "97b9aa50-f53f-adb8-5404-5c7318dd4cb1"
 _SLUG_B, _UUID_B = "local-0b1c2d3e4f50", "11111111-2222-4333-8444-555555555555"
 _ROLE = "tenant_projection_writer"
+_MIRROR_ROLE = "app_dashboard"
 # Every tenant this test can write under, by uuid or by slug.
 _OWN_TENANTS = [_UUID_A, _UUID_B, _SLUG_A, _SLUG_B, "local-nobody-minted"]
 _META = MessageMeta(
@@ -96,14 +98,16 @@ async def _fresh(owner: asyncpg.Connection) -> None:
     only if absent, and only their rows are cleared. Dropping the shared tenant
     mirror took every other test's seeded tenant with it.
     """
-    for role in (_ROLE, "app_dashboard"):
+    for role in (_ROLE, _MIRROR_ROLE):
         exists = await owner.fetchval("SELECT 1 FROM pg_roles WHERE rolname = $1", role)
         if not exists:
             await owner.execute(f"CREATE ROLE {role} NOLOGIN NOSUPERUSER NOBYPASSRLS")
     for migration in _MIGRATIONS:
         await owner.execute(migration.read_text(encoding="utf-8"))
-    # The mirror's own grant names the runtime role; the writer reads it too.
-    await owner.execute(f"GRANT SELECT ON public.tenant_registry_mirror TO {_ROLE}")
+    # The writer role reads nothing on the mirror, as deployed: only the mirror's
+    # own migration grants it, to the dashboard reader, which is what the
+    # writer's mirror binding logs in as here. Nothing in this test grants or
+    # revokes it, so the writer-role denial below is the migrations' own.
     await owner.executemany(
         "INSERT INTO public.tenant_registry_mirror (tenant_slug, tenant_uuid, status) "
         "VALUES ($1, $2, 'active') ON CONFLICT (tenant_slug) DO NOTHING",
@@ -128,13 +132,16 @@ class _Db:
         self.pool = pool
 
 
-def _writer(pool: asyncpg.Pool) -> RunTraceProjectionWriter:
+def _writer(pool: asyncpg.Pool, mirror_pool: asyncpg.Pool) -> RunTraceProjectionWriter:
     db = _Db(pool)
 
     class _Writer(RunTraceProjectionWriter):
-        @property
-        def db(self) -> Any:
-            return db
+        def db_for(self, table: str, *, operation: str = "write") -> Any:
+            if table == "tenant_registry_mirror" and operation == "read":
+                return mirror_pool
+            if table == "run_trace":
+                return db
+            raise AssertionError(f"undeclared relation {table!r} ({operation})")
 
         async def publish_snapshot_delta(self, exposure: Any, **kwargs: Any) -> bool:
             return True
@@ -142,9 +149,9 @@ def _writer(pool: asyncpg.Pool) -> RunTraceProjectionWriter:
     return _Writer()
 
 
-async def _as_writer_pool() -> asyncpg.Pool:
+async def _as_role_pool(role: str) -> asyncpg.Pool:
     async def _init(conn: asyncpg.Connection) -> None:
-        await conn.execute(f"SET ROLE {_ROLE}")
+        await conn.execute(f"SET ROLE {role}")
 
     pool = await asyncpg.create_pool(_dsn_or_skip(), min_size=1, max_size=1, init=_init)
     assert pool is not None
@@ -164,10 +171,13 @@ async def test_real_postgres_a_slug_step_is_stored_under_the_mirror_uuid_and_rea
     None
 ):
     owner = await _owner_or_skip()
-    pool = await _as_writer_pool()
+    pool: asyncpg.Pool | None = None
+    mirror_pool: asyncpg.Pool | None = None
     try:
         await _fresh(owner)
-        row = await _writer(pool)._project_step(
+        pool = await _as_role_pool(_ROLE)
+        mirror_pool = await _as_role_pool(_MIRROR_ROLE)
+        row = await _writer(pool, mirror_pool)._project_step(
             {**_CHAIN[1], "tenant_id": _SLUG_A}, _META
         )
         assert row is not None
@@ -175,33 +185,45 @@ async def test_real_postgres_a_slug_step_is_stored_under_the_mirror_uuid_and_rea
         assert await _read_as(owner, _UUID_A) == [_UUID_A]
         assert await _read_as(owner, _SLUG_A) == []
     finally:
-        await pool.close()
+        if mirror_pool is not None:
+            await mirror_pool.close()
+        if pool is not None:
+            await pool.close()
         await owner.close()
 
 
 @pytest.mark.integration
 async def test_real_postgres_an_unknown_slug_writes_no_row() -> None:
     owner = await _owner_or_skip()
-    pool = await _as_writer_pool()
+    pool: asyncpg.Pool | None = None
+    mirror_pool: asyncpg.Pool | None = None
     try:
         await _fresh(owner)
+        pool = await _as_role_pool(_ROLE)
+        mirror_pool = await _as_role_pool(_MIRROR_ROLE)
         with pytest.raises(TenantRegistryResolutionError):
-            await _writer(pool)._project_step(
+            await _writer(pool, mirror_pool)._project_step(
                 {**_CHAIN[1], "tenant_id": "local-nobody-minted"}, _META
             )
         assert await _own_rows(owner) == 0
     finally:
-        await pool.close()
+        if mirror_pool is not None:
+            await mirror_pool.close()
+        if pool is not None:
+            await pool.close()
         await owner.close()
 
 
 @pytest.mark.integration
 async def test_real_postgres_another_tenants_step_never_joins_the_run() -> None:
     owner = await _owner_or_skip()
-    pool = await _as_writer_pool()
+    pool: asyncpg.Pool | None = None
+    mirror_pool: asyncpg.Pool | None = None
     try:
         await _fresh(owner)
-        writer = _writer(pool)
+        pool = await _as_role_pool(_ROLE)
+        mirror_pool = await _as_role_pool(_MIRROR_ROLE)
+        writer = _writer(pool, mirror_pool)
         step = _CHAIN[1]
         await writer._project_step({**step, "tenant_id": _SLUG_A}, _META)
         await writer._project_step(
@@ -212,5 +234,36 @@ async def test_real_postgres_another_tenants_step_never_joins_the_run() -> None:
         # Positive control: both rows exist, so the reads above were narrowed.
         assert await _own_rows(owner) == 2
     finally:
-        await pool.close()
+        if mirror_pool is not None:
+            await mirror_pool.close()
+        if pool is not None:
+            await pool.close()
+        await owner.close()
+
+
+@pytest.mark.integration
+async def test_real_postgres_the_writer_role_cannot_read_the_mirror() -> None:
+    """(F7) control: the slug resolutions above did not go through the writer role."""
+    owner = await _owner_or_skip()
+    try:
+        await _fresh(owner)
+        await owner.execute(f"SET ROLE {_ROLE}")
+        try:
+            with pytest.raises(asyncpg.InsufficientPrivilegeError):
+                await owner.fetchval(
+                    "SELECT count(*) FROM public.tenant_registry_mirror"
+                )
+        finally:
+            await owner.execute("RESET ROLE")
+        # Positive control: the role the mirror's own migration grants reads it.
+        async with owner.transaction():
+            await owner.execute(f"SET LOCAL ROLE {_MIRROR_ROLE}")
+            assert (
+                await owner.fetchval(
+                    "SELECT count(*) FROM public.tenant_registry_mirror WHERE tenant_slug = $1",
+                    _SLUG_A,
+                )
+                == 1
+            )
+    finally:
         await owner.close()

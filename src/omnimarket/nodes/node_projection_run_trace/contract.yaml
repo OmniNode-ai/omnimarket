@@ -8,7 +8,13 @@ description: >
   OMN-19987. Stores each numbered step of a delegation run once, per tenant,
   keyed by the step sequence the delegate orchestrator assigned, and exposes
   one run's steps in that order through snapshot deltas.
-runtime_profiles: [tenant-projection]
+# OMN-19972: this writer is its own standalone process, as the savings writer
+# is, so it can read the tenant mirror through the mirror's own binding: the
+# tenant writer role holds nothing on the mirror, and the shared runtime's
+# in-process wiring allows one pool, one login role. Naming its own registered
+# profile is what keeps the tenant-projection carrier from also consuming its
+# topic. Registered in omnibase_core by OmniNode-ai/omnibase_core#2056.
+runtime_profiles: [projection-writer-run-trace]
 
 handler:
   module: omnimarket.nodes.node_projection_run_trace.handlers.handler_projection_run_trace
@@ -47,8 +53,8 @@ dod_evidence:
     description: "The served rows for one run are in step order and hold no other tenant's step"
   - test: tests/test_omn19987_run_trace.py::test_runtime_dispatch_resolves_only_the_writer
     description: "Runtime routing dispatches only the effect writer"
-  - test: tests/test_omn19987_run_trace.py::test_the_writer_declares_in_process_dispatch
-    description: "The shared runtime dispatches the writer in-process"
+  - test: tests/test_omn19987_run_trace.py::test_the_writer_runs_standalone_not_in_process
+    description: "The writer runs standalone under its own runtime profile, not in-process"
   - test: tests/test_omn19987_run_trace.py::test_the_postgres_migration_declares_the_table_and_its_key
     description: "Migration owns the table, its composite key and its cursor"
 db_io:
@@ -59,6 +65,17 @@ db_io:
       migration: "0000_create_run_trace.sql"
       access: read_write
       role: run_trace
+    # READ ONLY resolution of a step's tenant: node_projection_tenant_registry
+    # owns and writes this relation; this writer asks it which uuid a slug
+    # names, through the shared resolver and with the same declaration as the
+    # delegation and savings writers. NOT `tenant`: the mirror is a cross-tenant
+    # index, and a reader resolving its tenant cannot pass RLS on one.
+    - name: tenant_registry_mirror
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_tenant_registry_mirror.sql"
+      access: read
+      role: tenant_registry_mirror
   dedupe_key: [tenant_id, correlation_id, step_sequence]
   ordering_key: step_sequence
 event_bus:
