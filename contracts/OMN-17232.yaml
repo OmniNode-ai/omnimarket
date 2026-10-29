@@ -1,0 +1,55 @@
+schema_version: '1.0.0'
+ticket_id: OMN-17232
+title: 'Register the HP lab host in the pre-push host table'
+summary: 'Add the hp-gen8 row to scripts/hooks/prepush_hosts.tsv so the pre-push guard accepts that host identity.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-hp-prepush-identity
+    statement: Register hp-gen8 as an authorizing pre-push host with conservative placement capacity.
+    acceptance:
+      - id: AC1
+        statement: The h051 capacity row names hp-gen8 as authorizing, and the pytest-side guard reads that identity from the committed table.
+      - id: AC2
+        statement: The h051 row allows local execution, denies no repository, uses last_resort placement and permits one concurrent heavy-suite slot.
+evidence_requirements:
+  - kind: tests
+    description: Host table pins include the hp-gen8 row and the guard reads it
+    command: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/scripts/test_prepush_host_table.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-001
+    description: The host table test pins the hp-gen8 row and the conftest guard designates it
+    source: generated
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/scripts/test_prepush_host_table.py::test_table_contents_are_pinned tests/scripts/test_prepush_host_table.py::test_the_conftest_guard_reads_the_same_committed_table_as_the_bash_guard -q --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-002
+    description: The shipped policy, denial, placement and slot tests pin the conservative h051 configuration.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/scripts/test_prepush_host_table.py::test_the_shipped_heavy_local_policy_is_pinned tests/scripts/test_prepush_host_table.py::test_the_shipped_repo_denials_are_pinned tests/scripts/test_prepush_host_table.py::test_placement_tier_is_pinned tests/scripts/test_prepush_host_table.py::test_the_shipped_slots_column_is_pinned -q --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-hp-deploy-source-readback
+    description: Hosted source readback of the pre-push table at the checked-out commit. Refuses an absent or changed h051 identity or policy; this verifies published source, not a running deployment.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu;
+          table=$(mktemp);
+          trap 'rm -f "$table"' EXIT;
+          head_sha=$(git rev-parse HEAD);
+          curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$head_sha/scripts/hooks/prepush_hosts.tsv" -o "$table";
+          awk -F '\t' '$1 == "h051" { n++; if ($2 != "capacity" || $3 != "hp-gen8" || $5 != "80" || $9 != "lockdir" || $10 != "1" || $11 != "-" || $12 != "authorizing" || $13 != "allowed" || $14 != "last_resort") exit 1 } END { if (n != 1) exit 1 }' "$table"
+        cwd: ${OMNI_HOME}/omnimarket

@@ -96,6 +96,7 @@ def test_table_contents_are_pinned() -> None:
         "h201c": ("identity", "gate-runner-201", "authorizing"),
         "h101": ("capacity", "stickybeatz", "authorizing"),
         "h105": ("capacity", "omnibook", "authorizing"),
+        "h051": ("capacity", "hp-gen8", "authorizing"),
     }
 
 
@@ -117,6 +118,7 @@ def test_the_shipped_heavy_local_policy_is_pinned() -> None:
         "h201c": "prefer_remote",
         "h101": "allowed",
         "h105": "allowed",
+        "h051": "allowed",
     }
     modes = {r[0]: r[11] for r in _rows()}
     for label in ("h200", "h201", "h201c"):
@@ -153,7 +155,8 @@ def test_prefer_remote_rows_stay_a_strict_subset_of_capacity_rows() -> None:
 
 
 def test_placement_tier_is_pinned() -> None:
-    """`.201` (h201) is the ONLY `last_resort` row: it hosts the dev runtime
+    """h201 is `last_resort`, and so is h051 (the HP) while it is registered
+    unavailable: h201 hosts the dev runtime
     lane -- the live evidence surface the OMN-16963 AC5 terminalization
     measurement reads from -- and the interactive collaborator lane, so the
     placement engine may take it only when no default-tier host is fit
@@ -166,6 +169,7 @@ def test_placement_tier_is_pinned() -> None:
         "h201c": "-",
         "h101": "default",
         "h105": "default",
+        "h051": "last_resort",
     }
 
 
@@ -222,6 +226,7 @@ def test_the_shipped_repo_denials_are_pinned() -> None:
         "h201c": "-",
         "h101": "omnimarket",
         "h105": "omnimarket",
+        "h051": "-",
     }
 
 
@@ -407,6 +412,7 @@ _SYNTHETIC_OVERLAY = (
     "h201c\t-\t-\t-\n"
     "h101\t198.51.100.101\t/opt/synthetic/bin/uv\t/tmp/onex-prepush\n"
     "h105\t198.51.100.105\t/opt/synthetic/bin/uv\t/tmp/onex-prepush\n"
+    "h051\t198.51.100.51\t/opt/synthetic/bin/uv\t/tmp/onex-prepush\n"
 )
 
 
@@ -1116,6 +1122,7 @@ def test_the_shipped_slots_column_is_pinned(table_repo: Path) -> None:
         "h201c": "1",
         "h101": "1",
         "h105": "1",
+        "h051": "1",
     }
 
 
@@ -2681,6 +2688,7 @@ def test_the_conftest_guard_reads_the_same_committed_table_as_the_bash_guard(
         "gate-runner-201",
         "stickybeatz",
         "omnibook",
+        "hp-gen8",
     )
 
 
