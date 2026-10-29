@@ -406,6 +406,13 @@ requirements:
     acceptance:
       - id: "AC101"
         statement: "AC101: in a pool holding one revoked and one good token, one mark-revoked of the revoked label makes resolve return the good token, the first mark carries one ALERT naming the label and a repeat mark carries none, a forced re-add clears the revocation, and a pool whose every token is limited or revoked resolves nothing and exits 4 with an ALARM status line -- falsifier: uv run pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_pool.py -q -k 'revoked or revocation' fails at the merge base"
+  - id: "req-claude-pool-revoked-not-limited"
+    statement: "Revoked Claude tokens do not count as waiting on a limit reset, while a pool with no usable token still raises its alarm."
+    acceptance:
+      - id: "AC456401"
+        statement: "AC456401: a revoked token retaining a future limit is excluded from limited and next_reset and has limited=false; the real limited token supplies the reset and the usable token prevents an alarm -- falsifier: the focused revoked-token regression fails"
+      - id: "AC456402"
+        statement: "AC456402: a pool containing only a revoked token retaining a future limit reports limited=0 and no next_reset, while all_limited and the ALARM status remain set -- falsifier: the focused one-token regression fails"
   - id: "req-context-compaction-task-class"
     statement: "context_compaction is an internal delegation task class: the compaction orchestrator can name it, it is never resolved from prompt text, it declares an execution budget and a ladder it can reach, every market consumer of the task-class universe accepts it, and the summarization-shaped inference protocol profiles shape its requests."
     acceptance:
@@ -4163,6 +4170,29 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_action_pin_wiring_omn17427.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-pr4564-revoked-not-limited"
+    description: "A temporary local secret store holds revoked, limited and usable tokens. The handler excludes the revoked token from the count, reset and per-entry limited flag. The regression fails against the parent handler."
+    source: "manual"
+    binds_ac: ["AC456401"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_pool.py -q --no-cov -p no:randomly --refuse-skips -k test_a_revoked_token_that_still_carries_a_limit_is_not_counted_as_limited"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-pr4564-revoked-only-alarm"
+    description: "A temporary local secret store holds one revoked token with a future limit. The handler reports no waiting limit or reset and preserves the no-usable-token alarm. The regression fails against the parent handler."
+    source: "manual"
+    binds_ac: ["AC456402"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_pool.py -q --no-cov -p no:randomly --refuse-skips -k test_a_pool_of_one_revoked_limited_token_reports_no_limit_and_the_alarm"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-pr4564-revoked-summary-deploy-probe"
+    description: "Deploy probe. On the hosted runner, exercise the checked-out token-pool handler against a temporary SQLite secret store and status mirror. The revoked-token regressions require correct counts, reset, entry flags and alarm. Locked Python dependencies suffice; no credentials, broker or deployed lane access are required."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_pool.py -q --no-cov -p no:randomly --refuse-skips -k 'test_a_revoked_token_that_still_carries_a_limit_is_not_counted_as_limited or test_a_pool_of_one_revoked_limited_token_reports_no_limit_and_the_alarm'"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-one-shot-reply-no-group"
     description: "The three one-shot reply callers read their terminals through subscribe_ungrouped and mint no consumer group. N calls leave the in-memory bus with the groups it started with, a timed-out call leaves none, and a bus without the group-less read is refused at construction. The merge-base callers mint a group per call, so the tests fail there."

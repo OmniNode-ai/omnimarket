@@ -381,6 +381,47 @@ def test_every_token_revoked_or_limited_resolves_nothing_and_raises_the_alarm(
     assert resolved.token is None
 
 
+def test_a_revoked_token_that_still_carries_a_limit_is_not_counted_as_limited(
+    rig,
+) -> None:
+    handler, _, _ = rig
+    add(handler, "h101-own", fake_token("a"))
+    add(handler, "acct-b", fake_token("b"))
+    add(handler, "acct-c", fake_token("c"))
+    op(handler, "mark_limited", label="h101-own", seconds=30 * 86400)
+    op(handler, "mark_limited", label="acct-b", seconds=3600)
+    status = op(handler, "mark_revoked", label="h101-own")
+    assert status.limited == 1, "only acct-b is waiting on a reset"
+    assert status.next_reset == "2026-10-18T03:00:00Z", (
+        "the revoked token's far limit is no reset"
+    )
+    assert status.status_line == (
+        "claude-pool host=h202 tokens=3 limited=1 next_reset=2026-10-18T03:00:00Z revoked=h101-own"
+    )
+    assert [(t.label, t.limited, t.revoked) for t in status.tokens] == [
+        ("h101-own", False, True),
+        ("acct-b", True, False),
+        ("acct-c", False, False),
+    ]
+    assert not status.all_limited
+
+
+def test_a_pool_of_one_revoked_limited_token_reports_no_limit_and_the_alarm(
+    rig,
+) -> None:
+    handler, _, _ = rig
+    add(handler, "acct-a", fake_token("a"))
+    op(handler, "mark_limited", label="acct-a", seconds=3600)
+    status = op(handler, "mark_revoked", label="acct-a")
+    assert status.limited == 0
+    assert status.next_reset is None
+    assert status.all_limited
+    assert status.status_line == (
+        "ALARM claude-pool host=h202 tokens=1 limited=0 next_reset=none "
+        "revoked=acct-a every token limited or revoked"
+    )
+
+
 def test_forced_re_add_clears_a_revocation(rig) -> None:
     handler, _, _ = rig
     add(handler, "acct-a", fake_token("a"))
