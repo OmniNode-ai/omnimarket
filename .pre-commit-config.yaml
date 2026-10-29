@@ -45,9 +45,12 @@ repos:
         files: ^\.github/workflows/[^/]+\.ya?ml$
         require_serial: true
       - id: check-hook-writes
+        require_serial: true
       - id: commit-hygiene
+        require_serial: true
       - id: commit-hygiene-message
         stages: [commit-msg]
+        require_serial: true
   # OMN-19998: public-repository runner placement (RULING 2026-10-16T07:07:09Z,
   # "Ci runners should be for private repos only"). CI twin job
   # public-runner-placement in .github/workflows/ci.yml; keep this rev equal to

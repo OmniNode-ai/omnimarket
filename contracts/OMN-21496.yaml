@@ -40,6 +40,9 @@ dod_evidence:
       grep -q 'args: \[--no-fix\]' .pre-commit-config.yaml;
       ! grep -qE 'id: (ruff-fix|end-of-file-fixer|trailing-whitespace)' .pre-commit-config.yaml
     cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_check_only_hooks_omn21496.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21496-ac1-no-local-definition
   description: AC1 reads the committed config for the removed local hook ids and for the consumed core ids; the repository holds no local definition of the end-of-file, co-author trailer or tmp/ rules.
   source: manual
@@ -53,6 +56,9 @@ dod_evidence:
       grep -q 'id: commit-hygiene$' .pre-commit-config.yaml;
       grep -q 'id: commit-hygiene-message' .pre-commit-config.yaml;
       ! grep -qE 'id: (end-of-file-fixer|end-of-file-check|strip-ai-coauthor-trailer|refuse-ai-coauthor-trailer)' .pre-commit-config.yaml
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_check_only_hooks_omn21496.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21496-ac2-canary
   description: AC2 stages a file without a final newline and a tmp/ file and writes a commit message with an AI co-author trailer in a throwaway git tree, runs the consumed hooks through pre-commit with the pin from the committed config, and checks each is refused and that the sha256 of every file of the tree is the same before and after each run; a clean file passes as the positive control.
@@ -76,6 +82,9 @@ dod_evidence:
       grep -q 'id: commit-hygiene$' .pre-commit-config.yaml;
       grep -q 'stages: \[commit-msg\]' .pre-commit-config.yaml
     cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_check_only_hooks_omn21496.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21496-deploy-config
   description: 'Hosted deploy readback: fetch the hook config and build-loop source from the public repository at the exact checked-out commit. Refuse a config without the consumed core hooks, or a build loop that still pre-runs the removed ruff hooks. The direct ruff formatter and fixer must remain.'
   source: manual
@@ -96,5 +105,3 @@ dod_evidence:
       grep -Fq 'ruff_bin, "check", "--fix"' "$readback_dir/assemble_live.py";
       ! grep -q 'pre_commit_bin' "$readback_dir/assemble_live.py";
     cwd: ${OMNI_HOME}/omnimarket
-  binds_ac:
-  - AC1
