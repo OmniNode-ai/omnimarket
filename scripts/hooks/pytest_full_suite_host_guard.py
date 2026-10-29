@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Direct-invocation .200-default host guard for pytest (OMN-15977 Hole 1).
+"""Direct-invocation h200-default host guard for pytest (OMN-15977 Hole 1).
 
 The OMN-15059 guard (``scripts/hooks/prepush_smart_tests.sh``) refuses/redirects
 the heavy full-suite path when it runs -- but ONLY when pytest is launched via
@@ -12,7 +12,7 @@ broke" verification step:
 
     uv run pytest tests/ -q > .gate_logs/full_suite3.log
 
-No pre-push hook fires for that invocation, so the ``.200``-default host-check
+No pre-push hook fires for that invocation, so the ``h200``-default host-check
 is never consulted. Observed 3x in one lane (full_suite1/2/3) on 2026-08-12,
 and confirmed as a live coverage hole in OMN-15977.
 
@@ -56,6 +56,7 @@ from __future__ import annotations
 import os
 import socket
 import subprocess
+from pathlib import Path
 
 from scripts.hooks.prepush_override_grant import (
     consume,
@@ -66,10 +67,11 @@ from scripts.hooks.prepush_override_grant import (
     resolve_repo_root,
 )
 
-DEFAULT_PREPUSH_200_HOSTNAME = "stickybeatz-studio"
-DEFAULT_PREPUSH_201_GATE_RUNNER_HOSTNAME = "gate-runner-201"
-
 HOST_TABLE_REL = "scripts/hooks/prepush_hosts.tsv"
+# OMN-20939: the deployment's own rows live in a private table found through the
+# workspace-config resolver, never in this repository.
+PRIVATE_TABLE_REL = "config/onex/overlays/prepush_hosts/prepush_hosts.omnimarket.tsv"
+_GIT_LOCATION_ENV = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")
 
 # Legacy env override -> host-table row label. An override REPLACES the row it
 # names; it never ADDS a hostname to the designated set. That distinction is
@@ -93,17 +95,15 @@ def _override_var(label: str) -> str:
 def designated_hostnames(
     env: dict[str, str] | None = None,
 ) -> tuple[str, ...]:
-    """Every hostname that may run a full suite, from the COMMITTED host table.
+    """Every hostname that may run a full suite, from the COMMITTED host tables.
 
-    OMN-16991. This guard used to read `.201`'s identity straight off
-    ``PREPUSH_201_GATE_RUNNER_HOSTNAME`` -- and the bash hook's
+    OMN-16991. This guard used to read a container-hosted gate runner's identity
+    straight off ``PREPUSH_201_GATE_RUNNER_HOSTNAME`` -- and the bash hook's
     ``scrub_prepush_override_env`` deliberately unsets every ``PREPUSH_*`` name
-    before ``exec uv run pytest``, so on the `.201` host (whose real
-    ``hostname -s`` is ``omninode-pc``, not the container's
-    ``gate-runner-201``) the sanctioned override never reached THIS guard. The
-    push passed the bash guard and was then refused by its own pytest child.
-    That is why `omnibase_infra` full-suite escalations could not run on `.201`
-    at all.
+    before ``exec uv run pytest``, so on a host whose real ``hostname -s``
+    differs from its container's, the sanctioned override never reached THIS
+    guard. The push passed the bash guard and was then refused by its own pytest
+    child.
 
     The scrub is NOT the bug and is not weakened here -- an inheritable
     ``PREPUSH_*`` override crossing into the pytest tree is exactly what turned
@@ -114,18 +114,13 @@ def designated_hostnames(
 
     Read from ``git show HEAD:`` rather than the working tree, and ignored
     outright if the working copy diverges, so an uncommitted row cannot
-    self-designate this machine. An unreadable table falls back to the two
-    code-embedded defaults -- the pre-OMN-16991 behavior exactly, so a checkout
-    without the table is neither more nor less permissive than before.
+    self-designate this machine. The shipped table carries a neutral disabled
+    row; the deployment's hosts come from its private table (see
+    ``_private_table_text``). With no private table, or with an unreadable or
+    untrusted one, NO host is designated: the caller then requires a grant, and
+    no built-in host name stands in (OMN-20939).
     """
     active_env: dict[str, str] | os._Environ[str] = os.environ if env is None else env
-    fallback = (
-        active_env.get("PREPUSH_200_HOSTNAME", DEFAULT_PREPUSH_200_HOSTNAME),
-        active_env.get(
-            "PREPUSH_201_GATE_RUNNER_HOSTNAME",
-            DEFAULT_PREPUSH_201_GATE_RUNNER_HOSTNAME,
-        ),
-    )
     try:
         repo_root = resolve_repo_root()
         committed = subprocess.run(
@@ -136,12 +131,16 @@ def designated_hostnames(
             check=False,
         )
         if committed.returncode != 0 or not committed.stdout.strip():
-            return fallback
+            return ()
         working = repo_root / HOST_TABLE_REL
         if working.is_file() and working.read_text() != committed.stdout:
-            return fallback
+            return ()
+        table_text = committed.stdout
+        private_text = _private_table_text(active_env)
+        if private_text:
+            table_text = f"{table_text}\n{private_text}"
         names: list[str] = []
-        for line in committed.stdout.splitlines():
+        for line in table_text.splitlines():
             line = line.split("#", 1)[0]
             if not line.strip():
                 continue
@@ -156,16 +155,88 @@ def designated_hostnames(
             if override:
                 hostname = override
             names.append(hostname)
-        return tuple(names) if names else fallback
+        return tuple(names)
     except Exception:  # noqa: BLE001 - deliberately total; see below
         # Deliberately broad. This runs in `pytest_configure`, where ANY escaping
         # exception becomes an INTERNALERROR that kills the whole session before a
-        # single test is collected -- a far worse failure than falling back. The
-        # fallback is the exact pre-OMN-16991 behavior (the two code-embedded
-        # defaults), so degrading here is neither more nor less permissive than
-        # before. `resolve_repo_root()` raising outside a git checkout is the
-        # concrete case: it raises GrantError, not OSError.
-        return fallback
+        # single test is collected -- a far worse failure than refusing. An
+        # unreadable or untrusted table designates NO host, which is the strict
+        # direction: the full-suite guard then requires a grant. There is no
+        # built-in host name to fall back to (OMN-20939).
+        # `resolve_repo_root()` raising outside a git checkout is the concrete
+        # case: it raises GrantError, not OSError.
+        return ()
+
+
+def _workspace_config_root(
+    env: dict[str, str] | os._Environ[str],
+) -> Path | None:
+    """The private config root: ONEX_WORKSPACE_CONFIG_ROOT, else the sibling of OMNI_HOME."""
+    configured = env.get("ONEX_WORKSPACE_CONFIG_ROOT", "").strip()
+    if configured:
+        return Path(configured)
+    if not env.get("OMNI_HOME", "").strip():
+        return None
+    # Reuse the shipped shell resolver for its owner fallback. This keeps that
+    # existing fallback in one place instead of publishing another literal or
+    # letting the two entry points develop different deployment authorities.
+    resolver = Path(__file__).with_name("prepush_dispatch.sh")
+    resolved = subprocess.run(
+        [
+            "bash",
+            "-c",
+            'source "$1"; prepush_workspace_config_root',
+            "resolver",
+            str(resolver),
+        ],
+        env={**env, "PREPUSH_PRIVATE_TABLE_REL": PRIVATE_TABLE_REL},
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
+    )
+    if resolved.returncode != 0 or not resolved.stdout.strip():
+        return None
+    return Path(resolved.stdout.strip())
+
+
+def _private_table_text(env: dict[str, str] | os._Environ[str]) -> str | None:
+    """The deployment's host table text, or None when none is configured.
+
+    Mirrors ``prepush_private_table_text`` in prepush_dispatch.sh. A root that is
+    itself the top of a git checkout is read from its COMMITTED copy and refused
+    (raises) when the working tree differs; any other root is read as a file.
+    """
+    root = _workspace_config_root(env)
+    if root is None:
+        return None
+    path = root / PRIVATE_TABLE_REL
+    if not path.is_file():
+        return None
+    git_env = {k: v for k, v in os.environ.items() if k not in _GIT_LOCATION_ENV}
+    top = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
+        env=git_env,
+    )
+    if top.returncode == 0 and Path(top.stdout.strip()).resolve() == root.resolve():
+        committed = subprocess.run(
+            ["git", "-C", str(root), "show", f"HEAD:{PRIVATE_TABLE_REL}"],
+            capture_output=True,
+            text=False,
+            timeout=15,
+            check=False,
+            env=git_env,
+        )
+        if committed.returncode != 0:
+            raise ValueError("private host table has no committed copy at HEAD")
+        if path.read_bytes() != committed.stdout:
+            raise ValueError("private host table differs between working tree and HEAD")
+        return committed.stdout.decode("utf-8")
+    return path.read_text()
 
 
 def is_ci_environment(env: dict[str, str] | None = None) -> bool:
@@ -202,7 +273,7 @@ def is_full_suite_target(
     it (so a bare ``pytest`` with no args, which falls back to ``testpaths``,
     is caught too), AND neither ``-k`` nor ``-m`` narrowed the run.
 
-    A genuinely narrow target (a single test file, ``tests/unit/scripts/``)
+    A genuinely narrow target (a single test file, ``tests/scripts/``)
     is strictly BELOW the full-suite root and never trips this -- only a
     target that covers the whole thing does.
     """
@@ -241,25 +312,38 @@ def full_suite_host_violation_message(
     """
     if not host:
         return None
-    allowed_hostnames = (target_hostname, *additional_target_hostnames)
+    allowed_hostnames = tuple(
+        name for name in (target_hostname, *additional_target_hostnames) if name
+    )
     if any(host.lower() == allowed.lower() for allowed in allowed_hostnames):
         return None
     if override_authorized:
         return None
+    if not allowed_hostnames:
+        return (
+            f"direct full-suite pytest invocation refused on host '{host}': no gate "
+            "host is configured. The shipped table "
+            f"({HOST_TABLE_REL}) carries only a disabled localhost row; "
+            "the deployment's hosts come from its own table at "
+            f"${{ONEX_WORKSPACE_CONFIG_ROOT}}/{PRIVATE_TABLE_REL} "
+            "(fifteen columns, documented in the header of the shipped table). "
+            "Create that file and set ONEX_WORKSPACE_CONFIG_ROOT to its root, run "
+            "from a configured gate host, OR mint a single-use override grant to "
+            "run the full suite on this host anyway (visible, receipted, "
+            "degraded-evidence -- do not use as a routine bypass): "
+            "`uv run python scripts/hooks/prepush_override_grant.py mint "
+            "--reason '<why>'`."
+        )
     return (
-        f"direct full-suite pytest invocation refused on host '{host}', not the "
-        f"designated .200 build host ('{target_hostname}') nor any other host "
-        f"carrying mode=authorizing in {HOST_TABLE_REL} "
-        f"({', '.join(repr(allowed) for allowed in additional_target_hostnames)}). "
+        f"direct full-suite pytest invocation refused on host '{host}', not a "
+        "designated gate host carrying mode=authorizing in the host tables "
+        f"({', '.join(repr(allowed) for allowed in allowed_hostnames)}). "
         "This closes OMN-15977 "
         "Hole 1: agent-launched direct `pytest tests/` runs bypass the git-push "
-        "guard (scripts/hooks/prepush_smart_tests.sh) entirely, so the .200-default "
-        "host-check was never consulted. Run on a host whose row in "
-        f"{HOST_TABLE_REL} carries mode=authorizing -- resolve the row by its "
-        "`label` and reach it through your own ssh configuration; this "
-        "repository is public, so the message names the row, never a "
-        f"login@host (the {HOST_TABLE_REL} header documents both how to add a "
-        "row and where the placement values live) -- OR mint a single-use "
+        "guard (scripts/hooks/prepush_smart_tests.sh) entirely, so the designated-"
+        "host check was never consulted. Run from a designated gate host instead "
+        f"(see {HOST_TABLE_REL}, whose header documents how to add one), OR mint "
+        "a single-use "
         "override grant to run the full suite on this host anyway (visible, "
         "receipted, degraded-evidence -- do not use as a routine bypass): "
         "`uv run python scripts/hooks/prepush_override_grant.py mint "
@@ -344,7 +428,7 @@ def enforce(config: object, full_suite_target: str) -> None:
     # PREPUSH_* env vars the bash hook's scrub deliberately strips before it
     # spawns this pytest. See designated_hostnames().
     all_designated = designated_hostnames()
-    target_hostname = all_designated[0]
+    target_hostname = all_designated[0] if all_designated else ""
     additional_hostnames = tuple(all_designated[1:])
     if (
         full_suite_host_violation_message(

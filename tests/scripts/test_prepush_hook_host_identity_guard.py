@@ -1,16 +1,16 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""Regression guard for the pre-push hook's `.200`-default host-identity
+"""Regression guard for the pre-push hook's `h200`-default host-identity
 guard (OMN-15059).
 
 Root cause this prevents regressing: root CLAUDE.md documents that the heavy
 (full-suite, fail-closed escalation) branch of the pre-push hook defaults to
-running on the `.200` execution host, not the local Mac -- but a rule stated
+running on the `h200` execution host, not the local Mac -- but a rule stated
 only in a doc/prompt has zero enforcement force without a call-site mechanism
 (memory `feedback_a_rule_is_not_a_mechanism`). Evidence this was load-bearing:
 a 2026-07-24 session drove the local Mac to load ~55 with 93% swap running
-this exact escalation for 115+ minutes before `.200` was invoked as a rescue
+this exact escalation for 115+ minutes before `h200` was invoked as a rescue
 rather than having been the execution target from the start.
 
 Three assertion classes:
@@ -22,14 +22,14 @@ Three assertion classes:
    forced (`PREPUSH_FULL_SUITE=1`) and a guaranteed-non-matching
    `PREPUSH_200_HOSTNAME` override exits non-zero WITHOUT ever reaching the
    real pytest invocation. The override makes this host-independent: it must
-   hold true no matter which host runs the test suite (including `.200`
+   hold true no matter which host runs the test suite (including `h200`
    itself), so the test does not rely on the ambient hostname.
 3. Heavyweight-SELECTION (OMN-15408) -- the guard must key on the work the
    selector actually picked, not on the `is_full_suite` flag. The selector
    routinely emits `is_full_suite=False` with `selected_paths=["tests/"]`, and
    before OMN-15408 those runs bypassed the guard outright: 13,898 tests /
    506s in omnimarket and 2,429 tests / 245s in omnibase_infra, executed on
-   `omnibook` through real `git push` runs on 2026-07-29 with the guard never
+   `h105` through real `git push` runs on 2026-07-29 with the guard never
    invoked -- while the identical selected work forced via
    `PREPUSH_FULL_SUITE=1` WAS refused. Assertion classes 1 and 2 above were
    green that entire time, because both only ever drove the flag-true path.
@@ -45,7 +45,12 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from tests.scripts._prepush_lab_isolation import network_free_lab_env
+from tests.scripts._prepush_lab_isolation import (
+    hook_test_env,
+    hook_test_root,
+    network_free_lab_env,
+)
+from tests.scripts._prepush_private_table import SYNTHETIC_TABLE
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HOOK_SCRIPT = REPO_ROOT / "scripts" / "hooks" / "prepush_smart_tests.sh"
@@ -64,7 +69,7 @@ def _designated_row_labels() -> tuple[str, ...]:
     """
     table = REPO_ROOT / "scripts" / "hooks" / "prepush_hosts.tsv"
     labels = []
-    for line in table.read_text(encoding="utf-8").splitlines():
+    for line in (table.read_text(encoding="utf-8") + SYNTHETIC_TABLE).splitlines():
         line = line.split("#", 1)[0]
         if not line.strip():
             continue
@@ -77,7 +82,7 @@ def _capacity_row_labels() -> tuple[str, ...]:
     """Labels of rows that are placement candidates (role=capacity)."""
     table = REPO_ROOT / "scripts" / "hooks" / "prepush_hosts.tsv"
     labels = []
-    for line in table.read_text(encoding="utf-8").splitlines():
+    for line in (table.read_text(encoding="utf-8") + SYNTHETIC_TABLE).splitlines():
         line = line.split("#", 1)[0]
         if not line.strip():
             continue
@@ -88,50 +93,28 @@ def _capacity_row_labels() -> tuple[str, ...]:
     return tuple(labels)
 
 
-def _skip_if_the_shared_host_slot_is_held(
-    result: subprocess.CompletedProcess[str],
-) -> None:
-    """Skip when a REAL heavy push holds this host's exclusive slot.
-
-    The local heavy path takes the same `<workroot>/LOCK` a remote host would
-    (OMN-16174 -- before that lock existed, five concurrent full suites once ran
-    on one machine). The workroot is shared across repos and lanes, so a genuine
-    push in flight legitimately makes this host unplaceable, and the guard then
-    refuses exactly as designed. That is the mechanism working, not a defect --
-    but it is also not what this test measures, so it is skipped rather than
-    reported as a failure or, worse, asserted away.
-    """
-    if "slot is already held" in result.stderr:
-        import pytest
-
-        pytest.skip(
-            "another heavy pre-push run holds this host's exclusive slot; "
-            "the fit-host path cannot be exercised while it is held"
-        )
-
-
 def _force_undesignated_host(env: dict[str, str]) -> None:
     """Make the ambient host un-designated for EVERY table row (OMN-16752,
     widened by OMN-17435).
 
     Before OMN-17435 the guard admitted a host if `hostname -s` matched either
-    of TWO identities: `.200` (``PREPUSH_200_HOSTNAME``) or the `.201`
+    of TWO identities: `h200` (``PREPUSH_200_HOSTNAME``) or the `h201`
     gate-runner container (``PREPUSH_201_GATE_RUNNER_HOSTNAME``, default
-    ``gate-runner-201``), so neutralising those two names was sufficient.
+    ``h201c``), so neutralising those two names was sufficient.
 
     IT IS NO LONGER SUFFICIENT, and that is the whole point of this port.
     Identity now comes from ``scripts/hooks/prepush_hosts.tsv``, which
-    designates `h101` (stickybeatz), `h105` (omnibook) and the `.201` HOST
-    itself (`h201`, omninode-pc) in addition to those two. On any of those
+    designates `h101` (h101), `h105` (h105) and the `h201` HOST
+    itself (`h201`, h201) in addition to those two. On any of those
     machines a two-name override leaves the row live, the guard correctly
     ALLOWS, and every refusal proof below inverts. So this neutralises every
     row via the picker's own per-row seam,
     ``PREPUSH_HOST_OVERRIDE_<LABEL uppercased>``, enumerated FROM the table.
 
-    That is not hypothetical, and the cost was not a cosmetic red. The `.201`
-    gate-runner is the host the OMN-16295 capacity guard routes to when `.200`
+    That is not hypothetical, and the cost was not a cosmetic red. The `h201`
+    gate-runner is the host the OMN-16295 capacity guard routes to when `h200`
     is over threshold — i.e. the one host where the full suite is MOST likely
-    to run — and its container sets ``hostname: gate-runner-201`` precisely so
+    to run — and its container sets ``hostname: h201c`` precisely so
     the guard recognises it. Running this file there on 2026-08-27 turned
     ``test_guard_refuses_full_suite_escalation_on_non_200_host`` (which drives
     the REAL hook, with no stubbed pytest) from a refusal proof into a live
@@ -139,7 +122,7 @@ def _force_undesignated_host(env: dict[str, str]) -> None:
     suite, that suite re-reached this test, popped the recursion sentinel
     (documented below as deliberate first-entry behavior) and re-entered —
     measured four nested full suites deep, one new level per minute, on the
-    shared `.201` host that also carries the runner fleet and every runtime
+    shared `h201` host that also carries the runner fleet and every runtime
     lane. With three more designated hosts in the table, the same fork bomb is
     now reachable on three more machines.
 
@@ -266,7 +249,7 @@ def test_guard_refuses_full_suite_escalation_on_non_200_host() -> None:
     to prove. Mirrors the leaky-var pop already applied in ``_run_hook``
     below for the identical reason.
     """
-    env = dict(os.environ)
+    env = {**os.environ, **hook_test_env(), **network_free_lab_env()}
     env.pop("PREPUSH_ALLOW_LOCAL_FULL_SUITE", None)
     # OMN-16489: this test deliberately exercises FIRST-entry behavior, so the
     # recursion sentinel an outer hook run exports must not leak in.
@@ -277,7 +260,7 @@ def test_guard_refuses_full_suite_escalation_on_non_200_host() -> None:
     # effect. If the ambient shell that invoked pytest itself had
     # PREPUSH_ALLOW_LOCAL_FULL_SUITE=1 set (the sanctioned degraded-capacity
     # escape hatch a few lines up in this same guard, used for real during a
-    # sustained .200/.201 fleet-load incident), `dict(os.environ)` inherits
+    # sustained h200/h201 fleet-load incident), `dict(os.environ)` inherits
     # it into the subprocess under test and the guard legitimately takes the
     # override branch instead of refusing -- a false failure of this test,
     # not a guard defect. Pop it so this specific negative-path proof stays
@@ -286,7 +269,7 @@ def test_guard_refuses_full_suite_escalation_on_non_200_host() -> None:
     env.pop("PREPUSH_ALLOW_LOCAL_FULL_SUITE", None)
     result = subprocess.run(
         ["bash", str(HOOK_SCRIPT)],
-        cwd=REPO_ROOT,
+        cwd=hook_test_root(),
         env=env,
         capture_output=True,
         text=True,
@@ -295,10 +278,10 @@ def test_guard_refuses_full_suite_escalation_on_non_200_host() -> None:
     )
     assert result.returncode != 0, (
         "expected the host guard to refuse the full-suite escalation on a "
-        f"non-.200 host; got exit {result.returncode}. "
+        f"non-h200 host; got exit {result.returncode}. "
         f"stdout={result.stdout!r} stderr={result.stderr!r}"
     )
-    assert "not the designated .200 build host" in result.stderr, (
+    assert "not the designated h200 build host" in result.stderr, (
         f"expected the refusal message in stderr, got: {result.stderr!r}"
     )
     assert "collected" not in result.stdout, (
@@ -314,7 +297,7 @@ def test_guard_refuses_full_suite_escalation_on_non_200_host() -> None:
 # it fired on the selector's `is_full_suite` FLAG. The selector routinely emits
 # `is_full_suite=False` with `selected_paths=["tests/"]` -- the whole suite
 # arriving as an "impacted subset" -- and those runs bypassed the guard
-# entirely. Measured on host `omnibook` through real `git push` runs on
+# entirely. Measured on host `h105` through real `git push` runs on
 # 2026-07-29: omnimarket ran 13,898 tests in 506s and omnibase_infra 2,429 tests
 # in 245s, locally, with the guard never invoked; the SAME selected work forced
 # via `PREPUSH_FULL_SUITE=1` was refused. Identical cost, opposite outcome,
@@ -433,7 +416,7 @@ def _run_hook_with_stubbed_selection(
     )
     uv_stub.chmod(0o755)
 
-    env = dict(os.environ)
+    env = {**os.environ, **hook_test_env(), **network_free_lab_env()}
     env["PATH"] = f"{stub_bin}{os.pathsep}{env['PATH']}"
     env["PREPUSH_TEST_SELECTION_JSON"] = str(selection_file)
     env["PREPUSH_BASE_REF"] = "HEAD"
@@ -452,7 +435,7 @@ def _run_hook_with_stubbed_selection(
 
     return subprocess.run(
         ["bash", str(HOOK_SCRIPT)],
-        cwd=REPO_ROOT,
+        cwd=hook_test_root(),
         env=env,
         capture_output=True,
         text=True,
@@ -534,7 +517,7 @@ def test_guard_refuses_whole_suite_equivalent_selection_when_flag_is_false(
 ) -> None:
     """THE OMN-15408 REGRESSION.
 
-    `is_full_suite=False` + `selected_paths=["tests/"]` on a non-`.200` host is
+    `is_full_suite=False` + `selected_paths=["tests/"]` on a non-`h200` host is
     the exact shape that ran 13,898 tests locally with the guard never invoked.
     RED against the pre-fix hook (it reached pytest and exited 0); GREEN after.
     """
@@ -548,7 +531,7 @@ def test_guard_refuses_whole_suite_equivalent_selection_when_flag_is_false(
         "even though is_full_suite=False; got exit "
         f"{result.returncode}. stdout={result.stdout!r} stderr={result.stderr!r}"
     )
-    assert "not the designated .200 build host" in result.stderr, (
+    assert "not the designated h200 build host" in result.stderr, (
         f"expected the refusal message in stderr, got: {result.stderr!r}"
     )
     assert "STUB-PYTEST-INVOKED" not in result.stdout, (
@@ -562,7 +545,7 @@ def test_guard_allows_a_genuinely_narrow_selection_on_a_local_host(
 ) -> None:
     """Anti-overreach pin.
 
-    A real narrow selection must still run locally on a non-`.200` host. If
+    A real narrow selection must still run locally on a non-`h200` host. If
     this ever fails, the fix has become a blanket push block and will be
     disabled within a week -- which is worse than no guard at all.
     """
@@ -572,11 +555,11 @@ def test_guard_allows_a_genuinely_narrow_selection_on_a_local_host(
         selected_paths=[_NARROW_SELECTION],
     )
     assert result.returncode == 0, (
-        "expected a genuinely narrow selection to be allowed on a non-.200 "
+        "expected a genuinely narrow selection to be allowed on a non-h200 "
         f"host; got exit {result.returncode}. "
         f"stdout={result.stdout!r} stderr={result.stderr!r}"
     )
-    assert "not the designated .200 build host" not in result.stderr, (
+    assert "not the designated h200 build host" not in result.stderr, (
         f"the guard must NOT refuse a proper narrowing; stderr: {result.stderr!r}"
     )
     assert "STUB-PYTEST-INVOKED" in result.stdout, (
@@ -598,7 +581,7 @@ def test_guard_allows_a_genuinely_narrow_selection_on_a_local_host(
 #
 # They are not self-contained any more. `host_load_ratio` now calls
 # `reap_spin_loop_orphans` (OMN-16995: reap leaked spin-loop orphans BEFORE
-# measuring, because 19 of them once put `.200` at 1.64x-core and refused every
+# measuring, because 19 of them once put `h200` at 1.64x-core and refused every
 # heavy escalation in the lab), and that function lives in
 # `scripts/hooks/prepush_dispatch.sh`. Extracting the helpers alone therefore
 # produced `reap_spin_loop_orphans: command not found` and rc=2 -- a harness
@@ -678,7 +661,7 @@ def _run_hook_forcing_full_suite(
         )
         uv_stub.chmod(0o755)
 
-        env = dict(os.environ)
+        env = {**os.environ, **hook_test_env(), **network_free_lab_env()}
         env["PATH"] = f"{stub_bin}{os.pathsep}{env['PATH']}"
         env["PREPUSH_FULL_SUITE"] = "1"
         env["PREPUSH_BASE_REF"] = "HEAD"
@@ -702,7 +685,7 @@ def _run_hook_forcing_full_suite(
 
         return subprocess.run(
             ["bash", str(HOOK_SCRIPT)],
-            cwd=REPO_ROOT,
+            cwd=hook_test_root(),
             env=env,
             capture_output=True,
             text=True,
@@ -758,7 +741,6 @@ def test_guard_allows_known_good_host_that_is_under_the_load_threshold() -> None
             "PREPUSH_LOAD_OVERRIDE_LOCAL": "2 24 65536",
         },
     )
-    _skip_if_the_shared_host_slot_is_held(result)
     assert result.returncode == 0, f"expected success on a fit known host: {result!r}"
     assert "STUB-PYTEST-INVOKED" in result.stdout, (
         f"expected the run to reach pytest: {result!r}"
@@ -766,8 +748,8 @@ def test_guard_allows_known_good_host_that_is_under_the_load_threshold() -> None
 
 
 def test_guard_allows_the_201_gate_runner_identity_when_fit() -> None:
-    """The .201 gate-runner is a valid execution host by identity, not just
-    `.200` -- this is the routing half of OMN-16295."""
+    """The h201 gate-runner is a valid execution host by identity, not just
+    `h200` -- this is the routing half of OMN-16295."""
     result = _run_hook_forcing_full_suite(
         env_extra={
             "PREPUSH_201_GATE_RUNNER_HOSTNAME": _real_short_hostname(),
@@ -775,9 +757,8 @@ def test_guard_allows_the_201_gate_runner_identity_when_fit() -> None:
             "PREPUSH_LOAD_OVERRIDE_LOCAL": "2 24 65536",
         },
     )
-    _skip_if_the_shared_host_slot_is_held(result)
     assert result.returncode == 0, (
-        f"expected success when this host matches the .201 gate-runner "
+        f"expected success when this host matches the h201 gate-runner "
         f"identity and is fit: {result!r}"
     )
     assert "STUB-PYTEST-INVOKED" in result.stdout, result
@@ -820,7 +801,7 @@ def test_the_refusal_reports_the_whole_probe_trail_not_one_other_host() -> None:
     """The refusal names EVERY row it probed and why each was rejected.
 
     Before OMN-17435 this pair of tests asserted a two-host remediation
-    sentence -- "the .201 gate-runner currently HAS capacity -- route there
+    sentence -- "the h201 gate-runner currently HAS capacity -- route there
     instead" / "is ALSO at/over the load threshold". That phrasing could only
     ever exist because the guard knew exactly two hosts. With a table there is
     no singular "other host" to name, and a refusal that named one would hide
@@ -838,7 +819,7 @@ def test_the_refusal_reports_the_whole_probe_trail_not_one_other_host() -> None:
     assert "probed hosts:" in result.stderr, (
         f"expected the probe trail in the refusal, got {result.stderr!r}"
     )
-    # CAPACITY rows only. An `identity` row (h201c, the .201 gate-runner
+    # CAPACITY rows only. An `identity` row (h201c, the h201 gate-runner
     # container) has no ssh target by construction -- it confers identity and is
     # never an execution target -- so probing it would be meaningless work, and
     # asserting it appears here would pin a bug rather than a behavior.
@@ -870,7 +851,7 @@ def test_the_heavy_harness_never_dispatches_a_real_lab_run(tmp_path: Path) -> No
     harnesses above were contained by construction. That containment is now
     gone. The equivalent was observed live in omnibase_infra on 2026-08-30,
     minutes after its host scan was fixed: the next `pytest` shipped a real git
-    bundle to `omnibook`, took its LOCK, and started a full suite there -- with
+    bundle to `h105`, took its LOCK, and started a full suite there -- with
     the remote wrapper's ORIGIN naming the test process. That is the
     OMN-16425/OMN-16489 F-01 recursion in distributed form, reached from a test
     rather than a push.
@@ -910,7 +891,7 @@ def test_the_heavy_harness_never_dispatches_a_real_lab_run(tmp_path: Path) -> No
         )
         stub.chmod(0o755)
 
-    env = dict(os.environ)
+    env = {**os.environ, **hook_test_env(), **network_free_lab_env()}
     for leaky in (
         "PREPUSH_FULL_SUITE",
         "PREPUSH_ALLOW_LOCAL_FULL_SUITE",
@@ -926,7 +907,7 @@ def test_the_heavy_harness_never_dispatches_a_real_lab_run(tmp_path: Path) -> No
 
     result = subprocess.run(
         ["bash", str(HOOK_SCRIPT)],
-        cwd=REPO_ROOT,
+        cwd=hook_test_root(),
         env=env,
         capture_output=True,
         text=True,

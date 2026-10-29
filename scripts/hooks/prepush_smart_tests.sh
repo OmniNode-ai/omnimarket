@@ -160,14 +160,14 @@ consume_override_grant() {
 }
 
 # =============================================================================
-# .200-default host guard for the heavy (full-suite) escalation (OMN-15059)
+# h200-default host guard for the heavy (full-suite) escalation (OMN-15059)
 # =============================================================================
-# CLAUDE.md documents that pushes / heavy gate runs default to the `.200`
+# CLAUDE.md documents that pushes / heavy gate runs default to the `h200`
 # execution host, not the local Mac -- but a rule stated only in a doc/prompt
 # has zero enforcement force without a call-site mechanism (memory
 # feedback_a_rule_is_not_a_mechanism). Evidence this is load-bearing: a
 # 2026-07-24 session drove the local Mac to load ~55 / 93% swap running this
-# exact full-suite escalation for 115+ minutes before .200 was invoked as a
+# exact full-suite escalation for 115+ minutes before h200 was invoked as a
 # rescue instead of having been the execution target from the start. This
 # guard fires ONLY on the heavy branch below (full-suite fail-closed
 # escalation), never on the fast impacted-subset path -- gating every push
@@ -181,21 +181,21 @@ consume_override_grant() {
 # cheap (<1s, before any pytest) and names its remediation, consistent with
 # this hook's fail-loud doctrine: a gate that cannot run must be
 # indistinguishable from a failing gate.
-PREPUSH_200_HOSTNAME="${PREPUSH_200_HOSTNAME:-stickybeatz-studio}"
+PREPUSH_200_HOSTNAME="${PREPUSH_200_HOSTNAME:-}"
 
 # =============================================================================
 # Live-load host selection (OMN-16295)
 # =============================================================================
-# Extends the host-IDENTITY guard below with a CAPACITY dimension: `.200`
+# Extends the host-IDENTITY guard below with a CAPACITY dimension: `h200`
 # being the right host by IDENTITY does not mean it has headroom. Measured
-# 2026-08-20: `.200` load average 32-34 against 24 cores (and, live during
+# 2026-08-20: `h200` load average 32-34 against 24 cores (and, live during
 # this same investigation, 56/24 -- 2.3x oversubscribed) driving an 89-93
 # minute full-suite run with orphaned pytest processes left behind. Same
 # failure class as the 2026-07-24 incident described below, recurring under
 # concurrent-session load. OMN-16295 adds a second execution target -- a
-# hard-capped gate-runner container on `.201`
+# hard-capped gate-runner container on `h201`
 # (docker/docker-compose.gate-runner.yml in omnibase_infra), selected ONLY
-# when `.200` is over threshold, never the default.
+# when `h200` is over threshold, never the default.
 #
 # FAIL-CLOSED, unlike the host-IDENTITY guard's fail-open posture below --
 # deliberately different, not inconsistent. An unresolvable HOSTNAME is
@@ -205,7 +205,7 @@ PREPUSH_200_HOSTNAME="${PREPUSH_200_HOSTNAME:-stickybeatz-studio}"
 # on that silence is exactly how the 2026-07-24 / 2026-08-20 incidents
 # happened -- assumed headroom that was not there. "Neither host reachable"
 # refuses; it does not skip the check.
-PREPUSH_201_GATE_RUNNER_HOSTNAME="${PREPUSH_201_GATE_RUNNER_HOSTNAME:-gate-runner-201}"
+PREPUSH_201_GATE_RUNNER_HOSTNAME="${PREPUSH_201_GATE_RUNNER_HOSTNAME:-}"
 # PREPUSH_200_SSH_TARGET / PREPUSH_201_SSH_TARGET are GONE (OMN-18027). They
 # hardcoded a `login@host` default -- an operator account name, a Tailscale
 # MagicDNS name and an RFC1918 address -- in a PUBLIC repository, each behind
@@ -214,21 +214,21 @@ PREPUSH_201_GATE_RUNNER_HOSTNAME="${PREPUSH_201_GATE_RUNNER_HOSTNAME:-gate-runne
 # appeared on exactly the two lines that defined them and at no consumer,
 # while the control name PREPUSH_200_HOSTNAME appeared at 19 sites. The live
 # probe path is prepush_dispatch.sh's host table, whose transport target is
-# the row's committed `hostname` and whose paths hydrate from the private
-# placement overlay. The waivers are deleted with the values they waived,
+# the private table's transport and absolute path columns. The waivers are
+# deleted with the values they waived,
 # which is the only direction that needs no approval -- widening one would.
 # load1/cores at or under this ratio counts as "fit". 1.0 == "not
 # oversubscribed" (a standard load-average heuristic); correctly reads the
-# observed-fit `.201` snapshot (~0.4x, 2026-08-20) as fit and both observed
-# `.200` snapshots above (1.33x and 2.3x) as over threshold.
+# observed-fit `h201` snapshot (~0.4x, 2026-08-20) as fit and both observed
+# `h200` snapshots above (1.33x and 2.3x) as over threshold.
 PREPUSH_LOAD_THRESHOLD="${PREPUSH_LOAD_THRESHOLD:-1.0}"
 
-# Cross-platform (Linux `.201` / macOS `.200`) load probe, printing
+# Cross-platform (Linux `h201` / macOS `h200`) load probe, printing
 # "<load1> <nproc>". Deliberately interpreter-free (OMN-17435, matching the
 # OMN-16991 shape already shipped in omnibase_infra): the previous form here
 # ran `python3 -c` on BOTH the local and the ssh branch, which OMN-14953's
 # pinned-interpreter doctrine wants routed through `uv run` -- and the ssh
-# branch cannot, because `.201` has no `uv` binary at all (probed 2026-08-20,
+# branch cannot, because `h201` has no `uv` binary at all (probed 2026-08-20,
 # re-probed 2026-09-01). Dropping the interpreter satisfies that constraint
 # rather than carving an exception out of it, and keeps interpreter startup
 # off the pre-push critical path. It also makes the probe usable on a host
@@ -237,9 +237,9 @@ PREPUSH_LOAD_THRESHOLD="${PREPUSH_LOAD_THRESHOLD:-1.0}"
 #
 # Two portability constraints, both load-bearing:
 #   1. Field extraction uses cut(1), NOT `set -- $(...)` word splitting.
-#      `.200`'s remote login shell is zsh, which does not word-split unquoted
+#      `h200`'s remote login shell is zsh, which does not word-split unquoted
 #      command substitution, so `set --` would collapse the whole line into $1
-#      there while working fine on `.201`'s bash.
+#      there while working fine on `h201`'s bash.
 #   2. This snippet is handed to ssh(1) as the remote command and executed by
 #      whatever login shell the remote user has, so it stays POSIX and carries
 #      no single quotes (it is itself a single-quoted assignment here).
@@ -249,11 +249,11 @@ PREPUSH_LOAD_THRESHOLD="${PREPUSH_LOAD_THRESHOLD:-1.0}"
 # THIRD FIELD: AVAILABLE MEMORY IN MiB (OMN-17392, the OMN-17271 memory
 # dimension). load1 is a CPU-time proxy and says nothing about the resource
 # that actually killed a suite: on 2026-08-31 an OMN-17316 landing lost hours
-# to the `.201` gate-runner OOM-killing full suites at its 8 GiB cap while this
-# picker -- reading CPU only -- kept ranking `.201` FIRST. Measured live while
+# to the `h201` gate-runner OOM-killing full suites at its 8 GiB cap while this
+# picker -- reading CPU only -- kept ranking `h201` FIRST. Measured live while
 # building this change, one second apart:
 #
-#   .201 HOST:      load 3.27 / 32 cores = 0.10x   mem_avail 49771 MiB
+#   h201 HOST:      load 3.27 / 32 cores = 0.10x   mem_avail 49771 MiB
 #   gate-runner:    load 3.27 / 32 cores = 0.10x   mem_avail  2562 MiB
 #                   (/sys/fs/cgroup/memory.max 8589934592
 #                    - memory.current 5902548992)
@@ -348,7 +348,7 @@ host_load_ratio() {
   local target="$1" raw load1 ncpu memmb timeout_cmd
   # OMN-16995: REAP FIRST, MEASURE SECOND. A leaked `sh -c while :; do :; done`
   # orphan is indistinguishable from real work in load1, and 19 of them once
-  # put `.200` at 1.64x-core and refused every heavy escalation in the lab. The
+  # put `h200` at 1.64x-core and refused every heavy escalation in the lab. The
   # reaper is defined in prepush_dispatch.sh, which is sourced below this
   # definition and therefore resolved by the time any caller runs.
   reap_spin_loop_orphans "$target" || true
@@ -396,7 +396,7 @@ host_load_ratio() {
 # operator directive is explicit that PREPUSH_* overrides stay forbidden.
 # Tests drive the MEASUREMENT through PREPUSH_MEM_OVERRIDE_MAP, never the floor.
 #
-# 4096 is chosen against the measured OOM, not picked round: the `.201`
+# 4096 is chosen against the measured OOM, not picked round: the `h201`
 # gate-runner OOM-killed full suites at a 8 GiB cap (OMN-17247), and its
 # headroom while running one measured 2562 MiB. A 4 GiB floor refuses that
 # container while it is saturated and re-admits it once the suite drains,
@@ -452,6 +452,7 @@ host_is_fit() {
 # tests/scripts/test_prepush_host_table.py pins its sha256 AND the upstream
 # revision it was copied from (recorded in scripts/hooks/prepush_dispatch.upstream),
 # so a local edit that silently forks the picker fails this repo's own suite.
+PREPUSH_PRIVATE_TABLE_REL="config/onex/overlays/prepush_hosts/prepush_hosts.omnimarket.tsv"
 # shellcheck source=scripts/hooks/prepush_dispatch.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/prepush_dispatch.sh"
 
@@ -533,7 +534,7 @@ dispatch_to_lab_host() {
 # Off-box-by-default routing (OMN-17392)
 # =============================================================================
 # Operator directive 2026-08-31, verbatim: "we should move prepush off this box
-# if possible". The box is `.200` (row h200), and the reason the directive was
+# if possible". The box is `h200` (row h200), and the reason the directive was
 # needed is a single short-circuit below: the guard ran the heavy suite LOCALLY
 # the moment the local host was a designated capacity row and its load probe
 # read under threshold. Lab dispatch was only ever reached once the local host
@@ -570,6 +571,12 @@ prepush_try_local_heavy_slot() {
   fi
   lw="$(prepush_local_workroot "$PREPUSH_LC_HOST" || true)"
   [ -n "$lw" ] || lw="${REPO_ROOT}/.onex_state/prepush_distribution"
+  # Forced full-suite selection invokes this guard before and after selection.
+  # Keep the slot this invocation already acquired; another holder still refuses.
+  if [ "${PREPUSH_HELD_LOCK:-}" = "${lw}/LOCK" ] \
+    && [ "$(cut -d' ' -f1 "$PREPUSH_HELD_LOCK/holder" 2> /dev/null || true)" = "$$" ]; then
+    return 0
+  fi
   prepush_lock_acquire "$lw" || lock_rc=$?
   if [ "$lock_rc" -eq 0 ]; then
     # No `trap ... EXIT` here: prepush_hook_cleanup (installed once, below)
@@ -685,12 +692,12 @@ guard_full_suite_host() {
   # OMN-16991: host identity now resolves against the COMMITTED host table
   # instead of the two hard-coded names this guard used to test
   # (`[ "$lc_host" = "$lc_target" ] || [ "$lc_host" = "$lc_201" ]`). That
-  # literal `||` -- not policy -- was the entire structural reason .101 and
-  # .105 could not be used, and it is also why `.201` only ever matched from
+  # literal `||` -- not policy -- was the entire structural reason h101 and
+  # h105 could not be used, and it is also why `h201` only ever matched from
   # INSIDE the gate-runner container: the container sets hostname
-  # gate-runner-201 while the host itself reports omninode-pc, so every push on
+  # h201c while the host itself reports h201, so every push on
   # the host needed PREPUSH_201_GATE_RUNNER_HOSTNAME exported to pass. Both
-  # names are now rows, so `.201` is designated intrinsically and no env var
+  # names are now rows, so `h201` is designated intrinsically and no env var
   # has to survive a process or ssh boundary for the guard to see it.
   #
   # An UNREADABLE table fails CLOSED, on the same reasoning as the unresolvable
@@ -698,10 +705,13 @@ guard_full_suite_host() {
   # cannot be resolved cannot be routed.
   if ! prepush_table_text > /dev/null 2>&1; then
     die "the pre-push host table (${PREPUSH_HOST_TABLE_REL}) could not be read from HEAD, so no host can be identified as a designated gate host for ${heavy_what}" \
-        "the table is read from the COMMITTED tree so an uncommitted row cannot self-designate this machine as an authorizing gate host. Commit ${PREPUSH_HOST_TABLE_REL} (or, if you have edited it, commit the edit so HEAD and the working tree agree), then re-push"
+        "the table is read from the COMMITTED tree so an uncommitted row cannot self-designate this machine as an authorizing gate host. Commit the configured table in its owning repository so HEAD and the working tree agree, then re-push"
   fi
   label="$(prepush_identity_label "$lc_host" || true)"
   designated="$(prepush_designated_hostnames)"
+  if [ -z "$designated" ]; then
+    log "NOTE: no designated gate host is configured -- $(prepush_private_table_status)"
+  fi
 
   if [ -n "$label" ]; then
     policy="$(prepush_heavy_local_policy "$lc_host" || true)"
@@ -803,8 +813,8 @@ guard_full_suite_host() {
     log "WARNING: DEGRADED-HOST OVERRIDE IN EFFECT (single-use grant consumed) -- running ${heavy_what} on '${host}', NOT a designated gate host (${designated}). This host has weaker isolation/headroom; treat any evidence from this run as WEAKER than a designated-host gate. See ${PREPUSH_HOST_TABLE_REL} for the designated set."
     return 0
   fi
-  die "${heavy_what} triggered on host '${host}', not the designated .200 build host ('${PREPUSH_200_HOSTNAME}') nor any other designated gate host (${designated})" \
-      "probed lab hosts: ${PREPUSH_PROBE_LOG:-none}. Push from a designated host, OR add/enable a lab host (the procedure is in ${PREPUSH_HOST_TABLE_REL}'s header), OR mint a single-use override grant to run the full suite on this host anyway (visible, receipted, degraded-evidence override -- do not use as a routine bypass): uv run python scripts/hooks/prepush_override_grant.py mint --reason '<why>'"
+  die "${heavy_what} triggered on host '${host}', not the designated h200 build host ('${PREPUSH_200_HOSTNAME}') nor any other designated gate host (${designated})" \
+      "probed lab hosts: ${PREPUSH_PROBE_LOG:-none}. $(prepush_private_table_status). Push from a designated host, OR add/enable a lab host (the procedure is in ${PREPUSH_HOST_TABLE_REL}'s header), OR mint a single-use override grant to run the full suite on this host anyway (visible, receipted, degraded-evidence override -- do not use as a routine bypass): uv run python scripts/hooks/prepush_override_grant.py mint --reason '<why>'"
 }
 
 # -----------------------------------------------------------------------------
@@ -814,7 +824,7 @@ guard_full_suite_host() {
 # FLAG. That is the wrong key: the selector routinely emits
 # `is_full_suite=False` with `selected_paths=["tests/"]` -- the entire suite
 # arriving as an "impacted subset" -- and those runs sailed straight past the
-# guard. Measured on host `omnibook` through a real `git push` on 2026-07-29:
+# guard. Measured on host `h105` through a real `git push` on 2026-07-29:
 # omnimarket selected `is_full_suite=False paths=[ tests/ ]` and executed
 # 13,898 tests in 506s locally with the guard never invoked, while the SAME
 # selected work forced via `PREPUSH_FULL_SUITE=1` (`is_full_suite=True
@@ -1127,7 +1137,7 @@ scrub_prepush_override_env() {
 # verdict depending on which leg ran it.
 #
 # Measured 2026-09-02 (OMN-17549): a governed same-host push of THIS repo on
-# `.201` returned six reds in tests/scripts/test_shell_hygiene_gate.py because
+# `h201` returned six reds in tests/scripts/test_shell_hygiene_gate.py because
 # the non-interactive PATH there omits `~/.local/bin`, which is where that
 # host's `shellcheck` lives. The tool was installed the whole time. Six
 # guaranteed false reds hard-block a push, so this is part of the verdict
@@ -1182,7 +1192,7 @@ if [ "$IS_FULL" = "True" ] || [ "$IS_FULL" = "true" ]; then
 elif [ "${#PATHS[@]}" -gt 0 ]; then
   # OMN-15408: guard on the SELECTED WORK, not the is_full_suite flag. A
   # selection that covers the whole full-suite target is the heavy run under
-  # another name and must be routed to .200 exactly as the flagged escalation is.
+  # another name and must be routed to h200 exactly as the flagged escalation is.
   if selection_is_whole_suite "$FULL_SUITE_TARGET" "${PATHS[@]}"; then
     guard_full_suite_host "whole-suite-equivalent impacted selection (is_full_suite=${IS_FULL}, selected paths [ ${PATHS_STR}] cover the entire '${FULL_SUITE_TARGET}' escalation target)"
   fi

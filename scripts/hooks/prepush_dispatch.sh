@@ -9,9 +9,9 @@
 # has never had:
 #
 #   1. A host TABLE replacing the two-hostname literal that was the structural
-#      reason .101/.105 could not be used (they were absent by a literal `||`,
+#      reason h101/h105 could not be used (they were absent by a literal `||`,
 #      not by policy).
-#   2. SLOT-AWARE placement. Measured 2026-08-30T05:0xZ: .201 read load1
+#   2. SLOT-AWARE placement. Measured 2026-08-30T05:0xZ: h201 read load1
 #      14.08/32 = 0.44x -- the FITTEST ratio in the lab -- while running three
 #      concurrent prepush suites behind a 10-deep queue. load1 is a CPU-time
 #      proxy; the scarce resource is an exclusive heavy-suite slot, so a host
@@ -36,13 +36,16 @@
 # -----------------------------------------------------------------------------
 PREPUSH_HOST_TABLE_REL="scripts/hooks/prepush_hosts.tsv"
 
-# prepush_table_text -- prints the committed table, or returns 1 with a reason
-# on stderr. Reading from HEAD (not the working tree) is what stops an
-# uncommitted row from self-designating this machine as an authorizing gate
-# host; the working-tree divergence check stops the inverse trick of editing
-# the file after a commit that CI already saw.
+# prepush_table_text -- prints the committed shipped table followed by the
+# deployment's private table, or returns 1 with a reason on stderr. Reading from
+# HEAD (not the working tree) is what stops an uncommitted row from
+# self-designating this machine as an authorizing gate host; the working-tree
+# divergence check stops the inverse trick of editing the file after a commit
+# that CI already saw. An ABSENT private table is the neutral default (the
+# shipped disabled row alone), never an error; a private table that is present
+# and unreadable or divergent refuses.
 prepush_table_text() {
-  local head_copy work_copy
+  local head_copy work_copy private_copy private_rc=0
   if ! head_copy="$(git -C "$REPO_ROOT" show "HEAD:${PREPUSH_HOST_TABLE_REL}" 2> /dev/null)"; then
     printf 'host table absent at HEAD (%s)\n' "$PREPUSH_HOST_TABLE_REL" >&2
     return 1
@@ -55,128 +58,105 @@ prepush_table_text() {
     fi
   fi
   printf '%s\n' "$head_copy"
+  private_copy="$(prepush_private_table_text)" || private_rc=$?
+  if [ "$private_rc" -eq 0 ]; then
+    printf '%s\n' "$private_copy"
+  elif [ "$private_rc" -ne 2 ]; then
+    return 1
+  fi
+  return 0
 }
 
 # -----------------------------------------------------------------------------
-# Private placement overlay -- OMN-18027, porting OMN-17996 (epic OMN-17992)
+# Private deployment table -- OMN-20939
 # -----------------------------------------------------------------------------
-# The committed table carries `@private` in ssh_target, uv_abs_path and
-# workroot. The transport target is resolved from the committed hostname column;
-# private ssh configuration may map that host alias to a lab address, but an
-# unversioned overlay may not choose where a git bundle is copied. The overlay
-# only hydrates the non-transport path values.
-#
-# Authorization is the (label, role, hostname, mode) columns of the committed
-# table, still read from HEAD, still refusing on working-tree divergence, and
-# still re-checked on the remote host by pytest_full_suite_host_guard.py against
-# its own `hostname -s`. So the OMN-16688 "no file on disk to forge" premise is
-# untouched: the overlay cannot add a host, redirect a bundle to a different
-# host, or make an unresolved row usable.
-#
-# Resolution is fail-fast with no default (CLAUDE.md rule 8): there is no
-# fallback path and no built-in address. OMNI_HOME unset, or the file absent,
-# The owner is ONEX_WORKSPACE_CONFIG_ROOT or the sibling operator repository.
-# The retiring registry config is never read. Missing owner data
-# leaves path columns UNRESOLVED and emits a diagnostic. A row with incomplete
-# overlay data is resolved the same way: `-` for ssh_target and empty for
-# uv/workroot, so lab placement is SKIPPED and the caller falls through to the
-# pre-existing precedence. It never refuses a push: a placement optimisation
-# that bricks pushes is the failure mode this hook family already rejected once.
-#
-# ONE DIVERGENCE FROM UPSTREAM, and it is forced rather than chosen. Upstream
-# hardcodes its own overlay filename in this library. This copy may not: the
-# vendoring rule (test_the_picker_library_is_not_edited_into_a_repo_specific
-# _fork) forbids naming a vendoring repo inside the shared picker, because a
-# repo-local literal here is how "one mechanism, three repos" becomes three
-# mechanisms wearing one filename. That rule names the supported seam --
-# per-repo behavior is DATA this library reads out of the host table -- so the
-# overlay filename is declared by the table itself, on a `#!placement-overlay`
-# directive line. The resolved path is byte-identical to the one upstream
-# writes, this text stays repo-neutral so the next re-vendor is still a copy,
-# and the declaration inherits the table's own protections: it is read from
-# HEAD and the hook refuses when the working tree diverges, so the overlay a
-# push reads cannot be re-pointed by an uncommitted edit either.
-#
-# A table with no directive declares no overlay. That is not an error and not a
-# default -- it is a table whose placement columns carry real values already
-# (every synthetic fixture), or one that wants no lab placement at all. Either
-# way the resolver returns rc=1 with a reason and the rows fall through
-# unhydrated.
-PREPUSH_HOST_OVERLAY_DIRECTIVE="#!placement-overlay"
+# The shipped table above carries the schema and a neutral disabled row. The
+# deployment's hosts live in a private table with the same fifteen columns,
+# found through the workspace-config resolver: ONEX_WORKSPACE_CONFIG_ROOT, else
+# the private workspace repository beside OMNI_HOME. There is no built-in path and no
+# lab value in this file (CLAUDE.md rule 8).
+# The caller names the file (a repo-relative-to-the-config-root path); the shared
+# library carries no repo name. Unset means no deployment table is declared.
+PREPUSH_PRIVATE_TABLE_REL="${PREPUSH_PRIVATE_TABLE_REL:-}"
 
-# prepush_overlay_rel -- the overlay path relative to the owning config root as DECLARED BY
-# THE COMMITTED TABLE, or rc=1. No repo literal, no branch, no default.
-prepush_overlay_rel() {
-  local rel
-  rel="$(prepush_table_text | awk -v D="$PREPUSH_HOST_OVERLAY_DIRECTIVE" '
-    $1 == D && NF >= 2 { print $2; exit }
-  ')"
-  [ -n "$rel" ] || return 1
-  printf '%s' "$rel"
+# prepush_workspace_config_root -- the resolved root, or rc=1 when neither
+# ONEX_WORKSPACE_CONFIG_ROOT nor OMNI_HOME names one.
+prepush_workspace_config_root() {
+  local path
+  path="$(prepush_private_table_path)" || return 1
+  printf '%s' "${path%/"$PREPUSH_PRIVATE_TABLE_REL"}"
 }
 
-# prepush_overlay_path -- absolute path to the private overlay, or rc=1 with a
-# reason on stderr. There is no fallback path and no built-in address.
-prepush_overlay_path() {
+# Resolve the full table path using the existing workspace owner fallback.
+prepush_private_table_path() {
   local rel path
-  if ! rel="$(prepush_overlay_rel)"; then
-    printf 'placement overlay unresolved: the host table declares no %s\n' \
-      "$PREPUSH_HOST_OVERLAY_DIRECTIVE" >&2
-    return 1
-  fi
-  if [ -z "${OMNI_HOME:-}" ]; then
-    printf 'placement overlay unresolved: OMNI_HOME is not set (%s)\n' \
-      "$rel" >&2
-    return 1
-  fi
+  rel="$PREPUSH_PRIVATE_TABLE_REL"
+  [ -n "${ONEX_WORKSPACE_CONFIG_ROOT:-}" ] || [ -n "${OMNI_HOME:-}" ] || return 1
   path="${ONEX_WORKSPACE_CONFIG_ROOT:-${OMNI_HOME}/../omnibase_internal}/${rel}"
-  if [ ! -f "$path" ]; then
-    printf 'placement overlay absent at %s\n' "$path" >&2
-    return 1
-  fi
   printf '%s' "$path"
 }
 
-# prepush_table_rows -- data rows only (comments and blanks dropped), with the
-# `@private` placement columns hydrated from the overlay.
+# prepush_private_table_text -- prints the deployment table. rc=2 means NOT
+# CONFIGURED (no root, or no file): the neutral case, with the reason on stderr
+# only when the caller asks for it via prepush_private_table_status. rc=1 means
+# the table exists but cannot be trusted (unreadable, or it differs between the
+# working tree and HEAD of its git checkout).
+prepush_private_table_text() {
+  local root path top phys head_copy work_copy
+  [ -n "$PREPUSH_PRIVATE_TABLE_REL" ] || return 2
+  root="$(prepush_workspace_config_root)" || return 2
+  path="${root}/${PREPUSH_PRIVATE_TABLE_REL}"
+  [ -f "$path" ] || return 2
+  # A root that is itself the top of a git checkout is read from its COMMITTED
+  # copy, so an uncommitted row cannot self-designate a machine (the same rule
+  # the shipped table lives under). A root that is a plain directory, or a
+  # subdirectory of some other checkout, is read as a file.
+  top="$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE git -C "$root" rev-parse --show-toplevel 2> /dev/null || true)"
+  phys="$(cd "$root" 2> /dev/null && pwd -P || true)"
+  if [ -n "$top" ] && [ "$top" = "$phys" ]; then
+    if ! head_copy="$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE git -C "$root" show "HEAD:${PREPUSH_PRIVATE_TABLE_REL}" 2> /dev/null && printf '.')"; then
+      printf 'private host table has no committed copy at HEAD (%s)\n' "$path" >&2
+      return 1
+    fi
+    # A final marker keeps command substitution from discarding newlines, so
+    # even a newline-only edit differs. Remove only our marker when emitting.
+    if ! work_copy="$(cat "$path" && printf '.')"; then
+      printf 'private host table cannot be read (%s)\n' "$path" >&2
+      return 1
+    fi
+    if [ "$work_copy" != "$head_copy" ]; then
+      printf 'private host table differs between the working tree and HEAD (%s)\n' "$path" >&2
+      return 1
+    fi
+    printf '%s' "${head_copy%.}"
+    return 0
+  fi
+  cat "$path" || return 1
+}
+
+# prepush_private_table_status -- one line saying whether the deployment table is
+# configured, naming how to supply it when it is not. Printed by the guard so a
+# fork or a customer with no overlay is told, not silently given nothing.
+prepush_private_table_status() {
+  local root
+  if [ -z "$PREPUSH_PRIVATE_TABLE_REL" ]; then
+    printf 'deployment host table NOT CONFIGURED: the caller declares no table path'
+  elif root="$(prepush_workspace_config_root)"; then
+    if [ -f "${root}/${PREPUSH_PRIVATE_TABLE_REL}" ]; then
+      printf 'deployment host table: %s/%s' "$root" "$PREPUSH_PRIVATE_TABLE_REL"
+    else
+      printf 'deployment host table NOT CONFIGURED: %s/%s is absent -- create it (fifteen columns, see %s) or set ONEX_WORKSPACE_CONFIG_ROOT to the root that holds it' \
+        "$root" "$PREPUSH_PRIVATE_TABLE_REL" "$PREPUSH_HOST_TABLE_REL"
+    fi
+  else
+    printf 'deployment host table NOT CONFIGURED: neither ONEX_WORKSPACE_CONFIG_ROOT nor OMNI_HOME is set -- set ONEX_WORKSPACE_CONFIG_ROOT to a root holding %s (see %s)' \
+      "$PREPUSH_PRIVATE_TABLE_REL" "$PREPUSH_HOST_TABLE_REL"
+  fi
+}
+
+# prepush_table_rows -- data rows only (comments and blanks dropped).
 prepush_table_rows() {
-  local overlay
-  overlay="$(prepush_overlay_path)" || overlay="/dev/null"
-  prepush_table_text | sed -e 's/#.*$//' -e '/^[[:space:]]*$/d' | awk \
-    -F'\t' -v OFS='\t' -v OVL="$overlay" '
-      # The overlay is matched by FILENAME rather than the NR==FNR idiom on
-      # purpose: an EMPTY or absent overlay (/dev/null) contributes zero
-      # records, and NR==FNR would then be true for the FIRST TABLE ROW and
-      # silently eat it.
-      FILENAME == OVL {
-        line = $0
-        sub(/#.*$/, "", line)
-        if (line ~ /^[ \t]*$/) next
-        split(line, f, "\t")
-        if (f[1] == "") next
-        uvv[f[1]] = f[3]
-        wrv[f[1]] = f[4]
-        next
-      }
-      {
-        needs_private = ($4 == "@private" || $6 == "@private" || $8 == "@private")
-        complete_overlay = (($1 in uvv) && uvv[$1] ~ /^\// && ($1 in wrv) && wrv[$1] ~ /^\//)
-        if (needs_private && !complete_overlay) {
-          print "placement overlay incomplete for " $1 "; skipping row placement" > "/dev/stderr"
-          if ($4 == "@private") { $4 = "-" }
-          if ($6 == "@private") { $6 = "" }
-          if ($8 == "@private") { $8 = "" }
-          print
-          next
-        }
-        # The transport target is the committed hostname. Private ssh config is
-        # where lab addresses and account-specific login details belong; the
-        # unversioned overlay never controls where the git bundle is copied.
-        if ($4 == "@private") { $4 = $3 }
-        if ($6 == "@private") { $6 = uvv[$1] }
-        if ($8 == "@private") { $8 = wrv[$1] }
-        print
-      }' "$overlay" -
+  prepush_table_text | sed -e 's/#.*$//' -e '/^[[:space:]]*$/d'
 }
 
 # prepush_field ROW N -- Nth tab-separated field of ROW.
@@ -199,7 +179,7 @@ prepush_override_var() {
 # applying its override. Two legacy aliases are still honored so no existing
 # invocation or test breaks: PREPUSH_200_HOSTNAME replaces row h200 and
 # PREPUSH_201_GATE_RUNNER_HOSTNAME replaces row h201c (the CONTAINER row --
-# that variable always named the container, never the .201 host itself).
+# that variable always named the container, never the h201 host itself).
 prepush_row_hostname() {
   local row label name var val
   row="$1"
@@ -258,7 +238,7 @@ EOF
 # host we cannot prove idle is skipped exactly like one we cannot reach.
 #
 # The probe counts live prepush_smart_tests.sh processes because that is the
-# only signal that sees FOREIGN detached runs -- the ones .201's queue can
+# only signal that sees FOREIGN detached runs -- the ones h201's queue can
 # neither observe nor preempt (OMN-16968). A lock that only counts its own
 # holders reproduces that defect one host wider.
 #
@@ -371,7 +351,7 @@ prepush_slot_state() {
 # uv floor -- presence is not enough
 # -----------------------------------------------------------------------------
 # Verified by VERSION, not by path existence: the live fleet spread is 0.8.3
-# (.101, 13 months old) to 0.11.32 (.200) against a lockfile at revision 3.
+# (h101, 13 months old) to 0.11.32 (h200) against a lockfile at revision 3.
 # Below the floor, or unreadable, means SKIP.
 prepush_uv_version_ok() {
   local target uv floor out tcmd
@@ -430,11 +410,11 @@ prepush_map_lookup() {
 # omnibase_infra's own suite leaked one `sh -c while :; do :; done` per run:
 # `tests/unit/scripts/test_heavy_lock.py` killed the heavy_lock WRAPPER and not
 # the shell it wrapped, so the shell was reparented to PID 1 and burned a full
-# core forever. Measured on `.200` 2026-08-30: 19 such orphans, every one
+# core forever. Measured on `h200` 2026-08-30: 19 such orphans, every one
 # PPID 1, aged 2h47m-12h17m, ~18.6 of 24 cores -- load1 39.31/24 = 1.64x
 # against this gate's 1.0x threshold, so EVERY heavy escalation refused. After
 # reaping them load1 fell to 17.06 (0.71x) in under 90s and the same escalation
-# ran green. `.201` showed the same shape (11 orphans, 14.87 -> 5.95).
+# ran green. `h201` showed the same shape (11 orphans, 14.87 -> 5.95).
 #
 # The root cause is fixed in the test. This is the STOPGAP that keeps gate
 # hosts usable while that fix propagates to every clone and every host, and
@@ -447,7 +427,7 @@ prepush_map_lookup() {
 #   1. argv is EXACTLY `sh -c while :; do :; done` -- the no-op spin signature.
 #      Not a prefix, not a substring, not `bash -c`, not a loop with a body.
 #   2. PPID is exactly 1 -- already orphaned, so it has no supervisor that
-#      could be waiting on it. (A container-reparented orphan, the `.201`
+#      could be waiting on it. (A container-reparented orphan, the `h201`
 #      shape, has a non-1 PPID and is deliberately OUT of scope: reaping under
 #      a live init we did not start is a bigger claim than this stopgap makes.)
 #   3. Age >= PREPUSH_SPIN_ORPHAN_MIN_AGE seconds (default 600) -- long past
@@ -458,7 +438,7 @@ PREPUSH_SPIN_ORPHAN_MIN_AGE="${PREPUSH_SPIN_ORPHAN_MIN_AGE:-600}"
 
 # Interpreter-free on purpose, exactly like _PREPUSH_LOAD_PROBE_SH above: the
 # OMN-14953 pinned-interpreter gate requires every python invocation under
-# scripts/hooks/ to route through `uv run`, and `.201` has no `uv` at all. Also
+# scripts/hooks/ to route through `uv run`, and `h201` has no `uv` at all. Also
 # POSIX and single-quote-free, because it is handed to ssh(1) and executed by
 # whatever login shell the remote user has. Prints "<pid> <age_seconds>" per
 # reaped process on stdout; nothing else may go to stdout.
@@ -561,7 +541,7 @@ prepush_probe_ratio() {
 # the memory reading prepush_probe_ratio just took for LABEL.
 #
 # WHY THE PICKER NEEDS THIS AND load1 IS NOT ENOUGH (OMN-17392): measured live
-# one second apart on 2026-08-31, the `.201` HOST and the gate-runner CONTAINER
+# one second apart on 2026-08-31, the `h201` HOST and the gate-runner CONTAINER
 # running on it both report load 3.27/32 = 0.10x -- the fittest ratio in the
 # lab -- while their available memory differs 19-fold (49771 MiB vs 2562 MiB,
 # the container sitting at 5.9 GiB of an 8 GiB cgroup cap). The CPU-only picker
@@ -677,8 +657,7 @@ prepush_select_candidate() {
   [ -n "$PREPUSH_PICK_SLOT" ] || PREPUSH_PICK_SLOT=1
   # OMN-17564: the TARGET host's nominal core count, carried so the remote leg
   # can size its own parallelism from the host that will actually run the
-  # suite. Field 11 is appended after tier_rank (field 10) so the existing
-  # `sort -t'|' -k10,10n -k1,1g` ranking key is untouched.
+  # suite. Field 11 stays outside the tier, load and slot placement keys.
   PREPUSH_PICK_CORES="$(printf '%s' "$rec" | cut -d'|' -f11)"
   return 0
 }
@@ -697,7 +676,7 @@ prepush_select_candidate() {
 # finding 3: ranking on load alone let a `shadow` row outrank both authorizing
 # hosts (h200=0.90 h201=0.30 h105=0.20(shadow) -> PICK=h105), and a shadow host
 # by definition cannot satisfy the escalation, so the run was dispatched,
-# executed, and then discarded -- an escalation that .200 or .201 could have
+# executed, and then discarded -- an escalation that h200 or h201 could have
 # answered got refused instead, minutes later. A non-eligible row is now
 # skipped BEFORE it is probed: it can never win, so probing it only spends ssh
 # round trips on the pre-push critical path.
@@ -855,8 +834,9 @@ pick_capacity_host() {
   # every fit default-tier host is tried before any last_resort host, and
   # within a tier the cheapest host is tried first with the rest staying
   # available as fallbacks. The record keeps the true measured ratio in field
-  # 1 -- the demotion lives in the sort key, never in the evidence.
-  PREPUSH_FIT_RECORDS="$(printf '%s' "$recs" | sed '/^[[:space:]]*$/d' | sort -t'|' -k10,10n -k1,1g)"
+  # 1 -- the demotion lives in the sort key, never in the evidence. Equal
+  # tier/load candidates use ascending slot index, so slot 1 precedes slot 2.
+  PREPUSH_FIT_RECORDS="$(printf '%s' "$recs" | sed '/^[[:space:]]*$/d' | sort -t'|' -k10,10n -k1,1g -k9,9n)"
   prepush_select_candidate 1
 }
 
@@ -964,7 +944,7 @@ EOF
 # Exclusive slot
 # -----------------------------------------------------------------------------
 # mkdir(2) is the lock primitive on every host, deliberately, rather than
-# flock(1): flock is ABSENT on both Macs (probed live -- .101 and .105 have no
+# flock(1): flock is ABSENT on both Macs (probed live -- h101 and h105 have no
 # flock and no gtimeout), and its fd-holding idiom needs `exec {fd}<>` which
 # macOS system bash 3.2 cannot parse. mkdir is atomic on every POSIX
 # filesystem and works in bash 3.2, so the fleet gets ONE lock implementation
@@ -1046,7 +1026,7 @@ prepush_json_escape() {
 # -----------------------------------------------------------------------------
 # THE DEFECT THIS CLOSES, reproduced 2026-09-01 BEFORE any of it was written.
 # Every `ssh_target` in the table used to carry a hardcoded `jonah@` login, so
-# for any OTHER actor -- a collaborator holding his own account on `.201` --
+# for any OTHER actor -- a collaborator holding his own account on `h201` --
 # every remote row answered `Permission denied (publickey,password)` in under a
 # second and probed `slot-unknown`. His OWN host still probed `fit`, but
 # `dispatch_to_lab_host` SKIPS a self candidate (it carries no ssh target), so
@@ -1093,7 +1073,7 @@ PREPUSH_REACH_CONNECT_TIMEOUT=4
 # different verdict depending on which leg runs it.
 #
 # Measured 2026-09-02, a collaborator's governed push of a repo that vendors
-# this library, from `.201`, took the OMN-17280 same-host route -- suite run in
+# this library, from `h201`, took the OMN-17280 same-host route -- suite run in
 # THIS process, never through the remote wrapper -- and returned six reds in
 # that repo's shell-hygiene gate tests. `shellcheck` IS installed on that
 # host, at `~/.local/bin/shellcheck`; the non-interactive PATH there is
@@ -1362,10 +1342,10 @@ prepush_local_actor_route() {
 # git bundle transplant -> scp -> clone -> uv sync -> the IDENTICAL pytest argv
 # -> completion marker read back. This is the leg the hook has never had; until
 # now the "other host" was probed and the answer interpolated into a refusal
-# string (the old L427-433), so `.201` was reachable only by a human reading
+# string (the old L427-433), so `h201` was reachable only by a human reading
 # the die() text and hand-driving a recipe.
 #
-# Bundle transplant is not new machinery here: ~/push-lanes on .201 is already
+# Bundle transplant is not new machinery here: ~/push-lanes on h201 is already
 # full of *.bundle files from exactly this recipe. What is new is that the HOOK
 # drives it instead of a person.
 #
@@ -1383,7 +1363,7 @@ prepush_sha256_file() {
 
 # prepush_remote_gc TARGET RUNDIR WORKROOT -- reclaim the transplanted tree and
 # prune stale run directories. A clone plus `uv sync --all-extras` is ~0.5 GB
-# per run and nothing pruned it: two dispatches left 1.0 GB on omnibook, the
+# per run and nothing pruned it: two dispatches left 1.0 GB on h105, the
 # host the picker prefers, which fills a laptop disk in a few hundred pushes and
 # then starts failing runs for a reason that looks nothing like its cause. The
 # small artifacts (MARKER, suite.log, sync.log) are deliberately KEPT -- they
@@ -1617,7 +1597,7 @@ prepush_remote_run() {
   local heavy_what repo head_sha runid workroot ssh_t uv label rundir
   local bundle argvfile runner localdir marker rc=0 argv_sha log_sha
   local m_exit m_head m_argv m_log m_collected started ended dur
-  local readback wrapper_exit base_ref base_sha slot_idx remote_cmd tcmd
+  local readback wrapper_exit base_ref base_sha slot_idx remote_cmd tcmd privfile
   heavy_what="$1"
   # Resolved by the hook before it ever reaches here; empty in a driver that
   # exercises the library alone, which the wrapper handles as "skip".
@@ -1662,7 +1642,19 @@ prepush_remote_run() {
   prepush_remote_pytest_flags >> "$argvfile"
   argv_sha="$(prepush_sha256_file "$argvfile")"
 
-  # The remote wrapper is NAMED prepush_smart_tests.sh on purpose. .201's queue
+  # OMN-20939: the deployment's host rows are not in the bundle (the shipped table
+  # carries none), so the rows this dispatch verified travel beside it and the
+  # target's conftest guard reads the same table. Absent on a deployment with no
+  # private table, in which case the target designates nothing.
+  privfile="${localdir}/host_table_private.tsv"
+  if prepush_private_table_text > "$privfile" 2> /dev/null && [ -s "$privfile" ]; then
+    :
+  else
+    rm -f "$privfile"
+    privfile=""
+  fi
+
+  # The remote wrapper is NAMED prepush_smart_tests.sh on purpose. h201's queue
   # runner gates every lane on `ps ax | grep prepush_smart_tests.sh` ("no other
   # heavy prepush running host-wide, covers foreign runs not launched through
   # this queue"). Matching that name makes THIS run visible to the queue's own
@@ -1675,6 +1667,7 @@ prepush_remote_run() {
 set -uo pipefail
 RUNDIR="$1"; UV="$2"; HEAD_SHA="$3"; ARGV_SHA="$4"; ORIGIN="$5"; WORKROOT="$6"
 BASE_REF="${7:-}"; BASE_SHA="${8:-}"; SLOT_INDEX="${9:-1}"
+PRIVATE_REL="${11:-}"
 # The repo this bundle carries, so the registry root below can name it. Passed
 # rather than derived: RUNDIR's basename is `<repo>-<sha12>-<pid>` and repo
 # names contain both separators, so splitting it back apart is guesswork.
@@ -1692,12 +1685,12 @@ unset ENABLE_SMART_TESTS || true
 export ONEX_PREPUSH_HOOK_ACTIVE="remote-leg:${ORIGIN}"
 
 # PATH PARITY WITH A DEVELOPER SHELL. A non-interactive ssh session gets a
-# minimal PATH -- on omnibook literally `/usr/bin:/bin:/usr/sbin:/sbin`, with
+# minimal PATH -- on h105 literally `/usr/bin:/bin:/usr/sbin:/sbin`, with
 # neither the Homebrew prefix nor ~/.local/bin on it. The suite shells out to
 # tools by BARE NAME (`uv` in tests/unit/infra/test_catalog_cli.py, `shellcheck`
 # in the shell-hygiene gate tests), so without this a transplanted run fails in
 # ways the same tree never fails locally: the first full-suite dispatch to
-# omnibook returned 8 reds, every one a FileNotFoundError for a tool that WAS
+# h105 returned 8 reds, every one a FileNotFoundError for a tool that WAS
 # installed on that host, just not on the ssh PATH. A false red here HARD-BLOCKS
 # a push, so this is part of the verdict meaning anything -- not a convenience.
 #
@@ -1724,7 +1717,7 @@ while IFS= read -r line; do [ -n "$line" ] && ARGV+=("$line"); done < "$RUNDIR/a
 # machine -- can take it. The lock is therefore acquired HERE, on the target, by
 # the process that is about to burn the host's cores, and released when that
 # process exits. Before this the remote leg took no lock at all: a local heavy
-# push on .200/.201 could start while a transplanted suite was mid-run there,
+# push on h200/h201 could start while a transplanted suite was mid-run there,
 # which is the OMN-16174 overlap reopened across the local/remote boundary.
 #
 # Same primitive and same reclaim rule as prepush_lock_acquire in
@@ -1824,6 +1817,15 @@ mkdir -p "$RUNDIR/omni_home" || { echo "REGISTRY_ROOT_MKDIR_FAILED" >&2; exit 98
 ln -s "$RUNDIR/tree" "$RUNDIR/omni_home/$REPO_NAME" || { echo "REGISTRY_ROOT_LINK_FAILED" >&2; exit 98; }
 OMNI_HOME="$RUNDIR/omni_home"
 export OMNI_HOME
+# The deployment host table the dispatching side verified (OMN-20939), laid out
+# where the conftest guard's workspace-config resolver looks for it.
+if [ -f "$RUNDIR/host_table_private.tsv" ] && [ -n "$PRIVATE_REL" ]; then
+  mkdir -p "$(dirname "$RUNDIR/workspace_config/$PRIVATE_REL")" || { echo "WORKSPACE_CONFIG_MKDIR_FAILED" >&2; exit 98; }
+  cp "$RUNDIR/host_table_private.tsv" "$RUNDIR/workspace_config/$PRIVATE_REL" || { echo "WORKSPACE_CONFIG_COPY_FAILED" >&2; exit 98; }
+  ONEX_WORKSPACE_CONFIG_ROOT="$RUNDIR/workspace_config"
+  export ONEX_WORKSPACE_CONFIG_ROOT
+fi
+
 
 "$UV" sync --all-extras > "$RUNDIR/sync.log" 2>&1 || { echo "UV_SYNC_FAILED" >&2; exit 93; }
 # THE COLLECTED COUNT IS READ FROM A MACHINE-READABLE REPORT (OMN-17787).
@@ -1897,7 +1899,7 @@ REMOTE
     rm -rf "$localdir"
     return 1
   fi
-  if ! scp -q -o ConnectTimeout=6 -o BatchMode=yes "$bundle" "$argvfile" "$runner" "${ssh_t}:${rundir}/" > /dev/null 2>&1; then
+  if ! scp -q -o ConnectTimeout=6 -o BatchMode=yes "$bundle" "$argvfile" "$runner" ${privfile:+"$privfile"} "${ssh_t}:${rundir}/" > /dev/null 2>&1; then
     log "remote leg: transfer to ${label} failed"
     rm -rf "$localdir"
     return 1
@@ -1928,7 +1930,7 @@ REMOTE
   # dispatch_to_lab_host treats as a placement miss and walks past. Fail-closed
   # posture is unchanged -- a genuine remote RED still carries a marker and
   # still refuses the push.
-  remote_cmd="cd '${rundir}' || exit 96; chmod +x prepush_smart_tests.sh || exit 97; ./prepush_smart_tests.sh '${rundir}' '${uv}' '${head_sha}' '${argv_sha}' '$(hostname -s 2> /dev/null || echo unknown):$$' '${workroot}' '${base_ref}' '${base_sha}' '${slot_idx}' '${repo}'; rc=\$?; echo REMOTE_WRAPPER_EXIT=\$rc; echo \$rc > '${rundir}/WRAPPER_EXIT'; exit 0"
+  remote_cmd="cd '${rundir}' || exit 96; chmod +x prepush_smart_tests.sh || exit 97; ./prepush_smart_tests.sh '${rundir}' '${uv}' '${head_sha}' '${argv_sha}' '$(hostname -s 2> /dev/null || echo unknown):$$' '${workroot}' '${base_ref}' '${base_sha}' '${slot_idx}' '${repo}' '${PREPUSH_PRIVATE_TABLE_REL}'; rc=\$?; echo REMOTE_WRAPPER_EXIT=\$rc; echo \$rc > '${rundir}/WRAPPER_EXIT'; exit 0"
   tcmd="$(_prepush_timeout_cmd)"
   if [ -n "$tcmd" ]; then
     "$tcmd" "$PREPUSH_REMOTE_EXEC_TIMEOUT_SECONDS" \

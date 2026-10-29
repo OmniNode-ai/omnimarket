@@ -42,13 +42,17 @@ import os
 import subprocess
 from pathlib import Path
 
-from tests.scripts._prepush_lab_isolation import network_free_lab_env
+from tests.scripts._prepush_lab_isolation import (
+    hook_test_env,
+    hook_test_root,
+    network_free_lab_env,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HOOK_SCRIPT = REPO_ROOT / "scripts" / "hooks" / "prepush_smart_tests.sh"
 
 # Matches the guaranteed-non-matching override used by the OMN-15059 tests, so
-# host-identity never accidentally matches while these tests run on .200 itself.
+# host-identity never accidentally matches while these tests run on h200 itself.
 _NON_MATCHING_HOSTNAME = "definitely-not-the-200-host-omn16489"
 _NARROW_SELECTION = "tests/scripts/"
 
@@ -126,7 +130,7 @@ def _run_hook(
         hostname_stub.write_text("#!/usr/bin/env bash\nexit 1\n", encoding="utf-8")
         hostname_stub.chmod(0o755)
 
-    env = dict(os.environ)
+    env = {**os.environ, **hook_test_env()}
     for leaky in _LEAKY_VARS:
         env.pop(leaky, None)
     env["PATH"] = f"{stub_bin}{os.pathsep}{env['PATH']}"
@@ -143,7 +147,7 @@ def _run_hook(
 
     return subprocess.run(
         ["bash", str(HOOK_SCRIPT)],
-        cwd=REPO_ROOT,
+        cwd=hook_test_root(),
         env=env,
         capture_output=True,
         text=True,
