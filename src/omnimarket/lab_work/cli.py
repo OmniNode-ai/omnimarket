@@ -467,13 +467,15 @@ def judge_command(
             raise HostTableError(
                 "the unit's repository is not named (pass --repo, or run in a git checkout)"
             )
+        document = load_host_table()
         judged = HandlerLabPlacement().handle(
             ModelLabPlacementRequest(
                 repo=repo or said_repo or "",
                 kind=kind or said_kind or "other",
                 weight=weight,
                 host_names=host_names,
-                table=load_host_table(),
+                table=document.hosts,
+                unit_needs=document.unit_needs,
             )
         )
     except (HostTableError, ValueError) as exc:

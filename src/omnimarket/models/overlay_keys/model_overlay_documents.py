@@ -97,12 +97,27 @@ class ModelLabHostRow(_ModelOverlayBase):
     speed: float | None = Field(default=None, gt=0)
 
 
+class ModelUnitNeedsRule(_ModelOverlayBase):
+    """A unit of ``repo`` (a repository name without its owner; ``kind`` narrows it) needs these host capabilities.
+
+    The public lab-work placement contract carries the rules that name public repositories; a private
+    repository's rule is data of the table, next to the host rows that declare the capability."""
+
+    repo: NonEmptyStr
+    kind: NonEmptyStr | None = None
+    needs: Annotated[tuple[NonEmptyStr, ...], Field(min_length=1)]
+    reason: NonEmptyStr
+
+
 class ModelLabHostsTable(_ModelOverlayBase):
     """The lab host table: the document a file named by ``ONEX_LAB_RUN_HOSTS`` holds."""
 
     hosts: Annotated[tuple[ModelLabHostRow, ...], Field(min_length=1)]
     # The declared bus lane the pool serves lab work on; carried by the table shape, not an overlay key.
     bus_lane: str | None = None
+    # What units of named repositories need of a host (OMN-17232), matched against the host columns above;
+    # carried by the table shape, not an overlay key.
+    unit_needs: tuple[ModelUnitNeedsRule, ...] = ()
 
 
 class ModelLabHostsOverlay(ModelLabHostsTable):

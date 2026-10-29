@@ -26,7 +26,6 @@ import contextlib
 import inspect
 import json
 import logging
-import os
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Mapping, Sequence
@@ -46,7 +45,7 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     event_type_for,
 )
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
-from omnimarket.handlers.overlay_keys import resolve_overlay_key
+from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
 from omnimarket.lab_work.placement import (
     DEFAULT_MAX_LOAD_PER_CORE,
     DEFAULT_MIN_FREE_BYTES,
@@ -54,7 +53,11 @@ from omnimarket.lab_work.placement import (
     ModelPlacement,
     place,
 )
-from omnimarket.models.overlay_keys import ModelLabHostRow
+from omnimarket.models.overlay_keys import (
+    ModelLabHostRow,
+    ModelLabHostsTable,
+    ModelUnitNeedsRule,
+)
 from omnimarket.nodes.node_lab_placement_compute.handlers import (
     HandlerLabPlacement,
     HostTableError,
@@ -144,18 +147,15 @@ class ProtocolAdvertiseHandler(Protocol):
 
 def load_host_table(
     environ: Mapping[str, str] | None = None,
-) -> tuple[ModelLabHostRow, ...]:
-    """The host rows: the file ``ONEX_LAB_RUN_HOSTS`` names, else the ``lab_hosts`` overlay.
+) -> ModelLabHostsTable:
+    """The lab host table: the file ``ONEX_LAB_RUN_HOSTS`` names, else the ``lab_hosts`` overlay.
 
     Raises :class:`HostTableError` when neither supplies a valid table: placement then refuses
     instead of admitting every host that advertises."""
     try:
-        rows: tuple[ModelLabHostRow, ...] = resolve_overlay_key(
-            "lab_hosts.hosts", environ=os.environ if environ is None else environ
-        )
+        return resolve_lab_hosts_table(environ)
     except NodeOverlayError as exc:
         raise HostTableError(f"the lab host table could not be read: {exc}") from None
-    return rows
 
 
 def load_lab_work_topics(node: str = LAB_WORK_NODE) -> ModelLabWorkTopics:
@@ -519,12 +519,14 @@ class LabWorkCaller:
         wait_slack_seconds: int = 300,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
         host_table: Sequence[ModelLabHostRow] | None = None,
+        unit_needs: Sequence[ModelUnitNeedsRule] = (),
         placement: HandlerLabPlacement | None = None,
     ) -> None:
         self._bus = bus
         # The host table and the placement rules are read when the first unit is placed, so a
         # caller that only listens (`hosts`) needs neither; an unreadable table refuses the unit.
         self._host_table = host_table
+        self._unit_needs = tuple(unit_needs)
         self._placement = placement
         self._topics = topics or load_lab_work_topics()
         suffix = uuid.uuid4().hex[:12]
@@ -610,7 +612,9 @@ class LabWorkCaller:
         Raises :class:`HostTableError` when the table or the
         rules cannot be read: nothing is placed on a guess."""
         if self._host_table is None:
-            self._host_table = load_host_table()
+            document = load_host_table()
+            self._host_table = document.hosts
+            self._unit_needs = document.unit_needs
         if self._placement is None:
             self._placement = HandlerLabPlacement()
         judged = self._placement.handle(
@@ -620,6 +624,7 @@ class LabWorkCaller:
                 weight=weight,
                 host_names=tuple(ad.host_name for ad in self._ads),
                 table=tuple(self._host_table),
+                unit_needs=self._unit_needs,
             )
         )
         return place(

@@ -3,10 +3,11 @@
 """OMN-17232 -- the host table is the one source placement reads for what a host may take.
 
 On 2026-10-29 a host marked ``available: false`` ran seven or more units over the bus because
-placement read only the capacity advertisements; an omnibase_core suite ended 128 failed on a CPU
-without AVX2. These tests pin the three behaviours the operator asked for: an unavailable host
-is refused on the bus path, an AVX2 unit is refused on a no-AVX2 host and placed on an AVX2
-host, and a light unit is placed on the small laptop under its own lower memory bar.
+placement read only the capacity advertisements; a suite ended 128 failed there, and a census found
+the one repository whose unit suite dies of the missing instruction set (modelled below as
+native_audio). These tests pin the three behaviours the operator asked for: an unavailable host
+is refused on the bus path, an AVX2 unit is refused on a no-AVX2 host and placed on an AVX2 host,
+and a light unit is placed on the small laptop under its own lower memory bar.
 """
 
 from __future__ import annotations
@@ -37,7 +38,10 @@ from omnimarket.lab_work.placement import (
     ModelPlacement,
     place,
 )
-from omnimarket.models.overlay_keys import ModelLabHostRow, ModelLabHostsTable
+from omnimarket.models.overlay_keys import (
+    ModelLabHostsTable,
+    ModelUnitNeedsRule,
+)
 from omnimarket.nodes.node_lab_placement_compute.handlers import (
     HandlerLabPlacement,
     HostTableError,
@@ -88,12 +92,16 @@ hosts:
     job_kinds: [lint, test]
     max_weight: light
     speed: 0.43
+unit_needs:
+  - repo: native_audio
+    needs: [avx2]
+    reason: "its unit suite imports a wheel (native_audio_ext) that dies with exit 132 on a CPU without AVX2"
 """
 
 
 @pytest.fixture(scope="module")
-def table() -> tuple[ModelLabHostRow, ...]:
-    return ModelLabHostsTable.model_validate(yaml.safe_load(TABLE_YAML)).hosts
+def table() -> ModelLabHostsTable:
+    return ModelLabHostsTable.model_validate(yaml.safe_load(TABLE_YAML))
 
 
 @pytest.fixture(scope="module")
@@ -125,7 +133,7 @@ def _ad(
 
 def _place(
     ads: list[ModelHostCapacityAdvertisement],
-    table: tuple[ModelLabHostRow, ...],
+    table: ModelLabHostsTable,
     rules: ModelPlacementRules,
     *,
     repo: str,
@@ -140,7 +148,8 @@ def _place(
             kind=kind,
             weight=weight,
             host_names=tuple(ad.host_name for ad in ads),
-            table=table,
+            table=table.hosts,
+            unit_needs=table.unit_needs,
         )
     )
     return place(
@@ -155,19 +164,27 @@ def _place(
 def _profile(
     rules: ModelPlacementRules, repo: str, kind: str, weight: str | None = None
 ) -> ModelUnitProfile:
-    return HandlerLabPlacement(rules).unit_profile(repo=repo, kind=kind, weight=weight)
+    return HandlerLabPlacement(rules).unit_profile(
+        repo=repo,
+        kind=kind,
+        weight=weight,
+        table_needs=ModelLabHostsTable.model_validate(
+            yaml.safe_load(TABLE_YAML)
+        ).unit_needs,
+    )
 
 
 # ---------------------------------------------------------------- the rules are contract data
 
 
-def test_the_contract_declares_the_avx2_units_and_the_weights(
+def test_the_contract_declares_the_weights_and_no_private_repository(
     rules: ModelPlacementRules,
 ) -> None:
-    needing = {rule.repo for rule in rules.unit_needs if "avx2" in rule.needs}
-    assert {"omnibase_core", "omnimarket"} <= needing
     assert rules.weights == ("light", "standard", "heavy")
     assert rules.weight_by_kind["lint"] == "light"
+    # The h051 census (2026-10-29) cleared both public suites; a private repository's rule is the table's.
+    needing = {rule.repo for rule in rules.unit_needs if "avx2" in rule.needs}
+    assert not needing & {"omnibase_core", "omnimarket"}
 
 
 def test_a_rule_naming_an_unknown_capability_is_refused_at_load() -> None:
@@ -182,16 +199,26 @@ def test_a_rule_naming_an_unknown_capability_is_refused_at_load() -> None:
         )
 
 
+def test_a_table_rule_naming_an_unknown_capability_is_refused(
+    rules: ModelPlacementRules,
+) -> None:
+    bad = ModelUnitNeedsRule(repo="x", needs=("gpu",), reason="r")
+    with pytest.raises(HostTableError, match="not host capability columns"):
+        HandlerLabPlacement(rules).unit_profile(
+            repo="x", kind="test", weight=None, table_needs=(bad,)
+        )
+
+
 def test_an_unknown_weight_is_refused_not_guessed(rules: ModelPlacementRules) -> None:
     with pytest.raises(HostTableError, match="not one of"):
-        _profile(rules, "omnibase_core", "test", "enormous")
+        _profile(rules, "native_audio", "test", "enormous")
 
 
 def test_a_unit_takes_its_needs_from_its_repo_name_whatever_the_owner(
     rules: ModelPlacementRules,
 ) -> None:
-    unit = _profile(rules, "OmniNode-ai/omnibase_core", "other")
-    assert unit.repo == "omnibase_core"
+    unit = _profile(rules, "OmniNode-ai/native_audio", "other")
+    assert unit.repo == "native_audio"
     assert unit.needs == ("avx2",)
     other = _profile(rules, "OmniNode-ai/omnidash", "test")
     assert other.needs == ()
@@ -201,7 +228,7 @@ def test_a_unit_takes_its_needs_from_its_repo_name_whatever_the_owner(
 
 
 def test_an_unavailable_host_gets_no_unit_however_idle_it_is(
-    table: tuple[ModelLabHostRow, ...], rules: ModelPlacementRules
+    table: ModelLabHostsTable, rules: ModelPlacementRules
 ) -> None:
     ads = [_ad("h051", 0.5, 80, free_gb=300), _ad("h101", 6.0, 12)]
     result = _place(ads, table, rules, repo="OmniNode-ai/omnidash")
@@ -214,7 +241,7 @@ def test_an_unavailable_host_gets_no_unit_however_idle_it_is(
 
 
 def test_when_the_only_advertising_host_is_unavailable_the_unit_is_refused(
-    table: tuple[ModelLabHostRow, ...], rules: ModelPlacementRules
+    table: ModelLabHostsTable, rules: ModelPlacementRules
 ) -> None:
     result = _place([_ad("h051", 0.5, 80)], table, rules, repo="OmniNode-ai/omnidash")
     assert result.decision is EnumPlacementDecision.REFUSED
@@ -223,7 +250,7 @@ def test_when_the_only_advertising_host_is_unavailable_the_unit_is_refused(
 
 
 def test_an_advertising_host_the_table_does_not_know_takes_nothing(
-    table: tuple[ModelLabHostRow, ...], rules: ModelPlacementRules
+    table: ModelLabHostsTable, rules: ModelPlacementRules
 ) -> None:
     result = _place([_ad("h999", 0.1, 32)], table, rules, repo="OmniNode-ai/omnidash")
     assert result.refusal is EnumRefusalReason.HOST_TABLE
@@ -231,7 +258,7 @@ def test_an_advertising_host_the_table_does_not_know_takes_nothing(
 
 
 def test_naming_an_unavailable_host_does_not_override_the_table(
-    table: tuple[ModelLabHostRow, ...], rules: ModelPlacementRules
+    table: ModelLabHostsTable, rules: ModelPlacementRules
 ) -> None:
     result = _place(
         [_ad("h051", 0.5, 80), _ad("h101", 1.0, 12)],
@@ -248,30 +275,37 @@ def test_naming_an_unavailable_host_does_not_override_the_table(
 
 
 def test_an_avx2_unit_is_refused_on_a_no_avx2_host_and_placed_on_an_avx2_host(
-    table: tuple[ModelLabHostRow, ...], rules: ModelPlacementRules
+    table: ModelLabHostsTable, rules: ModelPlacementRules
+) -> None:
+    ads = [_ad("h051-live", 0.5, 80, free_gb=300), _ad("h101", 6.0, 12)]
+    result = _place(ads, table, rules, repo="OmniNode-ai/native_audio")
+    assert result.host_name == "h101"
+    refused = next(v for v in result.verdicts if v.host_name == "h051-live")
+    assert not refused.eligible
+    assert "lacks avx2" in refused.reason
+    assert "native_audio_ext" in refused.reason
+
+
+def test_a_public_repository_the_census_cleared_runs_on_the_no_avx2_host(
+    table: ModelLabHostsTable, rules: ModelPlacementRules
 ) -> None:
     ads = [_ad("h051-live", 0.5, 80, free_gb=300), _ad("h101", 6.0, 12)]
     for repo in ("OmniNode-ai/omnibase_core", "OmniNode-ai/omnimarket"):
-        result = _place(ads, table, rules, repo=repo)
-        assert result.host_name == "h101", repo
-        refused = next(v for v in result.verdicts if v.host_name == "h051-live")
-        assert not refused.eligible
-        assert "lacks avx2" in refused.reason
-        assert "omnibase_core" in refused.reason or "omnimarket" in refused.reason
+        assert _place(ads, table, rules, repo=repo).host_name == "h051-live", repo
 
 
 def test_an_avx2_unit_alone_with_a_no_avx2_host_is_refused(
-    table: tuple[ModelLabHostRow, ...], rules: ModelPlacementRules
+    table: ModelLabHostsTable, rules: ModelPlacementRules
 ) -> None:
     result = _place(
-        [_ad("h051-live", 0.5, 80)], table, rules, repo="OmniNode-ai/omnibase_core"
+        [_ad("h051-live", 0.5, 80)], table, rules, repo="OmniNode-ai/native_audio"
     )
     assert result.decision is EnumPlacementDecision.REFUSED
     assert result.refusal is EnumRefusalReason.HOST_TABLE
 
 
 def test_a_unit_that_needs_no_avx2_still_runs_on_the_no_avx2_host(
-    table: tuple[ModelLabHostRow, ...], rules: ModelPlacementRules
+    table: ModelLabHostsTable, rules: ModelPlacementRules
 ) -> None:
     ads = [_ad("h051-live", 0.5, 80, free_gb=300), _ad("h101", 6.0, 12)]
     result = _place(ads, table, rules, repo="OmniNode-ai/omnidash")
@@ -282,7 +316,7 @@ def test_a_unit_that_needs_no_avx2_still_runs_on_the_no_avx2_host(
 
 
 def test_a_light_unit_is_placed_on_h106_under_its_own_lower_memory_bar(
-    table: tuple[ModelLabHostRow, ...], rules: ModelPlacementRules
+    table: ModelLabHostsTable, rules: ModelPlacementRules
 ) -> None:
     ads = [_ad("h106", 0.5, 8, free_gb=5.2, max_units=1)]
     # The caller's bar (the shared admission rule's 10 GB) would refuse a host with 5.2 GB free.
@@ -299,7 +333,7 @@ def test_a_light_unit_is_placed_on_h106_under_its_own_lower_memory_bar(
 
 
 def test_the_same_memory_is_short_on_a_host_without_its_own_bar(
-    table: tuple[ModelLabHostRow, ...], rules: ModelPlacementRules
+    table: ModelLabHostsTable, rules: ModelPlacementRules
 ) -> None:
     result = _place(
         [_ad("h101", 0.5, 12, free_gb=5.2)],
@@ -314,7 +348,7 @@ def test_the_same_memory_is_short_on_a_host_without_its_own_bar(
 
 
 def test_h106_keeps_its_own_bar_below_which_it_is_refused(
-    table: tuple[ModelLabHostRow, ...], rules: ModelPlacementRules
+    table: ModelLabHostsTable, rules: ModelPlacementRules
 ) -> None:
     result = _place(
         [_ad("h106", 0.5, 8, free_gb=3.0, max_units=1)],
@@ -329,7 +363,7 @@ def test_h106_keeps_its_own_bar_below_which_it_is_refused(
 
 
 def test_h106_takes_light_units_only(
-    table: tuple[ModelLabHostRow, ...], rules: ModelPlacementRules
+    table: ModelLabHostsTable, rules: ModelPlacementRules
 ) -> None:
     ads = [_ad("h106", 0.5, 8, free_gb=6, max_units=1)]
     heavy = _place(ads, table, rules, repo="OmniNode-ai/omnidash", kind="build")
@@ -347,7 +381,7 @@ def test_h106_takes_light_units_only(
 
 
 def test_a_measured_speed_ranks_hosts_without_barring_the_slow_one(
-    table: tuple[ModelLabHostRow, ...], rules: ModelPlacementRules
+    table: ModelLabHostsTable, rules: ModelPlacementRules
 ) -> None:
     # Equal load per core: h101 (speed 1.0) beats h106 (0.43); h106 alone is still placed.
     ads = [_ad("h101", 2.4, 12, max_units=2), _ad("h106", 1.6, 8, max_units=2)]
@@ -365,10 +399,24 @@ def test_the_table_comes_from_the_file_onex_lab_run_hosts_names(
 ) -> None:
     path = tmp_path / "hosts.yaml"
     path.write_text(TABLE_YAML, encoding="utf-8")
-    rows = load_host_table({"ONEX_LAB_RUN_HOSTS": str(path)})
-    assert {row.name for row in rows} >= {"h051", "h106"}
-    h106 = next(row for row in rows if row.name == "h106")
+    document = load_host_table({"ONEX_LAB_RUN_HOSTS": str(path)})
+    assert {row.name for row in document.hosts} >= {"h051", "h106"}
+    h106 = next(row for row in document.hosts if row.name == "h106")
     assert (h106.min_free_gb, h106.max_weight, h106.speed) == (4.0, "light", 0.43)
+    assert [rule.repo for rule in document.unit_needs] == ["native_audio"]
+
+
+def test_the_table_comes_from_the_lab_hosts_overlay_when_no_file_is_named(
+    tmp_path: Path,
+) -> None:
+    overlay = tmp_path / "lab_hosts"
+    overlay.mkdir()
+    (overlay / "overlay.yaml").write_text(
+        TABLE_YAML + "registry_root_candidates: [$HOME/registry]\n", encoding="utf-8"
+    )
+    document = load_host_table({"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path)})
+    assert {row.name for row in document.hosts} >= {"h051", "h106"}
+    assert [rule.repo for rule in document.unit_needs] == ["native_audio"]
 
 
 def test_an_unreadable_table_refuses_instead_of_admitting(tmp_path: Path) -> None:
@@ -389,7 +437,7 @@ def test_the_judge_command_prints_the_tables_verdicts_for_the_shim(
         [
             "judge",
             "--repo",
-            "OmniNode-ai/omnibase_core",
+            "OmniNode-ai/native_audio",
             "--kind",
             "test",
             "h051",
@@ -428,9 +476,9 @@ def test_the_judge_command_reads_the_unit_from_the_launchers_arguments(
         return body
 
     named = judge(
-        ["--lane", "l", "--repo", "omnibase_core", "--kind=lint", "--ref", "b"]
+        ["--lane", "l", "--repo", "native_audio", "--kind=lint", "--ref", "b"]
     )
-    assert named["unit"]["repo"] == "omnibase_core"
+    assert named["unit"]["repo"] == "native_audio"
     assert named["unit"]["kind"] == "lint"
     assert named["unit"]["weight"] == "light"
     assert named["unit"]["needs"] == ["avx2"]
@@ -563,9 +611,7 @@ def test_the_run_command_refuses_an_unavailable_host_that_advertises_and_places_
     assert "placement: placed on h101" in ok.output
     assert "h051: host table: unavailable in the host table" in ok.output
 
-    core = CliRunner().invoke(
-        cli.lab_work_group, _run_args("OmniNode-ai/omnibase_core")
-    )
+    core = CliRunner().invoke(cli.lab_work_group, _run_args("OmniNode-ai/native_audio"))
     assert core.exit_code == 0, core.output
     assert "placement: placed on h101" in core.output
 

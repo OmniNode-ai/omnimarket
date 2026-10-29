@@ -9,7 +9,6 @@ from .model_lab_placement import (
     ModelLabPlacementRequest,
     ModelLabPlacementResult,
     ModelPlacementRules,
-    ModelUnitNeedsRule,
     ModelUnitProfile,
 )
 
@@ -20,6 +19,5 @@ __all__ = [
     "ModelLabPlacementRequest",
     "ModelLabPlacementResult",
     "ModelPlacementRules",
-    "ModelUnitNeedsRule",
     "ModelUnitProfile",
 ]
