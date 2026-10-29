@@ -1223,10 +1223,11 @@ omnimarket = "omnimarket.nodes"
 # OMN-21386: infra#5407 vendors the work-ledger 0006 first-ingest migration.
 # OMN-21217: infra#5290 vendors node_delegation_routing_reducer 0007 (ordered
 # models) and node_projection_tenant_credentials 0009 (models and version)
-# byte-identical.
+# byte-identical; infra#5426 (joins only the topics in use at boot) keeps the
+# composed runtime boot inside its budget with this PR's state topics.
 # OMN-19996: infra#5419 vendors node_projection_tenant_credentials 0010
 # (last_used_at) byte-identical.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261028203504-4090b069f179" }
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261029155031-24bcaf4f984d" }
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
 # their git-source overrides). The version-range overrides below already target
 # the released artifacts: core>=0.46.7,<0.47.0 and
