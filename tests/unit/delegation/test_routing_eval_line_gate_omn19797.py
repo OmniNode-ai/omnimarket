@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from omnimarket.ranges import REQUIRED_FALSE_PASS_CLASSES
 from omnimarket.routing.dod_overlay import (
     EVAL_LINE_MET,
     ProtocolEvalLineReader,
@@ -194,3 +195,57 @@ def test_eval_line_reader_resolution_needs_the_projection_dsn(
     assert isinstance(
         dod_overlay.resolve_eval_line_reader(), dod_overlay.PostgresEvalLineReader
     )
+
+
+# --- OMN-19787 AC-4: no class whose line is not met ever suppresses a tier ---
+# Every class with a registered false-pass range, plus the two review classes the
+# eval runs also report, each with failing stored outcomes that would demote the
+# local tier. Not met (missed, refused), no readout and an unreadable readout all
+# leave every tier in place; met is the control that the same rows do suppress.
+_EVERY_EVAL_CLASS = tuple(
+    sorted({*REQUIRED_FALSE_PASS_CLASSES, "code_review", "review"})
+)
+
+
+class _ClassDodReader:
+    def read_dod_outcomes(
+        self, *, task_type: str, tenant_id: str
+    ) -> list[dict[str, object]]:
+        return [{**row, "task_type": task_type} for row in _failing_rows()]
+
+
+def _resolve_class(task_class: str, line: ProtocolEvalLineReader | None):  # type: ignore[no-untyped-def]
+    return resolve_dod_overlay(
+        _ClassDodReader(),
+        task_type=task_class,
+        tenant_id=TENANT_ID,
+        eval_line_reader=line,
+        min_samples=5,
+        success_floor=0.5,
+        lookback_rows=None,
+        window_seconds=None,
+    )
+
+
+@pytest.mark.parametrize("task_class", _EVERY_EVAL_CLASS)
+@pytest.mark.parametrize("line", ["missed", "refused", None, "unreadable"])
+def test_eval_not_met_is_unknown_for_every_class_omn19787(
+    task_class: str, line: str | None
+) -> None:
+    reader: ProtocolEvalLineReader = (
+        _BrokenLine() if line == "unreadable" else _Line(line)
+    )
+    overlay = _resolve_class(task_class, reader)
+    assert overlay is not None
+    assert overlay.roi_overlay.suppressed_tiers == frozenset(), task_class
+    assert all(not s.suppressed for s in overlay.roi_overlay.signals), task_class
+    assert overlay.eval_line_verdict == (line or "missing")
+
+
+@pytest.mark.parametrize("task_class", _EVERY_EVAL_CLASS)
+def test_eval_met_suppresses_for_every_class_omn19787(task_class: str) -> None:
+    line = _Line(EVAL_LINE_MET)
+    overlay = _resolve_class(task_class, line)
+    assert overlay is not None
+    assert overlay.roi_overlay.suppressed_tiers == frozenset({"local"}), task_class
+    assert line.calls == [(task_class, TENANT_ID)]
