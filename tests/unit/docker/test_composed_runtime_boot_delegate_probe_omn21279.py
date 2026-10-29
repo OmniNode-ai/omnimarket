@@ -197,10 +197,15 @@ esac
 
 #: A fake of the aiokafka surface the step's terminal reader uses, with the
 #: broker's semantics: partitions come from the admin client, a partition's
-#: offsets may be unavailable, the end offset is taken when asked, a fetch
-#: returns the records from the position to the log end and moves the position
-#: there, and records can arrive after the end offsets were read. The
+#: offsets may be unavailable, the end offset is taken when asked (under
+#: read_committed it is the last stable offset, before any still-open
+#: transaction), a fetch returns the records from the position to that end and
+#: moves the position there, skipping compaction holes and (under
+#: read_committed) aborted records, a lost start offset either raises
+#: (auto_offset_reset="none") or silently jumps to the end (the "latest"
+#: default), and records can arrive after the end offsets were read. The
 #: terminal topics' contents follow STUB_TERMINAL for the produced request.
+#: A record is bytes, None (a compaction hole) or ("aborted", bytes).
 _FAKE_AIOKAFKA = """
 import json
 import os
@@ -271,10 +276,30 @@ def _broker():
     elif scenario == "short_read":
         p0.append(_rec(correlation_id=probe, **refusal))
         failed[0]["end_extra"] = 1
+    elif scenario == "aborted_refusal":
+        p0.append(("aborted", _rec(correlation_id=probe, **refusal)))
+    elif scenario == "open_transaction_refusal":
+        p0.append(_rec(correlation_id=other, **refusal))
+        p0.append(_rec(correlation_id=probe, **refusal))
+        failed[0]["open_from"] = 1
+    elif scenario == "aborted_batch_then_refusal":
+        p0.append(("aborted", _rec(correlation_id=probe, status="failed", terminal_failure_cause="provider_error", attempts_count=1)))
+        p0.append(_rec(correlation_id=probe, **refusal))
+    elif scenario == "offset_reset_hides_contradiction":
+        p0.append(_rec(correlation_id=probe, **refusal))
+        failed[1] = {"begin": 0, "out_of_range": True, "records": [_rec(correlation_id=probe, status="failed", terminal_failure_cause="provider_error", attempts_count=1)]}
+    elif scenario == "post_snapshot_contradiction":
+        p0.append(_rec(correlation_id=probe, **refusal))
+        late.append((0, _rec(correlation_id=probe, status="failed", terminal_failure_cause="provider_error", attempts_count=1)))
+    elif scenario == "compaction_hole":
+        p0.append(_rec(correlation_id=probe, **refusal))
+        p0.append(None)
     elif scenario == "nonzero_log_start":
         p0.append(_rec(correlation_id=probe, **refusal))
         failed[0]["begin"] = 100
-    p0.extend(_filler())
+    failed[0]["records"] = _filler() + p0
+    if "open_from" in failed[0]:
+        failed[0]["open_from"] += len(_filler())
     topics = {os.environ["STUB_FAILED"]: failed}
     if os.environ["STUB_COMPLETED_READ_FAILS"] != "yes":
         topics[os.environ["STUB_COMPLETED"]] = completed
@@ -293,9 +318,20 @@ def _log_end(part):
 
 
 class AIOKafkaConsumer:
-    def __init__(self, *, bootstrap_servers, group_id, enable_auto_commit, **auth):
+    def __init__(
+        self,
+        *,
+        bootstrap_servers,
+        group_id,
+        enable_auto_commit,
+        isolation_level="read_uncommitted",
+        auto_offset_reset="latest",
+        **auth,
+    ):
         assert bootstrap_servers == os.environ["KAFKA_BOOTSTRAP_SERVERS"]
         assert group_id is None and enable_auto_commit is False
+        self._committed_only = isolation_level == "read_committed"
+        self._reset = auto_offset_reset
         self._positions = {}
         self._fetched = False
 
@@ -311,9 +347,14 @@ class AIOKafkaConsumer:
     async def beginning_offsets(self, tps):
         return {tp: _partition(tp)["begin"] for tp in tps if not _partition(tp).get("unavailable")}
 
+    def _end(self, part):
+        if self._committed_only and "open_from" in part:
+            return part["begin"] + part["open_from"]
+        return _log_end(part)
+
     async def end_offsets(self, tps):
         return {
-            tp: _log_end(_partition(tp)) + _partition(tp).get("end_extra", 0)
+            tp: self._end(_partition(tp)) + _partition(tp).get("end_extra", 0)
             for tp in tps
             if not _partition(tp).get("unavailable")
         }
@@ -322,20 +363,36 @@ class AIOKafkaConsumer:
         self._positions[tp] = offset
 
     async def getmany(self, *tps, timeout_ms=0):
-        if not self._fetched:
+        # Late records land on the failed topic after its end offsets were
+        # read: at the first fetch from that topic.
+        if not self._fetched and any(tp.topic == os.environ["STUB_FAILED"] for tp in tps):
             self._fetched = True
+            failed = _TOPICS[os.environ["STUB_FAILED"]]
             for partition, value in _LATE:
-                for topic in _TOPICS.values():
-                    if partition in topic and topic is _TOPICS[os.environ["STUB_FAILED"]]:
-                        topic[partition]["records"].append(value)
+                failed[partition]["records"].append(value)
         out = {}
         # One partition per fetch, lowest first, as a broker may answer.
         for tp in sorted(tps):
             part = _partition(tp)
             pos = self._positions[tp]
-            end = _log_end(part)
+            end = self._end(part)
+            if part.get("out_of_range") and pos < end:
+                if self._reset == "none":
+                    raise RuntimeError("OffsetOutOfRangeError: the captured start offset is gone")
+                self._positions[tp] = end
+                continue
             if pos < end:
-                out[tp] = [Record(off, part["records"][off - part["begin"]]) for off in range(pos, end)]
+                got = []
+                for off in range(pos, end):
+                    value = part["records"][off - part["begin"]]
+                    if value is None:
+                        continue
+                    if isinstance(value, tuple):
+                        if self._committed_only:
+                            continue
+                        value = value[1]
+                    got.append(Record(off, value))
+                out[tp] = got
                 self._positions[tp] = end
                 break
         return out
@@ -804,6 +861,46 @@ def test_probe_finds_the_refusal_on_a_second_partition(tmp_path: Path) -> None:
         members=1,
         join="demand",
         terminal="refusal_two_partitions",
+    )
+    assert result.returncode == 0, _out(result)
+    assert "typed refusal for probe" in result.stdout
+
+
+@pytest.mark.parametrize(
+    "terminal",
+    ["aborted_refusal", "open_transaction_refusal", "offset_reset_hides_contradiction"],
+)
+def test_probe_never_passes_on_an_uncommitted_or_lost_record(
+    tmp_path: Path, terminal: str
+) -> None:
+    """Codex 21:00Z: read_committed, and no silent offset reset."""
+    result = _run_probe(
+        tmp_path, group_present=True, members=1, join="demand", terminal=terminal
+    )
+    assert result.returncode == 1, _out(result)
+    assert "typed refusal for probe" not in result.stdout
+
+
+def test_probe_reads_past_an_aborted_batch_to_the_refusal(tmp_path: Path) -> None:
+    result = _run_probe(
+        tmp_path,
+        group_present=True,
+        members=1,
+        join="demand",
+        terminal="aborted_batch_then_refusal",
+    )
+    assert result.returncode == 0, _out(result)
+    assert "terminal_failure_cause=provider_error" not in result.stdout
+
+
+@pytest.mark.parametrize("terminal", ["post_snapshot_contradiction", "compaction_hole"])
+def test_probe_judges_only_the_captured_window_by_offset(
+    tmp_path: Path, terminal: str
+) -> None:
+    """Codex 21:00Z: arrivals after the captured end wait for the next poll;
+    holes in the window do not shorten it."""
+    result = _run_probe(
+        tmp_path, group_present=True, members=1, join="demand", terminal=terminal
     )
     assert result.returncode == 0, _out(result)
     assert "typed refusal for probe" in result.stdout
