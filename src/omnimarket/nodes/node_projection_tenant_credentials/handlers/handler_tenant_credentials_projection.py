@@ -97,6 +97,7 @@ from omnimarket.routing.byok_provider_backends import (
     resolve_byok_provider_backend,
 )
 from omnimarket.routing.tenant_overlay_resolver import BYOK_ALL_TASK_TYPES
+from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
 from .handler_tenant_credentials_store import (
     registered_expected_version,
@@ -147,6 +148,29 @@ def _credential_state(route_row: dict[str, Any]) -> dict[str, Any] | None:
     if isinstance(state, str):
         state = json.loads(state)
     return state if isinstance(state, dict) else None
+
+
+def _terminal_secret_refs(data: dict[str, Any]) -> list[str]:
+    """The distinct key references a delegate-skill terminal names (OMN-19996).
+
+    The top-level ``secret_ref`` first, as before, then each attempt's
+    ``secret_ref`` that has the minted tenant-key shape, in order, never twice.
+    """
+    refs: list[str] = []
+    top = data.get("secret_ref")
+    if isinstance(top, str) and top:
+        refs.append(top)
+    attempts = data.get("attempts")
+    if isinstance(attempts, list):
+        for row in attempts:
+            ref = row.get("secret_ref") if isinstance(row, dict) else None
+            if (
+                isinstance(ref, str)
+                and is_tenant_credential_ref(ref)
+                and ref not in refs
+            ):
+                refs.append(ref)
+    return refs
 
 
 def _optional_text(value: object) -> str | None:
@@ -392,8 +416,13 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
         records use. The version is not raised: the compacted state topic does
         not carry this column, so the changed row is published only to the
         exposures that list it.
+
+        Amendment 1: every key the run used moves, not only the top-level
+        ``secret_ref``. A deployed-path run can name earlier keys on its
+        attempts; each distinct minted tenant key gets the same terminal time
+        through the same guarded UPDATE.
         """
-        api_key_ref = data.get("secret_ref")
+        api_key_refs = _terminal_secret_refs(data)
         try:
             used_at = terminal_event_time(data) or envelope_event_timestamp(data)
         except ValidationError as exc:
@@ -404,7 +433,7 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
                 f"delegation terminal time is not an aware timestamp: {exc}",
                 meta,
             )
-        if not api_key_ref or used_at is None:
+        if not api_key_refs or used_at is None:
             logger.debug(
                 "delegation terminal names no secret_ref or envelope time -- "
                 "no credential last-used write"
@@ -421,23 +450,26 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
                 data.get("correlation_id"),
             )
             return True
-        rows = await self.db_for(self._table_credentials, operation="write").execute(
-            f"""
-            UPDATE {self._table_credentials}
-               SET last_used_at = $2
-             WHERE api_key_ref = $1
-               AND tenant_id = $3
-               AND (last_used_at IS NULL OR last_used_at < $2)
-            RETURNING {_CREDENTIAL_STATE_COLUMNS}
-            """,
-            str(api_key_ref),
-            used_at,
-            tenant,
-            tenant=tenant,
-        )
-        await self._publish_snapshot_if_available(
-            rows[0] if rows else None, meta, data, required_column="last_used_at"
-        )
+        for api_key_ref in api_key_refs:
+            rows = await self.db_for(
+                self._table_credentials, operation="write"
+            ).execute(
+                f"""
+                UPDATE {self._table_credentials}
+                   SET last_used_at = $2
+                 WHERE api_key_ref = $1
+                   AND tenant_id = $3
+                   AND (last_used_at IS NULL OR last_used_at < $2)
+                RETURNING {_CREDENTIAL_STATE_COLUMNS}
+                """,
+                api_key_ref,
+                used_at,
+                tenant,
+                tenant=tenant,
+            )
+            await self._publish_snapshot_if_available(
+                rows[0] if rows else None, meta, data, required_column="last_used_at"
+            )
         return True
 
     async def _apply_credential_state(self, data: dict[str, Any]) -> bool:

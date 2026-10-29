@@ -25,6 +25,9 @@ evidence_requirements:
   - kind: "tests"
     description: "Real PostgreSQL TIMESTAMPTZ writes through the projection runner and the sync adapter, on the hosted integration service; a service-less skip is unverified."
     command: "uv run pytest tests/test_omn19996_credential_last_used_postgres.py -q -n 0 --no-cov --junitxml=omn19996-pg.xml && uv run python scripts/ci/check_integration_skips.py --junit omn19996-pg.xml"
+  - kind: "tests"
+    description: "Deployed path: the delegation workflow stamps the customer key a rung proved it used on that rung's escalation_history row behind its own attempt-id check; the runtime port names it on the delegate-skill terminal; the writer moves every key a run named."
+    command: "uv run pytest tests/unit/delegation/test_omn19996_attempt_credential_ref.py tests/unit/nodes/node_delegate_skill_orchestrator/test_omn19996_deployed_path_secret_ref.py -q -n 0 --no-cov"
 dod_evidence:
   - id: "dod-omn19996-last-used-unit"
     description: "Unit test pass for credential last-used logic."
@@ -41,6 +44,14 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_omn19996_credential_last_used_postgres.py -q -n 0 --no-cov --junitxml=omn19996-pg.xml && uv run python scripts/ci/check_integration_skips.py --junit omn19996-pg.xml"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19996-last-used-deployed-path"
+    description: "Unit test pass for the deployed-path key stamp, its attempt-id gate and the multi-key write."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_omn19996_attempt_credential_ref.py tests/unit/nodes/node_delegate_skill_orchestrator/test_omn19996_deployed_path_secret_ref.py -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
 emergency_bypass:
   enabled: false

@@ -171,3 +171,43 @@ async def test_real_postgres_other_tenant_terminal_changes_nothing() -> None:
             is False
         )
         assert await _last_used(conn, ref) is None
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_real_postgres_every_key_a_run_named_moves() -> None:
+    """Amendment 1: a terminal naming X on an attempt and Y on top moves both rows."""
+    async with _provisioned_runner() as (runner, conn, _schema):
+        x = f"cred_{BYOK_TENANT}_openrouter_{'c' * 32}"
+        y = f"cred_{BYOK_TENANT}_openrouter_{'d' * 32}"
+        idle = f"cred_{BYOK_TENANT}_openrouter_{'e' * 32}"
+        for ref in (x, y, idle):
+            await _register(runner, ref)
+
+        await runner.project_event(
+            TOPIC_COMPLETED,
+            {
+                "correlation_id": "c0ffee00-0000-4000-8000-000000000006",
+                "tenant_id": BYOK_TENANT,
+                "secret_ref": y,
+                "attempts": [{"secret_ref": x}, {"secret_ref": y}],
+                "_envelope_timestamp": T1,
+            },
+            _meta(TOPIC_COMPLETED, 6),
+        )
+        assert await _last_used(conn, x) == datetime.fromisoformat(T1)
+        assert await _last_used(conn, y) == datetime.fromisoformat(T1)
+        assert await _last_used(conn, idle) is None
+
+        await runner.project_event(
+            TOPIC_COMPLETED,
+            {
+                "correlation_id": "c0ffee00-0000-4000-8000-000000000007",
+                "tenant_id": BYOK_TENANT,
+                "attempts": [{"secret_ref": x}, {"secret_ref": y}],
+                "_envelope_timestamp": T0,
+            },
+            _meta(TOPIC_COMPLETED, 7),
+        )
+        assert await _last_used(conn, x) == datetime.fromisoformat(T1)
+        assert await _last_used(conn, y) == datetime.fromisoformat(T1)
