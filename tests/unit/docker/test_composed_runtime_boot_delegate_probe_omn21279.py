@@ -99,7 +99,8 @@ if os.environ["STUB_MODEL_REJECTS"] == "yes":
 _DOCKER_STUB = """#!/usr/bin/env bash
 # Stub of `docker exec [-i] [-e VAR]... <container> ...` for the probe step:
 # the kernel's model check in the runtime container, and `rpk group
-# list|describe`, `rpk topic produce` and `rpk topic consume` in the broker.
+# list|describe`, `rpk topic produce`, `rpk topic describe -p` and a bounded
+# `rpk topic consume -o start -n N` in the broker.
 # The broker requires SASL (OMN-20820): a call that does not carry the
 # superuser's credentials is refused, as the real one is. Every call is
 # appended to $STUB_CALLS.
@@ -151,6 +152,31 @@ filler() {
     i=$((i + 1))
   done
 }
+failed_records() {
+  if [ -n "$probe_id" ]; then
+    case "$STUB_TERMINAL" in
+      refused) echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\",\\"attempts_count\\":0}" ;;
+      provider_error) echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"provider_error\\"}" ;;
+      other_request) echo "{\\"correlation_id\\":\\"11111111-1111-4111-8111-111111111111\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\"}" ;;
+      provider_error_mentions_refusal) echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"provider_error\\",\\"error_message\\":\\"not refused_before_dispatch\\"}" ;;
+      refused_with_attempt) echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\",\\"attempts_count\\":1}" ;;
+      refused_enveloped) echo "{\\"envelope_id\\":\\"e1\\",\\"correlation_id\\":\\"$probe_id\\",\\"payload\\":{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\",\\"attempts_count\\":0}}" ;;
+      refused_enveloped_conflict) echo "{\\"envelope_id\\":\\"e1\\",\\"correlation_id\\":\\"$probe_id\\",\\"payload\\":{\\"correlation_id\\":\\"11111111-1111-4111-8111-111111111111\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\",\\"attempts_count\\":0}}" ;;
+      refused_then_provider_error)
+        echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\",\\"attempts_count\\":0}"
+        echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"provider_error\\",\\"attempts_count\\":1}"
+        ;;
+      id_in_text_only) echo "{\\"correlation_id\\":\\"22222222-2222-4222-8222-222222222222\\",\\"error_message\\":\\"see $probe_id\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\",\\"attempts_count\\":0}" ;;
+    esac
+  fi
+  filler
+}
+completed_records() {
+  if [ -n "$probe_id" ] && [ "$STUB_TERMINAL" = "completed" ]; then
+    echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"completed\\"}"
+  fi
+  filler
+}
 case "$*" in
   "rpk topic produce $STUB_TOPIC -k composed-runtime-boot-probe")
     [ "$stdin_attached" = "yes" ] || { echo "stub docker: produce without -i reads no record" >&2; exit 2; }
@@ -163,34 +189,25 @@ case "$*" in
     printf '%s\\n' "$record" >> "$STUB_PRODUCED"
     echo "Produced to partition 0 at offset 0 with timestamp 1793210000000."
     ;;
-  "rpk topic consume $STUB_FAILED -o start:end -f %v\\n")
-    if [ -n "$probe_id" ]; then
-      case "$STUB_TERMINAL" in
-        refused) echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\",\\"attempts_count\\":0}" ;;
-        provider_error) echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"provider_error\\"}" ;;
-        other_request) echo "{\\"correlation_id\\":\\"11111111-1111-4111-8111-111111111111\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\"}" ;;
-        provider_error_mentions_refusal) echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"provider_error\\",\\"error_message\\":\\"not refused_before_dispatch\\"}" ;;
-        refused_with_attempt) echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\",\\"attempts_count\\":1}" ;;
-        refused_enveloped) echo "{\\"envelope_id\\":\\"e1\\",\\"correlation_id\\":\\"$probe_id\\",\\"payload\\":{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\",\\"attempts_count\\":0}}" ;;
-        refused_enveloped_conflict) echo "{\\"envelope_id\\":\\"e1\\",\\"correlation_id\\":\\"$probe_id\\",\\"payload\\":{\\"correlation_id\\":\\"11111111-1111-4111-8111-111111111111\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\",\\"attempts_count\\":0}}" ;;
-        refused_then_provider_error)
-          echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\",\\"attempts_count\\":0}"
-          echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"provider_error\\",\\"attempts_count\\":1}"
-          ;;
-        id_in_text_only) echo "{\\"correlation_id\\":\\"22222222-2222-4222-8222-222222222222\\",\\"error_message\\":\\"see $probe_id\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\",\\"attempts_count\\":0}" ;;
-      esac
+  "rpk topic describe $STUB_FAILED -p"|"rpk topic describe $STUB_COMPLETED -p")
+    # The real describe of a topic that does not exist prints only the header.
+    echo "PARTITION  LEADER  EPOCH  REPLICAS  LOG-START-OFFSET  HIGH-WATERMARK"
+    if [ "$4" = "$STUB_COMPLETED" ] && [ "$STUB_COMPLETED_READ_FAILS" = "yes" ]; then
+      exit 0
     fi
-    filler
+    if [ "$4" = "$STUB_FAILED" ]; then n="$(failed_records | wc -l)"; else n="$(completed_records | wc -l)"; fi
+    echo "0          0       1      [0]       0                 $((n))"
     ;;
-  "rpk topic consume $STUB_COMPLETED -o start:end -f %v\\n")
-    if [ "$STUB_COMPLETED_READ_FAILS" = "yes" ]; then
-      echo "unable to consume: UNKNOWN_TOPIC_OR_PARTITION" >&2
-      exit 1
-    fi
-    if [ -n "$probe_id" ] && [ "$STUB_TERMINAL" = "completed" ]; then
-      echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"completed\\"}"
-    fi
-    filler
+  "timeout 30 rpk topic consume $STUB_FAILED -o start -n "*" -f %v\\n")
+    failed_records | head -n "${10}"
+    ;;
+  "timeout 30 rpk topic consume $STUB_COMPLETED -o start -n "*" -f %v\\n")
+    completed_records | head -n "${10}"
+    ;;
+  "rpk topic consume "*" -o start:end -f %v\\n")
+    # What the lane broker answers (measured against infra 24bcaf4f).
+    echo 'invalid --offset "start:end": unable to parse offset: end 0 <= start 0' >&2
+    exit 1
     ;;
   "rpk group list")
     echo "BROKER  GROUP  STATE"
@@ -546,7 +563,7 @@ def test_probe_does_not_pass_while_the_completed_topic_cannot_be_read(
     )
     assert result.returncode == 1, _out(result)
     assert f"reading {_COMPLETED} failed" in result.stdout
-    assert "UNKNOWN_TOPIC_OR_PARTITION" in result.stdout
+    assert "has no partitions" in result.stdout
     assert "typed refusal for probe" not in result.stdout
 
 

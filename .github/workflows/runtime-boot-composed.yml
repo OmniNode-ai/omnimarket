@@ -478,16 +478,37 @@ jobs:
           sys.exit(0 if matched else 4)
           PY
           )"
-          # One record per line (-f '%v\n'), read from the start up to the
-          # current end. A read that fails is reported and retried, never
-          # treated as an empty topic: the refusal counts only in a poll where
-          # both terminal topics were read and the completed one does not
+          # Each terminal topic is read whole: describe gives every partition's
+          # log start and high watermark, and exactly that many records are
+          # consumed from the start, one per line (-f '%v\n'), under a bound
+          # inside the broker. rpk's offset ranges cannot do this here: on the
+          # lane broker `-o start:end` is refused as "end 0 <= start 0" even on
+          # a topic holding a record, and `-o :end` fails to dial [::1]:29092
+          # from inside the container (measured on a lab lane against
+          # infra 24bcaf4f). A topic with no partition, a failed describe or a
+          # consume that does not finish is a failed read: reported, retried,
+          # never treated as an empty topic. The refusal counts only in a poll
+          # where both terminal topics were read and the completed one does not
           # carry this request.
+          broker_rpk_bounded() {
+            RPK_PASS="$pass" docker exec -e RPK_USER=onex-local -e RPK_PASS -e RPK_SASL_MECHANISM=SCRAM-SHA-256 "$broker" timeout 30 rpk "$@"
+          }
+          read_topic() {
+            local described count
+            described="$(broker_rpk topic describe "$1" -p)" || return 1
+            if ! count="$(awk 'NR > 1 && $5 ~ /^[0-9]+$/ && $6 ~ /^[0-9]+$/ {n += $6 - $5; p++} END {if (!p) exit 1; print n + 0}' <<< "$described")"; then
+              echo "${1} has no partitions" >&2
+              return 1
+            fi
+            if [ "$count" -gt 0 ]; then
+              broker_rpk_bounded topic consume "$1" -o start -n "$count" -f '%v\n'
+            fi
+          }
           read_err="$(mktemp)"
           last_read_error=""
           for _ in $(seq 1 30); do
             rc=0
-            completed="$(broker_rpk topic consume "$DELEGATE_COMPLETED_TOPIC" -o start:end -f '%v\n' 2>"$read_err")" || rc=$?
+            completed="$(read_topic "$DELEGATE_COMPLETED_TOPIC" 2>"$read_err")" || rc=$?
             if [ "$rc" -ne 0 ]; then
               last_read_error="reading ${DELEGATE_COMPLETED_TOPIC} failed (exit ${rc}): $(head -c 500 "$read_err")"
               echo "$last_read_error; retrying"
@@ -495,7 +516,7 @@ jobs:
               continue
             fi
             rc=0
-            failed="$(broker_rpk topic consume "$DELEGATE_FAILED_TOPIC" -o start:end -f '%v\n' 2>"$read_err")" || rc=$?
+            failed="$(read_topic "$DELEGATE_FAILED_TOPIC" 2>"$read_err")" || rc=$?
             if [ "$rc" -ne 0 ]; then
               last_read_error="reading ${DELEGATE_FAILED_TOPIC} failed (exit ${rc}): $(head -c 500 "$read_err")"
               echo "$last_read_error; retrying"
