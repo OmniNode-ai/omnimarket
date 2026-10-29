@@ -27,7 +27,7 @@ requirements:
 evidence_requirements:
 - kind: tests
   description: T-V0a tests.
-  command: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute -q --no-cov --tb=line
+  command: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_contract.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_determinism.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_guards.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_merge_queue.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_named_gates.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_stale_cancelled.py -q --no-cov --tb=line
 - kind: manual
   description: 'deploy: read the lab-proof models at this head from the public repository and run the lab-proof landing tests on a hosted runner.'
   command: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_lab_proof.py -q --no-cov --tb=line
@@ -61,7 +61,7 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute -q --no-cov --tb=line
+    check_value: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_contract.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_determinism.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_guards.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_merge_queue.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_named_gates.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_scenarios.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_stale_cancelled.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21507-ac4
   description: 'AC4 lab step: the receipt row ids named in the pull request body resolve to PASS for their heads in the receipt projection; read the projection''s rows, not a readback pasted into the body.'
