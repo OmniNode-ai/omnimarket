@@ -109,7 +109,12 @@ from omnimarket.models.model_delegation_split_recombine import EnumDelegationSiz
 #
 # OMN-20168 declared ``configuration`` on the attempt below, after omniclaude's
 # pin carried the consumer that dropped it.
-_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({"backend_pinned"})
+#
+# OMN-19996 adds ``secret_ref``: the key reference a customer-key rung ran on.
+# The deployed delegation terminal carries none, so a later change declares
+# the field and has both dispatch ports fill it per attempt, after a release
+# carrying this consumer reaches omniclaude's pin.
+_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({"backend_pinned", "secret_ref"})
 # OMN-20274: the savings baseline keys omnimarket#3172 (OMN-19969) declares.
 _FORTHCOMING_BASELINE_RESPONSE_KEYS: frozenset[str] = frozenset(
     {"baseline_source", "baseline_state"}
