@@ -27,11 +27,14 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn21496-ac1-hook-writes
-  description: AC1 reads the committed pre-commit config for the consumed check-hook-writes id and for the check-only ruff arguments; the pre-commit run of check-hook-writes itself builds a hook environment and exceeds the hosted 30-second per-check budget, so it stays in the lab run recorded in the PR body.
+  description: AC1 runs the entry omnibase_core publishes for check-hook-writes, from a shallow checkout of the pinned core revision, over the committed pre-commit config (it must pass) and over a config whose hooks rewrite files (it must refuse, leaving the bytes alone); the config is also read for the consumed id and the check-only ruff arguments. The entry runs without the hook environment pre-commit builds, which exceeds the hosted 30-second per-check budget.
   source: manual
   binds_ac:
   - AC1
   checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_check_only_hooks_omn21496.py -q --no-cov --tb=line -k published_hook_writes_entry
+    cwd: ${OMNI_HOME}/omnimarket
   - check_type: command
     check_value: |
       set -eu;
@@ -55,19 +58,13 @@ dod_evidence:
       ! grep -qE 'id: (end-of-file-fixer|end-of-file-check|strip-ai-coauthor-trailer|refuse-ai-coauthor-trailer)' .pre-commit-config.yaml
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21496-ac2-canary
-  description: AC2 stages a file without a final newline and a tmp/ file and writes a commit message with an AI co-author trailer in a throwaway git tree, runs the consumed hooks through pre-commit with the pin from the committed config, and checks each is refused and that the sha256 of every file of the tree is the same before and after each run; a clean file passes as the positive control.
+  description: AC2 stages a file without a final newline and a tmp/ file and writes a commit message with an AI co-author trailer in a throwaway git tree, runs the entries omnibase_core publishes for commit-hygiene and commit-hygiene-message from a shallow checkout of the revision the committed config pins, and checks each is refused and that the sha256 of every file of the tree is the same before and after each run; a clean file passes as the positive control. The same cases run through pre-commit itself in the unbound test of the same file; its hook environment build exceeds the hosted 30-second per-check budget.
   source: manual
   binds_ac:
   - AC2
   checks:
-  - check_type: command
-    check_value: |
-      set -eu;
-      f=tests/ci/test_check_only_hooks_omn21496.py;
-      grep -q 'missing_final_newline' "$f";
-      grep -q 'staged_tmp_file' "$f";
-      grep -q 'ai_coauthor_trailer' "$f";
-      grep -q '_tree_digest(tree) == before' "$f"
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_check_only_hooks_omn21496.py -q --no-cov --tb=line -k published_hook_entries
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21496-ac2-pre-commit-run
   description: AC2 reads the committed config for the consumed commit-hygiene and commit-hygiene-message hooks at the pinned omnibase_core tag, with the message hook on the commit-msg stage. The canary item separately runs them on a throwaway tree; a pre-commit run builds a hook environment and exceeds the hosted 30-second per-check budget, so that run stays in the lab readback in the PR body.
