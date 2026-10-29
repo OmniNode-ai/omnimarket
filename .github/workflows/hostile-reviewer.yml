@@ -264,7 +264,7 @@ jobs:
             return 1
           }
 
-          clone_with_retry omnibase_core ../omnibase_core OMNIBASE_CORE_SHA "v$(grep -A1 '^name = "omnibase-core"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')"
+          clone_with_retry omnibase_core ../omnibase_core OMNIBASE_CORE_SHA "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)"
           echo "omnibase_core pinned to: $OMNIBASE_CORE_SHA"
 
       - name: Clone omnibase_compat
@@ -298,7 +298,7 @@ jobs:
             return 1
           }
 
-          clone_with_retry omnibase_compat ../omnibase_compat OMNIBASE_COMPAT_SHA "v$(grep -A1 '^name = "omnibase-compat"$' uv.lock | sed -n 's/^version = "\(.*\)"/\1/p')"
+          clone_with_retry omnibase_compat ../omnibase_compat OMNIBASE_COMPAT_SHA "$(awk -v p=omnibase-compat '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)"
           echo "omnibase_compat pinned to: $OMNIBASE_COMPAT_SHA"
 
       - name: Install uv
