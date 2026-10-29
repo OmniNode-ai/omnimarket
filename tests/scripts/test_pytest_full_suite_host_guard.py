@@ -256,6 +256,9 @@ def _write_synthetic_project(tmp_path: Path) -> Path:
         "    enforce(config, 'tests')\n",
         encoding="utf-8",
     )
+    (hooks_dir / "prepush_hosts.tsv").write_bytes(
+        GUARD_MODULE.with_name("prepush_hosts.tsv").read_bytes()
+    )
     tests_dir = project / "tests"
     tests_dir.mkdir()
     (tests_dir / "test_x.py").write_text(
@@ -379,6 +382,7 @@ def test_direct_invocation_refused_on_non_200_host(tmp_path: Path) -> None:
     (no `git push` in sight) on a non-h200 host is refused BEFORE
     collection."""
     project = _write_synthetic_project(tmp_path)
+    _git_init(project)
     result = _run_pytest(
         project,
         env_overrides={"PREPUSH_200_HOSTNAME": _GUARANTEED_NON_MATCHING_HOSTNAME},
@@ -715,6 +719,7 @@ def test_no_configured_table_refusal_explains_how_to_supply_one() -> None:
     assert "no gate host is configured" in message
     assert "ONEX_WORKSPACE_CONFIG_ROOT" in message
     assert guard.PRIVATE_TABLE_REL in message
+    assert "prepush_override_grant.py mint --reason" in message
 
 
 def test_guard_and_shell_share_the_workspace_owner_fallback(tmp_path: Path) -> None:
@@ -749,3 +754,42 @@ def test_private_git_table_checks_committed_bytes(tmp_path: Path, edit: str) -> 
     target.write_bytes(changed.encode("utf-8"))
     with pytest.raises(ValueError, match="differs"):
         guard._private_table_text({"ONEX_WORKSPACE_CONFIG_ROOT": str(root)})
+
+
+@pytest.mark.parametrize("state", ["divergent", "never-committed", "unreadable"])
+def test_full_suite_guard_refuses_present_untrusted_private_table(
+    tmp_path: Path, state: str
+) -> None:
+    """Private errors refuse even a designated local host, before collection."""
+    from tests.scripts._prepush_private_table import SYNTHETIC_TABLE
+
+    project = _write_synthetic_project(tmp_path)
+    _write_host_table(project, guard.resolve_local_hostname(), "authorizing")
+    _git_init(project)
+    root = tmp_path / "private_config"
+    target = root / guard.PRIVATE_TABLE_REL
+    target.parent.mkdir(parents=True)
+    target.write_text(SYNTHETIC_TABLE)
+    expected = "cannot be read"
+    if state == "divergent":
+        _git_init(root)
+        target.write_text(SYNTHETIC_TABLE + "\n")
+        expected = "differs between the working tree and HEAD"
+    elif state == "never-committed":
+        (root / "owner.txt").write_text("synthetic owner\n")
+        target.unlink()
+        _git_init(root)
+        target.write_text(SYNTHETIC_TABLE)
+        expected = "has no committed copy at HEAD"
+    else:
+        target.chmod(0)
+    try:
+        result = _run_pytest(
+            project, env_overrides={"ONEX_WORKSPACE_CONFIG_ROOT": str(root)}
+        )
+        assert result.returncode == 1, result.stdout + result.stderr
+        assert f"private host table {expected}" in result.stderr
+        assert "no gate host is configured" not in result.stderr
+        assert "1 passed" not in result.stdout
+    finally:
+        target.chmod(0o600)

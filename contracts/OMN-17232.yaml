@@ -98,12 +98,15 @@ dod_evidence:
   - AC3
 - id: dod-omn17232-ac4-committed-configuration
   description: Committed configuration is reproducibly resolved and divergent state refuses. This supporting
-    check does not prove reboot survival; AC4 remains pending.
+    check does not prove reboot survival; AC4 remains pending. Both shell and direct pytest entry points
+    refuse present unreadable, divergent or never-committed private tables before authorizing a run.
   source: manual
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/scripts/test_prepush_host_table.py -q -p no:randomly -k "test_a_committed_deployment_table_in_a_git_root_is_read
       or test_an_uncommitted_edit_to_the_deployment_table_is_refused or test_a_deployment_table_never_committed_in_a_git_root_is_refused"
+  - check_type: test_passes
+    check_value: uv run pytest tests/scripts/test_pytest_full_suite_host_guard.py -q -p no:randomly -k "present_untrusted_private_table or no_configured_table_refusal"
   binds_ac:
   - AC4
 - id: dod-omn17232-ac5-neutral-without-config

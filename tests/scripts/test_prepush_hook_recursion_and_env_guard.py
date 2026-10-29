@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -75,7 +76,7 @@ case "$args" in
     cat "$PREPUSH_TEST_SELECTION_JSON"
     exit 0
     ;;
-  *pytest*)
+  'run pytest'*)
     echo "STUB-PYTEST-INVOKED $args"
     echo "STUB-PYTEST-ENV ALLOW=${PREPUSH_ALLOW_LOCAL_FULL_SUITE:-UNSET} \
 CANARY=${PREPUSH_CANARY_LEAK_PROBE:-UNSET} \
@@ -84,12 +85,7 @@ SENTINEL=${ONEX_PREPUSH_HOOK_ACTIVE:-UNSET}"
     exit 0
     ;;
 esac
-shift
-if [ "$1" = "python" ]; then
-  shift
-  exec python3 "$@"
-fi
-exec "$@"
+exec "$PREPUSH_TEST_REAL_UV" "$@"
 """
 
 
@@ -133,6 +129,7 @@ def _run_hook(
     env = {**os.environ, **hook_test_env()}
     for leaky in _LEAKY_VARS:
         env.pop(leaky, None)
+    env["PREPUSH_TEST_REAL_UV"] = shutil.which("uv") or "uv"
     env["PATH"] = f"{stub_bin}{os.pathsep}{env['PATH']}"
     env["PREPUSH_TEST_SELECTION_JSON"] = str(selection_file)
     env["PREPUSH_BASE_REF"] = "HEAD"

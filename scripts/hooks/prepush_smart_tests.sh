@@ -675,7 +675,7 @@ prepush_wait_for_lab_capacity() {
 
 
 guard_full_suite_host() {
-  local host lc_host label heavy_what designated policy
+  local host lc_host label heavy_what designated policy table_error
   # OMN-15408: the caller names WHICH heavyweight run is being guarded, so the
   # refusal names the real cause. Default preserves the OMN-15059 wording for
   # the flag-driven escalation call sites, which pass no argument.
@@ -703,8 +703,8 @@ guard_full_suite_host() {
   # An UNREADABLE table fails CLOSED, on the same reasoning as the unresolvable
   # hostname above: heavy runs are routed by host identity, and identity that
   # cannot be resolved cannot be routed.
-  if ! prepush_table_text > /dev/null 2>&1; then
-    die "the pre-push host table (${PREPUSH_HOST_TABLE_REL}) could not be read from HEAD, so no host can be identified as a designated gate host for ${heavy_what}" \
+  if ! table_error="$(prepush_table_text 2>&1 > /dev/null)"; then
+    die "the pre-push host table (${PREPUSH_HOST_TABLE_REL}) could not be read from HEAD: ${table_error}; no host can be identified as a designated gate host for ${heavy_what}" \
         "the table is read from the COMMITTED tree so an uncommitted row cannot self-designate this machine as an authorizing gate host. Commit the configured table in its owning repository so HEAD and the working tree agree, then re-push"
   fi
   label="$(prepush_identity_label "$lc_host" || true)"
@@ -945,9 +945,9 @@ BASE_SHA="$(git merge-base "${BASE_REF}" HEAD 2>/dev/null)" \
 
 BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)"
 
-CHANGED_FILE="$(mktemp)"
-SELECTION_FILE="$(mktemp)"
-SELECTION_ERR="$(mktemp)"
+CHANGED_FILE="$(mktemp "${TMPDIR:-/tmp}/prepush-selection.XXXXXX")"
+SELECTION_FILE="$(mktemp "${TMPDIR:-/tmp}/prepush-selection.XXXXXX")"
+SELECTION_ERR="$(mktemp "${TMPDIR:-/tmp}/prepush-selection.XXXXXX")"
 # ONE exit trap for the whole hook (OMN-16991). bash keeps exactly one EXIT trap
 # per shell, so a later `trap prepush_lock_release EXIT` installed by
 # guard_full_suite_host would silently REPLACE this temp-file cleanup and leak
@@ -974,23 +974,15 @@ fi
 
 # DRY: invoke the EXACT module CI runs (scripts.ci.detect_test_paths), matching
 # omnimarket's CI seam (NO --base-ref -- omnimarket's selector does not accept it).
-# Split on the optional adjacency override to avoid empty-array expansion under
-# `set -u` on bash 3.2 (macOS system bash).
+# Keep one nonempty argv array, including the optional adjacency override.
+# Nonempty expansion is safe under `set -u` on bash 3.2 (macOS system bash).
 run_selector() {
+  local args=(--changed-files-from "$CHANGED_FILE" --ref-name "$BRANCH"
+              --event-name pull_request --feature-flag "$FLAG")
   if [ -n "${PREPUSH_ADJACENCY:-}" ]; then
-    uv run python -m scripts.ci.detect_test_paths \
-      --changed-files-from "$CHANGED_FILE" \
-      --ref-name "$BRANCH" \
-      --event-name pull_request \
-      --feature-flag "$FLAG" \
-      --adjacency "$PREPUSH_ADJACENCY"
-  else
-    uv run python -m scripts.ci.detect_test_paths \
-      --changed-files-from "$CHANGED_FILE" \
-      --ref-name "$BRANCH" \
-      --event-name pull_request \
-      --feature-flag "$FLAG"
+    args+=(--adjacency "$PREPUSH_ADJACENCY")
   fi
+  uv run python -m scripts.ci.detect_test_paths "${args[@]}"
 }
 
 if ! run_selector > "$SELECTION_FILE" 2> "$SELECTION_ERR"; then

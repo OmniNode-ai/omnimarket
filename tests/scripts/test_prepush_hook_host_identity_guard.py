@@ -401,17 +401,12 @@ def _run_hook_with_stubbed_selection(
         '    cat "$PREPUSH_TEST_SELECTION_JSON"\n'
         "    exit 0\n"
         "    ;;\n"
-        "  *pytest*)\n"
+        "  'run pytest'*)\n"
         '    echo "STUB-PYTEST-INVOKED $args"\n'
         "    exit 0\n"
         "    ;;\n"
         "esac\n"
-        "shift\n"
-        'if [ "$1" = "python" ]; then\n'
-        "  shift\n"
-        '  exec python3 "$@"\n'
-        "fi\n"
-        'exec "$@"\n',
+        f'exec "{shutil.which("uv")}" "$@"\n',
         encoding="utf-8",
     )
     uv_stub.chmod(0o755)
@@ -651,7 +646,7 @@ def _run_hook_forcing_full_suite(
         uv_stub.write_text(
             "#!/usr/bin/env bash\n"
             'case "$*" in\n'
-            "  *pytest*)\n"
+            "  'run pytest'*)\n"
             '    echo "STUB-PYTEST-INVOKED $*"\n'
             "    exit 0\n"
             "    ;;\n"

@@ -36,48 +36,18 @@
 # -----------------------------------------------------------------------------
 PREPUSH_HOST_TABLE_REL="scripts/hooks/prepush_hosts.tsv"
 
-# prepush_table_text -- prints the committed shipped table followed by the
-# deployment's private table, or returns 1 with a reason on stderr. Reading from
-# HEAD (not the working tree) is what stops an uncommitted row from
-# self-designating this machine as an authorizing gate host; the working-tree
-# divergence check stops the inverse trick of editing the file after a commit
-# that CI already saw. An ABSENT private table is the neutral default (the
-# shipped disabled row alone), never an error; a private table that is present
-# and unreadable or divergent refuses.
-prepush_table_text() {
-  local head_copy work_copy private_copy private_rc=0
-  if ! head_copy="$(git -C "$REPO_ROOT" show "HEAD:${PREPUSH_HOST_TABLE_REL}" 2> /dev/null)"; then
-    printf 'host table absent at HEAD (%s)\n' "$PREPUSH_HOST_TABLE_REL" >&2
-    return 1
-  fi
-  if [ -f "${REPO_ROOT}/${PREPUSH_HOST_TABLE_REL}" ]; then
-    work_copy="$(cat "${REPO_ROOT}/${PREPUSH_HOST_TABLE_REL}")"
-    if [ "$work_copy" != "$head_copy" ]; then
-      printf 'host table differs between the working tree and HEAD\n' >&2
-      return 1
-    fi
-  fi
-  printf '%s\n' "$head_copy"
-  private_copy="$(prepush_private_table_text)" || private_rc=$?
-  if [ "$private_rc" -eq 0 ]; then
-    printf '%s\n' "$private_copy"
-  elif [ "$private_rc" -ne 2 ]; then
-    return 1
-  fi
-  return 0
-}
-
-# -----------------------------------------------------------------------------
-# Private deployment table -- OMN-20939
-# -----------------------------------------------------------------------------
-# The shipped table above carries the schema and a neutral disabled row. The
-# deployment's hosts live in a private table with the same fifteen columns,
-# found through the workspace-config resolver: ONEX_WORKSPACE_CONFIG_ROOT, else
-# the private workspace repository beside OMNI_HOME. There is no built-in path and no
-# lab value in this file (CLAUDE.md rule 8).
-# The caller names the file (a repo-relative-to-the-config-root path); the shared
-# library carries no repo name. Unset means no deployment table is declared.
+# One Python reader owns shipped/private trust checks for both entry points.
+# Resolve from this library, since REPO_ROOT may name a transplanted checkout.
+_PREPUSH_TABLE_READER_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PREPUSH_PRIVATE_TABLE_REL="${PREPUSH_PRIVATE_TABLE_REL:-}"
+prepush_read_table() {
+  uv run --no-project --directory "$_PREPUSH_TABLE_READER_ROOT" python \
+    -m scripts.hooks.pytest_full_suite_host_guard --read-table "$1" \
+    --repo-root "$REPO_ROOT" --private-table-rel "$PREPUSH_PRIVATE_TABLE_REL"
+}
+prepush_table_text() { prepush_read_table all; }
+prepush_private_table_text() { prepush_read_table private; }
+prepush_private_table_status() { prepush_read_table status; }
 
 # prepush_workspace_config_root -- the resolved root, or rc=1 when neither
 # ONEX_WORKSPACE_CONFIG_ROOT nor OMNI_HOME names one.
@@ -94,64 +64,6 @@ prepush_private_table_path() {
   [ -n "${ONEX_WORKSPACE_CONFIG_ROOT:-}" ] || [ -n "${OMNI_HOME:-}" ] || return 1
   path="${ONEX_WORKSPACE_CONFIG_ROOT:-${OMNI_HOME}/../omnibase_internal}/${rel}"
   printf '%s' "$path"
-}
-
-# prepush_private_table_text -- prints the deployment table. rc=2 means NOT
-# CONFIGURED (no root, or no file): the neutral case, with the reason on stderr
-# only when the caller asks for it via prepush_private_table_status. rc=1 means
-# the table exists but cannot be trusted (unreadable, or it differs between the
-# working tree and HEAD of its git checkout).
-prepush_private_table_text() {
-  local root path top phys head_copy work_copy
-  [ -n "$PREPUSH_PRIVATE_TABLE_REL" ] || return 2
-  root="$(prepush_workspace_config_root)" || return 2
-  path="${root}/${PREPUSH_PRIVATE_TABLE_REL}"
-  [ -f "$path" ] || return 2
-  # A root that is itself the top of a git checkout is read from its COMMITTED
-  # copy, so an uncommitted row cannot self-designate a machine (the same rule
-  # the shipped table lives under). A root that is a plain directory, or a
-  # subdirectory of some other checkout, is read as a file.
-  top="$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE git -C "$root" rev-parse --show-toplevel 2> /dev/null || true)"
-  phys="$(cd "$root" 2> /dev/null && pwd -P || true)"
-  if [ -n "$top" ] && [ "$top" = "$phys" ]; then
-    if ! head_copy="$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE git -C "$root" show "HEAD:${PREPUSH_PRIVATE_TABLE_REL}" 2> /dev/null && printf '.')"; then
-      printf 'private host table has no committed copy at HEAD (%s)\n' "$path" >&2
-      return 1
-    fi
-    # A final marker keeps command substitution from discarding newlines, so
-    # even a newline-only edit differs. Remove only our marker when emitting.
-    if ! work_copy="$(cat "$path" && printf '.')"; then
-      printf 'private host table cannot be read (%s)\n' "$path" >&2
-      return 1
-    fi
-    if [ "$work_copy" != "$head_copy" ]; then
-      printf 'private host table differs between the working tree and HEAD (%s)\n' "$path" >&2
-      return 1
-    fi
-    printf '%s' "${head_copy%.}"
-    return 0
-  fi
-  cat "$path" || return 1
-}
-
-# prepush_private_table_status -- one line saying whether the deployment table is
-# configured, naming how to supply it when it is not. Printed by the guard so a
-# fork or a customer with no overlay is told, not silently given nothing.
-prepush_private_table_status() {
-  local root
-  if [ -z "$PREPUSH_PRIVATE_TABLE_REL" ]; then
-    printf 'deployment host table NOT CONFIGURED: the caller declares no table path'
-  elif root="$(prepush_workspace_config_root)"; then
-    if [ -f "${root}/${PREPUSH_PRIVATE_TABLE_REL}" ]; then
-      printf 'deployment host table: %s/%s' "$root" "$PREPUSH_PRIVATE_TABLE_REL"
-    else
-      printf 'deployment host table NOT CONFIGURED: %s/%s is absent -- create it (fifteen columns, see %s) or set ONEX_WORKSPACE_CONFIG_ROOT to the root that holds it' \
-        "$root" "$PREPUSH_PRIVATE_TABLE_REL" "$PREPUSH_HOST_TABLE_REL"
-    fi
-  else
-    printf 'deployment host table NOT CONFIGURED: neither ONEX_WORKSPACE_CONFIG_ROOT nor OMNI_HOME is set -- set ONEX_WORKSPACE_CONFIG_ROOT to a root holding %s (see %s)' \
-      "$PREPUSH_PRIVATE_TABLE_REL" "$PREPUSH_HOST_TABLE_REL"
-  fi
 }
 
 # prepush_table_rows -- data rows only (comments and blanks dropped).
@@ -1615,7 +1527,7 @@ prepush_remote_run() {
   runid="${repo}-$(printf '%s' "$head_sha" | cut -c1-12)-$$"
   rundir="${workroot}/runs/${runid}"
 
-  localdir="$(mktemp -d 2> /dev/null)" || return 1
+  localdir="$(mktemp -d "${TMPDIR:-/tmp}/prepush-run.XXXXXX" 2> /dev/null)" || return 1
   bundle="${localdir}/tree.bundle"
   argvfile="${localdir}/argv.txt"
   runner="${localdir}/prepush_smart_tests.sh"

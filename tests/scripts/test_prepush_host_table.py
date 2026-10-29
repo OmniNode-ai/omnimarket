@@ -4249,3 +4249,33 @@ def test_private_table_rejects_trailing_newline_edit(tmp_path: Path) -> None:
     target.write_text(target.read_text(encoding="utf-8") + "\n", encoding="utf-8")
     out = _designated_with_root(repo, root)
     assert "READ=refused" in out, out
+
+
+@pytest.mark.parametrize("state", ["divergent", "never-committed", "unreadable"])
+def test_shell_guard_reports_present_untrusted_private_table(
+    tmp_path: Path, state: str
+) -> None:
+    """The shell guard preserves the same specific private-table refusal as pytest."""
+    repo = _repo_with_table(tmp_path, TABLE.read_text(encoding="utf-8"))
+    root = _git_root_with_table(tmp_path, commit=state != "never-committed")
+    target = root / PRIVATE_TABLE_REL
+    if state == "divergent":
+        target.write_text(SYNTHETIC_TABLE + "\n")
+        reason = "differs between the working tree and HEAD"
+    elif state == "never-committed":
+        reason = "has no committed copy at HEAD"
+    else:
+        target.chmod(0)
+        reason = "cannot be read"
+    body = (
+        f"ONEX_WORKSPACE_CONFIG_ROOT={root}\n"
+        + _extract_shell_function(HOOK, "guard_full_suite_host")
+        + "\nguard_full_suite_host 'synthetic full suite'\n"
+    )
+    try:
+        result = _run_driver(repo, body)
+        assert result.returncode == 1, result.stdout + result.stderr
+        assert f"private host table {reason}" in result.stderr
+        assert "no gate host is configured" not in result.stderr
+    finally:
+        target.chmod(0o600)

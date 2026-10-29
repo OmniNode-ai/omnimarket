@@ -109,14 +109,18 @@
 # ONEX_WORKSPACE_CONFIG_ROOT points the remote guard at the transferred copy.
 # pytest_full_suite_host_guard.py reads the same full table, has no built-in
 # hostname, and explains how to configure a table when none is available. It
-# reuses the shell resolver for the owner fallback, keeping that existing
-# fallback literal in one place; explicit config-root injection stays direct.
+# owns all table reads, shared by the dispatcher through its CLI. The existing
+# shell workspace-owner resolver remains the single source of the owner fallback.
+# Present unreadable, divergent or uncommitted private tables
+# refuse with a specific reason in both entry points, before grants are spent.
+# The duplicated shell reader and legacy placement hydration are removed.
+# Local temporary files use an explicit TMPDIR template on macOS and Linux.
 # The earlier config-owner resolver port and repository-neutral shared-library
 # wording remain. A re-sync from upstream MUST re-apply these changes and run
 # the host-table, direct guard and remote-leg tests. The upstream commit column
 # records the original upstream donor, not an assertion of byte identity.
 #
 #path	upstream_repo	upstream_path	upstream_commit	upstream_branch	sha256	copied_at
-scripts/hooks/prepush_dispatch.sh	OmniNode-ai/omnibase_infra	scripts/hooks/prepush_dispatch.sh	7031f3dcbe004752c09aa47544cb1edc76448a6c	refs/pull/4630/head	0dc11c3c591b976a56cf2d30fd606253a3f40cd3f7d340cb8003e9d76f31bd37	2026-10-06
+scripts/hooks/prepush_dispatch.sh	OmniNode-ai/omnibase_infra	scripts/hooks/prepush_dispatch.sh	7031f3dcbe004752c09aa47544cb1edc76448a6c	refs/pull/4630/head	a64a0fa9d451d76b494ac39303346fc1aaf367a57dad7ef434bb67bb02232521	2026-10-06
 scripts/hooks/prepush_override_grant.py	OmniNode-ai/omnibase_infra	scripts/hooks/prepush_override_grant.py	eddf4a9d20a294bed00a3c7e73ab14f73f2c6911	dev	6777c592a944fe1964a195bf088c00c7747551e5e9a20705ca49d9e59dbc3f3c	2026-09-01
-scripts/hooks/pytest_full_suite_host_guard.py	OmniNode-ai/omnibase_infra	scripts/hooks/pytest_full_suite_host_guard.py	eddf4a9d20a294bed00a3c7e73ab14f73f2c6911	dev	c8b1feec5394b1f1234aee83edb15087bce485887b243976c6965c938537e1de	2026-09-07
+scripts/hooks/pytest_full_suite_host_guard.py	OmniNode-ai/omnibase_infra	scripts/hooks/pytest_full_suite_host_guard.py	eddf4a9d20a294bed00a3c7e73ab14f73f2c6911	dev	a1a1d0293577d948161fbbe745463b7b79b2cda73e1ef34c3172484c92c4a25b	2026-09-07
