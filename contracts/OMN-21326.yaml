@@ -105,16 +105,18 @@ dod_evidence:
     binds_ac: ["AC1"]
   - id: "dod-omn21326-ac3-exit-coded-readback"
     description: >-
-      Ships the AC3 readback as a check that fails by exit status, replacing the rejected binding to a count-only
-      script (dod-closeout-sweep 2026-10-27T1845Z). scripts/verify_omn21326_ac3_budget_bound.py selects completed
-      deployed-lane runs whose caller named a timeout, by run.json mtime in a window (default the last 24 h), and exits 1
-      when any has execution_duration_ms above (execution_timeout_seconds + grace) * 1000, 2 when none was measured, and
-      3 when it cannot run; the grace is read from the task-class declaration. This item runs the script's own tests and
-      binds no criterion: AC3 is bound by a lab closeout lane to
-      `uv run python scripts/verify_omn21326_ac3_budget_bound.py` on the host whose state root holds the deployed-lane
-      receipts. At the merge base the script and its tests do not exist.
+      The AC3 readback as a check that fails, replacing the rejected binding to a count-only script that exited 0
+      whatever it counted (dod-closeout-sweep 2026-10-27T1845Z). tests/unit/delegation/omn21326_ac3_budget_bound.py
+      selects completed deployed-lane runs whose caller named a timeout, by run.json mtime in a 24 h window, and its
+      test fails when any has execution_duration_ms above (execution_timeout_seconds + grace) * 1000 and when nothing
+      was measured; the grace is read from the task-class declaration. Its file name keeps it out of CI collection: on
+      the host holding the deployed-lane receipts it runs as OMN21326_STATE_ROOT=<root> uv run pytest
+      tests/unit/delegation/omn21326_ac3_budget_bound.py. This check drives that same live test against fixture
+      receipts: inside the bound it passes; one run 1 ms past it, an empty window, or a missing state root each fail
+      it. At the merge base neither module exists.
     source: "manual"
+    binds_ac: ["AC3"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/scripts/test_verify_omn21326_ac3_budget_bound.py -q --no-cov"
+        check_value: "uv run pytest tests/unit/delegation/test_omn21326_ac3_budget_bound.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
