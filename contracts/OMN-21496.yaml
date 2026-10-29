@@ -44,11 +44,14 @@ dod_evidence:
       ! grep -qE 'id: (ruff-fix|end-of-file-fixer|trailing-whitespace)' .pre-commit-config.yaml
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21496-ac1-no-local-definition
-  description: AC1 reads the committed config for the removed local hook ids and for the consumed core ids; the repository holds no local definition of the end-of-file, co-author trailer or tmp/ rules.
+  description: AC1 runs the check-hook-writes entry omnibase_core publishes over the committed config (it must pass, so no hook rewrites a file and the end-of-file fixer id is absent) and reads the committed config for the removed local hook ids and for the consumed core ids; the repository holds no local definition of the end-of-file, co-author trailer or tmp/ rules.
   source: manual
   binds_ac:
   - AC1
   checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_check_only_hooks_omn21496.py -q --no-cov --tb=line -k published_hook_writes_entry
+    cwd: ${OMNI_HOME}/omnimarket
   - check_type: command
     check_value: |
       set -eu;
@@ -67,11 +70,14 @@ dod_evidence:
     check_value: uv run pytest tests/ci/test_check_only_hooks_omn21496.py -q --no-cov --tb=line -k published_hook_entries
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21496-ac2-pre-commit-run
-  description: AC2 reads the committed config for the consumed commit-hygiene and commit-hygiene-message hooks at the pinned omnibase_core tag, with the message hook on the commit-msg stage. The canary item separately runs them on a throwaway tree; a pre-commit run builds a hook environment and exceeds the hosted 30-second per-check budget, so that run stays in the lab readback in the PR body.
+  description: AC2 resolves the pinned omnibase_core tag and the consumed commit-hygiene and commit-hygiene-message ids from the committed config, runs the entries core publishes for them on a throwaway tree (refused, bytes unchanged) and reads the config for the pin and the commit-msg stage of the message hook; a pre-commit run builds a hook environment and exceeds the hosted 30-second per-check budget, so that run stays in the lab readback in the PR body.
   source: manual
   binds_ac:
   - AC2
   checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_check_only_hooks_omn21496.py -q --no-cov --tb=line -k published_hook_entries
+    cwd: ${OMNI_HOME}/omnimarket
   - check_type: command
     check_value: |
       set -eu;
