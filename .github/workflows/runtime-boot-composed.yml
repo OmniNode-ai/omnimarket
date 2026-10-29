@@ -429,125 +429,175 @@ jobs:
             echo "::error::no live node_delegate_skill_orchestrator consumer group on ${DELEGATE_COMMAND_TOPIC}"
             exit 1
           fi
-          # A terminal is matched structurally, never by substring: each record
-          # is parsed as JSON and an envelope is unwrapped to its payload. A
-          # record is this request's when the payload's own correlation id is
-          # the probe's; an envelope and payload naming different ids, either
-          # of them the probe's, is a conflict. Every record is read before
-          # deciding, so a contradiction later in the topic is not missed. For
-          # the failed topic, exit 0 = every record for this request is the
-          # typed refusal (terminal_failure_cause refused_before_dispatch,
-          # attempts_count 0), 3 = any of them says otherwise or conflicts,
-          # 4 = none yet. For the completed topic, any record naming the probe
-          # (0) is a dispatch.
-          terminal_check="$(cat <<'PY'
+          # The request's terminal is read inside the kernel with the
+          # runtime's own aiokafka and broker credentials: a group-less
+          # consumer assigns every partition of both terminal topics, seeks
+          # each to its log start, and reads until its position reaches the
+          # end offset taken at the start of the read, per partition. A
+          # partition with no offsets, or one that stops short within 20
+          # fetches, is a failed read: reported and retried, never an empty
+          # topic. (rpk's offset ranges are not used: on the lane broker
+          # `-o start:end` is refused as "end 0 <= start 0" even on a topic
+          # holding a record, and `-o :end` fails to dial [::1]:29092 from
+          # inside the container, measured on a lab lane against infra
+          # 24bcaf4f.) A record is this request's when its payload's own
+          # correlation id is the probe's; an envelope and payload naming
+          # different ids, one of them the probe's, is a conflict. Every
+          # record is read before deciding. Exit 0 = every record for this
+          # request on the failed topic is the typed refusal
+          # (terminal_failure_cause refused_before_dispatch, attempts_count
+          # 0); 3 = one of them says otherwise or conflicts; 4 = none yet;
+          # 5 = a failed read; 6 = the completed topic names the request.
+          terminal_reader="$(cat <<'PY'
+          import asyncio
           import json
           import os
           import sys
 
-          probe = os.environ["PROBE_ID"]
-          want_refusal = os.environ["WANT"] == "refusal"
-          matched = 0
-          wrong = 0
-          for line in sys.stdin:
+          from aiokafka import AIOKafkaConsumer
+          from aiokafka.admin import AIOKafkaAdminClient
+          from aiokafka.structs import TopicPartition
+          from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
+
+          PROBE = os.environ["PROBE_ID"]
+          FETCHES = 20
+
+
+          class ReadFailure(Exception):
+              pass
+
+
+          async def read_whole(consumer, partitions_of, topic):
+              partitions = partitions_of.get(topic)
+              if not partitions:
+                  raise ReadFailure(f"{topic} has no readable partitions")
+              tps = [TopicPartition(topic, p) for p in sorted(partitions)]
+              consumer.assign(tps)
+              start = await consumer.beginning_offsets(tps)
+              end = await consumer.end_offsets(tps)
+              for tp in tps:
+                  low, high = start.get(tp), end.get(tp)
+                  if not isinstance(low, int) or not isinstance(high, int) or high < low:
+                      raise ReadFailure(f"{topic}[{tp.partition}] offsets unavailable (start={low}, end={high})")
+                  consumer.seek(tp, low)
+              values = []
+              pending = {tp for tp in tps if end[tp] > start[tp]}
+              for _ in range(FETCHES):
+                  if not pending:
+                      break
+                  batches = await consumer.getmany(*pending, timeout_ms=1000)
+                  for records in batches.values():
+                      values.extend(record.value for record in records)
+                  for tp in list(pending):
+                      if await consumer.position(tp) >= end[tp]:
+                          pending.discard(tp)
+              if pending:
+                  short = [f"{tp.topic}[{tp.partition}] at {await consumer.position(tp)} of {end[tp]}" for tp in sorted(pending)]
+                  raise ReadFailure("read stopped short: " + ", ".join(short))
+              return values
+
+
+          async def read_both():
+              topics = [os.environ["COMPLETED_TOPIC"], os.environ["FAILED_TOPIC"]]
+              auth = build_aiokafka_auth_kwargs_from_env()
+              # Partitions come from the admin client, as the runtime's own demand
+              # reader does: a group-less consumer knows only assigned partitions.
+              admin = AIOKafkaAdminClient(bootstrap_servers=os.environ["KAFKA_BOOTSTRAP_SERVERS"], **auth)
+              await admin.start()
               try:
-                  record = json.loads(line)
-              except ValueError:
-                  continue
-              if not isinstance(record, dict):
-                  continue
-              body = record
-              while isinstance(body.get("payload"), dict):
-                  body = body["payload"]
-              outer = record.get("correlation_id")
-              inner = body.get("correlation_id")
-              ids = {str(outer) if outer is not None else None, str(inner) if inner is not None else None} - {None}
-              if probe not in ids:
-                  continue
-              cause = body.get("terminal_failure_cause")
-              attempts = body.get("attempts_count")
-              conflict = len(ids) > 1 or str(inner) != probe
+                  described = await admin.describe_topics(topics)
+              finally:
+                  await admin.close()
+              partitions_of = {}
+              for entry in described:
+                  if entry.get("error_code"):
+                      raise ReadFailure(f"{entry.get('topic')} cannot be described (error {entry.get('error_code')})")
+                  partitions_of[str(entry["topic"])] = [int(part["partition"]) for part in entry["partitions"]]
+              consumer = AIOKafkaConsumer(
+                  bootstrap_servers=os.environ["KAFKA_BOOTSTRAP_SERVERS"],
+                  group_id=None,
+                  enable_auto_commit=False,
+                  **auth,
+              )
+              await consumer.start()
+              try:
+                  completed = await read_whole(consumer, partitions_of, topics[0])
+                  failed = await read_whole(consumer, partitions_of, topics[1])
+              finally:
+                  await consumer.stop()
+              return completed, failed
+
+
+          def probe_records(values):
+              for raw in values:
+                  try:
+                      record = json.loads(raw)
+                  except (TypeError, ValueError):
+                      continue
+                  if not isinstance(record, dict):
+                      continue
+                  body = record
+                  while isinstance(body.get("payload"), dict):
+                      body = body["payload"]
+                  outer, inner = record.get("correlation_id"), body.get("correlation_id")
+                  ids = {str(value) for value in (outer, inner) if value is not None}
+                  if PROBE in ids:
+                      yield body, len(ids) > 1 or str(inner) != PROBE
+
+
+          try:
+              completed, failed = asyncio.run(read_both())
+          except ReadFailure as exc:
+              print(f"read failure: {exc}")
+              sys.exit(5)
+          except Exception as exc:  # a broker or client error is a failed read, retried
+              print(f"read failure: {type(exc).__name__}: {exc}")
+              sys.exit(5)
+          if any(True for _ in probe_records(completed)):
+              sys.exit(6)
+          matched = wrong = 0
+          for body, conflict in probe_records(failed):
+              cause, attempts = body.get("terminal_failure_cause"), body.get("attempts_count")
               print(f"probe terminal: status={body.get('status')} terminal_failure_cause={cause} attempts_count={attempts} identity_conflict={conflict}")
               matched += 1
               if conflict or cause != "refused_before_dispatch" or attempts != 0:
                   wrong += 1
-          if not want_refusal:
-              sys.exit(0 if matched else 4)
-          if wrong:
-              sys.exit(3)
-          sys.exit(0 if matched else 4)
+          sys.exit(3 if wrong else 0 if matched else 4)
           PY
           )"
-          # Each terminal topic is read whole: describe gives every partition's
-          # log start and high watermark, and exactly that many records are
-          # consumed from the start, one per line (-f '%v\n'), under a bound
-          # inside the broker. rpk's offset ranges cannot do this here: on the
-          # lane broker `-o start:end` is refused as "end 0 <= start 0" even on
-          # a topic holding a record, and `-o :end` fails to dial [::1]:29092
-          # from inside the container (measured on a lab lane against
-          # infra 24bcaf4f). A topic with no partition, a failed describe or a
-          # consume that does not finish is a failed read: reported, retried,
-          # never treated as an empty topic. The refusal counts only in a poll
-          # where both terminal topics were read and the completed one does not
-          # carry this request.
-          broker_rpk_bounded() {
-            RPK_PASS="$pass" docker exec -e RPK_USER=onex-local -e RPK_PASS -e RPK_SASL_MECHANISM=SCRAM-SHA-256 "$broker" timeout 30 rpk "$@"
-          }
-          read_topic() {
-            local described count
-            described="$(broker_rpk topic describe "$1" -p)" || return 1
-            if ! count="$(awk 'NR > 1 && $5 ~ /^[0-9]+$/ && $6 ~ /^[0-9]+$/ {n += $6 - $5; p++} END {if (!p) exit 1; print n + 0}' <<< "$described")"; then
-              echo "${1} has no partitions" >&2
-              return 1
-            fi
-            if [ "$count" -gt 0 ]; then
-              broker_rpk_bounded topic consume "$1" -o start -n "$count" -f '%v\n'
-            fi
-          }
-          read_err="$(mktemp)"
           last_read_error=""
           for _ in $(seq 1 30); do
             rc=0
-            completed="$(read_topic "$DELEGATE_COMPLETED_TOPIC" 2>"$read_err")" || rc=$?
-            if [ "$rc" -ne 0 ]; then
-              last_read_error="reading ${DELEGATE_COMPLETED_TOPIC} failed (exit ${rc}): $(head -c 500 "$read_err")"
-              echo "$last_read_error; retrying"
-              sleep 10
-              continue
-            fi
-            rc=0
-            failed="$(read_topic "$DELEGATE_FAILED_TOPIC" 2>"$read_err")" || rc=$?
-            if [ "$rc" -ne 0 ]; then
-              last_read_error="reading ${DELEGATE_FAILED_TOPIC} failed (exit ${rc}): $(head -c 500 "$read_err")"
-              echo "$last_read_error; retrying"
-              sleep 10
-              continue
-            fi
-            last_read_error=""
-            rc=0
-            PROBE_ID="$probe_id" WANT=any python3 -c "$terminal_check" <<< "$completed" || rc=$?
-            if [ "$rc" -eq 0 ]; then
-              echo "::error::probe ${probe_id} was dispatched (completed terminal); expected a refusal before dispatch"
-              exit 1
-            fi
-            if [ "$rc" -ne 4 ]; then
-              echo "::error::the terminal check itself failed (exit ${rc})"
-              exit 1
-            fi
-            rc=0
-            PROBE_ID="$probe_id" WANT=refusal python3 -c "$terminal_check" <<< "$failed" || rc=$?
-            if [ "$rc" -eq 0 ]; then
-              echo "typed refusal for probe ${probe_id} on ${DELEGATE_FAILED_TOPIC}"
-              exit 0
-            fi
-            if [ "$rc" -eq 3 ]; then
-              echo "::error::probe ${probe_id} failed without a refusal before dispatch (a wrong cause, an attempt, or a conflicting identity on one of its terminals)"
-              exit 1
-            fi
-            if [ "$rc" -ne 4 ]; then
-              echo "::error::the terminal check itself failed (exit ${rc})"
-              exit 1
-            fi
+            verdict="$(docker exec -e PROBE_ID="$probe_id" -e COMPLETED_TOPIC="$DELEGATE_COMPLETED_TOPIC" -e FAILED_TOPIC="$DELEGATE_FAILED_TOPIC" \
+                "${LOCAL_PROJECT}-omninode-runtime" /app/.venv/bin/python -c "$terminal_reader" 2>&1)" || rc=$?
+            case "$rc" in
+              0)
+                printf '%s\n' "$verdict"
+                echo "typed refusal for probe ${probe_id} on ${DELEGATE_FAILED_TOPIC}"
+                exit 0
+                ;;
+              3)
+                printf '%s\n' "$verdict"
+                echo "::error::probe ${probe_id} failed without a refusal before dispatch (a wrong cause, an attempt, or a conflicting identity on one of its terminals)"
+                exit 1
+                ;;
+              6)
+                echo "::error::probe ${probe_id} was dispatched (completed terminal); expected a refusal before dispatch"
+                exit 1
+                ;;
+              4)
+                last_read_error=""
+                ;;
+              5)
+                last_read_error="$(tail -n 1 <<< "$verdict")"
+                echo "${last_read_error}; retrying"
+                ;;
+              *)
+                printf '%s\n' "${verdict: -2000}"
+                echo "::error::the terminal check itself failed (exit ${rc})"
+                exit 1
+                ;;
+            esac
             sleep 10
           done
           if [ -n "$last_read_error" ]; then

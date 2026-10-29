@@ -98,9 +98,8 @@ if os.environ["STUB_MODEL_REJECTS"] == "yes":
 
 _DOCKER_STUB = """#!/usr/bin/env bash
 # Stub of `docker exec [-i] [-e VAR]... <container> ...` for the probe step:
-# the kernel's model check in the runtime container, and `rpk group
-# list|describe`, `rpk topic produce`, `rpk topic describe -p` and a bounded
-# `rpk topic consume -o start -n N` in the broker.
+# the kernel's model check and terminal reader in the runtime container, and
+# `rpk group list|describe` and `rpk topic produce` in the broker.
 # The broker requires SASL (OMN-20820): a call that does not carry the
 # superuser's credentials is refused, as the real one is. Every call is
 # appended to $STUB_CALLS.
@@ -125,9 +124,19 @@ shift
 args="$*"
 echo "$container ${args//$'\\n'/ }" >> "$STUB_CALLS"
 if [ "$container" = "$STUB_PROJECT-omninode-runtime" ]; then
-  [ "$1" = "/app/.venv/bin/python" ] || { echo "stub docker: unexpected kernel exec $*" >&2; exit 2; }
-  [ "$stdin_attached" = "yes" ] || { echo "stub docker: model check without -i reads nothing" >&2; exit 2; }
-  exec stub-model-check
+  [ "$1" = "/app/.venv/bin/python" ] && [ "$2" = "-c" ] || { echo "stub docker: unexpected kernel exec $*" >&2; exit 2; }
+  case "$3" in
+    *ModelDelegateSkillRequest*)
+      [ "$stdin_attached" = "yes" ] || { echo "stub docker: model check without -i reads nothing" >&2; exit 2; }
+      exec stub-model-check
+      ;;
+    *AIOKafkaConsumer*)
+      # The step's own reader, run against the fake aiokafka on PYTHONPATH.
+      PYTHONPATH="$STUB_FAKES" exec python3 -c "$3"
+      ;;
+  esac
+  echo "stub docker: unexpected kernel program" >&2
+  exit 2
 fi
 [ "$container" = "$STUB_PROJECT-redpanda" ] || { echo "stub docker: unexpected container $container" >&2; exit 2; }
 if [ "${RPK_USER:-}" != "onex-local" ] || [ "${RPK_PASS:-}" != "$STUB_PASSWORD" ]; then
@@ -141,42 +150,6 @@ if [ "$STUB_GROUP_PRESENT" = "yes" ]; then
     group_listed=yes
   fi
 fi
-probe_id=""
-if [ -s "$STUB_PRODUCED" ]; then
-  probe_id="$(python3 -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["correlation_id"])' "$STUB_PRODUCED")"
-fi
-filler() {
-  i=0
-  while [ "$i" -lt "$STUB_CONSUME_FILLER_ROWS" ]; do
-    echo "{\\"correlation_id\\":\\"00000000-0000-4000-8000-$(printf '%012d' "$i")\\",\\"status\\":\\"failed\\"}"
-    i=$((i + 1))
-  done
-}
-failed_records() {
-  if [ -n "$probe_id" ]; then
-    case "$STUB_TERMINAL" in
-      refused) echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\",\\"attempts_count\\":0}" ;;
-      provider_error) echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"provider_error\\"}" ;;
-      other_request) echo "{\\"correlation_id\\":\\"11111111-1111-4111-8111-111111111111\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\"}" ;;
-      provider_error_mentions_refusal) echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"provider_error\\",\\"error_message\\":\\"not refused_before_dispatch\\"}" ;;
-      refused_with_attempt) echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\",\\"attempts_count\\":1}" ;;
-      refused_enveloped) echo "{\\"envelope_id\\":\\"e1\\",\\"correlation_id\\":\\"$probe_id\\",\\"payload\\":{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\",\\"attempts_count\\":0}}" ;;
-      refused_enveloped_conflict) echo "{\\"envelope_id\\":\\"e1\\",\\"correlation_id\\":\\"$probe_id\\",\\"payload\\":{\\"correlation_id\\":\\"11111111-1111-4111-8111-111111111111\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\",\\"attempts_count\\":0}}" ;;
-      refused_then_provider_error)
-        echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\",\\"attempts_count\\":0}"
-        echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"provider_error\\",\\"attempts_count\\":1}"
-        ;;
-      id_in_text_only) echo "{\\"correlation_id\\":\\"22222222-2222-4222-8222-222222222222\\",\\"error_message\\":\\"see $probe_id\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\",\\"attempts_count\\":0}" ;;
-    esac
-  fi
-  filler
-}
-completed_records() {
-  if [ -n "$probe_id" ] && [ "$STUB_TERMINAL" = "completed" ]; then
-    echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"completed\\"}"
-  fi
-  filler
-}
 case "$*" in
   "rpk topic produce $STUB_TOPIC -k composed-runtime-boot-probe")
     [ "$stdin_attached" = "yes" ] || { echo "stub docker: produce without -i reads no record" >&2; exit 2; }
@@ -188,26 +161,6 @@ case "$*" in
     [ -n "$record" ] || { echo "stub docker: empty record" >&2; exit 2; }
     printf '%s\\n' "$record" >> "$STUB_PRODUCED"
     echo "Produced to partition 0 at offset 0 with timestamp 1793210000000."
-    ;;
-  "rpk topic describe $STUB_FAILED -p"|"rpk topic describe $STUB_COMPLETED -p")
-    # The real describe of a topic that does not exist prints only the header.
-    echo "PARTITION  LEADER  EPOCH  REPLICAS  LOG-START-OFFSET  HIGH-WATERMARK"
-    if [ "$4" = "$STUB_COMPLETED" ] && [ "$STUB_COMPLETED_READ_FAILS" = "yes" ]; then
-      exit 0
-    fi
-    if [ "$4" = "$STUB_FAILED" ]; then n="$(failed_records | wc -l)"; else n="$(completed_records | wc -l)"; fi
-    echo "0          0       1      [0]       0                 $((n))"
-    ;;
-  "timeout 30 rpk topic consume $STUB_FAILED -o start -n "*" -f %v\\n")
-    failed_records | head -n "${10}"
-    ;;
-  "timeout 30 rpk topic consume $STUB_COMPLETED -o start -n "*" -f %v\\n")
-    completed_records | head -n "${10}"
-    ;;
-  "rpk topic consume "*" -o start:end -f %v\\n")
-    # What the lane broker answers (measured against infra 24bcaf4f).
-    echo 'invalid --offset "start:end": unable to parse offset: end 0 <= start 0' >&2
-    exit 1
     ;;
   "rpk group list")
     echo "BROKER  GROUP  STATE"
@@ -242,6 +195,197 @@ case "$*" in
 esac
 """
 
+#: A fake of the aiokafka surface the step's terminal reader uses, with the
+#: broker's semantics: partitions come from the admin client, a partition's
+#: offsets may be unavailable, the end offset is taken when asked, a fetch
+#: returns the records from the position to the log end and moves the position
+#: there, and records can arrive after the end offsets were read. The
+#: terminal topics' contents follow STUB_TERMINAL for the produced request.
+_FAKE_AIOKAFKA = """
+import json
+import os
+from collections import namedtuple
+
+TopicPartition = namedtuple("TopicPartition", ["topic", "partition"])
+Record = namedtuple("Record", ["offset", "value"])
+
+
+def _probe_id():
+    path = os.environ["STUB_PRODUCED"]
+    if not os.path.exists(path) or not os.path.getsize(path):
+        return None
+    with open(path) as fh:
+        return json.loads(fh.readline())["correlation_id"]
+
+
+def _rec(**fields):
+    return json.dumps(fields).encode()
+
+
+def _filler():
+    return [
+        _rec(correlation_id=f"00000000-0000-4000-8000-{i:012d}", status="failed")
+        for i in range(int(os.environ["STUB_CONSUME_FILLER_ROWS"]))
+    ]
+
+
+def _broker():
+    probe = _probe_id()
+    other = "11111111-1111-4111-8111-111111111111"
+    refusal = dict(status="failed", terminal_failure_cause="refused_before_dispatch", attempts_count=0)
+    scenario = os.environ["STUB_TERMINAL"] if probe else "none"
+    failed = {0: {"begin": 0, "records": []}}
+    completed = {0: {"begin": 0, "records": _filler()}}
+    p0 = failed[0]["records"]
+    late = []
+    if scenario == "refused":
+        p0.append(_rec(correlation_id=probe, **refusal))
+    elif scenario == "provider_error":
+        p0.append(_rec(correlation_id=probe, status="failed", terminal_failure_cause="provider_error"))
+    elif scenario == "other_request":
+        p0.append(_rec(correlation_id=other, **refusal))
+    elif scenario == "provider_error_mentions_refusal":
+        p0.append(_rec(correlation_id=probe, status="failed", terminal_failure_cause="provider_error", error_message="not refused_before_dispatch"))
+    elif scenario == "refused_with_attempt":
+        p0.append(_rec(correlation_id=probe, status="failed", terminal_failure_cause="refused_before_dispatch", attempts_count=1))
+    elif scenario == "refused_enveloped":
+        p0.append(_rec(envelope_id="e1", correlation_id=probe, payload=dict(correlation_id=probe, **refusal)))
+    elif scenario == "refused_enveloped_conflict":
+        p0.append(_rec(envelope_id="e1", correlation_id=probe, payload=dict(correlation_id=other, **refusal)))
+    elif scenario == "refused_then_provider_error":
+        p0.append(_rec(correlation_id=probe, **refusal))
+        p0.append(_rec(correlation_id=probe, status="failed", terminal_failure_cause="provider_error", attempts_count=1))
+    elif scenario == "id_in_text_only":
+        p0.append(_rec(correlation_id="22222222-2222-4222-8222-222222222222", error_message=f"see {probe}", **refusal))
+    elif scenario == "completed":
+        completed[0]["records"].append(_rec(correlation_id=probe, status="completed"))
+    elif scenario == "unavailable_partition":
+        p0.append(_rec(correlation_id=probe, **refusal))
+        failed[1] = {"unavailable": True, "records": []}
+    elif scenario == "refusal_two_partitions":
+        failed[1] = {"begin": 0, "records": [_rec(correlation_id=probe, **refusal)]}
+    elif scenario == "late_refusal_hides_other_partition":
+        p0.append(_rec(correlation_id=probe, **refusal))
+        failed[1] = {"begin": 0, "records": [_rec(correlation_id=probe, status="failed", terminal_failure_cause="provider_error", attempts_count=1)]}
+        late.append((0, _rec(correlation_id=probe, **refusal)))
+    elif scenario == "short_read":
+        p0.append(_rec(correlation_id=probe, **refusal))
+        failed[0]["end_extra"] = 1
+    elif scenario == "nonzero_log_start":
+        p0.append(_rec(correlation_id=probe, **refusal))
+        failed[0]["begin"] = 100
+    p0.extend(_filler())
+    topics = {os.environ["STUB_FAILED"]: failed}
+    if os.environ["STUB_COMPLETED_READ_FAILS"] != "yes":
+        topics[os.environ["STUB_COMPLETED"]] = completed
+    return topics, late
+
+
+_TOPICS, _LATE = _broker()
+
+
+def _partition(tp):
+    return _TOPICS[tp.topic][tp.partition]
+
+
+def _log_end(part):
+    return part["begin"] + len(part["records"])
+
+
+class AIOKafkaConsumer:
+    def __init__(self, *, bootstrap_servers, group_id, enable_auto_commit, **auth):
+        assert bootstrap_servers == os.environ["KAFKA_BOOTSTRAP_SERVERS"]
+        assert group_id is None and enable_auto_commit is False
+        self._positions = {}
+        self._fetched = False
+
+    async def start(self):
+        pass
+
+    async def stop(self):
+        pass
+
+    def assign(self, tps):
+        self._positions = {tp: None for tp in tps}
+
+    async def beginning_offsets(self, tps):
+        return {tp: _partition(tp)["begin"] for tp in tps if not _partition(tp).get("unavailable")}
+
+    async def end_offsets(self, tps):
+        return {
+            tp: _log_end(_partition(tp)) + _partition(tp).get("end_extra", 0)
+            for tp in tps
+            if not _partition(tp).get("unavailable")
+        }
+
+    def seek(self, tp, offset):
+        self._positions[tp] = offset
+
+    async def getmany(self, *tps, timeout_ms=0):
+        if not self._fetched:
+            self._fetched = True
+            for partition, value in _LATE:
+                for topic in _TOPICS.values():
+                    if partition in topic and topic is _TOPICS[os.environ["STUB_FAILED"]]:
+                        topic[partition]["records"].append(value)
+        out = {}
+        # One partition per fetch, lowest first, as a broker may answer.
+        for tp in sorted(tps):
+            part = _partition(tp)
+            pos = self._positions[tp]
+            end = _log_end(part)
+            if pos < end:
+                out[tp] = [Record(off, part["records"][off - part["begin"]]) for off in range(pos, end)]
+                self._positions[tp] = end
+                break
+        return out
+
+    async def position(self, tp):
+        return self._positions[tp]
+"""
+
+_FAKE_AIOKAFKA_ADMIN = """
+import os
+
+from aiokafka import _TOPICS
+
+
+class AIOKafkaAdminClient:
+    def __init__(self, *, bootstrap_servers, **auth):
+        assert bootstrap_servers == os.environ["KAFKA_BOOTSTRAP_SERVERS"]
+
+    async def start(self):
+        pass
+
+    async def close(self):
+        pass
+
+    async def describe_topics(self, topics):
+        out = []
+        for topic in topics:
+            if topic not in _TOPICS:
+                out.append({"topic": topic, "error_code": 3, "partitions": []})
+            else:
+                out.append({"topic": topic, "error_code": 0, "partitions": [{"partition": p} for p in sorted(_TOPICS[topic])]})
+        return out
+"""
+
+
+def _write_fakes(root: Path) -> None:
+    (root / "aiokafka").mkdir(parents=True)
+    (root / "aiokafka" / "__init__.py").write_text(_FAKE_AIOKAFKA, encoding="utf-8")
+    (root / "aiokafka" / "structs.py").write_text(
+        "from aiokafka import TopicPartition\n", encoding="utf-8"
+    )
+    (root / "aiokafka" / "admin.py").write_text(_FAKE_AIOKAFKA_ADMIN, encoding="utf-8")
+    auth = root / "omnibase_infra" / "event_bus"
+    auth.mkdir(parents=True)
+    (root / "omnibase_infra" / "__init__.py").write_text("", encoding="utf-8")
+    (auth / "__init__.py").write_text("", encoding="utf-8")
+    (auth / "kafka_auth.py").write_text(
+        "def build_aiokafka_auth_kwargs_from_env():\n    return {}\n", encoding="utf-8"
+    )
+
 
 def _probe_script() -> str:
     workflow: dict[str, Any] = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))
@@ -275,6 +419,7 @@ def _run_probe(
     bin_dir.mkdir()
     _write_executable(bin_dir / "docker", _DOCKER_STUB)
     _write_executable(bin_dir / "stub-model-check", _MODEL_STUB)
+    _write_fakes(tmp_path / "fakes")
     # The step retries 30 times with `sleep 10`; a no-op sleep keeps the
     # negative controls fast without changing which branch the script takes.
     _write_executable(bin_dir / "sleep", "#!/usr/bin/env bash\nexit 0\n")
@@ -307,6 +452,8 @@ def _run_probe(
         "STUB_REQUEST_KEYS": json.dumps(sorted(_REQUEST_KEYS)),
         "STUB_PRODUCED": str(tmp_path / "produced.txt"),
         "STUB_CALLS": str(tmp_path / "calls.txt"),
+        "STUB_FAKES": str(tmp_path / "fakes"),
+        "KAFKA_BOOTSTRAP_SERVERS": "redpanda:9092",
     }
     if terminal_topics:
         env["DELEGATE_COMPLETED_TOPIC"] = _COMPLETED
@@ -562,8 +709,7 @@ def test_probe_does_not_pass_while_the_completed_topic_cannot_be_read(
         completed_read_fails=True,
     )
     assert result.returncode == 1, _out(result)
-    assert f"reading {_COMPLETED} failed" in result.stdout
-    assert "has no partitions" in result.stdout
+    assert f"read failure: {_COMPLETED} cannot be described (error 3)" in result.stdout
     assert "typed refusal for probe" not in result.stdout
 
 
@@ -597,3 +743,67 @@ def test_probe_reads_every_terminal_for_the_request_before_deciding(
     assert result.returncode == 1, _out(result)
     assert "terminal_failure_cause=provider_error" in result.stdout
     assert "failed without a refusal before dispatch" in result.stdout
+
+
+def test_probe_fails_when_a_terminal_partition_has_no_offsets(tmp_path: Path) -> None:
+    """Codex 20:27Z: one readable empty partition does not make the topic read."""
+    result = _run_probe(
+        tmp_path,
+        group_present=True,
+        members=1,
+        join="demand",
+        terminal="unavailable_partition",
+    )
+    assert result.returncode == 1, _out(result)
+    assert "[1] offsets unavailable" in result.stdout
+    assert "typed refusal for probe" not in result.stdout
+
+
+def test_probe_reads_every_partition_to_its_own_end(tmp_path: Path) -> None:
+    """Codex 20:27Z: a late refusal on one partition cannot hide another's failure."""
+    result = _run_probe(
+        tmp_path,
+        group_present=True,
+        members=1,
+        join="demand",
+        terminal="late_refusal_hides_other_partition",
+    )
+    assert result.returncode == 1, _out(result)
+    assert "terminal_failure_cause=provider_error" in result.stdout
+    assert "failed without a refusal before dispatch" in result.stdout
+
+
+def test_probe_rejects_a_read_that_stops_short_of_the_end_offset(
+    tmp_path: Path,
+) -> None:
+    """Codex 20:27Z: fewer records than the end offset promises is a failed read."""
+    result = _run_probe(
+        tmp_path, group_present=True, members=1, join="demand", terminal="short_read"
+    )
+    assert result.returncode == 1, _out(result)
+    assert "read stopped short" in result.stdout
+    assert "typed refusal for probe" not in result.stdout
+
+
+def test_probe_reads_a_partition_whose_log_starts_above_zero(tmp_path: Path) -> None:
+    result = _run_probe(
+        tmp_path,
+        group_present=True,
+        members=1,
+        join="demand",
+        terminal="nonzero_log_start",
+    )
+    assert result.returncode == 0, _out(result)
+    assert "typed refusal for probe" in result.stdout
+
+
+def test_probe_finds_the_refusal_on_a_second_partition(tmp_path: Path) -> None:
+    result = _run_probe(
+        tmp_path,
+        group_present=True,
+        members=1,
+        join="demand",
+        terminal="refusal_two_partitions",
+    )
+    assert result.returncode == 0, _out(result)
+    assert "typed refusal for probe" in result.stdout
