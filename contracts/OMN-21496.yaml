@@ -64,13 +64,17 @@ dod_evidence:
     check_value: uv run pytest tests/ci/test_check_only_hooks_omn21496.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21496-ac2-pre-commit-run
-  description: AC2 runs the consumed commit-hygiene hook on the changed files as a positive control. The canary item separately stages invalid files and an AI co-author trailer and verifies refusal without writes. This focused command fits the hosted verifier check budget.
+  description: AC2 reads the committed config for the consumed commit-hygiene and commit-hygiene-message hooks at the pinned omnibase_core tag, with the message hook on the commit-msg stage. The canary item separately runs them on a throwaway tree; a pre-commit run builds a hook environment and exceeds the hosted 30-second per-check budget, so that run stays in the lab readback in the PR body.
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: command
-    check_value: uv run pre-commit run commit-hygiene --files .pre-commit-config.yaml .github/workflows/ci.yml contracts/OMN-21496.yaml tests/ci/test_check_only_hooks_omn21496.py
+    check_value: |
+      set -eu;
+      grep -q 'rev: dev-20261029044430-3f33be0d5364' .pre-commit-config.yaml;
+      grep -q 'id: commit-hygiene$' .pre-commit-config.yaml;
+      grep -q 'stages: \[commit-msg\]' .pre-commit-config.yaml
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21496-deploy-config
   description: 'Hosted deploy readback: fetch the hook config and build-loop source from the public repository at the exact checked-out commit. Refuse a config without the consumed core hooks, or a build loop that still pre-runs the removed ruff hooks. The direct ruff formatter and fixer must remain.'
