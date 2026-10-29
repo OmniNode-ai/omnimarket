@@ -15,9 +15,15 @@ def test_work_contract_corpus_pins_match_tree() -> None:
 
 def test_work_contract_environment_pins_match_uv_lock() -> None:
     import hashlib
+    import tomllib
 
     import yaml
 
+    lock = tomllib.loads((ROOT / "uv.lock").read_text())
+    version = next(p["version"] for p in lock["package"] if p["name"] == "omnimarket")
+    assert tuple(int(x) for x in version.split(".")) >= (0, 4, 321), (
+        f"uv.lock predates the post-release re-lock: omnimarket {version}"
+    )
     lock_digest = hashlib.sha256((ROOT / "uv.lock").read_bytes()).hexdigest()
     mismatched = []
     for path in sorted((CORPUS / "contracts").glob("*.yaml")):

@@ -91,11 +91,14 @@ dod_evidence:
           curl --fail --silent --show-error --location --max-time 30 "$artifact_base/uv.lock" -o "$probe_dir/uv.lock";
           curl --fail --silent --show-error --location --max-time 30 "$artifact_base/src/omnimarket/configs/work_contracts/contracts/F01-01.yaml" -o "$probe_dir/contract.yaml";
           uv run python - "$probe_dir" <<'PY'
-          import hashlib, pathlib, sys, yaml
+          import hashlib, pathlib, sys, tomllib, yaml
           root = pathlib.Path(sys.argv[1])
           contract = yaml.safe_load((root / "contract.yaml").read_bytes())
           pin = contract["acceptance"]["spec"]["environment"]
           assert pin["path"] == "uv.lock"
+          lock = tomllib.loads((root / "uv.lock").read_text())
+          version = next(p["version"] for p in lock["package"] if p["name"] == "omnimarket")
+          assert tuple(int(x) for x in version.split(".")) >= (0, 4, 321), "deployed lockfile predates the post-release re-lock"
           assert pin["sha256"] == hashlib.sha256((root / "uv.lock").read_bytes()).hexdigest(), "deployed work-contract lockfile pin mismatch"
           print("work-contract source-artifact deploy probe: PASS")
           PY
