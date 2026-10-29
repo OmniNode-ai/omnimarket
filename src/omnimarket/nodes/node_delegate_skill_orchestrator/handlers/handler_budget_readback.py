@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime, timedelta
@@ -33,6 +32,11 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+
+from omnimarket.config.state_root import (
+    OnexStateRootUnconfiguredError,
+    resolve_onex_state_root,
+)
 
 TASK_CLASS_CONTRACTS = (
     Path(__file__).resolve().parents[3] / "configs/task_class_contracts.v1.yaml"
@@ -73,10 +77,13 @@ def declared_grace_seconds(contracts_path: Path = TASK_CLASS_CONTRACTS) -> int:
 
 
 def default_state_roots() -> list[Path]:
-    """The root ``onex delegate`` writes to without --state-root (OMN-19232)."""
-    configured = os.environ.get("ONEX_STATE_DIR", "")
-    if configured and Path(configured).is_absolute():
-        return [Path(configured)]
+    """Use the shared runtime configuration, with the CLI's home default."""
+    try:
+        configured = resolve_onex_state_root(purpose="delegation budget readback")
+    except OnexStateRootUnconfiguredError:
+        return [Path.home() / ".onex_state"]
+    if configured.is_absolute():
+        return [configured]
     return [Path.home() / ".onex_state"]
 
 
@@ -161,7 +168,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--state-root",
         action="append",
         type=Path,
-        help="onex delegate state root; repeatable (default: ONEX_STATE_DIR, else ~/.onex_state)",
+        help=(
+            "onex delegate state root; repeatable "
+            "(default: ONEX_STATE_DIR, else ONEX_STATE_ROOT, else ~/.onex_state)"
+        ),
     )
     parser.add_argument(
         "--since",

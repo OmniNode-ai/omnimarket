@@ -68,6 +68,30 @@ def test_the_declared_grace_is_one_value() -> None:
     assert readback.declared_grace_seconds() == 15
 
 
+@pytest.mark.parametrize(
+    ("state_dir", "state_root", "expected"),
+    [
+        ("/configured/dir", "/configured/root", "/configured/dir"),
+        ("", "/configured/root", "/configured/root"),
+        ("  ", " /configured/root ", "/configured/root"),
+        ("", "", None),
+        ("relative/path", "", None),
+    ],
+)
+def test_default_state_roots_follow_shared_runtime_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+    state_dir: str,
+    state_root: str,
+    expected: str | None,
+) -> None:
+    monkeypatch.setenv("ONEX_STATE_DIR", state_dir)
+    monkeypatch.setenv("ONEX_STATE_ROOT", state_root)
+
+    assert readback.default_state_roots() == [
+        Path(expected) if expected is not None else Path.home() / ".onex_state"
+    ]
+
+
 def test_runs_inside_the_bound_pass(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

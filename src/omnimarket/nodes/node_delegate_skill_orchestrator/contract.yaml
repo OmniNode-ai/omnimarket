@@ -616,7 +616,7 @@ metadata:
 # requested-timeout policy it measures. It reads local state and never dispatches.
 budget_readback:
   module: omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_budget_readback
-  state_root: "--state-root, else ONEX_STATE_DIR, else ~/.onex_state"
+  state_root: "--state-root, else shared runtime resolver (ONEX_STATE_DIR, then ONEX_STATE_ROOT), else ~/.onex_state"
   window_hours: 24
   grace_source: configs/task_class_contracts.v1.yaml
   exit_codes:
