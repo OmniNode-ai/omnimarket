@@ -78,6 +78,9 @@ externally_consumed_topics:
 projection_api:
   expose: true
   topic: "onex.snapshot.projection.voice.sessions.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  topic_config:
+    kafka_config:
+      "cleanup.policy": "compact"
   key_grain: "mutable"
   table: "voice_sessions"
   schema: "public"

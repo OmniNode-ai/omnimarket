@@ -102,6 +102,9 @@ db_io:
 projection_api:
   expose: true
   topic: "onex.snapshot.projection.work.events.v1"  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  topic_config:
+    kafka_config:
+      "cleanup.policy": "compact"
   key_grain: "immutable"
   table: "work_events"
   # OMN-17772. This field previously read "omninode_internal", and the exposure

@@ -111,6 +111,9 @@ projection_api:
   # against the migration DDL (it reads only projection_api.exposures).
   exposures:
     - topic: "onex.snapshot.projection.metering-summary.v1" # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention
+      topic_config:
+        kafka_config:
+          "cleanup.policy": "compact"
       key_grain: "mutable"
       table: "metering_summary"
       schema: "public"

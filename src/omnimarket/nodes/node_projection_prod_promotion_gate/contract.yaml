@@ -130,6 +130,9 @@ projection_api:
   expose: true
   exposures:
     - topic: onex.snapshot.projection.prod-promotion-gate.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      topic_config:
+        kafka_config:
+          "cleanup.policy": "compact"
       table: prod_promotion_gate_decisions
       # The exposure loader's ALLOWED_SCHEMAS is {omnidash_analytics, public},
       # and `public` is prohibited for application relations by OMN-15361 -- so

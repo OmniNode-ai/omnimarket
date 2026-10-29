@@ -128,6 +128,9 @@ projection_api:
   expose: true
   exposures:
     - topic: onex.snapshot.projection.automation-liveness.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      topic_config:
+        kafka_config:
+          "cleanup.policy": "compact"
       key_grain: "mutable"
       table: automation_liveness_state
       # The loader's schema field records the DATABASE the relation lives in;
@@ -173,6 +176,9 @@ projection_api:
           route: /
           projection_slot: automation_liveness
     - topic: onex.snapshot.projection.automation-liveness-runs.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      topic_config:
+        kafka_config:
+          "cleanup.policy": "compact"
       key_grain: "mutable"
       table: automation_run_history
       # The loader's schema field records the DATABASE the relation lives in;
@@ -212,6 +218,9 @@ projection_api:
           route: /
           projection_slot: automation_liveness_runs
     - topic: onex.snapshot.projection.automation-liveness-alarms.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      topic_config:
+        kafka_config:
+          "cleanup.policy": "compact"
       key_grain: "mutable"
       table: automation_alarm_episodes
       # The loader's schema field records the DATABASE the relation lives in;

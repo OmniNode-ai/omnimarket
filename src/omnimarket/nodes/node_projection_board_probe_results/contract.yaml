@@ -87,6 +87,9 @@ projection_api:
   route_aliases:
     - "board_probe_results"
   topic: "onex.snapshot.projection.board-probe-results.v1" # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention
+  topic_config:
+    kafka_config:
+      "cleanup.policy": "compact"
   key_grain: "mutable"
   table: "board_probe_results"
   schema: "omnidash_analytics"
