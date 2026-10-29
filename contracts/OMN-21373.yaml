@@ -340,3 +340,12 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py -q -n 0 --no-cov"
+  - id: "dod-omn21373-cloud-placement-order"
+    description: "This pull request's share of the cloud placement change, and no acceptance criterion's whole: node_cloud_session_placement_effect declares the placement order as contract data (auto tries lab then cloud, lab and cloud try one place) and its route action returns that order. Fails at the merge base, whose contract declares no placement_order and whose route result carries no order."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -c placement_order src/omnimarket/nodes/node_cloud_session_placement_effect/contract.yaml"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_cloud_session_placement_effect/test_handler_cloud_session_placement.py -q -n 0 --no-cov -k placement_order"
+    binds_ac: ["AC1"]
