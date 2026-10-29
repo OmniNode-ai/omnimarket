@@ -62,10 +62,10 @@ from typing import Any
 
 from omnibase_core.types import JsonType
 
+from omnimarket.handlers.handler_engine_ladder import load_engine_ladder
 from omnimarket.handlers.rules_lab_fill_pr_land import plan_pr_land_fallback
 from omnimarket.models.lab_fill import ModelLabFillPrLandFacts, ModelLabFillPrLandPlan
 from omnimarket.models.model_engine_experiment import (
-    ENGINE_LADDER,
     NO_ENGINE,
     SUCCESS_OUTCOME,
 )
@@ -1353,8 +1353,9 @@ def check_engine_experiments(
         for row in request.engine_experiments or []
         if row.at is None or now - parse_stamp(row.at) <= window
     ]
-    extra_engines = sorted({row.engine for row in rows} - set(ENGINE_LADDER))
-    for engine in (*ENGINE_LADDER, *extra_engines):
+    rungs = load_engine_ladder().rungs
+    extra_engines = sorted({row.engine for row in rows} - set(rungs))
+    for engine in (*rungs, *extra_engines):
         attempts = [row for row in rows if row.engine == engine]
         successes = sum(row.outcome == SUCCESS_OUTCOME for row in attempts)
         escalations = sum(row.next_engine != NO_ENGINE for row in attempts)

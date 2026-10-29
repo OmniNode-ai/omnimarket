@@ -118,6 +118,9 @@ db_io:
 projection_api:
   expose: true
   topic: "onex.snapshot.projection.work.open-obligations.v1"  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  topic_config:
+    kafka_config:
+      "cleanup.policy": "compact"
   key_grain: "mutable"
   table: "open_obligations"
   # OMN-19079. This field previously read "omninode_internal", and the exposure

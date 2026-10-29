@@ -93,6 +93,9 @@ projection_api:
   expose: true
   exposures:
     - topic: onex.snapshot.projection.delegation.inference-response-text.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      topic_config:
+        kafka_config:
+          "cleanup.policy": "compact"
       key_grain: "mutable"
       table: projection_delegation_inference_response_text
       schema: public

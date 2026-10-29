@@ -51,6 +51,8 @@ class ModelSessionStreamBarrierProbe(BaseModel):
     source_revision: str | None = Field(
         default=None, pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$"
     )
+    #: The lane the session's lineage rows record, newest producer_seq first.
+    lane: str | None = Field(default=None, min_length=1)
 
 
 class ModelSessionStreamState(BaseModel):

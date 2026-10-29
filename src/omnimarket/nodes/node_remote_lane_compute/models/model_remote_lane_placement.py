@@ -16,12 +16,10 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
-from omnimarket.models.model_engine_experiment import (
-    ENGINE_LADDER,
-    ModelEngineExperimentRow,
-)
+from omnimarket.models.model_engine_experiment import ModelEngineExperimentRow
+from omnimarket.models.model_engine_ladder import ladder_of
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
@@ -75,9 +73,9 @@ class ModelRemoteLaneAttempt(BaseModel):
 
     @field_validator("engine")
     @classmethod
-    def validate_engine(cls, value: str) -> str:
-        if value not in ENGINE_LADDER:
-            raise ValueError("engine must be in ENGINE_LADDER")
+    def validate_engine(cls, value: str, info: ValidationInfo) -> str:
+        if value not in ladder_of(info).rungs:
+            raise ValueError("engine must be a rung of the engine ladder")
         return value
 
 
@@ -104,9 +102,9 @@ class ModelRemoteLaneLadder(BaseModel):
 
     @field_validator("ceiling")
     @classmethod
-    def validate_ceiling(cls, value: str) -> str:
-        if value not in ENGINE_LADDER:
-            raise ValueError("ceiling must be in ENGINE_LADDER")
+    def validate_ceiling(cls, value: str, info: ValidationInfo) -> str:
+        if value not in ladder_of(info).rungs:
+            raise ValueError("ceiling must be a rung of the engine ladder")
         return value
 
 

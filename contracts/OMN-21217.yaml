@@ -1,0 +1,56 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21217"
+title: "Every onex.snapshot exposure declares its own cleanup policy"
+summary: >-
+  The broker default cleanup policy is delete, and the topic provisioner applies
+  only a topic_config.kafka_config declared on the projection_api exposure item
+  itself, at topic creation. Every onex.snapshot exposure in the node contracts
+  now declares cleanup.policy compact on that item, except
+  node_projection_consumer_flow, which keeps its explicit compact,delete.
+  Existing broker topics are not altered.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-snapshot-exposure-cleanup-policy"
+    statement: "Every onex.snapshot exposure declares its own cleanup policy instead of taking the broker default."
+    acceptance:
+      - id: "AC4"
+        statement: >-
+          Every onex.snapshot exposure in omnimarket's node contracts declares
+          its own cleanup.policy on that same exposure item, compact everywhere
+          except node_projection_consumer_flow, which keeps compact,delete. A
+          policy on a sibling item of the same contract does not count.
+evidence_requirements:
+  - kind: "tests"
+    description: "A walk of every node contract that fails on any onex.snapshot exposure lacking a cleanup.policy on that item, with a sibling-item negative control and a consumer_flow positive control."
+    command: "uv run pytest tests/test_omn21217_snapshot_exposure_cleanup_policy.py -q -n 0 --no-cov"
+dod_evidence:
+  - id: "dod-omn21217-snapshot-exposure-cleanup-policy"
+    description: >-
+      Every onex.snapshot exposure item declares its own cleanup.policy; the
+      walk fails on dev before this change, where 69 exposure items in 51
+      contracts declare none.
+    source: "manual"
+    binds_ac:
+      - "AC4"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21217_snapshot_exposure_cleanup_policy.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21217-deploy-probe-snapshot-policy"
+    description: >-
+      Deploy probe. GitHub serves node_ab_compare_reducer's contract at the
+      checked-out commit with its snapshot exposure's declared cleanup.policy;
+      the probe reads it from GitHub at that commit and exits nonzero on a tree
+      without it, so it fails at the merge base. This proves source identity
+      only, not a running deployment.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_ab_compare_reducer/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'cleanup.policy'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""

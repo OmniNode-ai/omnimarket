@@ -20,6 +20,9 @@ from uuid import UUID, uuid4
 
 from omnibase_core.enums.enum_context_factor import EnumContextFactor
 from omnibase_core.models.context.model_context_access import ModelContextAccess
+from omnibase_core.models.context.model_context_caller_scope import (
+    ModelContextCallerScope,
+)
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from pydantic import ValidationError
 
@@ -48,6 +51,8 @@ def build_pack_command(
     request: ModelContextCompactionRequested,
     access: ModelContextAccess,
     source_revision: str | None,
+    *,
+    lane: str | None = None,
 ) -> ModelContextPackCommand:
     """Build the shared command, retaining each source's revision precision."""
     # Ledger row revisions have second precision; transcript boundaries may
@@ -73,6 +78,7 @@ def build_pack_command(
             newest_turn=request.newest_turn,
             session_barrier=request.barrier_id,
             tier_revisions=revisions,
+            caller_scope=ModelContextCallerScope(lane=lane),
         ),
         access=access,
     )
@@ -143,9 +149,10 @@ class HandlerCompactionPackBuildBus:
         *,
         source_revision: str | None,
         deadline: float,
+        lane: str | None = None,
     ) -> ModelContextCompactionBuildOutcome:
         command_id = uuid4()
-        command = build_pack_command(request, self._access, source_revision)
+        command = build_pack_command(request, self._access, source_revision, lane=lane)
         with ExitStack() as stack:
             completed = self._consumer.open(self._completed_topic)
             stack.callback(completed.close)
