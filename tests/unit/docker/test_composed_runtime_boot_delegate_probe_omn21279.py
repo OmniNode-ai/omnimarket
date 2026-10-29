@@ -172,6 +172,11 @@ case "$*" in
         provider_error_mentions_refusal) echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"provider_error\\",\\"error_message\\":\\"not refused_before_dispatch\\"}" ;;
         refused_with_attempt) echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\",\\"attempts_count\\":1}" ;;
         refused_enveloped) echo "{\\"envelope_id\\":\\"e1\\",\\"correlation_id\\":\\"$probe_id\\",\\"payload\\":{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\",\\"attempts_count\\":0}}" ;;
+        refused_enveloped_conflict) echo "{\\"envelope_id\\":\\"e1\\",\\"correlation_id\\":\\"$probe_id\\",\\"payload\\":{\\"correlation_id\\":\\"11111111-1111-4111-8111-111111111111\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\",\\"attempts_count\\":0}}" ;;
+        refused_then_provider_error)
+          echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\",\\"attempts_count\\":0}"
+          echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"provider_error\\",\\"attempts_count\\":1}"
+          ;;
         id_in_text_only) echo "{\\"correlation_id\\":\\"22222222-2222-4222-8222-222222222222\\",\\"error_message\\":\\"see $probe_id\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\",\\"attempts_count\\":0}" ;;
       esac
     fi
@@ -543,3 +548,35 @@ def test_probe_does_not_pass_while_the_completed_topic_cannot_be_read(
     assert f"reading {_COMPLETED} failed" in result.stdout
     assert "UNKNOWN_TOPIC_OR_PARTITION" in result.stdout
     assert "typed refusal for probe" not in result.stdout
+
+
+def test_probe_rejects_an_envelope_whose_payload_names_another_request(
+    tmp_path: Path,
+) -> None:
+    """Codex 19:38Z: the payload's own correlation id must be the probe's."""
+    result = _run_probe(
+        tmp_path,
+        group_present=True,
+        members=1,
+        join="demand",
+        terminal="refused_enveloped_conflict",
+    )
+    assert result.returncode == 1, _out(result)
+    assert "identity_conflict=True" in result.stdout
+    assert "failed without a refusal before dispatch" in result.stdout
+
+
+def test_probe_reads_every_terminal_for_the_request_before_deciding(
+    tmp_path: Path,
+) -> None:
+    """Codex 19:38Z: a refusal followed by a provider_error for the same id is red."""
+    result = _run_probe(
+        tmp_path,
+        group_present=True,
+        members=1,
+        join="demand",
+        terminal="refused_then_provider_error",
+    )
+    assert result.returncode == 1, _out(result)
+    assert "terminal_failure_cause=provider_error" in result.stdout
+    assert "failed without a refusal before dispatch" in result.stdout

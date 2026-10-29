@@ -430,11 +430,16 @@ jobs:
             exit 1
           fi
           # A terminal is matched structurally, never by substring: each record
-          # is parsed as JSON (an envelope is unwrapped to its payload), the
-          # correlation id must equal the probe's, and the answer must be the
-          # typed refusal itself: terminal_failure_cause refused_before_dispatch
-          # with attempts_count 0. Exit 0 = that answer, 3 = this request's
-          # terminal says something else, 4 = no terminal for this request.
+          # is parsed as JSON and an envelope is unwrapped to its payload. A
+          # record is this request's when the payload's own correlation id is
+          # the probe's; an envelope and payload naming different ids, either
+          # of them the probe's, is a conflict. Every record is read before
+          # deciding, so a contradiction later in the topic is not missed. For
+          # the failed topic, exit 0 = every record for this request is the
+          # typed refusal (terminal_failure_cause refused_before_dispatch,
+          # attempts_count 0), 3 = any of them says otherwise or conflicts,
+          # 4 = none yet. For the completed topic, any record naming the probe
+          # (0) is a dispatch.
           terminal_check="$(cat <<'PY'
           import json
           import os
@@ -442,6 +447,8 @@ jobs:
 
           probe = os.environ["PROBE_ID"]
           want_refusal = os.environ["WANT"] == "refusal"
+          matched = 0
+          wrong = 0
           for line in sys.stdin:
               try:
                   record = json.loads(line)
@@ -452,15 +459,23 @@ jobs:
               body = record
               while isinstance(body.get("payload"), dict):
                   body = body["payload"]
-              if probe not in (str(record.get("correlation_id")), str(body.get("correlation_id"))):
+              outer = record.get("correlation_id")
+              inner = body.get("correlation_id")
+              ids = {str(outer) if outer is not None else None, str(inner) if inner is not None else None} - {None}
+              if probe not in ids:
                   continue
               cause = body.get("terminal_failure_cause")
               attempts = body.get("attempts_count")
-              print(f"probe terminal: status={body.get('status')} terminal_failure_cause={cause} attempts_count={attempts}")
-              if not want_refusal:
-                  sys.exit(0)
-              sys.exit(0 if cause == "refused_before_dispatch" and attempts == 0 else 3)
-          sys.exit(4)
+              conflict = len(ids) > 1 or str(inner) != probe
+              print(f"probe terminal: status={body.get('status')} terminal_failure_cause={cause} attempts_count={attempts} identity_conflict={conflict}")
+              matched += 1
+              if conflict or cause != "refused_before_dispatch" or attempts != 0:
+                  wrong += 1
+          if not want_refusal:
+              sys.exit(0 if matched else 4)
+          if wrong:
+              sys.exit(3)
+          sys.exit(0 if matched else 4)
           PY
           )"
           # One record per line (-f '%v\n'), read from the start up to the
@@ -505,7 +520,7 @@ jobs:
               exit 0
             fi
             if [ "$rc" -eq 3 ]; then
-              echo "::error::probe ${probe_id} failed without a refusal before dispatch"
+              echo "::error::probe ${probe_id} failed without a refusal before dispatch (a wrong cause, an attempt, or a conflicting identity on one of its terminals)"
               exit 1
             fi
             if [ "$rc" -ne 4 ]; then
