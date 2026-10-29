@@ -659,16 +659,18 @@ def _segmented_inference_response(
 def _bind_attempt_intent_ref(
     workflow: DelegationWorkflowState, api_key_ref: str | None
 ) -> None:
-    """Bind the new attempt's key reference to its id, and drop any old stamp (OMN-19996).
+    """Bind the new attempt's key reference to its id (OMN-19996).
 
     Called right after ``current_inference_attempt_id`` is minted, at every
-    place it is minted, so the binding always names the attempt in flight.
+    place it is minted, so the binding always names the attempt in flight. It
+    never drops a proof already recorded: a compliance repair mints a new
+    attempt inside the same rung before that rung's row is written, and the
+    key the earlier call proved must still reach the row.
     """
     attempt_id = workflow.current_inference_attempt_id
     workflow.current_attempt_intent_ref = (
         (attempt_id, api_key_ref) if attempt_id is not None and api_key_ref else None
     )
-    workflow.current_attempt_secret_ref = None
 
 
 def _attempt_customer_key_ref(
@@ -2436,9 +2438,10 @@ class DelegationWorkflowState:
     # bound to the attempt id it was built under. Set where the attempt id is
     # minted, so a later attempt never inherits an earlier attempt's key.
     current_attempt_intent_ref: tuple[UUID, str] | None = None
-    # OMN-19996: the key the effect reported as customer_key for exactly the
-    # attempt in flight; consumed when that attempt's row is recorded.
-    current_attempt_secret_ref: str | None = None
+    # OMN-19996: each attempt id whose response proved a customer key, mapped
+    # to that key. Survives a compliance repair's new attempt id; consumed when
+    # the rung's escalation_history row is recorded.
+    proven_attempt_refs: dict[UUID, str] = field(default_factory=dict)
     # OMN-20154: the quota observation of the latest live-route response, so
     # the escalation decision taken in the same leg sees a refusal the
     # projection has not folded yet.
@@ -3334,11 +3337,12 @@ class HandlerDelegationWorkflow:
         return [*events, observation]
 
     def _note_attempt_customer_key(self, response: ModelInferenceResponseData) -> None:
-        """Hold the customer key this response proves its attempt used (OMN-19996).
+        """Record the customer key this response proves its attempt used (OMN-19996).
 
-        Only a positive match is kept; a response that proves nothing (stale,
-        id-less, house key) leaves an earlier proof for the same attempt alone.
-        The row written for the attempt consumes it.
+        Kept under the attempt id that proved it. A response that proves nothing
+        (stale, id-less, house key, unresolved) records nothing and removes
+        nothing, so a later repair in the same rung is never credited with a key
+        and never erases one already proven. The rung's row consumes the proofs.
         """
         workflow = self._workflows.get(response.correlation_id)
         if workflow is None:
@@ -3348,8 +3352,9 @@ class HandlerDelegationWorkflow:
             workflow.current_inference_attempt_id,
             response,
         )
-        if ref is not None:
-            workflow.current_attempt_secret_ref = ref
+        attempt_id = getattr(response, "inference_attempt_id", None)
+        if ref is not None and attempt_id is not None:
+            workflow.proven_attempt_refs[attempt_id] = ref
 
     def _observe_provider_call(
         self, response: ModelInferenceResponseData
@@ -4731,11 +4736,15 @@ class HandlerDelegationWorkflow:
         The deployed delegation terminal has no secret_ref field, so the key a
         rung ran on rides on its own escalation_history row, where the
         delegate-skill runtime port reads it. Consumed here, so a later attempt
-        cannot inherit it.
+        cannot inherit it. Every proof recorded since the last row belongs to
+        this rung (a compliance repair stays on the same route and key), so the
+        row names the most recent one and all are consumed.
         """
-        ref = workflow.current_attempt_secret_ref
-        workflow.current_attempt_secret_ref = None
-        if ref is None or attempt.secret_ref is not None:
+        if not workflow.proven_attempt_refs:
+            return attempt
+        ref = next(reversed(workflow.proven_attempt_refs.values()))
+        workflow.proven_attempt_refs.clear()
+        if attempt.secret_ref is not None:
             return attempt
         return attempt.model_copy(update={"secret_ref": ref})
 

@@ -19,13 +19,20 @@ W8 an id-less stale answer from key X stamps the later attempt's key Y.
 W9 a row without a ref grows a null secret_ref key on the wire.
 W10 a stamp outlives its row and reaches the next attempt.
 W11 the gate returns a ref other than the one bound to the matching attempt.
+W12 a key proven by a call is lost when a compliance repair, in the same rung,
+    mints a new attempt and fails before resolving a credential (Codex review
+    of 840f49d8b); a repair that proves nothing must not be credited either.
+W13 the binding or a proof is lost across the durable state codec.
 """
 
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
-from omnibase_core.models.delegation.wire import EnumCredentialSource
+from omnibase_core.models.delegation.wire import (
+    EnumCredentialSource,
+    ModelBudgetLimits,
+)
 
 from omnimarket.inference.provider_quota_state import StaticProviderQuotaReader
 from omnimarket.nodes.node_delegation_orchestrator.handlers import (
@@ -39,6 +46,9 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_escal
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_intent import (
+    ModelInferenceIntent,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_response_data import (
     ModelInferenceResponseData,
@@ -209,7 +219,7 @@ def test_a_stamp_is_consumed_by_its_row() -> None:
         handler, cid, attempt_id=attempt_id, source=EnumCredentialSource.CUSTOMER_KEY
     )
     assert _row(handler, cid).secret_ref == X
-    assert handler.workflows[cid].current_attempt_secret_ref is None
+    assert handler.workflows[cid].proven_attempt_refs == {}
 
 
 def test_the_gate_returns_the_ref_bound_to_the_matching_attempt() -> None:
@@ -232,3 +242,104 @@ def test_the_gate_returns_the_ref_bound_to_the_matching_attempt() -> None:
     assert gate((second, y), second, answer(second)) == y
     assert gate((second, y), second, answer(first)) is None
     assert gate((first, X), second, answer(first)) is None
+
+
+@pytest.mark.parametrize(
+    ("first_source", "repair_source", "expected"),
+    [
+        (EnumCredentialSource.CUSTOMER_KEY, EnumCredentialSource.NONE, X),
+        (EnumCredentialSource.CUSTOMER_KEY, EnumCredentialSource.CUSTOMER_KEY, X),
+        (EnumCredentialSource.HOUSE, EnumCredentialSource.NONE, None),
+    ],
+    ids=["key-used-before-unresolved-repair", "key-used-again", "no-customer-call"],
+)
+def test_a_compliance_repair_keeps_a_key_already_used(
+    first_source: EnumCredentialSource,
+    repair_source: EnumCredentialSource,
+    expected: str | None,
+) -> None:
+    """A repair in the same rung neither drops a proven key nor earns one itself.
+
+    Ported from Codex's independent review of 840f49d8b: a non-compliant answer
+    on X triggers a schema repair with a fresh attempt id; the repair fails
+    before any credential resolves. X was used, so the rung's row names X.
+    """
+    handler = HandlerDelegationWorkflow(quota_reader=StaticProviderQuotaReader(()))
+    cid = uuid4()
+    handler.handle_delegation_request(
+        ModelDelegationRequest(
+            prompt="review this change",
+            task_type="document",
+            correlation_id=cid,
+            emitted_at=datetime.now(UTC),
+            tenant_id="tenant-a",
+            output_schema_key="review_output",
+            compliance_budget=ModelBudgetLimits(
+                max_tokens=100000, max_cost_usd=100, max_time_s=1000
+            ),
+        )
+    )
+    events = handler.handle_routing_decision(
+        ModelRoutingDecision(
+            correlation_id=cid,
+            task_type="document",
+            selected_model="m-1",
+            selected_backend_id=uuid4(),
+            selected_backend_ref="byok-openrouter",
+            endpoint_url=URL,
+            api_key_ref=X,
+            cost_tier="tenant_overlay",
+            tier_name="tenant_byok",
+            max_context_tokens=32000,
+            max_tokens=1024,
+            system_prompt="Be brief.",
+            rationale="OMN-19996 repair",
+        )
+    )
+    first = next(e for e in events if isinstance(e, ModelInferenceIntent))
+    repairs = handler.handle_inference_response(
+        ModelInferenceResponseData(
+            correlation_id=cid,
+            inference_attempt_id=first.inference_attempt_id,
+            content="not valid JSON",
+            model_used="m-1",
+            latency_ms=10,
+            credential_source=first_source,
+            prompt_tokens=1,
+            completion_tokens=1,
+            total_tokens=2,
+        )
+    )
+    repair = next(e for e in repairs if isinstance(e, ModelInferenceIntent))
+    assert repair.inference_attempt_id != first.inference_attempt_id
+    handler.handle_inference_response(
+        ModelInferenceResponseData(
+            correlation_id=cid,
+            inference_attempt_id=repair.inference_attempt_id,
+            content="",
+            model_used="m-1",
+            latency_ms=1,
+            error_message="provider credential unavailable before request",
+            credential_source=repair_source,
+        )
+    )
+    history = handler.workflows[cid].escalation_history
+    refs = [row.secret_ref for row in history if row.secret_ref]
+    assert history, "the rung must have been recorded"
+    assert refs == ([expected] if expected else [])
+
+
+def test_the_binding_and_proofs_survive_the_durable_state_codec() -> None:
+    """A proof recorded in one dispatch reaches the row written in a later one.
+
+    The deployed runtime persists workflow state between dispatches through
+    the state codec, so the binding and the proofs must round-trip exactly.
+    """
+    from omnimarket.nodes.node_delegation_orchestrator import state_codec
+
+    handler, cid, attempt_id = _routed(X)
+    workflow = handler.workflows[cid]
+    workflow.proven_attempt_refs[attempt_id] = X
+    restored = state_codec.decode(state_codec.encode(workflow))
+    assert restored.current_attempt_intent_ref == (attempt_id, X)
+    assert restored.proven_attempt_refs == {attempt_id: X}
