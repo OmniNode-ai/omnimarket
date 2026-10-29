@@ -1,0 +1,34 @@
+schema_version: 1.0.0
+ticket_id: OMN-21494
+title: 'T0.1: private vocabulary resolution handler for every core validator (omnimarket canary)'
+summary: Omnimarket share of OMN-21494 AC3. One canary test builds omnibase_core at a dev-merge tag that carries the private vocabulary resolution handler, removes OMNI_HYGIENE_VOCAB_PATH from the environment, places the hygiene vocabulary at the workspace config root and requires the resolved path; with no vocabulary anywhere it requires one refusal line naming the setting. The omniclaude hygiene gate consumer is a separate follow-up and is not part of this canary.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21494-omnimarket-canary
+  statement: With OMNI_HYGIENE_VOCAB_PATH unset and the vocabulary at the config root, the core resolver gives the resolved path; without a vocabulary it gives one refusal line naming the setting.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: With OMNI_HYGIENE_VOCAB_PATH unset and the vocabulary at the config root, the omnibase_core resolver built at the dev-merge tag prints the resolved path -- falsifier: uv run pytest tests/gates/test_private_vocabulary_canary_omn21494.py -k config_root'
+  - id: AC2
+    statement: 'AC2: With the variable unset and no vocabulary at the config root, the resolver exits nonzero with exactly one refusal line naming OMNI_HYGIENE_VOCAB_PATH -- falsifier: uv run pytest tests/gates/test_private_vocabulary_canary_omn21494.py -k one_refusal'
+evidence_requirements:
+- kind: tests
+  description: Canary test of the core private vocabulary resolver with the variable unset.
+  command: uv run pytest tests/gates/test_private_vocabulary_canary_omn21494.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21494-canary-resolves-unset
+  description: The canary resolves the hygiene vocabulary at the config root with the variable unset and refuses with one line naming the setting when it is absent.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/gates/test_private_vocabulary_canary_omn21494.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
