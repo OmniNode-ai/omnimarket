@@ -80,7 +80,6 @@ dod_evidence:
   - id: "dod-omn18010-pr4562-work-contract-deploy-probe"
     description: "Hosted-runner source-artifact deploy check at the exact checkout commit. Fetch the published lockfile and a packaged command contract; require the contract environment digest to match the lockfile bytes. The pre-fix artifact fails. This does not attest a running deployment."
     source: "manual"
-    binds_ac: ["AC4"]
     checks:
       - check_type: "command"
         check_value: |-
