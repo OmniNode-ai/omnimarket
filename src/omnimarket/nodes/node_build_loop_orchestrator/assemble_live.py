@@ -1157,28 +1157,6 @@ class LiveBuildDispatchHandler:
                     cwd=str(worktree_path),
                 )
 
-            # Run pre-commit ruff hooks ahead of time so they don't modify files
-            # during the actual commit (which causes "files modified by hook" failure).
-            # pre-commit hooks that modify files must run before staging, not during commit.
-            pre_commit_bin = str(worktree_path / ".venv" / "bin" / "pre-commit")
-            if not Path(pre_commit_bin).exists():
-                pre_commit_bin = "pre-commit"
-            if py_paths:
-                subprocess.run(
-                    [pre_commit_bin, "run", "ruff-format", "--files", *py_paths],
-                    capture_output=True,
-                    text=True,
-                    timeout=60,
-                    cwd=str(worktree_path),
-                )
-                subprocess.run(
-                    [pre_commit_bin, "run", "ruff-fix", "--files", *py_paths],
-                    capture_output=True,
-                    text=True,
-                    timeout=60,
-                    cwd=str(worktree_path),
-                )
-
             # Re-stage after all fixers have run (ruff, SPDX, pre-commit formatters)
             subprocess.run(
                 ["git", "-C", str(worktree_path), "add", "-A"],
