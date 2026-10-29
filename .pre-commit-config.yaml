@@ -31,17 +31,17 @@ repos:
   # OMN-17427: workflow action pins. omnibase_core's check-action-pins reads this
   # repository's rule values from .action-pin-overlay.yaml: third-party refs are a
   # full 40-hex sha, first-party refs are a dev-merge tag. rev is the dev-merge tag
-  # of the core commit that carries the hook. SYNC with the ci.yml step 'GitHub
-  # Actions pin check'.
+  # of the core commit that carries the hook; the ci.yml step 'GitHub Actions pin
+  # check' reads it from here.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: dev-20261028202452-b8b19b0b4bff
+    rev: dev-20261029020137-a2dbf96e53bd
     hooks:
       - id: check-action-pins
         files: ^\.github/workflows/[^/]+\.ya?ml$
         require_serial: true
   # OMN-21500: omnibase_core's generic validators, consumed by hook id at the
-  # dev-merge tag; the rules and patterns live in core. None of the first four
-  # has a baseline; the model-config hook has one. Pre-commit judges the staged
+  # dev-merge tag; the rules and patterns live in core. None of them but the
+  # model-config hook has a baseline. Pre-commit judges the staged
   # files, and CI twin job core-validators
   # in ci.yml runs the same hook ids from this file over the files a change
   # touches, so the two cannot name different tags.
@@ -60,13 +60,14 @@ repos:
   #   - validate-single-class-per-file, validate-dict-any-usage and
   #     validate-union-usage have no hook id in the core hook repository at this tag.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: dev-20261028202452-b8b19b0b4bff
+    rev: dev-20261029020137-a2dbf96e53bd
     hooks:
       - id: check-no-utcnow
       - id: check-no-raw-sqlite3
       - id: check-no-direct-kafka-producer
       - id: check-local-paths-compute
       - id: check-hardcoded-model-config-compute
+      - id: check-ai-slop
   # OMN-20304: canonical-file-shape ratchet (the comment on the SHA-pinned block
   # below describes it). It reads the gate hooks this file declares through its own
   # core version, so this block carries the dev-merge tag that knows the model-config

@@ -107,10 +107,8 @@ gaps:
   # OMN-13578: aislop-patterns MISSING_CI_WORKFLOW gap closed — the `aislop-sweep`
   # job in .github/workflows/ci.yml (strict PR-diff check_ai_slop scan, wired into
   # the CI Summary failing rollup) now satisfies the ci_workflow requirement.
-  # The MISSING_PRE_COMMIT gap remains accepted (no pre-commit aislop hook yet).
-  - repo: omnimarket
-    validator: aislop-patterns
-    kind: MISSING_PRE_COMMIT
+  # OMN-21500: the MISSING_PRE_COMMIT gap is closed too; omnibase_core's check-ai-slop
+  # hook runs in .pre-commit-config.yaml.
   - repo: omnimarket
     validator: arch-002-no-transport-imports
     kind: MISSING_CI_WORKFLOW

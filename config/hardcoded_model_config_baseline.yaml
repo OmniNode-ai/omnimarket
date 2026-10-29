@@ -1967,12 +1967,6 @@ entries:
     family: M
     content_sha1: ea84a18654636eeac45aa404746a745539dd13bf
   - path: src/omnimarket/nodes/node_swarm_fanout_orchestrator/tests/test_handler_swarm_fanout.py
-    family: E-LAN
-    content_sha1: db460903a1087f7cce89609ac8727168293a4262
-  - path: src/omnimarket/nodes/node_swarm_fanout_orchestrator/tests/test_handler_swarm_fanout.py
-    family: E-LAN
-    content_sha1: db460903a1087f7cce89609ac8727168293a4262
-  - path: src/omnimarket/nodes/node_swarm_fanout_orchestrator/tests/test_handler_swarm_fanout.py
     family: M
     content_sha1: 3c181378ad5311d154e711843a29599cab7fc321
   - path: src/omnimarket/nodes/node_swarm_fanout_orchestrator/tests/test_handler_swarm_fanout.py

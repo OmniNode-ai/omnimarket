@@ -474,16 +474,23 @@ jobs:
       # OMN-17427: how every `uses:` ref is pinned is omnibase_core's check-action-pins,
       # with this repository's rule values in .action-pin-overlay.yaml. A third-party
       # ref is a full 40-hex commit sha; a first-party ref is a dev-merge tag. The
-      # core ref is the dev-merge tag the pre-commit hook's rev names. The overlay's
-      # known exceptions only shrink against the pull request base. SYNC with
-      # pre-commit hook 'check-action-pins'.
+      # core ref is read from the pre-commit hook's rev, so the hook and this step
+      # hold one tag. The overlay's known exceptions only shrink against the pull
+      # request base.
       - name: GitHub Actions pin check
         env:
-          ACTION_PINS_CORE: "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261023085853-9d65b648bff5"
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           MQ_BASE: ${{ github.event.merge_group.base_sha }}
         run: |
           set -u
+          core_rev="$(uv run --no-project --with pyyaml python -c '
+          import yaml
+          config = yaml.safe_load(open(".pre-commit-config.yaml"))
+          revs = [r["rev"] for r in config["repos"] if any(h["id"] == "check-action-pins" for h in r["hooks"])]
+          assert len(revs) == 1, revs
+          print(revs[0])
+          ')"
+          ACTION_PINS_CORE="omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@${core_rev}"
           args=()
           base="${PR_BASE:-${MQ_BASE:-}}"
           if [ -n "$base" ] && git fetch --no-tags --depth=1 origin "$base"; then
@@ -4081,7 +4088,8 @@ jobs:
           fi
           from_ref="$(git merge-base "$base" HEAD)"
           for hook in check-no-utcnow check-no-raw-sqlite3 check-no-direct-kafka-producer \
-            check-local-paths-compute check-hardcoded-model-config-compute; do
+            check-local-paths-compute check-hardcoded-model-config-compute \
+            check-ai-slop; do
             uvx pre-commit@4.5.1 run "$hook" --from-ref "$from_ref" --to-ref HEAD
           done
 

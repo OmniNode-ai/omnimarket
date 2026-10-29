@@ -34,6 +34,7 @@ CORE_HOOKS = (
     "check-no-direct-kafka-producer",
     "check-local-paths-compute",
     "check-hardcoded-model-config-compute",
+    "check-ai-slop",
 )
 
 
