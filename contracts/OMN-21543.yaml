@@ -1,0 +1,75 @@
+schema_version: 1.0.0
+ticket_id: OMN-21543
+title: Routing rules model and default data for the knowledge stores, with the admin folder map as overlay data
+summary: A typed model for the knowledge-store routing rules, a loader that deep-merges an overlay over the default contract data, and generic default data. The drive folder map is overlay data; CI proves AC3 and AC4 on a synthetic manifest of the same shape.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-kb-routing-rules
+  statement: Routing rules are a typed model loaded from contract data with an overlay merge, and no store, class or folder literal lives in code.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: an overlay that routes a class to a store whose audience is wider than the class maximum fails at load -- falsifier: uv run pytest -q -k overlay_wider_audience_refused_at_load'
+  - id: AC2
+    statement: 'AC2: the default data loads and every class of appendix A of the plan has a rule; a class with no rule fails the load -- falsifier: uv run pytest -q -k every_class_has_a_rule'
+  - id: AC3
+    statement: 'AC3: every file of the hash-pinned manifest listed in section 5.1 resolves to exactly one declared folder key (C12 and C16 through per-file selectors), and the per-folder counts equal the section 5.1 table -- falsifier: uv run pytest -q -k manifest_resolves_to_one_folder_key'
+  - id: AC4
+    statement: 'AC4: deleting a folder key fails the load naming the file, and a file with two matching selectors or none fails the load -- falsifier: uv run pytest -q -k folder_key_removed_fails_load'
+  - id: AC5
+    statement: 'AC5: no store id, path, class name, folder name or folder id is found in node code -- falsifier: uv run pytest -q -k no_literals_in_node_code'
+evidence_requirements:
+- kind: tests
+  description: Routing rules model, loader, overlay merge, folder map and no-literal tests.
+  command: uv run pytest tests/kb_routing -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21543-ac1
+  description: 'AC1 runs on the shipped default data and the synthetic fixtures of the same shape as the real overlay.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/kb_routing -q --no-cov --tb=line -k overlay_wider_audience_refused_at_load
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21543-ac2
+  description: 'AC2 runs on the shipped default data and the synthetic fixtures of the same shape as the real overlay.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/kb_routing -q --no-cov --tb=line -k every_class_has_a_rule
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21543-ac3
+  description: 'AC3 runs on the shipped default data and the synthetic fixtures of the same shape as the real overlay.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/kb_routing -q --no-cov --tb=line -k manifest_resolves_to_one_folder_key
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21543-ac4
+  description: 'AC4 runs on the shipped default data and the synthetic fixtures of the same shape as the real overlay.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/kb_routing -q --no-cov --tb=line -k folder_key_removed_fails_load
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21543-ac5
+  description: 'AC5 runs on the shipped default data and the synthetic fixtures of the same shape as the real overlay.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/kb_routing -q --no-cov --tb=line -k no_literals_in_node_code
+    cwd: ${OMNI_HOME}/omnimarket

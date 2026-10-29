@@ -1,0 +1,29 @@
+# Synthetic overlay: invented folder keys and ids of the shape a real site overlay has.
+drive_folders:
+  folder_alpha:
+    drive_store: drive_admin_example
+    folder_id: synthetic-folder-id-0001
+    subfolder_template: "{group}"
+    access: [role_one, role_two]
+    selectors:
+      - group: group_one
+  folder_beta:
+    drive_store: drive_admin_example
+    folder_id: synthetic-folder-id-0002
+    access: [role_one]
+    selectors:
+      - group: group_two
+  folder_gamma:
+    drive_store: drive_admin_example
+    folder_id: synthetic-folder-id-0003
+    access: [role_two]
+    selectors:
+      - group: group_span
+        name_glob: "span-a-*"
+  folder_delta:
+    drive_store: drive_admin_example
+    folder_id: synthetic-folder-id-0004
+    access: [role_two]
+    selectors:
+      - group: group_span
+        name_glob: "span-b-*"

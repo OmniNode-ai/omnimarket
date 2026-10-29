@@ -1,0 +1,136 @@
+# Default knowledge-store routing rules: generic public examples.
+#
+# A site ships its own overlay (the file named by the overlay environment
+# variable of the rules loader); it is deep-merged over this default. Mappings
+# merge key by key, lists and scalars are replaced. Store ids, class keys,
+# folder keys and folder ids are data here and nowhere in code.
+audience_order: [operator, admins, company, public]   # narrowest to widest
+sensitive_audience_ceiling: admins
+confidence_threshold: 0.8
+
+# Every class named here must have a rule in `classes`, or the load fails.
+required_classes:
+  - plain_internal
+  - public
+  - code
+  - state
+  - duplicate
+  - drop
+  - operator_private
+  - personal
+  - credential
+  - pay_equity_compensation
+  - contractor_rate
+  - contract
+  - fundraising_figure
+  - person_assessment
+  - company_material
+
+stores:
+  memory_example:
+    kind: in_memory
+    audience: operator
+    handler_key: in_memory
+    base_path: "memory://example"
+  local_example:
+    kind: local_directory
+    audience: operator
+    handler_key: local_directory
+    base_path: "/path/to/held-files"
+  git_company_example:
+    kind: git_repository
+    audience: company
+    handler_key: git_repository
+    base_path: "https://git.example.invalid/example-org/company-kb.git"
+    required_checks: [no_local_paths, document_scrub]
+  git_public_example:
+    kind: git_repository
+    audience: public
+    handler_key: git_repository
+    base_path: "https://git.example.invalid/example-org/public-kb.git"
+    required_checks: [no_local_paths, document_scrub, no_private_names]
+  drive_admin_example:
+    kind: drive
+    audience: admins
+    handler_key: drive
+    base_path: "drive-remote-placeholder:PLACEHOLDER_ROOT_ID"
+    required_checks: [no_local_paths]
+
+classes:
+  plain_internal:
+    max_audience: company
+    default_store: git_company_example
+    path_template: "internal/{slug}.md"
+  public:
+    max_audience: public
+    default_store: git_public_example
+    path_template: "public/{slug}.md"
+  code:
+    max_audience: public
+    default_store: git_public_example
+    path_template: "code/{slug}"
+  state:
+    max_audience: operator
+    default_store: local_example
+    path_template: "state/{slug}"
+  duplicate:
+    max_audience: operator
+    default_store: local_example
+    path_template: "duplicate/{slug}"
+  drop:
+    max_audience: operator
+    default_store: memory_example
+    path_template: "drop/{slug}"
+  operator_private:
+    max_audience: operator
+    default_store: local_example
+    path_template: "private/{slug}"
+  personal:
+    max_audience: operator
+    default_store: local_example
+    path_template: "personal/{slug}"
+  credential:
+    max_audience: operator
+    default_store: local_example
+    path_template: "credential/{slug}"
+  pay_equity_compensation:
+    max_audience: admins
+    default_store: drive_admin_example
+    path_template: "{folder}/{slug}"
+    sensitive: true
+  contractor_rate:
+    max_audience: admins
+    default_store: drive_admin_example
+    path_template: "{folder}/{slug}"
+    sensitive: true
+  contract:
+    max_audience: admins
+    default_store: drive_admin_example
+    path_template: "{folder}/{slug}"
+    sensitive: true
+  fundraising_figure:
+    max_audience: admins
+    default_store: drive_admin_example
+    path_template: "{folder}/{slug}"
+    sensitive: true
+  person_assessment:
+    max_audience: admins
+    default_store: drive_admin_example
+    path_template: "{folder}/{slug}"
+    sensitive: true
+  company_material:
+    max_audience: company
+    default_store: git_company_example
+    path_template: "company/{slug}.md"
+
+# The drive folder map is overlay data. The one entry here is a placeholder of
+# the shape: a folder key, its folder id, an optional subfolder template, the
+# access list of roles and the per-file selectors.
+drive_folders:
+  folder_example:
+    drive_store: drive_admin_example
+    folder_id: PLACEHOLDER_FOLDER_ID
+    subfolder_template: "{group}"
+    access: [example_role]
+    selectors:
+      - group: group_example

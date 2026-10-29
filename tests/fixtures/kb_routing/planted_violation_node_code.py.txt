@@ -1,0 +1,5 @@
+"""Planted violation: node code that names a store, a class and a folder as literals."""
+
+STORE = "drive_admin_example"
+FOLDER = "synthetic-folder-id-0001"
+KEY = "folder_alpha"

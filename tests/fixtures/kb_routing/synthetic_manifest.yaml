@@ -1,0 +1,49 @@
+# Synthetic manifest: invented files with their pinned hashes and the per-folder count table.
+expected_counts:
+  folder_alpha: 5
+  folder_beta: 4
+  folder_gamma: 3
+  folder_delta: 2
+files:
+  - name: one-0.md
+    group: group_one
+    sha256: bed8354278c3a96886cb62ccb138992c1abf6083646c3c978dc19c58483d24c3
+  - name: one-1.md
+    group: group_one
+    sha256: 1bfc9ffb7fddcf5fc73d358ec4f404234b672f47e924a4dab41709bb93a1a597
+  - name: one-2.md
+    group: group_one
+    sha256: 43a9aa7985f03a97147cb11ca6d727864313443c6ca7bbd103e11d882e5d68a8
+  - name: one-3.md
+    group: group_one
+    sha256: 24e4b70b449a3cd405c4f1a3c8f5828277ec1f96f1760ae4c2bdf3cd85533b16
+  - name: one-4.md
+    group: group_one
+    sha256: 912b1fd5ab3d79273212bc0d81c2e6c1c5ebc59dc3599d8c2b557d750e350393
+  - name: two-0.md
+    group: group_two
+    sha256: 935964c43570e3e37ea834513e730130340f9c207368b11958107f471cec9477
+  - name: two-1.md
+    group: group_two
+    sha256: b977a8d0954f60d2543d55b596e32cd060b4f96df29e0ef1eb3a41bd5889e2f7
+  - name: two-2.md
+    group: group_two
+    sha256: 4737584de0cf53654be5d3ca9dbf4681f170b52b3583aea67834611f424e3e34
+  - name: two-3.md
+    group: group_two
+    sha256: 828f7e945e8c032e6487564a3d2a8dafc363b96a3df66ad8b2055b29863e645e
+  - name: span-a-0.md
+    group: group_span
+    sha256: c4599b709520be5589cddd1c686cecff2967b3fe3014bc020f822179563fab47
+  - name: span-a-1.md
+    group: group_span
+    sha256: d88c5afacf9b282584b06f0d2b3dcb576fb8441c1c21327454eaae62e4214b57
+  - name: span-a-2.md
+    group: group_span
+    sha256: ed99bc3b0e2ddb8d859919e7c3f263cecf47e73b0519cb7fb53c4f4ef9025875
+  - name: span-b-0.md
+    group: group_span
+    sha256: ef49b65d6f4496f601a708660e5476f2cd07c2a72e1cdc53b4dffdfeff897d3a
+  - name: span-b-1.md
+    group: group_span
+    sha256: 73ad345b06a85f011b716705d2fc7d47f4b8ef57971f002801d48ffae222a0a0
