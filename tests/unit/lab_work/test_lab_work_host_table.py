@@ -12,15 +12,21 @@ host, and a light unit is placed on the small laptop under its own lower memory 
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
 from click.testing import CliRunner
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_core.validators.no_unguarded_git_subprocess import (
+    scrub_git_location_env,
+)
 
 from omnimarket.lab_work import cli
 from omnimarket.lab_work.bus import LabWorkCaller, LabWorkHost, load_host_table
@@ -386,13 +392,9 @@ def test_the_judge_command_prints_the_tables_verdicts_for_the_shim(
             "OmniNode-ai/omnibase_core",
             "--kind",
             "test",
-            "--host-name",
             "h051",
-            "--host-name",
             "h051-live",
-            "--host-name",
             "h101",
-            "--host-name",
             "h106",
         ],
     )
@@ -408,15 +410,70 @@ def test_the_judge_command_prints_the_tables_verdicts_for_the_shim(
     assert by_host["h106"]["speed"] == 0.43
 
 
-def test_the_judge_command_exits_69_when_the_table_cannot_be_read(
+def test_the_judge_command_reads_the_unit_from_the_launchers_arguments(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The plugin's launcher hands over the arguments it was given; the unit is named by --repo or by the clone's origin."""
+    path = tmp_path / "hosts.yaml"
+    path.write_text(TABLE_YAML, encoding="utf-8")
+    monkeypatch.setenv("ONEX_LAB_RUN_HOSTS", str(path))
+
+    def judge(words: list[str], *extra: str) -> dict[str, Any]:
+        result = CliRunner().invoke(
+            cli.lab_work_group,
+            ["judge", "--words", json.dumps(words), *extra, "h051-live", "h106"],
+        )
+        assert result.exit_code == 0, result.output
+        body: dict[str, Any] = json.loads(result.stdout)
+        return body
+
+    named = judge(
+        ["--lane", "l", "--repo", "omnibase_core", "--kind=lint", "--ref", "b"]
+    )
+    assert named["unit"]["repo"] == "omnibase_core"
+    assert named["unit"]["kind"] == "lint"
+    assert named["unit"]["weight"] == "light"
+    assert named["unit"]["needs"] == ["avx2"]
+    origin = tmp_path / "clone"
+    origin.mkdir()
+    subprocess.run(
+        ["git", "init", "-q", str(origin)],
+        check=True,
+        env=scrub_git_location_env(os.environ),
+    )
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(origin),
+            "remote",
+            "add",
+            "origin",
+            "git@github.com:OmniNode-ai/omnimarket.git",
+        ],
+        check=True,
+        env=scrub_git_location_env(os.environ),
+    )
+    cloned = judge(["--clone", str(origin), "--kind", "test"])
+    assert cloned["unit"]["repo"] == "omnimarket"
+    explicit = judge(["--repo", "omnidash", "--kind", "test"], "--weight", "light")
+    assert explicit["unit"]["weight"] == "light"
+    assert explicit["unit"]["needs"] == []
+
+
+def test_the_judge_command_exits_69_when_the_unit_or_the_table_cannot_be_read(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("ONEX_LAB_RUN_HOSTS", str(tmp_path / "absent.yaml"))
-    result = CliRunner().invoke(
-        cli.lab_work_group,
-        ["judge", "--repo", "x/y", "--host-name", "h101"],
-    )
+    result = CliRunner().invoke(cli.lab_work_group, ["judge", "--repo", "x/y", "h101"])
     assert result.exit_code == cli.EXIT_NO_ADVERTISEMENT == 69
+    path = tmp_path / "hosts.yaml"
+    path.write_text(TABLE_YAML, encoding="utf-8")
+    monkeypatch.setenv("ONEX_LAB_RUN_HOSTS", str(path))
+    monkeypatch.chdir(tmp_path)  # not a git checkout, and no --repo
+    unnamed = CliRunner().invoke(cli.lab_work_group, ["judge", "--words", "[]", "h101"])
+    assert unnamed.exit_code == 69
+    assert "repository is not named" in unnamed.output
 
 
 # ----------------------------------------------------- end to end over the in-memory bus (`run`)
