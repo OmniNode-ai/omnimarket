@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Delegation Seam Orchestrator (skeleton)
+#
+# The orchestrator names its reader operations; the delegation line as an
+# execution_graph and the readers' bindings land with the graph-contract and runner tasks.
+name: node_delegation_seam_orchestrator
+contract_name: node_delegation_seam_orchestrator
+node_name: node_delegation_seam_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: orchestrator
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Orchestrate the delegation seam readings. This skeleton names the one reader node it
+  reads from so far: node_delegation_seam_measure_compute, whose first operation
+  load_delegation_workflows returns the typed delegation workflow rows.
+
+handler:
+  module: omnimarket.nodes.node_delegation_seam_orchestrator.handlers.handler_plan_seam_reads
+  class: HandlerPlanSeamReads
+  input_model: omnimarket.nodes.node_delegation_seam_orchestrator.models.model_seam_read_plan.ModelSeamReadPlanRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: plan_seam_reads
+      topic: onex.cmd.omnimarket.delegation-seam-reads-plan-requested.v1
+      handler:
+        name: HandlerPlanSeamReads
+        module: omnimarket.nodes.node_delegation_seam_orchestrator.handlers.handler_plan_seam_reads
+      input_model: omnimarket.nodes.node_delegation_seam_orchestrator.models.model_seam_read_plan.ModelSeamReadPlanRequest
+      output_model: omnimarket.nodes.node_delegation_seam_orchestrator.models.model_seam_read_plan.ModelSeamReadPlan
+
+input_model:
+  name: ModelSeamReadPlanRequest
+  module: omnimarket.nodes.node_delegation_seam_orchestrator.models.model_seam_read_plan
+  description: The read time and, optionally, the workflow ids.
+output_model:
+  name: ModelSeamReadPlan
+  module: omnimarket.nodes.node_delegation_seam_orchestrator.models.model_seam_read_plan
+  description: The ordered reader operations of the delegation seam readings.
+
+terminal_event: onex.evt.omnimarket.delegation-seam-reads-planned.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.delegation-seam-reads-plan-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.delegation-seam-reads-planned.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegation-seam-reads-plan-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-seam-reads-planned.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-seam-reads-planned.v1
+
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  runtime_profiles:
+    - effects
+  idempotent: true
+  side_effects: []
+
+edges:
+  - from: node_delegation_seam_orchestrator
+    to: node_delegation_seam_measure_compute
+    operation: load_delegation_workflows

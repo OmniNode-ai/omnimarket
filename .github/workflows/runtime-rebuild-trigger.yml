@@ -265,7 +265,25 @@ jobs:
     #
     # This bump is workflow-only, so it triggers no rebuild. The proof is the
     # next omnimarket runtime merge's sibling receipt carrying lane_sync ok.
-    uses: OmniNode-ai/omnibase_infra/.github/workflows/runtime-rebuild-trigger-reusable.yml@cb5c0cfd724905aec46d336dea84e8347cce9e20
+    #
+    # Advanced from cb5c0cfd7 to 28a9da0e5 by OMN-17427 to carry
+    # omnibase_infra#5369 (OMN-21279), which adds the arch-amd64 runner label
+    # to the publisher job. Without it the trigger lands on the h203-light
+    # runners (a no-sudo account) and fails creating the CI env cache
+    # directory: 56 of the last 100 trigger runs failed there, so merges got
+    # no lab receipt and the release could not cut. The
+    # range also moves the CI bus lane table to the CI overlay
+    # (vars.OMNI_CI_OVERLAY_REPO plus the ONEXBOT_OCC secrets, both already
+    # passed) and leaves the workflow_call inputs and secrets unchanged.
+    #
+    # The ref is a dev-merge tag from the release train, not a sha. The tag
+    # dev-20261026050024-28a9da0e596a names that commit exactly; the newer
+    # dev-20261028175438-79bc8a26389c carries the same workflow file byte for byte.
+    #
+    # This bump is workflow-only, so it triggers no rebuild. The proof is the
+    # next omnimarket runtime merge: its trigger run must land on an
+    # arch-amd64 runner.
+    uses: OmniNode-ai/omnibase_infra/.github/workflows/runtime-rebuild-trigger-reusable.yml@dev-20261028175438-79bc8a26389c
     with:
       source_repo: omnimarket
       repo_slug: OmniNode-ai/omnimarket

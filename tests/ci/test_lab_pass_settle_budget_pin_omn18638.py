@@ -173,6 +173,13 @@ _PINS_CARRYING_THE_DECLARED_BUDGET: Final[dict[str, str]] = {
         "da329b6a8 cb5c0cfd724905aec46d336dea84e8347cce9e20` -> exit 0, "
         "verified 2026-10-12"
     ),
+    # The dev-merge tag of omnibase_infra commit 79bc8a26389c (the rebuild-trigger
+    # reusable at the arch-amd64 runner label). Verified 2026-10-28:
+    # `git merge-base --is-ancestor da329b6a8 dev-20261028175438-79bc8a26389c` -> exit 0.
+    "dev-20261028175438-79bc8a26389c": (
+        "omnibase_infra dev-merge tag; settle budget da329b6a8 carried, verified 2026-10-28 "
+        "via `git merge-base --is-ancestor`"
+    ),
 }
 
 # Pins this repository has actually run, each of which PREDATES the declaration
@@ -239,6 +246,13 @@ _PINS_CARRYING_THE_CORRELATION_ID: Final[dict[str, str]] = {
         "19c6c33c6 cb5c0cfd724905aec46d336dea84e8347cce9e20` -> exit 0, "
         "verified 2026-10-12"
     ),
+    # The dev-merge tag of omnibase_infra commit 79bc8a26389c (the rebuild-trigger
+    # reusable at the arch-amd64 runner label). Verified 2026-10-28:
+    # `git merge-base --is-ancestor 19c6c33c6 dev-20261028175438-79bc8a26389c` -> exit 0.
+    "dev-20261028175438-79bc8a26389c": (
+        "omnibase_infra dev-merge tag; correlation-id fix 19c6c33c6 carried, verified 2026-10-28 "
+        "via `git merge-base --is-ancestor`"
+    ),
 }
 
 # The omnibase_infra commit that stopped measuring the sibling-revision guard's
@@ -288,9 +302,17 @@ _PINS_CARRYING_THE_ACCEPTANCE_ANCHOR: Final[dict[str, str]] = {
         "73f370c8b cb5c0cfd724905aec46d336dea84e8347cce9e20` -> exit 0, "
         "verified 2026-10-12"
     ),
+    # The dev-merge tag of omnibase_infra commit 79bc8a26389c (the rebuild-trigger
+    # reusable at the arch-amd64 runner label). Verified 2026-10-28:
+    # `git merge-base --is-ancestor 73f370c8b dev-20261028175438-79bc8a26389c` -> exit 0.
+    "dev-20261028175438-79bc8a26389c": (
+        "omnibase_infra dev-merge tag; acceptance anchor 73f370c8b carried, verified 2026-10-28 "
+        "via `git merge-base --is-ancestor`"
+    ),
 }
 
 _FULL_SHA: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{40}$")
+_DEV_MERGE_TAG: Final[re.Pattern[str]] = re.compile(r"^dev-\d{14}-[0-9a-f]{12}$")
 
 # No input of the reusable workflow carries a settle budget or a job ceiling,
 # and none should: the declaration in omnibase_infra is the single authority,
@@ -320,8 +342,8 @@ def _rebuild_job() -> dict[str, Any]:
 def _pin() -> str:
     uses = str(_rebuild_job()["uses"])
     _, _, ref = uses.partition("@")
-    assert _FULL_SHA.match(ref), (
-        f"`uses: ...@{ref}` is not a 40-character commit SHA, so which revision "
+    assert _FULL_SHA.match(ref) or _DEV_MERGE_TAG.match(ref), (
+        f"`uses: ...@{ref}` is not a 40-character commit SHA or a dev-merge tag, so which revision "
         "of the reusable -- and therefore which settle budget -- this repository "
         "runs is not decidable from this file at all."
     )

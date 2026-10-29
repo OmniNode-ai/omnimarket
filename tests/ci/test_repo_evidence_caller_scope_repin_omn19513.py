@@ -22,7 +22,7 @@ CALLER_PATH = (
 # omnibase_core#2079 scopes evidence; #2077 gives dod-verify 60 minutes.
 # Umbrella-contract PRs had dod-verify cancelled at the 40-minute limit because
 # every carried item ran at the head and again at the merge base.
-_SCOPE_REUSABLE_SHA = "5782289777210ca814c0e43b4f797826135dba78"
+_SCOPE_REUSABLE_TAG = "dev-20261022114039-578228977721"
 _PREVIOUS_REUSABLE_SHA = "4d16322dae9d62f96089b93421a768fb8dd8c8fe"
 
 _REUSABLE = "OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml"
@@ -35,7 +35,7 @@ def _job() -> dict[str, object]:
 
 
 def test_caller_pins_the_reusable_that_scopes_dod_verify_to_new_evidence() -> None:
-    assert _job()["uses"] == f"{_REUSABLE}@{_SCOPE_REUSABLE_SHA}"
+    assert _job()["uses"] == f"{_REUSABLE}@{_SCOPE_REUSABLE_TAG}"
 
 
 def test_caller_no_longer_pins_the_reusable_with_the_40_minute_budget() -> None:

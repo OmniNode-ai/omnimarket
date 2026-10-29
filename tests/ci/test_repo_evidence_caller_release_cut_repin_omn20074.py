@@ -26,7 +26,7 @@ def test_caller_pins_the_reusable_that_derives_writer_release_cut_at_head() -> N
     caller = yaml.safe_load(CALLER_PATH.read_text(encoding="utf-8"))
     # The pin moved to a descendant that keeps this: omnibase_core#2079 (OMN-19513).
     assert caller["jobs"]["repo-evidence"]["uses"].endswith(
-        "@5782289777210ca814c0e43b4f797826135dba78"
+        "@dev-20261022114039-578228977721"
     )
 
 

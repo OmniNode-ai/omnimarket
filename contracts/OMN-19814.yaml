@@ -1,0 +1,72 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-19814
+title: 'A refused outbox request no longer holds a bus-binding episode open'
+summary: 'The bus-binding recovery closes an episode on a healthy durable read and a drained outbox; each refused request is reported as its own bus-binding-outbox-refused case.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-refused-episode
+    statement: "A refused outbox request no longer holds a bus-binding episode open."
+    acceptance:
+      - id: AC1
+        statement: "AC1: A final refusal closes the healthy episode and is reported as its own bus-binding-outbox-refused case -- falsifier: the pytest cases for the refused request and the 2026-10-28 replay"
+      - id: AC2
+        statement: "AC2: Unreadable requests, a stopped or partial replay, and a newer failed health read keep the episode open -- falsifier: the pytest replay-safety cases"
+      - id: AC3
+        statement: "AC3: The recovery handler served by GitHub at the checked-out commit matches the tested handler -- falsifier: the hosted curl and cmp probe"
+evidence_requirements:
+  - kind: "ci"
+    description: "CI passes on merge PR"
+    command: "gh pr checks"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    binds_ac:
+      - AC1
+    description: "Bus-binding unit tests pass, including the replay of the recorded 2026-10-28 episode"
+    source: "generated"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/bus_binding/test_bus_binding_exceptions.py tests/unit/bus_binding/test_bus_binding_fallback.py -q --no-cov --tb=short"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-refused-recovery"
+    binds_ac:
+      - AC1
+    description: "A final refusal closes the healthy episode, reports a separate non-decision case, and is not reported again in the next episode"
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/bus_binding/test_bus_binding_exceptions.py -q --no-cov --tb=short -k 'a_refused_request_closes_the_episode_and_is_reported_as_its_own_case or replay_of_the_recorded_episode_from_2026_10_28_resolves_both_rows'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-replay-safety"
+    binds_ac:
+      - AC2
+    description: "Unreadable requests, a stopped or partial replay, and a newer failed health read keep the episode open"
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/bus_binding/test_bus_binding_exceptions.py -q --no-cov --tb=short -k 'unreplayed_outbox_never_produces_a_recovery_receipt or failed_and_partial_replay_keep_exception_until_every_row_replays or a_new_failed_read_prevents_an_older_healthy_command_closing_the_row or a_partial_replay_with_a_refusal_keeps_the_episode_open_until_the_rest_replays'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-deploy-source-readback"
+    binds_ac:
+      - AC3
+    description: "Hosted deploy probe: the recovery handler served by GitHub at the checked-out commit must match the tested handler byte for byte; no private runtime endpoint or credentials are needed"
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/bus_binding/test_bus_binding_exceptions.py -q --no-cov --tb=short -k 'a_refused_request_closes_the_episode_and_is_reported_as_its_own_case or replay_of_the_recorded_episode_from_2026_10_28_resolves_both_rows'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          probe_file=$(mktemp);
+          trap 'rm -f "$probe_file"' EXIT;
+          curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/handlers/bus_binding/recovery.py" --output "$probe_file";
+          cmp "$probe_file" src/omnimarket/handlers/bus_binding/recovery.py;
+          grep -q 'REFUSED_CLASS = "bus-binding-outbox-refused"' "$probe_file"
+        cwd: "${OMNI_HOME}/omnimarket"

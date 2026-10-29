@@ -70,3 +70,11 @@ dod_evidence:
         check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_operator_access_mode_effect/handlers/handler_operator_hooks_installer.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"SendUserMessage|Workflow|Agent)\" > /dev/null'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn20894-id-named-in-sentence-or-list-item"
+    description: "An id counts as named when its sentence, or the whole list item it sits in, has two plain words once ids are removed; an id with no name is still refused, and quoting does not hide a path or phone step. The tests fail at the merge base, where the check reads a narrower span."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_operator_access_mode_effect/test_operator_access_mode.py -q -p no:randomly --no-cov -k 'anywhere_in_its_sentence or no_name_in_its_sentence or quoting_does_not_hide'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]

@@ -16,12 +16,10 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
-from omnimarket.models.model_engine_experiment import (
-    ENGINE_LADDER,
-    ModelEngineExperimentRow,
-)
+from omnimarket.models.model_engine_experiment import ModelEngineExperimentRow
+from omnimarket.models.model_engine_ladder import ladder_of
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
@@ -75,9 +73,9 @@ class ModelRemoteLaneAttempt(BaseModel):
 
     @field_validator("engine")
     @classmethod
-    def validate_engine(cls, value: str) -> str:
-        if value not in ENGINE_LADDER:
-            raise ValueError("engine must be in ENGINE_LADDER")
+    def validate_engine(cls, value: str, info: ValidationInfo) -> str:
+        if value not in ladder_of(info).rungs:
+            raise ValueError("engine must be a rung of the engine ladder")
         return value
 
 
@@ -99,12 +97,14 @@ class ModelRemoteLaneLadder(BaseModel):
     code_edit_ready: bool = False
     local_model_slots: int = Field(default=0, ge=0)
     attempts: tuple[ModelRemoteLaneAttempt, ...] = ()
+    # complexity:<band B4 or above> or sonnet-failed:<run or lane>; Opus needs one.
+    escalation_reason: str | None = None
 
     @field_validator("ceiling")
     @classmethod
-    def validate_ceiling(cls, value: str) -> str:
-        if value not in ENGINE_LADDER:
-            raise ValueError("ceiling must be in ENGINE_LADDER")
+    def validate_ceiling(cls, value: str, info: ValidationInfo) -> str:
+        if value not in ladder_of(info).rungs:
+            raise ValueError("ceiling must be a rung of the engine ladder")
         return value
 
 
@@ -134,6 +134,8 @@ class ModelRemoteLanePlacementRequest(BaseModel):
     launching_venv_hash: str | None = Field(default=None, min_length=1)
     dispatch_venv_required: bool = False
     ladder: ModelRemoteLaneLadder | None = None
+    # The same reason for a request without ladder facts (the legacy single-engine placement).
+    escalation_reason: str | None = None
 
 
 class ModelRemoteLaneHostVerdict(BaseModel):

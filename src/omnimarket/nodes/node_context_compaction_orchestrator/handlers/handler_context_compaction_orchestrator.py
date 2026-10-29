@@ -193,7 +193,10 @@ class HandlerContextCompactionOrchestrator:
                 failure_class=EnumContextCompactionFailureClass.PACK_BUILDER_UNAVAILABLE
             )
         return self._pack_build.build(
-            request, source_revision=probe.source_revision, deadline=deadline
+            request,
+            source_revision=probe.source_revision,
+            deadline=deadline,
+            lane=probe.lane,
         )
 
     async def handle_async(

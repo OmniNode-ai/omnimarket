@@ -91,6 +91,7 @@ __all__ = [
     "evaluate_criteria",
     "extract_criteria_pins",
     "invalidate_drifted_results",
+    "merge_criteria_pins",
 ]
 
 
@@ -195,6 +196,60 @@ def extract_criteria_pins(
             c
             for c in every
             if (c.item_id, claims[c.item_id, c.label]) in retired_if_absent
+        ),
+    )
+
+
+def merge_criteria_pins(
+    parts: Sequence[tuple[str, ModelCriteriaPins]],
+) -> ModelCriteriaPins | None:
+    """OMN-20886: one set of pins over every contract a ticket engages.
+
+    A ticket whose criteria span repositories has one contract per repository,
+    and the live ticket carries the criteria of all of them. Compared with only
+    one repository's pins, every criterion another repository declares reads as
+    ADDED. The union is taken the way the DurableEvidenceGate unions bindings.
+
+    A single part is returned as it is. With several, each item id is prefixed
+    ``<name>:`` so it matches the verdict's repository-qualified evidence ids
+    and two contracts that reuse an item id stay apart.
+    """
+    if not parts:
+        return None
+    if len(parts) == 1:
+        return parts[0][1]
+
+    def qualify(name: str, item_id: str) -> str:
+        return f"{name}:{item_id}"
+
+    def claims(
+        name: str, items: tuple[ModelCriterionClaim, ...]
+    ) -> tuple[ModelCriterionClaim, ...]:
+        return tuple(
+            ModelCriterionClaim(item_id=qualify(name, c.item_id), label=c.label)
+            for c in items
+        )
+
+    def labels(selected: Sequence[tuple[str, ...]]) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(label for group in selected for label in group))
+
+    return ModelCriteriaPins(
+        bindings=tuple(
+            ModelCriterionPin(
+                item_id=qualify(name, b.item_id),
+                label=b.label,
+                criterion_hash=b.criterion_hash,
+                accepted=b.accepted,
+            )
+            for name, pins in parts
+            for b in pins.bindings
+        ),
+        known_labels=labels([pins.known_labels for _, pins in parts]),
+        declared_labels=labels([pins.declared_labels for _, pins in parts]),
+        claims=tuple(c for name, pins in parts for c in claims(name, pins.claims)),
+        retired=tuple(c for name, pins in parts for c in claims(name, pins.retired)),
+        retired_if_absent=tuple(
+            c for name, pins in parts for c in claims(name, pins.retired_if_absent)
         ),
     )
 

@@ -117,6 +117,30 @@ def _resolve_correlation_id(raw: dict[str, Any]) -> str | None:
     return None
 
 
+def _resolve_source(raw: dict[str, Any], fallback: str) -> str:
+    """Return the originating component as a string.
+
+    Producers disagree on the shape of ``source``: the delegate-skill command
+    carries a list of client names (``["claude-code"]``). A non-string value
+    used to fail ``ModelLiveEvent`` validation and wedge the consumer on that
+    offset, so a list of strings is joined and any other non-string value falls
+    through to the next candidate and finally the topic-derived service.
+    """
+    for key in ("source", "service_name", "node_name"):
+        candidate = raw.get(key)
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+        if isinstance(candidate, list | tuple):
+            parts = [
+                item.strip()
+                for item in candidate
+                if isinstance(item, str) and item.strip()
+            ]
+            if parts:
+                return ",".join(parts)
+    return fallback
+
+
 class ModelLiveEvent(BaseModel):
     """Normalised live event — the canonical projection input model.
 
@@ -183,10 +207,7 @@ class ModelLiveEvent(BaseModel):
             # relabel an inference response as routing (or any other class).
             type=topic_type,
             timestamp=_resolve_timestamp(raw),
-            source=raw.get("source")
-            or raw.get("service_name")
-            or raw.get("node_name")
-            or topic_source,
+            source=_resolve_source(raw, topic_source),
             topic=topic,
             summary=_resolve_summary(raw, topic),
             payload=json.dumps(raw, default=str),

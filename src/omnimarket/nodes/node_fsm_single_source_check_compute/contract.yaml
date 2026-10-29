@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - FSM Single Source Check Compute (OMN-21477)
+#
+# Pure compute: handle(ModelFsmSingleSourceCheckRequest) -> ModelFsmSingleSourceCheckResult.
+# It takes the text of a reducer contract and the text of its Python sources, reads no
+# tree, file, clock, environment or protocol, and so declares no protocol_dependencies
+# and introduces no configured value: the rules are structure.
+name: node_fsm_single_source_check_compute
+contract_name: node_fsm_single_source_check_compute
+node_name: node_fsm_single_source_check_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  The contract is the only source of a state machine. Operation check_fsm_single_source
+  takes a reducer's contract.yaml text and the text of its Python sources, parses each
+  source with the ast module and returns the issues, each naming the source and line,
+  plus exit_code, which is nonzero when any issue exists. A source fails when, at any
+  scope, a mapping, set, list, tuple or enum holds two or more of the contract's state
+  names (with or without trigger names beside them), or when a function decides in a
+  chain of branches on two or more of the contract's state-name literals. The reducer
+  fails when none of its sources calls execute_transition, and when its contract
+  declares no state_machine. A state name used as a plain string is not a table.
+
+handler:
+  module: omnimarket.nodes.node_fsm_single_source_check_compute.handlers.handler_fsm_single_source_check
+  class: HandlerFsmSingleSourceCheck
+  input_model: omnimarket.nodes.node_fsm_single_source_check_compute.models.model_fsm_single_source_check.ModelFsmSingleSourceCheckRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: check_fsm_single_source
+      topic: onex.cmd.omnimarket.fsm-single-source-check-requested.v1
+      handler:
+        name: HandlerFsmSingleSourceCheck
+        module: omnimarket.nodes.node_fsm_single_source_check_compute.handlers.handler_fsm_single_source_check
+      input_model: omnimarket.nodes.node_fsm_single_source_check_compute.models.model_fsm_single_source_check.ModelFsmSingleSourceCheckRequest
+      output_model: omnimarket.nodes.node_fsm_single_source_check_compute.models.model_fsm_single_source_check.ModelFsmSingleSourceCheckResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 5000
+
+input_model:
+  name: ModelFsmSingleSourceCheckRequest
+  module: omnimarket.nodes.node_fsm_single_source_check_compute.models.model_fsm_single_source_check
+  description: The text of a reducer's contract.yaml and the text of its Python sources.
+output_model:
+  name: ModelFsmSingleSourceCheckResult
+  module: omnimarket.nodes.node_fsm_single_source_check_compute.models.model_fsm_single_source_check
+  description: The issues (source, line, message), exit_code and the contract's state names.
+
+terminal_event: onex.evt.omnimarket.fsm-single-source-checked.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.fsm-single-source-check-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.fsm-single-source-checked.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.fsm-single-source-check-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.fsm-single-source-checked.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.fsm-single-source-checked.v1
+
+metadata:
+  ticket: OMN-21477
+  transport_type: inmemory

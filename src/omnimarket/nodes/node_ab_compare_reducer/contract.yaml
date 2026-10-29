@@ -36,6 +36,9 @@ event_bus:
 projection_api:
   expose: true
   topic: "onex.snapshot.projection.ab-compare.v1"  # onex-topic-allow: projection-snapshot
+  topic_config:
+    kafka_config:
+      "cleanup.policy": "compact"
   key_grain: "mutable"
   table: "llm_call_metrics"
   schema: "public"

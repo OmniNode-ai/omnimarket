@@ -50,9 +50,24 @@ class GatewayReadError(RuntimeError):
     """The gateway gave no typed result for a request."""
 
 
+def _resolve_token_off_loop() -> str:
+    """Resolve the gateway's token, on a worker thread under a running loop.
+
+    The sync resolver refuses to run under a running event loop, which is where
+    dod_verify calls it; a refusal there read as "no token" and sent every read
+    to the bus, even on a host whose token resolves.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return resolve_github_token()
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(resolve_github_token).result()
+
+
 def read_in_process(request: ModelGithubGatewayRequest) -> GithubGatewayResult:
     """Run the gateway's dispatch here, with the token the gateway resolves."""
-    transport = RealGitHubReadTransport(resolve_github_token())
+    transport = RealGitHubReadTransport(_resolve_token_off_loop())
     try:
         return dispatch(request, transport)
     except (GitHubTransportError, RuntimeError, ValueError) as exc:
@@ -139,7 +154,7 @@ def read_over_bus(
 
 def _token_resolves() -> bool:
     try:
-        resolve_github_token()
+        _resolve_token_off_loop()
     except RuntimeError:
         return False
     return True

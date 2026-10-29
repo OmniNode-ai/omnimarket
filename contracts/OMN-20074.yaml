@@ -111,6 +111,13 @@ requirements:
       - id: "AC16"
         statement: |-
           AC16: the guard step refuses a dev, promotion/* or hotfix/* head onto main that carries a promotion-receipt or hotfix-evidence OCC line, admits the same heads onto dev, and reads no PR body -- falsifier: uv run pytest tests/ci/test_main_target_guard_refuses_receipt_admission.py -q -p no:randomly fails at the merge base
+  - id: "req-dod-verify-repo-contracts-only"
+    statement: |-
+      node_dod_verify resolves a ticket's contract from the product repository only: an absent contract fails closed with CONTRACT_MISSING, and the onex_change_control clone is never fetched, added as a worktree or read to resolve a contract.
+    acceptance:
+      - id: "AC17"
+        statement: |-
+          AC17: node_dod_verify's evidence collector reads contracts/OMN-<n>.yaml from the product repository and no onex_change_control tree, and an absent contract yields CONTRACT_MISSING -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20074_repo_contracts_only.py -q -p no:randomly fails at the merge base
 evidence_requirements:
   - kind: "tests"
     description: "This PR's rejection behavior and hook parity fail against the merge-base implementation and pass at the head."
@@ -157,6 +164,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The main-target guard refuses every PR onto main, receipt or not, and admits PRs onto dev."
     command: "uv run pytest tests/ci/test_main_target_guard_refuses_receipt_admission.py -q -p no:randomly"
+  - kind: "tests"
+    description: "node_dod_verify never reads a contract from onex_change_control and fails closed on an absent one."
+    command: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20074_repo_contracts_only.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -301,3 +311,11 @@ dod_evidence:
         check_value: "uv run pytest tests/ci/test_main_target_guard_refuses_receipt_admission.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC16"]
+  - id: "dod-omn20074-dod-verify-repo-contracts-only"
+    description: "node_dod_verify resolves contracts from the product repository only and fails closed with CONTRACT_MISSING; the regression fails against the merge-base collector, which still reads onex_change_control."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20074_repo_contracts_only.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC17"]

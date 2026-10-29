@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Delegation Seam Measure Compute
+#
+# Pure definition-B compute: handle(ModelLoadDelegationWorkflowsRequest) ->
+# ModelLoadDelegationWorkflowsResult. It takes facts and `now`, reads no clock, network
+# or protocol, and so declares no protocol_dependencies. The first operation returns the
+# typed rows of the shipped delegation_workflows.yaml; the seam readers extend this node.
+name: node_delegation_seam_measure_compute
+contract_name: node_delegation_seam_measure_compute
+node_name: node_delegation_seam_measure_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Return the delegation workflow registry as typed rows: the 19 delegation workflows,
+  each cell carrying the command and observation that verified it, the canonical shape
+  of each delegation station, the one seam measurement, the milestone criteria, the
+  canary family and the owner role of each workflow. The registry is the data file
+  delegation_workflows.yaml shipped with the node.
+
+handler:
+  module: omnimarket.nodes.node_delegation_seam_measure_compute.handlers.handler_load_delegation_workflows
+  class: HandlerLoadDelegationWorkflows
+  input_model: omnimarket.nodes.node_delegation_seam_measure_compute.models.model_delegation_workflow.ModelLoadDelegationWorkflowsRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: load_delegation_workflows
+      topic: onex.cmd.omnimarket.delegation-workflows-load-requested.v1
+      handler:
+        name: HandlerLoadDelegationWorkflows
+        module: omnimarket.nodes.node_delegation_seam_measure_compute.handlers.handler_load_delegation_workflows
+      input_model: omnimarket.nodes.node_delegation_seam_measure_compute.models.model_delegation_workflow.ModelLoadDelegationWorkflowsRequest
+      output_model: omnimarket.nodes.node_delegation_seam_measure_compute.models.model_delegation_workflow.ModelLoadDelegationWorkflowsResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 2000
+
+input_model:
+  name: ModelLoadDelegationWorkflowsRequest
+  module: omnimarket.nodes.node_delegation_seam_measure_compute.models.model_delegation_workflow
+  description: The read time and, optionally, the workflow ids to return.
+output_model:
+  name: ModelLoadDelegationWorkflowsResult
+  module: omnimarket.nodes.node_delegation_seam_measure_compute.models.model_delegation_workflow
+  description: The station shapes and the typed workflow rows, stamped with the read time.
+
+terminal_event: onex.evt.omnimarket.delegation-workflows-loaded.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.delegation-workflows-load-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.delegation-workflows-loaded.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegation-workflows-load-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-workflows-loaded.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-workflows-loaded.v1

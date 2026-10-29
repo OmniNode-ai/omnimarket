@@ -239,3 +239,84 @@ def test_live_events_runtime_delivery_strips_runner_keys_and_keeps_coordinates(
         ] == [(3, 7), (3, 8)]
     finally:
         asyncio.run(teardown())
+
+
+@pytest.mark.integration
+def test_live_events_delegate_skill_list_source_projects_a_string_source_row(
+    local_postgres: tuple[_Postgres, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-17427: ``source: ["claude-code"]`` on the delegate-skill command is a
+    row with a string source, not a validation error that wedges the consumer."""
+    pg, _ = local_postgres
+    schema = f"omn17427_{uuid4().hex[:16]}"
+    integration_postgres_dsn = (
+        f"postgresql://postgres@/postgres?host={quote(pg.host, safe='')}"
+        f"&search_path={schema},public"
+    )
+    migration = (
+        Path(__file__).parents[1]
+        / "src/omnimarket/nodes/node_projection_live_events/migrations"
+        / "0000_create_live_events.sql"
+    )
+
+    async def setup() -> None:
+        connection = await asyncpg.connect(**pg.connect_kwargs())
+        try:
+            await connection.execute(f"CREATE SCHEMA {schema}")
+            await connection.execute(f"SET search_path TO {schema},public")
+            ddl = migration.read_text().replace(
+                "CREATE EXTENSION IF NOT EXISTS pgcrypto;", ""
+            )
+            await connection.execute(ddl)
+        finally:
+            await connection.close()
+
+    async def connect_fixture_database(self: BaseProjectionRunner) -> None:
+        self._db = AsyncpgAdapter(dsn=integration_postgres_dsn)
+        await self._db.connect()
+
+    async def publish_snapshot(
+        self: BaseProjectionRunner, exposure: object, **kwargs: Any
+    ) -> bool:
+        return True
+
+    async def readback() -> list[asyncpg.Record]:
+        connection = await asyncpg.connect(integration_postgres_dsn)
+        try:
+            return await connection.fetch("SELECT * FROM live_events")
+        finally:
+            await connection.close()
+
+    async def teardown() -> None:
+        connection = await asyncpg.connect(**pg.connect_kwargs())
+        try:
+            await connection.execute(f"DROP SCHEMA {schema} CASCADE")
+        finally:
+            await connection.close()
+
+    monkeypatch.setattr(
+        BaseProjectionRunner, "_connect_standalone_databases", connect_fixture_database
+    )
+    monkeypatch.setattr(
+        BaseProjectionRunner, "publish_snapshot_delta", publish_snapshot
+    )
+    asyncio.run(setup())
+    try:
+        event_id = str(uuid4())
+        delivery = {
+            "_topic": "onex.cmd.omnimarket.delegate-skill.v1",
+            "_partition": 0,
+            "_offset": 11,
+            "_envelope_id": str(uuid4()),
+            "_event_type": "delegate-skill",
+            "_tenant_id": "omninode",
+            "event_id": event_id,
+            "source": ["claude-code"],
+            "timestamp": "2026-10-28T17:14:00+00:00",
+        }
+        assert LiveEventsProjectionWriter().handle(delivery) == {"projected": True}
+        rows = asyncio.run(readback())
+        assert [row["source"] for row in rows] == ["claude-code"]
+        assert rows[0]["topic"] == "onex.cmd.omnimarket.delegate-skill.v1"
+    finally:
+        asyncio.run(teardown())

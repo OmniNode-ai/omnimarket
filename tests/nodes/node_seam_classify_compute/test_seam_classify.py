@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""node_seam_classify_compute: operation_match routing with no seam operations (OMN-21459)."""
+"""node_seam_classify_compute: operation_match routing of the registered seam operations (OMN-21459, OMN-21475)."""
 
 from __future__ import annotations
 
@@ -24,25 +24,29 @@ NODE = (
     / "src/omnimarket/nodes/node_seam_classify_compute"
 )
 REQUEST = ModelSeamClassifyRequest(
-    operation="classify_sm_00", facts={}, now=datetime(2026, 10, 27, tzinfo=UTC)
+    operation="classify_sm_05", facts={}, now=datetime(2026, 10, 27, tzinfo=UTC)
 )
 
 
-def test_the_contract_routes_by_operation_with_no_seam_operation() -> None:
+def test_the_contract_routes_by_operation_to_the_registered_seam_operations() -> None:
     raw = yaml.safe_load((NODE / "contract.yaml").read_text(encoding="utf-8"))
     assert raw["handler_routing"]["routing_strategy"] == "operation_match"
-    assert raw["handler_routing"]["handlers"] == []
+    assert [h["operation"] for h in raw["handler_routing"]["handlers"]] == [
+        "classify_sm_00",
+        "classify_sm_01",
+        "classify_sm_02",
+    ]
     assert "protocol_dependencies" not in raw
 
 
 def test_an_unregistered_operation_refuses_naming_it() -> None:
-    with pytest.raises(ValueError, match="classify_sm_00"):
+    with pytest.raises(ValueError, match="classify_sm_05"):
         NodeSeamClassifyCompute().handle(REQUEST)
 
 
 def test_a_registered_operation_is_dispatched() -> None:
     expected = ModelSeamClassifyResult(readings=())
-    handler = HandlerSeamClassify({"classify_sm_00": lambda _request: expected})
+    handler = HandlerSeamClassify({"classify_sm_05": lambda _request: expected})
     assert handler.handle(REQUEST) is expected
 
 

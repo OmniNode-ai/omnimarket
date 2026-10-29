@@ -17,8 +17,6 @@ pre-populate evidence_results (tests, event-bus consumers).
 from __future__ import annotations
 
 import atexit
-import contextlib
-import fcntl
 import glob
 import hashlib
 import importlib.util
@@ -154,6 +152,7 @@ from omnimarket.nodes.node_dod_verify.services.criteria_drift import (
     ProtocolDodTicketCriteriaReader,
     evaluate_criteria,
     extract_criteria_pins,
+    merge_criteria_pins,
 )
 from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
     apply_supersessions,
@@ -182,13 +181,7 @@ _DEFAULT_CONTRACT_ROOTS: list[str] = [
     "${CONTRACT_REPO_DIR}/contracts",
 ]
 
-# OMN-13888 (scope 6): OCC governance is dev-targeted — contracts and receipts
-# land on the OCC ``dev`` branch first and are batched to ``main`` later. The
-# canonical omni_home clones track ``main``, so a contract merged only to ``dev``
-# is invisible to a working-tree search (the OMN-13899 "No contract found",
-# correlation 93b4e964). Resolve from this ref instead. Overridable via
-# ``OCC_GOVERNANCE_REF`` for tests / operators. Mirrors
-# ``DurableEvidenceGate.DEFAULT_OCC_GOVERNANCE_REF``.
+# OCC governance ref supplied to the durable evidence gate.
 _DEFAULT_OCC_GOVERNANCE_REF = "origin/dev"
 
 # OMN-15443: ModelContractDodItem is the authoritative owner of item-level DoD
@@ -248,67 +241,12 @@ _DEFAULT_EXECUTION_SCOPE = cast(
     ModelContractDodItem.model_fields["execution_scope"].default,
 )
 
-# Wall-clock ceiling for the OCC git worktree/fetch subprocesses. A shared OCC
-# clone can hit lock contention under concurrent collect() calls, or a fetch can
-# stall on the network; without a timeout a stuck git op would block the whole
-# collect() with no recovery (CodeRabbit — Stability). Kept generous because a
-# fetch of the OCC repo may transfer real objects.
-#
-# OMN-16787: raised from 60 s on a measurement, not a guess. `git worktree add
-# --detach origin/dev` on the live OCC repo checks out 32,382 files and takes
-# ~34.5 s single-threaded; the beta sweep runs dod_verify 5-way parallel
-# against the SAME clone. A 60 s ceiling therefore tripped on ordinary load,
-# and — before the fail-closed rule below — that trip degraded silently into a
-# stale-working-tree read reported as CONTRACT_MISSING. The ceiling has to sit
-# far enough above a real cold checkout that hitting it means something is
-# genuinely wrong, because hitting it now REFUSES rather than degrades.
+# Wall-clock ceiling for product-clone git operations. Also named in the
+# handler's diagnostics for recorded OCC governance-ref failures.
 _DEFAULT_GIT_OP_TIMEOUT_S = 300
 
-# Operator override for the ceiling above, for hosts whose OCC clone or disk
-# is slower (or faster) than the machine the default was measured on.
+# Operator override for the git-subprocess ceiling.
 _GIT_OP_TIMEOUT_ENV = "DOD_VERIFY_GIT_OP_TIMEOUT_S"
-
-# OMN-17816. The shared origin/dev snapshot every concurrent run reads from,
-# instead of one private 32,382-file checkout per run.
-#
-# The ``.occ-dev-wt-`` prefix is load-bearing, not cosmetic: OMN-16826 AC(a)
-# added ``.occ-dev-wt-*/`` to the omni_home .gitignore, and the hygiene tooling
-# keys off the same prefix. A new prefix would put ~32k untracked files back in
-# the omni_home working tree, which is exactly the debris that ticket closed.
-_SHARED_SNAPSHOT_PREFIX = ".occ-dev-wt-shared-"
-
-# Lock files live inside the OCC clone's own .git/, NOT next to the snapshots in
-# OMNI_HOME. A lock file is never deleted (deleting it would let two processes
-# lock two different inodes for one logical resource), so one accumulates per
-# distinct dev SHA — and the OMN-16826 .gitignore rule `.occ-dev-wt-*/` carries a
-# trailing slash, so it matches DIRECTORIES only. Lock files beside the
-# snapshots would therefore be permanently untracked `??` entries in the
-# omni_home working tree: exactly the debris that ticket closed. Everything
-# under .git/ is unreachable by `git add`, and the locks are scoped to the repo
-# they actually guard.
-_SNAPSHOT_LOCK_DIR = "occ-dev-snapshot-locks"
-
-# Appended to a snapshot's lock file name. Held SHARED by every run using that
-# snapshot and taken EXCLUSIVELY (non-blocking) before reaping it, so a
-# superseded snapshot with a live reader is never deleted.
-_SNAPSHOT_LOCK_SUFFIX = ".lock"
-
-# Creation mutex, one per OCC clone. Serializes the checkout itself so N
-# concurrent runs pay for ONE build rather than N racing ones.
-_SNAPSHOT_BUILD_LOCK_NAME = "build.lock"
-
-# A resolved git object name. Guards against handing a ref-resolution failure
-# (which git can report on stdout) to the snapshot path as if it were a SHA.
-_SHA_RE = re.compile(r"[0-9a-f]{40}")
-
-# OMN-17796: the two governance-ref refusal codes, named once. Each is both the
-# head of the operator-facing message and the value the handler classifies on,
-# so the string an operator reads and the type a consumer branches on cannot
-# drift apart. They are spelled to match the ``EnumDodVerifyUnresolvedCause``
-# members of the same name, which is what lets ``from_error_code`` map them
-# with no second table.
-_OCC_REF_REFRESH_FAILED_CODE = "OCC_REF_REFRESH_FAILED"
-_OCC_WORKTREE_UNAVAILABLE_CODE = "OCC_WORKTREE_UNAVAILABLE"
 
 # OMN-20886: a ticket's product-repository contract could not be resolved (its
 # merged PRs, the contract at a merge commit, or the check runs were unreadable
@@ -447,29 +385,13 @@ def _check_timeout_s() -> float:
     return value
 
 
-# OMN-15454: a failed OCC ref refresh (git fetch) used to be swallowed at
-# logger.info and the collector proceeded against whatever the local
-# remote-tracking ref already had, while still logging that the run resolved
-# "dev-first" — a fail-open on the ONLY sanctioned Done-flip tool's evidence
-# source. Default behaviour is now fail-closed: FETCH_FAILED refuses the
-# whole collect() rather than silently grounding a verdict in a possibly-stale
-# clone. This named, logged override is the sole documented escape hatch (per
-# the ticket's fix-item 2b) — proceeding under it marks every returned check
-# result un-attributable to a verified-fresh origin/dev rather than pretending
-# nothing happened.
+# Referenced by the handler's recorded OCC-refusal diagnostics. collect()
+# no longer reads this override or auto-resolves contracts from OCC.
 _ALLOW_STALE_OCC_REF_ENV = "DOD_VERIFY_ALLOW_STALE_OCC_REF"
 
-# Substring git prints for the specific ref-lock race this ticket's fix-item 4
-# calls out: "cannot lock ref 'refs/remotes/origin/dev': is at X but expected
-# Y" under a concurrent fetch/push into the SAME OCC clone (the ordinary state
-# of this repo while the merge controller runs — i.e. precisely when
-# dod_verify is invoked for a Done-flip). Retriable; distinct from an offline
-# host or an absent remote, which a retry cannot fix.
-_REF_LOCK_ERROR_MARKER = "cannot lock ref"
-
-# OMN-16846 D2: the same fail-closed rule as _ALLOW_STALE_OCC_REF_ENV, applied
-# to the PRODUCT clone a check's declared ``cwd`` names. Named and logged; a
-# run under it records every affected check as unverifiable rather than
+# OMN-16846 D2: fail closed on the product clone a check's declared
+# ``cwd`` names. Named and logged; a run under it records every affected
+# check as unverifiable rather than
 # pretending the tree was current.
 _ALLOW_STALE_PRODUCT_CLONE_ENV = "DOD_VERIFY_ALLOW_STALE_PRODUCT_CLONE"
 
@@ -2331,14 +2253,6 @@ class EvidenceCollector:
         # check in the same project reports the same typed non-result
         # instead of paying the whole install budget again to fail again.
         self._hermetic_node_envs: dict[Path, tuple[Path | None, str | None]] = {}
-        # When set (during a dev-resolved collect), an origin/dev worktree of the
-        # OCC repo. Contract-load AND the shell greps run inside it so dev-only
-        # contracts + receipts are visible (OMN-13888 scope 6).
-        self._occ_dev_root: str | None = None
-        # OMN-17816: fd of this run's SHARED lock on the OCC snapshot it is
-        # reading, released by release_occ_dev_snapshot(). None when this run
-        # is not on the shared path (fallback per-run worktree, or no OCC).
-        self._occ_snapshot_lock_fd: int | None = None
         self._occ_governance_ref = (
             os.environ.get("OCC_GOVERNANCE_REF", _DEFAULT_OCC_GOVERNANCE_REF).strip()
             or _DEFAULT_OCC_GOVERNANCE_REF
@@ -2348,8 +2262,8 @@ class EvidenceCollector:
         # ``_lookup_pr_for_ticket`` / ``_lookup_repo_for_ticket`` to recover an
         # authoritative (owner/repo, pr_number) binding from the id when it
         # follows the autobind naming convention, instead of guessing via an
-        # unscoped gh search. Transient, per-item state (mirrors the existing
-        # ``_occ_dev_root`` pattern) — never leaks across items or tickets.
+        # unscoped gh search. Transient, per-item state — never leaks across
+        # items or tickets.
         self._current_evidence_item_id: str | None = None
         # Set immediately after a failed _lookup_pr_for_ticket /
         # _lookup_repo_for_ticket call so _resolve_command_placeholders can
@@ -2400,11 +2314,8 @@ class EvidenceCollector:
         # attribute leaves it None and therefore keeps its pre-OMN-16788
         # semantics exactly. Mirrors ``_last_binding_note`` above.
         self._last_checks_unreachable_cause: EnumEvidenceUnverifiableCause | None = None
-        # OMN-15454 AC2: provenance of the OCC governance ref actually read by
-        # the most recent auto-resolved collect() call. Populated by
-        # ``collect()`` before it returns; read by ``handler_dod_verify`` to
-        # stamp ``ModelDodVerifyState``. None when collect() was called with
-        # an explicit contract_path (no OCC auto-resolution happened at all).
+        # Read by handler_dod_verify when stamping state. collect() no longer
+        # resolves an OCC snapshot, so it leaves these provenance fields unset.
         self.occ_refresh_outcome: EnumOccRefRefreshOutcome | None = None
         self.occ_resolved_sha: str | None = None
         # OMN-16846 D2: product-clone freshness, memoised per repository root
@@ -2442,7 +2353,7 @@ class EvidenceCollector:
 
     @property
     def occ_governance_ref(self) -> str:
-        """The OCC governance ref this collector resolves against (e.g. ``origin/dev``)."""
+        """The OCC governance ref supplied to the durable evidence gate."""
         return self._occ_governance_ref
 
     @staticmethod
@@ -2465,271 +2376,33 @@ class EvidenceCollector:
             EnumDodVerifyExecutionAudience.HOSTED
         ),
     ) -> list[ModelEvidenceCheckResult]:
-        """Load contract and run all dod_evidence checks.
+        """Load an explicit contract or the ticket's product-repository contracts.
 
-        When no explicit ``contract_path`` is given, OCC governance is dev-first
-        (contracts and receipts land on the OCC ``dev`` branch first and are
-        batched to ``main`` later; the canonical clones track ``main``). Per the
-        OMN-13888 scope-6 decision of record, an auto-detected OCC contract is
-        ALWAYS resolved from an ``origin/dev`` worktree when that worktree can be
-        materialised and carries the contract — even when a (possibly STALE) copy
-        exists on the ``main``-tracking working tree. This closes the round-1
-        residual edge where a stale ``main`` copy was used as-is because the
-        contract was merely *present* on the working tree so the rider never
-        fired. The working tree is used only as a fallback when the contract is
-        ABSENT on dev — never when dev could not be READ. The worktree is
-        removed before returning.
-
-        OMN-16787: "could not be read" and "is not there" are different facts
-        and must not share an outcome. ``_materialize_occ_dev_worktree`` has
-        two failure classes; OMN-15454 closed only the fetch one. A failed or
-        timed-out ``git worktree add`` used to fall through to the
-        ``main``-tracking working tree while the run still stamped
-        ``occ_governance_ref: origin/dev`` — and because OCC ``dev`` runs
-        thousands of commits ahead of ``main``, a dev-only contract was then
-        invisible and the run reported ``CONTRACT_MISSING``. Both classes now
-        refuse by default, under the same named override.
+        Without ``contract_path``, only contracts carried by merged pull
+        requests in product repositories govern the ticket. If none governs
+        it, return one failed CONTRACT_MISSING result without consulting
+        onex_change_control or fetching or materializing an OCC worktree.
         """
         self._durable_gate_inputs = None
         if contract_path is not None:
             return self._collect_impl(ticket_id, contract_path, execution_audience)
 
-        # OMN-20886: the product repository first. A ticket whose merged PRs
-        # carry ``contracts/<ticket>.yaml`` in their own repository is governed
-        # by that contract, resolved by the DurableEvidenceGate's own resolver;
-        # onex_change_control is searched only when no product repository
-        # governs it, and then exactly as before.
         repo_results = self._collect_repo_governed(ticket_id, execution_audience)
         if repo_results is not None:
             return repo_results
 
-        created_worktree: Path | None = None
-        try:
-            dev_root, created_worktree, refresh_outcome, resolved_sha = (
-                self._materialize_occ_dev_worktree()
+        return [
+            ModelEvidenceCheckResult(
+                evidence_id="contract",
+                description=f"No product-repository contract found for {ticket_id}",
+                status=EnumEvidenceCheckStatus.FAILED,
+                message=(
+                    "CONTRACT_MISSING: no product repository carries "
+                    f"contracts/{ticket_id}.yaml in a merged pull request for "
+                    f"{ticket_id}; onex_change_control is not consulted."
+                ),
             )
-            self.occ_refresh_outcome = refresh_outcome
-            self.occ_resolved_sha = resolved_sha
-
-            # OMN-15454: fail-closed by default. A failed refresh must not
-            # silently yield an "origin/dev-resolved" verdict — the local
-            # clone content at that point is UNKNOWN freshness, and UNKNOWN
-            # must never read as fresh. The only sanctioned continuation is
-            # the named, logged override below, which marks every returned
-            # result un-attributable rather than pretending nothing happened.
-            allow_stale = os.environ.get(
-                _ALLOW_STALE_OCC_REF_ENV, ""
-            ).strip().lower() in (
-                "1",
-                "true",
-                "yes",
-            )
-            if (
-                refresh_outcome is EnumOccRefRefreshOutcome.FETCH_FAILED
-                and not allow_stale
-            ):
-                logger.error(
-                    "Refusing to resolve %s for %s: OCC ref refresh failed and "
-                    "%s is not set. Set %s=1 to proceed anyway (results will be "
-                    "marked un-attributable to a verified-fresh origin/dev).",
-                    self._occ_governance_ref,
-                    ticket_id,
-                    _ALLOW_STALE_OCC_REF_ENV,
-                    _ALLOW_STALE_OCC_REF_ENV,
-                )
-                self._occ_ref_failure_code = _OCC_REF_REFRESH_FAILED_CODE
-                return [
-                    ModelEvidenceCheckResult(
-                        evidence_id="occ_ref_refresh",
-                        description=(
-                            f"OCC ref refresh failed for {self._occ_governance_ref}"
-                        ),
-                        # OMN-17796: SKIPPED, not FAILED. See the worktree
-                        # twin below for the full argument; this refusal has
-                        # the same scope and gets the same encoding.
-                        status=EnumEvidenceCheckStatus.SKIPPED,
-                        message=(
-                            f"{_OCC_REF_REFRESH_FAILED_CODE}: git fetch of "
-                            f"{self._occ_governance_ref} failed (after retrying "
-                            "the ref-lock race once) — the local clone's "
-                            "freshness is UNKNOWN, so this run refuses rather "
-                            f"than resolving evidence against it. Set "
-                            f"{_ALLOW_STALE_OCC_REF_ENV}=1 to override."
-                        ),
-                    )
-                ]
-
-            # OMN-16787: the second failure class, on the same terms. An OCC
-            # root WAS resolvable (a fetch was attempted, so refresh_outcome is
-            # not None) but the worktree could not be materialised — the
-            # `git worktree add` failed or, in production, timed out. Falling
-            # through here reads the `main`-tracking working tree while the
-            # run reports `occ_governance_ref: origin/dev`, which is the lie
-            # this refusal exists to stop.
-            #
-            # The `refresh_outcome is not None` guard is load-bearing: when no
-            # OCC root resolves at all no fetch is attempted, and that is a
-            # legitimate pre-existing shape (the caller's working-tree search)
-            # rather than a fault. It keeps its existing reporting.
-            worktree_unavailable = dev_root is None and refresh_outcome is not None
-            if worktree_unavailable and not allow_stale:
-                logger.error(
-                    "Refusing to resolve %s for %s: the %s worktree could not "
-                    "be materialised (git worktree add failed or timed out at "
-                    "%ss) and %s is not set. Falling back to the working tree "
-                    "would ground the verdict in a clone that tracks main.",
-                    self._occ_governance_ref,
-                    ticket_id,
-                    self._occ_governance_ref,
-                    _git_op_timeout_s(),
-                    _ALLOW_STALE_OCC_REF_ENV,
-                )
-                self._occ_ref_failure_code = _OCC_WORKTREE_UNAVAILABLE_CODE
-                return [
-                    ModelEvidenceCheckResult(
-                        evidence_id="occ_worktree_unavailable",
-                        description=(
-                            "OCC worktree could not be materialised at "
-                            f"{self._occ_governance_ref}"
-                        ),
-                        # OMN-17796: SKIPPED, not FAILED — and the run-level
-                        # verdict this produces is UNRESOLVED, not FAILED.
-                        #
-                        # FAILED asserted a red about a ticket whose contract
-                        # had not been loaded when this returned. Measured
-                        # 2026-09-03: 12 of 36 runs collapsed here and every
-                        # one emitted the SAME verdict_content_sha256 across
-                        # six unrelated tickets — a verdict that does not
-                        # depend on the ticket is not a verdict about it — and
-                        # the autoclose sweep's gap sentence, whose first
-                        # branch is ``failed_count > 0``, rendered it as "1
-                        # failed — not all ACs are receipt-proven."
-                        #
-                        # This is NOT a relaxation. The entry stays in the
-                        # verdict-bearing denominator (no supersession, no
-                        # unbindable-overlay marker), so the OMN-16821
-                        # equality still fails; nothing verified, so that leg
-                        # fails too; and the handler's OCC arm sets an
-                        # error_message, which RuntimeLocal reads as an
-                        # unambiguous failure. The pre-fix record set NO
-                        # error_message at all, so the fail-closed signal is
-                        # strictly stronger now, not weaker.
-                        status=EnumEvidenceCheckStatus.SKIPPED,
-                        message=(
-                            f"{_OCC_WORKTREE_UNAVAILABLE_CODE}: git worktree add of "
-                            f"{self._occ_governance_ref} failed or timed out "
-                            f"(ceiling {_git_op_timeout_s()}s, override with "
-                            f"{_GIT_OP_TIMEOUT_ENV}). The only remaining "
-                            "source is the working tree, which tracks main and "
-                            "is therefore NOT the ref this run reports — so "
-                            "this run refuses instead of silently reporting "
-                            "the contract missing. Set "
-                            f"{_ALLOW_STALE_OCC_REF_ENV}=1 to proceed against "
-                            "the working tree anyway (every result is then "
-                            "marked un-attributable)."
-                        ),
-                    )
-                ]
-
-            if dev_root is not None:
-                dev_candidate = Path(dev_root) / "contracts" / f"{ticket_id}.yaml"
-                if dev_candidate.exists():
-                    # dev is authoritative — prefer it over any working-tree copy.
-                    self._occ_dev_root = dev_root
-                    logger.info(
-                        "Resolved OCC contract for %s from %s worktree at %s "
-                        "(dev-first, overrides any main working-tree copy; "
-                        "refresh=%s, resolved_sha=%s)",
-                        ticket_id,
-                        self._occ_governance_ref,
-                        dev_root,
-                        refresh_outcome.value if refresh_outcome else None,
-                        resolved_sha,
-                    )
-                elif self._find_contract(ticket_id) is None:
-                    logger.info(
-                        "Contract %s absent on %s and on the working tree; "
-                        "collect will report it missing",
-                        ticket_id,
-                        self._occ_governance_ref,
-                    )
-            results = self._collect_impl(ticket_id, contract_path, execution_audience)
-            if refresh_outcome is EnumOccRefRefreshOutcome.FETCH_FAILED:
-                # allow_stale is True here (the refusal branch above already
-                # returned otherwise). Disclosed, not buried: every result
-                # this run produced is marked un-attributable, plus a
-                # standalone item names the override explicitly.
-                results = [
-                    result.model_copy(
-                        update={
-                            "message": (
-                                f"{result.message or ''} "
-                                "[OMN-15454: UNATTRIBUTABLE — OCC ref refresh "
-                                f"failed; {_ALLOW_STALE_OCC_REF_ENV} override "
-                                "active, verdict not grounded in a verified-"
-                                "fresh origin/dev]"
-                            ).strip()
-                        }
-                    )
-                    for result in results
-                ]
-                results.append(
-                    ModelEvidenceCheckResult(
-                        evidence_id="occ_ref_refresh_override",
-                        description="OCC ref refresh failure — override active",
-                        status=EnumEvidenceCheckStatus.SKIPPED,
-                        message=(
-                            f"{_ALLOW_STALE_OCC_REF_ENV} was set; every check "
-                            "result above is un-attributable to a verified-"
-                            f"fresh {self._occ_governance_ref}."
-                        ),
-                    )
-                )
-            elif worktree_unavailable:
-                # OMN-16787, same disclosure contract as the fetch-failure
-                # override above: proceeding is allowed, pretending is not.
-                # These results came from the working tree, which tracks main.
-                results = [
-                    result.model_copy(
-                        update={
-                            "message": (
-                                f"{result.message or ''} "
-                                "[OMN-16787: UNATTRIBUTABLE — the "
-                                f"{self._occ_governance_ref} worktree could "
-                                "not be materialised; "
-                                f"{_ALLOW_STALE_OCC_REF_ENV} override active, "
-                                "this result was read from the working tree, "
-                                "which tracks main]"
-                            ).strip()
-                        }
-                    )
-                    for result in results
-                ]
-                results.append(
-                    ModelEvidenceCheckResult(
-                        evidence_id="occ_worktree_unavailable_override",
-                        description=(
-                            "OCC worktree materialisation failure — override active"
-                        ),
-                        status=EnumEvidenceCheckStatus.SKIPPED,
-                        message=(
-                            f"{_ALLOW_STALE_OCC_REF_ENV} was set; every check "
-                            "result above was resolved from the working tree, "
-                            f"not from {self._occ_governance_ref}."
-                        ),
-                    )
-                )
-            self._record_durable_gate_inputs(ticket_id)
-            return results
-        finally:
-            self._occ_dev_root = None
-            # OMN-17816: drop the reader lock BEFORE the per-run teardown, so a
-            # shared snapshot becomes reapable the moment this run stops using
-            # it. The two are exclusive — a run is either on the shared path
-            # (created_worktree None) or the per-run one (lock fd None).
-            self.release_occ_dev_snapshot()
-            if created_worktree is not None:
-                self._remove_occ_dev_worktree(created_worktree)
+        ]
 
     def _github_lookup(
         self, command: ModelDodEvidenceGithubLookupCommand
@@ -2777,7 +2450,7 @@ class EvidenceCollector:
         """OMN-20886: verify the ticket against its product-repository contracts.
 
         Returns ``None`` when no product repository governs the ticket (the
-        caller then resolves onex_change_control exactly as before). Otherwise
+        caller then returns a failed CONTRACT_MISSING result). Otherwise
         the results of every governing contract, one per repository, each read
         at the merge commit of that repository's newest merged contract-carrying
         PR by :func:`resolve_repo_contracts`, the DurableEvidenceGate's own
@@ -2807,10 +2480,9 @@ class EvidenceCollector:
             if resolved.outcome is EnumRepoEvidenceOutcome.REFUSED:
                 return [self._repo_contract_refusal(ticket_id, resolved.detail)]
             logger.info(
-                "No product repository governs %s (%s); resolving %s",
+                "No product repository governs %s (%s)",
                 ticket_id,
                 resolved.detail,
-                self._occ_governance_ref,
             )
             return None
 
@@ -2819,6 +2491,10 @@ class EvidenceCollector:
         results: list[ModelEvidenceCheckResult] = []
         summaries: list[ModelDodAcceptanceSummary] = []
         subjects: list[ModelDodContractSubject] = []
+        # OMN-20886: each contract's collection resets the criteria pins, so the
+        # pins of every contract are kept here and unioned after the loop.
+        pin_parts: list[tuple[str, ModelCriteriaPins]] = []
+        first_criteria_read: ModelTicketCriteriaRead | None = None
         for engaged in governing:
             pr = engaged.pr
             logger.info(
@@ -2838,10 +2514,14 @@ class EvidenceCollector:
                     _repo_contract_subject(pr.repo, pr.merge_commit_sha, ticket_id),
                 ),
             )
+            name = pr.repo.split("/", 1)[-1]
+            if self._criteria_pins is not None:
+                pin_parts.append((name, self._criteria_pins))
+                if first_criteria_read is None:
+                    first_criteria_read = self._criteria_read_before
             if multi:
                 # Two contracts may reuse an item id; the repository keeps them
                 # apart in one verdict.
-                name = pr.repo.split("/", 1)[-1]
                 item_results = [
                     result.model_copy(
                         update={"evidence_id": f"{name}:{result.evidence_id}"}
@@ -2863,6 +2543,8 @@ class EvidenceCollector:
                 repo_path=default_contract_path(ticket_id),
             )
             self.acceptance_summary = _merge_acceptance_summaries(summaries)
+            self._criteria_pins = merge_criteria_pins(pin_parts)
+            self._criteria_read_before = first_criteria_read if pin_parts else None
         elif subjects:
             self.contract_subject = subjects[0]
         self._durable_gate_inputs = ModelDurableEvidenceGateRunCommand(
@@ -2920,571 +2602,6 @@ class EvidenceCollector:
         if cc_repo_path and Path(cc_repo_path).is_dir():
             return Path(cc_repo_path)
         return None
-
-    def _materialize_occ_dev_worktree(
-        self,
-    ) -> tuple[str | None, Path | None, EnumOccRefRefreshOutcome | None, str | None]:
-        """Add a detached worktree of the OCC repo at ``self._occ_governance_ref``.
-
-        Returns ``(worktree_path_str, worktree_path, refresh_outcome,
-        resolved_sha)``. ``refresh_outcome`` is ``None`` only when no fetch
-        was even attempted — no OCC root resolvable at all (a legitimate,
-        pre-existing case: the caller falls back to the working-tree contract
-        search) — never as a stand-in for a failed attempt; a real attempt
-        always yields ``FETCHED`` / ``FETCH_FAILED`` / ``NOT_APPLICABLE``. The
-        first two return values are ``(None, None)`` when the worktree could
-        not be materialised at all (the ``git worktree add`` itself
-        failed/timed out) — a different failure class from a refresh outcome
-        of ``FETCH_FAILED``, where the worktree DOES materialise, just against
-        whatever the local remote-tracking ref already had. ``resolved_sha``
-        is the worktree HEAD's 40-char commit SHA (OMN-15454 AC2 provenance)
-        when a worktree was created, else ``None``. The worktree is placed
-        under ``OMNI_HOME`` (when set) so relative ``file_exists`` checks stay
-        inside the containment boundary.
-        """
-        occ = self._resolve_occ_root()
-        if occ is None:
-            return None, None, None, None
-        # Refresh the remote-tracking ref first so a long-lived OMNI_HOME clone
-        # does not materialise a STALE origin/dev and miss the very contract this
-        # rider exists to pick up (CodeRabbit — Data Integrity). The outcome is
-        # now consumed by the caller (OMN-15454) rather than discarded — a
-        # failed refresh no longer silently grounds a verdict in the local
-        # clone as if it were fresh.
-        refresh_outcome = self._refresh_occ_ref(occ)
-        omni_home = os.environ.get("OMNI_HOME", "").strip()
-        parent = Path(omni_home) if omni_home and Path(omni_home).is_dir() else None
-
-        # OMN-17816: prefer ONE snapshot shared by every run at this SHA over a
-        # private full checkout per run. Falls through to the per-run path below
-        # whenever the SHA cannot be resolved or the shared snapshot cannot be
-        # built — the fallback is the pre-existing behaviour, unchanged, so this
-        # can only ever add a way to succeed, never a new way to fail.
-        target_sha = self._resolve_governance_ref_sha(occ)
-        if parent is not None and target_sha is not None:
-            shared = self._materialize_shared_occ_snapshot(occ, parent, target_sha)
-            if shared is not None:
-                # created_worktree is deliberately None: a SHARED snapshot must
-                # outlive the run that happened to build it. collect()'s
-                # `finally` removes created_worktree when non-None, which would
-                # delete the tree a concurrent run is still reading.
-                return str(shared), None, refresh_outcome, target_sha
-
-        try:
-            tmp = Path(tempfile.mkdtemp(prefix=".occ-dev-wt-", dir=parent))
-        except OSError:
-            return None, None, refresh_outcome, None
-        try:
-            proc = subprocess.run(
-                [
-                    "git",
-                    "-C",
-                    str(occ),
-                    "worktree",
-                    "add",
-                    "--detach",
-                    "--force",
-                    str(tmp),
-                    self._occ_governance_ref,
-                ],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=_git_op_timeout_s(),
-            )
-        except subprocess.TimeoutExpired:
-            logger.warning(
-                "Timed out materialising %s worktree of OCC after %ss",
-                self._occ_governance_ref,
-                _git_op_timeout_s(),
-            )
-            self._cleanup_failed_occ_worktree_add(occ, tmp)
-            return None, None, refresh_outcome, None
-        if proc.returncode != 0:
-            logger.warning(
-                "Could not materialise %s worktree of OCC: %s",
-                self._occ_governance_ref,
-                proc.stderr.strip(),
-            )
-            self._cleanup_failed_occ_worktree_add(occ, tmp)
-            return None, None, refresh_outcome, None
-        resolved_sha = self._resolve_worktree_head_sha(tmp)
-        return str(tmp), tmp, refresh_outcome, resolved_sha
-
-    def _resolve_governance_ref_sha(self, occ: Path) -> str | None:
-        """Return the 40-char commit the governance ref points at, or None.
-
-        OMN-17816. This is the shared snapshot's key. It is resolved from the
-        clone's ref database (cheap, no checkout) BEFORE any tree is written,
-        which is what makes "has someone already checked this out?" answerable
-        at all — the old code only learned the SHA after paying for the
-        checkout, so it could never reuse one.
-
-        ``None`` on any failure. Every caller treats that as "no shared
-        snapshot" and falls back to the per-run path, so an unresolvable ref
-        cannot turn into a wrong answer here — it turns into the pre-existing
-        behaviour, which then fails closed on its own terms.
-        """
-        try:
-            proc = subprocess.run(
-                [
-                    "git",
-                    "-C",
-                    str(occ),
-                    "rev-parse",
-                    f"{self._occ_governance_ref}^{{commit}}",
-                ],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=_git_op_timeout_s(),
-            )
-        except (subprocess.TimeoutExpired, OSError):
-            return None
-        if proc.returncode != 0:
-            return None
-        sha = proc.stdout.strip()
-        return sha if len(sha) == 40 and _SHA_RE.fullmatch(sha) else None
-
-    def _shared_snapshot_path(self, parent: Path, sha: str) -> Path:
-        """Where the snapshot for ``sha`` lives.
-
-        Keeps the ``.occ-dev-wt-`` prefix deliberately. That prefix is already
-        carried by the ``omni_home`` ``.gitignore`` rule ``.occ-dev-wt-*/``
-        (OMN-16826 AC(a)) and by the hygiene tooling built around it; a new
-        prefix would silently reintroduce the untracked-debris problem that
-        ticket closed.
-        """
-        return parent / f"{_SHARED_SNAPSHOT_PREFIX}{sha[:12]}"
-
-    def _snapshot_lock_path(self, occ: Path, name: str) -> Path | None:
-        """Return the path of lock file ``name`` for clone ``occ``, or None.
-
-        ``None`` when the lock directory cannot be created, which puts the
-        caller back on the unchanged per-run path rather than proceeding
-        unsynchronised — an unlocked shared snapshot is worse than no shared
-        snapshot, because two runs could then check out into the same directory
-        at once.
-        """
-        lock_dir = occ / ".git" / _SNAPSHOT_LOCK_DIR
-        try:
-            lock_dir.mkdir(parents=True, exist_ok=True)
-        except OSError:
-            return None
-        return lock_dir / name
-
-    def _open_snapshot_lock(
-        self, path: Path, exclusive: bool, blocking: bool
-    ) -> int | None:
-        """Acquire an ``fcntl`` advisory lock on ``path``; return the fd or None.
-
-        Advisory ``fcntl`` locks are the right primitive here for two reasons
-        the alternatives fail on:
-
-        * they are released by the KERNEL when the holder dies, so a run killed
-          mid-checkout (the exact failure this ticket is about — the 300 s
-          ceiling tripping under load) cannot wedge the next run. A
-          "does the lock file exist?" scheme would wedge permanently after one
-          ``kill -9``;
-        * macOS ships no ``flock(1)`` binary (memory
-          ``reference_macos_no_flock_use_fcntl_shim``), so the lock has to be
-          taken in-process rather than shelled out to.
-
-        The lock FILE is never deleted — deleting it would let two processes
-        hold locks on two different inodes for the same logical resource.
-        """
-        try:
-            fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o644)
-        except OSError:
-            return None
-        flags = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
-        if not blocking:
-            flags |= fcntl.LOCK_NB
-        try:
-            fcntl.flock(fd, flags)
-        except OSError:
-            os.close(fd)
-            return None
-        return fd
-
-    def release_occ_dev_snapshot(self) -> None:
-        """Drop this run's reader lock on the shared snapshot.
-
-        Public because ``collect()``'s ``finally`` is not the only caller — the
-        node's own teardown and the tests both need it, and a reader that never
-        releases would block every future prune of that snapshot forever.
-
-        Idempotent: calling it twice, or with no lock held, is a no-op.
-        """
-        fd = self._occ_snapshot_lock_fd
-        self._occ_snapshot_lock_fd = None
-        if fd is None:
-            return
-        with contextlib.suppress(OSError):
-            fcntl.flock(fd, fcntl.LOCK_UN)
-        with contextlib.suppress(OSError):
-            os.close(fd)
-
-    def _snapshot_is_usable(self, snapshot: Path, sha: str) -> bool:
-        """True only if ``snapshot`` is a real worktree checked out at ``sha``.
-
-        All three conditions matter. A directory alone is the shape a killed
-        checkout leaves (OMN-16826 measured 27 of those holding only
-        ``drift/``); a ``.git`` file alone does not prove WHICH commit is in the
-        tree. Handing back a half-written or wrong-SHA tree would be worse than
-        rebuilding it, because the run would report ``origin/dev`` provenance
-        for content that is not ``origin/dev``.
-        """
-        if not snapshot.is_dir() or not (snapshot / ".git").exists():
-            return False
-        return self._resolve_worktree_head_sha(snapshot) == sha
-
-    def _materialize_shared_occ_snapshot(
-        self, occ: Path, parent: Path, sha: str
-    ) -> Path | None:
-        """Return a snapshot of ``sha`` shared with every concurrent run, or None.
-
-        On success this run holds a SHARED (reader) lock on the snapshot, which
-        it keeps until ``release_occ_dev_snapshot``. That lock is what makes the
-        supersession prune safe: a snapshot with a live reader cannot be
-        acquired exclusively, so it is left alone rather than deleted out from
-        under a running verification.
-
-        Returns ``None`` on any failure, which puts the caller back on the
-        unchanged per-run path. Nothing here can produce a *stale* tree: the SHA
-        is part of the path AND re-verified against the checked-out HEAD.
-        """
-        snapshot = self._shared_snapshot_path(parent, sha)
-
-        reader_lock = self._snapshot_lock_path(
-            occ, f"{snapshot.name}{_SNAPSHOT_LOCK_SUFFIX}"
-        )
-        build_lock = self._snapshot_lock_path(occ, _SNAPSHOT_BUILD_LOCK_NAME)
-        if reader_lock is None or build_lock is None:
-            return None
-
-        # Fast path: already built by someone else. Take the reader lock FIRST,
-        # then validate — validating first would race a concurrent prune.
-        reader_fd = self._open_snapshot_lock(
-            reader_lock, exclusive=False, blocking=True
-        )
-        if reader_fd is not None and self._snapshot_is_usable(snapshot, sha):
-            self._occ_snapshot_lock_fd = reader_fd
-            return snapshot
-        if reader_fd is not None:
-            with contextlib.suppress(OSError):
-                fcntl.flock(reader_fd, fcntl.LOCK_UN)
-                os.close(reader_fd)
-
-        # Slow path: build it. ONE process at a time, host-wide, so N concurrent
-        # runs pay for ONE 32k-file checkout instead of N.
-        build_fd = self._open_snapshot_lock(build_lock, exclusive=True, blocking=True)
-        if build_fd is None:
-            return None
-        try:
-            # Re-check under the lock: whoever held it before us may have built
-            # exactly what we need while we waited.
-            if not self._snapshot_is_usable(snapshot, sha):
-                self._prune_superseded_snapshots(occ, parent, keep=snapshot)
-                if snapshot.exists():
-                    # A half-written tree from a killed run. Clear the
-                    # registration too, via the OMN-16826 unlock-first path —
-                    # a bare prune is a silent no-op on a locked entry.
-                    self._cleanup_failed_occ_worktree_add(occ, snapshot)
-                if not self._add_occ_worktree(occ, snapshot, sha):
-                    return None
-                if not self._snapshot_is_usable(snapshot, sha):
-                    self._cleanup_failed_occ_worktree_add(occ, snapshot)
-                    return None
-        finally:
-            with contextlib.suppress(OSError):
-                fcntl.flock(build_fd, fcntl.LOCK_UN)
-                os.close(build_fd)
-
-        reader_fd = self._open_snapshot_lock(
-            reader_lock, exclusive=False, blocking=True
-        )
-        if reader_fd is None:
-            return None
-        self._occ_snapshot_lock_fd = reader_fd
-        return snapshot
-
-    def _add_occ_worktree(self, occ: Path, target: Path, ref: str) -> bool:
-        """Run one ``git worktree add --detach`` into ``target``. True on success.
-
-        Failure and timeout both route through the OMN-16826 cleanup, so a trip
-        of the ceiling leaves neither a directory nor a locked registration —
-        which is what let the registry reach 292 entries before this ticket.
-        """
-        try:
-            proc = subprocess.run(
-                [
-                    "git",
-                    "-C",
-                    str(occ),
-                    "worktree",
-                    "add",
-                    "--detach",
-                    "--force",
-                    str(target),
-                    ref,
-                ],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=_git_op_timeout_s(),
-            )
-        except subprocess.TimeoutExpired:
-            logger.warning(
-                "Timed out materialising the shared OCC snapshot at %s after %ss",
-                target,
-                _git_op_timeout_s(),
-            )
-            self._cleanup_failed_occ_worktree_add(occ, target)
-            return False
-        if proc.returncode != 0:
-            logger.warning(
-                "Could not materialise the shared OCC snapshot at %s: %s",
-                target,
-                proc.stderr.strip(),
-            )
-            self._cleanup_failed_occ_worktree_add(occ, target)
-            return False
-        return True
-
-    def _prune_superseded_snapshots(self, occ: Path, parent: Path, keep: Path) -> None:
-        """Remove shared snapshots for SHAs that are no longer current.
-
-        Without this the registry would still grow — one entry per distinct dev
-        SHA instead of one per run. Slower, same shape of leak.
-
-        A snapshot is removed ONLY if its reader lock can be taken exclusively
-        without blocking. That is the whole safety argument: a run that started
-        at the previous SHA still holds a shared lock, so its tree survives and
-        is reaped by a later pass once it finishes. Best-effort throughout —
-        this is housekeeping on the way to the real work and must never raise
-        over it.
-        """
-        try:
-            candidates = list(parent.glob(f"{_SHARED_SNAPSHOT_PREFIX}*"))
-        except OSError:
-            return
-        for candidate in candidates:
-            if candidate == keep or not candidate.is_dir():
-                continue
-            lock_path = self._snapshot_lock_path(
-                occ, f"{candidate.name}{_SNAPSHOT_LOCK_SUFFIX}"
-            )
-            if lock_path is None:
-                continue
-            fd = self._open_snapshot_lock(lock_path, exclusive=True, blocking=False)
-            if fd is None:
-                logger.info(
-                    "Leaving superseded OCC snapshot %s in place: still in use",
-                    candidate,
-                )
-                continue
-            try:
-                self._remove_occ_dev_worktree(candidate)
-            finally:
-                with contextlib.suppress(OSError):
-                    fcntl.flock(fd, fcntl.LOCK_UN)
-                    os.close(fd)
-
-    def _resolve_worktree_head_sha(self, worktree: Path) -> str | None:
-        """Return the 40-char commit SHA the worktree actually checked out.
-
-        OMN-15454 AC2: "attribution must name what was actually read, not
-        what was intended." Best-effort — a failure here does not roll back
-        the worktree add; it only means provenance is unavailable, which the
-        caller surfaces as ``None`` rather than fabricating a value.
-        """
-        try:
-            proc = subprocess.run(
-                ["git", "-C", str(worktree), "rev-parse", "HEAD"],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=_git_op_timeout_s(),
-            )
-        except subprocess.TimeoutExpired:
-            return None
-        if proc.returncode != 0:
-            return None
-        sha = proc.stdout.strip()
-        return sha or None
-
-    def _run_occ_fetch(
-        self, occ: Path, remote: str, branch: str
-    ) -> tuple[EnumOccRefRefreshOutcome, str]:
-        """Run one ``git fetch`` attempt. Pure I/O helper, no retry logic."""
-        try:
-            proc = subprocess.run(
-                ["git", "-C", str(occ), "fetch", "--quiet", remote, branch],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=_git_op_timeout_s(),
-            )
-        except subprocess.TimeoutExpired:
-            return EnumOccRefRefreshOutcome.FETCH_FAILED, "timed out"
-        if proc.returncode == 0:
-            return EnumOccRefRefreshOutcome.FETCHED, ""
-        return EnumOccRefRefreshOutcome.FETCH_FAILED, proc.stderr.strip()
-
-    def _refresh_occ_ref(self, occ: Path) -> EnumOccRefRefreshOutcome:
-        """``git fetch`` the OCC governance ref's remote branch — typed outcome.
-
-        OMN-15454: previously logged a failure at ``logger.info`` and returned
-        ``None`` unconditionally, which every caller discarded — the worktree
-        add proceeded against the local clone regardless, while ``collect()``
-        still logged that the run resolved "dev-first". Callers now consume
-        this typed outcome and decide explicitly rather than continuing on a
-        swallowed failure.
-
-        Only fires for a ``<remote>/<branch>`` ref (e.g. ``origin/dev``); a bare
-        local-branch ref (test override, AC4) has no remote and is
-        ``NOT_APPLICABLE`` — that path is unchanged.
-
-        The specific ``cannot lock ref ... is at X but expected Y`` race
-        (fix-item 4) is a symptom of concurrent mutation of the SAME OCC
-        clone — the *normal* state of this repo while the merge controller
-        runs, i.e. precisely when a Done-flip is attempted — and is retried
-        once. Any other failure (offline, no remote) is not retried; a second
-        attempt cannot fix those.
-        """
-        ref = self._occ_governance_ref
-        if "/" not in ref:
-            return EnumOccRefRefreshOutcome.NOT_APPLICABLE
-        remote, branch = ref.split("/", 1)
-        outcome, stderr = self._run_occ_fetch(occ, remote, branch)
-        if outcome is EnumOccRefRefreshOutcome.FETCHED:
-            return outcome
-        if _REF_LOCK_ERROR_MARKER in stderr:
-            logger.info(
-                "OCC ref refresh (git fetch %s %s) hit a ref-lock race; "
-                "retrying once: %s",
-                remote,
-                branch,
-                stderr,
-            )
-            outcome, stderr = self._run_occ_fetch(occ, remote, branch)
-            if outcome is EnumOccRefRefreshOutcome.FETCHED:
-                return outcome
-        logger.warning(
-            "OCC ref refresh (git fetch %s %s) failed: %s",
-            remote,
-            branch,
-            stderr,
-        )
-        return EnumOccRefRefreshOutcome.FETCH_FAILED
-
-    def _remove_occ_dev_worktree(self, worktree: Path) -> None:
-        occ = self._resolve_occ_root()
-        if occ is not None:
-            try:
-                proc = subprocess.run(
-                    [
-                        "git",
-                        "-C",
-                        str(occ),
-                        "worktree",
-                        "remove",
-                        "--force",
-                        str(worktree),
-                    ],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                    timeout=_git_op_timeout_s(),
-                )
-            except subprocess.TimeoutExpired:
-                logger.warning(
-                    "Timed out removing OCC worktree %s after %ss",
-                    worktree,
-                    _git_op_timeout_s(),
-                )
-                proc = None
-            # A failed/timed-out `worktree remove` leaves a stale registration
-            # under .git/worktrees/ even after rmtree deletes the directory;
-            # clear it so the shared OCC clone does not accumulate dead entries
-            # (CodeRabbit — Stability).
-            #
-            # OMN-16826: this used to fall back to a bare `worktree prune`, which
-            # is a SILENT NO-OP on a locked entry — and `worktree remove` refuses
-            # a locked worktree even with `--force`, so the commonest way to
-            # reach this branch was precisely the case the fallback could not
-            # fix. Routed through the shared cleanup, which unlocks first.
-            if proc is None or proc.returncode != 0:
-                if proc is not None:
-                    logger.warning(
-                        "git worktree remove failed for %s: %s; unlocking + pruning "
-                        "registration",
-                        worktree,
-                        proc.stderr.strip(),
-                    )
-                self._cleanup_failed_occ_worktree_add(occ, worktree)
-                return
-        shutil.rmtree(worktree, ignore_errors=True)
-
-    def _cleanup_failed_occ_worktree_add(self, occ: Path, worktree: Path) -> None:
-        """Clear the debris a failed or aborted ``git worktree add`` leaves.
-
-        OMN-16826 AC(b). ``git worktree add`` holds a ``locked`` marker with the
-        reason ``initializing`` for the duration of the checkout and releases it
-        on success. A killed or failed add leaves that lock set, and a locked
-        registration is unreachable by every reaping command:
-
-        * ``git worktree prune`` **skips locked entries silently** — it exits 0
-          having done nothing, which is why 414 registrations accumulated behind
-          a command that looked like it worked;
-        * ``git worktree remove`` refuses, because a half-initialised directory
-          with no ``.git`` file is not a valid worktree.
-
-        Deleting the directory alone (what both failure paths did before) is
-        therefore the worst option: it destroys the only evidence of what the
-        registration pointed at while leaving the registration itself immortal.
-
-        Order is load-bearing. ``unlock`` resolves its argument against the
-        registered path, so it must run BEFORE the directory is removed; ``prune``
-        only reaps registrations whose directory is already gone, so it must run
-        after. Every step is best-effort: this is cleanup on an error path and
-        must never raise over the failure that brought us here.
-        """
-        self._run_git_best_effort(occ, "worktree", "unlock", str(worktree))
-        shutil.rmtree(worktree, ignore_errors=True)
-        self._prune_occ_worktrees(occ)
-
-    def _run_git_best_effort(self, occ: Path, *args: str) -> None:
-        """Run one git command against ``occ``, swallowing failure and timeout.
-
-        Used only by cleanup paths, where a non-zero exit is an ordinary outcome
-        (``worktree unlock`` on an entry that was never locked, or that git can
-        no longer resolve) rather than something a caller can act on.
-        """
-        try:
-            proc = subprocess.run(
-                ["git", "-C", str(occ), *args],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=_git_op_timeout_s(),
-            )
-        except subprocess.TimeoutExpired:
-            logger.warning("Timed out running `git %s` under %s", " ".join(args), occ)
-            return
-        if proc.returncode != 0:
-            logger.debug(
-                "`git %s` under %s exited %s: %s",
-                " ".join(args),
-                occ,
-                proc.returncode,
-                proc.stderr.strip(),
-            )
-
-    def _prune_occ_worktrees(self, occ: Path) -> None:
-        """Best-effort ``git worktree prune`` to clear stale registrations."""
-        self._run_git_best_effort(occ, "worktree", "prune")
 
     def _collect_impl(
         self,
@@ -4839,13 +3956,6 @@ class EvidenceCollector:
 
     def _find_contract(self, ticket_id: str) -> Path | None:
         """Search standard locations for a ticket contract."""
-        # OMN-13888 (scope 6): a materialised origin/dev worktree wins so a
-        # dev-only contract resolves instead of falling through to "No contract".
-        if self._occ_dev_root:
-            dev_candidate = Path(self._occ_dev_root) / "contracts" / f"{ticket_id}.yaml"
-            if dev_candidate.exists():
-                logger.info("Found contract at %s (dev worktree)", dev_candidate)
-                return dev_candidate
         for root_template in _DEFAULT_CONTRACT_ROOTS:
             root = Path(os.path.expandvars(root_template))
             candidate = root / f"{ticket_id}.yaml"
@@ -5557,8 +4667,6 @@ class EvidenceCollector:
         explicit = os.environ.get("CONTRACT_REPO_DIR", "").strip()
         if explicit:
             return explicit
-        if self._occ_dev_root:
-            return self._occ_dev_root
         if contract_path is not None:
             for parent in contract_path.resolve().parents:
                 if parent.name == "contracts":

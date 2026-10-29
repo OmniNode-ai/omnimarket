@@ -59,6 +59,7 @@ REUSABLE = (
 _SUPERSEDED_PIN = "e95eb9ba1bbf3a76924d32cf0925d830a135edcb"
 
 _FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
+_DEV_MERGE_TAG = re.compile(r"^dev-\d{14}-[0-9a-f]{12}$")
 
 
 def _rebuild_job() -> dict[str, Any]:
@@ -86,8 +87,8 @@ def test_the_reusable_rebuild_trigger_is_pinned_to_a_full_commit_sha() -> None:
     _, _, ref = uses.partition("@")
 
     assert ref, f"`uses: {uses}` carries no @ref at all"
-    assert _FULL_SHA.match(ref), (
-        f"`uses: ...@{ref}` is not a 40-character commit SHA. A branch name makes "
+    assert _FULL_SHA.match(ref) or _DEV_MERGE_TAG.match(ref), (
+        f"`uses: ...@{ref}` is not a 40-character commit SHA or a dev-merge tag. A branch name makes "
         "the workflow file itself float, so the YAML this repo runs changes under "
         "it with no commit here -- the same class of drift, moved one level out."
     )

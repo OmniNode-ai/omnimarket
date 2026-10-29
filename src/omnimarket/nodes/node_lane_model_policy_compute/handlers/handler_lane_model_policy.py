@@ -35,11 +35,23 @@ class HandlerLaneModelPolicy:
     def __init__(self, policy: ModelLaneModelPolicy | None = None) -> None:
         self.policy = load_policy() if policy is None else policy
 
+    def _escalated(self, reason: str | None) -> bool:
+        """True for complexity:<band at or above the minimum> or sonnet-failed:<run>."""
+        if reason is None:
+            return False
+        kind, _, value = reason.strip().partition(":")
+        if kind == "sonnet-failed":
+            return bool(value.strip())
+        bands = list(self.policy.band_ceilings)
+        floor = bands.index(self.policy.escalation_min_band)
+        return kind == "complexity" and value in bands and bands.index(value) >= floor
+
     def handle(
         self, request: ModelLaneModelPolicyRequest
     ) -> ModelLaneModelPolicyResult:
         p = self.policy
-        ceiling = p.ceiling
+        escalated = self._escalated(request.escalation_reason)
+        ceiling = p.escalation_ceiling if escalated else p.ceiling
 
         def answer(model: str | None, reason: str) -> ModelLaneModelPolicyResult:
             return ModelLaneModelPolicyResult(
@@ -51,11 +63,22 @@ class HandlerLaneModelPolicy:
                 policy_source=POLICY_SOURCE,
             )
 
+        def disabled(model: str) -> str:
+            return (
+                f"background-{model}-disabled: {p.ruling}; ceiling={ceiling}; "
+                "needs a valid escalation_reason"
+            )
+
         def canonical(value: str) -> str:
             return p.aliases.get(
                 value.strip().lower().replace("_", "-"), value.strip().lower()
             )
 
+        if request.escalation_reason is not None and not escalated:
+            return answer(
+                None,
+                f"invalid escalation_reason {request.escalation_reason!r}: {p.ruling}",
+            )
         for bound in (
             request.route_ceiling,
             p.band_ceilings.get(request.band) if request.band else None,
@@ -94,18 +117,13 @@ class HandlerLaneModelPolicy:
                 )
             # An explicit model spelling is an exact requirement, not merely a family.
             if required in p.order and p.order.index(required) > p.order.index(ceiling):
-                return answer(
-                    None,
-                    f"background-{required}-disabled: {p.ruling}; ceiling={ceiling}",
-                )
+                return answer(None, disabled(required))
         exact = canonical(request.required_model) if request.required_model else None
         if exact is not None:
             if exact not in p.order:
                 return answer(None, f"unknown-required-model: {request.required_model}")
             if p.order.index(exact) > p.order.index(ceiling):
-                return answer(
-                    None, f"background-{exact}-disabled: {p.ruling}; ceiling={ceiling}"
-                )
+                return answer(None, disabled(exact))
         available = set(
             p.order
             if request.available_models is None
@@ -123,6 +141,8 @@ class HandlerLaneModelPolicy:
         for model in p.order[: p.order.index(ceiling) + 1]:
             model_family = p.engines[model]
             if model not in available or (exact and model != exact):
+                continue
+            if model in p.escalation_models and not escalated:
                 continue
             if family != "auto" and model_family != family:
                 continue
@@ -153,12 +173,18 @@ def require_lane_model(**facts: object) -> str:
     return decision.model
 
 
-def lane_model_refusal(model: str, *, lane_kind: str = "small-fix") -> str | None:
+def lane_model_refusal(
+    model: str,
+    *,
+    lane_kind: str = "small-fix",
+    escalation_reason: str | None = None,
+) -> str | None:
     """Check an exact already-selected model without substituting a cheaper engine."""
     decision = resolve_lane_model(
         requested_engine=model,
         required_model=model,
         lane_kind=lane_kind,
         code_edit_ready=True,
+        escalation_reason=escalation_reason,
     )
     return None if decision.allowed else decision.reason

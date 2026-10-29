@@ -68,6 +68,7 @@ from omnimarket.nodes.node_projection_live_events.handlers.handler_projection_li
     ModelLiveEvent,
 )
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
+from omnimarket.projection.dlq import dlq_topics_from_contract
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
@@ -127,6 +128,15 @@ class HandlerLiveEventsProjectionRunner(BaseProjectionRunner):
 
         self._table_live_events: str = _by_role["live_events"]
 
+        # OMN-17427: the contract has declared ``event_bus.dlq_topics`` since
+        # OMN-13992, but this runner never handed it to the base class, whose
+        # ``poison_dlq_topics`` defaults to ``[]``. A POISON event (a payload
+        # that fails ``ModelLiveEvent``, or a snapshot delta over the producer
+        # limit) was then "not quarantined", its offset stayed uncommitted, and
+        # the consumer crash-looped on that one offset, taking every other
+        # topic's live events down with it.
+        self._dlq_topics: list[str] = dlq_topics_from_contract(self._contract)
+
         # OMN-15800: resolve this node's own bus_backed exposure (if any) from
         # its own already-loaded contract dict -- same pattern as
         # RegistrationProjectionRunner.__init__.
@@ -137,6 +147,24 @@ class HandlerLiveEventsProjectionRunner(BaseProjectionRunner):
         self._snapshot_exposure: ProjectionTableConfig | None = next(
             (exposure for exposure in exposures if exposure.bus_backed), None
         )
+
+    @property
+    def poison_dlq_topics(self) -> list[str]:
+        """Contract-declared DLQ the base class routes an escaped POISON event to."""
+        return list(self._dlq_topics)
+
+    async def publish_dlq(self, topic: str, value: bytes) -> None:
+        """Publish through the runtime-owned producer; no producer is a refusal.
+
+        Raising (not returning) keeps the base class from reading a missing
+        publisher as a successful quarantine and committing the offset.
+        """
+        publish = await self.get_publish_fn()
+        if publish is None:
+            raise RuntimeError(
+                f"no publisher available to quarantine a poison live event on {topic}"
+            )
+        await publish(topic, value)
 
     @property
     def subscribe_topics(self) -> list[str]:

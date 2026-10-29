@@ -33,7 +33,7 @@ concurrency:
 jobs:
   drift:
     # Pinned to dev after omnibase_infra#4246 (the pin gate refuses @dev).
-    uses: OmniNode-ai/omnibase_infra/.github/workflows/probe-placement-drift-reusable.yml@03a61723a6fb5f24080939cf0b1b85e7d1967feb
+    uses: OmniNode-ai/omnibase_infra/.github/workflows/probe-placement-drift-reusable.yml@dev-20261016190557-eba666a96202
     with:
       repo: omnimarket
       vars-json: ${{ toJSON(vars) }}

@@ -53,6 +53,13 @@ class _Frozen(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
+class ModelWipStateOutcome(_Frozen):
+    """What a terminal state of the gate's machine means: its outcome and, when fixed, its reason."""
+
+    outcome: EnumWipOutcome
+    reason: EnumWipReason | None = None
+
+
 class ModelWipGateConfig(_Frozen):
     """The ``config.wip_gate`` block of the reducer contract."""
 
@@ -61,6 +68,7 @@ class ModelWipGateConfig(_Frozen):
     trailing_days: int = Field(gt=0)
     reading_max_age_minutes: float = Field(gt=0)
     override_evidence_minutes: float = Field(gt=0)
+    state_outcomes: dict[str, ModelWipStateOutcome] = Field(min_length=1)
 
 
 class ModelWipLimit(_Frozen):

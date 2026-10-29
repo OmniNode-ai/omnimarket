@@ -1,0 +1,100 @@
+schema_version: 1.0.0
+ticket_id: OMN-21457
+title: 'T-D0: delegation workflow registry re-read at current heads'
+summary: 'New compute node node_delegation_seam_measure_compute: its first operation load_delegation_workflows
+  returns the 19 delegation workflows from the shipped delegation_workflows.yaml, each cell verified by a command and its
+  observation, plus a skeleton contract for node_delegation_seam_orchestrator carrying the edge to it.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-delegation-workflow-registry
+  statement: The 19 delegation workflows are a typed registry with every cell verified.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: each of the 19 workflows has every cell verified or corrected -- falsifier: uv run pytest
+      tests/nodes/node_delegation_seam_measure_compute/test_workflow_registry.py -q'
+  - id: AC2
+    statement: 'AC2: no cell still says the unread phrase -- falsifier: test_no_cell_says_unread in the same file'
+  - id: AC3
+    statement: 'AC3: the registry holds no deployment name -- falsifier: test_registry_holds_no_private_or_deployment_name'
+  - id: AC4
+    statement: 'AC4: the node depends on no protocol -- falsifier: test_contract_declares_no_protocol_dependencies'
+evidence_requirements:
+- kind: tests
+  description: Focused registry tests.
+  command: uv run pytest tests/nodes/node_delegation_seam_measure_compute/test_workflow_registry.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21457-registry
+  description: 'Registry loads 19 rows, every verified_by is a command and an observation, no unread phrase, no
+    private name, no protocol dependency, and the orchestrator skeleton names the edge.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_seam_measure_compute/test_workflow_registry.py -q --no-cov
+      --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21457-no-unread
+  description: Every registry cell has been read.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_seam_measure_compute/test_workflow_registry.py -q --no-cov
+      --tb=line -k test_no_cell_says_unread
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21457-no-deployment-name
+  description: The registry carries no private or deployment name.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_seam_measure_compute/test_workflow_registry.py -q --no-cov
+      --tb=line -k test_registry_holds_no_private_or_deployment_name
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21457-no-protocol-dependency
+  description: The compute node declares no protocol dependencies.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_seam_measure_compute/test_workflow_registry.py -q --no-cov
+      --tb=line -k test_contract_declares_no_protocol_dependencies
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21457-deploy-probe
+  description: 'Hosted deploy probe: exercise the packaged registry handler and verify its source is readable at
+    the checked-out commit. A missing handler or a registry that cannot return the requested rows fails.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_seam_measure_compute/test_workflow_registry.py -q --no-cov
+      --tb=line -k "handler_returns_the_rows_and_stamps_now or contract_declares_no_protocol_dependencies"
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: |
+      set -eu;
+      curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_delegation_seam_measure_compute/handlers/handler_load_delegation_workflows.py" | grep -q "class HandlerLoadDelegationWorkflows"
+    cwd: .
+- id: dod-omn21457-routing-binding
+  description: 'Routing remediation: switching bifrost contract bindings adds or withdraws frontier placements
+    without retaining the prior cached ladder, including with an uncached endpoint resolver. The local response
+    contract reaches the provider and the caller receives the conforming object.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/routing/test_routing_config_binding_omn21457.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest tests/chains/local/test_chain_l11_response_contract_omn18698.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket

@@ -59,6 +59,9 @@ event_bus:
 projection_api:
   expose: true
   topic: "onex.snapshot.projection.cost.by_repo.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  topic_config:
+    kafka_config:
+      "cleanup.policy": "compact"
   key_grain: "mutable"
   table: "cost_by_repo_snapshots"
   schema: "public"

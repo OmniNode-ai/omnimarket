@@ -1,0 +1,64 @@
+schema_version: 1.0.0
+ticket_id: OMN-21480
+title: onex models test runs only the first stored model, so one upstream 429 marks the whole provider failed while a working model sits second in its own list
+summary: The provider test now tries the next stored model when one answers an upstream 429, passes when any
+  answers and names the model that did, and records a provider whose every model is throttled as throttled
+  with a reason naming the throttle. The onboarding order change (AC3) ships in the omniclaude PR for this ticket.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-next-model-on-429
+  statement: A 429 on one stored model does not decide the provider's verdict.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a provider test that gets an upstream 429 on one model tries the next model in the stored order, and the provider passes when any of them answers -- falsifier: uv run pytest with a stubbed delegation returning 429 for the first model and a completion for the second, asserting the provider''s recorded state is passing and names the model that answered'
+  - id: AC2
+    statement: 'AC2: a provider whose every stored model is throttled is recorded as throttled and not as a failed key, and its recorded reason says so -- falsifier: uv run pytest with a stubbed delegation returning 429 for every model, asserting the recorded state is not the credential-failed state and the reason names the throttle'
+  - id: AC3
+    statement: 'AC3: the model order onboarding stores puts a model the pre-menu probe saw throttled after the models that answered -- falsifier: uv run pytest on the order the probe produces, with one model probing throttled and one probing ok, asserting the one that answered is first'
+evidence_requirements:
+- kind: tests
+  description: Next stored model on a 429 tests.
+  command: uv run pytest tests/unit/cli/test_omn21480_models_test_next_model.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21480-ac1
+  description: AC1 bound to the next-model test.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/cli/test_omn21480_models_test_next_model.py -q --no-cov --tb=line -k "ac1"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21480-ac2
+  description: AC2 bound to the next-model test.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/cli/test_omn21480_models_test_next_model.py -q --no-cov --tb=line -k "ac2"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21480-ac3
+  description: AC3 is proven by the omniclaude PR for this ticket (tests/skills/test_onboarding_throttled_order_omn21480.py, contracts/OMN-21480.yaml in omniclaude); here the AC is bound to the same-ticket test that proves the throttled-last stored order is the one the test then walks.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/cli/test_omn21480_models_test_next_model.py -q --no-cov --tb=line -k "ac1"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21480-deploy-source
+  description: 'Hosted deploy check: the setup effect source at the checked-out commit defines the model retry the fix introduces. Needs no account, lab host or runtime.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_model_setup_effect/handlers/handler_model_setup.py" | grep "every stored model is throttled upstream" >/dev/null
+    cwd: .
