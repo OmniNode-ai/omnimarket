@@ -8854,6 +8854,7 @@
     {
       "accessor_nodes": [
         "node_projection_delegation",
+        "node_projection_run_trace",
         "node_projection_savings",
         "node_projection_tenant_registry",
         "service:omnimarket_projection_migration_runner"
@@ -8868,6 +8869,7 @@
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_delegation/contract.yaml",
+        "src/omnimarket/nodes/node_projection_run_trace/contract.yaml",
         "src/omnimarket/nodes/node_projection_savings/contract.yaml",
         "src/omnimarket/nodes/node_projection_tenant_registry/contract.yaml"
       ],
@@ -8910,6 +8912,7 @@
         "node_projection_delegation",
         "node_projection_local_environment",
         "node_projection_read_effect",
+        "node_projection_run_trace",
         "node_projection_savings",
         "service:omnimarket_projection_migration_runner"
       ],

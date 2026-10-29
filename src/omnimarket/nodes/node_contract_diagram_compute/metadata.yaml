@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_contract_diagram_compute
+version: "1.0.0"
+description: "Pure contract-to-Mermaid generator for state machine and workflow graph fragments, and the check that a document's diagrams equal the ones its fragments generate"
+pack: core
+node_role: compute
+display_name: "Contract Diagram Compute"
+omnibase_core_compat: ">=0.47.31,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_contract_diagram_compute: "omnimarket.nodes.node_contract_diagram_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+- PyYAML>=6.0.3
+- pydantic>=2.0
+license: "MIT"
+authors: ["OmniNode Team"]
+tags: ["compute", "contract", "mermaid", "diagram", "drift-check"]

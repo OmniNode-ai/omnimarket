@@ -144,8 +144,11 @@ class _Pool:
 
 
 class _Db:
+    """One stand-in for both bindings: the run_trace pool and the mirror's reads."""
+
     def __init__(self, conn: _Connection) -> None:
         self.pool = _Pool(conn)
+        self.fetchval = conn.fetchval
 
 
 def _writer(
@@ -156,6 +159,9 @@ def _writer(
     class _Writer(RunTraceProjectionWriter):
         @property
         def db(self) -> Any:
+            return stand_in
+
+        def db_for(self, table: str, *, operation: str = "write") -> Any:
             return stand_in
 
         async def publish_snapshot_delta(self, exposure: Any, **kwargs: Any) -> bool:

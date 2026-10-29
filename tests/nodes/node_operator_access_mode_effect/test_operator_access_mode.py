@@ -554,6 +554,75 @@ def test_bare_ids_are_refused_in_local_and_remote_mode(
         )  # the worked example is in the refusal
 
 
+# An id is named when its sentence, or its whole list item with the item's continuation lines,
+# carries two plain words; an id inside inline code or a quotation is not prose and not flagged.
+NAMED_BY_SENTENCE_OR_ITEM = [
+    (
+        "- **Your M4 ticket:** the contract fix for the M4 dod_verify ticket (OMN-19970) is up"
+        " as a PR\n  (onex_change_control#13846). CI waits on\n  OMN-19970."
+    ),
+    'The check now passes "OMN-19970" when it is quoted as an example.',
+    'Write "OMN-19970".',
+    "Run `gh pr view omnimarket#4530`.",
+    "Quoted: “omnimarket#4530”.",
+    (
+        "- the routing-state cleanup fix (omnimarket#4530) is in review.\n"
+        "  Then omnimarket#4530 merges. CI on #4530 is green."
+    ),
+    (
+        "1. the routing-state cleanup fix (omnimarket#4530) is in review.\n\n"
+        "   Then PR #4530 lands."
+    ),
+    "Reviewed and shipped OMN-19970.",
+]
+STILL_BARE = [
+    ("Done: OMN-19970.", ["OMN-19970"]),
+    ("- Done: OMN-19970.", ["OMN-19970"]),
+    ("Done: OMN-19970. The dashboard sweep finished cleanly.", ["OMN-19970"]),
+    ("- the routing-state cleanup fix\n\nThen omnimarket#4530.", ["omnimarket#4530"]),
+    ("- Merged:\n- OMN-19970", ["OMN-19970"]),
+    ("Quoted `x` then OMN-19970.", ["OMN-19970"]),
+]
+
+
+@pytest.mark.parametrize("text", NAMED_BY_SENTENCE_OR_ITEM)
+def test_an_id_named_anywhere_in_its_sentence_or_list_item_passes(text: str) -> None:
+    assert bare_ids(text) == []
+    for mode in (LOCAL, REMOTE):
+        verdict = HandlerOperatorReplyCheck().handle(
+            ModelOperatorReplyRequest(text, mode)
+        )
+        assert verdict.allowed, (mode, text, verdict.reason)
+
+
+@pytest.mark.parametrize(("text", "ids"), STILL_BARE)
+def test_an_id_with_no_name_in_its_sentence_or_item_is_still_refused(
+    text: str, ids: list[str]
+) -> None:
+    assert bare_ids(text) == ids
+    verdict = HandlerOperatorReplyCheck().handle(ModelOperatorReplyRequest(text, LOCAL))
+    assert not verdict.allowed
+    assert verdict.reason_class == "bare-ticket-or-pr-ids"
+
+
+def test_quoting_does_not_hide_a_path_or_a_phone_step_from_the_remote_checks() -> None:
+    for text, reason_class in (
+        ("The report is at `/private/tmp/report.md`.", "local-file-paths"),
+        ('The report is at "~/notes.txt".', "local-file-paths"),
+        ("Then run `ssh-keygen` for the new host.", "phone-infeasible-steps"),
+    ):
+        assert (
+            HandlerOperatorReplyCheck()
+            .handle(ModelOperatorReplyRequest(text, LOCAL))
+            .allowed
+        )
+        verdict = HandlerOperatorReplyCheck().handle(
+            ModelOperatorReplyRequest(text, REMOTE)
+        )
+        assert not verdict.allowed, text
+        assert verdict.reason_class == reason_class
+
+
 def test_local_paths_are_refused_remote_only() -> None:
     text = "The report is at /private/tmp/report.md and ~/notes.txt."
     assert (
@@ -655,7 +724,8 @@ def test_attention_items_push_remote_and_wait_for_idle_at_the_terminal() -> None
 
 
 def test_a_push_is_held_to_the_reply_check_with_paths_refused_in_every_mode() -> None:
-    assert not _push("APPROVAL: OMN-20892 waits on you", REMOTE)
+    assert not _push("APPROVAL: OMN-20892", REMOTE)
+    assert _push("APPROVAL: OMN-20892 waits on you", REMOTE)  # its sentence names it
     assert not _push(
         "CREDENTIAL: new key needed, see ~/notes/key.txt", LOCAL, idle=3600
     )

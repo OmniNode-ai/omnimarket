@@ -55,8 +55,8 @@ nothing (no Agent,
 Workflow, lane skill or remote-lane runner call), is refused with the lines it read. A tick whose own ``lab-fill``
 line sent lanes into every free slot (``idle_after=0``) answers the headroom by itself.
 
-RULING 2026-10-26T11:31:48Z: Claude fills use Sonnet. Explicit Opus requirements
-are skipped with the ruling in the existing backlog report, without consuming a slot.
+RULING 2026-10-28T13:32:09Z: Claude fills use Sonnet. Explicit Opus requirements
+(a fill carries no escalation_reason) are skipped with the ruling in the existing backlog report, without consuming a slot.
 
 OMN-21396: before selecting any candidate kind, the effect reads scope=fixer
 HOLDs from the declared ledger and its archives. Held work is reported with
@@ -90,6 +90,10 @@ from omnimarket.handlers.work_ledger_fixer_holds import fixer_hold_reasons
 from omnimarket.handlers.work_ledger_text import split_ledger_rows
 from omnimarket.models.lab_fill import ModelLabFillTicketFacts
 from omnimarket.models.landing_ledger_row import ModelLandingLedgerRow
+from omnimarket.models.model_backlog_item import (
+    REPO_KINDS_CONTEXT_KEY,
+    backlog_item_refusal,
+)
 from omnimarket.nodes.node_idle_slot_fill_effect import overlay
 from omnimarket.nodes.node_idle_slot_fill_effect.models import (
     ModelBacklogSources,
@@ -728,11 +732,21 @@ class HandlerIdleSlotFill:
         sends: list[dict[str, Any]] = []
         skipped: list[dict[str, str]] = []
         dropped: list[dict[str, str]] = []
+        backlog_mismatched = 0
+        item_context = {REPO_KINDS_CONTEXT_KEY: tuple(request.repo_required_kinds)}
         for item in candidates(
             request.lines,
             request.backlog,
             request.generated,
         ):
+            # OMN-21475 (T-S3, SM-00): an item that is not a backlog item, a prose engine above all, is
+            # counted and skipped; the fill never picks an engine for it.
+            if why := backlog_item_refusal(item, context=item_context):
+                backlog_mismatched += 1
+                skipped.append(
+                    {"key": item["key"], "why": f"backlog-item-invalid: {why}"}
+                )
+                continue
             if item["kind"] == "ruling-relaunch" and not item["repo"]:
                 skipped.append(
                     {
@@ -992,6 +1006,7 @@ class HandlerIdleSlotFill:
             claude_left + codex_left + glm_left,
             glm_only,
             dropped,
+            backlog_mismatched,
         )
 
 
@@ -2030,6 +2045,7 @@ class HandlerLabFill:
                 completed=completed,
                 fixer_holds=holds,
                 fixer_holds_unread=holds_unread,
+                repo_required_kinds=overlay.repo_required_kinds(),
             )
         )
         found: list[tuple[str, str, str, str]] = list(recovery.found)
@@ -2094,6 +2110,7 @@ class HandlerLabFill:
                         completed=completed,
                         fixer_holds=holds,
                         fixer_holds_unread=holds_unread,
+                        repo_required_kinds=overlay.repo_required_kinds(),
                     )
                 )
         if decision.dropped:
@@ -2200,6 +2217,11 @@ class HandlerLabFill:
                     f"free={decision.claude_free}+{decision.codex_only_free}"
                     + (f"+{decision.glm_only_free}" if decision.glm_only_free else "")
                     + f" sweep_planned={planned}"
+                    + (
+                        f" backlog_mismatched={decision.backlog_mismatched}"
+                        if decision.backlog_mismatched
+                        else ""
+                    )
                     + (
                         f" placing={'+'.join(f'{k}:{v}' for k, v in sorted(placing.items()))}"
                         if placing

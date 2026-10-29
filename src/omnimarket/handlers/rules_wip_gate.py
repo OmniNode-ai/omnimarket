@@ -46,13 +46,6 @@ from omnimarket.models.wip_gate import (
 
 _REDUCER_PACKAGE = "omnimarket.nodes.node_wip_gate_reducer"
 _TRIGGER = "facts_evaluated"
-_OUTCOME_OF_STATE = {
-    "admitted": EnumWipOutcome.ADMIT,
-    "admitted_exempt": EnumWipOutcome.ADMIT,
-    "admitted_override": EnumWipOutcome.ADMIT,
-    "warned": EnumWipOutcome.WARN,
-    "refused": EnumWipOutcome.REFUSE,
-}
 
 
 def load_wip_gate_contract() -> tuple[ModelFSMSubcontract, ModelWipGateConfig]:
@@ -250,15 +243,9 @@ async def evaluate_wip_gate_async(
     }
     result = await execute_transition(fsm, fsm.initial_state, _TRIGGER, context)
     state = result.new_state
-    if state == "admitted_exempt":
-        reason = EnumWipReason.EXEMPT
-    elif state == "admitted_override":
-        reason = EnumWipReason.OVERRIDE
-    elif state == "admitted":
-        reason = EnumWipReason.UNDER_LIMIT
-    else:
-        reason = problem or EnumWipReason.AT_LIMIT
-    outcome = _OUTCOME_OF_STATE[state]
+    declared = request.config.state_outcomes[state]
+    outcome = declared.outcome
+    reason = declared.reason or problem or EnumWipReason.AT_LIMIT
     detail = (
         f" open={reading.open} drafts={reading.drafts} limit={limit}" if usable else ""
     )

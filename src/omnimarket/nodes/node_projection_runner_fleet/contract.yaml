@@ -135,6 +135,9 @@ externally_produced_topics:
 projection_api:
   expose: true
   topic: "onex.snapshot.projection.runner-fleet.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  topic_config:
+    kafka_config:
+      "cleanup.policy": "compact"
   key_grain: "mutable"
   table: "runner_fleet_liveness"
   # The exposure loader's ALLOWED_SCHEMAS is {omnidash_analytics, public}, and

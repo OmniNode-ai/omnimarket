@@ -1,0 +1,101 @@
+schema_version: 1.0.0
+ticket_id: OMN-21477
+title: 'T-G2: check that a state machine has one source, the contract'
+summary: 'New node node_fsm_single_source_check_compute: a pure check that a reducer''s code holds no second table of its contract''s state machine. The WIP gate reducer''s state-to-outcome table moves into its contract config so the checked reducers pass.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-fsm-single-source
+  statement: One source per state machine, checked by a node.
+  acceptance:
+  - id: AC1
+    statement: "AC1: A fixture reducer with a `(state, trigger) -> state` mapping fails and the issue names the line -- falsifier: the pytest case"
+  - id: AC2
+    statement: "AC2: A fixture reducer that routes every transition through `execute_transition` passes -- falsifier: the pytest control case"
+  - id: AC3
+    statement: "AC3: A fixture handler that calls `execute_transition` and also keeps a function-local `(state, trigger) -> state` mapping fails, and a state-only enum or tuple of two or more of the contract's state names fails -- falsifier: the two negative pytest fixtures"
+  - id: AC4
+    statement: "AC4: The reducers of this plan that exist when the PR lands pass, and each later reducer task (T-A2, T-W1, T-W2, T-P1, T-P2, T-V2, and T-B5 for the lane lease reducer) and the chain node (T-A9) add their node to the checked list in their own PR and must pass -- falsifier: the pytest case over the sources present, which also fails for a listed reducer that has no `state_machine` in its contract"
+  - id: AC5
+    statement: "AC5: Configuration: introduces no configured value: the rules are structure -- falsifier: a test asserts the node reads no environment variable and takes no option beyond the two texts"
+  - id: AC6
+    statement: "AC6: Bindings: the node depends on no protocol -- falsifier: the same fixtures give byte-identical issues in process and through the local in-process entry of the parity harness (T-B2), and a test fails if a `protocol_dependencies` entry appears in its contract"
+evidence_requirements:
+- kind: tests
+  description: Focused node tests.
+  command: uv run pytest tests/nodes/node_fsm_single_source_check_compute/test_single_source.py tests/nodes/node_wip_gate_reducer -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21477-ac1
+  description: AC1 falsifier test passes.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_fsm_single_source_check_compute/test_single_source.py -q --no-cov --tb=line -k 'state_trigger_mapping'
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21477-ac2
+  description: AC2 falsifier test passes.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_fsm_single_source_check_compute/test_single_source.py -q --no-cov --tb=line -k 'routed_through_execute_transition'
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21477-ac3
+  description: AC3 falsifier test passes.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_fsm_single_source_check_compute/test_single_source.py -q --no-cov --tb=line -k 'function_local_mapping or state_only_enum'
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21477-ac4
+  description: AC4 falsifier test passes.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_fsm_single_source_check_compute/test_single_source.py -q --no-cov --tb=line -k 'reducers_of_the_plan or listed_reducer or every_listed_reducer'
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21477-ac5
+  description: AC5 falsifier test passes.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_fsm_single_source_check_compute/test_single_source.py -q --no-cov --tb=line -k 'takes_the_two_texts or reads_no_environment'
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21477-ac6
+  description: AC6 falsifier test passes.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_fsm_single_source_check_compute/test_single_source.py -q --no-cov --tb=line -k 'protocol_dependencies or byte_identical or stub_that_changes'
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21477-deploy
+  description: 'Hosted deploy check: the node''s focused tests and the WIP gate reducer tests run on the hosted runner with no live dependency.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_fsm_single_source_check_compute/test_single_source.py tests/nodes/node_wip_gate_reducer -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21477-deploy-probe
+  description: 'Deploy probe: the single-source handler read from GitHub at the checked-out commit defines class HandlerFsmSingleSourceCheck. The merge base lacks the file, so the probe fails there.'
+  source: manual
+  execution_scope: hosted_and_local
+  checks:
+  - check_type: command
+    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_fsm_single_source_check_compute/handlers/handler_fsm_single_source_check.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^class HandlerFsmSingleSourceCheck'
+    cwd: ${OMNI_HOME}/omnimarket

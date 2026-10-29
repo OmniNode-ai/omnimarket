@@ -28,6 +28,17 @@ repos:
         files: ^(src/omnimarket/nodes/node_retention_cleanup/.*|scripts/retention/.*|tests/nodes/test_file_retention_archive_safety\.py|\.pre-commit-config\.yaml|\.github/workflows/ci\.yml)$
         pass_filenames: false
         stages: [pre-commit]
+  # OMN-17427: workflow action pins. omnibase_core's check-action-pins reads this
+  # repository's rule values from .action-pin-overlay.yaml: third-party refs are a
+  # full 40-hex sha, first-party refs are a dev-merge tag. rev is the dev-merge tag
+  # of the core commit that carries the hook. SYNC with the ci.yml step 'GitHub
+  # Actions pin check'.
+  - repo: https://github.com/OmniNode-ai/omnibase_core
+    rev: dev-20261028202452-b8b19b0b4bff
+    hooks:
+      - id: check-action-pins
+        files: ^\.github/workflows/[^/]+\.ya?ml$
+        require_serial: true
   # OMN-19998: public-repository runner placement (RULING 2026-10-16T07:07:09Z,
   # "Ci runners should be for private repos only"). CI twin job
   # public-runner-placement in .github/workflows/ci.yml; keep this rev equal to
@@ -335,7 +346,7 @@ repos:
   # The private denylist is read from the file OMNI_HYGIENE_VOCAB_PATH names; a
   # commit made without it exits 2 ("THE GATE DID NOT RUN"), never a pass.
   - repo: https://github.com/OmniNode-ai/omniclaude
-    rev: 0c9f9146d8dd0446fc5c10952aa57247b3a880ae
+    rev: dev-20261023162355-3e657bae8f91
     hooks:
       # OMN-17427: .public-repo-hygiene.yaml declares enforce_scope: added-lines, so
       # the commit verdict is the findings on lines the index adds, and every such
@@ -983,18 +994,6 @@ repos:
         language: system
         entry: uv run python scripts/ci/check_coverage_ignore_parity.py
         files: ^(pyproject\.toml|scripts/ci/aggregate_coverage_artifacts\.py|scripts/ci/check_coverage_ignore_parity\.py)$
-        pass_filenames: false
-        stages: [pre-commit]
-
-      # OMN-14762 (F-19-A): GitHub Actions pin check. Every third-party `uses:`
-      # must be pinned to a 40-char SHA. OMN-20558 emptied and deleted the
-      # baseline: any unpinned ref fails. SYNC with ci.yml step 'GitHub Actions
-      # pin ratchet'. Fast, stdlib-only.
-      - id: check-action-pins
-        name: GitHub Actions pin ratchet (OMN-14762)
-        language: system
-        entry: uv run python scripts/ci/check_action_pins.py
-        files: ^(\.github/workflows/.*\.(yml|yaml)|scripts/ci/check_action_pins\.py)$
         pass_filenames: false
         stages: [pre-commit]
 

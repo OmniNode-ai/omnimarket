@@ -85,6 +85,12 @@ config:
     trailing_days: 7
     reading_max_age_minutes: 10
     override_evidence_minutes: 10
+    state_outcomes:
+      admitted: {outcome: admit, reason: under_limit}
+      admitted_exempt: {outcome: admit, reason: exempt}
+      admitted_override: {outcome: admit, reason: override}
+      warned: {outcome: warn}
+      refused: {outcome: refuse}
 metadata:
   transport_type: local
   description: "Admits, warns or refuses a PR-opening dispatch against a repository's WIP limit."

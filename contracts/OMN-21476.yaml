@@ -1,0 +1,156 @@
+schema_version: 1.0.0
+ticket_id: OMN-21476
+title: 'T-G1: contract-to-Mermaid generator and diagram-drift check'
+summary: 'New pure compute node node_contract_diagram_compute with the operations render_contract_diagram (a state machine or workflow graph fragment to Mermaid, full or collapsed view, by fixed structural rules read from the contract''s raw mapping) and check_document_diagrams (every diagram of a document equals the one its paired fragment generates), with the fixture copy of eleven diagrams and ten fragments as golden output.'
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn21476-diagram-drift
+  statement: A document's Mermaid diagrams are generated from, and checked against, the contract fragments they render.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: A fixture document whose state diagram has one edge changed fails the check and names that line -- falsifier: the pytest case with the edited fixture'
+  - id: AC2
+    statement: 'AC2: The same document with the contract changed instead (a transition removed) and the diagram left fails -- falsifier: the pytest case'
+  - id: AC3
+    statement: 'AC3: The fixture copy of this plan''s eleven diagrams and ten fragments (`tests/nodes/node_contract_diagram_compute/fixtures/`) passes -- falsifier: the pytest case over that fixture, which is also the generator''s golden output for the seven state machines and three graphs'
+  - id: AC4
+    statement: 'AC4: A diagram with no fragment and a fragment with no diagram each fail -- falsifier: two pytest cases'
+  - id: AC5
+    statement: 'AC5: Both views of a graph parse as Mermaid -- falsifier: a test that runs the pinned Mermaid parser over every generated diagram in the fixture, or, where the parser is not installable in CI, the golden files compared byte for byte and the parse recorded in the PR body from a lab run'
+  - id: AC6
+    statement: 'AC6: The generator reads the contract''s raw mapping, because the graph model drops `description` and `step_config`, and a round-trip test shows every description and operation of the ten fixtures survives into the diagram -- falsifier: the pytest case that compares the node descriptions of a fixture contract with the rendered labels'
+  - id: AC7
+    statement: 'AC7: Configuration: introduces no configured value: the rendering rules are structure (section 0b) -- falsifier: a test asserts the generator reads no environment variable and takes no option beyond the contract text and the view named by the diagram''s marker'
+  - id: AC8
+    statement: 'AC8: Bindings: depends on no protocol (it takes facts and `now`) -- falsifier: the parity run (T-B2) gives byte-identical results for this task''s fixtures in process and through the local in-process entry of the parity harness (T-B2), and the conformance check (T-B1) fails if a `protocol_dependencies` entry appears in its contract'
+evidence_requirements:
+- kind: tests
+  description: Generator, drift-check and contract tests of the node.
+  command: uv run pytest tests/nodes/node_contract_diagram_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21476-ac1-edited-diagram
+  description: 'AC1: a state diagram with one edge changed fails the check and names the line.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_contract_diagram_compute/test_check_document_diagrams.py -q --no-cov -k 'one_edge_changed'
+    cwd: .
+- id: dod-omn21476-ac2-edited-contract
+  description: 'AC2: a removed transition with the diagram left fails the check.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_contract_diagram_compute/test_check_document_diagrams.py -q --no-cov -k 'removed_transition'
+    cwd: .
+- id: dod-omn21476-ac3-fixture-golden
+  description: 'AC3: the fixture copy of eleven diagrams and ten fragments passes and every generated diagram equals its golden diagram byte for byte.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_contract_diagram_compute/test_check_document_diagrams.py -q --no-cov -k 'fixture_copy or seven_state_machines'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_contract_diagram_compute/test_render_contract_diagram.py -q --no-cov -k 'golden_diagram'
+    cwd: .
+- id: dod-omn21476-ac4-missing-halves
+  description: 'AC4: a diagram with no fragment and a fragment with no diagram each fail.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_contract_diagram_compute/test_check_document_diagrams.py -q --no-cov -k 'no_fragment or no_diagram'
+    cwd: .
+- id: dod-omn21476-ac5-mermaid-syntax
+  description: 'AC5: the golden files compared byte for byte, every generated line checked against the Mermaid grammar the generator can emit; the parse by the pinned Mermaid parser is recorded in the PR body from a lab run.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_contract_diagram_compute/test_render_contract_diagram.py -q --no-cov -k 'golden_diagram or valid_mermaid_syntax or both_views'
+    cwd: .
+- id: dod-omn21476-ac6-round-trip
+  description: 'AC6: every description and operation of the ten fixtures survives from the raw mapping into the diagram.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_contract_diagram_compute/test_render_contract_diagram.py -q --no-cov -k 'survives or reaches_the_diagram'
+    cwd: .
+- id: dod-omn21476-ac7-configuration
+  description: 'AC7: the request models take the text and the view only, and the node source reads no environment variable, argument, file or clock.'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_contract_diagram_compute/test_node_contract.py -q --no-cov -k 'text_and_the_view or reads_no_environment or does_not_move_with_the_environment'
+    cwd: .
+- id: dod-omn21476-ac8-bindings
+  description: 'AC8: no protocol dependency; byte-identical results in process and through the local in-process entry; a stub that changes behaviour fails the comparison.'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_contract_diagram_compute/test_node_contract.py -q --no-cov -k 'no_protocol_dependency or byte_identical or stub_that_changes'
+    cwd: .
+- id: dod-omn21476-deploy-diagram-check
+  description: 'Hosted package deploy smoke: dispatch check_document_diagrams through the installed ONEX CLI with an in-memory bus. The fixture document passes and the same document with one state-diagram edge changed fails naming that line. No credentials, broker or lab service is required. This checks the evaluated checkout package, not a production rollout.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      export PYTHONDONTWRITEBYTECODE=1;
+      probe_dir="$(mktemp -d)";
+      trap 'rm -rf "$probe_dir"' EXIT;
+      uv sync --locked;
+      runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+      "$runtime_bin/python" -c '
+      import json
+      import sys
+      from pathlib import Path
+      root = Path(sys.argv[1])
+      text = Path("tests/nodes/node_contract_diagram_compute/fixtures/plan_diagrams.md").read_text(encoding="utf-8")
+      drifted = text.replace("fixed --> open : readback_mismatch", "fixed --> stale : readback_mismatch")
+      assert drifted != text
+      for case, document in (("same", text), ("drifts", drifted)):
+          request = {"operation": "check_document_diagrams", "document_text": document}
+          (root / f"{case}.json").write_text(json.dumps(request))
+      ' "$probe_dir";
+      for case in same drifts; do
+        env -u PYTHONPATH ONEX_LANE=omn21476-deploy-probe "$runtime_bin/onex" node node_contract_diagram_compute --input "$probe_dir/$case.json" --state-root "$probe_dir/$case.state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/$case.receipt.json";
+      done;
+      "$runtime_bin/python" -c '
+      import json
+      import sys
+      from pathlib import Path
+      root = Path(sys.argv[1])
+      same = json.loads((root / "same.receipt.json").read_text())
+      drifts = json.loads((root / "drifts.receipt.json").read_text())
+      for receipt in (same, drifts):
+          assert receipt["status"] == "success", receipt
+      assert same["result"]["exit_code"] == 0 and same["result"]["issues"] == [], same["result"]
+      assert drifts["result"]["exit_code"] == 1, drifts["result"]
+      issue = drifts["result"]["issues"][0]
+      assert issue["kind"] == "diagram_differs" and issue["contract_id"] == "node_andon_stop_reducer:state_machine", issue
+      assert "fixed --> stale : readback_mismatch" in issue["message"], issue
+      print("packaged diagram check: the fixture passes, one changed edge fails naming its line")
+      ' "$probe_dir"
+    cwd: .

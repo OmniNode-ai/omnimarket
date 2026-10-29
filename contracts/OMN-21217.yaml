@@ -28,6 +28,15 @@ requirements:
           A revoke based on an older version preserves a newer registration.
           Falsifiers exercise actual concurrent SQLite writers and the real
           PostgreSQL projection SQL; skipped database tests are not proof.
+  - id: "req-snapshot-exposure-cleanup-policy"
+    statement: "Every onex.snapshot exposure declares its own cleanup policy instead of taking the broker default."
+    acceptance:
+      - id: "AC4"
+        statement: >-
+          Every onex.snapshot exposure in omnimarket's node contracts declares
+          its own cleanup.policy on that same exposure item, compact everywhere
+          except node_projection_consumer_flow, which keeps compact,delete. A
+          policy on a sibling item of the same contract does not count.
 evidence_requirements:
   - kind: "tests"
     description: "Intake ordering and refusal, whole-list version conflict, concurrent SQLite writers, revoke/register interleaving and repeated CLI model options."
@@ -39,6 +48,9 @@ evidence_requirements:
       service. ci.yml integration-guard also runs the marked cases and rejects
       missing-service silent skips. A service-less local skip is unverified.
     command: "uv run pytest tests/test_omn16316_real_postgres_tenant_credentials_write_path.py::test_ordered_models_compare_and_swap_real_postgres tests/test_omn16316_real_postgres_tenant_credentials_write_path.py::test_sync_ordered_models_concurrent_replace_real_postgres -q -n 0 --no-cov --junitxml=omn21217-postgres.xml && uv run python scripts/ci/check_integration_skips.py --junit omn21217-postgres.xml"
+  - kind: "tests"
+    description: "A walk of every node contract that fails on any onex.snapshot exposure lacking a cleanup.policy on that item, with a sibling-item negative control and a consumer_flow positive control."
+    command: "uv run pytest tests/test_omn21217_snapshot_exposure_cleanup_policy.py -q -n 0 --no-cov"
 dod_evidence:
   - id: "dod-omn21217-t5-ordered-list-and-cas"
     description: "Test-first intake, CLI and real SQLite versioned replacement, plus stale-revoke and legacy-model backfill regressions."
@@ -104,6 +116,29 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_tenant_credentials/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'cleanup.policy'"
+  - id: "dod-omn21217-snapshot-exposure-cleanup-policy"
+    description: >-
+      Every onex.snapshot exposure item declares its own cleanup.policy; the
+      walk fails on dev before this change, where 69 exposure items in 51
+      contracts declare none.
+    source: "manual"
+    binds_ac:
+      - "AC4"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21217_snapshot_exposure_cleanup_policy.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21217-deploy-probe-snapshot-policy"
+    description: >-
+      Deploy probe. GitHub serves node_ab_compare_reducer's contract at the
+      checked-out commit with its snapshot exposure's declared cleanup.policy;
+      the probe reads it from GitHub at that commit and exits nonzero on a tree
+      without it, so it fails at the merge base. This proves source identity
+      only, not a running deployment.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_ab_compare_reducer/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'cleanup.policy'"
 emergency_bypass:
   enabled: false
   justification: ""

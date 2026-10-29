@@ -289,6 +289,9 @@ db_io:
 projection_api:
   expose: true
   topic: "onex.snapshot.projection.hook.ledger.v1"  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  topic_config:
+    kafka_config:
+      "cleanup.policy": "compact"
   key_grain: "mutable"
   table: "hook_events"
   # The DATABASE the read model lives in, at the granularity this field

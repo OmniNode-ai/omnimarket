@@ -85,6 +85,9 @@ externally_consumed_topics:
 projection_api:
   expose: true
   topic: "onex.snapshot.projection.usage-by-model-day.v1" # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention
+  topic_config:
+    kafka_config:
+      "cleanup.policy": "compact"
   key_grain: "mutable"
   table: "usage_by_model_day"
   schema: "omnidash_analytics"

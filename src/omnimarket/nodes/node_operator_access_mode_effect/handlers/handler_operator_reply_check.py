@@ -5,13 +5,16 @@
 Four rules, from RULING 2026-10-10T16:55:54Z as corrected by CORRECTION 2026-10-10T16:56:54Z
 and RULING 2026-10-10T17:54:32Z (only steps doable from a phone when the operator is remote):
 
-* Bare ids, ALWAYS ON in every mode. An ``OMN-n``, ``repo#n`` or ``PR #n`` token is bare unless a
-  plain-words name of the thing sits beside it. Accepted forms:
-  ``the infra startup-check fix (omnibase_infra#4802)``, ``OMN-20892 (the access-mode detector)``,
-  ``the access-mode detector OMN-20892``, a list item ``- OMN-20892: the access-mode detector``,
-  and a table row whose other cells name it. Each needs at least two plain words (three letters
-  or more, not filler such as "the", "ticket" or "PR"); "see OMN-20892" or "OMN-20892 is done" is
-  bare.
+* Bare ids, ALWAYS ON in every mode. An ``OMN-n``, ``repo#n`` or ``PR #n`` token is bare unless
+  its sentence, or the whole list item it sits in, names something in plain words: at least two
+  plain words (three letters or more, not filler such as "the", "ticket" or "PR") once the ids
+  are taken out. Accepted forms: ``the infra startup-check fix (omnibase_infra#4802)``,
+  ``OMN-20892 (the access-mode detector)``, ``- OMN-20892: the access-mode detector``, a later
+  ``Then omnimarket#4530 merges.`` inside a list item whose lead line names it, and a table row
+  whose other cells name it. A list item is its lead line plus its continuation lines (the
+  non-blank lines after it, and indented lines after a blank line). "Done: OMN-20892." or
+  "OMN-20892 is done" is bare. An id inside inline code or a quotation (double quotes, curly
+  quotes, single quotes not part of a word) is an example, not prose, and is not flagged.
 * Local file paths, REMOTE mode (and every push, which lands on the phone). A path under the
   home, volume, private, tmp, var or opt roots, a ``~/`` path or an ``$OMNI_HOME/`` path cannot be
   opened from a phone; at the terminal they are clickable and allowed.
@@ -26,10 +29,11 @@ and RULING 2026-10-10T17:54:32Z (only steps doable from a phone when the operato
   the turn about 150 times. The refusal asks for one concrete action or for ending without a
   reply. A reply with no text is never checked, so the guard cannot itself force a reply.
 
-Fenced code blocks and web links are not scanned: a quoted command or a URL is not prose. The check
-is structural, not semantic: plain words in the naming position count as a name even when they
-describe something else ("I checked the logs (OMN-20892)" passes), so it catches the bare id, the
-common failure, and not every weak name.
+Fenced code blocks and web links are not scanned: a quoted command or a URL is not prose. Inline
+code and quotations are still scanned for paths and phone steps; only their ids are skipped. The
+check is structural, not semantic: plain words anywhere in the sentence or list item count as a
+name even when they describe something else ("I checked the logs, OMN-20892" passes), so it
+catches the bare id, the common failure, and not every weak name.
 """
 
 from __future__ import annotations
@@ -64,6 +68,12 @@ WEB_LINK = re.compile(r"https?://\S+")
 LINK_TARGET = re.compile(r"\]\((?:https?://)[^)]*\)")
 SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 LIST_LEAD = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
+QUOTED_SPANS = (
+    re.compile(r"(?<!`)`(?!`)([^`\n]*)`(?!`)"),
+    re.compile(r'"([^"\n]*)"'),
+    re.compile(r"\u201c([^\u201d\n]*)\u201d"),
+    re.compile(r"(?<!\w)'([^'\n]*)'(?!\w)"),
+)
 PLAIN_WORD = re.compile(r"^[A-Za-z][A-Za-z'\u2019-]+$")
 FILLER = frozenset(
     {
@@ -148,56 +158,77 @@ def _scannable(text: str) -> str:
     return WEB_LINK.sub(" ", text)
 
 
-def _enclosing_parens(segment: str, start: int, end: int) -> tuple[int, int] | None:
-    depth = 0
-    for i in range(start - 1, -1, -1):
-        if segment[i] == ")":
-            depth += 1
-        elif segment[i] == "(":
-            if depth == 0:
-                close = segment.find(")", end)
-                return (i, close if close != -1 else len(segment))
-            depth -= 1
-    return None
+def _unquoted_ids(text: str) -> str:
+    """``text`` with every id inside inline code or a quotation blanked; other words are kept."""
+    chars = list(text)
+    for pattern in QUOTED_SPANS:
+        for span in pattern.finditer(text):
+            for match in ID_PATTERN.finditer(text, span.start(1), span.end(1)):
+                chars[match.start() : match.end()] = " " * (match.end() - match.start())
+    return "".join(chars)
 
 
-def _named(segment: str, start: int, end: int) -> bool:
-    parens = _enclosing_parens(segment, start, end)
-    if parens is not None:
-        before = segment[: parens[0]]
-        inside = segment[parens[0] + 1 : parens[1]]
-        if _plain_words(before) >= 2 or _plain_words(inside) >= 2:
-            return True
-    before_words = ID_PATTERN.sub(" ", segment[:start]).split()[-2:]
-    if len(before_words) == 2 and _plain_words(" ".join(before_words)) == 2:
-        return True  # "the access-mode detector OMN-20892": the name runs straight into the id
-    after = segment[end:]
-    follow = re.match(r"\s*\(([^)]*)\)", after)
-    if follow and _plain_words(follow.group(1)) >= 2:
-        return True
-    lead = LIST_LEAD.sub("", segment[:start])
-    if not ID_PATTERN.sub("", lead).strip(" ,/&") and re.match(
-        r"\s*(?::|\u2014|\u2013|-)\s", after
-    ):
-        return _plain_words(after) >= 2
-    return False
+def _is_table_row(line: str) -> bool:
+    return line.strip().startswith("|")
+
+
+def _item_end(lines: list[str], lead: int) -> int:
+    """One past the last line of the list item whose lead line is ``lines[lead]``."""
+    end = lead + 1
+    while end < len(lines):
+        line = lines[end]
+        if LIST_LEAD.match(line) or _is_table_row(line):
+            return end
+        if line.strip():
+            end += 1
+            continue
+        after = end
+        while after < len(lines) and not lines[after].strip():
+            after += 1
+        if after == len(lines):
+            return end
+        follow = lines[after]
+        if (
+            not follow.startswith("  ")
+            or LIST_LEAD.match(follow)
+            or _is_table_row(follow)
+        ):
+            return end
+        end = after + 1
+    return end
+
+
+def _units(text: str) -> list[tuple[str, str | None]]:
+    """Each line of ``text`` with the whole list item it belongs to, or None outside a list."""
+    lines = text.splitlines()
+    units: list[tuple[str, str | None]] = []
+    index = 0
+    while index < len(lines):
+        if _is_table_row(lines[index]) or not LIST_LEAD.match(lines[index]):
+            units.append((lines[index], None))
+            index += 1
+            continue
+        end = _item_end(lines, index)
+        item = "\n".join(lines[index:end])
+        units.extend((line, item) for line in lines[index:end])
+        index = end
+    return units
 
 
 def bare_ids(text: str) -> list[str]:
-    """Every id token in ``text`` with no plain-words name beside it, in order, once each."""
+    """Every id token in ``text`` with no plain-words name in its sentence or list item, in
+    order, once each."""
     found: list[str] = []
-    for line in _scannable(text).splitlines():
-        if line.strip().startswith("|"):
-            for match in ID_PATTERN.finditer(line):
-                if _plain_words(line) < 2 and match.group(0) not in found:
-                    found.append(match.group(0))
-            continue
-        for segment in SENTENCE_END.split(line):
+    for line, item in _units(_unquoted_ids(_scannable(text))):
+        if _is_table_row(line):
+            segments = [line] if _plain_words(line) < 2 else []
+        elif item is not None:
+            segments = [line] if _plain_words(item) < 2 else []
+        else:
+            segments = [s for s in SENTENCE_END.split(line) if _plain_words(s) < 2]
+        for segment in segments:
             for match in ID_PATTERN.finditer(segment):
-                if (
-                    not _named(segment, match.start(), match.end())
-                    and match.group(0) not in found
-                ):
+                if match.group(0) not in found:
                     found.append(match.group(0))
     return found
 

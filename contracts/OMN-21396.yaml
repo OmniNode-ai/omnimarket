@@ -382,3 +382,50 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/delegation/test_codex_measurement_omn21396.py -q --no-cov --refuse-skips"
         cwd: "."
+
+  - id: "dod-omn21396-opus-reason-policy"
+    description: >
+      Hosted-runner deploy check for the amended lane-model policy. Sonnet
+      remains admitted without a reason; exact Opus is refused without one,
+      admitted for complexity:B4 or a nonempty sonnet-failed reference, and
+      refused for invalid reasons. A reason alone does not select Opus and
+      Haiku remains refused. Exercises the installed packaged policy with no
+      credentials, broker, remote host or live model. The new regression file
+      is absent at the merge base.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lane_model_policy_compute/test_opus_escalation_reason.py -q --no-cov --refuse-skips"
+        cwd: "."
+  - id: "dod-omn21396-opus-reason-placement"
+    description: >
+      Hosted-runner deploy check for the amended escalation rule. A failed
+      Sonnet attempt supplies the reason for the next Opus rung, a declared
+      complexity reason reaches ladder and legacy placement, and an Opus pin
+      without a reason is refused. Runs typed requests through the installed
+      policy and placement handlers using supplied capacity readings only;
+      no credentials, broker, Docker, remote host or live model is required.
+      The inline policy assertion fails at the merge base, whose request model
+      rejects escalation_reason. Existing evidence for AC3 through AC6 is retained.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_remote_lane_compute/test_engine_ladder_remote_lane_compute.py -q --no-cov --refuse-skips -k 'reason or pinned_route'"
+        cwd: "."
+      - check_type: "command"
+        check_value: |-
+          uv run --locked python - <<'PROBE'
+          from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import resolve_lane_model
+          from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_placement import HandlerRemoteLanePlacement
+          from omnimarket.nodes.node_remote_lane_compute.models import ModelRemoteLanePlacementRequest
+          assert resolve_lane_model(lane_kind="build", required_model="sonnet").model == "sonnet"
+          assert not resolve_lane_model(lane_kind="build", required_model="opus").allowed
+          assert resolve_lane_model(lane_kind="build", required_model="opus", escalation_reason="complexity:B4").model == "opus"
+          request = ModelRemoteLanePlacementRequest.model_validate({"engine": "claude_sonnet", "readings": [{"name": "probe", "engines": ["claude_sonnet", "claude_opus"], "lane_slots": 2}], "ladder": {"lane": "probe", "ceiling": "opus", "claude_required": True, "attempts": [{"engine": "sonnet", "model": "sonnet", "outcome": "failed"}]}})
+          result = HandlerRemoteLanePlacement().handle(request)
+          assert (result.host, result.rung, result.engine) == ("probe", "opus", "claude_opus"), result
+          print("opus-escalation deploy probe passed")
+          PROBE
+        cwd: "."

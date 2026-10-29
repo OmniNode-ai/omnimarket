@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.320"
+version = "0.4.321"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -453,6 +453,7 @@ node_budget_policy_compute = "omnimarket.nodes.node_budget_policy_compute"
 node_subcontract_render_compute = "omnimarket.nodes.node_subcontract_render_compute"
 node_advanced_features_resolve_compute = "omnimarket.nodes.node_advanced_features_resolve_compute"
 node_contract_assemble_compute = "omnimarket.nodes.node_contract_assemble_compute"
+node_contract_diagram_compute = "omnimarket.nodes.node_contract_diagram_compute"
 node_contract_digest_compute = "omnimarket.nodes.node_contract_digest_compute"
 node_contract_serialize_compute = "omnimarket.nodes.node_contract_serialize_compute"
 node_codegen_outcome_reducer = "omnimarket.nodes.node_codegen_outcome_reducer"
@@ -1055,6 +1056,7 @@ node_flow_measures_compute = "omnimarket.nodes.node_flow_measures_compute"
 node_delegation_seam_measure_compute = "omnimarket.nodes.node_delegation_seam_measure_compute"
 node_delegation_seam_orchestrator = "omnimarket.nodes.node_delegation_seam_orchestrator"
 node_design_record_check_compute = "omnimarket.nodes.node_design_record_check_compute"
+node_fsm_single_source_check_compute = "omnimarket.nodes.node_fsm_single_source_check_compute"
 node_design_process_reducer = "omnimarket.nodes.node_design_process_reducer"
 node_seam_read_orchestrator = "omnimarket.nodes.node_seam_read_orchestrator"
 node_seam_reading_compute = "omnimarket.nodes.node_seam_reading_compute"
@@ -1476,9 +1478,9 @@ force-include = { "config/ci_bus_lanes.yaml" = "omnimarket/config/ci_bus_lanes.y
 # To move the pin: bump `version`, download the new asset, compute its sha256
 # locally, and paste it. A mismatch is refused, never repaired -- re-downloading
 # on mismatch would turn an attack into a cache miss.
-version = "v1.1.10"
-sha256 = "30a933f965cd21c66883ed4d146db166013f6694c562e9381c0b35f64a7e41e5"
-asset = "omnidash-bundle-v1.1.10.tar.gz"
+version = "v1.1.11"
+sha256 = "e231574dab6f3a7441ab251ae3f4c82439d128efe8b02d11a6c9b8af80f14874"
+asset = "omnidash-bundle-v1.1.11.tar.gz"
 repository = "OmniNode-ai/omnidash"
 
 [tool.hatch.build]

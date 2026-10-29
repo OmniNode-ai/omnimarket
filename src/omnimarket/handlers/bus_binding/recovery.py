@@ -32,6 +32,7 @@ from omnimarket.nodes.node_exception_queue_effect.models import (
 
 ALARM_CLASS = "bus-binding-degraded"
 OUTAGE_CLASS = "bus-binding-outage"
+REFUSED_CLASS = "bus-binding-outbox-refused"
 SOURCE = "omnimarket.handlers.bus_binding"
 
 
@@ -156,6 +157,48 @@ def record_replay(
     resolve_if_recovered(state_dir, decision)
 
 
+def _report_refused(
+    state_dir: Path, decision: ModelBusBindingDecision, started: str
+) -> int:
+    """Emit one non-decision case per request refused in this episode; return how many."""
+    directory = outbox.outbox_dir(state_dir) / outbox.REFUSED_DIRNAME
+    if not directory.is_dir():
+        return 0
+    since_ns = int(datetime.fromisoformat(started).timestamp() * 1_000_000_000)
+    count = 0
+    for path in sorted(directory.glob("*.json")):
+        try:
+            queued_ns = int(path.stem.split("_", 1)[0])
+            request_id = outbox.request_id_of(path)
+        except (ValueError, IndexError):
+            continue
+        # Requests are queued while degraded, so a file older than the episode belongs to an earlier one.
+        if queued_ns < since_ns:
+            continue
+        try:
+            refusal = json.loads(path.read_text(encoding="utf-8")).get("refusal", {})
+            message = " ".join(str(refusal.get("message", "")).split())[:300]
+        except (OSError, ValueError, AttributeError):
+            message = "refusal unreadable"
+        HandlerExceptionEmit().handle(
+            ModelExceptionEmitRequest(
+                state_dir=state_dir / "exception-queue",
+                row=ModelExceptionRow(
+                    cls=REFUSED_CLASS,
+                    key=f"lane={decision.lane} request={request_id}",
+                    source=SOURCE,
+                    evidence=f"ledger host refused the queued append: {message}",
+                    tried=f"replayed the outbox; kept the refused request at {path}",
+                    proposed_fix="correct the row and append it again; the refused request is final",
+                    decision=False,
+                ),
+                now=decision.observed_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            )
+        )
+        count += 1
+    return count
+
+
 def resolve_if_recovered(state_dir: Path, decision: ModelBusBindingDecision) -> None:
     """Resolve only this lane's open non-decision rows after a healthy read and complete replay."""
     if decision.binding is not EnumBusBinding.DURABLE or decision.degraded:
@@ -167,19 +210,22 @@ def resolve_if_recovered(state_dir: Path, decision: ModelBusBindingDecision) -> 
         or record.get("observed_at") != decision.observed_at.isoformat()
     ):
         return
-    if record.get("refused") or record.get("replay_stopped"):
+    # A refusal is the ledger host's final answer and the request sits in refused/, so it does not hold
+    # the episode open: it is reported below as its own case. A stopped drain or an unreplayed file does.
+    if record.get("replay_stopped"):
         return
     # Include unreadable request files: ignoring one would falsely claim complete replay.
     if any(outbox.outbox_dir(state_dir).glob("*.json")):
         return
     queue_dir = state_dir / "exception-queue"
+    refused = _report_refused(state_dir, decision, record["outage_started_at"])
     opened = HandlerExceptionQueue().handle(
         ModelExceptionQueueRequest(queue_dir, "orchestrator")
     )
     how = (
         f"durable_health_ok observed_at={decision.observed_at.isoformat()} "
         f"replayed={record.get('replayed', 0)} duplicates={record.get('duplicates', 0)} "
-        "refused=0 remaining=0"
+        f"refused={refused} remaining=0"
     )
     for row in opened.rows:
         if (

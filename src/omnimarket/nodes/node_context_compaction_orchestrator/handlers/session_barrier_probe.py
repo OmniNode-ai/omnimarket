@@ -65,12 +65,12 @@ class PostgresSessionBarrierProbeSource:
         # One statement keeps the two streams and barrier records in one snapshot.
         query = sql.SQL("""
             SELECT 'lineage', producer_seq, NULL::text, NULL::bigint,
-                   NULL::text, NULL::timestamptz
+                   NULL::text, NULL::timestamptz, lane
               FROM {lineage}
              WHERE session_id = %s AND producer_seq IS NOT NULL
             UNION ALL
             SELECT stream, producer_seq, barrier_id, high_water,
-                   content_capture, emitted_at
+                   content_capture, emitted_at, NULL::text
               FROM {content}
              WHERE session_id = %s
                AND ((stream = 'content' AND producer_seq IS NOT NULL)
@@ -90,11 +90,28 @@ class PostgresSessionBarrierProbeSource:
         barriers: dict[str, ModelSessionStreamBarrier] = {}
         applied: dict[str, list[int]] = {"lineage": [], "content": []}
         revisions = []
-        for stream, sequence, row_barrier, high_water, capture, emitted_at in rows:
+        lane: str | None = None
+        lane_sequence: int | None = None
+        for (
+            stream,
+            sequence,
+            row_barrier,
+            high_water,
+            capture,
+            emitted_at,
+            row_lane,
+        ) in rows:
             if stream not in applied:
                 raise ValueError("unknown projected session stream")
             if sequence is not None:
                 applied[stream].append(sequence)
+                if (
+                    stream == "lineage"
+                    and row_lane
+                    and (lane_sequence is None or sequence > lane_sequence)
+                ):
+                    lane = row_lane
+                    lane_sequence = sequence
             if row_barrier == barrier_id:
                 barrier = ModelSessionStreamBarrier(
                     stream=stream,
@@ -120,4 +137,5 @@ class PostgresSessionBarrierProbeSource:
                 "content": tuple(applied["content"]),
             },
             source_revision=revision,
+            lane=lane,
         )

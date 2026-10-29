@@ -66,7 +66,7 @@ workflow_coordination:
         node_type: COMPUTE_GENERIC
         description: SM-00 backlog to fill
         depends_on: [backlog]
-        step_config: {operation: classify_sm_00, gap: GAP-1}
+        step_config: {operation: classify_sm_00, shape: ModelBacklogItem}
       - node_id: st01_fill
         node_type: EFFECT_GENERIC
         description: St1 Fill

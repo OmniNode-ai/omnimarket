@@ -139,7 +139,9 @@ def packaged_default(setting: str) -> str:
 
 
 #: (backend id) -> (exit code, stdout, stderr) of one pinned ``onex delegate``.
-DelegateRunner = Callable[[str], tuple[int, str, str]]
+#: ``(backend_id)`` runs the model stored first; ``(backend_id, model=...)`` pins one
+#: other stored model (OMN-21480).
+DelegateRunner = Callable[..., tuple[int, str, str]]
 
 #: (base URL) -> ``None`` when the server answers an OpenAI-compatible model
 #: list, else why it did not.
@@ -208,8 +210,15 @@ def _onex_executable() -> str:
     return shutil.which("onex") or "onex"
 
 
-def run_pinned_delegation(backend_id: str) -> tuple[int, str, str]:
-    """Run one ``onex delegate`` pinned to ``backend_id``, from the home directory."""
+def run_pinned_delegation(
+    backend_id: str, model: str | None = None
+) -> tuple[int, str, str]:
+    """Run one ``onex delegate`` pinned to ``backend_id``, from the home directory.
+
+    ``model`` (OMN-21480) asks the key's run for one stored model other than
+    the first; omitted, the model stored first runs.
+    """
+    model_args = ["--model", model] if model else []
     env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
     try:
         done = subprocess.run(
@@ -219,6 +228,7 @@ def run_pinned_delegation(backend_id: str) -> tuple[int, str, str]:
                 "--json",
                 "--backend-id",
                 backend_id,
+                *model_args,
                 _TEST_PROMPT,
             ],
             capture_output=True,
@@ -790,10 +800,31 @@ class HandlerModelSetup:
                 provider=provider, status="not_set_up", tested_at=now
             )
         exit_code, stdout, stderr = self._run_delegation(backend_id)
+        retried: str | None = None
+        every_throttled: tuple[str, ...] = ()
+        if (
+            first
+            and provider not in ("ollama", LOCAL_URL_PROVIDER)
+            and exit_code != 0
+            and _was_throttled(stdout, stderr)
+        ):
+            # OMN-21480: a 429 on one model says nothing about the next one in
+            # the key's own stored order, so try each in turn.
+            stored = resolve_local_byok_credential_models(provider)
+            every_throttled = stored
+            for nxt in stored[1:]:
+                exit_code, stdout, stderr = self._run_delegation(backend_id, model=nxt)
+                retried = nxt
+                if not (exit_code != 0 and _was_throttled(stdout, stderr)):
+                    every_throttled = ()
+                    break
         receipt = _receipt(stderr)
         answered = receipt.get("backend_id")
         if chosen is None:
             chosen = self._chosen_model(provider)
+            if retried is not None and chosen is not None:
+                chosen = retried
+        tested = chosen or retried or self._stored_model(provider)
         answered_model = _text(receipt.get("model"))
         if (
             exit_code == 0
@@ -833,12 +864,17 @@ class HandlerModelSetup:
                 # OMN-21464: a 429 is the provider's or the model's condition,
                 # not the key's. It is reported but never recorded, so a valid
                 # key keeps its earlier verdict and stays routed.
+                if len(every_throttled) > 1:
+                    reason = (
+                        "every stored model is throttled upstream (HTTP 429): "
+                        f"{', '.join(every_throttled)}; {reason}"
+                    )
                 return ModelModelTestResult(
                     provider=provider,
                     status="throttled",
                     tested_at=now,
                     backend_id=backend_id,
-                    model=chosen or self._stored_model(provider),
+                    model=tested,
                     reason=reason,
                 )
             # OMN-21259: name the model that failed, so the developer knows
@@ -848,7 +884,7 @@ class HandlerModelSetup:
                 status="failed",
                 tested_at=now,
                 backend_id=backend_id,
-                model=chosen or self._stored_model(provider),
+                model=tested,
                 reason=reason,
             )
         is_first_local = provider == LOCAL_URL_PROVIDER and (

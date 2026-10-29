@@ -365,11 +365,9 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # ProviderQuotaProjectionWriter (OMN-20154) is the quota-state writer,
     # dispatched once per consumed provider-quota observation.
     #
-    # RunTraceProjectionWriter (OMN-19987) follows, on the same reviewed terms.
-    # It is the only writer of run_trace, dispatched once per consumed run-step
-    # event by the runtime auto-wiring, with no dedicated writer deployment, so
-    # undeclared it would be dispatched by nobody. Its node's pure fold,
-    # HandlerProjectionRunTrace, does NOT declare the capability.
+    # RunTraceProjectionWriter (OMN-19987) declared it until OMN-19972 made it
+    # a standalone runner under its own runtime profile, so it reads the tenant
+    # mirror through its own binding; it no longer declares the capability.
     #
     # UsageByModelDayProjectionWriter (OMN-19978) follows, on the same reviewed
     # terms. It is the node's DB writer, dispatched once per consumed usage
@@ -438,7 +436,6 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "WorktreeReconcileProjectionWriter",
         "UsageByModelDayProjectionWriter",
         "HandlerRoutingFeedbackWriter",
-        "RunTraceProjectionWriter",
         "LiveEventsProjectionWriter",
         "RegistrationProjectionWriter",
         "SavingsProjectionWriter",

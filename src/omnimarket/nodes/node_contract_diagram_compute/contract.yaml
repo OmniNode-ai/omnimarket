@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Contract-to-Mermaid generator and diagram-drift check.
+# Two operations over text. render_contract_diagram turns a contract fragment (a state_machine
+# block or a workflow_coordination.workflow_definition block) into Mermaid by fixed structural
+# rules. check_document_diagrams pairs every diagram-contract marker of a document with the
+# contract-fragment marker of the same id, regenerates the diagram and compares it line by line.
+# The caller reads the document and passes its text in; the node performs no I/O, reads no
+# environment variable and takes no option beyond the text and the view the marker names.
+name: node_contract_diagram_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure contract-to-Mermaid generator and diagram-drift check. A state machine fragment is drawn
+  as a stateDiagram-v2 and a workflow graph fragment as a flowchart (full or collapsed view), both
+  from the contract's raw mapping because the graph model drops node descriptions and step
+  configuration. The check fails on a diagram that differs from the regenerated one (naming the
+  first differing line), a diagram whose contract has no fragment, a fragment the core model
+  refuses, a fragment with no diagram, and a diagram with no line under it naming its contract.
+input_model: omnimarket.nodes.node_contract_diagram_compute.models.model_contract_diagram.ModelCheckDocumentDiagramsRequest
+handler:
+  module: omnimarket.nodes.node_contract_diagram_compute.handlers.handler_check_document_diagrams
+  class: HandlerCheckDocumentDiagrams
+  input_model: omnimarket.nodes.node_contract_diagram_compute.models.model_contract_diagram.ModelCheckDocumentDiagramsRequest
+  output_model: omnimarket.nodes.node_contract_diagram_compute.models.model_contract_diagram.ModelCheckDocumentDiagramsResult
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: check_document_diagrams
+      subscribe_topic: onex.cmd.omnimarket.contract-diagram-check-requested.v1
+      handler:
+        name: HandlerCheckDocumentDiagrams
+        module: omnimarket.nodes.node_contract_diagram_compute.handlers.handler_check_document_diagrams
+      input_model: omnimarket.nodes.node_contract_diagram_compute.models.model_contract_diagram.ModelCheckDocumentDiagramsRequest
+      output_model: omnimarket.nodes.node_contract_diagram_compute.models.model_contract_diagram.ModelCheckDocumentDiagramsResult
+    - operation: render_contract_diagram
+      subscribe_topic: onex.cmd.omnimarket.contract-diagram-render-requested.v1
+      handler:
+        name: HandlerRenderContractDiagram
+        module: omnimarket.nodes.node_contract_diagram_compute.handlers.handler_render_contract_diagram
+      input_model: omnimarket.nodes.node_contract_diagram_compute.models.model_contract_diagram.ModelRenderContractDiagramRequest
+      output_model: omnimarket.nodes.node_contract_diagram_compute.models.model_contract_diagram.ModelRenderContractDiagramResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 5000
+  runtime_profiles: [main]
+terminal_event: onex.evt.omnimarket.contract-diagram-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.contract-diagram-check-requested.v1
+    - onex.cmd.omnimarket.contract-diagram-render-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.contract-diagram-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.contract-diagram-check-requested.v1
+
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.contract-diagram-render-requested.v1
+    producer: the plan-write caller and any node that draws a contract fragment, which publish this command directly -- not a node contract
+externally_consumed_topics:
+  - onex.evt.omnimarket.contract-diagram-completed.v1
+
+metadata:
+  ticket: OMN-21476
+  transport_type: kafka

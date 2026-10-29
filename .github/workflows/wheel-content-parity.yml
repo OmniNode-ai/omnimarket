@@ -85,6 +85,6 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Judge wheel content parity
-        uses: OmniNode-ai/omnibase_infra/.github/actions/wheel-content-parity@5b0898a938202e499e8b2ce491f9fab65adeeb44
+        uses: OmniNode-ai/omnibase_infra/.github/actions/wheel-content-parity@dev-20261016190557-eba666a96202
         with:
           package: omnimarket

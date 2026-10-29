@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Rule values for the omnibase_core check-action-pins hook (OMN-17427).
+# Third-party uses refs are pinned to a full 40-hex commit sha. A first-party ref is a
+# dev-merge tag matching tag_pattern. Shrink-only: the hook refuses an exception the base
+# branch's copy of this file does not have.
+first_party_orgs:
+  - OmniNode-ai
+tag_pattern: 'dev-\d{14}-[0-9a-f]{12}'
+# The earlier check let a first-party @main through; no workflow uses one now, so it is refused.
+first_party_main: fail
+known_exceptions:
+  - uses: OmniNode-ai/omnibase_core/.github/workflows/hook-push-rehearsal.yml@17b1c270050cbfa7036ac987ae36e617253ec1a3
+    reason: The commit is on no omnibase_core branch and no dev-merge tag points at it; replace it with the tag of the merge that lands it.
+  - uses: OmniNode-ai/omniclaude/.github/workflows/kb-doc-gate-reusable.yml@6bfba15f7d103ddaa9e949c459e95153b1ca6a94
+    reason: No dev-merge tag points at this commit; the nearest tag that contains it is a later commit with other changes.

@@ -7,9 +7,17 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    ValidationInfo,
+    field_validator,
+)
 
-ENGINE_LADDER: tuple[str, ...] = ("code-edit", "glm", "codex", "sonnet", "opus")
+from omnimarket.models.model_engine_ladder import ladder_of
+
 MEASURED_ONLY_ENGINES: tuple[str, ...] = ("antigravity",)
 HARNESS_EXPERIMENT_ENGINES: tuple[str, ...] = ("local-agent", *MEASURED_ONLY_ENGINES)
 CLAUDE_RUNGS = ("sonnet", "opus")
@@ -42,13 +50,6 @@ RUNG_GATES: dict[str, tuple[str, ...]] = {
 }
 # The rungs no Claude usage-limit or auth-expired mark applies to.
 QUOTA_FREE_RUNGS = frozenset({"code-edit", "glm"})
-RUNG_HOST_ENGINE: dict[str, str] = {
-    "code-edit": "claude_sonnet",
-    "glm": "claude_sonnet",
-    "codex": "codex",
-    "sonnet": "claude_sonnet",
-    "opus": "claude_opus",
-}
 
 
 class ModelEngineExperimentRow(BaseModel):
@@ -81,16 +82,16 @@ class ModelEngineExperimentRow(BaseModel):
 
     @field_validator("engine")
     @classmethod
-    def validate_engine(cls, value: str) -> str:
-        if value not in (*ENGINE_LADDER, *HARNESS_EXPERIMENT_ENGINES):
+    def validate_engine(cls, value: str, info: ValidationInfo) -> str:
+        if value not in (*ladder_of(info).rungs, *HARNESS_EXPERIMENT_ENGINES):
             raise ValueError("engine must be a placement or harness experiment engine")
         return value
 
     @field_validator("next_engine")
     @classmethod
-    def validate_next_engine(cls, value: str) -> str:
-        if value != NO_ENGINE and value not in ENGINE_LADDER:
-            raise ValueError("next_engine must be none or in ENGINE_LADDER")
+    def validate_next_engine(cls, value: str, info: ValidationInfo) -> str:
+        if value != NO_ENGINE and value not in ladder_of(info).rungs:
+            raise ValueError("next_engine must be none or a rung of the engine ladder")
         return value
 
     @field_validator("failure_cause")

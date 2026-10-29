@@ -39,6 +39,17 @@ handler:
   class: HandlerIdleSlotFill
   input_model: omnimarket.nodes.node_idle_slot_fill_effect.models.model_idle_slot_fill.ModelIdleSlotFillRequest
   output_model: omnimarket.nodes.node_idle_slot_fill_effect.models.model_idle_slot_fill.ModelIdleSlotFillResult
+# OMN-21475 (T-S3, AC6): the fill's dependencies by the codes of the protocol table (plan section 0d.2). The
+# import paths of BKL, LED, CHG, HST and SRC are the planned homes (T-B3, T-B4, T-B5, T-B7); a profile of the
+# `factory_bindings` overlay says which binding backs each code.
+protocol_dependencies:
+  - {name: BKL, protocol: "omnimarket.protocols.protocol_backlog_source:ProtocolBacklogSource", bind_as: backlog, required: true}
+  - {name: LED, protocol: "omnimarket.protocols.protocol_work_ledger_store:ProtocolWorkLedgerStore", bind_as: ledger, required: true}
+  - {name: CHG, protocol: "omnimarket.protocols.protocol_change_source:ProtocolChangeSource", bind_as: changes, required: true}
+  - {name: HST, protocol: "omnimarket.protocols.protocol_lane_host_pool:ProtocolLaneHostPool", bind_as: hosts, required: true}
+  - {name: SRC, protocol: "omnimarket.protocols.protocol_fact_source:ProtocolFactSource", bind_as: facts, required: true}
+  - {name: BUS, protocol: "omnibase_core.protocols.event_bus.protocol_event_bus:ProtocolEventBus", bind_as: bus, required: true}
+  - {name: CLK, protocol: "omnimarket.protocols.protocol_clock:ProtocolClock", bind_as: clock, required: true}
 handler_routing:
   routing_strategy: operation_match
   default_handler: omnimarket.nodes.node_idle_slot_fill_effect.handlers.handler_idle_slot_fill:HandlerIdleSlotFill
