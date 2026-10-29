@@ -48,7 +48,14 @@ def _run(config: dict[str, str], root: Path) -> subprocess.CompletedProcess[str]
         k: v
         for k, v in os.environ.items()
         if k
-        not in {config["unset_setting"], config["config_root_setting"], "PYTHONPATH"}
+        not in {
+            config["unset_setting"],
+            config["config_root_setting"],
+            "PYTHONPATH",
+            # uv warns on stderr when UV_NO_SYNC meets --no-project, which
+            # would add a second line to the one-refusal assertion.
+            "UV_NO_SYNC",
+        }
     }
     env[config["config_root_setting"]] = str(root)
     source = f"omnibase-core @ git+{config['core_repository']}@{config['core_dev_merge_tag']}"
