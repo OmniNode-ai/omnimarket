@@ -287,7 +287,7 @@ class HandlerClaudeTokenPool:
                 fingerprint=t["fingerprint"],
                 added_at=t["added_at"],
                 until=t.get("until") if (t.get("until") or "") > now else None,
-                limited=(t.get("until") or "") > now,
+                limited=(t.get("until") or "") > now and not t.get("revoked_at"),
                 revoked=bool(t.get("revoked_at")),
             )
             for t in pool["tokens"]
@@ -314,12 +314,15 @@ def pool_summary(
     *,
     revoked: Sequence[str] = (),
 ) -> dict[str, Any]:
-    """Tokens, limits at ``now``, the next reset and the status line, including revoked labels."""
-    untils = sorted(u for _, u in tokens if u and u > now)
+    """Tokens, limits at ``now``, the next reset and the status line, including revoked labels.
+
+    A revoked token is out of rotation for good, not until a reset, so it is named in ``revoked`` and is
+    neither counted in ``limited`` nor offered as the ``next_reset``, even when it still carries a limit time.
+    """
+    gone = frozenset(revoked)
+    untils = sorted(u for label, u in tokens if u and u > now and label not in gone)
     total, limited = len(tokens), len(untils)
-    every = total > 0 and all(
-        (u or "") > now or label in revoked for label, u in tokens
-    )
+    every = total > 0 and all((u or "") > now or label in gone for label, u in tokens)
     line = (
         f"claude-pool host={host} tokens={total} limited={limited} "
         f"next_reset={untils[0] if untils else 'none'}"
