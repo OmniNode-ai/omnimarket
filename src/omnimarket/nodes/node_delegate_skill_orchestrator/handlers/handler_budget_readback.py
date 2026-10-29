@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 """OMN-21326 AC3: no completed deployed-lane run outlives its budget plus grace.
@@ -35,8 +34,9 @@ from typing import Any
 
 import yaml
 
-ROOT = Path(__file__).resolve().parents[1]
-TASK_CLASS_CONTRACTS = ROOT / "src/omnimarket/configs/task_class_contracts.v1.yaml"
+TASK_CLASS_CONTRACTS = (
+    Path(__file__).resolve().parents[3] / "configs/task_class_contracts.v1.yaml"
+)
 DEPLOYED_LANE = "deployed-lane"
 
 EXIT_PASS = 0
@@ -109,6 +109,9 @@ def measure(
         if receipt is None or receipt.get("locus") != DEPLOYED_LANE:
             continue
         result = (receipt.get("receipt") or {}).get("result") or {}
+        terminal = result.get("terminal_payload")
+        if isinstance(terminal, dict) and isinstance(terminal.get("payload"), dict):
+            result = terminal["payload"]
         budget = result.get("budget_evidence") or {}
         if result.get("status") != "completed":
             continue
@@ -180,9 +183,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise CheckUnrunnableError(f"state root not found: {', '.join(missing)}")
         summary = measure(roots, since, until, declared_grace_seconds())
     except CheckUnrunnableError as error:
-        print(json.dumps({"error": str(error)}))
+        sys.stdout.write(json.dumps({"error": str(error)}) + "\n")
         return EXIT_UNRUNNABLE
-    print(json.dumps(summary))
+    sys.stdout.write(json.dumps(summary) + "\n")
     return verdict(summary)
 
 

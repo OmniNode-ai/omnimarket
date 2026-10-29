@@ -38,6 +38,12 @@ requirements:
         statement: >-
           AC3: Over a 24 h window of deployed-lane receipts after the fix is deployed, no completed run has
           execution_duration_ms above (execution_timeout_seconds + grace) * 1000
+      - id: "AC4"
+        statement: >-
+          The AC3 receipt-window readback is importable from the delegation node package and returns exit 0 for a
+          measured window within budget plus declared grace, 1 for a completed run over that bound, 2 for no measured
+          runs, and 3 for a missing state root or an ambiguous grace declaration. This validates the readback;
+          the deployed 24 h observation in AC3 still requires the host that holds the receipts.
 evidence_requirements:
   - kind: "tests"
     description: "Requested-timeout grace tests pass"
@@ -105,15 +111,15 @@ dod_evidence:
     binds_ac: ["AC1"]
   - id: "dod-omn21326-ac3-exit-coded-readback"
     description: >-
-      Ships the AC3 readback as a check that fails by exit status, replacing the rejected binding to a count-only
-      script (dod-closeout-sweep 2026-10-27T1845Z). scripts/verify_omn21326_ac3_budget_bound.py selects completed
-      deployed-lane runs whose caller named a timeout, by run.json mtime in a window (default the last 24 h), and exits 1
-      when any has execution_duration_ms above (execution_timeout_seconds + grace) * 1000, 2 when none was measured, and
-      3 when it cannot run; the grace is read from the task-class declaration. This item runs the script's own tests and
-      binds no criterion: AC3 is bound by a lab closeout lane to
-      `uv run python scripts/verify_omn21326_ac3_budget_bound.py` on the host whose state root holds the deployed-lane
-      receipts. At the merge base the script and its tests do not exist.
+      The delegation node's budget-readback handler selects completed deployed-lane runs whose caller named a timeout
+      by run.json mtime in a window (default the last 24 h), and exits 1 when any duration exceeds the execution timeout
+      plus the task-class declaration's grace, 2 when none was measured, and 3 when it cannot run. Tests exercise the
+      exit-coded readback, including its packaged module entry point. They fail at the merge base where the handler
+      does not exist. AC3's deployed observation remains a separate lab readback using
+      `uv run python -m omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_budget_readback`
+      on the host whose state root holds the receipts.
     source: "manual"
+    binds_ac: ["AC4"]
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/scripts/test_verify_omn21326_ac3_budget_bound.py -q --no-cov"

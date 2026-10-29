@@ -5,29 +5,22 @@
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import os
+import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from types import ModuleType
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-SCRIPT = REPO_ROOT / "scripts" / "verify_omn21326_ac3_budget_bound.py"
+from omnimarket.nodes.node_delegate_skill_orchestrator.handlers import (
+    handler_budget_readback as readback,
+)
+
 NOW = datetime(2026, 10, 29, 12, 0, tzinfo=UTC)
 
 pytestmark = pytest.mark.unit
-
-
-def _load() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("omn21326_ac3", SCRIPT)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 def _run(
@@ -67,12 +60,12 @@ def _run(
 
 
 def _main(root: Path, capsys: pytest.CaptureFixture[str]) -> tuple[int, dict]:
-    code = _load().main(["--state-root", str(root), "--until", NOW.isoformat()])
+    code = readback.main(["--state-root", str(root), "--until", NOW.isoformat()])
     return code, json.loads(capsys.readouterr().out)
 
 
 def test_the_declared_grace_is_one_value() -> None:
-    assert _load().declared_grace_seconds() == 15
+    assert readback.declared_grace_seconds() == 15
 
 
 def test_runs_inside_the_bound_pass(
@@ -133,7 +126,66 @@ def test_disagreeing_graces_are_unrunnable(tmp_path: Path) -> None:
         "  b: {requested_timeout_grace_seconds: 20}\n",
         encoding="utf-8",
     )
-    module = _load()
+    module = readback
 
     with pytest.raises(module.CheckUnrunnableError):
         module.declared_grace_seconds(contracts)
+
+
+@pytest.mark.parametrize(("duration_ms", "expected"), [(65_000, 0), (65_001, 1)])
+def test_deployed_bus_terminal_payload_is_measured(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    duration_ms: int,
+    expected: int,
+) -> None:
+    _run(tmp_path, "bus-terminal", duration_ms=duration_ms)
+    receipt_path = tmp_path / "runs" / "bus-terminal" / "receipt.json"
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    payload = receipt["receipt"]["result"]
+    receipt["receipt"]["result"] = {
+        "handler_result": None,
+        "terminal_payload": {"payload": payload},
+    }
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+
+    code, summary = _main(tmp_path, capsys)
+
+    assert code == expected
+    assert summary["deployed_lane_completed"] == 1
+    assert summary["over_budget_plus_grace"] == (expected == 1)
+
+
+@pytest.mark.parametrize(
+    ("duration_ms", "expected"), [(65_000, 0), (65_001, 1), (None, 2), (None, 3)]
+)
+def test_packaged_module_preserves_process_exit_status(
+    tmp_path: Path, duration_ms: int | None, expected: int
+) -> None:
+    if duration_ms is not None:
+        _run(tmp_path, "selected", duration_ms=duration_ms)
+    state_root = tmp_path / "absent" if expected == 3 else tmp_path
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            readback.__name__,
+            "--state-root",
+            str(state_root),
+            "--until",
+            NOW.isoformat(),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert result.returncode == expected, result.stderr
+    summary = json.loads(result.stdout)
+    if expected == 3:
+        assert "state root not found" in summary["error"]
+    else:
+        assert summary["grace_seconds"] == 15
+        assert summary["deployed_lane_completed"] == (duration_ms is not None)
+        assert summary["over_budget_plus_grace"] == (expected == 1)
