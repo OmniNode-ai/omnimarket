@@ -221,6 +221,11 @@ requirements:
     acceptance:
       - id: "AC41"
         statement: "AC41: catalogue validation passes with Super present in the historical capture or absent as on 2026-10-27; Super is absent from backend declarations, rules, defaults and tiers and cannot be pinned; edited packaged rule orders are neutral local defaults; an unlisted new rung, placement peer or onboarding default still fails -- falsifier: uv run pytest tests/validators/test_provider_model_catalogue.py tests/unit/delegation/test_openrouter_review_reasoning_omn19432.py -q fails at the merge base when Super is removed from the captured catalogue"
+  - id: "req-sibling-clone-at-locked-ref"
+    statement: "A CI job clones each sibling at the ref uv.lock pins: the git tag of a tag pin, or v<version> for a release. A lock that pins a lab dev tag (a version with no release tag) no longer fails every cloning job with exit 128."
+    acceptance:
+      - id: "AC42"
+        statement: "AC42: the clone ref expression the workflows run prints dev-20261028111658-97c5d1c2802a for a uv.lock omnibase-core entry pinned by that git tag, v0.5.7 for a registry entry, v<version> for a git source with no tag, and refuses an absent package; no workflow derives the clone ref from the lock version -- falsifier: uv run pytest tests/ci/test_sibling_clone_ref_omn19998.py -q fails at the merge base, where the clone steps read v<version>"
 evidence_requirements:
   - kind: "tests"
     description: "Every repo contract binds each criterion to repo pytest evidence."
@@ -942,4 +947,12 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "env UV_FROZEN=true uv run pytest tests/ci/test_repo_evidence_caller_workflow.py tests/nodes/node_exemplar_registry_reconcile_compute/test_sampled_revocation.py -q -n 0 -p no:randomly --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19998-sibling-clone-at-locked-ref"
+    description: "The sibling clone ref comes from the lock's git tag for a tag pin and from v<version> for a release; the lock expression the workflows run resolves to that ref for omnibase-core, and no workflow still reads the clone ref from the lock version."
+    source: "manual"
+    binds_ac: ["AC42"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_sibling_clone_ref_omn19998.py tests/ci/test_sibling_pins_omn20001.py -q --no-cov -n 0 -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
