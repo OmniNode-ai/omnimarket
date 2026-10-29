@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-21382
+title: Declare who the operator is
+summary: Adds node_team_identity_compute to omnimarket. A versioned typed team identity declaration (exactly one operator entry and any number of member entries, each naming a Slack member id, a Linear user id, a GitHub login, its ledger principals and an optional reports_to), a loader resolved through ONEX_SKILL_OVERLAY_ROOTS that refuses missing fields, duplicate ids or principals, a second operator, unknown fields and conflicting overlay sources and exposes the resolved source path and hash, and a role resolver that gives operator privileges only to an authenticated match of the operator entry and team restrictions with a diagnostic otherwise. Tested on fixtures only; the real declaration is the operator-supplied overlay of a separate task.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21382-team-identity
+  statement: The team identity loader validates the declaration and the resolver never grants operator privileges to an unknown, mismatched or unauthenticated identity.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the test passes on a valid fixture and refuses each malformed fixture, and, once G0b lands, the loader validates G0b''s committed overlay on a lab host -- falsifier: the test output and that lab read.'
+  - id: AC2
+    statement: 'AC2: the change is one pull request in OmniNode-ai/omnimarket and its required `OmniNode-ai/omnimarket` CI check-runs are green on that pull request''s head -- falsifier: the check-runs API for that head commit in OmniNode-ai/omnimarket'
+evidence_requirements:
+- kind: tests
+  description: Fixture tests of the team identity loader, validator and role resolver, and the node's registration and golden chain.
+  command: uv run pytest tests/nodes/node_team_identity_compute -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21382-ac1-fixture-tests
+  description: The loader accepts the valid fixture and refuses each malformed fixture (missing field, duplicate id, second operator, unknown field, conflicting overlay sources and the rest); unknown or mismatched identity resolves to team restrictions with a diagnostic.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_team_identity_compute/test_team_identity_overlay.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21382-ac2-node-registered
+  description: node_team_identity_compute is registered as an onex.nodes entry point in omnimarket and its packaged contract invokes with a typed request.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_team_identity_compute/test_golden_chain_team_identity_compute.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
