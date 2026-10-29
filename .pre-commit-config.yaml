@@ -3,6 +3,7 @@
 #
 # Hooks:
 #   - ruff format + lint (check-only)
+#   - Check-only commit hooks (from omnibase_core: hook-writes, commit-hygiene)
 #   - Stub implementation detection (from omnibase_core)
 #   - TODO format enforcement (from omnibase_core)
 #   - Hardcoded topic string prevention (from omnibase_core)
@@ -33,12 +34,20 @@ repos:
   # full 40-hex sha, first-party refs are a dev-merge tag. rev is the dev-merge tag
   # of the core commit that carries the hook. SYNC with the ci.yml step 'GitHub
   # Actions pin check'.
+  # OMN-21496: the same block consumes the check-only hooks of omnibase_core
+  # (check-hook-writes refuses a hook that rewrites files; commit-hygiene refuses
+  # a missing or extra final newline and a staged tmp/ file; commit-hygiene-message
+  # refuses an AI co-author trailer). Stages and types are the published ones.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: dev-20261028202452-b8b19b0b4bff
+    rev: dev-20261029044430-3f33be0d5364
     hooks:
       - id: check-action-pins
         files: ^\.github/workflows/[^/]+\.ya?ml$
         require_serial: true
+      - id: check-hook-writes
+      - id: commit-hygiene
+      - id: commit-hygiene-message
+        stages: [commit-msg]
   # OMN-19998: public-repository runner placement (RULING 2026-10-16T07:07:09Z,
   # "Ci runners should be for private repos only"). CI twin job
   # public-runner-placement in .github/workflows/ci.yml; keep this rev equal to
@@ -377,16 +386,6 @@ repos:
         exclude: ^tests/fixtures/delegation/omn19523/prompts/run_6bfe152a_t2a\.txt$
       - id: check-added-large-files
         args: [--maxkb=1000]
-
-  # A check that writes nothing; replaces the end-of-file-fixer hook
-  - repo: local
-    hooks:
-      - id: end-of-file-check
-        name: Files end in exactly one newline (check only)
-        entry: '(?:[^\n]\Z|\n\n+\Z)'
-        language: pygrep
-        args: [--multiline]
-        types: [text]
 
   # Topic naming lint — producer-segment allowlist (OMN-8507)
   # Requires omnibase_infra at $OMNIBASE_INFRA_PATH or ../omnibase_infra.
@@ -2284,14 +2283,6 @@ repos:
         name: Reject skip-gate bypass tokens in commit messages (OMN-10414)
         entry: .pre-commit-hooks/reject-deploy-gate-skip-token.sh
         language: script
-        pass_filenames: true
-        stages: [commit-msg]
-      - id: refuse-ai-coauthor-trailer
-        require_serial: true
-        name: Refuse AI-generated Co-Authored-By trailers in commit messages (check only)
-        entry: '^co-authored-by:.*claude.*noreply@anthropic\.com'
-        language: pygrep
-        args: [--ignore-case]
         pass_filenames: true
         stages: [commit-msg]
 

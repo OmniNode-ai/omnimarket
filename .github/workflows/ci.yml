@@ -479,7 +479,7 @@ jobs:
       # pre-commit hook 'check-action-pins'.
       - name: GitHub Actions pin check
         env:
-          ACTION_PINS_CORE: "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261028202452-b8b19b0b4bff"
+          ACTION_PINS_CORE: "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261029044430-3f33be0d5364"
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           MQ_BASE: ${{ github.event.merge_group.base_sha }}
         run: |

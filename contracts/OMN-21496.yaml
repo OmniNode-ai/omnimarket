@@ -1,10 +1,11 @@
 schema_version: 1.0.0
 ticket_id: OMN-21496
 title: 'T2.6: check-only pre-commit hooks in omnimarket'
-summary: No pre-commit hook of omnimarket writes a file or a commit message. The end-of-file-fixer hook is
-  replaced by the pygrep hook end-of-file-check, the strip-ai-coauthor-trailer hook (perl -i on the commit
-  message) is replaced by the pygrep hook refuse-ai-coauthor-trailer at the commit-msg stage, ruff-format
-  runs with --check, and ruff runs with --no-fix. Each refuses and leaves the bytes alone.
+summary: No pre-commit hook of omnimarket writes a file or a commit message. The end-of-file-fixer and
+  strip-ai-coauthor-trailer hooks are removed and the repository consumes the check-only hook ids check-hook-writes,
+  commit-hygiene and commit-hygiene-message from omnibase_core at a dev-merge tag. ruff-format runs with --check and
+  ruff with --no-fix. The repository holds no local definition of these rules and no test that pins the config text;
+  one canary test runs the consumed hooks on a throwaway tree.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -18,66 +19,62 @@ requirements:
     statement: 'AC2: A canary commit with an unformatted file and an AI co-author trailer is refused and the working tree is byte-identical after the hook run -- falsifier: pytest case that hashes the tree before and after the hook run, plus pre-commit run --files on the canary commit'
 evidence_requirements:
 - kind: tests
-  description: Check-only hooks tests.
+  description: Canary test of the consumed commit hooks.
   command: uv run pytest tests/ci/test_check_only_hooks_omn21496.py -q --no-cov --tb=line
 emergency_bypass:
   enabled: false
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
-- id: dod-omn21496-ac1-config
-  description: AC1 reads the committed pre-commit config for writing flags and entries and for the removed hook ids, and checks the ruff hooks run check-only.
+- id: dod-omn21496-ac1-hook-writes
+  description: AC1 runs omnibase_core's check-hook-writes over the committed pre-commit config through pre-commit; it refuses a hook whose entry or args rewrite files, so a pass means no hook of this repository writes.
   source: manual
   binds_ac:
   - AC1
   checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/ci/test_check_only_hooks_omn21496.py -k "gone or writing_flag or check_only or replacements" -q --no-cov --tb=line
+  - check_type: command
+    check_value: uv run pre-commit run check-hook-writes --files .pre-commit-config.yaml
     cwd: ${OMNI_HOME}/omnimarket
-- id: dod-omn21496-ac1-refuse
-  description: AC1 runs the replacement hooks on a canary file and a canary commit message and checks each is refused.
+- id: dod-omn21496-ac1-no-local-definition
+  description: AC1 reads the committed config for the removed local hook ids and for the consumed core ids; the repository holds no local definition of the end-of-file, co-author trailer or tmp/ rules.
   source: manual
   binds_ac:
   - AC1
   checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/ci/test_check_only_hooks_omn21496.py -k "ruff_args or end_of_file or trailer" -q --no-cov --tb=line
+  - check_type: command
+    check_value: |
+      set -eu;
+      grep -q 'id: check-hook-writes' .pre-commit-config.yaml;
+      grep -q 'id: commit-hygiene$' .pre-commit-config.yaml;
+      grep -q 'id: commit-hygiene-message' .pre-commit-config.yaml;
+      ! grep -qE 'id: (end-of-file-fixer|end-of-file-check|strip-ai-coauthor-trailer|refuse-ai-coauthor-trailer)' .pre-commit-config.yaml
     cwd: ${OMNI_HOME}/omnimarket
-- id: dod-omn21496-ac2-ruff
-  description: AC2 runs the ruff hook arguments from the committed config against an unformatted, lint-defective canary and checks the exit is non-zero and the bytes are unchanged.
+- id: dod-omn21496-ac2-canary
+  description: AC2 stages a file without a final newline and a tmp/ file and writes a commit message with an AI co-author trailer in a throwaway git tree, runs the consumed hooks through pre-commit with the pin from the committed config, and checks each is refused and that the sha256 of every file of the tree is the same before and after each run; a clean file passes as the positive control.
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/ci/test_check_only_hooks_omn21496.py -k ruff_args -q --no-cov --tb=line
+    check_value: uv run pytest tests/ci/test_check_only_hooks_omn21496.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
-- id: dod-omn21496-ac2-trailer-eof
-  description: AC2 runs the committed trailer and end-of-file hooks through pre-commit on a canary commit message and canary files, and checks each is refused with the bytes unchanged.
+- id: dod-omn21496-ac2-pre-commit-run
+  description: AC2 runs the pre-commit hooks of the changed files at the final head; the consumed core hooks and the check-only ruff hooks pass.
   source: manual
   binds_ac:
   - AC2
   checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/ci/test_check_only_hooks_omn21496.py -k "trailer or end_of_file" -q --no-cov --tb=line
-    cwd: ${OMNI_HOME}/omnimarket
-- id: dod-omn21496-ac2-tree
-  description: AC2 builds a scratch git repo holding an unformatted file, a file without a final newline and a commit message with an AI co-author trailer, runs the committed ruff, end-of-file and trailer hooks on it, and checks each is refused and the sha256 of every file of the tree is the same before and after.
-  source: manual
-  binds_ac:
-  - AC2
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/ci/test_check_only_hooks_omn21496.py -k whole_tree -q --no-cov --tb=line
+  - check_type: command
+    check_value: uv run pre-commit run --files .pre-commit-config.yaml .github/workflows/ci.yml contracts/OMN-21496.yaml tests/ci/test_check_only_hooks_omn21496.py
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21496-deploy-config
-  description: 'Hosted deploy check: the pre-commit config at the checked-out commit declares the check-only replacements and no longer declares the two writing hooks. Needs no account, lab host or runtime.'
+  description: 'Hosted deploy check: the pre-commit config at the checked-out commit consumes the core hook ids at a dev-merge tag and no longer declares the removed hooks. Needs no account, lab host or runtime.'
   source: manual
   checks:
   - check_type: command
     check_value: |
       set -eu;
-      grep -q 'id: end-of-file-check' .pre-commit-config.yaml;
-      grep -q 'id: refuse-ai-coauthor-trailer' .pre-commit-config.yaml;
+      grep -q 'rev: dev-20261029044430-3f33be0d5364' .pre-commit-config.yaml;
+      grep -q 'id: commit-hygiene-message' .pre-commit-config.yaml;
       ! grep -qE 'id: (end-of-file-fixer|strip-ai-coauthor-trailer)' .pre-commit-config.yaml
     cwd: .
