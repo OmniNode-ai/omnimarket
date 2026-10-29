@@ -429,26 +429,94 @@ jobs:
             echo "::error::no live node_delegate_skill_orchestrator consumer group on ${DELEGATE_COMMAND_TOPIC}"
             exit 1
           fi
-          # One record per line (-f '%v\n'), read from the start up to the current end.
+          # A terminal is matched structurally, never by substring: each record
+          # is parsed as JSON (an envelope is unwrapped to its payload), the
+          # correlation id must equal the probe's, and the answer must be the
+          # typed refusal itself: terminal_failure_cause refused_before_dispatch
+          # with attempts_count 0. Exit 0 = that answer, 3 = this request's
+          # terminal says something else, 4 = no terminal for this request.
+          terminal_check="$(cat <<'PY'
+          import json
+          import os
+          import sys
+
+          probe = os.environ["PROBE_ID"]
+          want_refusal = os.environ["WANT"] == "refusal"
+          for line in sys.stdin:
+              try:
+                  record = json.loads(line)
+              except ValueError:
+                  continue
+              if not isinstance(record, dict):
+                  continue
+              body = record
+              while isinstance(body.get("payload"), dict):
+                  body = body["payload"]
+              if probe not in (str(record.get("correlation_id")), str(body.get("correlation_id"))):
+                  continue
+              cause = body.get("terminal_failure_cause")
+              attempts = body.get("attempts_count")
+              print(f"probe terminal: status={body.get('status')} terminal_failure_cause={cause} attempts_count={attempts}")
+              if not want_refusal:
+                  sys.exit(0)
+              sys.exit(0 if cause == "refused_before_dispatch" and attempts == 0 else 3)
+          sys.exit(4)
+          PY
+          )"
+          # One record per line (-f '%v\n'), read from the start up to the
+          # current end. A read that fails is reported and retried, never
+          # treated as an empty topic: the refusal counts only in a poll where
+          # both terminal topics were read and the completed one does not
+          # carry this request.
+          read_err="$(mktemp)"
+          last_read_error=""
           for _ in $(seq 1 30); do
-            completed="$(broker_rpk topic consume "$DELEGATE_COMPLETED_TOPIC" -o start:end -f '%v\n' 2>/dev/null || true)"
-            if grep -qF "$probe_id" <<< "$completed"; then
+            rc=0
+            completed="$(broker_rpk topic consume "$DELEGATE_COMPLETED_TOPIC" -o start:end -f '%v\n' 2>"$read_err")" || rc=$?
+            if [ "$rc" -ne 0 ]; then
+              last_read_error="reading ${DELEGATE_COMPLETED_TOPIC} failed (exit ${rc}): $(head -c 500 "$read_err")"
+              echo "$last_read_error; retrying"
+              sleep 10
+              continue
+            fi
+            rc=0
+            failed="$(broker_rpk topic consume "$DELEGATE_FAILED_TOPIC" -o start:end -f '%v\n' 2>"$read_err")" || rc=$?
+            if [ "$rc" -ne 0 ]; then
+              last_read_error="reading ${DELEGATE_FAILED_TOPIC} failed (exit ${rc}): $(head -c 500 "$read_err")"
+              echo "$last_read_error; retrying"
+              sleep 10
+              continue
+            fi
+            last_read_error=""
+            rc=0
+            PROBE_ID="$probe_id" WANT=any python3 -c "$terminal_check" <<< "$completed" || rc=$?
+            if [ "$rc" -eq 0 ]; then
               echo "::error::probe ${probe_id} was dispatched (completed terminal); expected a refusal before dispatch"
               exit 1
             fi
-            failed="$(broker_rpk topic consume "$DELEGATE_FAILED_TOPIC" -o start:end -f '%v\n' 2>/dev/null || true)"
-            terminal="$(grep -F "$probe_id" <<< "$failed" || true)"
-            if [ -n "$terminal" ]; then
-              if grep -qF "refused_before_dispatch" <<< "$terminal"; then
-                echo "typed refusal for probe ${probe_id} on ${DELEGATE_FAILED_TOPIC}"
-                exit 0
-              fi
-              printf '%s\n' "${terminal:0:2000}"
+            if [ "$rc" -ne 4 ]; then
+              echo "::error::the terminal check itself failed (exit ${rc})"
+              exit 1
+            fi
+            rc=0
+            PROBE_ID="$probe_id" WANT=refusal python3 -c "$terminal_check" <<< "$failed" || rc=$?
+            if [ "$rc" -eq 0 ]; then
+              echo "typed refusal for probe ${probe_id} on ${DELEGATE_FAILED_TOPIC}"
+              exit 0
+            fi
+            if [ "$rc" -eq 3 ]; then
               echo "::error::probe ${probe_id} failed without a refusal before dispatch"
+              exit 1
+            fi
+            if [ "$rc" -ne 4 ]; then
+              echo "::error::the terminal check itself failed (exit ${rc})"
               exit 1
             fi
             sleep 10
           done
+          if [ -n "$last_read_error" ]; then
+            echo "::error::${last_read_error}"
+          fi
           echo "::error::no terminal for probe ${probe_id} on ${DELEGATE_FAILED_TOPIC} within 300 s"
           exit 1
 

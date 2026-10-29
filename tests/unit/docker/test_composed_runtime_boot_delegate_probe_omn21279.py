@@ -65,6 +65,11 @@ _GROUP = f"omnimarket.node_delegate_skill_orchestrator.consume.v1.__t.{_TOPIC}"
 #: leaves the writer blocked on a closed pipe.
 _FILLER_ROWS = 6000
 
+#: Records each terminal-topic read prints besides the interesting one. The
+#: step parses every record, so this stays small enough that a 30-poll wait
+#: ends well inside the test timeout.
+_CONSUME_FILLER_ROWS = 200
+
 #: The request fields ModelDelegateSkillRequest requires, and the ones this
 #: probe must set for a refusal before dispatch. The stub's model check
 #: refuses anything else, as the real model (extra="forbid") does.
@@ -141,7 +146,7 @@ if [ -s "$STUB_PRODUCED" ]; then
 fi
 filler() {
   i=0
-  while [ "$i" -lt "$STUB_FILLER_ROWS" ]; do
+  while [ "$i" -lt "$STUB_CONSUME_FILLER_ROWS" ]; do
     echo "{\\"correlation_id\\":\\"00000000-0000-4000-8000-$(printf '%012d' "$i")\\",\\"status\\":\\"failed\\"}"
     i=$((i + 1))
   done
@@ -164,11 +169,19 @@ case "$*" in
         refused) echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\",\\"attempts_count\\":0}" ;;
         provider_error) echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"provider_error\\"}" ;;
         other_request) echo "{\\"correlation_id\\":\\"11111111-1111-4111-8111-111111111111\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\"}" ;;
+        provider_error_mentions_refusal) echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"provider_error\\",\\"error_message\\":\\"not refused_before_dispatch\\"}" ;;
+        refused_with_attempt) echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\",\\"attempts_count\\":1}" ;;
+        refused_enveloped) echo "{\\"envelope_id\\":\\"e1\\",\\"correlation_id\\":\\"$probe_id\\",\\"payload\\":{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"failed\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\",\\"attempts_count\\":0}}" ;;
+        id_in_text_only) echo "{\\"correlation_id\\":\\"22222222-2222-4222-8222-222222222222\\",\\"error_message\\":\\"see $probe_id\\",\\"terminal_failure_cause\\":\\"refused_before_dispatch\\",\\"attempts_count\\":0}" ;;
       esac
     fi
     filler
     ;;
   "rpk topic consume $STUB_COMPLETED -o start:end -f %v\\n")
+    if [ "$STUB_COMPLETED_READ_FAILS" = "yes" ]; then
+      echo "unable to consume: UNKNOWN_TOPIC_OR_PARTITION" >&2
+      exit 1
+    fi
     if [ -n "$probe_id" ] && [ "$STUB_TERMINAL" = "completed" ]; then
       echo "{\\"correlation_id\\":\\"$probe_id\\",\\"status\\":\\"completed\\"}"
     fi
@@ -234,6 +247,7 @@ def _run_probe(
     produce_fails: bool = False,
     model_rejects: bool = False,
     terminal_topics: bool = True,
+    completed_read_fails: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -262,6 +276,8 @@ def _run_probe(
         "STUB_GROUP_PRESENT": "yes" if group_present else "no",
         "STUB_MEMBERS": str(members),
         "STUB_FILLER_ROWS": str(_FILLER_ROWS),
+        "STUB_CONSUME_FILLER_ROWS": str(_CONSUME_FILLER_ROWS),
+        "STUB_COMPLETED_READ_FAILS": "yes" if completed_read_fails else "no",
         "STUB_JOIN": join,
         "STUB_TERMINAL": terminal,
         "STUB_PRODUCE_FAILS": "yes" if produce_fails else "no",
@@ -452,3 +468,78 @@ def test_probe_fails_without_the_terminal_topics(tmp_path: Path) -> None:
     assert result.returncode == 1, _out(result)
     assert "terminal topics were not read from the contract" in result.stdout
     assert _calls(tmp_path) == []
+
+
+def test_probe_fails_when_only_the_error_text_names_the_refusal(
+    tmp_path: Path,
+) -> None:
+    """Codex 19:23Z: a provider_error whose message mentions the refusal is red."""
+    result = _run_probe(
+        tmp_path,
+        group_present=True,
+        members=1,
+        join="demand",
+        terminal="provider_error_mentions_refusal",
+    )
+    assert result.returncode == 1, _out(result)
+    assert "failed without a refusal before dispatch" in result.stdout
+    assert "terminal_failure_cause=provider_error" in result.stdout
+
+
+def test_probe_fails_on_a_refusal_that_made_an_attempt(tmp_path: Path) -> None:
+    result = _run_probe(
+        tmp_path,
+        group_present=True,
+        members=1,
+        join="demand",
+        terminal="refused_with_attempt",
+    )
+    assert result.returncode == 1, _out(result)
+    assert "failed without a refusal before dispatch" in result.stdout
+
+
+def test_probe_reads_the_refusal_inside_an_envelope(tmp_path: Path) -> None:
+    result = _run_probe(
+        tmp_path,
+        group_present=True,
+        members=1,
+        join="demand",
+        terminal="refused_enveloped",
+    )
+    assert result.returncode == 0, _out(result)
+    assert "typed refusal for probe" in result.stdout
+
+
+def test_probe_ignores_its_id_appearing_only_in_another_terminals_text(
+    tmp_path: Path,
+) -> None:
+    result = _run_probe(
+        tmp_path,
+        group_present=True,
+        members=1,
+        join="demand",
+        terminal="id_in_text_only",
+    )
+    assert result.returncode == 1, _out(result)
+    assert "no terminal for probe" in result.stdout
+
+
+def test_probe_does_not_pass_while_the_completed_topic_cannot_be_read(
+    tmp_path: Path,
+) -> None:
+    """Codex 19:27Z: an unread completed topic is not an empty one.
+
+    The refusal is on the failed topic, but whether the same request was also
+    dispatched is unknown, so the step must not pass.
+    """
+    result = _run_probe(
+        tmp_path,
+        group_present=True,
+        members=1,
+        join="demand",
+        completed_read_fails=True,
+    )
+    assert result.returncode == 1, _out(result)
+    assert f"reading {_COMPLETED} failed" in result.stdout
+    assert "UNKNOWN_TOPIC_OR_PARTITION" in result.stdout
+    assert "typed refusal for probe" not in result.stdout
