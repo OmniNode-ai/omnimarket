@@ -41,7 +41,8 @@ _REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[2]
 _WORKFLOWS: Final[Path] = _REPO_ROOT / ".github" / "workflows"
 # Golden updated for the hygiene caller pin in #3778, replay refs in #3756,
 # core guard in #3789, the hook push rehearsal caller in #4065, the reviewer eval
-# in #4090, and the core full-suite reuse caller in #4138.
+# in #4090, the core full-suite reuse caller in #4138, and the first-party
+# dev-merge tags in OMN-17427.
 _GOLDEN: Final[Path] = (
     Path(__file__).resolve().parent / "fixtures" / "omn20558_workflow_action_refs.json"
 )

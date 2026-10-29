@@ -77,7 +77,7 @@ def test_config_enforces_the_five_classes_on_added_lines() -> None:
 
 def test_workflow_pin_is_past_added_lines_support() -> None:
     pin = _workflow_pin()
-    assert re.fullmatch(r"[0-9a-f]{40}", pin), pin
+    assert re.fullmatch(r"dev-\d{14}-[0-9a-f]{12}", pin), pin
     assert pin != PRE_ADDED_LINES_PIN
 
 

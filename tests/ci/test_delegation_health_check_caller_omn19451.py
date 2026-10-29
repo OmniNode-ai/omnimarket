@@ -135,7 +135,9 @@ def _infra_pin() -> str:
     assert isinstance(uses, str), uses
     assert uses.startswith(USES_PREFIX), uses
     pin = uses.removeprefix(USES_PREFIX)
-    assert re.fullmatch(r"[0-9a-f]{40}", pin), f"Floating infra ref: {pin!r}"
+    assert re.fullmatch(r"dev-\d{14}-[0-9a-f]{12}", pin), (
+        f"Expected an infra dev-merge tag, got: {pin!r}"
+    )
     return pin
 
 
@@ -229,7 +231,7 @@ def test_caller_is_one_unconditional_reusable_job() -> None:
     assert job.get("with") == {"repo_key": "omnimarket"}
 
 
-def test_caller_pins_an_immutable_infra_sha() -> None:
+def test_caller_pins_an_immutable_infra_dev_merge_tag() -> None:
     _infra_pin()
 
 

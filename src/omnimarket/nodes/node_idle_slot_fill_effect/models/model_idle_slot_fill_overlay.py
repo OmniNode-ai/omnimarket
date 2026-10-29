@@ -49,5 +49,7 @@ class ModelIdleSlotFillOverlay(BaseModel):
     process_fix_roles: list[str] | None = None
     mvp_repos: list[str] | None = None
     always_out_roles: list[str] | None = None
+    # Kinds whose backlog items must name a repository (ModelBacklogItem); unset requires none.
+    repo_required_kinds: list[str] | None = None
     cloud_backlog: ModelCloudBacklogOverlay | None = None
     experiment_designs: list[dict[str, Any]] | None = None

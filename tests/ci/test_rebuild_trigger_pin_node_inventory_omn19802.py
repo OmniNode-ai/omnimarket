@@ -49,9 +49,14 @@ _PINS_CARRYING_THE_NODE_INVENTORY_FIX: Final[dict[str, str]] = {
         "04eb6d41d cb5c0cfd724905aec46d336dea84e8347cce9e20` -> exit 0, "
         "verified 2026-10-12"
     ),
+    "dev-20261028175438-79bc8a26389c": (
+        "omnibase_infra dev-merge tag of 79bc8a26389c; `git merge-base --is-ancestor "
+        "04eb6d41d dev-20261028175438-79bc8a26389c` -> exit 0, verified 2026-10-28"
+    ),
 }
 
 _FULL_SHA: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{40}$")
+_DEV_MERGE_TAG: Final[re.Pattern[str]] = re.compile(r"^dev-\d{14}-[0-9a-f]{12}$")
 
 
 def _rebuild_job() -> dict[str, Any]:
@@ -70,7 +75,9 @@ def test_the_pin_carries_the_node_inventory_ordering_fix() -> None:
     """RED at any pin below 04eb6d41d, including the 89d4dd6c it replaces."""
     uses = str(_rebuild_job()["uses"])
     _, _, ref = uses.partition("@")
-    assert _FULL_SHA.match(ref), f"`uses: ...@{ref}` is not a full commit SHA"
+    assert _FULL_SHA.match(ref) or _DEV_MERGE_TAG.match(ref), (
+        f"`uses: ...@{ref}` is not a full commit SHA or a dev-merge tag"
+    )
     assert ref in _PINS_CARRYING_THE_NODE_INVENTORY_FIX, (
         f"the reusable is pinned to {ref}, which is not recorded as carrying "
         f"omnibase_infra {_NODE_INVENTORY_FIX_COMMIT} (OMN-19802). Below it, "

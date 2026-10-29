@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 
 from omnimarket.delegated_test_loop import lane_bus
+from omnimarket.handlers.scm import handler_gateway_read_client
 from omnimarket.handlers.scm.handler_gateway_read_client import (
     GatewayReadError,
     read_over_bus,
@@ -147,3 +148,13 @@ async def test_a_read_from_inside_a_running_event_loop_still_returns_the_result(
 
     assert isinstance(result, ModelMergedPrResult)
     assert result.head_sha == HEAD
+
+
+async def test_a_token_that_resolves_is_seen_from_inside_a_running_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Under dod_verify's event loop the sync resolver raised, so a host whose
+    token resolves was read as tokenless and every read went to the bus."""
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token-not-a-secret")
+
+    assert handler_gateway_read_client._token_resolves()

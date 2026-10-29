@@ -22,7 +22,7 @@ CALLER_PATH = (
 # omnibase_core#1932: the squash commit that adds VERIFIER_FLOOR to the reusable's
 # "Install the pinned verifier" step.
 # The pin moved to a descendant that keeps this: omnibase_core#2079 (OMN-19513).
-_FLOOR_REUSABLE_SHA = "5782289777210ca814c0e43b4f797826135dba78"
+_FLOOR_REUSABLE_TAG = "dev-20261022114039-578228977721"
 
 # 0.4.303 is the first omnimarket release carrying omnimarket#3511, the refusal of
 # a contract that leaves an acceptance criterion unbound.
@@ -42,7 +42,7 @@ def _job() -> dict[str, object]:
 def test_caller_pins_the_reusable_that_carries_the_verifier_floor() -> None:
     uses = _job()["uses"]
     assert isinstance(uses, str)
-    assert uses.endswith(f"@{_FLOOR_REUSABLE_SHA}"), (
+    assert uses.endswith(f"@{_FLOOR_REUSABLE_TAG}"), (
         "pin the omnibase_core receipt-gate reusable at or past omnibase_core#1932"
     )
 
@@ -53,7 +53,7 @@ def test_caller_verifier_version_is_at_or_above_the_floor() -> None:
     # enforced when the caller invokes the reusable that carries the gate.
     assert job["uses"] == (
         "OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml"
-        f"@{_FLOOR_REUSABLE_SHA}"
+        f"@{_FLOOR_REUSABLE_TAG}"
     ), "the verifier version must be passed to the floor-enforcing reusable"
     with_inputs = job["with"]
     assert isinstance(with_inputs, dict)

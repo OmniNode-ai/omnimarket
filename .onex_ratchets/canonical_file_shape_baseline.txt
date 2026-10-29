@@ -105,7 +105,6 @@ scripts/ci/adequacy_receipt.py
 scripts/ci/aggregate_coverage_artifacts.py
 scripts/ci/canonical_handler_shape_baseline.py
 scripts/ci/chain_replacement_parity.py
-scripts/ci/check_action_pins.py
 scripts/ci/check_aiokafka_construction_auth.py
 scripts/ci/check_auto_merge_hold.py
 scripts/ci/check_backend_secret_discipline.py

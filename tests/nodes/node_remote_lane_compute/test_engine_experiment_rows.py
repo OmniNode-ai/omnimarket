@@ -8,8 +8,8 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.handlers.handler_engine_ladder import load_engine_ladder
 from omnimarket.models.model_engine_experiment import (
-    ENGINE_LADDER,
     ModelEngineExperimentRow,
     format_experiment_line,
     parse_experiment_rows,
@@ -222,7 +222,7 @@ def test_ac3_ac4_two_attempt_ledger_replay(tmp_path: Path) -> None:
         line.split(" | ")[0]
         for line in result.lines
         if line.startswith("NOTE engine-experiments:")
-    ] == [f"NOTE engine-experiments:{engine}" for engine in ENGINE_LADDER]
+    ] == [f"NOTE engine-experiments:{engine}" for engine in load_engine_ladder().rungs]
     assert "engine-experiments" in result.checked
 
 
@@ -269,7 +269,7 @@ def test_harness_experiment_identity_round_trips_without_changing_placement_orde
     assert parsed.task_class == "docs-edit"
     assert parsed.configuration == "low90"
     assert parsed.item_key == "docs-1"
-    assert ENGINE_LADDER == ("code-edit", "glm", "codex", "sonnet", "opus")
+    assert load_engine_ladder().rungs == ("code-edit", "glm", "codex", "sonnet", "opus")
 
 
 def test_throughput_includes_an_observed_local_agent_without_a_new_placement_rung():

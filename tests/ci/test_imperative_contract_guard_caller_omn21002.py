@@ -25,7 +25,8 @@ ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = ROOT / ".github/workflows"
 CALLER = WORKFLOWS / "imperative-contract-guard.yml"
 ALLOWLIST = ROOT / "imperative-contract-allowlist.yaml"
-CORE_SHA_PREFIX = "031148215"
+CORE_REF = "dev-20261018024445-b6ee996befa1"
+CORE_HOOK_SHA = "031148215620031436cba30619bbae67c0bb38ad"
 CORE_USES = "OmniNode-ai/omnibase_core/.github/workflows/imperative-contract-guard.yml"
 RECORDED_PATHS = [
     "omnimarket/nodes/node_ab_compare_reducer/handlers/handler_ab_compare_reducer.py",
@@ -277,16 +278,16 @@ def _core(*args: str, stdin: str | None = None) -> subprocess.CompletedProcess[s
     )
 
 
-def _caller_sha() -> str:
+def _caller_ref() -> str:
     jobs = _mapping(CALLER)["jobs"]
     assert isinstance(jobs, dict)
     uses = jobs["imperative-contract-guard"]["uses"]
     assert isinstance(uses, str)
-    repository, sha = uses.split("@")
+    repository, ref = uses.split("@")
     assert repository == CORE_USES
-    assert re.fullmatch(r"[0-9a-f]{40}", sha)
-    assert sha.startswith(CORE_SHA_PREFIX)
-    return sha
+    assert re.fullmatch(r"dev-\d{14}-[0-9a-f]{12}", ref)
+    assert ref == CORE_REF
+    return ref
 
 
 def test_caller_uses_core_and_keeps_the_job_and_context() -> None:
@@ -296,7 +297,7 @@ def test_caller_uses_core_and_keeps_the_job_and_context() -> None:
     assert isinstance(jobs, dict)
     assert set(jobs) == {"imperative-contract-guard"}
     job = jobs["imperative-contract-guard"]
-    assert job["uses"] == f"{CORE_USES}@{_caller_sha()}"
+    assert job["uses"] == f"{CORE_USES}@{_caller_ref()}"
     assert job["with"] == {"allowlist-path": ALLOWLIST.name}
     assert workflow["permissions"] == {"contents": "read"}
     for path in WORKFLOWS.iterdir():
@@ -319,7 +320,8 @@ def test_canonical_shape_hook_uses_the_exemption_commit_and_ci_a_dev_merge_tag()
         if any(hook["id"] == "canonical-file-shape" for hook in repo["hooks"])
     ]
     assert hook_repo["repo"] == "https://github.com/OmniNode-ai/omnibase_core"
-    assert hook_repo["rev"] == _caller_sha()
+    # The hook retains its listed SHA exception; the caller uses a dev-merge tag.
+    assert hook_repo["rev"] in {CORE_HOOK_SHA, _caller_ref()}
     jobs = _mapping(WORKFLOWS / "ci.yml")["jobs"]
     assert isinstance(jobs, dict)
     # OMN-21331: CI reads core through a dev-merge tag, never a commit sha. The

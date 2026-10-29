@@ -53,7 +53,7 @@ jobs:
   # EXPECTED_EXTERNAL_CONTEXTS registers and the prefix the advisory-job gate
   # matches a called workflow's job by.
   delegation-health-check:
-    uses: OmniNode-ai/omnibase_infra/.github/workflows/delegation-health-reusable.yml@5fafcddd76995a24c65f62f13b0b5a805798a0cf
+    uses: OmniNode-ai/omnibase_infra/.github/workflows/delegation-health-reusable.yml@dev-20261016190557-eba666a96202
     with:
       repo_key: omnimarket
     secrets:
