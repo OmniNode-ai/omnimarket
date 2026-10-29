@@ -114,8 +114,10 @@ async def test_real_postgres_writer_types_replay_late_and_stale_siblings(
                 name,
                 getattr(writer_module, name).replace("public.", f"{schema}."),
             )
-        writer = writer_module.LocalEnvironmentProjectionWriter()
-        monkeypatch.setattr(writer, "_db", SimpleNamespace(pool=pool))
+        writer = writer_module.HandlerLocalEnvironmentProjectionRunner()
+        monkeypatch.setattr(
+            writer, "_db", SimpleNamespace(pool=pool, fetchval=pool.fetchval)
+        )
         monkeypatch.setattr(writer, "publish_snapshot_delta", capture)
         topic = writer.subscribe_topics[0]
         meta = MessageMeta(partition=0, offset=7, fallback_id="proof", topic=topic)
