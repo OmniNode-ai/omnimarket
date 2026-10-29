@@ -15,6 +15,7 @@ the contract's ``published_events``.
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import Literal
 from uuid import UUID, uuid4, uuid5
 
@@ -24,11 +25,15 @@ from omnimarket.models.pr_handoff import (
     ModelPrHandoffAccepted,
     ModelPrHandoffFailed,
     ModelPrHandoffHandedOff,
+    ModelPrHandoffLandingScopeReading,
     ModelPrHandoffLedgerAppendCommand,
 )
 from omnimarket.nodes.node_pr_handoff_decision_compute.handlers.handler_pr_handoff_decision import (
     HandlerPrHandoffDecision,
     invalid_request_reason,
+)
+from omnimarket.nodes.node_pr_handoff_orchestrator.landing_scope import (
+    read_landing_scope,
 )
 from omnimarket.nodes.node_pr_handoff_orchestrator.models.model_pr_handoff_workflow_row import (
     ModelPrHandoffWorkflowRow,
@@ -65,10 +70,15 @@ class HandlerPrHandoffOrchestrator:
         decider: ProtocolPrHandoffDecider | None = None,
         holds: ProtocolPrHandoffHoldReader | None = None,
         store: ProtocolPrHandoffRowStore | None = None,
+        landing_scope: ModelPrHandoffLandingScopeReading | None = None,
+        environ: Mapping[str, str] | None = None,
     ) -> None:
+        scope = read_landing_scope(environ) if landing_scope is None else landing_scope
         self._ports = PrHandoffPorts(
             decider=decider if decider is not None else HandlerPrHandoffDecision(),
             holds=holds if holds is not None else NoLedgerHolds(),
+            landing_scope=scope.repos,
+            landing_scope_problem=scope.problem,
         )
         self._local_store: ProtocolPrHandoffRowStore = (
             store if store is not None else process_row_store()
