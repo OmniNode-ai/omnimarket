@@ -46,6 +46,9 @@ dod_evidence:
       grep -q 'rev: dev-20261029151319-6e0a5eee541a' .pre-commit-config.yaml;
       git diff --quiet origin/dev...HEAD -- .onex_ratchets/canonical_file_shape_baseline.txt
     cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_canonical_file_shape_burndown_omn21524.py -k committed_burndown -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21524-ac2-canary
   description: AC2 runs the published entry on throwaway git trees at the tag the committed config pins. A listed unbound handler passes (positive control), a new unbound handler is refused as handler_outside_node, and a burn-down line added for an existing refused file is refused as baseline-growth.
   source: manual
@@ -73,4 +76,7 @@ dod_evidence:
         test "$burn" = 0;
         test "$base" = 0;
       fi
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_canonical_file_shape_burndown_omn21524.py -k committed_burndown -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
