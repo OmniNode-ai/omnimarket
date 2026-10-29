@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# OMN-21494 AC3 canary data: which omnibase_core build the canary consumes and
+# which vocabulary it asks for. The tag is a dev-merge tag of omnibase_core that
+# carries the private-vocabulary resolution handler and its console script.
+core_repository: https://github.com/OmniNode-ai/omnibase_core
+core_dev_merge_tag: dev-20261029181443-2c8026a3fb63
+console_script: resolve-private-vocabulary
+vocabulary_name: public_repo_hygiene
+unset_setting: OMNI_HYGIENE_VOCAB_PATH
+config_root_setting: ONEX_WORKSPACE_CONFIG_ROOT
+config_root_relative_path: docs/workflows/_shared/public_repo_hygiene_vocabulary.yaml

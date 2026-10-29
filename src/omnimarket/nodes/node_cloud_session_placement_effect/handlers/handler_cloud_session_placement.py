@@ -12,7 +12,7 @@ from ..models import (
 )
 from . import cloud_accounts as acc
 from . import cloud_session as ses
-from .cloud_routing import cloud_refusal
+from .cloud_routing import cloud_refusal, placement_order
 
 
 class _ProbeNeededError(Exception):
@@ -135,6 +135,7 @@ class HandlerCloudSessionPlacement:
                     excluded_repos=r.excluded_repos,
                 ),
                 "lane_kind": ses.lane_kind(r.brief),
+                "order": placement_order(r.placement),
             }
         if action == "slots":
             consented = acc.consented_accounts(r.hosts)
