@@ -18,7 +18,12 @@ class ProtocolMorningLabWorkCaller(Protocol):
         self, window_seconds: float
     ) -> list[ModelHostCapacityAdvertisement]: ...
     def place(
-        self, *, need_tools: tuple[str, ...] = (), only_host: str | None = None
+        self,
+        *,
+        need_tools: tuple[str, ...] = (),
+        only_host: str | None = None,
+        repo: str = "",
+        kind: str = "other",
     ) -> ModelPlacement: ...
     async def dispatch(
         self, request: ModelLabWorkUnitRequest

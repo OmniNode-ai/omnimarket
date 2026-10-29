@@ -14,32 +14,40 @@ Rules, in order, per host (the newest advertisement of each host counts):
    bound (a clock anomaly), is stale. A stale host is never placed on, however
    idle it last looked.
 2. The host the caller named with ``only_host``, when it named one.
-3. The tools the unit needs.
-4. The load bar: load per core, counting the units the host is already
+3. **The host table** (OMN-17232): the host is a row of it, the row is not
+   ``available: false``, takes the unit's work kind and weight and has every
+   capability the unit needs (:mod:`omnimarket.nodes.node_lab_placement_compute`). An
+   advertisement alone admits nothing: a host the table refuses takes no unit
+   however idle it is.
+4. The tools the unit needs.
+5. The load bar: load per core, counting the units the host is already
    running, at most ``max_load_per_core``. The launching Mac is a pool member
    like any other and passes or fails the same bar (operator ruling
    2026-09-29: work may run on it when its load is low enough).
-5. Free memory at least ``min_free_bytes``.
-6. A free unit slot (``running_units < max_units``).
+6. Free memory at least ``min_free_bytes``, or the host row's own
+   ``min_free_gb`` when it declares one (an old light-duty host).
+7. A free unit slot (``running_units < max_units``).
 
-The eligible host with the lowest load per core plus its advertised
-``rank_penalty`` wins (the penalty ranks, it never bars); ties go to more free
+The eligible host with the lowest load per core divided by its measured
+``speed`` (host table, default from the rules), plus its advertised
+``rank_penalty``, wins (the penalty ranks, it never bars); ties go to more free
 memory, then the host name. When no host is eligible the decision is REFUSED
 with a reason that keeps "could not check" apart from "over capacity": no
 fresh advertisement at all is ``could_not_check``, fresh hosts that all fail a
 bar is ``over_capacity`` (or ``missing_tools`` when tools were the only
-reason). The two produce different operator instructions, so they are never
-conflated.
+reason, or ``host_table`` when the table refused every fresh host). The
+reasons produce different operator instructions, so they are never conflated.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime, timedelta
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
 
+from omnimarket.nodes.node_lab_placement_compute.models import ModelHostTableVerdict
 from omnimarket.nodes.node_lab_work_unit_effect.models import (
     ModelHostCapacityAdvertisement,
 )
@@ -57,6 +65,7 @@ class EnumRefusalReason(StrEnum):
     COULD_NOT_CHECK = "could_not_check"
     OVER_CAPACITY = "over_capacity"
     MISSING_TOOLS = "missing_tools"
+    HOST_TABLE = "host_table"
 
 
 class ModelHostVerdict(BaseModel):
@@ -111,6 +120,7 @@ def place(
     advertisements: Sequence[ModelHostCapacityAdvertisement],
     *,
     evaluated_at: datetime,
+    table_verdicts: Mapping[str, ModelHostTableVerdict],
     max_load_per_core: float = DEFAULT_MAX_LOAD_PER_CORE,
     min_free_bytes: int = DEFAULT_MIN_FREE_BYTES,
     need_tools: Iterable[str] = (),
@@ -121,10 +131,12 @@ def place(
     verdicts: list[ModelHostVerdict] = []
     eligible: list[ModelHostCapacityAdvertisement] = []
     fresh_seen = False
-    tools_only = True
+    tools_refused = False
+    capacity_refused = False
     for ad in newest_per_host(advertisements):
         age = (evaluated_at - ad.advertised_at).total_seconds()
         bound = timedelta(seconds=2 * ad.cadence_seconds).total_seconds()
+        table = table_verdicts.get(ad.host_name)
         reason = ""
         if age > bound or age < -bound:
             reason = f"stale ({age:.0f}s old, bound {bound:.0f}s)"
@@ -132,14 +144,28 @@ def place(
             reason = "not the requested host"
         else:
             fresh_seen = True
-            if not need <= set(ad.tools):
+            if table is None or not table.eligible:
+                reason = "host table: " + (
+                    table.reason if table else "the host table did not judge this host"
+                )
+            elif not need <= set(ad.tools):
+                tools_refused = True
                 reason = f"missing tools {sorted(need - set(ad.tools))}"
             else:
-                tools_only = False
+                bar = (
+                    int(table.min_free_gb * 1024**3)
+                    if table.min_free_gb is not None
+                    else min_free_bytes
+                )
+                capacity_refused = True
                 if ad.load_per_core > max_load_per_core:
                     reason = f"over the {max_load_per_core:.2f} load/core bar"
-                elif ad.mem_available_bytes < min_free_bytes:
-                    reason = "short of free memory"
+                elif ad.mem_available_bytes < bar:
+                    reason = "short of free memory" + (
+                        f" (this host's own bar is {bar / 1024**3:.1f}GB)"
+                        if table.min_free_gb is not None
+                        else ""
+                    )
                 elif ad.running_units >= ad.max_units:
                     reason = f"all {ad.max_units} unit slots busy"
         if not reason:
@@ -158,7 +184,7 @@ def place(
         best = min(
             eligible,
             key=lambda ad: (
-                ad.load_per_core + ad.rank_penalty,
+                ad.load_per_core / table_verdicts[ad.host_name].speed + ad.rank_penalty,
                 -ad.mem_available_bytes,
                 ad.host_name,
             ),
@@ -170,10 +196,12 @@ def place(
         )
     if not fresh_seen:
         refusal = EnumRefusalReason.COULD_NOT_CHECK
-    elif tools_only:
+    elif capacity_refused:
+        refusal = EnumRefusalReason.OVER_CAPACITY
+    elif tools_refused:
         refusal = EnumRefusalReason.MISSING_TOOLS
     else:
-        refusal = EnumRefusalReason.OVER_CAPACITY
+        refusal = EnumRefusalReason.HOST_TABLE
     return ModelPlacement(
         decision=EnumPlacementDecision.REFUSED, refusal=refusal, verdicts=verdicts
     )

@@ -1,0 +1,46 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-17232"
+title: "Lab placement reads the host table: an unavailable or incapable host takes no unit"
+summary: >-
+  Bus placement read only the pool hosts' capacity advertisements, so available: false in the lab host table kept a
+  host out of the ssh path alone. On 2026-10-29 a host marked unavailable ran seven or more units from other lanes,
+  one omnibase_core suite ending 128 failed on a CPU without AVX2. A new pure node, node_lab_placement_compute,
+  judges each advertising host against the host table for one unit (a row of the table, not available: false, takes
+  the unit's work kind and weight, has the capabilities the unit needs). A unit's weight and needs are contract data
+  of that node (omnibase_core and omnimarket units need avx2); a host row may carry its own memory bar (min_free_gb),
+  job_kinds, max_weight and a measured speed. Lab-work placement refuses on a table it cannot read. The omni lab-run
+  shim calls the same rule through onex lab-work judge.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn17232-unavailable"
+    statement: "A host the lab host table marks available: false, or does not list, is never placed on over the bus."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: placement refuses an advertising host the table marks unavailable -- falsifier: tests/unit/lab_work/test_lab_work_host_table.py places a unit on the unavailable host that advertises 80 idle cores"
+  - id: "req-omn17232-capabilities"
+    statement: "A unit's needs, read from the placement contract, are matched against the capabilities each host row declares."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: an avx2 unit (omnibase_core, omnimarket) is refused on a host row with avx2: false and placed on an avx2 host -- falsifier: the same test file places it on the no-avx2 host"
+      - id: "AC3"
+        statement: "AC3: a light unit is placed on the small laptop's row under its own min_free_gb bar and a standard unit is refused there -- falsifier: the same test file refuses the light unit at 5.2 GB free, or places the standard one"
+evidence_requirements:
+  - kind: "tests"
+    description: "The host table judgement, its contract rules and the bus path through onex lab-work run."
+    command: "uv run pytest tests/unit/lab_work -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn17232-host-table-gate"
+    description: "The unavailable-host, avx2 and light-unit-on-h106 behaviours pass through the real contract rules and the lab-work run command over the in-memory bus. Fails at the merge base, which has no host table judgement."
+    source: "manual"
+    binds_ac: ["AC1", "AC2", "AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/lab_work -q -p no:randomly"

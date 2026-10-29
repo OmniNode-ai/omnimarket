@@ -26,9 +26,10 @@ import contextlib
 import inspect
 import json
 import logging
+import os
 import time
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib import resources
@@ -44,6 +45,8 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolLabRunBus,
     event_type_for,
 )
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.handlers.overlay_keys import resolve_overlay_key
 from omnimarket.lab_work.placement import (
     DEFAULT_MAX_LOAD_PER_CORE,
     DEFAULT_MIN_FREE_BYTES,
@@ -51,6 +54,12 @@ from omnimarket.lab_work.placement import (
     ModelPlacement,
     place,
 )
+from omnimarket.models.overlay_keys import ModelLabHostRow
+from omnimarket.nodes.node_lab_placement_compute.handlers import (
+    HandlerLabPlacement,
+    HostTableError,
+)
+from omnimarket.nodes.node_lab_placement_compute.models import ModelLabPlacementRequest
 from omnimarket.nodes.node_lab_work_unit_effect.models import (
     EnumLabWorkUnitStatus,
     ModelHostCapacityAdvertisement,
@@ -131,6 +140,22 @@ class ProtocolAdvertiseHandler(Protocol):
     def handle(
         self, request: ModelHostCapacityProbeRequest
     ) -> ModelHostCapacityAdvertisement: ...
+
+
+def load_host_table(
+    environ: Mapping[str, str] | None = None,
+) -> tuple[ModelLabHostRow, ...]:
+    """The host rows: the file ``ONEX_LAB_RUN_HOSTS`` names, else the ``lab_hosts`` overlay.
+
+    Raises :class:`HostTableError` when neither supplies a valid table: placement then refuses
+    instead of admitting every host that advertises."""
+    try:
+        rows: tuple[ModelLabHostRow, ...] = resolve_overlay_key(
+            "lab_hosts.hosts", environ=os.environ if environ is None else environ
+        )
+    except NodeOverlayError as exc:
+        raise HostTableError(f"the lab host table could not be read: {exc}") from None
+    return rows
 
 
 def load_lab_work_topics(node: str = LAB_WORK_NODE) -> ModelLabWorkTopics:
@@ -493,8 +518,14 @@ class LabWorkCaller:
         topics: ModelLabWorkTopics | None = None,
         wait_slack_seconds: int = 300,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
+        host_table: Sequence[ModelLabHostRow] | None = None,
+        placement: HandlerLabPlacement | None = None,
     ) -> None:
         self._bus = bus
+        # The host table and the placement rules are read when the first unit is placed, so a
+        # caller that only listens (`hosts`) needs neither; an unreadable table refuses the unit.
+        self._host_table = host_table
+        self._placement = placement
         self._topics = topics or load_lab_work_topics()
         suffix = uuid.uuid4().hex[:12]
         base = derive_service_group_id("lab_work_client", service=GROUP_SERVICE)
@@ -570,10 +601,31 @@ class LabWorkCaller:
         min_free_bytes: int = DEFAULT_MIN_FREE_BYTES,
         need_tools: tuple[str, ...] = (),
         only_host: str | None = None,
+        repo: str = "",
+        kind: str = "other",
+        weight: str | None = None,
     ) -> ModelPlacement:
+        """Place one unit of ``repo`` and ``kind`` on a host the host table lets take it.
+
+        Raises :class:`HostTableError` when the table or the
+        rules cannot be read: nothing is placed on a guess."""
+        if self._host_table is None:
+            self._host_table = load_host_table()
+        if self._placement is None:
+            self._placement = HandlerLabPlacement()
+        judged = self._placement.handle(
+            ModelLabPlacementRequest(
+                repo=repo,
+                kind=kind,
+                weight=weight,
+                host_names=tuple(ad.host_name for ad in self._ads),
+                table=tuple(self._host_table),
+            )
+        )
         return place(
             self._ads,
             evaluated_at=self._now(),
+            table_verdicts=judged.by_host(),
             max_load_per_core=max_load_per_core,
             min_free_bytes=min_free_bytes,
             need_tools=need_tools,

@@ -40,6 +40,7 @@ from omnimarket.lab_work.bus import (
     DEFAULT_MAX_COMMAND_AGE_SECONDS,
     LabWorkCaller,
     LabWorkHost,
+    load_host_table,
 )
 from omnimarket.lab_work.placement import (
     DEFAULT_MAX_LOAD_PER_CORE,
@@ -47,6 +48,11 @@ from omnimarket.lab_work.placement import (
     EnumRefusalReason,
     newest_per_host,
 )
+from omnimarket.nodes.node_lab_placement_compute.handlers import (
+    HandlerLabPlacement,
+    HostTableError,
+)
+from omnimarket.nodes.node_lab_placement_compute.models import ModelLabPlacementRequest
 from omnimarket.nodes.node_lab_work_unit_effect import (
     DEFAULT_ALLOWED_EXECUTABLES,
     DEFAULT_ALLOWED_OWNERS,
@@ -283,6 +289,13 @@ def hosts_command(
 @click.option("--timeout", "timeout_seconds", type=int, default=1800, show_default=True)
 @click.option("--need", "need_tools", multiple=True, help="A tool the host must have.")
 @click.option(
+    "--weight",
+    default=None,
+    envvar="ONEX_LAB_WORK_WEIGHT",
+    help="The unit's weight (light, standard, heavy), judged against each host's "
+    "max_weight in the host table; default: the contract's weight for --kind.",
+)
+@click.option(
     "--host", "only_host", default=None, help="Only this pool host (bar still applies)."
 )
 @click.option("--max-load-per-core", type=float, default=DEFAULT_MAX_LOAD_PER_CORE)
@@ -303,6 +316,7 @@ def run_command(
     kind: str,
     timeout_seconds: int,
     need_tools: tuple[str, ...],
+    weight: str | None,
     only_host: str | None,
     max_load_per_core: float,
     min_free_gb: float,
@@ -329,12 +343,19 @@ def run_command(
             await caller.start()
             try:
                 await caller.collect(window or 2 * caller.topics.cadence_seconds + 2)
-                placement = caller.place(
-                    max_load_per_core=max_load_per_core,
-                    min_free_bytes=int(min_free_gb * 1024**3),
-                    need_tools=need_tools,
-                    only_host=only_host,
-                )
+                try:
+                    placement = caller.place(
+                        max_load_per_core=max_load_per_core,
+                        min_free_bytes=int(min_free_gb * 1024**3),
+                        need_tools=need_tools,
+                        only_host=only_host,
+                        repo=repo,
+                        kind=kind,
+                        weight=weight,
+                    )
+                except HostTableError as exc:
+                    click.echo(f"lab-work: {exc}; not running it anywhere", err=True)
+                    return EXIT_NO_ADVERTISEMENT
                 click.echo(placement.describe(), err=True)
                 if placement.decision is EnumPlacementDecision.REFUSED:
                     click.echo(
@@ -384,6 +405,55 @@ def run_command(
     sys.exit(code)
 
 
+@lab_work_group.command("judge")
+@click.option("--repo", required=True, help="owner/name or the bare repository name.")
+@click.option(
+    "--kind",
+    type=click.Choice(["test", "build", "lint", "code_draft", "other"]),
+    default="other",
+    show_default=True,
+)
+@click.option("--weight", default=None, envvar="ONEX_LAB_WORK_WEIGHT")
+@click.option(
+    "--host-name",
+    "host_names",
+    multiple=True,
+    required=True,
+    help="A pool host to judge (repeat for each).",
+)
+def judge_command(
+    repo: str, kind: str, weight: str | None, host_names: tuple[str, ...]
+) -> None:
+    """Print the host table's verdict on each named host for one unit, as JSON.
+
+    This is the one rule for what a host may take (``available``, work kind, weight, capabilities
+    such as AVX2, the host's own memory bar and speed); the bus placement applies it itself and
+    the plugin's lab-run shim applies it to the hosts it ranks. Exits 69 when the host
+    table or the placement rules cannot be read, never a guess."""
+    try:
+        judged = HandlerLabPlacement().handle(
+            ModelLabPlacementRequest(
+                repo=repo,
+                kind=kind,
+                weight=weight,
+                host_names=host_names,
+                table=load_host_table(),
+            )
+        )
+    except HostTableError as exc:
+        click.echo(f"lab-work: {exc}", err=True)
+        sys.exit(EXIT_NO_ADVERTISEMENT)
+    click.echo(
+        json.dumps(
+            {
+                "unit": judged.unit.model_dump(mode="json"),
+                "verdicts": [v.model_dump(mode="json") for v in judged.verdicts],
+            },
+            indent=2,
+        )
+    )
+
+
 def main() -> None:
     """``python -m omnimarket.lab_work.cli``: the same group without the onex CLI."""
     lab_work_group()
@@ -399,6 +469,7 @@ __all__ = [
     "EXIT_NO_HOST",
     "EXIT_STUCK_WORKER",
     "hosts_command",
+    "judge_command",
     "lab_work_group",
     "run_command",
     "serve_command",

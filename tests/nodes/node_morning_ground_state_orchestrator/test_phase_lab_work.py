@@ -112,7 +112,12 @@ class Caller:
         return []
 
     def place(
-        self, *, need_tools: tuple[str, ...] = (), only_host: str | None = None
+        self,
+        *,
+        need_tools: tuple[str, ...] = (),
+        only_host: str | None = None,
+        repo: str = "",
+        kind: str = "other",
     ) -> ModelPlacement:
         self.needs.append(need_tools)
         if not self.placed:
