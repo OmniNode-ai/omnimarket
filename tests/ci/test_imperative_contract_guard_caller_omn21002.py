@@ -26,7 +26,6 @@ WORKFLOWS = ROOT / ".github/workflows"
 CALLER = WORKFLOWS / "imperative-contract-guard.yml"
 ALLOWLIST = ROOT / "imperative-contract-allowlist.yaml"
 CORE_REF = "dev-20261018024445-b6ee996befa1"
-CORE_HOOK_SHA = "031148215620031436cba30619bbae67c0bb38ad"
 CORE_USES = "OmniNode-ai/omnibase_core/.github/workflows/imperative-contract-guard.yml"
 RECORDED_PATHS = [
     "omnimarket/nodes/node_ab_compare_reducer/handlers/handler_ab_compare_reducer.py",
@@ -320,8 +319,12 @@ def test_canonical_shape_hook_uses_the_exemption_commit_and_ci_a_dev_merge_tag()
         if any(hook["id"] == "canonical-file-shape" for hook in repo["hooks"])
     ]
     assert hook_repo["repo"] == "https://github.com/OmniNode-ai/omnibase_core"
-    # The hook retains its listed SHA exception; the caller uses a dev-merge tag.
-    assert hook_repo["rev"] in {CORE_HOOK_SHA, _caller_ref()}
+    # OMN-21500: the hook rides the core validator block at a dev-merge tag whose
+    # commit descends from the exemption commit, so the ratchet's own core version
+    # knows the model-config baseline declaration.
+    assert hook_repo["rev"] == _caller_ref() or re.fullmatch(
+        r"dev-[0-9]{14}-[0-9a-f]{12}", str(hook_repo["rev"])
+    ), hook_repo["rev"]
     jobs = _mapping(WORKFLOWS / "ci.yml")["jobs"]
     assert isinstance(jobs, dict)
     # OMN-21331: CI reads core through a dev-merge tag, never a commit sha. The

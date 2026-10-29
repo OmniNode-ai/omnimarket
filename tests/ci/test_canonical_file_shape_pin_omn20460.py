@@ -17,6 +17,7 @@ PRECOMMIT_CONFIG = REPO_ROOT / ".pre-commit-config.yaml"
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 
 NEW_CORE_REV = "031148215620031436cba30619bbae67c0bb38ad"
+CANONICAL_FILE_SHAPE_REV = "dev-20261023085853-9d65b648bff5"
 OLD_CORE_REV = "7f20b97895f01996c5858dde385ba8991c06e708"
 CORE_REPO_SUFFIX = "omnibase_core"
 FILE_SHAPE_HOOK_ID = "canonical-file-shape"
@@ -51,7 +52,7 @@ def _core_hook_revs() -> list[str]:
 
 
 def test_precommit_core_hook_rev_is_new_rev() -> None:
-    assert _core_hook_revs() == [NEW_CORE_REV]
+    assert _core_hook_revs() == [CANONICAL_FILE_SHAPE_REV]
 
 
 def test_ci_core_pins_are_all_new_rev() -> None:

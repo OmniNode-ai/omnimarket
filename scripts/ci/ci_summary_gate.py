@@ -332,6 +332,9 @@ STRICT_GATE_JOBS: tuple[str, ...] = (
     # OMN-19998: public-repository runner placement; unconditional in ci.yml
     # (no needs/if), so a skip or absence fails closed here.
     "Public Runner Placement (OMN-19998)",  # public-runner-placement
+    # OMN-21500: omnibase_core's generic validators as CI hook runs; unconditional
+    # in ci.yml (no needs/if), so a skip or absence fails closed here.
+    "Core Validators (OMN-21500)",  # core-validators
     # OMN-20844: the customer-chooses-the-OpenRouter-model tests, named so a
     # change to the generic test job's selection cannot drop them. Registered
     # on the same terms as the rows above; unconditional in ci.yml.
