@@ -30,6 +30,9 @@ import yaml
 from omnimarket.handlers.handler_local_environment_judgement import (
     load_local_alert_rules,
 )
+from omnimarket.handlers.handler_projection_runtime_writer import (
+    RuntimeProjectionWriter,
+)
 from omnimarket.models.model_local_environment_status import (
     ModelLocalEnvironmentStatus,
 )
@@ -168,10 +171,10 @@ def _wire_row(row: dict[str, Any]) -> dict[str, Any]:
 class HandlerLocalEnvironmentProjectionRunner(BaseProjectionRunner):
     """Store each report's planned rows under (tenant, mode, service) and publish them.
 
-    The runtime dispatches ``LocalEnvironmentProjectionWriter`` in
-    ``handler_runtime_writer``, which applies this runner once per delivery with
-    one pool per topology binding: its tables span the tenant and internal
-    schemas, and one pool is one login role.
+    The runtime dispatches ``LocalEnvironmentProjectionWriter`` below, which
+    applies this runner once per delivery with one pool per topology binding:
+    its tables span the tenant and internal schemas, and one pool is one login
+    role.
     """
 
     def __init__(self, contract_path: Path | None = None) -> None:
@@ -289,8 +292,15 @@ class HandlerLocalEnvironmentProjectionRunner(BaseProjectionRunner):
         return written
 
 
+class LocalEnvironmentProjectionWriter(RuntimeProjectionWriter):
+    """Runtime dispatch entrypoint: apply the runner once for each delivery."""
+
+    runner_type = HandlerLocalEnvironmentProjectionRunner
+
+
 __all__ = [
     "HandlerLocalEnvironmentProjectionRunner",
+    "LocalEnvironmentProjectionWriter",
     "confirm_registry_tenant",
     "require_tenant_uuid",
 ]

@@ -42,8 +42,6 @@ import yaml
 
 from omnimarket.nodes.node_projection_local_environment.handlers.handler_local_environment_writer import (
     HandlerLocalEnvironmentProjectionRunner,
-)
-from omnimarket.nodes.node_projection_local_environment.handlers.handler_runtime_writer import (
     LocalEnvironmentProjectionWriter,
 )
 from omnimarket.projection.discovery import load_projection_exposures_from_contract

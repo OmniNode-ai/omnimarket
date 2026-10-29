@@ -24,8 +24,8 @@ handler_routing:
     - operation: local_environment_projection_writer
       handler:
         name: LocalEnvironmentProjectionWriter
-        module: omnimarket.nodes.node_projection_local_environment.handlers.handler_runtime_writer
-      handler_module: omnimarket.nodes.node_projection_local_environment.handlers.handler_runtime_writer
+        module: omnimarket.nodes.node_projection_local_environment.handlers.handler_local_environment_writer
+      handler_module: omnimarket.nodes.node_projection_local_environment.handlers.handler_local_environment_writer
 terminal_event: onex.evt.omnimarket.projection-local-environment-applied.v1
 golden_path:
   - "Validate a report that names its tenant uuid, its mode and its service"
