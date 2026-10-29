@@ -158,7 +158,7 @@ def resolve_lab_hosts_table(
     pinned = env.get(LAB_HOSTS_FILE_ENV, "").strip()
     if pinned:
         return _table_from_file(spec, pinned)
-    document: ModelLabHostsTable = load_structured_overlay(
+    document = load_structured_overlay(
         spec.overlay_id,
         OVERLAY_DOCUMENT_MODELS[spec.overlay_id],
         env,
@@ -166,6 +166,10 @@ def resolve_lab_hosts_table(
             spec.overlay_id, spec.key, spec.env_vars
         ),
     )
+    if not isinstance(document, ModelLabHostsTable):
+        raise NodeOverlayError(
+            f"{spec.key}: the {spec.overlay_id} overlay is not a host table"
+        )
     return document
 
 
