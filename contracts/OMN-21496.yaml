@@ -59,22 +59,33 @@ dod_evidence:
     check_value: uv run pytest tests/ci/test_check_only_hooks_omn21496.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21496-ac2-pre-commit-run
-  description: AC2 runs the pre-commit hooks of the changed files at the final head; the consumed core hooks and the check-only ruff hooks pass.
+  description: AC2 runs the consumed commit-hygiene hook on the changed files as a positive control. The canary item separately stages invalid files and an AI co-author trailer and verifies refusal without writes. This focused command fits the hosted verifier check budget.
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: command
-    check_value: uv run pre-commit run --files .pre-commit-config.yaml .github/workflows/ci.yml contracts/OMN-21496.yaml tests/ci/test_check_only_hooks_omn21496.py
+    check_value: uv run pre-commit run commit-hygiene --files .pre-commit-config.yaml .github/workflows/ci.yml contracts/OMN-21496.yaml tests/ci/test_check_only_hooks_omn21496.py
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21496-deploy-config
-  description: 'Hosted deploy check: the pre-commit config at the checked-out commit consumes the core hook ids at a dev-merge tag and no longer declares the removed hooks. Needs no account, lab host or runtime.'
+  description: 'Hosted deploy readback: fetch the hook config and build-loop source from the public repository at the exact checked-out commit. Refuse a config without the consumed core hooks, or a build loop that still pre-runs the removed ruff hooks. The direct ruff formatter and fixer must remain.'
   source: manual
   checks:
   - check_type: command
     check_value: |
       set -eu;
-      grep -q 'rev: dev-20261029044430-3f33be0d5364' .pre-commit-config.yaml;
-      grep -q 'id: commit-hygiene-message' .pre-commit-config.yaml;
-      ! grep -qE 'id: (end-of-file-fixer|strip-ai-coauthor-trailer)' .pre-commit-config.yaml
-    cwd: .
+      readback_dir=$(mktemp -d);
+      trap 'rm -rf "$readback_dir"' EXIT;
+      head_sha=$(git rev-parse HEAD);
+      curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$head_sha/.pre-commit-config.yaml" -o "$readback_dir/hooks.yaml";
+      curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$head_sha/src/omnimarket/nodes/node_build_loop_orchestrator/assemble_live.py" -o "$readback_dir/assemble_live.py";
+      grep -q 'rev: dev-20261029044430-3f33be0d5364' "$readback_dir/hooks.yaml";
+      grep -q 'id: commit-hygiene-message' "$readback_dir/hooks.yaml";
+      ! grep -qE 'id: (end-of-file-fixer|strip-ai-coauthor-trailer)' "$readback_dir/hooks.yaml" || exit 1;
+      grep -q 'class LiveBuildDispatchHandler:' "$readback_dir/assemble_live.py";
+      grep -Fq 'ruff_bin, "format"' "$readback_dir/assemble_live.py";
+      grep -Fq 'ruff_bin, "check", "--fix"' "$readback_dir/assemble_live.py";
+      ! grep -q 'pre_commit_bin' "$readback_dir/assemble_live.py";
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
