@@ -11,22 +11,11 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from omnimarket.models.overlay_keys import ModelLabHostRow
+from omnimarket.models.overlay_keys import ModelLabHostRow, ModelUnitNeedsRule
 
 #: The boolean host-table columns a unit's ``needs`` may name. Each is a field of
 #: ``ModelLabHostRow``; a rule naming anything else is refused when the rules load.
 CAPABILITY_COLUMNS: frozenset[str] = frozenset({"avx2"})
-
-
-class ModelUnitNeedsRule(BaseModel):
-    """A unit of ``repo`` (optionally of one ``kind``) needs these host capabilities."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    repo: str = Field(..., min_length=1)
-    kind: str | None = None
-    needs: tuple[str, ...] = Field(..., min_length=1)
-    reason: str = Field(..., min_length=1)
 
 
 class ModelHostDefaults(BaseModel):
@@ -49,6 +38,16 @@ class ModelPlacementRules(BaseModel):
     host_defaults: ModelHostDefaults
     unit_needs: tuple[ModelUnitNeedsRule, ...] = ()
 
+    def check_needs(self, rules: tuple[ModelUnitNeedsRule, ...]) -> None:
+        """Raise ``ValueError`` for a rule naming anything that is not a host capability column."""
+        for rule in rules:
+            unknown = sorted(set(rule.needs) - CAPABILITY_COLUMNS)
+            if unknown:
+                raise ValueError(
+                    f"unit needs for {rule.repo}: {unknown} are not host "
+                    f"capability columns {sorted(CAPABILITY_COLUMNS)}"
+                )
+
     @model_validator(mode="after")
     def _consistent(self) -> ModelPlacementRules:
         if len(set(self.weights)) != len(self.weights):
@@ -65,13 +64,7 @@ class ModelPlacementRules(BaseModel):
                     f"placement.weight_by_kind[{kind}] {weight!r} is not one of "
                     f"{list(self.weights)}"
                 )
-        for rule in self.unit_needs:
-            unknown = sorted(set(rule.needs) - CAPABILITY_COLUMNS)
-            if unknown:
-                raise ValueError(
-                    f"placement.unit_needs for {rule.repo}: {unknown} are not host "
-                    f"capability columns {sorted(CAPABILITY_COLUMNS)}"
-                )
+        self.check_needs(self.unit_needs)
         return self
 
     def weight_rank(self, weight: str) -> int:
@@ -116,6 +109,8 @@ class ModelLabPlacementRequest(BaseModel):
     weight: str | None = None
     host_names: tuple[str, ...]
     table: tuple[ModelLabHostRow, ...]
+    #: What units of named repositories need of a host, from the table document; added to the contract's.
+    unit_needs: tuple[ModelUnitNeedsRule, ...] = ()
 
 
 class ModelLabPlacementResult(BaseModel):

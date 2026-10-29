@@ -52,7 +52,9 @@ OVERLAY_DOCUMENT_MODELS: Mapping[str, type[BaseModel]] = {
 }
 
 # Fields of a document that are not overlay keys: the table shape carries them.
-_NON_KEY_FIELDS: Mapping[str, frozenset[str]] = {"lab_hosts": frozenset({"bus_lane"})}
+_NON_KEY_FIELDS: Mapping[str, frozenset[str]] = {
+    "lab_hosts": frozenset({"bus_lane", "unit_needs"})
+}
 
 _KEY_ENV_VARS: Mapping[str, tuple[str, ...]] = {
     "lab_hosts.hosts": (LAB_HOSTS_FILE_ENV,),
@@ -117,7 +119,7 @@ def _validate_explicit(spec: OverlayKeySpec, value: object) -> Any:
     return checked
 
 
-def _hosts_from_file(spec: OverlayKeySpec, path_text: str) -> Any:
+def _table_from_file(spec: OverlayKeySpec, path_text: str) -> ModelLabHostsTable:
     path = Path(path_text)
     try:
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -127,7 +129,7 @@ def _hosts_from_file(spec: OverlayKeySpec, path_text: str) -> Any:
             f"({type(exc).__name__})"
         ) from None
     try:
-        return ModelLabHostsTable.model_validate(raw).hosts
+        return ModelLabHostsTable.model_validate(raw)
     except ValidationError as exc:
         fields = sorted(
             {
@@ -138,6 +140,33 @@ def _hosts_from_file(spec: OverlayKeySpec, path_text: str) -> Any:
         raise NodeOverlayError(
             f"{spec.key}: {LAB_HOSTS_FILE_ENV} file {path} is invalid: fields {fields}"
         ) from None
+
+
+def _hosts_from_file(spec: OverlayKeySpec, path_text: str) -> Any:
+    return _table_from_file(spec, path_text).hosts
+
+
+def resolve_lab_hosts_table(
+    environ: Mapping[str, str] | None = None,
+) -> ModelLabHostsTable:
+    """The whole lab host table: the file ``ONEX_LAB_RUN_HOSTS`` names, else the ``lab_hosts`` overlay.
+
+    Hosts come with the table's ``unit_needs`` (what units of named repositories need of a host), which
+    are not overlay keys. Raises :class:`NodeOverlayError` when neither supplies a table."""
+    env = os.environ if environ is None else environ
+    spec = overlay_key_spec("lab_hosts.hosts")
+    pinned = env.get(LAB_HOSTS_FILE_ENV, "").strip()
+    if pinned:
+        return _table_from_file(spec, pinned)
+    document: ModelLabHostsTable = load_structured_overlay(
+        spec.overlay_id,
+        OVERLAY_DOCUMENT_MODELS[spec.overlay_id],
+        env,
+        missing_message=not_configured_message(
+            spec.overlay_id, spec.key, spec.env_vars
+        ),
+    )
+    return document
 
 
 def resolve_overlay_key(

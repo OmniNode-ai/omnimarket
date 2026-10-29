@@ -4,8 +4,9 @@
 
 Placement used to read only the capacity advertisements, so ``available: false`` in the host
 table kept a host out of the ssh path alone: on 2026-10-29 a host marked unavailable ran seven or
-more units from other lanes over the bus, one omnibase_core suite ending 128 failed on a CPU
-without AVX2. A host now takes a unit only when the table says so:
+more units from other lanes over the bus, on a CPU without AVX2 (an omnibase_core suite among them
+ended 128 failed; a census of fifteen repositories on that host found one, a private repository, whose unit suite
+dies of the missing instruction set, in a wheel). A host now takes a unit only when the table says so:
 
 1. it is a row of the table (an advertising host the table does not know takes nothing);
 2. the row is not ``available: false``;
@@ -13,8 +14,9 @@ without AVX2. A host now takes a unit only when the table says so:
 4. the unit's weight is no heavier than the row's ``max_weight``;
 5. the row has every capability the unit needs (``avx2``, a boolean column).
 
-A unit's weight and needs come from the rules in this node's ``contract.yaml`` (``placement``),
-keyed by the repository name and the work kind. The handler is pure: the table, the unit and
+A unit's weight and needs come from the rules in this node's ``contract.yaml`` (``placement``)
+and from the table document's ``unit_needs`` (a private repository's rule is data of the private
+table, never of this public contract), keyed by the repository name and the work kind. The handler is pure: the table, the unit and
 the hosts arrive in the request, and the rules are the contract's.
 """
 
@@ -26,7 +28,7 @@ from typing import Literal
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.models.overlay_keys import ModelLabHostRow
+from omnimarket.models.overlay_keys import ModelLabHostRow, ModelUnitNeedsRule
 from omnimarket.nodes.node_lab_placement_compute.models.model_lab_placement import (
     ModelHostTableVerdict,
     ModelLabPlacementRequest,
@@ -80,9 +82,15 @@ class HandlerLabPlacement:
         return self._rules
 
     def unit_profile(
-        self, *, repo: str, kind: str, weight: str | None
+        self,
+        *,
+        repo: str,
+        kind: str,
+        weight: str | None,
+        table_needs: tuple[ModelUnitNeedsRule, ...] = (),
     ) -> ModelUnitProfile:
-        """The unit's weight (declared, else the rules' weight for its kind) and the needs its repo carries."""
+        """The unit's weight (declared, else the rules' weight for its kind) and the needs its repo carries,
+        from the contract's rules and from the table document's ``unit_needs`` (private repositories)."""
         rules = self._rules
         name = repo_name(repo)
         chosen = (
@@ -92,8 +100,12 @@ class HandlerLabPlacement:
             rules.weight_rank(chosen)
         except ValueError as exc:
             raise HostTableError(str(exc)) from None
+        try:
+            rules.check_needs(table_needs)
+        except ValueError as exc:
+            raise HostTableError(str(exc)) from None
         needs: dict[str, str] = {}
-        for rule in rules.unit_needs:
+        for rule in (*rules.unit_needs, *table_needs):
             if rule.repo == name and rule.kind in (None, kind):
                 for need in rule.needs:
                     needs.setdefault(need, f"{need}: {rule.reason}")
@@ -161,7 +173,10 @@ class HandlerLabPlacement:
 
     def handle(self, request: ModelLabPlacementRequest) -> ModelLabPlacementResult:
         unit = self.unit_profile(
-            repo=request.repo, kind=request.kind, weight=request.weight
+            repo=request.repo,
+            kind=request.kind,
+            weight=request.weight,
+            table_needs=request.unit_needs,
         )
         rows = {row.name: row for row in request.table}
         return ModelLabPlacementResult(

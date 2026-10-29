@@ -5,10 +5,10 @@ title: "Lab placement reads the host table: an unavailable or incapable host tak
 summary: >-
   Bus placement read only the pool hosts' capacity advertisements, so available: false in the lab host table kept a
   host out of the ssh path alone. On 2026-10-29 a host marked unavailable ran seven or more units from other lanes,
-  one omnibase_core suite ending 128 failed on a CPU without AVX2. A new pure node, node_lab_placement_compute,
+  one omnibase_core suite ending 128 failed (cause not read). A census of fifteen repositories on that Ivy Bridge host (no AVX2) found one (a private repository) whose unit suite dies of the missing instruction set, in a wheel; its rule is data of the private host table. A new pure node, node_lab_placement_compute,
   judges each advertising host against the host table for one unit (a row of the table, not available: false, takes
   the unit's work kind and weight, has the capabilities the unit needs). A unit's weight and needs are contract data
-  of that node (omnibase_core and omnimarket units need avx2); a host row may carry its own memory bar (min_free_gb),
+  of that node and of the host table document (a unit of a repository that needs avx2 is not placed on a row with avx2: false); a host row may carry its own memory bar (min_free_gb),
   job_kinds, max_weight and a measured speed. Lab-work placement refuses on a table it cannot read. The omni lab-run
   shim calls the same rule through onex lab-work judge.
 is_seam_ticket: false
@@ -25,7 +25,7 @@ requirements:
     statement: "A unit's needs, read from the placement contract, are matched against the capabilities each host row declares."
     acceptance:
       - id: "AC2"
-        statement: "AC2: an avx2 unit (omnibase_core, omnimarket) is refused on a host row with avx2: false and placed on an avx2 host -- falsifier: the same test file places it on the no-avx2 host"
+        statement: "AC2: an avx2 unit (a repository named by the table's unit_needs) is refused on a host row with avx2: false and placed on an avx2 host -- falsifier: the same test file places it on the no-avx2 host"
       - id: "AC3"
         statement: "AC3: a light unit is placed on the small laptop's row under its own min_free_gb bar and a standard unit is refused there -- falsifier: the same test file refuses the light unit at 5.2 GB free, or places the standard one"
 evidence_requirements:

@@ -54,7 +54,9 @@ replay:
 #   host_defaults      the meaning of a host row that omits the column. `avx2: true` because every
 #                      pool host but the one that declares `avx2: false` reads AVX2; `speed` is
 #                      relative to h101 (1.0).
-#   unit_needs         a unit of `repo` (the repository name, without its owner; `kind` narrows it)
+#   unit_needs         the rules that name PUBLIC repositories (none today: the census of 2026-10-29 found no public
+#                      repository whose unit suite needs a capability a pool host lacks); a private repository's rule is
+#                      the table document's own `unit_needs`, beside the host rows. A unit of `repo` (the repository name, without its owner; `kind` narrows it)
 #                      needs each named host capability. A need is the name of a boolean host
 #                      column; a host whose column is false takes no such unit.
 placement:
@@ -69,13 +71,7 @@ placement:
     avx2: true
     max_weight: heavy
     speed: 1.0
-  unit_needs:
-    - repo: omnibase_core
-      needs: [avx2]
-      reason: "its dependencies include wheels built with AVX2 (pedalboard killed a unit with exit 132 on a host without it, and an omnibase_core suite ended 128 failed there on 2026-10-29)"
-    - repo: omnimarket
-      needs: [avx2]
-      reason: "its dependencies include wheels built with AVX2 (pedalboard killed a unit with exit 132 on a host without it, 2026-10-29)"
+  unit_needs: []
 metadata:
   transport_type: local
   description: "Judge which lab pool hosts the lab host table lets take one work unit: a host marked unavailable takes none, and the unit's weight, work kind and capability needs (AVX2) are matched against the columns the host row declares, with each host's own memory bar and speed returned; the unit's needs are contract data."
