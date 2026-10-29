@@ -1,0 +1,22 @@
+schema_version: '1.0.0'
+ticket_id: OMN-17232
+title: 'Register the HP lab host in the pre-push host table'
+summary: 'Add the hp-gen8 row to scripts/hooks/prepush_hosts.tsv so the pre-push guard accepts that host identity.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: tests
+    description: Host table pins include the hp-gen8 row and the guard reads it
+    command: uv run pytest tests/scripts/test_prepush_host_table.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-001
+    description: The host table test pins the hp-gen8 row and the conftest guard designates it
+    source: generated
+    checks:
+      - check_type: command
+        check_value: 'uv run pytest tests/scripts/test_prepush_host_table.py -q'
