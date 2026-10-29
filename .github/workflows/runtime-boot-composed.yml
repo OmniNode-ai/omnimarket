@@ -307,12 +307,23 @@ jobs:
 
           path = Path("market/src/omnimarket/nodes/node_delegate_skill_orchestrator/contract.yaml")
           contract = yaml.safe_load(path.read_text(encoding="utf-8"))
-          topic = (contract.get("runtime_dispatch") or {}).get("command_topic")
-          if not isinstance(topic, str) or not topic.strip() or any(c.isspace() for c in topic):
-              raise SystemExit(f"::error::{path} must declare runtime_dispatch.command_topic")
+          dispatch = contract.get("runtime_dispatch") or {}
+          terminals = dispatch.get("terminal_events") or {}
+          topic = dispatch.get("command_topic")
+          completed = terminals.get("success")
+          failed = terminals.get("failure")
+          for key, value in (
+              ("runtime_dispatch.command_topic", topic),
+              ("runtime_dispatch.terminal_events.success", completed),
+              ("runtime_dispatch.terminal_events.failure", failed),
+          ):
+              if not isinstance(value, str) or not value.strip() or any(c.isspace() for c in value):
+                  raise SystemExit(f"::error::{path} must declare {key}")
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
               env.write(f"DELEGATE_COMMAND_TOPIC={topic}\n")
-          print(f"delegate-skill command topic from contract: {topic}")
+              env.write(f"DELEGATE_COMPLETED_TOPIC={completed}\n")
+              env.write(f"DELEGATE_FAILED_TOPIC={failed}\n")
+          print(f"delegate-skill topics from contract: command {topic}, completed {completed}, failed {failed}")
           PYTHON
 
       - name: Delegate-skill command topic has a live consumer group
@@ -324,17 +335,33 @@ jobs:
           # consume.<version>.__t.<topic>), so the owner is read from the name
           # and its liveness from describe: a group with no member is not live.
           #
+          # OMN-18087 (omnibase_infra#5426): the runtime config declares
+          # boot_subscriptions.policy "in_use", so a contract whose topics hold
+          # no record at boot joins its group only when its first request
+          # arrives. On a fresh boot the command topic is empty, so the step
+          # sends one real request, asserts the group that request started, and
+          # then requires that request's own terminal: a group that joined but
+          # lost its first request fails here. The request is schema-valid (the
+          # kernel's own model checks the exact bytes first), marked synthetic,
+          # and asks for more time than the research task class allows, so the
+          # orchestrator answers with a typed refusal before dispatch and no
+          # model is called.
+          #
           # Each listing is captured whole before anything reads it, and every
           # read is a here-string: under pipefail a reader that stops early
-          # (awk's `exit`, `head`) sends SIGPIPE to a writer still producing
-          # rows, and the step then dies with exit 141 and no output, even
-          # with the group live (job 107881660050). The regression test
-          # tests/ci/test_runtime_boot_catalog_local_probe_omn19496.py runs
-          # this step's own text against a stub broker.
+          # (awk's `exit`, `grep -q`, `head`) sends SIGPIPE to a writer still
+          # producing rows, and the step then dies with exit 141 and no output,
+          # even with the group live (job 107881660050). The regression test
+          # tests/unit/docker/test_composed_runtime_boot_delegate_probe_omn21279.py
+          # runs this step's own text against a stub broker.
           #
           # OMN-20820: the broker requires SASL, so every rpk call here
           # authenticates as the local superuser. The password is read from the
           # env file and handed to docker by name, never on a command line.
+          if [ -z "${DELEGATE_FAILED_TOPIC:-}" ] || [ -z "${DELEGATE_COMPLETED_TOPIC:-}" ]; then
+            echo "::error::the delegate-skill terminal topics were not read from the contract"
+            exit 1
+          fi
           pass="$(sed -n 's/^REDPANDA_SUPERUSER_PASSWORD=//p' "$LOCAL_ENV_FILE")"
           if [ -z "$pass" ]; then
             echo "::error::REDPANDA_SUPERUSER_PASSWORD is absent from the laptop env file"
@@ -343,6 +370,40 @@ jobs:
           broker_rpk() {
             RPK_PASS="$pass" docker exec -e RPK_USER=onex-local -e RPK_PASS -e RPK_SASL_MECHANISM=SCRAM-SHA-256 "$broker" rpk "$@"
           }
+          # The same call with stdin attached, for the one record rpk produces.
+          broker_rpk_stdin() {
+            RPK_PASS="$pass" docker exec -i -e RPK_USER=onex-local -e RPK_PASS -e RPK_SASL_MECHANISM=SCRAM-SHA-256 "$broker" rpk "$@"
+          }
+          probe_id="$(python3 -c 'import uuid; print(uuid.uuid4())')"
+          probe="$(PROBE_ID="$probe_id" python3 -c '
+          import json, os
+          print(json.dumps({
+              "prompt": "composed-runtime-boot demand-start probe",
+              "task_type": "research",
+              "source": "external-client",
+              "correlation_id": os.environ["PROBE_ID"],
+              "requested_timeout_seconds": 86400,
+              "provenance": {
+                  "source": "external-client",
+                  "traffic_class": "synthetic",
+                  "source_surface": "composed-runtime-boot",
+              },
+          }, separators=(",", ":")))
+          ')"
+          if ! docker exec -i "${LOCAL_PROJECT}-omninode-runtime" /app/.venv/bin/python -c '
+          import sys
+          from omnimarket.models.delegation.wire.model_delegate_skill_request import ModelDelegateSkillRequest
+          ModelDelegateSkillRequest.model_validate_json(sys.stdin.read())
+          ' <<< "$probe"; then
+            echo "::error::the demand-start probe is not a valid ModelDelegateSkillRequest"
+            exit 1
+          fi
+          if ! produced="$(broker_rpk_stdin topic produce "$DELEGATE_COMMAND_TOPIC" -k composed-runtime-boot-probe <<< "$probe")"; then
+            echo "::error::could not publish the demand-start probe to ${DELEGATE_COMMAND_TOPIC}"
+            exit 1
+          fi
+          echo "demand-start probe ${probe_id}: ${produced}"
+          live=""
           for _ in $(seq 1 30); do
             if ! groups="$(broker_rpk group list)"; then
               echo "rpk group list failed; retrying"
@@ -357,13 +418,38 @@ jobs:
               members="$(awk '$1 == "MEMBERS" {print $2}' <<< "$describe")"
               if [ "${members:-0}" -ge 1 ]; then
                 echo "live consumer group ${group} (${members} member) on ${DELEGATE_COMMAND_TOPIC}"
-                exit 0
+                live=yes
+                break
               fi
             fi
             sleep 10
           done
-          broker_rpk group list | grep -i delegate || true
-          echo "::error::no live node_delegate_skill_orchestrator consumer group on ${DELEGATE_COMMAND_TOPIC}"
+          if [ -z "$live" ]; then
+            broker_rpk group list | grep -i delegate || true
+            echo "::error::no live node_delegate_skill_orchestrator consumer group on ${DELEGATE_COMMAND_TOPIC}"
+            exit 1
+          fi
+          # One record per line (-f '%v\n'), read from the start up to the current end.
+          for _ in $(seq 1 30); do
+            completed="$(broker_rpk topic consume "$DELEGATE_COMPLETED_TOPIC" -o start:end -f '%v\n' 2>/dev/null || true)"
+            if grep -qF "$probe_id" <<< "$completed"; then
+              echo "::error::probe ${probe_id} was dispatched (completed terminal); expected a refusal before dispatch"
+              exit 1
+            fi
+            failed="$(broker_rpk topic consume "$DELEGATE_FAILED_TOPIC" -o start:end -f '%v\n' 2>/dev/null || true)"
+            terminal="$(grep -F "$probe_id" <<< "$failed" || true)"
+            if [ -n "$terminal" ]; then
+              if grep -qF "refused_before_dispatch" <<< "$terminal"; then
+                echo "typed refusal for probe ${probe_id} on ${DELEGATE_FAILED_TOPIC}"
+                exit 0
+              fi
+              printf '%s\n' "${terminal:0:2000}"
+              echo "::error::probe ${probe_id} failed without a refusal before dispatch"
+              exit 1
+            fi
+            sleep 10
+          done
+          echo "::error::no terminal for probe ${probe_id} on ${DELEGATE_FAILED_TOPIC} within 300 s"
           exit 1
 
       - name: Dev-lane class -- derive the kernel environment from the dev lane's compose files
