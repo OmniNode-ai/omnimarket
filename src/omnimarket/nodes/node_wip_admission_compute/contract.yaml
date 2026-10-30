@@ -72,6 +72,7 @@ config:
     ticket_pattern: "OMN-[0-9]+"
     excluded_classes: ["held-excluded"]
     red_classes: ["red"]
+    claim_quiet_hours: 2.0
 metadata:
   transport_type: local
   description: "Admits or refuses the start of work against the started-but-unlanded count."

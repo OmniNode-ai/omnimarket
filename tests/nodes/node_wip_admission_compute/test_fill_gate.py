@@ -13,11 +13,11 @@ from typing import Any
 import pytest
 import yaml
 
+from omnimarket.handlers.wip_admission_fill_gate import fill_wip_gate
 from omnimarket.nodes.node_idle_slot_fill_effect.handlers import (
     handler_idle_slot_fill as handler,
 )
 from omnimarket.nodes.node_idle_slot_fill_effect.models import ModelIdleSlotFillRequest
-from omnimarket.nodes.node_wip_admission_compute.fill_gate import fill_wip_gate
 from tests.nodes.node_idle_slot_fill_effect.overlay_fixture import ENV
 from tests.nodes.node_wip_admission_compute.test_wip_admission import (
     NOW,

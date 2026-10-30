@@ -114,6 +114,11 @@ class ModelWipPolicy(_Frozen):
     # Fill item kinds that are fix-forward by construction: the tick's own finding names
     # the red, so the fill never asks the gate about them.
     fix_forward_kinds: tuple[str, ...] = ()
+    # Lane-name prefixes the dispatcher mints for fix-forward lanes (a red's cause lane, a
+    # process-fix driver); a lane named so is never asked about.
+    fix_forward_lane_prefixes: tuple[str, ...] = ()
+    # Where the PR watcher's state is read from at dispatch (a deployment path).
+    watcher_state_path: str = ""
 
     @property
     def enforcing(self) -> bool:
@@ -132,6 +137,8 @@ class ModelWipAdmissionConfig(_Frozen):
     # not work the fleet can land by starting less; a red one is what a fix-forward targets.
     excluded_classes: tuple[str, ...] = ()
     red_classes: tuple[str, ...] = Field(min_length=1)
+    # A CLAIM stays live while its lane has written any ledger row inside this many hours.
+    claim_quiet_hours: float = Field(gt=0)
 
 
 class ModelWipFix(_Frozen):

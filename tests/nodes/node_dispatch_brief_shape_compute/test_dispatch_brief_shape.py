@@ -100,3 +100,32 @@ def test_reader_module_loads_from_the_explicit_path(tmp_path):
     path.write_text("RULES_BLOCK_HEAD = 'fixture-head'\n")
     module = handler.load_lane_brief.__wrapped__(str(path))
     assert module.RULES_BLOCK_HEAD == "fixture-head"
+
+
+@pytest.mark.parametrize(
+    ("repo", "refusal", "want"),
+    [
+        ("repo-a", "REMOTE-LANE-WIP-REFUSED lane=lane-a REFUSE", ("wip-refused",)),
+        ("repo-a", None, ()),
+        (None, "REMOTE-LANE-WIP-REFUSED lane=lane-a REFUSE", ()),
+    ],
+)
+def test_a_lane_that_may_open_a_pr_waits_when_the_wip_admission_refuses(
+    readers, monkeypatch, repo, refusal, want
+):
+    asked = []
+    monkeypatch.setattr(
+        handler,
+        "dispatch_wip_refusal",
+        lambda **facts: asked.append(facts) or refusal,
+    )
+    result = NodeDispatchBriefShapeCompute().handle(
+        ModelDispatchBriefShapeRequest(
+            "Fix it.", "lane-a", ("repo-a#4",), "unused.py", "OMN-5", repo
+        )
+    )
+    assert tuple(status for status, _ in result.refusals) == want
+    assert bool(asked) is bool(repo)
+    if asked:
+        assert asked[0]["prs"] == ("repo-a#4",)
+        assert asked[0]["repo"] == "repo-a"

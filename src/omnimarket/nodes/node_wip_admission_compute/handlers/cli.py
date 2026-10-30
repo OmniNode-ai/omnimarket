@@ -22,6 +22,10 @@ from pydantic import ValidationError
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.rules_wip_admission import build_wip_read
+from omnimarket.handlers.wip_admission_overlay import (
+    load_wip_admission_config,
+    load_wip_admission_policy,
+)
 from omnimarket.models.wip_admission import (
     EnumWipOutcome,
     ModelWipAdmissionRequest,
@@ -29,10 +33,6 @@ from omnimarket.models.wip_admission import (
 )
 from omnimarket.nodes.node_wip_admission_compute.handlers.handler_wip_admission import (
     HandlerWipAdmission,
-)
-from omnimarket.nodes.node_wip_admission_compute.overlay import (
-    load_wip_admission_config,
-    load_wip_admission_policy,
 )
 
 EXIT_ADMIT, EXIT_UNREADABLE, EXIT_REFUSE = 0, 2, 3

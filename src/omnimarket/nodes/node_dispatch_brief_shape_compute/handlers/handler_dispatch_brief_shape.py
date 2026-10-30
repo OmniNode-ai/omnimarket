@@ -14,6 +14,9 @@ Each refusal comes before placement, remote provisioning and CLAIM, with exit 2 
 - ``umbrella-refused``: a lane that may open a PR (a repo, or the contract-before-push step) names only an umbrella ticket
   (OMN-17427 today, 154 criteria), so its PR title would share the umbrella's one contract and spend up to 40 minutes in
   dod-verify (OMN-21301). The fix is a child ticket; a brief that carries ``Umbrella evidence: <reason>`` is admitted.
+- ``wip-refused``: a lane that may open a PR is new work, and the started-but-unlanded count is at the repository's or
+  the fleet's limit (RULING 2026-10-30T00:03:58Z). A lane that works a named PR, or whose name carries a fix-forward
+  prefix, is never refused; the limits are the ``wip_admission`` overlay's, and a host with no overlay judges nothing.
 
 The driver and brief refusals were made by a session's own dispatch helper (RULING 2026-10-18T13:45:42Z: hand fixes become part of
 the permanent process); here they hold for every route to the runner. The brief's prose is read with lane-brief's own
@@ -23,9 +26,14 @@ readers, loaded from ``lane_brief_path``, so there is one definition of the rule
 from __future__ import annotations
 
 import importlib.util
+import os
 import re
 from functools import lru_cache
 from types import ModuleType
+
+from omnimarket.handlers.wip_admission_brief_gate import (
+    dispatch_wip_refusal,
+)
 
 from ..models.model_dispatch_brief_shape import (
     ModelDispatchBriefShapeRequest,
@@ -157,4 +165,15 @@ class HandlerDispatchBriefShape:
             refusals.append(
                 ("umbrella-refused", f"REMOTE-LANE-UMBRELLA-REFUSED {umbrella}")
             )
+        named = BRIEF_REPO_RE.search(lane_brief.premise_text(request.brief))
+        if request.repo or named:
+            wip = dispatch_wip_refusal(
+                lane=request.lane,
+                repo=request.repo or "",
+                ticket=request.ticket or "",
+                prs=tuple(request.prs),
+                environ=os.environ,
+            )
+            if wip:
+                refusals.append(("wip-refused", wip))
         return ModelDispatchBriefShapeResult(tuple(refusals))

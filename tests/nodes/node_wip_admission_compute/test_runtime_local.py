@@ -11,10 +11,10 @@ from pathlib import Path
 import pytest
 from omnibase_core.enums.enum_workflow_result import EnumWorkflowResult
 
-from omnimarket.models.wip_admission import ModelWipAdmissionDecision
-from omnimarket.nodes.node_wip_admission_compute.overlay import (
+from omnimarket.handlers.wip_admission_overlay import (
     load_wip_admission_config,
 )
+from omnimarket.models.wip_admission import ModelWipAdmissionDecision
 from tests.runtime_local_compat import RuntimeLocal
 
 pytestmark = pytest.mark.unit

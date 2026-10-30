@@ -21,6 +21,7 @@ from collections.abc import Collection, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from omnimarket.handlers.handler_ledger_claims import live_claims
 from omnimarket.models.wip_admission import (
     EnumWipFixClass,
     EnumWipItemKind,
@@ -121,6 +122,38 @@ def build_wip_read(
                 )
             )
     return ModelWipRead(readable=True, read_at=read_at, items=tuple(items))
+
+
+_TICKET_CELL = re.compile(r"(?:^|\|)\s*tickets?=([^|]*)")
+_REPO_CELL = re.compile(r"(?:^|\|)\s*repo=([^|\s]+)")
+_WORKTREE_CELL = re.compile(
+    r"(?:^|\|)\s*worktree=[^|\s]*?/OMN-[0-9]+[^/|\s]*/([^/|\s]+)"
+)
+_LANE_CELL = re.compile(r"(?:^|\|)\s*lane=([^|\s]+)")
+
+
+def claims_from_ledger(
+    text: str, now: datetime, config: ModelWipAdmissionConfig
+) -> list[ModelWipClaim]:
+    """The live CLAIMs of a rolling ledger as claims: lane, ticket and the repository it works in.
+
+    A CLAIM is live from its row until its lane's TERMINAL or RELEASE, and while the lane has
+    written any row inside ``config.claim_quiet_hours``. The repository is the row's ``repo=``
+    cell, else the last component of its ``worktree=omni_worktrees/<ticket>/<repo>`` path.
+    """
+    ticket_re = re.compile(config.ticket_pattern)
+    out: list[ModelWipClaim] = []
+    for row in live_claims(text, now, config.claim_quiet_hours):
+        lane = _LANE_CELL.search(row)
+        cell = _TICKET_CELL.search(row)
+        repo = _REPO_CELL.search(row) or _WORKTREE_CELL.search(row)
+        if not (lane and cell):
+            continue
+        out.extend(
+            ModelWipClaim(lane=lane[1], ticket=t, repo=repo[1] if repo else "")
+            for t in sorted(set(ticket_re.findall(cell[1])))
+        )
+    return out
 
 
 def count_started_unlanded(

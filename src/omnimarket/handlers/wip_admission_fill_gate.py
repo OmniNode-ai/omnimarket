@@ -21,6 +21,10 @@ from omnimarket.handlers.rules_wip_admission import (
     build_wip_read,
     decide_wip_admission,
 )
+from omnimarket.handlers.wip_admission_overlay import (
+    load_wip_admission_config,
+    load_wip_admission_policy,
+)
 from omnimarket.models.wip_admission import (
     EnumWipOutcome,
     EnumWipWorkKind,
@@ -29,10 +33,6 @@ from omnimarket.models.wip_admission import (
     ModelWipClaim,
     ModelWipPolicy,
     ModelWipRead,
-)
-from omnimarket.nodes.node_wip_admission_compute.overlay import (
-    load_wip_admission_config,
-    load_wip_admission_policy,
 )
 
 
@@ -85,7 +85,7 @@ def wip_fill_gate(
     try:
         policy = load_wip_admission_policy(environ)
     except NodeOverlayError as exc:
-        return WipFillGate(None, config, read, now, unread=str(exc)[:200])
+        return WipFillGate(None, config, read, now, unread=str(exc))
     return WipFillGate(policy, config, read, now)
 
 
@@ -107,7 +107,7 @@ def fill_wip_gate(
         try:
             claimed = set(ledger_tickets()[0])
         except Exception as exc:
-            claim_error = f"{type(exc).__name__}: {exc}"[:200]
+            claim_error = f"{type(exc).__name__}: {exc}"
     gate = wip_fill_gate(
         watcher_state=watcher_state, claimed_tickets=claimed, now=now, environ=environ
     )

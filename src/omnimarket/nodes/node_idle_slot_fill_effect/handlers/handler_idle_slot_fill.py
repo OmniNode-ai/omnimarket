@@ -86,6 +86,7 @@ from typing import Any
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.rules_lab_fill_tickets import plan_ticket_backlog
 from omnimarket.handlers.rules_lane_requirements import claude_required, declarations
+from omnimarket.handlers.wip_admission_fill_gate import fill_wip_gate
 from omnimarket.handlers.work_ledger_fixer_holds import fixer_hold_reasons
 from omnimarket.handlers.work_ledger_text import split_ledger_rows
 from omnimarket.models.lab_fill import ModelLabFillTicketFacts
@@ -108,7 +109,6 @@ from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model
     load_policy,
     resolve_lane_model,
 )
-from omnimarket.nodes.node_wip_admission_compute.fill_gate import fill_wip_gate
 
 from .handler_ruling_recovery import HandlerRulingRecovery
 

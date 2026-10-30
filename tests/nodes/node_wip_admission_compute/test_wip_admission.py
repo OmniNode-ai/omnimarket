@@ -19,6 +19,11 @@ import yaml
 
 from omnimarket.handlers import rules_wip_admission as rules
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.handlers.wip_admission_overlay import (
+    ModelWipAdmissionOverlay,
+    load_wip_admission_config,
+    load_wip_admission_policy,
+)
 from omnimarket.models.wip_admission import (
     EnumWipFixClass,
     EnumWipOutcome,
@@ -35,11 +40,6 @@ from omnimarket.models.wip_admission import (
 from omnimarket.nodes.node_wip_admission_compute.handlers import cli
 from omnimarket.nodes.node_wip_admission_compute.handlers.handler_wip_admission import (
     HandlerWipAdmission,
-)
-from omnimarket.nodes.node_wip_admission_compute.overlay import (
-    ModelWipAdmissionOverlay,
-    load_wip_admission_config,
-    load_wip_admission_policy,
 )
 
 pytestmark = pytest.mark.unit
@@ -67,6 +67,8 @@ def overlay_doc() -> dict[str, Any]:
         "limits": {REPO_A: limit(1.0), REPO_B: limit(1.0)},
         "fix_forward_classes": ["red", "repeat_break", "landing_blocker"],
         "fix_forward_kinds": ["fixture-red-kind"],
+        "fix_forward_lane_prefixes": ["fixture-cause-"],
+        "watcher_state_path": "fixture-watcher.json",
     }
 
 
@@ -371,7 +373,9 @@ def test_no_limit_number_is_in_the_code() -> None:
     sources = [
         Path(rules.__file__),
         root / "models/wip_admission.py",
-        root / "nodes/node_wip_admission_compute/overlay.py",
+        root / "handlers/wip_admission_overlay.py",
+        root / "handlers/wip_admission_fill_gate.py",
+        root / "handlers/wip_admission_brief_gate.py",
         root / "nodes/node_wip_admission_compute/handlers/handler_wip_admission.py",
         root / "nodes/node_wip_admission_compute/handlers/cli.py",
     ]

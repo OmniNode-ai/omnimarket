@@ -50,6 +50,8 @@ class ModelWipAdmissionOverlay(BaseModel):
     limits: dict[str, ModelWipLimit]
     fix_forward_classes: tuple[EnumWipFixClass, ...]
     fix_forward_kinds: tuple[str, ...]
+    fix_forward_lane_prefixes: tuple[str, ...]
+    watcher_state_path: str
 
     def policy(self, config: ModelWipAdmissionConfig) -> ModelWipPolicy:
         """The overlay as the node's policy, refusing a missing or underived limit by key."""
@@ -75,6 +77,8 @@ class ModelWipAdmissionOverlay(BaseModel):
             limits=self.limits,
             fix_forward_classes=self.fix_forward_classes,
             fix_forward_kinds=self.fix_forward_kinds,
+            fix_forward_lane_prefixes=self.fix_forward_lane_prefixes,
+            watcher_state_path=self.watcher_state_path,
         )
 
 
