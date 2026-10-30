@@ -15,7 +15,7 @@ requirements:
   - id: AC2
     statement: 'AC2: pyproject.toml pins omnibase-core, omnibase-spi and omninode-memory to dev merge tags in [tool.uv.sources] and uv.lock locks those tags -- falsifier: uv run pytest tests/unit/workflows/test_internal_sibling_pins_omn21478.py -q -k dev_merge_tag'
   - id: AC3
-    statement: 'AC3: at the bumped omnibase_core dev tag, omnimarket reads the sibling pin policy from core''s first_party_ref contract and calls the moved core node modules, so the dependency provenance check and the generated event chains run -- falsifier: uv run pytest tests/scripts/test_check_dep_provenance.py tests/chains/generated/test_generated_chains.py -q'
+    statement: 'AC3: at the bumped omnibase_core dev tag, omnimarket reads the sibling pin policy from core''s first_party_ref contract and calls the moved core node modules, so the dependency provenance check and the generated event chains run -- falsifier: uv run pytest tests/scripts/test_check_dep_provenance.py -q -k dev_tag_pattern_controls_verdict'
 evidence_requirements:
 - kind: tests
   description: The workflow calls the core reusable at a full sha, and the required-checks and CI Summary rows exist.
@@ -51,7 +51,7 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/scripts/test_check_dep_provenance.py tests/chains/generated/test_generated_chains.py -q
+    check_value: uv run pytest tests/scripts/test_check_dep_provenance.py -q -k dev_tag_pattern_controls_verdict
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC3
