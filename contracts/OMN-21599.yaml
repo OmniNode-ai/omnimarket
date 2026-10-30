@@ -1,0 +1,38 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-21599
+title: "A collaborator machine takes no lane bound to the house lane; the remote-lane placement node judges it"
+summary: >
+  node_remote_lane_compute refuses a reading marked contributor unless the lane is bound to the lane its
+  own host row declares (lane_binding), that lane is not one the non-contributor hosts bind, and the row
+  says the lane can take a lane (lane_ready, which fails closed). The refusal is the verdict of that host,
+  so the placement output says why. The lab_hosts overlay model carries the new columns and refuses a
+  contributor row that binds a house lane. Operator RULING 2026-10-30T16:45:31Z.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21599-contributor-lane-placement"
+    statement: "Work may run on a collaborator machine but never bound to the lane the house works in: the placement node refuses a house-lane lane there and admits one bound to the collaborator lane once that lane is ready."
+    acceptance:
+      - id: "AC2159901"
+        statement: "AC2159901: a lane bound to the house lane is refused on a contributor host (the verdict names the lane it binds), and a lane bound to the collaborator lane is admitted when the row says the lane is ready -- falsifier: uv run pytest tests/nodes/node_remote_lane_compute/test_contributor_lane_placement.py -q passes with the refusal assertion removed from the node"
+      - id: "AC2159902"
+        statement: "AC2159902: while the row says the lane is not ready the host takes no lane and the verdict prints the row's reason, and the lab_hosts overlay model refuses a contributor row that binds a lane a non-contributor row binds -- falsifier: the same file passes with lane_ready defaulted to true or the validator removed"
+evidence_requirements:
+  - kind: tests
+    description: "AC2159901 and AC2159902: the planted refusal, the planted admission, the fail-closed readiness and the overlay model validator"
+    command: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_remote_lane_compute/test_contributor_lane_placement.py -q --no-cov -p no:randomly --refuse-skips"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21599-contributor-lane-placement"
+    description: "The contributor lane rule of the remote-lane placement node and the overlay model validator"
+    source: "manual"
+    binds_ac: ["AC2159901", "AC2159902"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_remote_lane_compute/test_contributor_lane_placement.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
