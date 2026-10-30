@@ -1,0 +1,39 @@
+schema_version: 1.0.0
+ticket_id: OMN-21600
+title: omnimarket imports two core handler modules from paths that omnibase-core 0.47.58 moved into nodes, so the dev-lane runtimes fail boot
+summary: omnibase_core#2135 moved handler_done_write_receipt_gate into node_done_write_receipt_gate_compute and
+  handler_migration_conflicts into node_cross_repo_boundary_check_effect (find_migration_files into its
+  runtime_migration_conflicts module). omnimarket imported the old paths and pinned core to a dev tag from before the
+  move, so its tests stayed green while the dev-lane image, which resolves the moved core, failed auto-wiring. This
+  change imports both from their node paths and pins omnibase-core to dev-20261030090713-f99cc10f48a1 (0.47.59).
+  The omnibase_infra half of the same break is a separate ticket's change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21600-core-node-paths
+  statement: omnimarket imports the done-write receipt gate and the migration-conflicts handler from their node paths under a pinned omnibase-core at or after the move.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: omnimarket imports the done-write receipt gate and the migration-conflicts handler from their node paths and pins omnibase-core to a dev tag at or after the move, so both modules import under that core -- falsifier: uv run pytest over a test that imports both omnimarket modules and fails at the merge base once core is repinned'
+evidence_requirements:
+- kind: tests
+  description: Both omnimarket modules import under the pinned core, and that core no longer ships the old handler paths.
+  command: uv run pytest tests/ci/test_core_node_handler_paths_omn21600.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21600-ac1-node-paths-import
+  description: AC1 imports node_linear_triage's done_write_receipt_gate and node_duplication_sweep's handler under the omnibase-core the lock pins, and asserts that core no longer ships the two old handler paths, so a revert of either import or of the pin goes red. It also reads the committed pin.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_core_node_handler_paths_omn21600.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: grep -c 'tag = "dev-20261030090713-f99cc10f48a1"' pyproject.toml
+    cwd: ${OMNI_HOME}/omnimarket
