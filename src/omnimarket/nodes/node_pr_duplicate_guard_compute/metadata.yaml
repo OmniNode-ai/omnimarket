@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_pr_duplicate_guard_compute
+version: 1.0.0
+description: Refuses a second pull request for a fix an open pull request or a live CLAIM already covers, and names the one to adopt
+pack: pr_lifecycle
+node_role: compute
+display_name: PR Duplicate Guard Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_pr_duplicate_guard_compute: omnimarket.nodes.node_pr_duplicate_guard_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- pr-duplicate-guard-compute
+- OMN-17427

@@ -58,6 +58,14 @@ class ModelRemoteLaneHostReading(BaseModel):
     # The lock hash of this host's dispatch venv. None: the reader did not read it (an old
     # producer); on a drift-judged request that is VENV_UNKNOWN, never a pass.
     dispatch_venv_hash: str | None = Field(default=None, min_length=1)
+    # The host-swapping measurement of the throughput tick (OMN-17232): the probe's own paging
+    # readings, and whether the tick's host pool alarm still holds ``host-swapping`` open for
+    # this host (it resolves after two clean reads, so a host that pages in bursts stays flagged
+    # between bursts). None / False: an old producer, which places as before.
+    swap_in_kb_s: float | None = None
+    mem_psi_avg60: float | None = None
+    mem_pressure: int | None = None
+    swap_alarm_open: bool = False
 
 
 class ModelRemoteLaneAttempt(BaseModel):
