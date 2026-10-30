@@ -141,3 +141,65 @@ dod_evidence:
     check_value: bash -n scripts/hooks/prepush_dispatch.sh scripts/hooks/prepush_smart_tests.sh && uv
       run pytest tests/scripts/test_prepush_host_table.py -q -p no:randomly -k "neutral_disabled_row or
       positive_control or private_high_slot or uncommitted_edit_to_the_deployment_table or never_committed"
+- id: dod-omn17232-swapping-host-placement
+  description: 'Swapping-host placement support for the shared recipe and load prerequisites:
+    both engines refuse a paging host and an open alarm, choose a quiet host, and admit the
+    recovered host. Hosted in-process runtime dispatch exercises the packaged node without
+    a lab network or broker. This does not claim the ticket-wide runtime rollout, consumer
+    census, reboot survival, broker configuration or Studio footprint obligations.'
+  source: manual
+  binds_ac:
+  - AC2
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --locked pytest tests/nodes/node_remote_lane_compute/test_host_swapping_slots.py -q --no-cov -p no:randomly
+  - check_type: command
+    check_value: |
+      set -eu
+      export PYTHONDONTWRITEBYTECODE=1
+      probe_dir="$(mktemp -d)"
+      trap 'rm -rf "$probe_dir"' EXIT
+      runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')"
+      uv run --locked python -c '
+      import json
+      import sys
+      from pathlib import Path
+      root = Path(sys.argv[1])
+      for engine in ("claude_sonnet", "codex"):
+          for scenario in ("paging", "alarm_open", "fallback", "recovered"):
+              host = {"name": "probe-paging", "engines": [engine], "lane_slots": 9, "lane_cap": 10, "rank_free": 9.0}
+              if scenario in ("paging", "fallback"):
+                  host["swap_in_kb_s"] = 167000.0
+              elif scenario == "alarm_open":
+                  host.update(swap_in_kb_s=0.0, swap_alarm_open=True)
+              else:
+                  host.update(swap_in_kb_s=0.0, swap_alarm_open=False)
+              readings = [host]
+              if scenario == "fallback":
+                  readings.append({"name": "probe-quiet", "engines": [engine], "lane_slots": 1, "lane_cap": 10, "rank_free": 1.0})
+              (root / f"{engine}-{scenario}.input.json").write_text(json.dumps({"engine": engine, "readings": readings}))
+      ' "$probe_dir"
+      for engine in claude_sonnet codex; do
+        for scenario in paging alarm_open fallback recovered; do
+          env ONEX_LANE=omn17232-placement-probe "$runtime_bin/onex" node node_remote_lane_compute --input "$probe_dir/$engine-$scenario.input.json" --state-root "$probe_dir/state-$engine-$scenario" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/$engine-$scenario.receipt.json"
+        done
+      done
+      uv run --locked python -c '
+      import json
+      import sys
+      from pathlib import Path
+      root = Path(sys.argv[1])
+      for engine in ("claude_sonnet", "codex"):
+          for scenario in ("paging", "alarm_open", "fallback", "recovered"):
+              receipt = json.loads((root / f"{engine}-{scenario}.receipt.json").read_text())
+              assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+              result = receipt["result"]
+              expected = "probe-quiet" if scenario == "fallback" else "probe-paging" if scenario == "recovered" else None
+              assert result["host"] == expected, result
+              assert result["outcome"] == ("NO_HOST" if expected is None else "ADMITTED"), result
+              reasons = {verdict["host"]: verdict["reason"] for verdict in result["verdicts"]}
+              if scenario != "recovered":
+                  assert reasons["probe-paging"].startswith("host-swapping:"), result
+              print(json.dumps({"run_id": receipt["run_id"], "engine": engine, "scenario": scenario, "host": result["host"], "outcome": result["outcome"], "verdicts": result["verdicts"]}))
+      ' "$probe_dir"
