@@ -403,9 +403,8 @@ class HandlerRepoHealthRepairEffect:
         )
 
         # Every item this node opens is lane-created (OMN-17942): labelled,
-        # stamped with the lane (or this node) that opened it, and counted
-        # against the day's intake budget. A refusal raises before Linear is
-        # touched.
+        # stamped with the lane (or this node) that opened it. A refusal raises
+        # before Linear is touched.
         lane = declared_lane() or _NODE_IDENTITY
         intake = self._lane_intake.policy()
         description = stamp_description(description, intake, lane)
