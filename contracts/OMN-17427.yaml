@@ -913,6 +913,11 @@ requirements:
     acceptance:
       - id: "AC187"
         statement: "AC187: test_terminal_emit_close_uses_remaining_budget records exactly one publisher session deadline and asserts finished minus that deadline is below 0.3 seconds; both publish outcomes retain the spool and cancellation assertions, and the background-loop cancellation case passes. The source assertion check fails on the merge base, which times the whole handle call."
+  - id: "req-pre-dispatch-terminal-test-discovery-setup"
+    statement: "The pre-dispatch terminal waiter regression test runs the runtime port's real first route discovery before its 10 s terminal deadline, so that deadline times only the terminal reaching the waiter."
+    acceptance:
+      - id: "AC187"
+        statement: "AC187: test_real_handler_terminal_reaches_the_waiter_on_its_declared_topic awaits the runtime port's route discovery before the asyncio.wait_for that keeps timeout=10 around dispatch, for the runtime port kind; the source check fails on the merge base, which times discovery inside that wait."
   - id: "req-unstated-outcome-pair"
     statement: "A delegation_events row whose terminal states neither operational_outcome nor content_verdict, and whose stored row states neither, carries the pair its own terminal evidence decides: completed/usable for an evidenced success (terminal_ok, a model and an accepted rung), the pair its cause maps to for a typed failure. A stated pair is never replaced, and the async writer reconciles a first write the way the sync writer does."
     acceptance:
@@ -4252,4 +4257,32 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/handlers/scm/test_scm_duplicate_guard.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ac187-terminal-discovery-setup"
+    description: "This PR moves the runtime port's real route discovery out of the 10 s terminal wait in the pre-dispatch failure regression. The source check refuses the merge-base test, which discovers routes inside that wait; the focused test run passes both port kinds."
+    source: "manual"
+    binds_ac: ["AC187"]
+    checks:
+      - check_type: "command"
+        check_value: |-
+          python3 - <<'PY'
+          from pathlib import Path
+
+          text = Path('tests/unit/nodes/node_delegate_skill_orchestrator/test_pre_dispatch_failure_terminal_omn17427.py').read_text()
+          discovery = text.index('await port._resolved_routes()')
+          wait = text.index('result = await asyncio.wait_for(')
+          assert discovery < wait
+          assert 'timeout=10,' in text[wait:]
+          print('route discovery runs before the 10 s terminal wait')
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_pre_dispatch_failure_terminal_omn17427.py -q -n 0 --no-cov --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-terminal-discovery-probe"
+    description: "Deploy probe. On the hosted runner, the checked-out pre-dispatch failure regression delivers the canonical terminal to the waiter through the runtime port after real route discovery. Locked dependencies and the checkout suffice; no broker or credentials, and no live deployment claim."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_pre_dispatch_failure_terminal_omn17427.py -q -n 0 --no-cov --refuse-skips -k 'real_handler_terminal and runtime'"
         cwd: "${OMNI_HOME}/omnimarket"
