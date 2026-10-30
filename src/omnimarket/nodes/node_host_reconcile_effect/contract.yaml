@@ -46,6 +46,28 @@ event_bus:
   - onex.evt.omnimarket.host-reconcile-run-completed.v1
 runtime_dispatch:
   external_trigger: true
+# The node owns its schedule: every host that runs the reconciler gets one repair-mode run per
+# cadence tick, through the node's own entry point. Which hosts those are, and what schedules the
+# run on each, is the node overlay (<root>/node_host_reconcile_effect/overlay.yaml, hosts:), and
+# the package names no host. `python -m omnimarket.nodes.node_host_reconcile_effect schedule check`
+# fails for any host that declares the reconciler with no scheduler.
+schedule:
+  unit_name: onex-host-reconcile
+  mode: repair
+  branch: dev
+  # The run bound (step timeout twice, plus 300 s) with the unit's own margin.
+  timeout_seconds: 4200
+  dispatch_venv: .onex-dispatch-venv
+  state_directory: .onex_state/host-reconcile
+  cadence:
+    on_calendar: "*-*-* *:19:00"
+    randomized_delay: 120s
+    persistent: true
+    description: hourly at minute 19
+  schedulers:
+    systemd-user: installed by this node (schedule install) as a systemd user timer
+    launchd: a launchd agent the host's owner installs; the overlay row names its label
+    external: a timer another owner installs; the overlay row names its unit
 externally_consumed_topics:
 - onex.evt.omnimarket.host-reconcile-run-completed.v1
 metadata:
