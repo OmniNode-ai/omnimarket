@@ -2234,6 +2234,7 @@
   "tests/unit/cli/test_omn21059_default_model_every_provider.py": 0.03,
   "tests/unit/cli/test_omn21059_onex_models_list_verbs.py": 1.91,
   "tests/unit/cli/test_omn21259_failed_key_not_routed.py": 0.61,
+  "tests/unit/cli/test_omn21346_delegation_first_model.py": 12.1,
   "tests/unit/cli/test_omn21464_throttled_key_not_failed.py": 0.17,
   "tests/unit/cli/test_reporting.py": 0.05,
   "tests/unit/cli/test_trace_commands.py": 0.22,
