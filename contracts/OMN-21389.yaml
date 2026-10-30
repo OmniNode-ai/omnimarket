@@ -1,0 +1,115 @@
+schema_version: 1.0.0
+ticket_id: OMN-21389
+title: A member's front door and ledger preflight on a bus-attached machine
+summary: Adds node_session_front_door_compute to omnimarket, the destination of way-of-working's session.py (including host-mode) and the session-start entry script, and the onex:preflight replacement path's required-check assertion (formerly ledger-preflight's LEDGER_CHECKS). The session is bound through node_team_identity_compute first; a session the declaration does not positively match as the operator runs the preflight with --profile team, and only a positive operator match runs --profile operator. Under team the assertion requires ledger_path, ledger_basename, ledger_is_registry_ledger and ledger_grammar without coordination_host and validates profile, overlay hash, per-check success and overall OK, rejecting a stale overlay; under operator it requires all five as before. host-mode prints bus-member only when the current team receipt passes and the bus configuration holds (bound lane login, declared host, executable append command, ledger mirror and archive), decided before the first CLAIM and never as attachment proof; a refused or unknown CLAIM append stops startup; session.env records SESSION_PRINCIPAL and SESSION_PROFILE. An operator session behaves as before.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21389-member-front-door
+  statement: A session not positively matched as the operator starts through the front door under the team profile, reads bus-member only from a passing current team receipt and a holding bus configuration, and writes its first row under its own principal; an operator session runs every check it runs today.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: on the member''s machine preflight passes under `team`, host mode reads `bus-member` and the first row and hook events land under that member''s principal; the operator''s session runs every check it runs today -- falsifier: the preflight receipt, the host-mode line and the step 9 reads.'
+  - id: AC2
+    statement: 'AC2: the change is one pull request in OmniNode-ai/omnimarket and its required `OmniNode-ai/omnimarket` CI check-runs are green on that pull request''s head -- falsifier: the check-runs API for that head commit in OmniNode-ai/omnimarket'
+evidence_requirements:
+- kind: tests
+  description: The front door on a fixture member machine (local bus mirror outside the registry ledger, ONEX_REMOTE_LANE unset) and the operator's, against a profile-tagged session_preflight overlay fixture and the fixture team identity declaration; and the node's registration and golden chain.
+  command: uv run pytest tests/nodes/node_session_front_door_compute -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21389-ac1-entry-team-profile
+  description: 'Fixture-level proof of the member path through the session-start entry node: a session the identity declaration does not positively match as the operator (member, unknown broker login, environment-only, no identity, missing declaration) runs the preflight with --profile team; a member session on a local bus mirror starts bus-member, its first CLAIM lands on the mirror under the member''s principal and session.env records SESSION_PRINCIPAL and SESSION_PROFILE; a refused or unknown append, a preflight blocker or a taken lane stops startup with nothing written; the operator''s session runs --profile operator with coordination_host required and its host mode as before. The read on the member''s own machine (handover section 1 steps 7 to 9: the team preflight receipt, the host-mode line and the step 9 reads of the first row and hook events) is the remaining lab proof and is not claimed here.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_session_front_door_compute/test_member_front_door_entry.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21389-ac1-bus-member-receipt
+  description: 'Fixture-level proof of the host-mode verdict and the kept required-check assertion: bus-member only when the current team receipt passes and each bus condition holds (bound lane login, declared host, bus transport with an executable append command, ledger mirror and archive, the writer principal is the bound login); a member mirror outside the registry path with ONEX_REMOTE_LANE unset passes while a bad transport or a missing archive fails; the team assertion requires the four ledger checks without coordination_host and validates profile, overlay hash, per-check success and overall OK, rejecting a stale overlay; the operator assertion still requires coordination_host and host mode reads coordination, detached or unknown as before. The read on the member''s own machine (handover section 1 steps 7 to 9: the team preflight receipt, the host-mode line and the step 9 reads of the first row and hook events) is the remaining lab proof and is not claimed here.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_session_front_door_compute/test_member_host_mode_receipt.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21389-ac1-session-ops-principal
+  description: The session file and row operations keep their shapes and refusals; init accepts every host mode including bus-member and writes SESSION_PRINCIPAL (the member's bound principal, or the operator's) and SESSION_PROFILE into session.env, which the session checkpoint hook reads to find the member's own sessions.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_session_front_door_compute/test_session_front_door_session_ops.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21389-ac2-node-registered
+  description: node_session_front_door_compute is registered as an onex.nodes entry point in omnimarket and its packaged contract invokes with a typed request bound through the team identity declaration.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_session_front_door_compute/test_golden_chain_session_front_door_compute.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21389-deploy-front-door-node
+  description: 'Hosted deploy smoke, runnable on the hosted runner with no lab route, broker or database: dispatch the packaged node_session_front_door_compute through the in-process ONEX runtime with the start operation as fixture member a on a local bus mirror (ONEX_REMOTE_LANE unset) against the profile-tagged preflight overlay fixture, and require the preflight run under --profile team, the assertion passing without coordination_host, host mode bus-member, the CLAIM on the mirror under the member principal and session.env carrying SESSION_PRINCIPAL; then dispatch the profile operation as the operator and require operator.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      export PYTHONDONTWRITEBYTECODE=1;
+      probe_dir="$(mktemp -d)";
+      trap 'rm -rf "$probe_dir"' EXIT;
+      runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+      mkdir -p "$probe_dir/roots/team_identity" "$probe_dir/home/docs/tracking" "$probe_dir/mirror/archive" "$probe_dir/bin";
+      cp tests/fixtures/team_identity/valid.yaml "$probe_dir/roots/team_identity/overlay.yaml";
+      printf '2026-10-29T08:00:00Z | STATUS | lane=member-only | mirror |\n' > "$probe_dir/mirror/ROLLING_WORK_LEDGER.md";
+      printf '#!/bin/sh\nexit 0\n' > "$probe_dir/bin/fixture-bus-append"; chmod +x "$probe_dir/bin/fixture-bus-append";
+      "$runtime_bin/python" -c '
+      import json, os, sys
+      from pathlib import Path
+      d, repo, py = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
+      fx = repo / "tests" / "fixtures" / "session_front_door"
+      env = {"PATH": str(d / "bin") + os.pathsep + os.environ["PATH"], "HOME": str(d), "OMNI_HOME": str(d / "home"),
+             "ONEX_LEDGER_PATH": str(d / "mirror" / "ROLLING_WORK_LEDGER.md"), "ONEX_LEDGER_WRITE_VIA": "bus",
+             "ONEX_LEDGER_HOST_NAME": "fixture-member-a-mac", "ONEX_LEDGER_BUS_APPEND_COMMAND": "fixture-bus-append --principal fixture-member-a-dev",
+             "ONEX_WORK_LEDGER_PRINCIPAL": "fixture-member-a-dev"}
+      member = [{"source": "github_auth", "value": "fixture-member-a-gh"}, {"source": "broker_binding", "value": "fixture-member-a-dev"}]
+      operator = [{"source": "github_auth", "value": "fixture-operator-gh"}, {"source": "broker_binding", "value": "fixture-lab-login"}]
+      base = {"overlay_roots": [str(d / "roots")], "environment": env}
+      start = {"lane": "sess-probe", "ticket": "OMN-9000001", "est_hours": 1, "displaces": "nothing queued", "actor": "claude:probe:foreground",
+               "model": "probe-model", "scope": "deploy probe", "python": py, "preflight_script": str(fx / "fake_session_preflight.py"),
+               "preflight_overlay": str(fx / "session_preflight" / "overlay.yaml"), "ledger_command": [py, str(fx / "fake_onex_ledger.py")]}
+      (d / "member.json").write_text(json.dumps({**base, "operation": "start", "identity_claims": member, "start": start}))
+      (d / "operator.json").write_text(json.dumps({**base, "operation": "profile", "identity_claims": operator}))
+      ' "$probe_dir" "$PWD" "$runtime_bin/python";
+      for job in member operator; do env ONEX_LANE=omn21389-deploy-probe "$runtime_bin/onex" node node_session_front_door_compute --input "$probe_dir/$job.json" --state-root "$probe_dir/state-$job" --backend event_bus=inmemory --timeout 60 --output receipt --omnibase-path "$PWD" > "$probe_dir/$job-receipt.json"; done;
+      uv run --locked python -c '
+      import json
+      import sys
+      from pathlib import Path
+      d = Path(sys.argv[1])
+      receipts = {name: json.loads((d / f"{name}-receipt.json").read_text()) for name in ("member", "operator")}
+      for name, receipt in receipts.items():
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, (name, receipt)
+      member = receipts["member"]["result"]
+      assert member["status"] == "ok", member
+      assert member["profile"] == "team" and member["scope"]["entry_id"] == "fixture-member-a", member["scope"]
+      assert member["preflight_argv"][member["preflight_argv"].index("--profile") + 1] == "team", member["preflight_argv"]
+      assert member["assertion"]["ok"] and "coordination_host" not in member["assertion"]["required"], member["assertion"]
+      assert member["host_mode"]["mode"] == "bus-member", member["host_mode"]
+      env = dict(line.split("=", 1) for line in Path(member["session_env"]).read_text().splitlines())
+      assert env["HOST_MODE"] == "bus-member" and env["SESSION_PRINCIPAL"] == "fixture-member-a-dev" and env["SESSION_PROFILE"] == "team", env
+      assert "principal=fixture-member-a-dev" in (d / "mirror" / "ROLLING_WORK_LEDGER.md").read_text()
+      assert receipts["operator"]["result"]["profile"] == "operator", receipts["operator"]["result"]
+      print(json.dumps({"profile": member["profile"], "host_mode": member["host_mode"]["mode"], "principal": env["SESSION_PRINCIPAL"], "operator_profile": "operator"}))
+      ' "$probe_dir";
+    cwd: ${OMNI_HOME}/omnimarket
