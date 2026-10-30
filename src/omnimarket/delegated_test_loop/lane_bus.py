@@ -34,6 +34,11 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolFocusedRunHandler,
     ProtocolLabRunBus,
 )
+from omnimarket.nodes.node_focused_test_run_effect.handlers.handler_lab_run_bus import (
+    LabRunBusError,
+    bound_lane_principal,
+    require_one_shot_reply_bus,
+)
 from omnimarket.nodes.node_push_validation_effect import (
     ModelFocusedTestRunReceipt,
     ModelFocusedTestRunRequest,
@@ -41,28 +46,6 @@ from omnimarket.nodes.node_push_validation_effect import (
 
 BusKind = Literal["kafka", "inmemory"]
 _READY_TIMEOUT_SECONDS = 120
-
-
-class LabRunBusError(RuntimeError):
-    """The bus could not be selected or opened."""
-
-
-def bound_lane_principal() -> str:
-    """Return the broker login the open lane bus connection authenticated as.
-
-    Valid only inside ``open_lab_run_bus(bus="kafka", ...)``, which binds the
-    lane transport for the life of the connection.
-    """
-    from omnibase_infra.event_bus.lane_client_transport_binding import (
-        bound_lane_client_transport,
-    )
-
-    transport = bound_lane_client_transport()
-    if transport is None or not transport.sasl_username:
-        raise LabRunBusError(
-            "this lane resolves no broker login: the writer identity is the broker principal"
-        )
-    return transport.sasl_username
 
 
 @contextlib.asynccontextmanager
@@ -217,4 +200,5 @@ __all__ = [
     "LabRunBusError",
     "bound_lane_principal",
     "open_lab_run_bus",
+    "require_one_shot_reply_bus",
 ]

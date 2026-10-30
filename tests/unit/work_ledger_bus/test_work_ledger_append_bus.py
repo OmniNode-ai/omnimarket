@@ -13,8 +13,8 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolBusMessage,
@@ -143,13 +143,17 @@ def test_request_round_trips_to_accepted_receipt_with_single_host_group() -> Non
                 "local.omnimarket.node_work_ledger_landing_mirror.consume.v1"
             ]
             assert [topic for topic, _ in bus.groups[6:7]] == list(host.landing_topics)
-            groups = [group for _, group in bus.groups[7:]]
-            assert len(groups) == 2
-            assert groups[0] == groups[1]
-            assert groups[0].startswith(
-                "local.omnimarket.work_ledger_append_client.consume.v1."
-            )
-            assert len(groups[0].split(".")[-1]) == 12
+            # OMN-17427: the caller's terminal read joins no named consumer
+            # group (an in-memory private id stands in for "none"), so no
+            # work_ledger_append_client group is left behind on a broker.
+            assert len(bus.groups) == 9
+            assert not [
+                group for _, group in bus.groups if "work_ledger_append_client" in group
+            ]
+            assert [topic for topic, _ in bus.groups[7:]] == [
+                host.topics.success,
+                host.topics.failure,
+            ]
         finally:
             await caller.stop()
             await host.stop()
@@ -551,3 +555,34 @@ def test_writer_topic_names_come_from_contract_and_validate_principals() -> None
             WorkLedgerAppendCaller(_Bus(), principal=principal)
         with pytest.raises(ValueError, match="invalid writer principal"):
             WorkLedgerAppendHost(_Bus(), _Handler(), writer_principals=[principal])
+
+
+def test_repeated_appends_leave_no_consumer_group_behind() -> None:
+    """OMN-17427: N one-shot callers add no consumer group to the bus."""
+
+    async def scenario() -> None:
+        bus = _Bus()
+        await bus.start()
+        host = WorkLedgerAppendHost(bus, _Handler(), writer_principals=["developer"])
+        await host.start()
+        try:
+            groups_before = set(bus.get_consumer_groups().values())
+            for _ in range(5):
+                caller = WorkLedgerAppendCaller(bus, principal="developer")
+                receipt = await caller.append(_request(), timeout_s=2)
+                assert receipt.status is EnumWorkLedgerAppendStatus.ACCEPTED
+                await caller.stop()
+            groups_after = {
+                group
+                for group in bus.get_consumer_groups().values()
+                if "work_ledger_append_client" in group
+            }
+            assert groups_after == set()
+            assert set(bus.get_consumer_groups().values()) == groups_before
+            assert not bus._subscribers.get(host.topics.success)
+            assert not bus._subscribers.get(host.topics.failure)
+        finally:
+            await host.stop()
+            await bus.close()
+
+    asyncio.run(scenario())

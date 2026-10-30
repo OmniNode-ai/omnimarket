@@ -46,6 +46,9 @@ class Bus:
 
         return unsubscribe
 
+    async def subscribe_ungrouped(self, topic, on_message):
+        return await self.subscribe(topic, on_message=on_message)
+
     async def publish(self, topic, key, value, headers=None):
         topics = ticket_cli.load_ticket_topics()
         assert topic == topics.command

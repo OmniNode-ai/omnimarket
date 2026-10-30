@@ -52,6 +52,8 @@ from omnimarket.nodes.node_push_validation_effect import (
     ModelFocusedTestRunReceipt,
     ModelFocusedTestRunRequest,
 )
+from omnimarket.protocols.protocol_lab_run_bus import ProtocolLabRunBus
+from omnimarket.protocols.protocol_one_shot_reply_bus import ProtocolOneShotReplyBus
 
 logger = logging.getLogger(__name__)
 
@@ -91,23 +93,6 @@ class ProtocolBusMessage(Protocol):
 
 
 MessageCallback = Callable[[Any], Awaitable[None]]
-
-
-class ProtocolLabRunBus(Protocol):
-    """The two calls both sides make on the bus (in-memory or Kafka)."""
-
-    async def publish(
-        self, topic: str, key: bytes | None, value: bytes, headers: Any = None
-    ) -> object: ...
-
-    async def subscribe(
-        self,
-        topic: str,
-        node_identity: Any = None,
-        on_message: MessageCallback | None = None,
-        *,
-        group_id: str | None = None,
-    ) -> Callable[[], Awaitable[None]]: ...
 
 
 class ProtocolFocusedRunHandler(Protocol):
@@ -490,6 +475,7 @@ __all__ = [
     "ModelFocusedRunTopics",
     "ProtocolFocusedRunHandler",
     "ProtocolLabRunBus",
+    "ProtocolOneShotReplyBus",
     "event_type_for",
     "load_focused_run_topics",
 ]

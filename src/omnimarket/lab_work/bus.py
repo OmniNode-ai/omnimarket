@@ -44,6 +44,7 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolLabRunBus,
     event_type_for,
 )
+from omnimarket.delegated_test_loop.lane_bus import require_one_shot_reply_bus
 from omnimarket.lab_work.placement import (
     DEFAULT_MAX_LOAD_PER_CORE,
     DEFAULT_MIN_FREE_BYTES,
@@ -494,11 +495,11 @@ class LabWorkCaller:
         wait_slack_seconds: int = 300,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
-        self._bus = bus
+        # The advertisement and terminal reads join no consumer group (OMN-17427):
+        # this caller lives for one command, and a group minted per call stays
+        # on the broker after it leaves.
+        self._bus = require_one_shot_reply_bus(bus)
         self._topics = topics or load_lab_work_topics()
-        suffix = uuid.uuid4().hex[:12]
-        base = derive_service_group_id("lab_work_client", service=GROUP_SERVICE)
-        self._group = f"{base}.{suffix}"
         self._slack = wait_slack_seconds
         self._now = now
         self._ads: list[ModelHostCapacityAdvertisement] = []
@@ -513,26 +514,15 @@ class LabWorkCaller:
 
     async def start(self) -> None:
         self._unsubscribes.append(
-            await _subscribe(
-                self._bus,
-                self._topics.capacity,
-                self._on_ad,
-                f"{self._group}.cap",
-                "latest",
-            )
+            await self._bus.subscribe_ungrouped(self._topics.capacity, self._on_ad)
         )
         for topic in (self._topics.success, self._topics.failure):
             self._unsubscribes.append(
-                await _subscribe(
-                    # latest: the caller collects advertisements for a window before it
-                    # sends, so its terminal subscriptions are assigned before any
-                    # receipt of its own can be published.
-                    self._bus,
-                    topic,
-                    self._terminal(topic),
-                    f"{self._group}.t",
-                    "latest",
-                )
+                # The read begins at the log end before it returns: the caller
+                # collects advertisements for a window before it sends, so its
+                # terminal reads are positioned before any receipt of its own
+                # can be published.
+                await self._bus.subscribe_ungrouped(topic, self._terminal(topic))
             )
 
     async def stop(self) -> None:

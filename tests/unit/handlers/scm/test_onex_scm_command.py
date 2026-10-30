@@ -131,6 +131,11 @@ class FakeBus:
 
         return unsubscribe
 
+    async def subscribe_ungrouped(
+        self, topic: str, on_message: _Callback
+    ) -> Callable[[], Awaitable[None]]:
+        return await self.subscribe(topic, on_message=on_message)
+
     def _respond(
         self, topic: str, payload: dict[str, Any]
     ) -> tuple[str, dict[str, Any]]:

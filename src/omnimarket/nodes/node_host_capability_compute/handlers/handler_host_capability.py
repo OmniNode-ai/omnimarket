@@ -56,7 +56,7 @@ SCM_BUS_LANE = "dev"
 PYTHON_ENV = "ONEX_CAPABILITY_PY"
 CAPABILITY_FRESH_MIN = 10
 CAPABILITY_CHECK_S = 6
-# The bus check's own bound, and the bound of the interpreter running it (it opens the bus and joins a consumer group).
+# The bus check's own bound, and the bound of the interpreter running it (it opens the bus and reads the terminal topics).
 CAPABILITY_SCM_S = 30
 CAPABILITY_VENV_S = 45
 CAPABILITY_LOCK_MIN = 3
@@ -98,8 +98,8 @@ elif what == "scm-pr-create":
     lane, bound, root = sys.argv[2], float(sys.argv[3]), sys.argv[4] if len(sys.argv) > 4 else ""
     try:
         from pathlib import Path
+        from omnimarket.delegated_test_loop.lane_bus import require_one_shot_reply_bus
         from omnimarket.handlers.scm import handler_scm_dispatch as dispatch, scm_cli
-        from omnimarket.lab_work.bus import _subscribe
         topics = dispatch.load_topics(dispatch.verb("pr-create").node)
     except Exception as exc:
         say("unknown", "scm-unimportable:" + type(exc).__name__)
@@ -109,12 +109,12 @@ elif what == "scm-pr-create":
         return None
 
     async def main():
-        # The opening and the subscriptions ``onex scm pr-create`` makes before it publishes, with its consumer group prefix.
+        # The opening and the group-less reads ``onex scm pr-create`` makes before it publishes.
         opts = {"bus": "kafka", "bus_lane": lane, "kafka_bootstrap": None, "omnibase_path": Path(root) if root else None}
         async with scm_cli._open_bus(opts) as bus:
-            group = dispatch.ScmBusCaller(bus)._group
+            reader = require_one_shot_reply_bus(bus)
             for topic in [t for t in (topics.success, topics.failure) if t]:
-                stop = await _subscribe(bus, topic, drop, group, "latest")
+                stop = await reader.subscribe_ungrouped(topic, drop)
                 await stop()
         return topics.success
 

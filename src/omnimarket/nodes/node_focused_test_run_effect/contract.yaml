@@ -63,6 +63,10 @@ handler_routing:
       handler:
         name: "HandlerLabFocusedTestRunEffect"
         module: "omnimarket.nodes.node_focused_test_run_effect.handlers.handler_lab_focused_test_run_effect"
+    - operation: "require_one_shot_reply_bus"
+      handler:
+        name: "HandlerOneShotReplyBus"
+        module: "omnimarket.nodes.node_focused_test_run_effect.handlers.handler_lab_run_bus"
 descriptor:
   node_archetype: effect
   purity: effectful
