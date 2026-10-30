@@ -191,6 +191,8 @@ dod_evidence:
                   assert reasons["probe-paging"].startswith("host-swapping:"), result
               print(json.dumps({"run_id": receipt["run_id"], "engine": engine, "scenario": scenario, "host": result["host"], "outcome": result["outcome"], "verdicts": result["verdicts"]}))
       ' "$probe_dir"
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --locked pytest tests/test_no_cross_node_reach_in.py tests/nodes/node_host_pool_alarm_effect/test_host_pool_alarm_node.py tests/nodes/node_remote_lane_compute/test_host_swapping_slots.py -q --no-cov -p no:randomly
 - id: dod-omn17232-ac1-reviewed-private-host-authority
   description: The host authority is deployment configuration. This supports the rollout prerequisite; it does not
     claim the per-host runtime census or reasoned exclusions.
