@@ -38,12 +38,18 @@ from urllib.parse import urlparse
 
 import yaml
 
+from omnimarket.handlers.delegation_first_choice import (
+    clear_first_choice,
+    read_first_choice,
+    write_first_choice,
+)
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_node_overlay,
     resolve_setting,
 )
 from omnimarket.inference.local_byok_credential_adapter import (
+    local_byok_key_test_failed,
     local_model_tests_path,
     registered_local_byok_providers,
     resolve_local_byok_credential_model,
@@ -327,10 +333,15 @@ class HandlerModelSetup:
 
     def handle(self, request: ModelModelSetupRequest) -> ModelModelSetupResult:
         if request.operation == "status":
-            return ModelModelSetupResult(
-                operation="status",
-                providers=tuple(self._status(p) for p in PROVIDERS),
-            )
+            statuses = [self._status(p) for p in PROVIDERS]
+            # OMN-21346: the provider tried first is listed first.
+            statuses.sort(key=lambda status: not status.tried_first)
+            return ModelModelSetupResult(operation="status", providers=tuple(statuses))
+        if request.operation == "set_first":
+            return self._set_first(request)
+        if request.operation == "clear_first":
+            clear_first_choice()
+            return ModelModelSetupResult(operation="clear_first")
         if request.operation in ("reorder", "remove_model") and (
             request.provider == LOCAL_URL_PROVIDER
         ):
@@ -449,6 +460,45 @@ class HandlerModelSetup:
         return ModelModelSetupResult(
             operation=request.operation,
             models=self._write_model_list(provider, wanted),
+        )
+
+    # -- the model delegation tries first (OMN-21346) -----------------------
+
+    def _set_first(self, request: ModelModelSetupRequest) -> ModelModelSetupResult:
+        """Move the chosen model to the front of its list and record it as the choice."""
+        provider = request.provider
+        if provider is None:
+            raise ModelSetupRefusedError("name the provider whose model is tried first")
+        if not self.is_set_up(provider):
+            how = (
+                _LOCAL_ADD_HOW
+                if provider == LOCAL_URL_PROVIDER
+                else f"Add it with: onex models add {provider}"
+            )
+            raise ModelSetupRefusedError(f"{provider} is not set up. {how}")
+        if len(request.models) > 1:
+            raise ModelSetupRefusedError("name one model to try first")
+        stored = self._status(provider).models
+        if not stored:
+            raise ModelSetupRefusedError(
+                f"{provider} keeps no list of models to choose from; choose a "
+                "key's model or a local model by URL"
+            )
+        model = request.models[0] if request.models else stored[0]
+        if model not in stored:
+            raise ModelSetupRefusedError(
+                f"{model} is not in your {provider} list: {', '.join(stored)}"
+            )
+        if model != stored[0]:
+            ordered = (model, *(m for m in stored if m != model))
+            self.handle(
+                ModelModelSetupRequest(
+                    operation="reorder", provider=provider, models=ordered
+                )
+            )
+        write_first_choice(provider, model)
+        return ModelModelSetupResult(
+            operation="set_first", models=self._status(provider).models
         )
 
     # -- a local model server by URL (OMN-21162) ---------------------------
@@ -742,8 +792,25 @@ class HandlerModelSetup:
             models = tuple(str(e["model_name"]) for e in self._local_url_entries())
         else:
             models = resolve_local_byok_credential_models(provider) if set_up else ()
+        # OMN-21346: the choice counts only while it still routes: its model is
+        # still in the list, and a key's last test did not fail.
+        choice = read_first_choice()
+        tried_first = (
+            choice is not None
+            and choice[0] == provider
+            and choice[1] in models
+            and not (
+                provider in registered_local_byok_providers()
+                and local_byok_key_test_failed(provider)
+            )
+        )
         return ModelModelStatus(
-            provider=provider, set_up=set_up, last_test=last, models=models
+            provider=provider,
+            set_up=set_up,
+            last_test=last,
+            models=models,
+            tried_first=tried_first,
+            first_model=choice[1] if tried_first and choice is not None else None,
         )
 
     # -- the test ----------------------------------------------------------
