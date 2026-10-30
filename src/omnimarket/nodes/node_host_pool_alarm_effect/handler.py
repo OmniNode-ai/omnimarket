@@ -29,13 +29,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from omnimarket.models.model_host_pool_reading import ModelHostPoolReading
+
 from .models import (
     MEM_PRESSURE_CRITICAL,
     MEM_PSI_BOUND,
     SWAP_IN_BOUND_KB_S,
     ModelHostPoolAlarm,
     ModelHostPoolAlarmRequest,
-    ModelHostPoolReading,
 )
 
 TICKET = "OMN-17427"
