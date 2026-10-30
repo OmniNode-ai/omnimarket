@@ -244,10 +244,11 @@ dod_evidence:
     binds_ac: ["AC3"]
   - id: "dod-omn19787-ac4-unmet-class-keeps-tiers"
     description: >-
-      Ticket AC-4, its falsifier run as written. For every class with a registered false-pass range and the two review
-      classes the eval also reports, stored outcomes that would demote the local tier suppress nothing while the class's
-      latest line is missed or refused, absent, or unreadable, on the overlay and on the deployed routing decision; the
-      same rows with the line met do suppress, so the tests are not vacuous.
+      Ticket AC-4, its falsifier's selection run on the one file under tests/unit/delegation that holds every
+      eval_not_met_is_unknown test (the evidence gate refuses a bare directory selector). For every class with a
+      registered false-pass range and the two review classes the eval also reports, stored outcomes that would demote the
+      local tier suppress nothing on the routing overlay while the class's latest line is missed or refused, absent, or
+      unreadable; the same rows with the line met do suppress, so the tests are not vacuous.
     source: "manual"
     checks:
       - check_type: "test_passes"
