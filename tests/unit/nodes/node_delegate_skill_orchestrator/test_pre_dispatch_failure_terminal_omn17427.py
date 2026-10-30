@@ -101,6 +101,14 @@ async def test_real_handler_terminal_reaches_the_waiter_on_its_declared_topic(
             if port_kind == "runtime"
             else RuntimeDelegationDispatchPort(event_bus=bus, config=config)
         )
+        if isinstance(port, DeployedRuntimeDispatchPort):
+            # The runtime port's first route discovery parses every installed
+            # node contract (about 5 s cold under coverage on a loaded host).
+            # Run that real discovery here, outside the terminal wait, so the
+            # 10 s deadline below times only dispatch and the terminal; the
+            # port's own cache then serves both dispatches.
+            routes = await port._resolved_routes()
+            assert routes
         result = await asyncio.wait_for(
             port.dispatch(
                 prompt="Write a PR body from facts.",
