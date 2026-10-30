@@ -67,7 +67,7 @@ evidence_requirements:
     command: "uv run pytest tests/unit/projection/test_omn19787_acceptance_eval_latest_first.py -q --no-cov -k \"latest_run_every_class\""
   - kind: "tests"
     description: "AC4: a class whose line is not met never suppresses a tier."
-    command: "uv run pytest tests/unit/delegation -k eval_not_met_is_unknown -v"
+    command: "uv run pytest tests/unit/delegation/test_routing_eval_line_gate_omn19797.py -k eval_not_met_is_unknown -v"
 
 emergency_bypass:
   enabled: false
@@ -209,7 +209,7 @@ dod_evidence:
           END $$;
           SQL
         cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn19787-ac2-check-register-classes-and-gate-checks"
+  - id: "dod-omn19787-ac2-check-register"
     description: >-
       Ticket AC-2. The check-register CLI over the committed register exits zero; each of the plan's section 2.3 classes
       (test, document, summarization, research, planning, reasoning, code_generation, written out in the test) has a
@@ -227,7 +227,7 @@ dod_evidence:
           -k "omn19787 or RequiredDelegationAcceptance"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
-  - id: "dod-omn19787-ac3-exposure-latest-run-every-class-with-bound"
+  - id: "dod-omn19787-ac3-latest-run-classes-and-bound"
     description: >-
       Ticket AC-3, the half omnimarket owns. The acceptance-eval exposure the dashboard panel reads
       (onex.snapshot.projection.delegation.acceptance-eval.v1) serves, on its first page without since, every class of the
@@ -242,7 +242,7 @@ dod_evidence:
           -k "latest_run_every_class"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
-  - id: "dod-omn19787-ac4-rollup-never-suppresses-an-unmet-class"
+  - id: "dod-omn19787-ac4-unmet-class-keeps-tiers"
     description: >-
       Ticket AC-4, its falsifier run as written. For every class with a registered false-pass range and the two review
       classes the eval also reports, stored outcomes that would demote the local tier suppress nothing while the class's
@@ -251,7 +251,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/delegation -k eval_not_met_is_unknown -v"
+        check_value: "uv run pytest tests/unit/delegation/test_routing_eval_line_gate_omn19797.py -k eval_not_met_is_unknown -v"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
   - id: "dod-omn19787-retire-deleted-and-superseded-claims"
@@ -281,21 +281,21 @@ dod_evidence:
       - item: "dod-latest-first-ac2"
         label: "AC2"
         reason_kind: "superseded_by"
-        superseded_by: "dod-omn19787-ac2-check-register-classes-and-gate-checks"
+        superseded_by: "dod-omn19787-ac2-check-register"
         reason: "AC2 now reads that every class and gate check has a check-register entry; the since-cursor test proves a different change."
         retired_by: "jake"
         retired_at: "2026-10-29T23:46:02Z"
       - item: "dod-rubric-declared-answers-ac3"
         label: "AC3"
         reason_kind: "superseded_by"
-        superseded_by: "dod-omn19787-ac3-exposure-latest-run-every-class-with-bound"
+        superseded_by: "dod-omn19787-ac3-latest-run-classes-and-bound"
         reason: "AC3 now reads that the dashboard panel shows every class with its bound; the declared-format rubric test proves a different change."
         retired_by: "jake"
         retired_at: "2026-10-29T23:46:02Z"
       - item: "dod-rubric-declared-answers-ac4"
         label: "AC4"
         reason_kind: "superseded_by"
-        superseded_by: "dod-omn19787-ac4-rollup-never-suppresses-an-unmet-class"
+        superseded_by: "dod-omn19787-ac4-unmet-class-keeps-tiers"
         reason: "AC4 now reads that the rollup never suppresses an unmet class; the lab-run class filter test proves a different change."
         retired_by: "jake"
         retired_at: "2026-10-29T23:46:02Z"

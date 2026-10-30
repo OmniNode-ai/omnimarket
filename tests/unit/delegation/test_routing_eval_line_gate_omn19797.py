@@ -20,6 +20,7 @@ import pytest
 from omnimarket.ranges import REQUIRED_FALSE_PASS_CLASSES
 from omnimarket.routing.dod_overlay import (
     EVAL_LINE_MET,
+    ModelRoutingDodOverlay,
     ProtocolEvalLineReader,
     resolve_dod_overlay,
 )
@@ -214,7 +215,9 @@ class _ClassDodReader:
         return [{**row, "task_type": task_type} for row in _failing_rows()]
 
 
-def _resolve_class(task_class: str, line: ProtocolEvalLineReader | None):  # type: ignore[no-untyped-def]
+def _resolve_class(
+    task_class: str, line: ProtocolEvalLineReader | None
+) -> ModelRoutingDodOverlay | None:
     return resolve_dod_overlay(
         _ClassDodReader(),
         task_type=task_class,
