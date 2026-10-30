@@ -1203,7 +1203,7 @@ def bind_bifrost_glm_endpoint(
 
 # ---------------------------------------------------------------------------
 # Lane intake (OMN-17942). Every Linear item a node opens is lane-created: it is
-# labelled, stamped with its lane, and counted against a daily budget. The
+# labelled and stamped with its lane. The
 # vocabulary comes from the installed omniclaude plugin in production; these
 # fixtures stand in for it, and tests/nodes/lane_intake covers the real wiring.
 # ---------------------------------------------------------------------------
