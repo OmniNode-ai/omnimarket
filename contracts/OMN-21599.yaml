@@ -109,7 +109,6 @@ dod_evidence:
   - id: "dod-omn21599-deploy-placement-check"
     description: "Hosted package deploy smoke: the placement node source at the evaluated revision carries the contributor lane refusal, and the overlay model carries the lane_binding and lane_ready columns, read from the repository at that revision. No credentials, broker or lab service is required. This checks the evaluated revision, not a production rollout."
     source: "manual"
-    binds_ac: ["AC2159901", "AC2159902"]
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_remote_lane_compute/handlers/handler_remote_lane_placement.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"def contributor_lane_refusal(\")' | grep -qx true"
