@@ -76,7 +76,12 @@ def _resolve(
     task_class: str,
     loaded: _LoadedOverlay | None,
 ) -> ModelResolvedExecutionBudget:
-    base = authority.execution_budget(task_class)
+    try:
+        base = authority.execution_budgets[task_class]
+    except KeyError as exc:
+        raise ValueError(
+            f"no declared execution budget for task class: {task_class}"
+        ) from exc
     override = None if loaded is None else loaded[1].execution_budgets.get(task_class)
     if loaded is None or override is None:
         return ModelResolvedExecutionBudget(
@@ -97,18 +102,28 @@ def _resolve(
     )
 
 
+def resolve_for_authority(
+    authority: ModelTaskClassAuthority,
+    task_class: str,
+    environ: Mapping[str, str] | None = None,
+) -> ModelResolvedExecutionBudget:
+    """Return ``task_class``'s budget in ``authority``, the overlay's when it sets one.
+
+    ``ModelTaskClassAuthority.execution_budget`` answers through this, so every
+    caller of the authority, the onex delegate CLI included, sees the overlay.
+    Raises ``ValueError`` for a class with no contract budget, which refuses
+    the dispatch, and :class:`NodeOverlayError` for a broken overlay.
+    """
+    loaded = load_execution_budget_overlay(authority, environ)
+    return _resolve(authority, task_class, loaded)
+
+
 def resolve_execution_budget(
     task_class: str,
     environ: Mapping[str, str] | None = None,
 ) -> ModelResolvedExecutionBudget:
-    """Return ``task_class``'s budget, the overlay's when it sets one, and its source.
-
-    Raises ``ValueError`` for a class with no contract budget, which refuses
-    the dispatch, and :class:`NodeOverlayError` for a broken overlay.
-    """
-    authority = load_task_class_authority()
-    loaded = load_execution_budget_overlay(authority, environ)
-    return _resolve(authority, task_class, loaded)
+    """Return ``task_class``'s budget from the shipped contract and overlay, with its source."""
+    return resolve_for_authority(load_task_class_authority(), task_class, environ)
 
 
 def largest_execution_budget(
@@ -142,4 +157,5 @@ __all__ = [
     "largest_execution_budget",
     "load_execution_budget_overlay",
     "resolve_execution_budget",
+    "resolve_for_authority",
 ]

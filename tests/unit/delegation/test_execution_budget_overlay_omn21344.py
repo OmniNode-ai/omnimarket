@@ -29,6 +29,7 @@ from omnimarket.handlers.execution_budget_overlay import (
 from omnimarket.handlers.node_overlay_reader import OVERLAY_ROOTS_ENV, NodeOverlayError
 from omnimarket.inference.task_class_authority import (
     ModelTaskClassExecutionBudget,
+    load_task_class_authority,
     resolve_task_class_execution_budget,
 )
 from omnimarket.models.delegation.wire import model_delegate_skill_response
@@ -223,3 +224,12 @@ def test_a_terminal_carrying_budget_source_decodes() -> None:
         }
     )
     assert "budget_source" not in terminal.model_dump(mode="json")
+
+
+def test_the_authority_the_delegate_cli_reads_answers_with_the_overlay(
+    overlay_600: Path,
+) -> None:
+    """The onex delegate CLI asks the registered authority, so it sees the overlay too."""
+    budget = load_task_class_authority().execution_budget(TASK_CLASS)
+
+    assert budget.task_class_timeout_ceiling_seconds == OVERLAY_CEILING

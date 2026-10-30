@@ -1114,13 +1114,10 @@ class ModelTaskClassAuthority(BaseModel):
         return None
 
     def execution_budget(self, task_class: str) -> ModelTaskClassExecutionBudget:
-        """Return the declared handler budget for ``task_class``, or refuse."""
-        try:
-            return self.execution_budgets[task_class]
-        except KeyError as exc:
-            raise ValueError(
-                f"no declared execution budget for task class: {task_class}"
-            ) from exc
+        """The declared budget for ``task_class``, a site overlay's when it sets one."""
+        from omnimarket.handlers.execution_budget_overlay import resolve_for_authority
+
+        return resolve_for_authority(self, task_class).budget
 
     def unroutable_refusal(self, task_class: str) -> str | None:
         """Return the refusal for a class declared unroutable, in the contract's words."""
@@ -1415,10 +1412,8 @@ def resolve_reasoning_preamble_policy() -> ModelReasoningPreamblePolicy | None:
 def resolve_task_class_execution_budget(
     task_class: str,
 ) -> ModelTaskClassExecutionBudget:
-    """The class's budget, a site overlay's when it sets one, or refuse dispatch."""
-    from omnimarket.handlers.execution_budget_overlay import resolve_execution_budget
-
-    return resolve_execution_budget(task_class).budget
+    """Return the explicit handler budget for ``task_class`` or refuse dispatch."""
+    return load_task_class_authority().execution_budget(task_class)
 
 
 def resolve_task_class_rung_floor_seconds(task_class: str) -> int | None:
