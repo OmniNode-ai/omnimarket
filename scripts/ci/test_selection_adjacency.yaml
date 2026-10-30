@@ -32,8 +32,13 @@ thresholds:
 # src/**/contract.yaml, so a change to one node's contract narrows to
 # tests/nodes/ and would skip the gate entirely, leaving the invariant
 # reintroducible on the everyday dev path.
+# OMN-17232: tests/test_no_cross_node_reach_in.py walks every node package. A
+# change to one node narrowed to that node's tests, the dev push skips the
+# suite (OMN-19998), and a cross-node import merged green and failed every PR
+# synced with dev afterwards.
 always_selected_paths:
   - tests/gates/
+  - tests/test_no_cross_node_reach_in.py
 
 # Test infrastructure — any change forces the full suite.
 test_infrastructure_paths:

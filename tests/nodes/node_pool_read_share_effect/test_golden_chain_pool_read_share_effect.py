@@ -192,9 +192,9 @@ def test_a_shared_read_replays_the_step_a_timeout_named(tmp_path: Path) -> None:
 def test_the_pool_alarm_row_carries_the_step(tmp_path: Path) -> None:
     from datetime import UTC, datetime, timedelta
 
+    from omnimarket.models.model_host_pool_reading import ModelHostPoolReading
     from omnimarket.nodes.node_host_pool_alarm_effect.models import (
         ModelHostPoolAlarmRequest,
-        ModelHostPoolReading,
     )
     from omnimarket.nodes.node_host_pool_alarm_effect.node import (
         NodeHostPoolAlarmEffect,
