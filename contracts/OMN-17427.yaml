@@ -4219,3 +4219,10 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_wip_admission_compute/test_brief_gate.py tests/nodes/node_dispatch_brief_shape_compute/test_dispatch_brief_shape.py -q --no-cov -p no:randomly --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-wip-admission-inventory-deploy-probe"
+    description: "Hosted deployment artifact probe: the checked-out admission node runs admit, refuse and ticket-create decisions through the in-memory runtime, and the relation inventory matches the source readers. Requires this checkout and locked Python dependencies, with no broker, database or credentials. This is a package readback, not a live deployment attestation."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_wip_admission_compute/test_runtime_local.py tests/unit/scripts/test_application_relation_inventory.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
