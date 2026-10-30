@@ -464,6 +464,44 @@ def test_contract_change_still_selects_the_repo_wide_gate_dir() -> None:
     )
 
 
+def test_node_change_still_selects_the_cross_node_reach_in_test() -> None:
+    """OMN-17232: a one-node change must still run the repo-wide reach-in test.
+
+    omnimarket#4581 changed ``node_remote_lane_compute`` only, so the narrowed
+    selection ran that node's tests and not ``tests/test_no_cross_node_reach_in.py``.
+    The PR was green, the dev push skips the suite (OMN-19998), and the new
+    cross-node model import failed every PR synced with dev afterwards.
+    """
+    sel = compute_selection(
+        changed_files=[
+            "src/omnimarket/nodes/node_remote_lane_compute/handlers/handler_remote_lane_placement.py",
+        ],
+        adjacency_path=ADJACENCY_PATH,
+        ref_name="jonah/feature",
+        event_name="pull_request",
+        feature_flag_enabled=True,
+    )
+    assert sel.is_full_suite is False, (
+        "fixture drifted -- this test must exercise the NARROWED path, "
+        "otherwise it passes vacuously via full-suite escalation"
+    )
+    assert "tests/test_no_cross_node_reach_in.py" in sel.selected_paths, (
+        f"the reach-in test was narrowed away. selected={sel.selected_paths}"
+    )
+    assert (
+        ADJACENCY_PATH.parents[2] / "tests/test_no_cross_node_reach_in.py"
+    ).is_file()
+
+
+def test_always_selected_paths_reject_a_non_test_entry() -> None:
+    from scripts.ci.test_selection_loader import ModelAdjacencyMap, load_adjacency_map
+
+    base = load_adjacency_map(ADJACENCY_PATH).model_dump()
+    for bad in ("tests/gates", "src/omnimarket/models/", "scripts/ci/helper.py"):
+        with pytest.raises(ValueError, match="always_selected_paths"):
+            ModelAdjacencyMap.model_validate({**base, "always_selected_paths": [bad]})
+
+
 def test_always_selected_paths_are_not_dropped_when_missing_on_disk() -> None:
     """A missing gate dir must reach pytest and fail loudly, not vanish.
 
@@ -481,7 +519,9 @@ def test_always_selected_paths_are_not_dropped_when_missing_on_disk() -> None:
     )
     for path in config.always_selected_paths:
         assert path.startswith("tests/"), f"{path} is not under tests/"
-        assert path.endswith("/"), f"{path} must be written as a directory"
+        assert path.endswith(("/", ".py")), (
+            f"{path} must be a directory with a trailing slash or a .py test file"
+        )
 
 
 def test_always_selected_paths_not_unioned_into_full_tests_root() -> None:
@@ -553,7 +593,11 @@ def test_non_delegation_node_still_narrows(tracked_paths: list[str]) -> None:
     sel = compute_selection([path], ADJACENCY_PATH, ref_name="jonah/feature")
     assert sel.is_full_suite is False
     assert sel.full_suite_reason is None
-    assert sel.selected_paths == ["tests/gates/", "tests/nodes/"]
+    assert sel.selected_paths == [
+        "tests/gates/",
+        "tests/nodes/",
+        "tests/test_no_cross_node_reach_in.py",
+    ]
 
 
 @pytest.mark.parametrize(
