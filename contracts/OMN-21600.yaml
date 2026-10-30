@@ -5,7 +5,7 @@ summary: omnibase_core#2135 moved handler_done_write_receipt_gate into node_done
   handler_migration_conflicts into node_cross_repo_boundary_check_effect (find_migration_files into its
   runtime_migration_conflicts module). omnimarket imported the old paths and pinned core to a dev tag from before the
   move, so its tests stayed green while the dev-lane image, which resolves the moved core, failed auto-wiring. This
-  change imports both from their node paths and pins omnibase-core to dev-20261030090713-f99cc10f48a1 (0.47.59).
+  change imports both from their node paths and pins omnibase-core to dev-20261029162516-81c2a69a7b01 (0.47.58), the last tag that has the move and still ships the sibling-pins loader scripts/check_dep_provenance.py imports.
   The omnibase_infra half of the same break is a separate ticket's change.
 is_seam_ticket: false
 interface_change: false
@@ -35,5 +35,5 @@ dod_evidence:
     check_value: uv run pytest tests/ci/test_core_node_handler_paths_omn21600.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
   - check_type: command
-    check_value: grep -c 'tag = "dev-20261030090713-f99cc10f48a1"' pyproject.toml
+    check_value: grep -c 'tag = "dev-20261029162516-81c2a69a7b01"' pyproject.toml
     cwd: ${OMNI_HOME}/omnimarket
