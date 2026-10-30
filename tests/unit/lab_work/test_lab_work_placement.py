@@ -8,14 +8,15 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from omnimarket.lab_work.placement import (
+from omnimarket.models.overlay_keys import ModelLabHostRow, ModelLabHostsTable
+from omnimarket.nodes.node_lab_placement_compute.handlers import HandlerLabPoolPlace
+from omnimarket.nodes.node_lab_placement_compute.models import (
     DEFAULT_MAX_LOAD_PER_CORE,
     EnumPlacementDecision,
     EnumRefusalReason,
+    ModelLabPoolPlaceRequest,
     ModelPlacement,
-    place,
 )
-from omnimarket.nodes.node_lab_placement_compute.models import ModelHostTableVerdict
 from omnimarket.nodes.node_lab_work_unit_effect.models import (
     ModelHostCapacityAdvertisement,
 )
@@ -62,19 +63,21 @@ def _place(
 ) -> ModelPlacement:
     """Placement with a host table that lets every advertising host take the unit; the host
     table's own rules are tested in test_lab_work_host_table.py."""
-    table = {
-        ad.host_name: ModelHostTableVerdict(
-            host_name=ad.host_name, eligible=True, reason="eligible"
+    table = ModelLabHostsTable(
+        hosts=tuple(
+            ModelLabHostRow(name=name, target=name)
+            for name in sorted({ad.host_name for ad in ads} or {"h105"})
         )
-        for ad in ads
-    }
-    return place(
-        ads,
-        evaluated_at=evaluated_at,
-        table_verdicts=table,
-        max_load_per_core=max_load_per_core,
-        need_tools=need_tools,
-        only_host=only_host,
+    )
+    return HandlerLabPoolPlace(environ={}).handle(
+        ModelLabPoolPlaceRequest(
+            advertisements=tuple(ads),
+            evaluated_at=evaluated_at,
+            table=table,
+            max_load_per_core=max_load_per_core,
+            need_tools=need_tools,
+            only_host=only_host,
+        )
     )
 
 

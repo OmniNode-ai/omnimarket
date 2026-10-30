@@ -11,7 +11,7 @@
   unreadable command goes to the failure terminal).
 * :class:`LabWorkCaller` runs wherever the lane runs (``onex lab-work run``).
   It reads the pool's advertisements for one window, places the unit with the
-  pure :func:`omnimarket.lab_work.placement.place`, publishes it, and resolves
+  node handler :class:`omnimarket.nodes.node_lab_placement_compute.handlers.HandlerLabPoolPlace`, publishes it, and resolves
   it from the terminal whose ``parent_envelope_id`` is the command's own
   ``envelope_id``.
 
@@ -28,7 +28,7 @@ import json
 import logging
 import time
 import uuid
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib import resources
@@ -44,25 +44,7 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolLabRunBus,
     event_type_for,
 )
-from omnimarket.handlers.node_overlay_reader import NodeOverlayError
-from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
-from omnimarket.lab_work.placement import (
-    DEFAULT_MAX_LOAD_PER_CORE,
-    DEFAULT_MIN_FREE_BYTES,
-    EnumPlacementDecision,
-    ModelPlacement,
-    place,
-)
-from omnimarket.models.overlay_keys import (
-    ModelLabHostRow,
-    ModelLabHostsTable,
-    ModelUnitNeedsRule,
-)
-from omnimarket.nodes.node_lab_placement_compute.handlers import (
-    HandlerLabPlacement,
-    HostTableError,
-)
-from omnimarket.nodes.node_lab_placement_compute.models import ModelLabPlacementRequest
+from omnimarket.nodes.node_lab_placement_compute import handlers, models
 from omnimarket.nodes.node_lab_work_unit_effect.models import (
     EnumLabWorkUnitStatus,
     ModelHostCapacityAdvertisement,
@@ -143,19 +125,6 @@ class ProtocolAdvertiseHandler(Protocol):
     def handle(
         self, request: ModelHostCapacityProbeRequest
     ) -> ModelHostCapacityAdvertisement: ...
-
-
-def load_host_table(
-    environ: Mapping[str, str] | None = None,
-) -> ModelLabHostsTable:
-    """The lab host table: the file ``ONEX_LAB_RUN_HOSTS`` names, else the ``lab_hosts`` overlay.
-
-    Raises :class:`HostTableError` when neither supplies a valid table: placement then refuses
-    instead of admitting every host that advertises."""
-    try:
-        return resolve_lab_hosts_table(environ)
-    except NodeOverlayError as exc:
-        raise HostTableError(f"the lab host table could not be read: {exc}") from None
 
 
 def load_lab_work_topics(node: str = LAB_WORK_NODE) -> ModelLabWorkTopics:
@@ -518,16 +487,10 @@ class LabWorkCaller:
         topics: ModelLabWorkTopics | None = None,
         wait_slack_seconds: int = 300,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
-        host_table: Sequence[ModelLabHostRow] | None = None,
-        unit_needs: Sequence[ModelUnitNeedsRule] = (),
-        placement: HandlerLabPlacement | None = None,
+        placer: handlers.HandlerLabPoolPlace | None = None,
     ) -> None:
         self._bus = bus
-        # The host table and the placement rules are read when the first unit is placed, so a
-        # caller that only listens (`hosts`) needs neither; an unreadable table refuses the unit.
-        self._host_table = host_table
-        self._unit_needs = tuple(unit_needs)
-        self._placement = placement
+        self._placer = placer or handlers.HandlerLabPoolPlace()
         self._topics = topics or load_lab_work_topics()
         suffix = uuid.uuid4().hex[:12]
         base = derive_service_group_id("lab_work_client", service=GROUP_SERVICE)
@@ -599,43 +562,24 @@ class LabWorkCaller:
     def place(
         self,
         *,
-        max_load_per_core: float = DEFAULT_MAX_LOAD_PER_CORE,
-        min_free_bytes: int = DEFAULT_MIN_FREE_BYTES,
+        max_load_per_core: float = models.DEFAULT_MAX_LOAD_PER_CORE,
+        min_free_bytes: int = models.DEFAULT_MIN_FREE_BYTES,
         need_tools: tuple[str, ...] = (),
         only_host: str | None = None,
         repo: str = "",
         kind: str = "other",
-        weight: str | None = None,
-    ) -> ModelPlacement:
-        """Place one unit of ``repo`` and ``kind`` on a host the host table lets take it.
-
-        Raises :class:`HostTableError` when the table or the
-        rules cannot be read: nothing is placed on a guess."""
-        if self._host_table is None:
-            document = load_host_table()
-            self._host_table = document.hosts
-            self._unit_needs = document.unit_needs
-        if self._placement is None:
-            self._placement = HandlerLabPlacement()
-        judged = self._placement.handle(
-            ModelLabPlacementRequest(
-                repo=repo,
-                kind=kind,
-                weight=weight,
-                host_names=tuple(ad.host_name for ad in self._ads),
-                table=tuple(self._host_table),
-                unit_needs=self._unit_needs,
-            )
-        )
-        return place(
-            self._ads,
+    ) -> models.ModelPlacement:
+        request = models.ModelLabPoolPlaceRequest(
+            advertisements=tuple(self._ads),
             evaluated_at=self._now(),
-            table_verdicts=judged.by_host(),
+            repo=repo,
+            kind=kind,
             max_load_per_core=max_load_per_core,
             min_free_bytes=min_free_bytes,
             need_tools=need_tools,
             only_host=only_host,
         )
+        return self._placer.handle(request)
 
     def _terminal(self, topic: str) -> Callable[[ProtocolBusMessage], Awaitable[None]]:
         async def on_message(message: ProtocolBusMessage) -> None:
@@ -715,7 +659,6 @@ __all__ = [
     "DEFAULT_PROGRESS_SECONDS",
     "DEFAULT_TOOLS",
     "LAB_WORK_NODE",
-    "EnumPlacementDecision",
     "LabWorkCaller",
     "LabWorkHost",
     "ModelLabWorkCommandFailure",

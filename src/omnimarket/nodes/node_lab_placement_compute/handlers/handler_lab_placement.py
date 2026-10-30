@@ -22,13 +22,20 @@ the hosts arrive in the request, and the rules are the contract's.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from importlib import resources
 from typing import Literal
 
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.models.overlay_keys import ModelLabHostRow, ModelUnitNeedsRule
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
+from omnimarket.models.overlay_keys import (
+    ModelLabHostRow,
+    ModelLabHostsTable,
+    ModelUnitNeedsRule,
+)
 from omnimarket.nodes.node_lab_placement_compute.models.model_lab_placement import (
     ModelHostTableVerdict,
     ModelLabPlacementRequest,
@@ -42,6 +49,19 @@ NODE_PACKAGE = "omnimarket.nodes.node_lab_placement_compute"
 
 class HostTableError(ValueError):
     """The host table or the placement rules could not be read, so nothing can be judged."""
+
+
+def load_host_table(
+    environ: Mapping[str, str] | None = None,
+) -> ModelLabHostsTable:
+    """The lab host table: the file ``ONEX_LAB_RUN_HOSTS`` names, else the ``lab_hosts`` overlay.
+
+    Raises :class:`HostTableError` when neither supplies a valid table: placement then refuses
+    instead of admitting every host that advertises."""
+    try:
+        return resolve_lab_hosts_table(environ)
+    except NodeOverlayError as exc:
+        raise HostTableError(f"the lab host table could not be read: {exc}") from None
 
 
 def load_placement_rules() -> ModelPlacementRules:
@@ -191,6 +211,7 @@ class HandlerLabPlacement:
 __all__ = [
     "HandlerLabPlacement",
     "HostTableError",
+    "load_host_table",
     "load_placement_rules",
     "repo_name",
 ]

@@ -9,7 +9,7 @@ contract_version:
   minor: 0
   patch: 0
 node_version: 1.0.0
-description: "Judge which lab pool hosts the lab host table lets take one work unit: a host marked unavailable takes none, and the unit's weight, work kind and capability needs (AVX2) are matched against the columns the host row declares, with each host's own memory bar and speed returned; the unit's needs are contract data."
+description: "Judge which lab pool hosts the lab host table lets take one work unit: a host marked unavailable takes none, and the unit's weight, work kind and capability needs (AVX2) are matched against the columns the host row declares, with each host's own memory bar and speed returned; the unit's needs are contract data. Also place a unit on the advertising pool hosts (place), with the table and weight read through injected sources."
 input_model:
   name: ModelLabPlacementRequest
   module: omnimarket.nodes.node_lab_placement_compute.models.model_lab_placement
@@ -29,11 +29,15 @@ handler_routing:
     handler:
       name: HandlerLabPlacement
       module: omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_placement
+  - operation: place
+    handler:
+      name: HandlerLabPoolPlace
+      module: omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_pool_place
 event_bus:
   subscribe_topics: []
   publish_topics: []
 runtime_dispatch:
-  external_trigger: "Direct Python invocation with the lab host table rows, a unit and the hosts to judge (lab placement, onex lab-work, and the plugin's lab-run shim through its judge command)."
+  external_trigger: "Direct Python invocation to judge host table rows (handle) or place a unit on the advertising pool hosts (place), with the table and weight read through injected sources (onex lab-work and the plugin's lab-run judge command)."
 descriptor:
   node_archetype: compute
   purity: pure
@@ -74,7 +78,7 @@ placement:
   unit_needs: []
 metadata:
   transport_type: local
-  description: "Judge which lab pool hosts the lab host table lets take one work unit: a host marked unavailable takes none, and the unit's weight, work kind and capability needs (AVX2) are matched against the columns the host row declares, with each host's own memory bar and speed returned; the unit's needs are contract data."
+  description: "Judge which lab pool hosts the lab host table lets take one work unit: a host marked unavailable takes none, and the unit's weight, work kind and capability needs (AVX2) are matched against the columns the host row declares, with each host's own memory bar and speed returned; the unit's needs are contract data. Also place a unit on the advertising pool hosts (place), with the table and weight read through injected sources."
   author: OmniNode Team
   created: '2026-10-29'
   tags:

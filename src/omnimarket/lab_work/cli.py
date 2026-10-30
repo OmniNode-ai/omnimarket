@@ -24,15 +24,12 @@ import json
 import logging
 import os
 import signal
-import subprocess
 import sys
 import uuid
-from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
 
 import click
-from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
 from omnimarket.delegated_test_loop.lane_bus import (
     BusKind,
@@ -43,19 +40,13 @@ from omnimarket.lab_work.bus import (
     DEFAULT_MAX_COMMAND_AGE_SECONDS,
     LabWorkCaller,
     LabWorkHost,
-    load_host_table,
 )
-from omnimarket.lab_work.placement import (
+from omnimarket.nodes.node_lab_placement_compute.handlers import newest_per_host
+from omnimarket.nodes.node_lab_placement_compute.models import (
     DEFAULT_MAX_LOAD_PER_CORE,
-    EnumPlacementDecision,
     EnumRefusalReason,
-    newest_per_host,
 )
-from omnimarket.nodes.node_lab_placement_compute.handlers import (
-    HandlerLabPlacement,
-    HostTableError,
-)
-from omnimarket.nodes.node_lab_placement_compute.models import ModelLabPlacementRequest
+from omnimarket.nodes.node_lab_placement_compute.runtime_lab_judge import judge_command
 from omnimarket.nodes.node_lab_work_unit_effect import (
     DEFAULT_ALLOWED_EXECUTABLES,
     DEFAULT_ALLOWED_OWNERS,
@@ -292,13 +283,6 @@ def hosts_command(
 @click.option("--timeout", "timeout_seconds", type=int, default=1800, show_default=True)
 @click.option("--need", "need_tools", multiple=True, help="A tool the host must have.")
 @click.option(
-    "--weight",
-    default=None,
-    envvar="ONEX_LAB_WORK_WEIGHT",
-    help="The unit's weight (light, standard, heavy), judged against each host's "
-    "max_weight in the host table; default: the contract's weight for --kind.",
-)
-@click.option(
     "--host", "only_host", default=None, help="Only this pool host (bar still applies)."
 )
 @click.option("--max-load-per-core", type=float, default=DEFAULT_MAX_LOAD_PER_CORE)
@@ -319,7 +303,6 @@ def run_command(
     kind: str,
     timeout_seconds: int,
     need_tools: tuple[str, ...],
-    weight: str | None,
     only_host: str | None,
     max_load_per_core: float,
     min_free_gb: float,
@@ -346,21 +329,16 @@ def run_command(
             await caller.start()
             try:
                 await caller.collect(window or 2 * caller.topics.cadence_seconds + 2)
-                try:
-                    placement = caller.place(
-                        max_load_per_core=max_load_per_core,
-                        min_free_bytes=int(min_free_gb * 1024**3),
-                        need_tools=need_tools,
-                        only_host=only_host,
-                        repo=repo,
-                        kind=kind,
-                        weight=weight,
-                    )
-                except HostTableError as exc:
-                    click.echo(f"lab-work: {exc}; not running it anywhere", err=True)
-                    return EXIT_NO_ADVERTISEMENT
+                placement = caller.place(
+                    max_load_per_core=max_load_per_core,
+                    min_free_bytes=int(min_free_gb * 1024**3),
+                    need_tools=need_tools,
+                    only_host=only_host,
+                    repo=repo,
+                    kind=kind,
+                )
                 click.echo(placement.describe(), err=True)
-                if placement.decision is EnumPlacementDecision.REFUSED:
+                if not placement.placed:
                     click.echo(
                         "lab-work: no pool host can take this unit; not running it anywhere",
                         err=True,
@@ -408,97 +386,12 @@ def run_command(
     sys.exit(code)
 
 
-def unit_from_words(words: Sequence[str]) -> tuple[str | None, str | None]:
-    """(repository, work kind) a lab-run argument list names: ``--repo`` (a bare name or owner/name), else the origin of
-    ``--clone`` or of the working directory; ``--kind``. None for what the arguments do not say."""
-    flags: dict[str, str] = {}
-    held: str | None = None
-    for word in words:
-        if held is not None:
-            flags[held], held = word, None
-        elif word in ("--repo", "--clone", "--kind"):
-            held = word
-        elif word.startswith(("--repo=", "--clone=", "--kind=")):
-            flags[word.split("=", 1)[0]] = word.split("=", 1)[1]
-    repo = flags.get("--repo")
-    if repo is None:
-        done = subprocess.run(
-            ["git", "-C", flags.get("--clone", "."), "remote", "get-url", "origin"],
-            capture_output=True,
-            text=True,
-            check=False,
-            env=scrub_git_location_env(dict(os.environ)),
-        )
-        repo = (done.stdout.strip() or None) if done.returncode == 0 else None
-    return repo, flags.get("--kind")
+lab_work_group.add_command(judge_command)
 
 
-@lab_work_group.command("judge")
-@click.option(
-    "--words",
-    default=None,
-    help="JSON list of the arguments the lab-run launcher was given before `--`: the unit's "
-    "--repo (else the origin of --clone or of the working directory) and --kind are read from it.",
-)
-@click.option("--repo", default=None, help="owner/name or the bare repository name.")
-@click.option(
-    "--kind",
-    type=click.Choice(["test", "build", "lint", "code_draft", "other"]),
-    default=None,
-)
-@click.option("--weight", default=None, envvar="ONEX_LAB_WORK_WEIGHT")
-@click.argument("host_names", nargs=-1, required=True)
-def judge_command(
-    words: str | None,
-    repo: str | None,
-    kind: str | None,
-    weight: str | None,
-    host_names: tuple[str, ...],
-) -> None:
-    """Print the host table's verdict on each named host for one unit, as JSON.
-
-    This is the one rule for what a host may take (``available``, work kind, weight, capabilities
-    such as AVX2, the host's own memory bar and speed); the bus placement applies it itself and
-    the plugin's lab-run launcher applies it to the hosts it ranks. Exits 69 when the unit, the
-    host table or the placement rules cannot be read, never a guess."""
-    try:
-        said_repo, said_kind = unit_from_words(json.loads(words) if words else [])
-        if (repo or said_repo) is None:
-            raise HostTableError(
-                "the unit's repository is not named (pass --repo, or run in a git checkout)"
-            )
-        document = load_host_table()
-        judged = HandlerLabPlacement().handle(
-            ModelLabPlacementRequest(
-                repo=repo or said_repo or "",
-                kind=kind or said_kind or "other",
-                weight=weight,
-                host_names=host_names,
-                table=document.hosts,
-                unit_needs=document.unit_needs,
-            )
-        )
-    except (HostTableError, ValueError) as exc:
-        click.echo(f"lab-work: {exc}", err=True)
-        sys.exit(EXIT_NO_ADVERTISEMENT)
-    click.echo(
-        json.dumps(
-            {
-                "unit": judged.unit.model_dump(mode="json"),
-                "verdicts": [v.model_dump(mode="json") for v in judged.verdicts],
-            },
-            indent=2,
-        )
-    )
-
-
-def main() -> None:
-    """``python -m omnimarket.lab_work.cli``: the same group without the onex CLI."""
-    lab_work_group()
-
-
+# ``python -m omnimarket.lab_work.cli``: the same group without the onex CLI.
 if __name__ == "__main__":
-    main()
+    lab_work_group()
 
 
 __all__ = [
@@ -507,7 +400,6 @@ __all__ = [
     "EXIT_NO_HOST",
     "EXIT_STUCK_WORKER",
     "hosts_command",
-    "judge_command",
     "lab_work_group",
     "run_command",
     "serve_command",

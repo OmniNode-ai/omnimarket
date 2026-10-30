@@ -30,25 +30,24 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
 )
 
 from omnimarket.lab_work import cli
-from omnimarket.lab_work.bus import LabWorkCaller, LabWorkHost, load_host_table
-from omnimarket.lab_work.placement import (
-    DEFAULT_MIN_FREE_BYTES,
-    EnumPlacementDecision,
-    EnumRefusalReason,
-    ModelPlacement,
-    place,
-)
+from omnimarket.lab_work.bus import LabWorkCaller, LabWorkHost
 from omnimarket.models.overlay_keys import (
     ModelLabHostsTable,
     ModelUnitNeedsRule,
 )
 from omnimarket.nodes.node_lab_placement_compute.handlers import (
     HandlerLabPlacement,
+    HandlerLabPoolPlace,
     HostTableError,
+    load_host_table,
     load_placement_rules,
 )
 from omnimarket.nodes.node_lab_placement_compute.models import (
-    ModelLabPlacementRequest,
+    DEFAULT_MIN_FREE_BYTES,
+    EnumPlacementDecision,
+    EnumRefusalReason,
+    ModelLabPoolPlaceRequest,
+    ModelPlacement,
     ModelPlacementRules,
     ModelUnitProfile,
 )
@@ -142,22 +141,17 @@ def _place(
     only_host: str | None = None,
     min_free_bytes: int = DEFAULT_MIN_FREE_BYTES,
 ) -> ModelPlacement:
-    judged = HandlerLabPlacement(rules).handle(
-        ModelLabPlacementRequest(
+    return HandlerLabPoolPlace(judge=HandlerLabPlacement(rules), environ={}).handle(
+        ModelLabPoolPlaceRequest(
+            advertisements=tuple(ads),
+            evaluated_at=NOW,
+            table=table,
             repo=repo,
             kind=kind,
             weight=weight,
-            host_names=tuple(ad.host_name for ad in ads),
-            table=table.hosts,
-            unit_needs=table.unit_needs,
+            only_host=only_host,
+            min_free_bytes=min_free_bytes,
         )
-    )
-    return place(
-        ads,
-        evaluated_at=NOW,
-        table_verdicts=judged.by_host(),
-        only_host=only_host,
-        min_free_bytes=min_free_bytes,
     )
 
 
@@ -662,3 +656,103 @@ def test_the_run_command_reads_the_weight_from_the_environment(
     light = CliRunner().invoke(cli.lab_work_group, args)
     assert light.exit_code == 0, light.output
     assert "placement: placed on h106" in light.output
+
+
+def test_injected_environment_weight_reaches_placement(
+    table: ModelLabHostsTable,
+) -> None:
+    request = ModelLabPoolPlaceRequest(
+        advertisements=(_ad("h106", 0.5, 8, free_gb=5.2),),
+        evaluated_at=NOW,
+        repo="OmniNode-ai/omnidash",
+        kind="test",
+        table=table,
+        min_free_bytes=10 * GB,
+    )
+    assert not HandlerLabPoolPlace(environ={}).handle(request).placed
+    light = HandlerLabPoolPlace(environ={"ONEX_LAB_WORK_WEIGHT": "light"}).handle(
+        request
+    )
+    assert light.placed
+    assert light.host_name == "h106"
+    explicit = request.model_copy(update={"weight": "standard"})
+    assert (
+        not HandlerLabPoolPlace(environ={"ONEX_LAB_WORK_WEIGHT": "light"})
+        .handle(explicit)
+        .placed
+    )
+
+
+def test_default_placer_refuses_an_unreadable_table(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ONEX_LAB_RUN_HOSTS", str(tmp_path / "absent.yaml"))
+    placement = HandlerLabPoolPlace().handle(
+        ModelLabPoolPlaceRequest(
+            advertisements=(_ad("h101", 0.1, 12),),
+            evaluated_at=NOW,
+        )
+    )
+    assert placement.decision is EnumPlacementDecision.REFUSED
+    assert placement.refusal is EnumRefusalReason.COULD_NOT_CHECK
+    assert not placement.placed
+    assert placement.verdicts == []
+    assert "could not be read" in placement.detail
+    assert placement.detail in placement.describe().splitlines()
+
+
+@pytest.mark.parametrize("weight", ["unknown", "heavy"])
+def test_bad_weight_fails_closed(table: ModelLabHostsTable, weight: str) -> None:
+    if weight == "heavy":
+        table = table.model_copy(
+            update={
+                "hosts": tuple(
+                    row.model_copy(update={"max_weight": "unknown"})
+                    for row in table.hosts
+                )
+            }
+        )
+    placement = HandlerLabPoolPlace(environ={}).handle(
+        ModelLabPoolPlaceRequest(
+            advertisements=(_ad("h101", 0.1, 12),),
+            evaluated_at=NOW,
+            table=table,
+            weight=weight,
+        )
+    )
+    assert placement.refusal is EnumRefusalReason.COULD_NOT_CHECK
+    assert "not one of" in placement.detail
+
+
+def test_invalid_rules_refuse_inside_handle(
+    table: ModelLabHostsTable, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnimarket.nodes.node_lab_placement_compute.handlers import (
+        handler_lab_placement,
+    )
+
+    def invalid_rules() -> ModelPlacementRules:
+        raise HostTableError("the lab placement rules are invalid: unknown weight")
+
+    monkeypatch.setattr(handler_lab_placement, "load_placement_rules", invalid_rules)
+    placer = HandlerLabPoolPlace()
+    result = placer.handle(
+        ModelLabPoolPlaceRequest(
+            advertisements=(_ad("h101", 0.1, 12),),
+            evaluated_at=NOW,
+            table=table,
+        )
+    )
+    assert result.refusal is EnumRefusalReason.COULD_NOT_CHECK
+    assert "rules are invalid" in result.detail
+
+
+def test_run_command_describes_an_unreadable_table_and_exits_69(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ONEX_LAB_RUN_HOSTS", str(tmp_path / "absent.yaml"))
+    result = CliRunner().invoke(cli.lab_work_group, _run_args("OmniNode-ai/omnimarket"))
+    assert result.exit_code == 69
+    assert "placement: refused (could_not_check)" in result.output
+    assert "could not be read" in result.output
+    assert "no pool host can take this unit" in result.output

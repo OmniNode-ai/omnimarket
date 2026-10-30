@@ -22,8 +22,12 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
 )
 
 from omnimarket.lab_work.bus import LabWorkCaller, LabWorkHost, load_lab_work_topics
-from omnimarket.lab_work.placement import EnumPlacementDecision, EnumRefusalReason
-from omnimarket.models.overlay_keys import ModelLabHostRow
+from omnimarket.models.overlay_keys import ModelLabHostRow, ModelLabHostsTable
+from omnimarket.nodes.node_lab_placement_compute.handlers import HandlerLabPoolPlace
+from omnimarket.nodes.node_lab_placement_compute.models import (
+    EnumPlacementDecision,
+    EnumRefusalReason,
+)
 from omnimarket.nodes.node_lab_work_unit_effect import (
     EnumLabWorkUnitStatus,
     HandlerHostCapacityAdvertiseEffect,
@@ -134,7 +138,13 @@ def test_host_runs_only_units_addressed_to_it_and_answers_with_the_receipt() -> 
         )
         await host_a.start()
         await host_b.start()
-        caller = LabWorkCaller(bus, wait_slack_seconds=5, host_table=HOST_TABLE)
+        caller = LabWorkCaller(
+            bus,
+            wait_slack_seconds=5,
+            placer=HandlerLabPoolPlace(
+                table_source=lambda: ModelLabHostsTable(hosts=HOST_TABLE)
+            ),
+        )
         await caller.start()
         await host_a.advertise_once()
         await host_b.advertise_once()
@@ -419,7 +429,13 @@ def test_caller_ignores_malformed_capacity_advertisements(malformed: bytes) -> N
         stamp = datetime(2026, 9, 29, 18, 0, tzinfo=UTC)
         bus = EventBusInmemory(environment="local", group="lab-work-malformed-test")
         await bus.start()
-        caller = LabWorkCaller(bus, now=lambda: stamp, host_table=HOST_TABLE)
+        caller = LabWorkCaller(
+            bus,
+            now=lambda: stamp,
+            placer=HandlerLabPoolPlace(
+                table_source=lambda: ModelLabHostsTable(hosts=HOST_TABLE)
+            ),
+        )
         await caller.start()
         try:
             await bus.publish(caller.topics.capacity, b"h202", malformed)
@@ -447,7 +463,13 @@ def test_caller_rejects_an_advertisement_with_zero_total_slots() -> None:
         stamp = datetime(2026, 9, 29, 18, 0, tzinfo=UTC)
         bus = EventBusInmemory(environment="local", group="lab-work-zero-slots-test")
         await bus.start()
-        caller = LabWorkCaller(bus, now=lambda: stamp, host_table=HOST_TABLE)
+        caller = LabWorkCaller(
+            bus,
+            now=lambda: stamp,
+            placer=HandlerLabPoolPlace(
+                table_source=lambda: ModelLabHostsTable(hosts=HOST_TABLE)
+            ),
+        )
         await caller.start()
         try:
             valid = HandlerHostCapacityAdvertiseEffect(

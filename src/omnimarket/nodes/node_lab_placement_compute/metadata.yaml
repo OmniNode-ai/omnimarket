@@ -20,7 +20,8 @@ capabilities:
   requires_secrets: false
   requires_docker: false
   side_effect_class: none
-dependencies: []
+dependencies:
+- click>=8.1.0
 authors:
 - OmniNode Platform Team
 license: MIT

@@ -23,13 +23,11 @@ from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
 )
 from pydantic import JsonValue
 
-from omnimarket.lab_work.placement import EnumPlacementDecision
 from omnimarket.models.model_lab_work_unit import (
     MAX_TIMEOUT_SECONDS,
     EnumLabWorkUnitStatus,
     ModelLabWorkUnitRequest,
 )
-from omnimarket.nodes.node_lab_placement_compute.handlers import HostTableError
 
 from ..models.model_morning_ground_state import (
     ModelMorningGroundStateRequest,
@@ -104,19 +102,10 @@ class HandlerMorningPhaseLabWork(HandlerMorningPhaseBus):
             )
         caller = await self._ready_caller()
         await caller.collect(ADVERTISEMENT_WINDOW_SECONDS)
-        try:
-            placement = caller.place(
-                need_tools=AGENT_TOOLS,
-                only_host=target.only_host,
-                repo=target.repo,
-                kind="other",
-            )
-        except HostTableError as exc:
-            raise MorningPhaseLabWorkError(
-                f"{phase.label}: the host table could not be read, so no unit is "
-                f"placed: {exc}"
-            ) from None
-        if placement.decision is not EnumPlacementDecision.PLACED:
+        placement = caller.place(
+            need_tools=AGENT_TOOLS, only_host=target.only_host, repo=target.repo
+        )
+        if not placement.placed:
             raise MorningPhaseLabWorkError(
                 f"{phase.label}: no pool host can take the phase agent: "
                 + placement.describe()
@@ -132,7 +121,6 @@ class HandlerMorningPhaseLabWork(HandlerMorningPhaseBus):
             repo=target.repo,
             commit_sha=target.commit_sha,
             argv=["python3", AGENT_LAUNCHER, phase.model, *chunks],
-            kind="other",
             timeout_seconds=MAX_TIMEOUT_SECONDS,
             lane=target.lane,
             need_tools=list(AGENT_TOOLS),

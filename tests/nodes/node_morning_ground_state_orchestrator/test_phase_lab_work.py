@@ -20,7 +20,7 @@ from typing import cast
 import pytest
 from pydantic import JsonValue
 
-from omnimarket.lab_work.placement import (
+from omnimarket.nodes.node_lab_placement_compute.models import (
     EnumPlacementDecision,
     EnumRefusalReason,
     ModelPlacement,
@@ -117,7 +117,6 @@ class Caller:
         need_tools: tuple[str, ...] = (),
         only_host: str | None = None,
         repo: str = "",
-        kind: str = "other",
     ) -> ModelPlacement:
         self.needs.append(need_tools)
         if not self.placed:

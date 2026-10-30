@@ -4,12 +4,12 @@
 
 from typing import Protocol
 
-from omnimarket.lab_work.placement import ModelPlacement
 from omnimarket.models.model_lab_work_unit import (
     ModelHostCapacityAdvertisement,
     ModelLabWorkUnitReceipt,
     ModelLabWorkUnitRequest,
 )
+from omnimarket.nodes.node_lab_placement_compute.models import ModelPlacement
 
 
 class ProtocolMorningLabWorkCaller(Protocol):
@@ -23,7 +23,6 @@ class ProtocolMorningLabWorkCaller(Protocol):
         need_tools: tuple[str, ...] = (),
         only_host: str | None = None,
         repo: str = "",
-        kind: str = "other",
     ) -> ModelPlacement: ...
     async def dispatch(
         self, request: ModelLabWorkUnitRequest
