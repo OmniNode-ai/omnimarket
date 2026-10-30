@@ -3454,6 +3454,7 @@
   "tests/unit/test_session_start_nodes_present.py": 0.01,
   "tests/unit/test_verify_target_mapping.py": 0.21,
   "tests/unit/test_workflow_core_pin_only_classifier_omn_17427.py": 0.07,
+  "tests/unit/test_workflow_env_core_pin_omn_20074.py": 1.95,
   "tests/unit/test_writer_plugin_and_override_pin_classifiers_omn_20074.py": 0.1,
   "tests/unit/validation/test_omn_18043_cursor_declared_ratchet.py": 45.17,
   "tests/unit/validators/test_no_coding_plan_endpoint.py": 18.99,
