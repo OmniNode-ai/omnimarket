@@ -981,6 +981,17 @@ requirements:
     acceptance:
       - id: "AC4544"
         statement: "AC4544: the pre-commit hook rev and the ci.yml step name the same omnibase_core dev-merge tag, the overlay lists only sha exceptions with a reason, and every first-party uses in the workflows is a dev-merge tag or a listed exception -- falsifier: uv run pytest tests/ci/test_action_pin_wiring_omn17427.py -q fails on the merge-base repository, which has no overlay."
+  - id: "req-one-fix-one-pr"
+    statement: "A lane about to open a pull request is refused when an open pull request in the same repository already changes the same lines, or the same file under the same title words, or cites the same check or cause, or when another lane holds a live CLAIM with the same cause= cell; the refusal names the pull request to adopt, and a source the check cannot read opens nothing."
+    acceptance:
+      - id: "AC1742711"
+        statement: "AC1742711: with omnibase_core#2159 open on a rename of line 9 of the protocol_binding baseline, a second branch renaming that line is refused by onex scm pr-duplicate-check (exit 4) and by onex scm pr-create (no bus call), naming omnibase_core#2159 -- falsifier: the second branch passes, or the refusal does not name omnibase_core#2159"
+      - id: "AC1742712"
+        statement: "AC1742712: an unrelated open pull request in the same repository, or one touching the same file on other lines under an unrelated title, does not refuse the new one -- falsifier: a branch editing src/metrics.py line 15 is refused while omnibase_core#2170 edits line 3"
+      - id: "AC1742713"
+        statement: "AC1742713: in a second repository, #1326 against open #1320 (the same dispatch_fix_guard rewrite) is refused naming #1320, and another lane's live CLAIM with the same cause= cell refuses with that lane named -- falsifier: the fold reads clear for either planted case"
+      - id: "AC1742714"
+        statement: "AC1742714: a watcher state older than 15 minutes, an unset ONEX_LEDGER_PATH or a branch no checkout holds exits 3 and opens nothing -- falsifier: pr-create reaches the bus with any of the three"
 evidence_requirements:
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
@@ -4183,4 +4194,20 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_pool.py -q --no-cov -p no:randomly --refuse-skips -k 'test_a_revoked_token_that_still_carries_a_limit_is_not_counted_as_limited or test_a_pool_of_one_revoked_limited_token_reports_no_limit_and_the_alarm'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-one-fix-one-pr-fold"
+    description: "The fold refuses the omnibase_core#2159/#2160/#2161 case and the second repository's #1320/#1326 case naming the first pull request, passes the unrelated and same-file-other-lines cases, and reads another lane's live CLAIM cause cell."
+    source: "manual"
+    binds_ac: ["AC1742711", "AC1742712", "AC1742713"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_pr_duplicate_guard_compute -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-one-fix-one-pr-cli"
+    description: "Against a real origin, canonical clone and lane checkout, pr-duplicate-check and pr-create refuse the second rename with exit 4, pass the unrelated branch, and exit 3 on a stale watcher, an unset ledger path or an unknown branch."
+    source: "manual"
+    binds_ac: ["AC1742711", "AC1742712", "AC1742714"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/handlers/scm/test_scm_duplicate_guard.py -q --no-cov -p no:randomly --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"

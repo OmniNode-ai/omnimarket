@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_pr_duplicate_snapshot_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Read what the duplicate-fix pull request guard folds over, from local sources only and never a GitHub search. The PR watcher's state file for the open pull requests of one repository (refused when its last_tick is older than 15 minutes), the rolling ledger named by ONEX_LEDGER_PATH, and git diff -U0 for what the new branch and each open pull request change against the merge base. A source it cannot read is returned as unchecked_reason, never as no duplicate.
+input_model:
+  name: ModelPrDuplicateSnapshotRequest
+  module: omnimarket.models.model_pr_duplicate_guard
+output_model:
+  name: ModelPrDuplicateSnapshotResult
+  module: omnimarket.models.model_pr_duplicate_guard
+handler:
+  module: omnimarket.nodes.node_pr_duplicate_snapshot_effect.handlers.handler_pr_duplicate_snapshot
+  class: HandlerPrDuplicateSnapshot
+  input_model: omnimarket.models.model_pr_duplicate_guard.ModelPrDuplicateSnapshotRequest
+  output_model: omnimarket.models.model_pr_duplicate_guard.ModelPrDuplicateSnapshotResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_pr_duplicate_snapshot_effect.handlers.handler_pr_duplicate_snapshot:HandlerPrDuplicateSnapshot
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerPrDuplicateSnapshot
+      module: omnimarket.nodes.node_pr_duplicate_snapshot_effect.handlers.handler_pr_duplicate_snapshot
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation by onex scm pr-create and onex scm pr-duplicate-check.
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local
+  description: Reads the watcher state, ledger and git diffs the duplicate-fix pull request guard folds over.
+  author: OmniNode Team
+  created: '2026-10-30'
+  tags:
+  - effect
+  - pr-duplicate-snapshot-effect
+  - OMN-17427
+  related_tickets:
+  - OMN-17427
