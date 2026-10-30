@@ -1,0 +1,5 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Malformed fixture (no entries); every value is fake.
+schema_version: 1
+entries: []

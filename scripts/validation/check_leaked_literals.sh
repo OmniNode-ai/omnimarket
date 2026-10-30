@@ -147,18 +147,9 @@ SELF_EXEMPT_FILES=(
   # Generated audit reports — contain leaked literals as data, not source defaults.
   "docs/audits/2026-05-05-raw-env-usage.csv"
   "docs/audits/2026-05-05-contracts-dir-references.csv"
-  # OMN-17435, AS NARROWED BY OMN-18027: the pre-push lab picker family.
-  #
-  # `scripts/hooks/prepush_hosts.tsv` USED TO BE LISTED HERE, on the reasoning
-  # that it "IS the lab address book" -- its ssh targets, absolute uv paths and
-  # workroots were the file's entire payload. That entry is DELETED, because
-  # the premise stopped being true: OMN-18027 moved those three columns to a
-  # private placement overlay and the committed file now carries the `@private`
-  # token instead. An exemption whose justification has expired is worse than
-  # no exemption, because the gate keeps reporting green over a path nobody is
-  # checking any more; the file is now scanned like everything else, and
-  # `test_the_public_table_publishes_no_lab_or_cloud_identifier` is the second,
-  # independent guard on the same content.
+  # The public pre-push schema is scanned like every other file. Deployment
+  # rows live only in the private full table. The host-table suite also rejects
+  # every shipped data row except the disabled neutral localhost row.
   #
   # The two VENDORED files below keep their exemption, on a different and
   # still-live reason: they are copies of omnibase_infra's files pinned by

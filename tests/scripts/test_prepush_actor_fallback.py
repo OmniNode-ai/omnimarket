@@ -50,6 +50,9 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
+
+from tests.scripts._prepush_private_table import SYNTHETIC_TABLE
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HOOK = REPO_ROOT / "scripts" / "hooks" / "prepush_smart_tests.sh"
@@ -61,7 +64,7 @@ pytestmark = pytest.mark.unit
 
 def _rows() -> list[list[str]]:
     rows = []
-    for line in TABLE.read_text(encoding="utf-8").splitlines():
+    for line in SYNTHETIC_TABLE.splitlines():
         line = line.split("#", 1)[0]
         if not line.strip():
             continue
@@ -83,15 +86,10 @@ def test_no_capacity_row_hardcodes_an_ssh_login() -> None:
     unreachable for everybody else while their own fit host goes unused. This
     assertion is what stops the next row from quietly reintroducing it.
 
-    As of OMN-18027 the column carries the literal ``@private`` token and
-    hydrates to the row's committed ``hostname`` at read time, so the rule is
-    unchanged and strictly easier to hold: there is no address in this file for
-    a login to be attached to. The token is the one accepted ``@``.
+    The public schema carries no deployment rows; these are invented rows.
     """
     for row in _rows():
         if row[1] != "capacity":
-            continue
-        if row[3] == "@private":
             continue
         assert "@" not in row[3], (
             f"{row[0]}: ssh_target {row[3]!r} hardcodes a login. Use the bare "
@@ -132,11 +130,22 @@ def _repo_with_table(tmp_path: Path, table_text: str, name: str = "synth") -> Pa
     (repo / "scripts" / "hooks" / "prepush_hosts.tsv").write_text(
         table_text, encoding="utf-8"
     )
-    subprocess.run(["git", "init", "-q", "."], cwd=repo, check=True)
-    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "init", "-q", "."],
+        cwd=repo,
+        env=scrub_git_location_env(os.environ),
+        check=True,
+    )
+    subprocess.run(
+        ["git", "add", "-A"],
+        cwd=repo,
+        env=scrub_git_location_env(os.environ),
+        check=True,
+    )
     subprocess.run(
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "table"],
         cwd=repo,
+        env=scrub_git_location_env(os.environ),
         check=True,
     )
     return repo

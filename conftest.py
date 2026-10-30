@@ -11,9 +11,9 @@ That property is what the heavy-suite host guard needs: it must fire for a bare
 It matters more once a lab picker exists. A dispatched heavy run is executed by
 a TRANSPLANTED copy of this repo on another machine, and that copy carries this
 file. The guard below is what makes a `shadow` row in
-``scripts/hooks/prepush_hosts.tsv`` mean something: without it, a non-authorizing
+the private deployment table mean something: without it, a non-authorizing
 host would happily produce a green full-suite verdict that the picker would then
-accept. It reads the same COMMITTED table the bash guard reads, so the two
+accept. It reads the same committed deployment table the bash guard reads, so the two
 cannot drift into different notions of "a designated host".
 
 ``enforce`` returns immediately on CI (``CI`` / ``GITHUB_ACTIONS`` set) and on
