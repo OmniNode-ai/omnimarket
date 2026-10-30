@@ -23,13 +23,29 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn21392-ac1-member-scope
-  description: 'In a member''s session with no watcher file, the run resolves member mode with no new argument, ranks only the member''s tasks, reads only the member''s pull requests (union of Linear attachments and the member''s pr= cells, one gh pr view each, refusing past 30 or on a failed read), lists another member''s task and red pull request as other member: state not read and never dispatches it, and names its scope and source in stdout, detail and JSON.'
+  description: 'In a member''s session the run ranks only the member''s tasks, lists another member''s task (and its open red pull request) as other member: state not read and never dispatches it, does not rank a plan holding only other members'' tasks, and names its mode, scope and pull request source in stdout, detail and a JSON whose schema carries those fields.'
   source: manual
   binds_ac:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_plans_today_effect/test_plans_today_member.py -q --no-cov --tb=line
+    check_value: uv run pytest tests/nodes/node_plans_today_effect/test_plans_today_member_scope.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21392-ac1-member-pr-source
+  description: A scoped ticket's pull requests are the union of its Linear attachments and the member's pr= cells (no GitHub search), each read with one gh pr view under the member's own login, at most 30 with a refusal past the cap, refusing on a failed read (the PR named) or unread attachments; an assigned ticket whose only PR is a red one attached in Linear ranks open-red, so no in-scope pull request is missing from the output.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_plans_today_effect/test_plans_today_member_prs.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21392-role-resolution
+  description: 'The role is resolved through node_team_identity_compute on every invocation with no new argument: the session-start hook''s exact call with no watcher file runs member mode and leaves another member''s red pull request unread; an operator subject runs the operator''s mode, which still refuses a missing or stale watcher; no sidecar, a malformed, literal-me or another subject''s sidecar, an unknown subject or a missing declaration refuses and never runs the operator''s mode.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_plans_today_effect/test_plans_today_member_identity.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21392-ac2-node-registered
   description: node_plans_today_effect is registered as an onex.nodes entry point in omnimarket and its packaged contract invokes with a typed request in a member's session.
@@ -45,7 +61,14 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_plans_today_effect/test_plans_today_operator.py -q --no-cov --tb=line -n 4
+    check_value: uv run pytest tests/nodes/node_plans_today_effect/test_plans_today_operator.py -q --no-cov --tb=line -k 'not hang_reproduction'
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21392-operator-children-bounded
+  description: 'Every child process of the run is bounded as before the move: a deadline, no inherited stdin, its own process group killed whole at the deadline, a summary phase inside one budget, a stuck fetch refused, and one timed-out MSG send stops the rest.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_plans_today_effect/test_plans_today_operator.py -q --no-cov --tb=line -k hang_reproduction
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21392-deploy-plans-today-node
   description: 'Hosted deploy smoke, runnable on the hosted runner with no lab route, broker, database or GitHub read: dispatch the packaged node_plans_today_effect through the in-process ONEX runtime against the fake team identity declaration, a two-member plan and a member''s Linear sidecar, and require a successful typed receipt in member mode whose scope holds only the member''s ticket, whose pull request source is gh pr view with zero reads, and whose other member''s task is unread.'

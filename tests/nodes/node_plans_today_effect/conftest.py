@@ -9,7 +9,6 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -335,4 +334,81 @@ def fake_plugin(root: Path, ledger_rows: str) -> Path:
     return root / "plugin"
 
 
-PYTHON = sys.executable
+URL = "https://github.com/OmniNode-ai/{repo}/pull/{n}"
+
+# A plan shared by two members: T1 and T3 are member A's (assigned; claimed), T2 is member B's.
+SHARED = {
+    "2026-09-28-shared.md": body(
+        "Shared",
+        [("mine", "OMN-2001"), ("theirs", "OMN-2002"), ("claimed", "OMN-2003")],
+    )
+}
+
+
+def member_fixture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    plans: dict[str, str] | None = None,
+    sidecar_issues: list[dict[str, Any]] | None = None,
+    rows: list[str] | None = None,
+    subject: str | None = MEMBER_A_LINEAR,
+    origin: bool = False,
+) -> dict[str, Any]:
+    """Member A's session: no watcher file, member B's red PR in the shared plan."""
+    return make_fixture(
+        tmp_path,
+        monkeypatch,
+        plans or SHARED,
+        rows=rows
+        if rows is not None
+        else [
+            row(
+                1,
+                "2026-09-29T15:50:00Z",
+                "CLAIM",
+                "lane-a",
+                "OMN-2003",
+                principal=MEMBER_A_PRINCIPAL,
+                pr_cell="omnimarket#12",
+            ),
+            row(
+                2,
+                "2026-09-29T15:40:00Z",
+                "CLAIM",
+                "lane-b",
+                "OMN-2002",
+                principal=MEMBER_B_PRINCIPAL,
+                pr_cell="omnimarket#99",
+            ),
+        ],
+        subject=subject,
+        sidecar_issues=sidecar_issues
+        if sidecar_issues is not None
+        else [
+            issue("OMN-2001", prs=[URL.format(repo="omnimarket", n=11)]),
+            issue("OMN-2003", assignee=MEMBER_B_LINEAR, prs=[]),
+        ],
+        watcher=False,
+        origin=origin,
+    )
+
+
+def gh_for_member(monkeypatch: pytest.MonkeyPatch, **kwargs: Any) -> FakeGh:
+    fake = FakeGh(
+        kwargs.pop(
+            "prs",
+            {
+                "omnimarket#11": gh_pr(red=False),
+                "omnimarket#12": gh_pr(red=True),
+                "omnimarket#99": gh_pr(red=True),
+            },
+        ),
+        **kwargs,
+    )
+    monkeypatch.setattr(plans_today, "run", fake)
+    return fake
+
+
+def tasks_of(doc: dict[str, Any], title: str) -> dict[str, dict[str, Any]]:
+    return {t["label"]: t for t in by_title(doc)[title]["tasks"]}
