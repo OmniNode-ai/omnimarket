@@ -11,21 +11,30 @@ the open pull request.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
 from omnimarket.models.model_pr_duplicate_guard import (
     EnumDuplicateEvidence,
+    ModelDuplicateGuardRules,
     ModelFileTouch,
     ModelOpenPr,
     ModelPrDuplicateGuardRequest,
     ModelPrDuplicateGuardResult,
     ModelPrTouch,
 )
+from omnimarket.nodes.node_pr_duplicate_guard_compute.handlers import (
+    handler_pr_duplicate_guard as handler_module,
+)
 from omnimarket.nodes.node_pr_duplicate_guard_compute.handlers.handler_pr_duplicate_guard import (
+    DuplicateGuardConfigurationError,
     HandlerPrDuplicateGuard,
     distinctive_words,
+    load_generated_paths,
+    load_rules,
     overlap,
 )
 
@@ -303,7 +312,7 @@ def test_a_shared_lock_file_or_ticket_contract_says_nothing() -> None:
     )
     other = ModelOpenPr(number=5, head_ref="x", base="dev", title="a", touch=generic)
     assert other.touch is not None
-    lines, shared = overlap(generic, other.touch)
+    lines, shared = overlap(generic, other.touch, load_rules(), "omnibase_core")
 
     assert lines == []
     assert shared == []
@@ -481,3 +490,210 @@ def test_distinctive_words_drop_tickets_and_stop_words() -> None:
         "controller",
         "guard",
     }
+
+
+# ---- generated files: every plan pull request rewrites the count rows of a rendered index (2026-10-30)
+#
+# The deployment overlay names the repository and the file. The fixtures here use a made-up repository so the
+# public tests carry no private name; the real overlay is private data.
+
+PLANS = "example_plans_repo"
+INDEX = "plans/INDEX.md"
+REGISTRY = "plans/PLAN_LIFECYCLE.yaml"
+#: ``check_plan_index.py --write`` rewrites the status-count rows at lines 16 and 19 in every plan pull request.
+COUNT_ROWS = (16, 16), (19, 19)
+
+
+@pytest.fixture(autouse=True)
+def _no_ambient_overlay(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
+    monkeypatch.delenv("ONEX_WORKSPACE_CONFIG_ROOT", raising=False)
+    return
+
+
+def write_overlay(root: Path, text: str) -> Path:
+    path = root / "node_pr_duplicate_guard_compute" / "overlay.yaml"
+    path.parent.mkdir(parents=True)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+@pytest.fixture
+def declared(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> HandlerPrDuplicateGuard:
+    write_overlay(tmp_path, f"generated_paths:\n  {PLANS}:\n    - {INDEX}\n")
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path))
+    return HandlerPrDuplicateGuard()
+
+
+def plan_pr(number: int, plan: str, *plan_spans: tuple[int, int]) -> ModelOpenPr:
+    """A plan pull request: its plan file, its registry entry, and the regenerated count rows of the index."""
+    return ModelOpenPr(
+        number=number,
+        head_ref=f"jonah/plan-{number}",
+        base="main",
+        title=f"docs: the {plan} plan",
+        touch=touch(
+            ModelFileTouch(
+                path=f"plans/{plan}.md", added=not plan_spans, spans=plan_spans
+            ),
+            edit(INDEX, *COUNT_ROWS),
+            ModelFileTouch(path=REGISTRY),
+        ),
+    )
+
+
+def fold(
+    handler: HandlerPrDuplicateGuard,
+    mine: ModelOpenPr,
+    *open_prs: ModelOpenPr,
+    repo: str = PLANS,
+) -> ModelPrDuplicateGuardResult:
+    return handler.handle(
+        ModelPrDuplicateGuardRequest(
+            now=NOW,
+            repo=repo,
+            head_ref=mine.head_ref,
+            base="main",
+            title=mine.title,
+            touch=mine.touch,
+            open_prs=open_prs,
+        )
+    )
+
+
+OPEN_PLANS = (
+    plan_pr(854, "alpha-ledger"),
+    plan_pr(1538, "beta-routing"),
+    plan_pr(1541, "gamma-dashboards"),
+)
+
+
+def test_plan_pull_requests_that_share_only_the_regenerated_index_rows_pass(
+    declared: HandlerPrDuplicateGuard,
+) -> None:
+    result = fold(declared, plan_pr(1, "configuration-contract"), *OPEN_PLANS)
+
+    assert result.state == "clear"
+    assert result.evidence == ()
+
+
+def test_the_index_rows_are_ignored_for_the_hyphenated_github_spelling_of_the_repository(
+    declared: HandlerPrDuplicateGuard,
+) -> None:
+    result = fold(
+        declared,
+        plan_pr(1, "configuration-contract"),
+        *OPEN_PLANS,
+        repo="SomeOrg/example-plans-repo",
+    )
+
+    assert result.state == "clear"
+
+
+def test_two_pull_requests_editing_the_same_plan_file_are_still_refused(
+    declared: HandlerPrDuplicateGuard,
+) -> None:
+    result = fold(
+        declared,
+        plan_pr(2, "alpha-ledger", (44, 60)),
+        plan_pr(854, "alpha-ledger", (40, 52)),
+        plan_pr(1538, "beta-routing"),
+    )
+
+    assert result.state == "adopt"
+    assert result.adopt_pr == f"{PLANS}#854"
+    assert [e.kind for e in result.evidence] == [EnumDuplicateEvidence.LINES]
+    assert "plans/alpha-ledger.md:44" in result.evidence[0].detail
+    assert INDEX not in result.evidence[0].detail
+
+
+def test_two_pull_requests_adding_the_same_plan_file_are_still_refused(
+    declared: HandlerPrDuplicateGuard,
+) -> None:
+    result = fold(declared, plan_pr(2, "alpha-ledger"), plan_pr(854, "alpha-ledger"))
+
+    assert result.state == "adopt"
+    assert "plans/alpha-ledger.md (both add it)" in result.evidence[0].detail
+
+
+def test_a_repository_that_does_not_declare_the_index_generated_still_has_it_counted(
+    declared: HandlerPrDuplicateGuard,
+) -> None:
+    result = fold(
+        declared, plan_pr(1, "configuration-contract"), *OPEN_PLANS, repo="example_repo"
+    )
+
+    assert result.state == "adopt"
+    assert all(INDEX in e.detail for e in result.evidence)
+
+
+def test_the_declaration_is_what_clears_the_index_rows(
+    declared: HandlerPrDuplicateGuard,
+) -> None:
+    mine = plan_pr(1, "configuration-contract")
+
+    bare = fold(HandlerPrDuplicateGuard(ModelDuplicateGuardRules()), mine, *OPEN_PLANS)
+
+    assert bare.state == "adopt"
+    assert fold(declared, mine, *OPEN_PLANS).state == "clear"
+
+
+def test_a_generated_path_names_one_file_not_every_file_of_that_name(
+    declared: HandlerPrDuplicateGuard,
+) -> None:
+    other = touch(edit("docs/INDEX.md", (16, 16)))
+    lines, shared = overlap(other, other, load_rules(), PLANS)
+
+    assert shared == ["docs/INDEX.md"]
+    assert lines == ["docs/INDEX.md:16"]
+
+
+def test_no_overlay_declares_nothing_and_the_shipped_generic_files_still_apply() -> (
+    None
+):
+    rules = load_rules()
+
+    assert rules.generated_paths == {}
+    assert "*.lock" in rules.generic_paths
+    assert rules.ignores(PLANS, "uv.lock")
+    assert not rules.ignores(PLANS, INDEX)
+
+
+def test_the_workspace_config_root_is_read_when_no_overlay_root_is_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write_overlay(
+        tmp_path / "config" / "onex" / "overlays",
+        f"generated_paths:\n  {PLANS}:\n    - {INDEX}\n",
+    )
+    monkeypatch.setenv("ONEX_WORKSPACE_CONFIG_ROOT", str(tmp_path))
+
+    assert load_generated_paths() == {PLANS: (INDEX,)}
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "- not\n- a mapping\n",
+        "generated_paths: {}\nextra: 1\n",
+        "generated_paths: [plans/INDEX.md]\n",
+        "generated_paths:\n  example_plans_repo: plans/INDEX.md\n",
+    ],
+)
+def test_an_invalid_overlay_fails_loudly_instead_of_declaring_nothing(
+    text: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write_overlay(tmp_path, text)
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path))
+
+    with pytest.raises(DuplicateGuardConfigurationError):
+        load_generated_paths()
+
+
+def test_the_handler_source_holds_no_file_list() -> None:
+    source = Path(handler_module.__file__).read_text(encoding="utf-8")
+
+    assert "INDEX.md" not in source
+    assert "package-lock" not in source
