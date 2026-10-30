@@ -908,6 +908,7 @@ node_fixer_dispatcher = "omnimarket.nodes.node_fixer_dispatcher"
 node_verification_receipt_generator = "omnimarket.nodes.node_verification_receipt_generator"
 node_task_execution_orchestrator = "omnimarket.nodes.node_task_execution_orchestrator"
 node_pattern_b_broker = "omnimarket.nodes.node_pattern_b_broker"
+node_developer_lane_admission_compute = "omnimarket.nodes.node_developer_lane_admission_compute"
 
 node_two_strike_arbiter = "omnimarket.nodes.node_two_strike_arbiter"
 node_audit_trail_compactor = "omnimarket.nodes.node_audit_trail_compactor"
