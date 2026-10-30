@@ -8,10 +8,10 @@ interface_change: false
 interfaces_touched: []
 requirements:
   - id: "req-five-distinct-causes"
-    statement: "Each of the five injected faults ends in a terminal with a distinct cause and none reads provider_error."
+    statement: "All five injected faults are told apart on the canonical terminal -- by cause where a cause exists, and by the deciding attempt's truncated flag for the truncation fault -- and none reads provider_error (amended 2026-09-25)."
     acceptance:
       - id: "AC1"
-        statement: "AC1: each of the five injected faults ends in a terminal with a distinct cause and none reads provider_error -- falsifier: env -u PYTHONPATH uv run pytest tests/chains/fault_suite/test_bus_path_faults_omn19450.py tests/chains/fault_suite/test_local_path_faults_omn19450.py tests/chains/fault_suite/test_five_faults_told_apart_omn19450.py -q -m 'not kafka' -k 'decides_its_own_cause or pairwise_distinct'"
+        statement: "AC1: all five injected faults are told apart on the canonical terminal -- by cause where a cause exists, and by the deciding attempt's truncated flag for the truncation fault -- and none reads provider_error (amended 2026-09-25: no truncation cause exists, so five distinct causes cannot hold and AC3 carries the veto/truncation split) -- falsifier: uv run pytest tests/chains/fault_suite/test_five_faults_told_apart_omn19450.py -q -n 0 --no-cov stays green with the fix's cause mapping removed"
   - id: "req-scheduled-and-published"
     statement: "The suite runs on a schedule and its result is published."
     acceptance:
