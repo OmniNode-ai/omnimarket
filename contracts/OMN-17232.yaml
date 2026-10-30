@@ -95,6 +95,102 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+- id: dod-omn17232-pr4593-shared-reading
+  description: The repository-wide reach-in check and the alarm and pool-share tests exercise the shared model
+    import at this pull request head without adding any reach-in allowance. Supports the shared-recipe prerequisite
+    of AC2; does not claim the ticket-wide runtime rollout.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --locked pytest tests/test_no_cross_node_reach_in.py tests/nodes/node_host_pool_alarm_effect/test_host_pool_alarm_node.py tests/nodes/node_pool_read_share_effect/test_golden_chain_pool_read_share_effect.py tests/nodes/node_remote_lane_compute/test_host_swapping_slots.py -q --no-cov -p no:randomly
+- id: dod-omn17232-pr4593-reach-in-selection
+  description: The one-node narrowed selection includes the reach-in test, the loader refuses non-test entries,
+    and the existing selector tests cover the updated always-selected path shape. Supports the shared-recipe
+    prerequisite of AC2; does not claim the ticket-wide runtime rollout.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --locked pytest tests/unit/scripts/test_detect_test_paths.py -q --no-cov -p no:randomly
+- id: dod-omn17232-pr4593-deploy-shared-reading
+  description: 'Hosted-runner deploy check for this shared-model contribution: require both consumers to import
+    the same frozen shared dataclass, then invoke the packaged placement node through the in-memory runtime
+    for paging, open-alarm, quiet-fallback and recovered hosts on both engines. Fails at the merge base where
+    the shared model module is absent. Requires no lab host, private configuration, broker or container.
+    Does not claim completion of the ticket-wide runtime rollout obligations.'
+  source: manual
+  binds_ac:
+  - AC2
+  - AC6
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu
+      export PYTHONDONTWRITEBYTECODE=1
+      uv run --locked python -c '
+      from dataclasses import FrozenInstanceError
+      from omnimarket.models.model_host_pool_reading import ModelHostPoolReading
+      from omnimarket.nodes.node_host_pool_alarm_effect import handler as alarm
+      from omnimarket.nodes.node_remote_lane_compute.handlers import handler_remote_lane_placement as placement
+      assert alarm.ModelHostPoolReading is ModelHostPoolReading
+      assert placement.ModelHostPoolReading is ModelHostPoolReading
+      reading = ModelHostPoolReading("probe", 10, None)
+      try:
+          reading.host = "changed"
+      except FrozenInstanceError:
+          pass
+      else:
+          raise AssertionError("shared reading must remain frozen")
+      print("shared ModelHostPoolReading identity and frozen state verified")
+      '
+      probe_dir="$(mktemp -d)"
+      trap 'rm -rf "$probe_dir"' EXIT
+      runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')"
+      uv run --locked python -c '
+      import json
+      import sys
+      from pathlib import Path
+      root = Path(sys.argv[1])
+      for engine in ("claude_sonnet", "codex"):
+          for scenario in ("paging", "alarm_open", "fallback", "recovered"):
+              host = {"name": "probe-paging", "engines": [engine], "lane_slots": 9, "lane_cap": 10, "rank_free": 9.0}
+              if scenario in ("paging", "fallback"):
+                  host["swap_in_kb_s"] = 167000.0
+              elif scenario == "alarm_open":
+                  host.update(swap_in_kb_s=0.0, swap_alarm_open=True)
+              else:
+                  host.update(swap_in_kb_s=0.0, swap_alarm_open=False)
+              readings = [host]
+              if scenario == "fallback":
+                  readings.append({"name": "probe-quiet", "engines": [engine], "lane_slots": 1, "lane_cap": 10, "rank_free": 1.0})
+              (root / f"{engine}-{scenario}.input.json").write_text(json.dumps({"engine": engine, "readings": readings}))
+      ' "$probe_dir"
+      for engine in claude_sonnet codex; do
+        for scenario in paging alarm_open fallback recovered; do
+          env ONEX_LANE=omn17232-shared-reading-probe "$runtime_bin/onex" node node_remote_lane_compute --input "$probe_dir/$engine-$scenario.input.json" --state-root "$probe_dir/state-$engine-$scenario" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/$engine-$scenario.receipt.json"
+        done
+      done
+      uv run --locked python -c '
+      import json
+      import sys
+      from pathlib import Path
+      root = Path(sys.argv[1])
+      for engine in ("claude_sonnet", "codex"):
+          for scenario in ("paging", "alarm_open", "fallback", "recovered"):
+              receipt = json.loads((root / f"{engine}-{scenario}.receipt.json").read_text())
+              assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+              result = receipt["result"]
+              expected = "probe-quiet" if scenario == "fallback" else "probe-paging" if scenario == "recovered" else None
+              assert result["host"] == expected, result
+              assert result["outcome"] == ("NO_HOST" if expected is None else "ADMITTED"), result
+              reasons = {verdict["host"]: verdict["reason"] for verdict in result["verdicts"]}
+              if scenario != "recovered":
+                  assert reasons["probe-paging"].startswith("host-swapping:"), result
+              print(json.dumps({"run_id": receipt["run_id"], "engine": engine, "scenario": scenario, "host": result["host"], "outcome": result["outcome"], "verdicts": result["verdicts"]}))
+      ' "$probe_dir"
 - id: dod-omn17232-ac1-reviewed-private-host-authority
   description: The host authority is deployment configuration. This supports the rollout prerequisite; it does not
     claim the per-host runtime census or reasoned exclusions.
