@@ -1,0 +1,40 @@
+schema_version: 1.0.0
+ticket_id: OMN-14108
+title: 'omnibase_compat is retired: the symbols only omnimarket uses move into omnimarket'
+summary: RULING 2026-10-22T21:43:04Z retires omnibase_compat. The evidence-pipeline wire DTOs and their topic constants, the sweep result and the routing-degraded event are used by omnimarket alone, so they move into
+  omnimarket (omnimarket.models.evidence_pipeline, node_aislop_sweep.models, node_model_router.models) with their tests,
+  and every import and contract module reference follows them. The PR OCC stamp schema, which three repositories use,
+  returns to omnibase_core separately.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched: [public_api]
+requirements:
+- id: req-omn14108-omnimarket-only-symbols
+  statement: The compat symbols only omnimarket uses live in omnimarket, and omnimarket imports none of them from omnibase_compat.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: no first-party repository imports omnibase_compat -- falsifier: `uv run pytest tests/unit/models/evidence_pipeline
+      tests/test_evidence_pipeline_native_nodes.py tests/test_evidence_pipeline_contracts.py -q` passes against the omnimarket
+      modules, and `git grep -nE "^\s*(from|import) omnibase_compat\.(contracts\.evidence_pipeline|telemetry|routing)" -- "*.py"`
+      prints nothing'
+evidence_requirements:
+- kind: tests
+  description: The moved wire DTO, topic and contract tests and the evidence-pipeline node tests pass against omnimarket's own modules.
+  command: uv run pytest tests/unit/models/evidence_pipeline tests/test_evidence_pipeline_native_nodes.py tests/test_evidence_pipeline_contracts.py
+    tests/test_deployment_evidence_reducer_wiring.py tests/test_evidence_pipeline_deployment_wiring.py tests/test_evidence_readiness_envelope_unwrap.py
+    -q -o addopts=''
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn14108-ac2-omnimarket-move-in
+  description: The moved models and the evidence-pipeline nodes pass their tests with the omnimarket modules.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/evidence_pipeline tests/test_evidence_pipeline_native_nodes.py tests/test_evidence_pipeline_contracts.py
+      tests/test_deployment_evidence_reducer_wiring.py tests/test_evidence_pipeline_deployment_wiring.py tests/test_evidence_readiness_envelope_unwrap.py
+      -q -o addopts=''
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac: [AC2]
