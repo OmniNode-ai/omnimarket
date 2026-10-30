@@ -1013,6 +1013,17 @@ requirements:
     acceptance:
       - id: "AC1742716"
         statement: "AC1742716: with the two pins in place, the dependency-provenance script reads its sibling list and dev-tag shape from core's first_party_ref contract rows, and the duplicate-id, todo-format, routing-authority, contract-walker and OCC port callers run core's node runtimes -- falsifier: uv run pytest tests/scripts/test_check_dep_provenance.py fails at the merge base (it calls load_policy, which the old script lacks) or passes there"
+  - id: "req-host-reconcile-owns-schedule"
+    statement: "The host reconcile node owns its schedule: its contract declares an hourly repair-mode run, its overlay declares which hosts run the reconciler and what schedules it on each, the package names no host, and a host that declares the reconciler with no scheduler fails by name."
+    acceptance:
+      - id: "AC1742721"
+        statement: "AC1742721: a host that declares the reconciler with no scheduler makes schedule check and every schedule verb exit 1 naming that host, and an overlay in which every host has a scheduler exits 0 -- falsifier: tests/test_host_reconcile_schedule.py::test_a_host_that_declares_the_reconciler_with_no_scheduler_fails_naming_the_host passes with the gap host unnamed or the check exits 0 on it"
+      - id: "AC1742722"
+        statement: "AC1742722: the unit the node renders runs python -m omnimarket.nodes.node_host_reconcile_effect with the registry root and the tracked branch, never a check flag, and the arguments it passes request repair mode from the node's own entry point -- falsifier: tests/test_host_reconcile_schedule.py::test_the_rendered_unit_runs_the_node_in_repair_mode sees a check flag or a mode other than repair"
+      - id: "AC1742723"
+        statement: "AC1742723: the cadence is the contract's, once an hour, and the package names no host or address -- falsifier: tests/test_host_reconcile_schedule.py::test_the_contract_declares_an_hourly_repair_schedule and ::test_the_package_names_no_host"
+      - id: "AC1742724"
+        statement: "AC1742724: schedule install on a host whose row is systemd-user writes both units, enables the timer and fails when systemd lists no schedule, when the interpreter is missing or when any other host lacks a scheduler, and installs nothing for a host scheduled by another owner -- falsifier: the install tests of tests/test_host_reconcile_schedule.py"
 evidence_requirements:
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
@@ -4290,4 +4301,12 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_pr_landing_ledger_facts_compute/test_landing_ledger_facts.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-host-reconcile-owns-schedule"
+    description: "The contract's hourly repair schedule, the gap check that names a host declaring the reconciler with no scheduler, the rendered unit and the install, status, run-now and uninstall verbs. The tests fail at the merge base, where the node has no schedule."
+    source: "manual"
+    binds_ac: ["AC1742721", "AC1742722", "AC1742723", "AC1742724"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_host_reconcile_schedule.py tests/test_host_reconcile_effect.py tests/test_host_reconcile_topics.py -q --no-cov -p no:randomly --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
