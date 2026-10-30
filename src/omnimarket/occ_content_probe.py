@@ -58,6 +58,7 @@ __all__ = [
     "MAX_CHECK_VALUE_LENGTH",
     "MAX_WORKFLOW_PIN_FILES",
     "WORKFLOW_PIN_DIR",
+    "WORKFLOW_PIN_ENV_KEYS",
     "WORKFLOW_PIN_REPOSITORIES",
     "ConsideredPath",
     "SymbolCandidate",
@@ -1151,6 +1152,16 @@ _WF_REPOSITORY_RE = re.compile(
 _WF_REF_RE = re.compile(
     r"^(?P<indent>[ ]*)ref:[ ]*['\"]?(?P<sha>[0-9a-f]{40})['\"]?(?P<tail>[ ]*(?:#.*)?)$"
 )
+# OMN-20074: the env-var pin site omnibase_core's docs/downstream-repos.yaml
+# declares for omninode_infra (``OMNIBASE_CORE_COMMIT: <sha>``, read by the
+# checkout as ``ref: ${{ env.OMNIBASE_CORE_COMMIT }}``). Only this exact key is
+# an omnibase_core pin; an env var under any other name is left alone, so a
+# diff that moves it is refused.
+WORKFLOW_PIN_ENV_KEYS = ("OMNIBASE_CORE_COMMIT",)
+_WF_ENV_PIN_RE = re.compile(
+    r"^(?P<lead>[ ]*(?P<key>[A-Z][A-Z0-9_]*):[ ]*['\"]?)(?P<sha>[0-9a-f]{40})"
+    r"(?P<tail>['\"]?[ ]*(?:#.*)?)$"
+)
 # The only comment lines a pin bump may add, drop or rewrite: the banner the
 # bump engine owns (omnibase_core scripts/pin_bump.py). Any other comment line
 # that differs disqualifies the diff, because a ``#`` line inside a block
@@ -1171,7 +1182,9 @@ def _normalize_workflow_pins(content: str) -> tuple[tuple[str, ...], tuple[str, 
 
     Drops the pin-banner comment lines and replaces the SHA of every ``ref:``
     that is a sibling of an allowed ``repository:`` key in the same mapping
-    with a placeholder. A ``ref:`` that precedes its ``repository:`` is left
+    with a placeholder, and does the same for the value of an env var named in
+    :data:`WORKFLOW_PIN_ENV_KEYS` (OMN-20074), keeping its quotes and trailing
+    comment in the compared line. A ``ref:`` that precedes its ``repository:`` is left
     alone, which fails closed (the diff then shows it). The scope of a
     ``repository:`` ends at the first non-blank line indented less than the
     mapping it sits in.
@@ -1193,6 +1206,12 @@ def _normalize_workflow_pins(content: str) -> tuple[tuple[str, ...], tuple[str, 
                 # "- repository:" opens a mapping whose keys sit past the dash.
                 scope_indent = indent + (
                     len(line[indent:]) - len(line[indent:].lstrip("- "))
+                )
+            m_env = _WF_ENV_PIN_RE.match(line)
+            if m_env and m_env.group("key") in WORKFLOW_PIN_ENV_KEYS:
+                pins.append(m_env.group("sha"))
+                line = (
+                    f"{m_env.group('lead')}{_WF_PIN_PLACEHOLDER}{m_env.group('tail')}"
                 )
             m_ref = _WF_REF_RE.match(line)
             if (

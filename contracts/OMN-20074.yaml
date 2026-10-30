@@ -118,6 +118,13 @@ requirements:
       - id: "AC17"
         statement: |-
           AC17: node_dod_verify's evidence collector reads contracts/OMN-<n>.yaml from the product repository and no onex_change_control tree, and an absent contract yields CONTRACT_MISSING -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20074_repo_contracts_only.py -q -p no:randomly fails at the merge base
+  - id: "req-writer-env-core-pin"
+    statement: |-
+      The writer-app workflow pin classifier admits omninode_infra's omnibase_core pin bump, which moves the OMNIBASE_CORE_COMMIT env var that omnibase_core's docs/downstream-repos.yaml declares as omninode_infra's pin site, and still refuses any other env key, a non-SHA value, a changed trailing comment or any other changed line beside it.
+    acceptance:
+      - id: "AC18"
+        statement: |-
+          AC18: classify_workflow_core_pin_only admits omninode_infra#1991's check-handshake.yml diff (the OMNIBASE_CORE_COMMIT value and its Auto-bumped banner move) and refuses the same move under another env key, to a non-SHA value, with its trailing comment changed, beside another edited line, or naming a different SHA from an inline omnibase_core checkout ref -- falsifier: uv run pytest tests/unit/test_workflow_env_core_pin_omn_20074.py -q -p no:randomly fails at the merge base
 evidence_requirements:
   - kind: "tests"
     description: "This PR's rejection behavior and hook parity fail against the merge-base implementation and pass at the head."
@@ -167,6 +174,9 @@ evidence_requirements:
   - kind: "tests"
     description: "node_dod_verify never reads a contract from onex_change_control and fails closed on an absent one."
     command: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20074_repo_contracts_only.py -q -p no:randomly"
+  - kind: "tests"
+    description: "The writer-app workflow pin classifier admits omninode_infra's OMNIBASE_CORE_COMMIT env pin bump and refuses every other change beside it."
+    command: "uv run pytest tests/unit/test_workflow_env_core_pin_omn_20074.py -q -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -319,3 +329,11 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_20074_repo_contracts_only.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC17"]
+  - id: "dod-omn20074-writer-env-core-pin"
+    description: "omninode_infra's OMNIBASE_CORE_COMMIT env pin bump is classified pin-only and every other change beside it is refused; the regression fails against the merge-base classifier, which normalised only an inline checkout ref."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_workflow_env_core_pin_omn_20074.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC18"]
