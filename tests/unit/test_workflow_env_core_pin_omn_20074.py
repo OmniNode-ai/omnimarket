@@ -1,16 +1,16 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-20074: the writer app's omninode_infra core pin bump is pin-only.
+"""OMN-20074: a downstream repository's core pin bump is pin-only.
 
-omninode_infra's ``check-handshake.yml`` pins omnibase_core through an env var
+Its ``check-handshake.yml`` pins omnibase_core through an env var
 (``OMNIBASE_CORE_COMMIT: <sha>``, read by ``ref: ${{ env.OMNIBASE_CORE_COMMIT }}``),
 the pin site omnibase_core's ``docs/downstream-repos.yaml`` declares for it. The
 OMN-9050 bump moves that line and the "Auto-bumped by" banner and nothing else.
 ``classify_workflow_core_pin_only`` normalised only an inline checkout ``ref:``,
-so it refused omninode_infra#1978, #1989 and #1991 ("changes outside the
+so it refused three real bump pull requests ("changes outside the
 omnibase_core checkout pin and its banner") and both dod-verify gates failed.
 
-The fixtures are the real #1991 diff. The refusals keep the exemption narrow:
+The fixtures are the real bump diff. The refusals keep the exemption narrow:
 only the ``OMNIBASE_CORE_COMMIT`` key, only a 40-hex value, the trailing comment
 unchanged, and no other line moving.
 """
@@ -33,7 +33,7 @@ def _handshake(
     sha: str,
     *,
     key: str = "OMNIBASE_CORE_COMMIT",
-    tail: str = " # pragma: allowlist secret",
+    tail: str = " # pinned",
     timeout: int = 5,
 ) -> str:
     return (
@@ -64,7 +64,7 @@ def _classify(head: str, base: str) -> tuple[bool, str]:
     return classify_workflow_core_pin_only([HS], contents={HS: (head, base)})
 
 
-def test_omninode_infra_1991_env_core_pin_bump_is_admitted() -> None:
+def test_downstream_env_core_pin_bump_is_admitted() -> None:
     ok, reason = _classify(_handshake(NEW), _handshake(OLD))
     assert ok, reason
     assert NEW[:12] in reason
