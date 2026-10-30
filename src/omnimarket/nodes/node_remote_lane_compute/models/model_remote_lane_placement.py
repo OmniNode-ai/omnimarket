@@ -66,6 +66,17 @@ class ModelRemoteLaneHostReading(BaseModel):
     mem_psi_avg60: float | None = None
     mem_pressure: int | None = None
     swap_alarm_open: bool = False
+    # A collaborator machine (the host table's ``contributor: true``). It takes a lane only bound to
+    # its own collaborator lane, never to a lane the non-contributor hosts bind, and only while that
+    # lane can take a lane. False: an ordinary pool host, judged as before.
+    contributor: bool = False
+    # The lane a lane on this host is bound to (the host table's ``lane_binding``, else its
+    # ``ledger_bus_lane``). None: the row declares none, so a contributor host takes no lane.
+    bus_lane: str | None = None
+    # The host table's ``lane_ready`` and ``lane_not_ready_reason``: whether ``bus_lane`` can take a
+    # lane today. Fail closed: a contributor row is not ready until its data says so.
+    lane_ready: bool = False
+    lane_not_ready_reason: str | None = None
 
 
 class ModelRemoteLaneAttempt(BaseModel):
@@ -144,6 +155,8 @@ class ModelRemoteLanePlacementRequest(BaseModel):
     ladder: ModelRemoteLaneLadder | None = None
     # The same reason for a request without ladder facts (the legacy single-engine placement).
     escalation_reason: str | None = None
+    # The lane the lane is bound to, when the caller binds it. None: the host's own ``bus_lane``.
+    lane: str | None = Field(default=None, min_length=1)
 
 
 class ModelRemoteLaneHostVerdict(BaseModel):

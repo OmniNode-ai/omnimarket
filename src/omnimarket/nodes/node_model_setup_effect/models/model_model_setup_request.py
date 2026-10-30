@@ -33,7 +33,12 @@ class ModelModelSetupRequest(BaseModel):
 
     OMN-21162: ``add_local`` declares the keyless server at ``url`` serving the
     one model in ``models`` as a backend in the local routes overlay;
-    ``remove_local`` takes it out again. Other overlay entries are kept."""
+    ``remove_local`` takes it out again. Other overlay entries are kept.
+
+    OMN-21346: ``set_first`` makes the model in ``models`` (or, with none named,
+    ``provider``'s own first model) the one every delegation tries first: it
+    moves to the front of the provider's list and is recorded as the choice.
+    ``clear_first`` drops the choice, so runs keep their usual order."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -47,6 +52,8 @@ class ModelModelSetupRequest(BaseModel):
         "default_model",
         "add_local",
         "remove_local",
+        "set_first",
+        "clear_first",
     ]
     provider: ModelProvider | None = None
     models: tuple[str, ...] = ()

@@ -1,0 +1,48 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21346"
+title: "A developer picks the delegation model, not just the provider, from inside Claude Code after onboarding"
+summary: "onex models kept an ordered model list per key, but which provider a run started on was not the developer's choice: local models first, then whatever key the ladder reached. onex models first PROVIDER [MODEL] now records one set-up model as the one every delegation on this machine tries first. It moves to the front of its provider's list, and onex models list shows that provider first, marked tried first. The local dispatch puts it ahead of the local models and the ladder. When it fails, the run carries on in the order it would have taken without a choice. onex models first --clear forgets the choice. A choice whose key or local model was removed, whose model left the list, or whose key failed its last test is ignored. The Claude Code surface (the /onex:delegate skill) lands in omniclaude."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21346-choose-first"
+    statement: |-
+      A developer lists their registered models and sets which one delegation tries first, without re-running onboarding.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: from a Claude Code session, the developer can list their registered models and set which one delegation tries first, without re-running onboarding -- falsifier: uv run pytest on a skill test that sets the first model through the skill and asserts onex models list shows it first
+  - id: "req-omn21346-tried-first"
+    statement: |-
+      The next delegation after the change tries the chosen model first.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: the next /onex:delegate run after the change tries that model first -- falsifier: a delegation receipt whose first attempt names the chosen model
+evidence_requirements:
+  - kind: "tests"
+    description: "onex models first sets the model tried first and onex models list shows it first; the local dispatch's first attempt is the chosen model, a failed choice moves on to the usual order, and with no choice the order is unchanged."
+    command: "uv run pytest tests/unit/cli/test_omn21346_delegation_first_model.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21346-ac1-first-listed-first"
+    description: "With an OpenRouter key holding two models and a local model declared, onex models first openrouter <second model> exits 0, moves that model to the front of the key's list, and onex models list (text and --json) shows OpenRouter first, marked tried first. A model not in the list and a provider not set up are refused and nothing changes; --clear and a removed key both drop the mark. Fails at the merge base, which has no onex models first command."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn21346_delegation_first_model.py -q -n 0 --no-cov -k 'first_sets or keeps_the_keys or local_model or refuses or clear or removed_key'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21346-ac2-first-attempt"
+    description: "With a local model that the ladder would start on and an OpenRouter key, after onex models first openrouter <model> the local dispatch's first model call and the receipt's first attempt are byok-openrouter on the chosen model. If that model fails, the run moves on to the local model and completes. With no choice, the first attempt is still the local model. Fails at the merge base, where the first attempt is the local model."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn21346_delegation_first_model.py -q -n 0 --no-cov -k 'delegation_tries or failed_first_choice or without_a_choice'"
+        cwd: "${OMNI_HOME}/omnimarket"
