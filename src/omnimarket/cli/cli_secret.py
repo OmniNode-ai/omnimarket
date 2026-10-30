@@ -944,6 +944,7 @@ models_group = click.Group(
         "Anthropic, GLM (z.ai), Ollama, or a local model server by URL.\n\nSet up any "
         "combination; delegation chooses among them for each task."
     ),
+    commands=[first_model],  # OMN-21346: onex models first
 )
 
 
@@ -1040,9 +1041,6 @@ def add_model(
     _show_model_test(result, as_json)
     if result.status != "passed":
         sys.exit(1)
-
-
-models_group.add_command(first_model)  # OMN-21346
 
 
 @models_group.command("test")
