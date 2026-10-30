@@ -4259,7 +4259,7 @@ dod_evidence:
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/handlers/scm/test_scm_duplicate_guard.py -q --no-cov -p no:randomly --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-core-dev-tag-repoint"
-    description: "With omnibase_core at its dev merge tag dev-20261030104005-e72840439bef, the dependency-provenance script reads the sibling list and dev-tag shape from core's first_party_ref contract rows, the todo-format, duplicate-id, routing-authority and contract-walker callers run core's node runtimes, and the OCC contract ports, the Done-write receipt gate and the migration-conflicts consumer import their node homes. These tests fail at the merge base once the core pin moves, because the old handler modules are gone."
+    description: "With omnibase_core at its dev merge tag dev-20261030104005-e72840439bef, the dependency-provenance script reads the sibling list and dev-tag shape from core's first_party_ref contract rows, the todo-format, duplicate-id, routing-authority and contract-walker callers run core's node runtimes, and the OCC contract ports, the Done-write receipt gate and the migration-conflicts consumer import their node homes. These tests fail at the merge base once the core pin moves, because the old handler modules are gone. The one yamlfmt fixpoint test is deselected because the verifier host has no yamlfmt binary and the refuse-skips flag counts its skip as a failure; it still runs in the CI gate that installs yamlfmt."
     source: "manual"
     checks:
       - check_type: "test_passes"
@@ -4269,7 +4269,7 @@ dod_evidence:
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_duplicate_registry_ids.py tests/ci/test_todo_format_core_owner_omn20885.py -q --no-cov -p no:randomly --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "test_passes"
-        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_precommit_hooks_local_omn20068.py tests/test_routing_authority_gate.py tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_emitter_literal_pins_omn_15407.py -q --no-cov -p no:randomly --refuse-skips"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/ci/test_precommit_hooks_local_omn20068.py tests/test_routing_authority_gate.py tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_emitter_literal_pins_omn_15407.py --deselect tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_emitter_literal_pins_omn_15407.py::TestComputeReceiptIsYamlfmtIdempotent::test_the_deploy_receipt_is_a_yamlfmt_fixpoint -q --no-cov -p no:randomly --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "test_passes"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_no_retired_model_values.py -q --no-cov -p no:randomly --refuse-skips"
