@@ -1,0 +1,89 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_placement_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: "Judge which lab pool hosts the lab host table lets take one work unit: a host marked unavailable takes none, and the unit's weight, work kind and capability needs (AVX2) are matched against the columns the host row declares, with each host's own memory bar and speed returned; the unit's needs are contract data. Also place a unit on the advertising pool hosts (place), with the table and weight read through injected sources."
+input_model:
+  name: ModelLabPlacementRequest
+  module: omnimarket.nodes.node_lab_placement_compute.models.model_lab_placement
+output_model:
+  name: ModelLabPlacementResult
+  module: omnimarket.nodes.node_lab_placement_compute.models.model_lab_placement
+handler:
+  module: omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_placement
+  class: HandlerLabPlacement
+  input_model: omnimarket.nodes.node_lab_placement_compute.models.model_lab_placement.ModelLabPlacementRequest
+  output_model: omnimarket.nodes.node_lab_placement_compute.models.model_lab_placement.ModelLabPlacementResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_placement:HandlerLabPlacement
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerLabPlacement
+      module: omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_placement
+  - operation: place
+    handler:
+      name: HandlerLabPoolPlace
+      module: omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_pool_place
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: "Direct Python invocation to judge host table rows (handle) or place a unit on the advertising pool hosts (place), with the table and weight read through injected sources (onex lab-work and the plugin's lab-run judge command)."
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+# PLACEMENT RULES (OMN-17232). The lab host table (the document ONEX_LAB_RUN_HOSTS names, or the
+# lab_hosts overlay) is the one source placement reads for what a host may take: `available`, and the
+# columns `avx2`, `min_free_gb`, `job_kinds`, `max_weight` and `speed`. The rules below are the other
+# half, read by HandlerLabPlacement: what a unit needs of a host, and what a host
+# row that omits a column means. Nothing about a repository or a machine is a literal in code.
+#   weights            lightest to heaviest; a host's `max_weight` is the heaviest unit it takes.
+#   weight_by_kind     the weight a unit has when its caller declares none (`--weight`).
+#   host_defaults      the meaning of a host row that omits the column. `avx2: true` because every
+#                      pool host but the one that declares `avx2: false` reads AVX2; `speed` is
+#                      relative to h101 (1.0).
+#   unit_needs         the rules that name PUBLIC repositories (none today: the census of 2026-10-29 found no public
+#                      repository whose unit suite needs a capability a pool host lacks); a private repository's rule is
+#                      the table document's own `unit_needs`, beside the host rows. A unit of `repo` (the repository name, without its owner; `kind` narrows it)
+#                      needs each named host capability. A need is the name of a boolean host
+#                      column; a host whose column is false takes no such unit.
+placement:
+  weights: [light, standard, heavy]
+  weight_by_kind:
+    lint: light
+    test: standard
+    code_draft: standard
+    other: standard
+    build: heavy
+  host_defaults:
+    avx2: true
+    max_weight: heavy
+    speed: 1.0
+  unit_needs: []
+metadata:
+  transport_type: local
+  description: "Judge which lab pool hosts the lab host table lets take one work unit: a host marked unavailable takes none, and the unit's weight, work kind and capability needs (AVX2) are matched against the columns the host row declares, with each host's own memory bar and speed returned; the unit's needs are contract data. Also place a unit on the advertising pool hosts (place), with the table and weight read through injected sources."
+  author: OmniNode Team
+  created: '2026-10-29'
+  tags:
+  - compute
+  - lab-placement-compute
+  - OMN-17232
+  related_tickets:
+  - OMN-17232

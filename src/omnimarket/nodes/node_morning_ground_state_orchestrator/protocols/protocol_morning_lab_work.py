@@ -4,12 +4,21 @@
 
 from typing import Protocol
 
-from omnimarket.lab_work.placement import ModelPlacement
 from omnimarket.models.model_lab_work_unit import (
     ModelHostCapacityAdvertisement,
     ModelLabWorkUnitReceipt,
     ModelLabWorkUnitRequest,
 )
+
+
+class ProtocolMorningPlacement(Protocol):
+    """What the morning phase reads from a placement decision."""
+
+    @property
+    def placed(self) -> bool: ...
+    @property
+    def host_name(self) -> str: ...
+    def describe(self) -> str: ...
 
 
 class ProtocolMorningLabWorkCaller(Protocol):
@@ -18,8 +27,12 @@ class ProtocolMorningLabWorkCaller(Protocol):
         self, window_seconds: float
     ) -> list[ModelHostCapacityAdvertisement]: ...
     def place(
-        self, *, need_tools: tuple[str, ...] = (), only_host: str | None = None
-    ) -> ModelPlacement: ...
+        self,
+        *,
+        need_tools: tuple[str, ...] = (),
+        only_host: str | None = None,
+        repo: str = "",
+    ) -> ProtocolMorningPlacement: ...
     async def dispatch(
         self, request: ModelLabWorkUnitRequest
     ) -> ModelLabWorkUnitReceipt: ...
