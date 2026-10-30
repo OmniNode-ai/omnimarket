@@ -715,6 +715,7 @@ node_projection_runtime_error_fingerprints = "omnimarket.nodes.node_projection_r
 node_projection_lab_lane_health = "omnimarket.nodes.node_projection_lab_lane_health"
 node_projection_lab_container_memory = "omnimarket.nodes.node_projection_lab_container_memory"
 node_projection_lab_proof_receipts = "omnimarket.nodes.node_projection_lab_proof_receipts"
+node_projection_delegation_budget_readings = "omnimarket.nodes.node_projection_delegation_budget_readings"
 node_projection_compaction_receipts = "omnimarket.nodes.node_projection_compaction_receipts"
 node_projection_work_ledger = "omnimarket.nodes.node_projection_work_ledger"
 node_work_ledger_render_effect = "omnimarket.nodes.node_work_ledger_render_effect"
