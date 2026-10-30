@@ -40,7 +40,7 @@ def test_a_refused_or_unknown_append_stops_startup(
     assert result.exit_code != 0
     assert result.session_env is None
     assert not (
-        machine.omni_home
+        machine.registry_root
         / ".claude_scratch"
         / "sessions"
         / "sess-front"
@@ -61,7 +61,7 @@ def test_a_preflight_blocker_stops_startup_before_any_ledger_call(
 
 
 def test_a_taken_lane_is_refused_before_preflight(machine: Machine) -> None:
-    folder = machine.omni_home / ".claude_scratch" / "sessions" / "sess-front"
+    folder = machine.registry_root / ".claude_scratch" / "sessions" / "sess-front"
     folder.mkdir(parents=True)
     (folder / "session.env").write_text("SESSION_LANE=sess-front\n")
     result = machine.start(MEMBER_A)

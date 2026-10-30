@@ -78,7 +78,7 @@ dod_evidence:
       probe_dir="$(mktemp -d)";
       trap 'rm -rf "$probe_dir"' EXIT;
       runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
-      mkdir -p "$probe_dir/roots/team_identity" "$probe_dir/home/docs/tracking" "$probe_dir/mirror/archive" "$probe_dir/bin";
+      mkdir -p "$probe_dir/roots/team_identity" "$probe_dir/home" "$probe_dir/mirror/archive" "$probe_dir/bin";
       cp tests/fixtures/team_identity/valid.yaml "$probe_dir/roots/team_identity/overlay.yaml";
       printf '2026-10-29T08:00:00Z | STATUS | lane=member-only | mirror |\n' > "$probe_dir/mirror/ROLLING_WORK_LEDGER.md";
       printf '#!/bin/sh\nexit 0\n' > "$probe_dir/bin/fixture-bus-append"; chmod +x "$probe_dir/bin/fixture-bus-append";

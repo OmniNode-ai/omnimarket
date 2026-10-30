@@ -56,7 +56,7 @@ def test_init_writes_every_host_mode_and_the_principal(
     assert env["HOST_MODE"] == mode
     assert env["SESSION_PRINCIPAL"] == "fixture-member-a-dev"
     assert env["SESSION_PROFILE"] == "team"
-    assert env["OMNI_HOME"] == str(machine.omni_home.resolve())
+    assert env["OMNI_HOME"] == str(machine.registry_root.resolve())
     assert result.session_env is not None
     assert result.session_env.endswith("sess-x/session.env")
 
@@ -83,7 +83,9 @@ def test_init_refuses_overwrite_and_dry_run_writes_nothing(machine: Machine) -> 
     dry = machine.run("init", MEMBER_A, dry_run=True, **fields)
     assert dry.status == "ok"
     assert any("SESSION_PRINCIPAL=fixture-member-a-dev" in line for line in dry.lines)
-    assert not (machine.omni_home / ".claude_scratch" / "sessions" / "sess-x").exists()
+    assert not (
+        machine.registry_root / ".claude_scratch" / "sessions" / "sess-x"
+    ).exists()
     assert machine.run("init", MEMBER_A, **fields).status == "ok"
     again = machine.run("init", MEMBER_A, **fields)
     assert again.status == "refused"
@@ -130,7 +132,11 @@ def test_show_lanes_and_boundary(machine: Machine) -> None:
         host_mode="bus-member",
     )
     lanes = (
-        machine.omni_home / ".claude_scratch" / "sessions" / "sess-front" / "lanes.txt"
+        machine.registry_root
+        / ".claude_scratch"
+        / "sessions"
+        / "sess-front"
+        / "lanes.txt"
     )
     lanes.write_text(lanes.read_text() + "lane-a dispatched OMN-1\nlane-b handed-off\n")
     shown = machine.run("show", MEMBER_A, lane="sess-front")

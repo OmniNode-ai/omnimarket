@@ -51,7 +51,7 @@ OPERATOR_REQUIRED = (*TEAM_REQUIRED, "coordination_host")
 @dataclass
 class Machine:
     root: Path
-    omni_home: Path
+    registry_root: Path
     registry_ledger: Path
     mirror: Path
     overlay: Path
@@ -68,7 +68,7 @@ class Machine:
             "identity_claims": claims,
             "overlay_roots": [str(self.roots)],
             "environment": self.environment,
-            "sessions_root": str(self.omni_home / ".claude_scratch" / "sessions"),
+            "sessions_root": str(self.registry_root / ".claude_scratch" / "sessions"),
         }
         body.update(fields)
         return ModelSessionFrontDoorRequest.model_validate(body)
@@ -116,7 +116,9 @@ class Machine:
         return [json.loads(line) for line in self.ledger_log.read_text().splitlines()]
 
     def session_env(self, lane: str = "sess-front") -> dict[str, str]:
-        path = self.omni_home / ".claude_scratch" / "sessions" / lane / "session.env"
+        path = (
+            self.registry_root / ".claude_scratch" / "sessions" / lane / "session.env"
+        )
         return dict(line.split("=", 1) for line in path.read_text().splitlines())
 
     def receipt(self, profile: str, /, **overrides: Any) -> Path:
@@ -170,8 +172,8 @@ class Machine:
 
 
 def build_machine(tmp_path: Path) -> Machine:
-    omni_home = tmp_path / "home"
-    registry = omni_home / "docs" / "tracking" / "ROLLING_WORK_LEDGER.md"
+    registry_root = tmp_path / "home"
+    registry = registry_root / "docs" / "tracking" / "ROLLING_WORK_LEDGER.md"
     registry.parent.mkdir(parents=True)
     registry.write_text(
         "2026-10-29T08:00:00Z | STATUS | lane=merge-drain-fixture | drain tick |\n"
@@ -192,7 +194,7 @@ def build_machine(tmp_path: Path) -> Machine:
     shutil.copyfile(IDENTITY, roots / "team_identity" / "overlay.yaml")
     m = Machine(
         root=tmp_path,
-        omni_home=omni_home,
+        registry_root=registry_root,
         registry_ledger=registry,
         mirror=mirror,
         overlay=overlay,
@@ -203,7 +205,7 @@ def build_machine(tmp_path: Path) -> Machine:
     m.environment = {
         "PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}",
         "HOME": str(tmp_path),
-        "OMNI_HOME": str(omni_home),
+        "OMNI_HOME": str(registry_root),
         "ONEX_LEDGER_PATH": str(mirror),
         "ONEX_LEDGER_WRITE_VIA": "bus",
         "ONEX_LEDGER_HOST_NAME": "fixture-member-a-mac",
