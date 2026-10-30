@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_session_checkpoint_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Write, read and validate the fixed-format session checkpoint, and record PostToolUse Workflow launches and TaskStop results into it, bound to the session's principals through the team identity declaration. Each checkpoint records the principal that wrote it; a member session reads, resumes from and inherits from only its own checkpoints (and its own prose handoffs), so a newer checkpoint of another principal is ignored; an operator session behaves as before.
+input_model:
+  name: ModelSessionCheckpointRequest
+  module: omnimarket.nodes.node_session_checkpoint_compute.models.model_session_checkpoint
+output_model:
+  name: ModelSessionCheckpointResult
+  module: omnimarket.nodes.node_session_checkpoint_compute.models.model_session_checkpoint
+handler:
+  module: omnimarket.nodes.node_session_checkpoint_compute.handlers.handler_session_checkpoint
+  class: HandlerSessionCheckpoint
+  input_model: omnimarket.nodes.node_session_checkpoint_compute.models.model_session_checkpoint.ModelSessionCheckpointRequest
+  output_model: omnimarket.nodes.node_session_checkpoint_compute.models.model_session_checkpoint.ModelSessionCheckpointResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_session_checkpoint_compute.handlers.handler_session_checkpoint:HandlerSessionCheckpoint
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerSessionCheckpoint
+      module: omnimarket.nodes.node_session_checkpoint_compute.handlers.handler_session_checkpoint
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the session-start skill and its PostToolUse hook with the session's identity claims.
+descriptor:
+  node_archetype: compute
+  purity: effectful  # reads the team identity overlay and the checkpoint directory; writes checkpoint files
+  runtime_profiles: []
+  idempotent: false
+  timeout_ms: 30000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local
+  description: Write, read and validate the fixed-format session checkpoint, and record PostToolUse Workflow launches and TaskStop results into it, bound to the session's principals through the team identity declaration. Each checkpoint records the principal that wrote it; a member session reads, resumes from and inherits from only its own checkpoints (and its own prose handoffs), so a newer checkpoint of another principal is ignored; an operator session behaves as before.
+  author: OmniNode Team
+  created: '2026-10-29'
+  tags:
+  - compute
+  - session-checkpoint-compute
+  - OMN-21393
+  related_tickets:
+  - OMN-21393

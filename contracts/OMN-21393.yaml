@@ -1,0 +1,91 @@
+schema_version: 1.0.0
+ticket_id: OMN-21393
+title: Session recovery acts only on the member's own lanes and checkpoints
+summary: Adds node_session_resume_compute and node_session_checkpoint_compute to omnimarket, the destination of session-resume's dangling_claims, close_claim_row and relaunch_claim scripts and session-start's checkpoint.py and checkpoint_hook.py. Both bind the session to its principals through node_team_identity_compute before anything else (an unknown or unauthenticated identity gets member restrictions with no principals, never operator). In a member session the dangling CLAIM listing keeps every lane but marks another principal's as foreign, the reconciler mode is report only, and the closing TERMINAL, the relaunch CLAIM and the landing-lane notice route are refused for any CLAIM the member's principal did not write (or that is not an unattributed child of the member's own session). Checkpoints record the principal that wrote them; newest, the prose-handoff fallback, the PostToolUse recorder's base and inheritance, TaskStop marking and the session.env lane discovery consider only the member's own. An operator session behaves as before.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21393-member-recovery
+  statement: A member session's recovery never writes a CLOSE, RELAUNCH or MSG row for, and never resumes or inherits from, another principal's CLAIM or checkpoint, and an operator session behaves as before.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the restart lists the operator''s lane as foreign, resumes nothing from the operator''s checkpoint and writes no row naming the operator''s CLAIM -- falsifier: any CLOSE, RELAUNCH or MSG row, TaskStop or resumed workflow from the member''s session that belongs to another principal.'
+  - id: AC2
+    statement: 'AC2: the change is one pull request in OmniNode-ai/omnimarket and its required `OmniNode-ai/omnimarket` CI check-runs are green on that pull request''s head -- falsifier: the check-runs API for that head commit in OmniNode-ai/omnimarket'
+evidence_requirements:
+- kind: tests
+  description: Two principals, each with a quiet dangling lane and a checkpoint, in member, unknown-identity and operator sessions; and both nodes' registration and golden chain.
+  command: uv run pytest tests/nodes/node_session_resume_compute tests/nodes/node_session_checkpoint_compute -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21393-ac1-member-resume
+  description: In a member session the other principal's quiet lanes are listed as foreign, the reconciler mode is report, and every close (released, landed, after a handoff MSG) and relaunch (including the landing-lane notice route) of a foreign CLAIM is refused with no row; the member's own lanes and its session's unattributed children close and relaunch; unknown identity owns nothing; an operator session behaves as before.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_session_resume_compute/test_member_session_resume.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21393-ac1-member-checkpoint
+  description: A checkpoint records its writer's principal; a member's newest and prose-handoff fallback ignore a newer foreign or unattributed one; the PostToolUse recorder bases and inherits only from the member's own checkpoint, never marks a foreign workflow stopped, and takes its lane only from the member's own session.env; a restart after a real member hook write with a newer foreign checkpoint present resumes and inherits nothing foreign; an operator session behaves as before.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_session_checkpoint_compute/test_member_session_checkpoint.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21393-ac2-nodes-registered
+  description: node_session_resume_compute and node_session_checkpoint_compute are registered as onex.nodes entry points in omnimarket and their packaged contracts invoke with typed requests bound through the team identity declaration.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_session_resume_compute/test_golden_chain_session_resume_compute.py tests/nodes/node_session_checkpoint_compute/test_golden_chain_session_checkpoint_compute.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21393-deploy-session-recovery-nodes
+  description: 'Hosted deploy smoke, runnable on the hosted runner with no lab route, broker or database: dispatch the packaged node_session_resume_compute through the in-process ONEX runtime against the fake fixture identity declaration and fixture ledger as member a, and require the other member''s lane listed as foreign with reconciler mode report, and a relaunch of that lane refused with no row; then dispatch node_session_checkpoint_compute to write a checkpoint as member a and require it to carry member a''s principal.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      export PYTHONDONTWRITEBYTECODE=1;
+      probe_dir="$(mktemp -d)";
+      trap 'rm -rf "$probe_dir"' EXIT;
+      runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+      mkdir -p "$probe_dir/roots/team_identity";
+      cp tests/fixtures/team_identity/valid.yaml "$probe_dir/roots/team_identity/overlay.yaml";
+      ledger="$PWD/tests/fixtures/session_recovery/ROLLING_WORK_LEDGER.md";
+      claims='[{"source": "github_auth", "value": "fixture-member-a-gh"}]';
+      printf '{"operation": "dangling", "ledger_path": "%s", "identity_claims": %s, "overlay_roots": ["%s"], "since": "2026-10-29T00:00:00Z", "t0": "2026-10-29T09:00:00Z"}' "$ledger" "$claims" "$probe_dir/roots" > "$probe_dir/dangling.json";
+      printf '{"operation": "relaunch", "ledger_path": "%s", "identity_claims": %s, "overlay_roots": ["%s"], "relaunch": {"dead_lane": "lane-b", "dead_claim": "2026-10-29T08:05:00Z", "landing_lane": "landing", "dispatcher": "sess-a2", "ticket": "OMN-9000099"}}' "$ledger" "$claims" "$probe_dir/roots" > "$probe_dir/relaunch.json";
+      printf '{"operation": "write", "directory": "%s", "identity_claims": %s, "overlay_roots": ["%s"], "now": "2026-10-29T09:00:00Z", "write": {"lane": "sess-a"}}' "$probe_dir/handoffs" "$claims" "$probe_dir/roots" > "$probe_dir/checkpoint.json";
+      for job in dangling relaunch; do env ONEX_LANE=omn21393-deploy-probe "$runtime_bin/onex" node node_session_resume_compute --input "$probe_dir/$job.json" --state-root "$probe_dir/state-$job" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/$job-receipt.json"; done;
+      env ONEX_LANE=omn21393-deploy-probe "$runtime_bin/onex" node node_session_checkpoint_compute --input "$probe_dir/checkpoint.json" --state-root "$probe_dir/state-checkpoint" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/checkpoint-receipt.json";
+      uv run --locked python -c '
+      import json
+      import sys
+      from pathlib import Path
+      receipts = {name: json.loads((Path(sys.argv[1]) / f"{name}-receipt.json").read_text()) for name in ("dangling", "relaunch", "checkpoint")}
+      for name, receipt in receipts.items():
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, (name, receipt)
+      listing = receipts["dangling"]["result"]
+      owners = {item["lane"]: item["owner"] for item in listing["dangling"]}
+      assert listing["scope"]["entry_id"] == "fixture-member-a" and listing["scope"]["privileges"] == "team", listing["scope"]
+      assert listing["reconciler_mode"] == "report", listing["reconciler_mode"]
+      assert owners["lane-b"] == "foreign" and owners["lane-a"] == "own", owners
+      relaunch = receipts["relaunch"]["result"]
+      assert relaunch["status"] == "refused" and relaunch["row"] is None and relaunch["route"] is None, relaunch
+      written = receipts["checkpoint"]["result"]
+      assert written["status"] == "ok", written
+      assert json.loads(Path(written["path"]).read_text())["principal"] == "fixture-member-a-dev", written
+      print(json.dumps({"foreign": sorted(k for k, v in owners.items() if v == "foreign"), "relaunch": relaunch["status"], "checkpoint_principal": "fixture-member-a-dev"}))
+      ' "$probe_dir";
+    cwd: ${OMNI_HOME}/omnimarket

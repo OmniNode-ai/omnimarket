@@ -1525,7 +1525,7 @@ repos:
         name: CI Summary external producer trigger parity (OMN-18963)
         language: system
         entry: uv run pytest tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q -p no:randomly
-        files: ^(\.github/workflows/.*\.ya?ml|scripts/ci/ci_summary_gate\.py|tests/unit/scripts/ci/test_l4_event_scope_omn18963\.py|\.pre-commit-config\.yaml)$
+        files: ^(\.github/workflows/.*\.ya?ml|scripts/ci/(ci_summary_gate\.py|ci_summary_external_producers\.json)|tests/unit/scripts/ci/test_l4_event_scope_omn18963\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         require_serial: true
         stages: [pre-commit]
