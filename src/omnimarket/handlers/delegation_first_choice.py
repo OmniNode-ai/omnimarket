@@ -21,11 +21,11 @@ from typing import Final
 
 from omnimarket.inference.local_byok_credential_adapter import (
     local_byok_key_test_failed,
+    local_model_tests_path,
     registered_local_byok_providers,
     resolve_local_byok_credential_models,
     resolve_local_byok_credential_plan,
 )
-from omnimarket.projection.sqlite_database import default_evidence_db_path
 from omnimarket.routing.byok_provider_backends import resolve_byok_provider_backend
 from omnimarket.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
@@ -42,9 +42,8 @@ _LOCAL_URL_PROVIDER: Final = "local"
 
 
 def first_choice_path(db_path: Path | None = None) -> Path:
-    """Where ``onex models first`` records the model delegation tries first."""
-    resolved = db_path if db_path is not None else default_evidence_db_path()
-    return resolved.parent / FIRST_CHOICE_FILE
+    """Where ``onex models first`` records the model delegation tries first: beside the tests."""
+    return local_model_tests_path(db_path).with_name(FIRST_CHOICE_FILE)
 
 
 def read_first_choice(*, db_path: Path | None = None) -> tuple[str, str] | None:
