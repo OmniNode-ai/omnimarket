@@ -18,6 +18,7 @@ from omnimarket.nodes.node_idle_slot_fill_effect.handlers import (
 )
 from omnimarket.nodes.node_idle_slot_fill_effect.models import ModelIdleSlotFillRequest
 from omnimarket.nodes.node_wip_admission_compute.fill_gate import fill_wip_gate
+from tests.nodes.node_idle_slot_fill_effect.overlay_fixture import ENV
 from tests.nodes.node_wip_admission_compute.test_wip_admission import (
     NOW,
     REPO_A,
@@ -125,7 +126,10 @@ def request(**extra: Any) -> ModelIdleSlotFillRequest:
     )
 
 
-def test_the_fill_skips_what_the_gate_refuses_and_sends_what_it_admits() -> None:
+def test_the_fill_skips_what_the_gate_refuses_and_sends_what_it_admits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", ENV["ONEX_SKILL_OVERLAY_ROOTS"])
     held = handler.HandlerIdleSlotFill().handle(
         request(wip_refusal=lambda _item: "wip-limit: REFUSE")
     )
