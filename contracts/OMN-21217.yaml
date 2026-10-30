@@ -69,13 +69,24 @@ dod_evidence:
       with docker on PATH replaced; at the merge base the step only lists
       consumer groups and sends no request, so the demand-start and terminal
       tests fail there. It is a source-level proof of the step's logic, not a
-      running deployment.
+      running deployment. The file's 33 tests run as four selections that
+      together cover every test, so each check stays inside the verifier's
+      30-second per-check budget, and each selection fails at the merge base.
     source: "manual"
     binds_ac:
       - "AC5"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/docker/test_composed_runtime_boot_delegate_probe_omn21279.py -q -n 0 --no-cov"
+        check_value: "uv run pytest tests/unit/docker/test_composed_runtime_boot_delegate_probe_omn21279.py -q -n 0 --no-cov -k 'never_passes or no_offsets'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/docker/test_composed_runtime_boot_delegate_probe_omn21279.py -q -n 0 --no-cov -k 'no_member or stops_short'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/docker/test_composed_runtime_boot_delegate_probe_omn21279.py -q -n 0 --no-cov -k 'completed_topic or another_request or no_terminal or another_terminals_text or no_group_owns or joins_on_demand'"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/docker/test_composed_runtime_boot_delegate_probe_omn21279.py -q -n 0 --no-cov -k 'not (never_passes or no_offsets or no_member or stops_short or completed_topic or another_request or no_terminal or another_terminals_text or no_group_owns or joins_on_demand)'"
         cwd: "${OMNI_HOME}/omnimarket"
 emergency_bypass:
   enabled: false
