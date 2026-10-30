@@ -36,11 +36,11 @@ def test_caller_runs_on_pull_request_and_merge_group() -> None:
     assert set(triggers) == {"pull_request", "merge_group"}
 
 
-def test_caller_pins_the_reusable_at_a_full_sha() -> None:
+def test_caller_pins_the_reusable_at_a_dev_merge_tag() -> None:
     uses = str(_job()["uses"])
     path, _, ref = uses.partition("@")
     assert path == REUSABLE
-    assert re.fullmatch(r"[0-9a-f]{40}", ref)
+    assert re.fullmatch(r"dev-\d{14}-[0-9a-f]{12}", ref)
 
 
 @pytest.mark.parametrize(

@@ -349,7 +349,7 @@ requirements:
     statement: "A pull request that changes the pre-push set runs omnibase_core's hook push rehearsal before it merges."
     acceptance:
       - id: "AC62"
-        statement: "AC62: .github/workflows/hook-push-rehearsal.yml runs on pull_request and merge_group, calls omnibase_core's hook-push-rehearsal.yml at a full 40-hex SHA, its path-regex matches the pre-commit config, the hook scripts and the caller and no ordinary source path, and its sample-file is a Python source file under src/omnimarket -- falsifier: uv run pytest tests/ci/test_omn17427_hook_push_rehearsal_caller.py -q fails at the merge base"
+        statement: "AC62: .github/workflows/hook-push-rehearsal.yml runs on pull_request and merge_group, calls omnibase_core's hook-push-rehearsal.yml at a dev-merge tag (dev-<14 digits>-<12 hex>) that is on an omnibase_core branch, its path-regex matches the pre-commit config, the hook scripts and the caller and no ordinary source path, and its sample-file is a Python source file under src/omnimarket -- falsifier: uv run pytest tests/ci/test_omn17427_hook_push_rehearsal_caller.py -q fails at the merge base"
   - id: "req-review-finding-parse-veto"
     statement: "A blocking hostile-review finding that claims a Python, YAML or JSON file is syntactically invalid is checked by parsing that file at the pull request head, and dropped with a logged reason when it parses; findings of every other class are left as the reviewers raised them."
     acceptance:
