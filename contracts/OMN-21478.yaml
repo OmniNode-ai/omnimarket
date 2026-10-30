@@ -14,6 +14,8 @@ requirements:
     statement: 'AC1: omnimarket CI calls the core reusable at a full 40-hex sha and the context is a required row of .github/required-checks.yaml and asserted by the CI Summary gate -- falsifier: uv run pytest tests/unit/workflows/test_internal_sibling_pins_omn21478.py tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q'
   - id: AC2
     statement: 'AC2: pyproject.toml pins omnibase-core, omnibase-spi and omninode-memory to dev merge tags in [tool.uv.sources] and uv.lock locks those tags -- falsifier: uv run pytest tests/unit/workflows/test_internal_sibling_pins_omn21478.py -q -k dev_merge_tag'
+  - id: AC3
+    statement: 'AC3: PR 4616 resolves omnibase-core to dev-20261030230231-b611c1f94a95 at b611c1f94a9568119d6e251216ad52db87ee4505 while retaining the base infra pin; the installed core exposes the first_party_ref validator used by omnimarket.'
 evidence_requirements:
 - kind: tests
   description: The workflow calls the core reusable at a full sha, and the required-checks and CI Summary rows exist.
@@ -44,3 +46,49 @@ dod_evidence:
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC2
+- id: dod-omn21478-pr4616-required-sibling-context
+  description: PR 4616 retains the required sibling workflow and CI Summary context after rebasing the core pin.
+  source: manual
+  binds_ac: [AC1]
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/workflows/test_internal_sibling_pins_omn21478.py tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21478-pr4616-matching-dev-tags
+  description: PR 4616 keeps all three sibling dev tags synchronized between pyproject.toml and uv.lock.
+  source: manual
+  binds_ac: [AC2]
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/workflows/test_internal_sibling_pins_omn21478.py -q -k dev_merge_tag --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21478-pr4616-deploy-package-readback
+  description: Hosted deployment artifact probe checks this checkout's exact core tag and lock commit, the retained infra tag, and the installed core distribution commit and validator contract. It needs only the checkout and frozen Python dependencies, with no broker, containers, credentials or deployed lane access; it does not attest a live runtime deployment. The merge-base core pin fails the exact-tag assertion.
+  source: manual
+  binds_ac: [AC3]
+  checks:
+  - check_type: command
+    check_value: |-
+      env PYTHONDONTWRITEBYTECODE=1 uv run --frozen python - <<'PY'
+      import json
+      import tomllib
+      from importlib.metadata import distribution
+      from pathlib import Path
+      from omnibase_core.validation.checker_first_party_ref import load_rule_parameters
+      from omnibase_core.validation.validator_first_party_ref import ValidatorFirstPartyRef
+
+      tag = 'dev-20261030230231-b611c1f94a95'
+      sha = 'b611c1f94a9568119d6e251216ad52db87ee4505'
+      sources = tomllib.loads(Path('pyproject.toml').read_text())['tool']['uv']['sources']
+      assert sources['omnibase-core']['tag'] == tag
+      assert sources['omnibase-infra']['tag'] == 'dev-20261030213019-091013fd7adb'
+      lock = tomllib.loads(Path('uv.lock').read_text())
+      core, = [p for p in lock['package'] if p['name'] == 'omnibase-core']
+      assert core['source']['git'] == sources['omnibase-core']['git'] + '?tag=' + tag + '#' + sha
+      installed = json.loads(distribution('omnibase-core').read_text('direct_url.json'))
+      assert installed['vcs_info']['commit_id'] == sha
+      rules = load_rule_parameters(ValidatorFirstPartyRef().contract)
+      assert rules['wrong_repo'].siblings
+      print('core package readback: exact dev tag, lock and installed commit; validator contract readable')
+      PY
+    cwd: ${OMNI_HOME}/omnimarket
