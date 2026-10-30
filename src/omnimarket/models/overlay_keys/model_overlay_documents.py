@@ -82,6 +82,31 @@ class ModelLabHostRow(_ModelOverlayBase):
     lab_work_root: str | None = None
     report_retention_days: int | None = Field(default=None, ge=1)
     clones: tuple[ModelLabHostClone, ...] = ()
+    # What the host can take, read by lab work placement (OMN-17232) next to ``available``. Flat
+    # columns, because the plugin's table reader is a flat ``key: value`` parser. An omitted column
+    # means the default in the lab-work node contract's ``placement.host_defaults``.
+    # ``avx2``: the host runs wheels built with AVX2 (an Ivy Bridge host does not).
+    avx2: bool | None = None
+    # ``min_free_gb``: this host's own memory admission bar for a unit, replacing the caller's bar.
+    min_free_gb: float | None = Field(default=None, ge=0)
+    # ``job_kinds``: the work kinds (test, build, lint, code_draft, other) the host takes; omitted: all.
+    job_kinds: tuple[NonEmptyStr, ...] | None = None
+    # ``max_weight``: the heaviest unit weight the host takes (the contract's ``placement.weights``).
+    max_weight: NonEmptyStr | None = None
+    # ``speed``: a measured figure, relative to h101 on the same suite (1.0); ranks the host.
+    speed: float | None = Field(default=None, gt=0)
+
+
+class ModelUnitNeedsRule(_ModelOverlayBase):
+    """A unit of ``repo`` (a repository name without its owner; ``kind`` narrows it) needs these host capabilities.
+
+    The public lab-work placement contract carries the rules that name public repositories; a private
+    repository's rule is data of the table, next to the host rows that declare the capability."""
+
+    repo: NonEmptyStr
+    kind: NonEmptyStr | None = None
+    needs: Annotated[tuple[NonEmptyStr, ...], Field(min_length=1)]
+    reason: NonEmptyStr
 
 
 class ModelLabHostsTable(_ModelOverlayBase):
@@ -90,6 +115,9 @@ class ModelLabHostsTable(_ModelOverlayBase):
     hosts: Annotated[tuple[ModelLabHostRow, ...], Field(min_length=1)]
     # The declared bus lane the pool serves lab work on; carried by the table shape, not an overlay key.
     bus_lane: str | None = None
+    # What units of named repositories need of a host (OMN-17232), matched against the host columns above;
+    # carried by the table shape, not an overlay key.
+    unit_needs: tuple[ModelUnitNeedsRule, ...] = ()
 
 
 class ModelLabHostsOverlay(ModelLabHostsTable):

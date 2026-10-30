@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_session_resume_compute
+version: 1.0.0
+description: List every dangling CLAIM of the rolling ledger with the principal that wrote it and whose it is, and compose the closing TERMINAL or the relaunch CLAIM for a stopped lane, bound to the session's principals through the team identity declaration. A member session sees another principal's lanes as foreign, runs the reconciler in report mode only, and is refused any closing row, relaunch or landing notice for a CLAIM that is not its own; an operator session behaves as before. Read-only; appends nothing.
+pack: operator_tooling
+node_role: compute
+display_name: Session Resume Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_session_resume_compute: omnimarket.nodes.node_session_resume_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- session-resume-compute
+- OMN-21393

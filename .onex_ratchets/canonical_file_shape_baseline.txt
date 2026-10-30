@@ -516,7 +516,6 @@ src/omnimarket/lab_work/__init__.py
 src/omnimarket/lab_work/bus.py
 src/omnimarket/lab_work/cli.py
 src/omnimarket/lab_work/named_env.py
-src/omnimarket/lab_work/placement.py
 src/omnimarket/local_deployment/__init__.py
 src/omnimarket/local_deployment/tenant_identity.py
 src/omnimarket/logging/__init__.py
