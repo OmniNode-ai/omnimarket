@@ -30,6 +30,8 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.handlers.execution_budget_overlay import largest_execution_budget
+
 _DEFAULT_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
 _BUDGET_KEY = "handler_execution_budget"
 _PORT_CONFIG_KEY = "delegation_runtime_dispatch"
@@ -71,6 +73,21 @@ def load_handler_execution_budget(
             f"{_BUDGET_KEY} margin cannot be verified"
         )
     port_wait = int(port_config[_PORT_WAIT_KEY])
+
+    # OMN-21344: both declared values are floors that follow the largest task
+    # class, the site overlay included. The handler bound rises to that class's
+    # ceiling and the port wait to its ceiling plus delivery margin, which keeps
+    # the bound strictly inside the wait it exists to pre-empt.
+    largest = largest_execution_budget()
+    if largest is not None:
+        ceiling = largest.budget.task_class_timeout_ceiling_seconds
+        port_wait = max(
+            port_wait, ceiling + largest.budget.terminal_delivery_margin_seconds
+        )
+        if ceiling > budget.max_handler_duration_seconds:
+            budget = ModelDelegateSkillHandlerBudget(
+                max_handler_duration_seconds=ceiling
+            )
 
     if budget.max_handler_duration_seconds >= port_wait:
         raise ValueError(
