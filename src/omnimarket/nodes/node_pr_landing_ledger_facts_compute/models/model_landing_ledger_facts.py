@@ -30,6 +30,16 @@ class ModelLandingCauseFix(BaseModel):
     cause: str
 
 
+class ModelLandingCauseOwnerSkipped(BaseModel):
+    """An open CLAIM whose cause owner ``ModelLandingCauseOwner`` refuses: left out of ``cause_owners`` and reported here."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lane: str
+    claim: str = Field(description="The CLAIM's timestamp.")
+    reason: str
+
+
 class ModelLandingLedgerFacts(BaseModel):
     """The ledger-derived facts the landing controller reads that need only the rows."""
 
@@ -40,6 +50,10 @@ class ModelLandingLedgerFacts(BaseModel):
         description="Repos (or 'all') under the fixer kill switch."
     )
     cause_owners: tuple[ModelLandingCauseOwner, ...]
+    cause_owners_skipped: tuple[ModelLandingCauseOwnerSkipped, ...] = Field(
+        default=(),
+        description="CLAIMs whose cause owner the model refuses; skipped, never raised.",
+    )
     cause_releases: tuple[ModelLandingCauseRelease, ...]
     cause_fixes: tuple[ModelLandingCauseFix, ...]
     lab_passes: dict[str, tuple[str, ...]] = Field(
@@ -50,6 +64,7 @@ class ModelLandingLedgerFacts(BaseModel):
 
 __all__: list[str] = [
     "ModelLandingCauseFix",
+    "ModelLandingCauseOwnerSkipped",
     "ModelLandingLedgerFacts",
     "ModelLandingLedgerRow",
     "ModelLandingLedgerRows",
