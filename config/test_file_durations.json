@@ -1201,6 +1201,7 @@
   "tests/projection/test_omn19919_failure_cause_served.py": 2.31,
   "tests/projection/test_omn19987_run_trace_served.py": 3.15,
   "tests/projection/test_omn19988_local_environment_served.py": 1.51,
+  "tests/projection/test_omn19988_serve_time_judgement.py": 11.53,
   "tests/projection/test_omn20006_usage_by_model_day_served.py": 2.03,
   "tests/projection/test_omn20007_metering_summary_served.py": 2.61,
   "tests/projection/test_omn20732_pre_lineage_store_decisions_read.py": 3.24,
