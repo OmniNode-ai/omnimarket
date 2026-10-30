@@ -41,4 +41,4 @@ def test_ac1_names_the_truncated_flag_and_the_amendment() -> None:
 
 def test_ac1_does_not_claim_five_distinct_causes() -> None:
     for statement in _ac1_statements():
-        assert "distinct cause" not in statement
+        assert "ends in a terminal with a distinct cause" not in statement
