@@ -57,11 +57,18 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_plans_today_effect/test_golden_chain_plans_today_effect.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21392-operator-mode-unchanged
-  description: 'The operator''s mode is unchanged by the move into a node: selection, task states, owners, ranking, summaries, stalled-plan MSGs, the schema, bounded children, and the refusal of a missing or stale watcher.'
+  description: 'The operator''s mode is unchanged by the move into a node: selection at origin/main, task states, owners, ranking, delegated summaries with their fact check, the schema, and the refusal of a missing Linear snapshot or a stale watcher.'
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_plans_today_effect/test_plans_today_operator.py -q --no-cov --tb=line -k 'not hang_reproduction'
+    check_value: uv run pytest tests/nodes/node_plans_today_effect/test_plans_today_operator.py -q --no-cov --tb=line -k 'not hang_reproduction and not json_stalled and not send and not refusal and not msg'
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21392-operator-json-and-msgs
+  description: The operator's --json output carries each stalled plan's priority and next-action ticket and validates against the schema, and the stalled-plan MSGs keep their dedupe, retry and failure reporting.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_plans_today_effect/test_plans_today_operator.py -q --no-cov --tb=line -k 'not hang_reproduction and (json_stalled or send or refusal or msg)'
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21392-operator-children-bounded
   description: 'Every child process of the run is bounded as before the move: a deadline, no inherited stdin, its own process group killed whole at the deadline, a summary phase inside one budget, a stuck fetch refused, and one timed-out MSG send stops the rest.'
