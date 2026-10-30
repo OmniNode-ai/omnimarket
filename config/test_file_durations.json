@@ -2556,6 +2556,7 @@
   "tests/unit/delegation/test_swe_discriminator_model_client_smoke.py": 0.52,
   "tests/unit/delegation/test_task_class_gaps_omn19406.py": 0.29,
   "tests/unit/delegation/test_task_type_backend_coverage_omn16442.py": 3.46,
+  "tests/unit/delegation/test_terminal_budget_source_omn21344.py": 3.0,
   "tests/unit/delegation/test_terminal_builder_single_source_omn13475.py": 2.64,
   "tests/unit/delegation/test_terminal_cause_copied_omn19448.py": 0.29,
   "tests/unit/delegation/test_terminal_columns_omn19448.py": 1.2,
