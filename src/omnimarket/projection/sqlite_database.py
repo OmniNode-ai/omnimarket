@@ -41,8 +41,18 @@ from omnibase_core.models.projection.model_upsert_plan import (
 from omnimarket.handlers.handler_projection_derived_write import (
     HandlerProjectionDerivedWrite,
 )
-from omnimarket.models.model_credential_route_write import ModelCredentialRouteWrite
-from omnimarket.models.model_credential_row_write import ModelCredentialRowWrite
+from omnimarket.nodes.node_projection_tenant_credentials.stores import (
+    _CREDENTIAL_CHOSEN_MODELS_STEP as _CREDENTIAL_CHOSEN_MODELS_STEP,
+)
+from omnimarket.nodes.node_projection_tenant_credentials.stores import (
+    _CREDENTIAL_ROUTE_VERSIONS_STEP as _CREDENTIAL_ROUTE_VERSIONS_STEP,
+)
+from omnimarket.nodes.node_projection_tenant_credentials.stores import (
+    _DELEGATION_ROUTING_TENANT_OVERLAY_DDL,
+    _TENANT_INFERENCE_CREDENTIALS_ADDED_COLUMNS,
+    _TENANT_INFERENCE_CREDENTIALS_DDL,
+    CredentialSqliteStore,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -537,73 +547,6 @@ CREATE TABLE IF NOT EXISTS automation_alarm_episodes (
 )
 """
 
-# OMN-19968: the local half of the tenant BYOK credential projection's two
-# tables, declared from node_projection_tenant_credentials/migrations (0000,
-# 0001: name and provider nullable for a revoke tombstone) and
-# node_delegation_routing_reducer/migrations (0001, 0004: provider). Timestamps
-# are ISO text; the primary key and the (tenant_id, task_type) unique key back
-# the two upserts in handler_tenant_credentials_store.
-_TENANT_INFERENCE_CREDENTIALS_DDL = """
-CREATE TABLE IF NOT EXISTS tenant_inference_credentials (
-    api_key_ref TEXT PRIMARY KEY,
-    tenant_id   TEXT NOT NULL,
-    name        TEXT,
-    provider    TEXT,
-    created_at  TEXT NOT NULL,
-    revoked_at  TEXT,
-    fingerprint TEXT,
-    set_at      TEXT,
-    expires_at  TEXT,
-    bound_host  TEXT,
-    workspace_id TEXT,
-    models      TEXT,
-    version     INTEGER NOT NULL DEFAULT 1
-)
-"""
-
-# 0005: a file made before the fingerprint and set time existed gains them on open,
-# so a read of the exposure's declared columns never meets a missing one.
-_TENANT_INFERENCE_CREDENTIALS_ADDED_COLUMNS: dict[str, object] = {
-    "fingerprint": None,
-    "set_at": None,
-    # 0006 (OMN-20991): the key's expiry date.
-    "expires_at": None,
-    # 0007 (OMN-21012): the lab host the key is bound to.
-    "bound_host": None,
-    # 0008 (OMN-20967): the Anthropic workspace the key belongs to.
-    "workspace_id": None,
-    "models": None,
-    # 0009 (OMN-21217): the row's version, published with it on the compacted
-    # credential-state topic. The local store never replays that topic, but it
-    # raises the version on each write exactly as the Postgres runner does, so
-    # both stores hold the same row (tests/test_omn19968_writer_store_parity.py).
-    "version": 1,
-}
-# OMN-21217: the columns _ensure_columns adds carry no default, so a store made
-# before them holds NULL there. One recorded step fills them, so a store opens
-# with reads only once it has run, and a read-only store is read as it is.
-_CREDENTIAL_ROUTE_VERSIONS_STEP = "omn21217_credential_route_versions"
-_CREDENTIAL_CHOSEN_MODELS_STEP = "omn21217_credential_chosen_models"
-
-_DELEGATION_ROUTING_TENANT_OVERLAY_DDL = """
-CREATE TABLE IF NOT EXISTS delegation_routing_tenant_overlay (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    tenant_id    TEXT NOT NULL,
-    task_type    TEXT NOT NULL,
-    backend_id   TEXT NOT NULL,
-    provider     TEXT,
-    endpoint_url TEXT NOT NULL,
-    model_name   TEXT NOT NULL,
-    models       TEXT NOT NULL DEFAULT '[]',
-    version      INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
-    secret_ref   TEXT,
-    timeout_ms   INTEGER CHECK (timeout_ms IS NULL OR timeout_ms > 0),
-    max_tokens   INTEGER CHECK (max_tokens IS NULL OR max_tokens > 0),
-    created_at   TEXT NOT NULL,
-    updated_at   TEXT NOT NULL,
-    UNIQUE (tenant_id, task_type)
-)
-"""
 
 # OMN-19968: the local half of llm_call_metrics, declared beside the Postgres
 # schema (node_projection_llm_cost/migrations/0001_create_llm_call_metrics.sql).
@@ -794,7 +737,7 @@ def default_evidence_db_path() -> Path:
     return _DEFAULT_EVIDENCE_DB_PATH
 
 
-class SqliteDatabaseAdapter:
+class SqliteDatabaseAdapter(CredentialSqliteStore):
     """``ProtocolProjectionDatabaseSync`` over a local SQLite file.
 
     Idempotent schema creation; additive columns inferred from the row dict so a
@@ -849,12 +792,7 @@ class SqliteDatabaseAdapter:
                 "tenant_inference_credentials",
                 _TENANT_INFERENCE_CREDENTIALS_ADDED_COLUMNS,
             )
-            self._ensure_columns(
-                conn,
-                "delegation_routing_tenant_overlay",
-                {"models": None, "version": 1},
-            )
-            conn.commit()
+            self._ensure_credential_route_columns(conn)
             self._apply_store_steps(conn, self._db_path)
         except BaseException:
             conn.close()
@@ -1067,22 +1005,7 @@ class SqliteDatabaseAdapter:
                     "indexed the delegate-skill command claims by correlation",
                 )
             )
-        if not cls._store_step_recorded(conn, _CREDENTIAL_ROUTE_VERSIONS_STEP):
-            pending.append(
-                (
-                    _CREDENTIAL_ROUTE_VERSIONS_STEP,
-                    cls._fill_credential_route_versions,
-                    "gave every credential and route a version and every route its model list",
-                )
-            )
-        if not cls._store_step_recorded(conn, _CREDENTIAL_CHOSEN_MODELS_STEP):
-            pending.append(
-                (
-                    _CREDENTIAL_CHOSEN_MODELS_STEP,
-                    cls._backfill_credential_chosen_models,
-                    "recovered only unambiguous choices on their owning credential ref",
-                )
-            )
+        pending.extend(cls._credential_store_steps(conn))
         for index, (step, apply, _) in enumerate(pending):
             try:
                 conn.execute("BEGIN IMMEDIATE")
@@ -1333,67 +1256,6 @@ class SqliteDatabaseAdapter:
         conn.execute(ddl)
 
     @staticmethod
-    def _fill_credential_route_versions(conn: sqlite3.Connection) -> None:
-        conn.execute(
-            "UPDATE delegation_routing_tenant_overlay SET version = 1 WHERE version IS NULL"
-        )
-        conn.execute(
-            "UPDATE tenant_inference_credentials SET version = 1 WHERE version IS NULL"
-        )
-        conn.execute(
-            "UPDATE delegation_routing_tenant_overlay SET models = CASE "
-            "WHEN model_name IS NULL OR trim(model_name) = '' "
-            "OR model_name = 'byok-model-unresolved' THEN '[]' "
-            "ELSE json_array(model_name) END WHERE models IS NULL"
-        )
-
-    @staticmethod
-    def _backfill_credential_chosen_models(conn: sqlite3.Connection) -> None:
-        """One-time local migration, never a model fallback at request time.
-
-        Another pooled key cannot inherit an overlay's choices. Multiple
-        overlays naming the same ref must all record the same valid list;
-        otherwise its nullable catalogue choice remains unknown.
-        """
-        rows = conn.execute(
-            "SELECT c.tenant_id, c.api_key_ref, c.provider, o.models "
-            "FROM tenant_inference_credentials c "
-            "JOIN delegation_routing_tenant_overlay o ON o.tenant_id = c.tenant_id "
-            "AND o.secret_ref = c.api_key_ref AND o.provider = c.provider "
-            "WHERE c.models IS NULL"
-        ).fetchall()
-        choices_by_ref: dict[tuple[str, str, str], set[tuple[str, ...] | None]] = {}
-        for row in rows:
-            key = (str(row["tenant_id"]), str(row["api_key_ref"]), str(row["provider"]))
-            try:
-                parsed: object = json.loads(row["models"])
-            except (TypeError, json.JSONDecodeError):
-                parsed = None
-            chosen: tuple[str, ...] | None = None
-            if (
-                isinstance(parsed, list)
-                and parsed
-                and all(
-                    isinstance(model, str) and model.strip() and len(model) <= 200
-                    for model in parsed
-                )
-                and len(set(parsed)) == len(parsed)
-            ):
-                chosen = tuple(str(model) for model in parsed)
-            choices_by_ref.setdefault(key, set()).add(chosen)
-        for (_tenant, ref, provider), choices in choices_by_ref.items():
-            if len(choices) != 1 or None in choices:
-                continue
-            chosen = next(iter(choices))
-            assert chosen is not None
-            # api_key_ref is the key; the tenant was matched in the join.
-            conn.execute(
-                "UPDATE tenant_inference_credentials SET models = ? "
-                "WHERE api_key_ref = ? AND provider = ? AND models IS NULL",
-                (json.dumps(chosen), ref, provider),
-            )
-
-    @staticmethod
     def _existing_columns(conn: sqlite3.Connection, table: str) -> set[str]:
         rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
         return {str(row["name"]) for row in rows}
@@ -1611,64 +1473,6 @@ class SqliteDatabaseAdapter:
             return []
         return [{column: stored[0].get(column) for column in plan.returning}]
 
-    def write_credential_row(self, plan: ModelCredentialRowWrite) -> int | None:
-        """OMN-21217: one statement; the version is raised in SQL, never read first."""
-        conn = self._connect()
-        try:
-            conn.execute("BEGIN IMMEDIATE")
-            parameters = {
-                key: self._encode(key, value) for key, value in plan.parameters.items()
-            }
-            # The runner's NOW(), as upsert_returning supplies it on this store.
-            parameters["now"] = datetime.now(tz=UTC).isoformat()
-            written = conn.execute(plan.sqlite_write, parameters).fetchone()
-            conn.commit()
-            return None if written is None else int(written[0])
-        except BaseException:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
-
-    def replace_credential_route(
-        self,
-        plan: ModelCredentialRouteWrite,
-    ) -> tuple[bool, int | None]:
-        conn = self._connect()
-        try:
-            conn.execute("BEGIN IMMEDIATE")
-            written = conn.execute(
-                plan.sqlite_write,
-                {
-                    key: self._encode(key, value)
-                    for key, value in plan.parameters.items()
-                },
-            ).fetchone()
-            if written is not None and plan.sqlite_models_write is not None:
-                models_written = conn.execute(
-                    plan.sqlite_models_write,
-                    {
-                        key: self._encode(key, value)
-                        for key, value in plan.parameters.items()
-                    },
-                ).fetchone()
-                if models_written is None:
-                    raise RuntimeError("credential model target is unavailable")
-            current = conn.execute(
-                plan.sqlite_read,
-                {
-                    key: self._encode(key, value)
-                    for key, value in plan.parameters.items()
-                },
-            ).fetchone()
-            conn.commit()
-            return written is not None, None if current is None else int(current[0])
-        except BaseException:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
-
     def query(
         self,
         table: str,
@@ -1711,21 +1515,7 @@ class SqliteDatabaseAdapter:
                 ).fetchall()
             else:
                 rows = conn.execute(f"SELECT * FROM {table}{suffix}").fetchall()
-            result = [dict(row) for row in rows]
-            if table in {
-                "delegation_routing_tenant_overlay",
-                "tenant_inference_credentials",
-            }:
-                for row in result:
-                    if isinstance(row.get("models"), str):
-                        try:
-                            row["models"] = json.loads(row["models"])
-                        except json.JSONDecodeError:
-                            # Preserve malformed catalogue data as invalid input
-                            # for the resolver; one key must not disable the pool.
-                            if table == "delegation_routing_tenant_overlay":
-                                raise
-            return result
+            return self._decoded_credential_models(table, [dict(row) for row in rows])
         finally:
             conn.close()
 

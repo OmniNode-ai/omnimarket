@@ -36,7 +36,6 @@ import inspect
 import json
 import os
 import socket
-import sqlite3
 import sys
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, date, datetime
@@ -87,8 +86,8 @@ from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request i
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result import (
     ModelModelTestResult,
 )
-from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_store import (
-    apply_credential_registered,
+from omnimarket.nodes.node_projection_tenant_credentials.local_catalog_fold import (
+    fold_registered_tenant_key,
 )
 from omnimarket.nodes.node_secret_store_effect.handlers.handler_secret_store import (
     HandlerSecretStore,
@@ -601,41 +600,7 @@ def register_tenant_key(
 
 
 def _fold_registered_tenant_key(response: Any, tenant: str) -> None:
-    """Catalogue the key on this machine too (OMN-21014).
-
-    The value is in this machine's store; the credential-registered event goes
-    to the bus for the central catalog. The host's own review gateway reads its
-    keys from this machine's catalog, so the same row is folded into the local
-    store the value lives beside, the way ``onex secret set`` folds its events.
-    The fold is an idempotent upsert by reference; no value is written.
-    """
-    store = _tenant_key_store()
-    payload: dict[str, object] = {
-        "tenant_id": tenant,
-        "provider": response.provider,
-        "name": response.name,
-        "api_key_ref": response.api_key_ref,
-        "metadata": {
-            key: value
-            for key, value in (("plan", response.plan), ("model", response.model))
-            if value is not None
-        },
-        "models": response.models,
-        "expected_version": response.expected_version,
-        "expires_at": None
-        if response.expires_at is None
-        else response.expires_at.astimezone(UTC).isoformat(),
-        "bound_host": response.bound_host,
-        "workspace_id": response.workspace_id,
-    }
-    try:
-        apply_credential_registered(payload, SqliteDatabaseAdapter(store.db_path))
-    except sqlite3.Error as error:
-        raise click.ClickException(
-            f"the key was stored as {response.api_key_ref}, but this machine's "
-            f"catalog could not record it ({type(error).__name__}); the review "
-            "gateway on this host will not see it until it is registered again."
-        ) from None
+    fold_registered_tenant_key(response, tenant, _tenant_key_store())
 
 
 def _parse_expires(expires: str | None) -> datetime | None:
