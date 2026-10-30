@@ -391,16 +391,15 @@ class ModelShortPromptSelection(BaseModel):
 class ModelTaskClassExecutionBudget(BaseModel):
     """Declared ceiling and terminal margin for one task class.
 
-    The ceiling stays at or below 240 seconds, under the deployed dispatch
-    port's 300-second wait, so the handler's own deadline fires before the
-    port gives up on it. The delivery margin belongs to the terminal waiter,
-    not the model execution deadline. (The bound moved here from the onex
-    CLI's mirror model, OMN-19407.)
+    Each class declares its own ceiling, at most 900 s, and a site overlay may
+    override it per class (OMN-21344). The runtime port's wait and the handler
+    bound follow the largest declared class. The delivery margin belongs to
+    the terminal waiter. (Bound moved here from the CLI mirror, OMN-19407.)
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    task_class_timeout_ceiling_seconds: int = Field(ge=1, le=240)
+    task_class_timeout_ceiling_seconds: int = Field(ge=1, le=900)
     terminal_delivery_margin_seconds: int = Field(ge=1)
     requested_timeout_grace_seconds: int | None = Field(
         default=None,
@@ -1416,8 +1415,10 @@ def resolve_reasoning_preamble_policy() -> ModelReasoningPreamblePolicy | None:
 def resolve_task_class_execution_budget(
     task_class: str,
 ) -> ModelTaskClassExecutionBudget:
-    """Return the explicit handler budget for ``task_class`` or refuse dispatch."""
-    return load_task_class_authority().execution_budget(task_class)
+    """The class's budget, a site overlay's when it sets one, or refuse dispatch."""
+    from omnimarket.handlers.execution_budget_overlay import resolve_execution_budget
+
+    return resolve_execution_budget(task_class).budget
 
 
 def resolve_task_class_rung_floor_seconds(task_class: str) -> int | None:

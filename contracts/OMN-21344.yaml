@@ -1,0 +1,33 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21344"
+title: "The delegation time limit is set per work class in the contract overlay instead of a fixed 240 seconds"
+summary: "Every task class's execution ceiling was validated against a fixed 240 s cap in code, so neither the contract nor a site could give a large delegation more time. The task-class contract's execution_budgets entry is now the base, and a site overlay at <root>/delegation_budgets/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS can override any field of a class's entry. The merged entry is validated as a whole, with a 900 s bound. An overlay that is unreadable, malformed, or names a class with no contract budget is refused. The runtime port's wait and the handler's own bound treat their contract values as floors and rise with the largest declared class, so a raised class is not cut off at 300 s. The terminal accepts a budget_source key consumer-first. The producer stamps it once omniclaude's pin carries this consumer, which is AC2's remaining step."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21344-per-class-limit"
+    statement: |-
+      A task class's delegation time limit is read from the contract, or from the site overlay when it sets one. It is no longer capped at 240 s in code.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the delegation time limit is read from the contract overlay per work class, and no 240 s constant remains in the delegate path -- falsifier: uv run pytest on a handler test that sets an overlay limit of 600 s and asserts a 300 s stub call completes
+evidence_requirements:
+  - kind: "tests"
+    description: "The handler, with an overlay that sets code_generation's ceiling to 600 s, completes a request that asks for 300 s. At the merge base the same request is refused before dispatch at the 240 s ceiling. The tests also cover the budget source, the derived port wait and handler bound, the 900 s bound, broken-overlay refusals, and the consumer-first budget_source key."
+    command: "uv run pytest tests/unit/delegation/test_execution_budget_overlay_omn21344.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21344-ac1-overlay-600s"
+    description: "HandlerDelegateSkill with ONEX_SKILL_OVERLAY_ROOTS pointing at a delegation_budgets overlay that sets code_generation's task_class_timeout_ceiling_seconds to 600. A stub dispatch asked for 300 s completes. The port receives execution_timeout_seconds 300, the budget evidence records a 600 s ceiling, and the handler's wait is at least 300 s. At the merge base, the request is refused with timeout_exceeds_task_class_ceiling at 240 s. The same file checks that the budget names its overlay or contract source, that the port wait (660) and handler bound (600) follow the largest class, that a ceiling above 900 s and each broken overlay are refused, and that a terminal carrying budget_source decodes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_execution_budget_overlay_omn21344.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
