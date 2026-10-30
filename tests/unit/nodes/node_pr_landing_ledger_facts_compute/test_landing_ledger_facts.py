@@ -244,6 +244,7 @@ def test_facts_equal_the_live_controllers_on_the_same_rows() -> None:
                 "cause": None,
             },
         ],
+        "cause_owners_skipped": [],
         "cause_releases": [{"cause": KEY, "at": "2026-10-09T09:43:00Z"}],
         "cause_fixes": [
             {"pr": "omnibase_infra#4700", "lane": "cause-a", "cause": KEY},
@@ -255,6 +256,47 @@ def test_facts_equal_the_live_controllers_on_the_same_rows() -> None:
         },
         "drain_lane": "repo-drains-84a",
     }
+
+
+QUOTED_CLAIM = (
+    "2026-10-09T09:36:00Z | CLAIM | lane=cause-quoted | ticket=OMN-17427 | parent=orch-1 | "
+    'cause="omnibase_infra:Hostile Review Thread Gate" read failing runs on omnibase_infra#5237, decide shared cause'
+)
+UNCLOSED_CLAIM = (
+    "2026-10-09T09:37:00Z | CLAIM | lane=cause-unclosed | ticket=OMN-17427 | "
+    'cause="omnibase_infra:Some Gate | est'
+)
+
+
+@pytest.mark.unit
+def test_a_quoted_cause_cell_is_read_as_its_text() -> None:
+    """2026-10-30T11:32:03Z: the quote was taken as part of the repository and the whole decision refused."""
+    rows = [_row(*r) for r in ROWS] + [
+        _row("2026-10-09T09:36:00Z", "CLAIM", "cause-quoted", QUOTED_CLAIM)
+    ]
+    owners = {o["lane"]: o for o in _facts(rows=rows)["cause_owners"]}
+    assert owners["cause-quoted"] == {
+        "lane": "cause-quoted",
+        "repo": "OmniNode-ai/omnibase_infra",
+        "check": "Hostile Review Thread Gate",
+        "cause": None,
+    }
+    assert _facts(rows=rows)["cause_owners_skipped"] == []
+
+
+@pytest.mark.unit
+def test_an_owner_the_model_refuses_is_skipped_and_reported_not_raised() -> None:
+    rows = [_row(*r) for r in ROWS] + [
+        _row("2026-10-09T09:36:00Z", "CLAIM", "cause-quoted", QUOTED_CLAIM),
+        _row("2026-10-09T09:37:00Z", "CLAIM", "cause-unclosed", UNCLOSED_CLAIM),
+    ]
+    facts = _facts(rows=rows)
+    assert "cause-unclosed" not in {o["lane"] for o in facts["cause_owners"]}
+    assert len(facts["cause_owners"]) == 5
+    [skipped] = facts["cause_owners_skipped"]
+    assert skipped["lane"] == "cause-unclosed"
+    assert skipped["claim"] == "2026-10-09T09:37:00Z"
+    assert 'OmniNode-ai/"omnibase_infra' in skipped["reason"]
 
 
 @pytest.mark.unit
