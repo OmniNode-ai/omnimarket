@@ -63,8 +63,8 @@ dod_evidence:
     check_value: |
       set -eu;
       ref="$(git rev-parse HEAD)";
-      gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_duplication_sweep/handlers/handler_duplication_sweep.py?ref=${ref}" --jq .content | base64 -d | grep -q 'node_cross_repo_boundary_check_effect.runtime_migration_conflicts';
-      gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_linear_triage/services/done_write_receipt_gate.py?ref=${ref}" --jq .content | base64 -d | grep -q 'node_done_write_receipt_gate_compute.handler_done_write_receipt_gate'
+      gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_duplication_sweep/handlers/handler_duplication_sweep.py?ref=${ref}" --jq .content | base64 -d | grep 'node_cross_repo_boundary_check_effect.runtime_migration_conflicts' >/dev/null;
+      gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_linear_triage/services/done_write_receipt_gate.py?ref=${ref}" --jq .content | base64 -d | grep 'node_done_write_receipt_gate_compute.handler_done_write_receipt_gate' >/dev/null
     cwd: .
   binds_ac:
   - AC3
