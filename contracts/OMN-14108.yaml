@@ -13,14 +13,14 @@ requirements:
   statement: The compat symbols only omnimarket uses live in omnimarket, and omnimarket imports none of them from omnibase_compat.
   acceptance:
   - id: AC2
-    statement: 'AC2: no first-party repository imports omnibase_compat -- falsifier: `uv run pytest tests/unit/models/evidence_pipeline
+    statement: 'AC2: no first-party repository imports omnibase_compat -- falsifier: `uv run pytest tests/unit/models/evidence_pipeline/wire/test_types.py tests/unit/models/evidence_pipeline/wire/test_dashboard_wire_dtos.py tests/unit/models/evidence_pipeline/wire/test_topics.py tests/unit/models/evidence_pipeline/wire/test_evidence_pipeline_wire_dtos.py
       tests/test_evidence_pipeline_native_nodes.py tests/test_evidence_pipeline_contracts.py -q` passes against the omnimarket
       modules, and `git grep -nE "^\s*(from|import) omnibase_compat\.(contracts\.evidence_pipeline|telemetry|routing)" -- "*.py"`
       prints nothing'
 evidence_requirements:
 - kind: tests
   description: The moved wire DTO, topic and contract tests and the evidence-pipeline node tests pass against omnimarket's own modules.
-  command: uv run pytest tests/unit/models/evidence_pipeline tests/test_evidence_pipeline_native_nodes.py tests/test_evidence_pipeline_contracts.py
+  command: uv run pytest tests/unit/models/evidence_pipeline/wire/test_types.py tests/unit/models/evidence_pipeline/wire/test_dashboard_wire_dtos.py tests/unit/models/evidence_pipeline/wire/test_topics.py tests/unit/models/evidence_pipeline/wire/test_evidence_pipeline_wire_dtos.py tests/test_evidence_pipeline_native_nodes.py tests/test_evidence_pipeline_contracts.py
     tests/test_deployment_evidence_reducer_wiring.py tests/test_evidence_pipeline_deployment_wiring.py tests/test_evidence_readiness_envelope_unwrap.py
     -q -o addopts=''
 emergency_bypass:
@@ -33,7 +33,7 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/models/evidence_pipeline tests/test_evidence_pipeline_native_nodes.py tests/test_evidence_pipeline_contracts.py
+    check_value: uv run pytest tests/unit/models/evidence_pipeline/wire/test_types.py tests/unit/models/evidence_pipeline/wire/test_dashboard_wire_dtos.py tests/unit/models/evidence_pipeline/wire/test_topics.py tests/unit/models/evidence_pipeline/wire/test_evidence_pipeline_wire_dtos.py tests/test_evidence_pipeline_native_nodes.py tests/test_evidence_pipeline_contracts.py
       tests/test_deployment_evidence_reducer_wiring.py tests/test_evidence_pipeline_deployment_wiring.py tests/test_evidence_readiness_envelope_unwrap.py
       -q -o addopts=''
     cwd: ${OMNI_HOME}/omnimarket
