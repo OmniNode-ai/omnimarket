@@ -42,8 +42,20 @@ from omnimarket.models.model_pr_duplicate_guard import (
 
 #: A CLAIM's lane is live this long after its last ledger row (the same bar every cause reader uses).
 CLAIM_LIVE_HOURS: Final[float] = 0.75
-#: Distinctive title words two pull requests on one file must share to count as one change.
-SHARED_WORDS_NEEDED: Final[int] = 3
+#: Distinctive title words two pull requests on one file must share to count as one change, and the share
+#: of the shorter title's words they must make up.
+SHARED_WORDS_NEEDED: Final[int] = 4
+SHARED_WORDS_SHARE: Final[float] = 0.5
+#: Notes name this many same-file overlaps; the rest are counted.
+NOTES_SHOWN: Final[int] = 5
+#: How strongly each kind says the fix is already owned; the pull request to adopt comes from the strongest.
+_STRENGTH: Final[dict[EnumDuplicateEvidence, int]] = {
+    EnumDuplicateEvidence.BRANCH: 0,
+    EnumDuplicateEvidence.LINES: 1,
+    EnumDuplicateEvidence.CAUSE_CITED: 2,
+    EnumDuplicateEvidence.CLAIM: 3,
+    EnumDuplicateEvidence.FILES_AND_TITLE: 4,
+}
 #: Files every kind of change touches; sharing one says nothing about a shared fix.
 _GENERIC_FILES: Final[tuple[str, ...]] = (
     "*.lock",
@@ -198,6 +210,17 @@ def overlap(new: ModelPrTouch, other: ModelPrTouch) -> tuple[list[str], list[str
     return sorted(lines), sorted(shared)
 
 
+def _same_words(
+    mine: frozenset[str], theirs: frozenset[str], shared: list[str]
+) -> bool:
+    smaller = min(len(mine), len(theirs))
+    return (
+        len(shared) >= SHARED_WORDS_NEEDED
+        and smaller > 0
+        and len(shared) / smaller >= SHARED_WORDS_SHARE
+    )
+
+
 def _wanted_causes(
     request: ModelPrDuplicateGuardRequest, repo: str, own_rows: list[str]
 ) -> set[tuple[str, str]]:
@@ -295,7 +318,9 @@ class HandlerPrDuplicateGuard:
                             detail=f"{ref} changes the same lines: {', '.join(lines)}",
                         )
                     )
-                elif shared and len(words) >= SHARED_WORDS_NEEDED:
+                elif shared and _same_words(
+                    new_words, distinctive_words(pr.title), words
+                ):
                     hit = True
                     evidence.append(
                         ModelDuplicateEvidence(
@@ -347,16 +372,16 @@ class HandlerPrDuplicateGuard:
         if not evidence:
             return ModelPrDuplicateGuardResult(
                 state="clear",
-                notes=tuple(notes),
+                notes=_shown(notes),
                 unread=tuple(unread),
                 message=f"no open pull request or live CLAIM in {repo} covers this change",
             )
         ordered = sorted(
             evidence,
             key=lambda e: (
+                _STRENGTH[e.kind],
                 e.pr is None,
                 int(e.pr.split("#")[1]) if e.pr else 0,
-                e.kind.value,
                 e.lane or "",
             ),
         )
@@ -372,7 +397,7 @@ class HandlerPrDuplicateGuard:
             adopt_pr=adopt_pr,
             adopt_lane=adopt_lane,
             evidence=tuple(ordered),
-            notes=tuple(notes),
+            notes=_shown(notes),
             unread=tuple(unread),
             message=(
                 f"{target} already covers this change ({'; '.join(e.detail for e in ordered)}). "
@@ -380,6 +405,15 @@ class HandlerPrDuplicateGuard:
                 f"(adopted={adopt_pr or target})."
             ),
         )
+
+
+def _shown(notes: list[str]) -> tuple[str, ...]:
+    if len(notes) <= NOTES_SHOWN:
+        return tuple(notes)
+    return (
+        *notes[:NOTES_SHOWN],
+        f"{len(notes) - NOTES_SHOWN} more open pull requests also change a file of this one on other lines",
+    )
 
 
 def _title_checks(title: str, live: tuple[str, ...], repo: str) -> set[str]:

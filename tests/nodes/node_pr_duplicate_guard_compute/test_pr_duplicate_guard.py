@@ -159,7 +159,7 @@ def test_the_second_dispatch_fix_guard_is_refused_with_the_first_named() -> None
     )  # old line 204 is in both rewrites
 
 
-def test_same_file_and_three_shared_title_words_is_a_duplicate_without_a_shared_line() -> (
+def test_same_file_and_four_shared_title_words_is_a_duplicate_without_a_shared_line() -> (
     None
 ):
     other = touch(edit(GUARD, (300, 301)))
