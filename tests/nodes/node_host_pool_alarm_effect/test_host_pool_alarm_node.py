@@ -13,17 +13,20 @@ from pathlib import Path
 
 import yaml
 
+from omnimarket.models.model_host_pool_reading import ModelHostPoolReading
+
 ROOT = Path(__file__).resolve().parents[3]
 NODE = "omnimarket.nodes.node_host_pool_alarm_effect"
 handler = importlib.import_module(f"{NODE}.handler")
 models = importlib.import_module(f"{NODE}.models")
+
 node = importlib.import_module(f"{NODE}.node")
 NOW = datetime(2026, 10, 21, 16, 55, 0, tzinfo=UTC)
 TIMEOUT = "rc=255 timed out after 20s"
 
 
 def reading(error: str | None = None, **cells):
-    return models.ModelHostPoolReading("host-a", 16, error, **cells)
+    return ModelHostPoolReading("host-a", 16, error, **cells)
 
 
 def tick(tmp_path: Path, *readings, minutes: int = 0, emit: bool = True):
@@ -109,7 +112,7 @@ def test_a_host_the_table_marks_down_is_not_alarmed_and_loses_its_streak(tmp_pat
     assert (
         tick(
             tmp_path,
-            models.ModelHostPoolReading("host-a", 16, TIMEOUT, available=False),
+            ModelHostPoolReading("host-a", 16, TIMEOUT, available=False),
         ).found
         == []
     )
