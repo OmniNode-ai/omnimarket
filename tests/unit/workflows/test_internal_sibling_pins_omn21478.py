@@ -23,9 +23,14 @@ def test_workflow_calls_core_at_a_full_sha_and_is_required() -> None:
     )
     assert set(workflow["jobs"]) == {"internal-sibling-pins"}
     caller = workflow["jobs"]["internal-sibling-pins"]
-    assert set(caller) == {"uses"}
+    assert set(caller) == {"uses", "with"}
     assert caller["uses"].startswith(REUSABLE)
-    assert re.fullmatch(r"[0-9a-f]{40}", caller["uses"].removeprefix(REUSABLE))
+    tag = caller["uses"].removeprefix(REUSABLE)
+    match = re.fullmatch(r"dev-[0-9]{14}-([0-9a-f]{12})", tag)
+    assert match
+    core_ref = caller["with"]["omnibase-core-ref"]
+    assert re.fullmatch(r"[0-9a-f]{40}", core_ref)
+    assert core_ref.startswith(match.group(1))
 
     manifest = yaml.safe_load((ROOT / ".github/required-checks.yaml").read_text())
     rows = [row for row in manifest["gates"] if row["name"] == CONTEXT]
