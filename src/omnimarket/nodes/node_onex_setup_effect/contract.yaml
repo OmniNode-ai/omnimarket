@@ -1,0 +1,84 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: "node_onex_setup_effect"
+# Run by a developer through `onex setup`, which resolves the workspace root (prompting only
+# when nothing names it), hands the handler a typed request and prints the typed result. The
+# command topic names the bus entry a runtime would take; the result is the terminal event.
+lifecycle: experimental
+contract_name: node_onex_setup_effect
+node_name: node_onex_setup_effect
+node_type: EFFECT_GENERIC
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  The onboarding walk a developer needs after installing the ONEX CLI: create the workspace
+  root, choose the install path (local by default, docker on request) and check what it needs,
+  write the user config when there is none, and write the workspace runtime configuration.
+  Every step is idempotent and every write atomic, so a second run changes nothing and a run
+  that stopped at a failed step resumes from it. A failure names its one fix and the retry
+  command. setup_step_inventory.yaml beside this contract records which omnibase install.sh
+  step this walk took over, which stayed with install.sh and which was dropped.
+
+input_model: omnimarket.nodes.node_onex_setup_effect.models.model_onex_setup.ModelOnexSetupRequest
+
+output_model:
+  name: ModelOnexSetupResult
+  module: omnimarket.nodes.node_onex_setup_effect.models.model_onex_setup
+  description: The steps that completed and the failure that stopped the walk, with its fix and retry.
+
+handler:
+  module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup
+  class: HandlerOnexSetup
+  input_model: omnimarket.nodes.node_onex_setup_effect.models.model_onex_setup.ModelOnexSetupRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: onex_setup.run_walk
+      handler:
+        name: HandlerOnexSetup
+        module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup
+      handler_module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup
+      event_model: omnimarket.nodes.node_onex_setup_effect.models.model_onex_setup.ModelOnexSetupRequest
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 300000
+  runtime_profiles: [effects]
+
+terminal_event: onex.evt.omnimarket.onex-setup-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - "onex.cmd.omnimarket.onex-setup-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.onex-setup-completed.v1"
+
+published_events:
+  - event_type: ModelOnexSetupResult
+    topic: onex.evt.omnimarket.onex-setup-completed.v1
+    description: "One onboarding walk: the completed steps, or the failed step with its fix."
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.onex-setup-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.onex-setup-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.onex-setup-completed.v1
+
+dod_evidence:
+  PYTEST:
+    description: "inventory coverage of install.sh, the walk's prompts, idempotence, resume and help"
+    command: "uv run pytest tests/unit/cli/test_setup_command.py tests/unit/cli/test_setup_step_inventory.py -q"
+    pass_criteria: >
+      every install.sh section and flag has an inventory entry; the walk prompts only for an
+      underivable workspace root; a second run leaves an identical snapshot; each injected step
+      failure names one fix and a retry that completes; setup's help claims machine setup and no
+      core command does.
+
+metadata:
+  transport_type: filesystem
