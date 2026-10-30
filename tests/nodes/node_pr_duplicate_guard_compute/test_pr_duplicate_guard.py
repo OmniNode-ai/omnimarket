@@ -174,9 +174,74 @@ def test_same_file_and_four_shared_title_words_is_a_duplicate_without_a_shared_l
 
     assert result.state == "adopt"
     assert result.evidence[0].kind is EnumDuplicateEvidence.FILES_AND_TITLE
-    assert {"worker", "controller", "guard"} <= set(
+    assert {"worker", "controller", "guard", "host"} <= set(
         result.evidence[0].detail.replace(",", "").split()
     )
+
+
+def test_three_shared_words_on_one_file_are_not_enough() -> None:
+    other = touch(edit(GUARD, (300, 301)))
+    result = run(
+        repo="example_repo",
+        head_ref="b3",
+        base="main",
+        title="fix: a codex worker on a lab host reads a file",
+        touch=other,
+        open_prs=(OIC_1320,),
+    )
+
+    assert result.state == "clear"
+
+
+def test_the_pull_request_to_adopt_comes_from_the_strongest_evidence_not_the_lowest_number() -> (
+    None
+):
+    wordy = ModelOpenPr(
+        number=1106,
+        head_ref="old",
+        base="main",
+        title="fix: Codex worker host controller guard",
+        touch=touch(edit(GUARD, (300, 301))),
+    )
+    result = run(
+        repo="example_repo",
+        head_ref="new",
+        base="main",
+        title="fix(OMN-19998): a Codex worker on a lab host keeps the controller guard",
+        touch=OIC_1326_TOUCH,
+        open_prs=(wordy, OIC_1320),
+    )
+
+    assert result.adopt_pr == "example_repo#1320"
+    assert [e.kind for e in result.evidence] == [
+        EnumDuplicateEvidence.LINES,
+        EnumDuplicateEvidence.FILES_AND_TITLE,
+    ]
+
+
+def test_many_same_file_overlaps_are_counted_not_listed() -> None:
+    crowd = tuple(
+        ModelOpenPr(
+            number=100 + n,
+            head_ref=f"h{n}",
+            base="dev",
+            title=f"unrelated change {n}",
+            touch=touch(edit(BASELINE, (50 + n, 50 + n))),
+        )
+        for n in range(9)
+    )
+    result = run(
+        repo="omnibase_core",
+        head_ref="mine",
+        base="dev",
+        title="something else entirely",
+        touch=touch(edit(BASELINE, (1, 1))),
+        open_prs=crowd,
+    )
+
+    assert result.state == "clear"
+    assert len(result.notes) == 6
+    assert result.notes[-1].startswith("4 more")
 
 
 # ---- an unrelated pull request in the same repository passes
