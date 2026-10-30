@@ -6,6 +6,7 @@
   "tests/chains/delegation/test_obligation_binding.py": 0.1,
   "tests/chains/delegation/test_obligations.py": 0.06,
   "tests/chains/fault_suite/test_bus_path_faults_omn19450.py": 17.82,
+  "tests/chains/fault_suite/test_contract_ac1_amended_reading_omn19450.py": 3.67,
   "tests/chains/fault_suite/test_five_faults_told_apart_omn19450.py": 10.03,
   "tests/chains/fault_suite/test_local_path_faults_omn19450.py": 44.17,
   "tests/chains/fault_suite/test_nightly_workflow_omn19450.py": 1.34,
