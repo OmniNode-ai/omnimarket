@@ -2100,12 +2100,12 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC62"]
   - id: "dod-omn17427-hook-push-rehearsal-deploy-probe"
-    description: "Deploy probe. GitHub serves the hook push rehearsal caller at the checked-out HEAD calling omnibase_core's reusable hook push rehearsal at a full SHA with a path-regex that matches .pre-commit-config.yaml. It fails at the merge base, where the caller does not exist, and needs only GitHub access and Python on the hosted runner."
+    description: "Deploy probe. GitHub serves the hook push rehearsal caller at the checked-out HEAD calling omnibase_core's reusable hook push rehearsal at a dev-merge tag with a path-regex that matches .pre-commit-config.yaml. It fails at the merge base, where the caller does not exist, and needs only GitHub access and Python on the hosted runner."
     source: "manual"
     checks:
       - check_type: "command"
         check_value: >-
-          gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/hook-push-rehearsal.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import re, sys, yaml; job = yaml.safe_load(sys.stdin.read())["jobs"]["hook-push-rehearsal"]; path, _, ref = job["uses"].partition("@"); assert path == "OmniNode-ai/omnibase_core/.github/workflows/hook-push-rehearsal.yml"; assert re.fullmatch("[0-9a-f]{40}", ref); assert re.search(job["with"]["path-regex"], ".pre-commit-config.yaml"); print("hook push rehearsal caller deploy probe: PASS")'
+          gh api "repos/OmniNode-ai/omnimarket/contents/.github/workflows/hook-push-rehearsal.yml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import re, sys, yaml; job = yaml.safe_load(sys.stdin.read())["jobs"]["hook-push-rehearsal"]; path, _, ref = job["uses"].partition("@"); assert path == "OmniNode-ai/omnibase_core/.github/workflows/hook-push-rehearsal.yml"; assert re.fullmatch(r"dev-[0-9]{14}-[0-9a-f]{12}", ref); assert re.search(job["with"]["path-regex"], ".pre-commit-config.yaml"); print("hook push rehearsal caller deploy probe: PASS")'
   - id: "dod-omn17427-ac70-review-finding-parse-veto"
     description: "A blocking 'invalid Python' finding on the omnimarket#4063 test file, which parses at its blocked head, is dropped with a reason and the verdict becomes passed; a Python, YAML or JSON file that does not parse keeps its finding."
     source: "manual"
