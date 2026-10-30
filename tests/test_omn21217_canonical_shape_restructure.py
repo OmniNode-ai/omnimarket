@@ -47,6 +47,9 @@ _ROUTED_TOPICS = [
     "onex.evt.omnimarket.credential-revoked.v1",
     "onex.evt.omnimarket.tenant-credential-state.v1",
     "onex.evt.omnimarket.tenant-routing-overlay-state.v1",
+    # OMN-19996: the delegate-skill terminals that move a key's last-used time.
+    "onex.evt.omnimarket.delegate-skill-completed.v1",
+    "onex.evt.omnimarket.delegate-skill-failed.v1",
 ]
 
 _PUBLISHER = "omnimarket.projection.credential_publisher"
