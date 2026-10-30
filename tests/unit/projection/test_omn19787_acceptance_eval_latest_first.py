@@ -65,7 +65,14 @@ def _contract_exposure() -> ProjectionTableConfig:
     return cfg
 
 
-def _seeded_cache(cfg: ProjectionTableConfig) -> SnapshotCache:
+def _bound(run: int, task_class: str) -> float:
+    """A distinct false-pass decision bound per run and class."""
+    return round(0.1 * run + 0.01 * (_TASK_CLASSES.index(task_class) + 1), 4)
+
+
+def _seeded_cache(
+    cfg: ProjectionTableConfig, *, with_bounds: bool = False
+) -> SnapshotCache:
     cache = SnapshotCache(
         {cfg.topic: cfg},
         bootstrap_servers="unused:9092",
@@ -91,6 +98,11 @@ def _seeded_cache(cfg: ProjectionTableConfig) -> SnapshotCache:
             observed_at=f"2026-10-0{run}T00:00:00+00:00",
             projection_cursor=cursor,
         )
+        if with_bounds:
+            row.update(
+                false_pass_upper_bound=_bound(run, task_class),
+                false_pass_line_verdict="missed",
+            )
         rows.append(row)
     # Newest-first insertion must not determine either ranking or cursor walks.
     for offset, row in enumerate(reversed(rows), start=1):
@@ -119,8 +131,10 @@ def _seeded_cache(cfg: ProjectionTableConfig) -> SnapshotCache:
 
 
 @contextmanager
-def _client(cfg: ProjectionTableConfig) -> Iterator[TestClient]:
-    cache = _seeded_cache(cfg)
+def _client(
+    cfg: ProjectionTableConfig, *, with_bounds: bool = False
+) -> Iterator[TestClient]:
+    cache = _seeded_cache(cfg, with_bounds=with_bounds)
     app.dependency_overrides[get_row_source] = lambda: CacheRowSource(
         cache, tenant_registry={_TENANT_SLUG: _TENANT_UUID}
     )
@@ -161,3 +175,27 @@ def test_since_still_walks_the_cursor() -> None:
     assert sorted(cursors) == list(range(since + 1, since + cfg.limit + 1))
     assert body["page_selection"] == "cursor"
     assert body["next_cursor"] == str(since + cfg.limit)
+
+
+def test_omn19787_latest_run_every_class_with_its_false_pass_bound() -> None:
+    """AC-3, the omnimarket half: the exposure the dashboard panel reads serves,
+    on its first page, every class of the latest run with that class's
+    false-pass bound and line verdict, never an older run's bound."""
+    cfg = _contract_exposure()
+    for column in ("task_class", "false_pass_upper_bound", "false_pass_line_verdict"):
+        assert column in cfg.columns, column
+    with _client(cfg, with_bounds=True) as client:
+        response = client.get(f"/projection/{cfg.topic}?tenant={_TENANT_SLUG}")
+    assert response.status_code == 200, response.text
+    rows: list[dict[str, Any]] = response.json()["rows"]
+    latest = [
+        row
+        for row in rows
+        if row["eval_run_id"] == "run-3"
+        and row["stratum"] == "all"
+        and row["arm"] == "recorded"
+    ]
+    assert sorted(row["task_class"] for row in latest) == sorted(_TASK_CLASSES)
+    for row in latest:
+        assert float(row["false_pass_upper_bound"]) == _bound(3, row["task_class"])
+        assert row["false_pass_line_verdict"] == "missed"

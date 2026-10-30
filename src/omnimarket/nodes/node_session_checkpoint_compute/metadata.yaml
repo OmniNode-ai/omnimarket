@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_session_checkpoint_compute
+version: 1.0.0
+description: Write, read and validate the fixed-format session checkpoint, and record PostToolUse Workflow launches and TaskStop results into it, bound to the session's principals through the team identity declaration. Each checkpoint records the principal that wrote it; a member session reads, resumes from and inherits from only its own checkpoints (and its own prose handoffs), so a newer checkpoint of another principal is ignored; an operator session behaves as before.
+pack: operator_tooling
+node_role: compute
+display_name: Session Checkpoint Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_session_checkpoint_compute: omnimarket.nodes.node_session_checkpoint_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem_write
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- session-checkpoint-compute
+- OMN-21393

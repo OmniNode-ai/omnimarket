@@ -372,3 +372,55 @@ def test_first_run_baseline_run_completed_row_count_is_never_zero() -> None:
     duplicate = writer.handle(payload)
     assert duplicate["rows_upserted"] == 0
     assert duplicate["rows_refused_by_ordering_guard"] == first["rows_upserted"]
+
+
+# --- OMN-19787 AC-1: the recorded arm reproduces the dev-lane rows per class ---
+# The dev lane's delegation_eval_results rows of eval run 735b18b8 (recorded arm,
+# stratum all), read read-only on 2026-10-29: accepted n, false passes, refused n,
+# false refusals and the false-pass decision bound of each class. No slice-40 task
+# 40.5 report has been committed (the first-run report says so under Limits), so
+# these rows and that report's table are the committed recorded-arm baseline.
+_DEV_LANE_RECORDED_ROWS = {
+    "code_generation": (19, 2, 12, 3, 0.29580201397505035),
+    "code_review": (20, 16, 6, 3, 0.95),
+    "document": (20, 10, 12, 6, 0.7),
+    "planning": (20, 10, 12, 4, 0.7),
+    "reasoning": (19, 4, 4, 2, 0.4191202289169429),
+    "research": (20, 7, 8, 2, 0.5580345113154888),
+    "review": (20, 7, 12, 0, 0.5580345113154888),
+    "summarization": (20, 3, 12, 4, 0.3436638043142818),
+    "test": (20, 1, 12, 1, 0.21610616420684736),
+}
+
+
+def test_omn19787_recorded_arm_reproduces_the_dev_lane_rows_per_class() -> None:
+    rows = [
+        row
+        for row in _payload().results
+        if row.arm == "recorded" and row.stratum == "all"
+    ]
+    assert len(rows) == len({row.task_class for row in rows}) == 9
+    by_class = {row.task_class: row for row in rows}
+    assert set(by_class) == set(_DEV_LANE_RECORDED_ROWS)
+    for task_class, (
+        accepted,
+        fp,
+        refused,
+        fr,
+        bound,
+    ) in _DEV_LANE_RECORDED_ROWS.items():
+        row = by_class[task_class]
+        assert (
+            row.accepted_n,
+            row.false_pass_count,
+            row.refused_n,
+            row.false_refusal_count,
+        ) == (accepted, fp, refused, fr), task_class
+        assert row.false_pass_upper_bound == pytest.approx(bound, abs=1e-12), task_class
+    # Each class's counts are also the published table's, and the run writes a
+    # results row for every class it was given, so no class can drop out unseen.
+    assert {
+        task_class: (accepted, fp)
+        for task_class, (accepted, fp, *_rest) in _DEV_LANE_RECORDED_ROWS.items()
+    } == _REPORT_FALSE_PASSES
+    assert {row["task_class"] for row in _fixture()["items"]} == set(by_class)

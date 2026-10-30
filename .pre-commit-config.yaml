@@ -163,6 +163,15 @@ repos:
   # Shrink-only baseline at .onex_ratchets/canonical_file_shape_baseline.txt.
   # OMN-21002: the historical rev refused the caller-owned guard allowlist.
   # The pinned core revision reads the reusable caller's shrink-only declaration.
+  #
+  # The canonical-file-shape hook runs the node_canonical_file_shape_check_compute entry
+  # (hook id unchanged), pinned to an omnibase_core dev-merge tag. Its own block below.
+  - repo: https://github.com/OmniNode-ai/omnibase_core
+    rev: dev-20261029151319-6e0a5eee541a
+    hooks:
+      - id: canonical-file-shape
+        args: [--rules, file-shape]
+        require_serial: true
   - repo: https://github.com/OmniNode-ai/omnibase_core
     rev: 031148215620031436cba30619bbae67c0bb38ad # pragma: allowlist secret
     hooks:
@@ -176,8 +185,6 @@ repos:
         require_serial: true
         args: [--allowlist, .onex_ratchets/noncanonical_class_allowlist.yaml, src/omnimarket]
         files: ^src/omnimarket/.*\.py$
-      - id: canonical-file-shape
-        require_serial: true
       # OMN-20295: direct-model-call gate, BLOCKING. A model call must sit in a
       # sanctioned delegation node package named in omnibase_core's policy.yaml.
       # Shrink-only baseline, declared here so the shape ratchet accepts it.
@@ -1518,7 +1525,7 @@ repos:
         name: CI Summary external producer trigger parity (OMN-18963)
         language: system
         entry: uv run pytest tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q -p no:randomly
-        files: ^(\.github/workflows/.*\.ya?ml|scripts/ci/ci_summary_gate\.py|tests/unit/scripts/ci/test_l4_event_scope_omn18963\.py|\.pre-commit-config\.yaml)$
+        files: ^(\.github/workflows/.*\.ya?ml|scripts/ci/(ci_summary_gate\.py|ci_summary_external_producers\.json)|tests/unit/scripts/ci/test_l4_event_scope_omn18963\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         require_serial: true
         stages: [pre-commit]

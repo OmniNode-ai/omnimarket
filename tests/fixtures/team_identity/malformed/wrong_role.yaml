@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Malformed fixture (wrong role); every value is fake.
+schema_version: 1
+entries:
+- id: fixture-operator
+  role: operator
+  slack_member_id: UFAKEOPER01
+  linear_user_id: 00000000-0000-4000-8000-00000000f001
+  github_login: fixture-operator-gh
+  ledger_principals:
+  - fixture-lab-login
+- id: fixture-member-a
+  role: admin
+  slack_member_id: UFAKEMEMA01
+  linear_user_id: 00000000-0000-4000-8000-00000000f002
+  github_login: fixture-member-a-gh
+  ledger_principals:
+  - fixture-member-a-dev
+  reports_to: fixture-operator
+- id: fixture-member-b
+  role: member
+  slack_member_id: UFAKEMEMB01
+  linear_user_id: 00000000-0000-4000-8000-00000000f003
+  github_login: fixture-member-b-gh
+  ledger_principals:
+  - fixture-member-b-dev
+  - fixture-member-b-laptop
+  reports_to: fixture-member-a
