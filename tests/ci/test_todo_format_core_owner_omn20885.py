@@ -4,8 +4,8 @@
 
 The step began with a best-effort install of the change-control package whose
 result was discarded; the inline ``find | grep`` loop that followed never read
-it. The step now runs ``omnibase_core``'s ``handler_todo_format`` -- the same
-handler the ``no-untracked-todos`` pre-commit hook runs -- over the ``src``
+it. The step now runs ``omnibase_core``'s todo-format node runtime -- the same
+runtime the ``no-untracked-todos`` pre-commit hook runs -- over the ``src``
 tree the job already installed it for, under the unchanged step name.
 
 These tests run the step's own ``run`` block, extracted from ``ci.yml``, in
@@ -78,7 +78,10 @@ def test_step_names_no_onex_change_control() -> None:
 
 
 def test_step_runs_the_core_handler() -> None:
-    assert "omnibase_core.handlers.handler_todo_format" in _run_block()
+    assert (
+        "omnibase_core.nodes.node_todo_format_check_effect.runtime_todo_format"
+        in _run_block()
+    )
 
 
 def test_clean_tree_passes(tmp_path: Path) -> None:
