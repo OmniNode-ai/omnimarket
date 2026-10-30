@@ -9,10 +9,10 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.models.overlay_keys import ModelLabHostsTable
-from omnimarket.nodes.node_lab_work_unit_effect.models import (
+from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
 )
+from omnimarket.models.overlay_keys import ModelLabHostsTable
 
 DEFAULT_MAX_LOAD_PER_CORE = 0.75
 DEFAULT_MIN_FREE_BYTES = 4 * 1024**3

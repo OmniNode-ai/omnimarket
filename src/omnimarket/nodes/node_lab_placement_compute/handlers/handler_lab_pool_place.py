@@ -9,10 +9,10 @@ from collections.abc import Callable, Iterable, Mapping
 from datetime import timedelta
 from typing import Literal
 
-from omnimarket.models.overlay_keys import ModelLabHostsTable
-from omnimarket.nodes.node_lab_work_unit_effect.models import (
+from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
 )
+from omnimarket.models.overlay_keys import ModelLabHostsTable
 
 from ..models import (
     LAB_WORK_WEIGHT_ENV,

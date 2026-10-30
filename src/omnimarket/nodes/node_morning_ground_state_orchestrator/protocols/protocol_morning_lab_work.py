@@ -9,7 +9,16 @@ from omnimarket.models.model_lab_work_unit import (
     ModelLabWorkUnitReceipt,
     ModelLabWorkUnitRequest,
 )
-from omnimarket.nodes.node_lab_placement_compute.models import ModelPlacement
+
+
+class ProtocolMorningPlacement(Protocol):
+    """What the morning phase reads from a placement decision."""
+
+    @property
+    def placed(self) -> bool: ...
+    @property
+    def host_name(self) -> str: ...
+    def describe(self) -> str: ...
 
 
 class ProtocolMorningLabWorkCaller(Protocol):
@@ -23,7 +32,7 @@ class ProtocolMorningLabWorkCaller(Protocol):
         need_tools: tuple[str, ...] = (),
         only_host: str | None = None,
         repo: str = "",
-    ) -> ModelPlacement: ...
+    ) -> ProtocolMorningPlacement: ...
     async def dispatch(
         self, request: ModelLabWorkUnitRequest
     ) -> ModelLabWorkUnitReceipt: ...
