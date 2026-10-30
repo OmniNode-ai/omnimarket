@@ -36,7 +36,11 @@ class ModelModelTestResult(BaseModel):
 
 
 class ModelModelStatus(BaseModel):
-    """One provider: whether it is set up here, and its last recorded test."""
+    """One provider: whether it is set up here, and its last recorded test.
+
+    ``tried_first`` marks the provider whose first model the developer chose
+    for delegation to try first (``onex models first``); a status lists it
+    first."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -44,6 +48,10 @@ class ModelModelStatus(BaseModel):
     set_up: bool
     last_test: ModelModelTestResult | None = None
     models: tuple[str, ...] = ()
+    #: OMN-21346: this provider's first model is the one delegation tries first.
+    tried_first: bool = False
+    #: OMN-21346: the model tried first, when ``tried_first``.
+    first_model: str | None = None
 
 
 class ModelModelSetupResult(BaseModel):
@@ -63,6 +71,8 @@ class ModelModelSetupResult(BaseModel):
         "default_model",
         "add_local",
         "remove_local",
+        "set_first",
+        "clear_first",
     ]
     tests: tuple[ModelModelTestResult, ...] = ()
     providers: tuple[ModelModelStatus, ...] = ()
