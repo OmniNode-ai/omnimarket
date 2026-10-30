@@ -466,11 +466,6 @@ class HandlerModelSetup:
         provider = request.provider
         if provider is None:
             raise ModelSetupRefusedError("name the provider whose model is tried first")
-        if provider == "ollama":
-            raise ModelSetupRefusedError(
-                "Ollama's model is set when onboarding sets Ollama up; choose a "
-                "key's model or a local model by URL instead"
-            )
         if not self.is_set_up(provider):
             how = (
                 _LOCAL_ADD_HOW
@@ -482,7 +477,10 @@ class HandlerModelSetup:
             raise ModelSetupRefusedError("name one model to try first")
         stored = self._status(provider).models
         if not stored:
-            raise ModelSetupRefusedError(f"your {provider} list holds no model")
+            raise ModelSetupRefusedError(
+                f"{provider} keeps no list of models to choose from; choose a "
+                "key's model or a local model by URL"
+            )
         model = request.models[0] if request.models else stored[0]
         if model not in stored:
             raise ModelSetupRefusedError(
@@ -806,7 +804,7 @@ class HandlerModelSetup:
             and choice[0] == provider
             and choice[1] in models
             and not (
-                provider not in ("ollama", LOCAL_URL_PROVIDER)
+                provider in registered_local_byok_providers()
                 and local_byok_key_test_failed(provider)
             )
         )
