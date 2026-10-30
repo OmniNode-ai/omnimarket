@@ -95,6 +95,14 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn19988_observer_runtime_tenant.py tests/test_omn19988_local_environment_writer_registry.py tests/test_omn19988_prober_budget_excludes_client_setup.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn19988-ac1-registry-read-own-binding"
+    description: "AC1's mode 2 rows reach the store when the runtime dispatches the writer. The writer confirms each report's tenant against tenant_registry_mirror through the mirror's own read binding, before the tenant write pool is touched, because the tenant writer role holds no privilege on the mirror: in these tests a registry read on the write pool raises permission denied, a delivery stores its row under the tenant the mirror records, a tenant the mirror does not record is refused with nothing written, and the contract declares the mirror as a read of the internal schema. The three tests do not exist at the merge base, where the writer reads the registry inside the write transaction, so this check fails there."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19988_local_environment_writer.py::test_a_runtime_delivery_reads_the_registry_through_its_own_binding tests/test_omn19988_local_environment_writer.py::test_an_unknown_tenant_is_refused_before_the_write_pool_is_touched tests/test_omn19988_local_environment_writer.py::test_the_contract_declares_the_registry_read_on_the_internal_schema -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
   - id: "dod-omn19988-environment-writer-deploy-probe"
     description: "Deploy probe. The local environment writer GitHub serves at the checked-out commit exists; the probe reads handler_local_environment_writer.py from GitHub at that commit and exits nonzero on a tree without its writer class (the file is absent at the merge base), so it fails there."
     source: "manual"
