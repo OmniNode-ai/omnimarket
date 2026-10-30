@@ -22,7 +22,7 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
 )
 
-from omnimarket.handlers.scm import scm_cli
+from omnimarket.handlers.scm import scm_cli, scm_duplicate_guard
 
 pytestmark = pytest.mark.unit
 
@@ -210,7 +210,7 @@ def test_without_the_declaration_the_same_plan_is_refused_on_the_index_rows(
         "plan/configuration-contract", "docs: the configuration contract plan"
     )
 
-    assert result.exit_code == scm_cli.EXIT_DUPLICATE, result.output
+    assert result.exit_code == scm_duplicate_guard.EXIT_DUPLICATE, result.output
     answer = json.loads(result.stdout)
     assert answer["state"] == "adopt"
     assert all(INDEX in e["detail"] for e in answer["evidence"])
@@ -224,7 +224,7 @@ def test_a_plan_editing_the_same_line_of_an_existing_plan_is_still_refused(
 
     result = world.check("plan/second-revision", "docs: another revision")
 
-    assert result.exit_code == scm_cli.EXIT_DUPLICATE, result.output
+    assert result.exit_code == scm_duplicate_guard.EXIT_DUPLICATE, result.output
     answer = json.loads(result.stdout)
     assert answer["adopt_pr"] == f"{REPO}#1541"
     assert [e["pr"] for e in answer["evidence"]] == [f"{REPO}#1541"]
@@ -238,7 +238,7 @@ def test_a_plan_with_the_name_of_an_open_plan_is_still_refused(world: World) -> 
 
     result = world.check("plan/another-alpha", "docs: a different title")
 
-    assert result.exit_code == scm_cli.EXIT_DUPLICATE, result.output
+    assert result.exit_code == scm_duplicate_guard.EXIT_DUPLICATE, result.output
     answer = json.loads(result.stdout)
     assert answer["adopt_pr"] == f"{REPO}#854"
     assert "plans/alpha-ledger.md (both add it)" in answer["evidence"][0]["detail"]
@@ -252,7 +252,7 @@ def test_an_overlay_that_cannot_be_read_checks_nothing(world: World) -> None:
         "plan/configuration-contract", "docs: the configuration contract plan"
     )
 
-    assert result.exit_code == scm_cli.EXIT_UNCHECKED, result.output
+    assert result.exit_code == scm_duplicate_guard.EXIT_UNCHECKED, result.output
     assert json.loads(result.stdout)["state"] == "unchecked"
     assert "deployment overlay" in json.loads(result.stdout)["reason"]
 
