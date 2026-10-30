@@ -101,6 +101,12 @@ _MIXED_IN = [
         "_backfill_credential_chosen_models",
     ),
     (
+        _SQLITE,
+        "SqliteDatabaseAdapter",
+        "CredentialSqliteStore",
+        "record_credential_last_used",
+    ),
+    (
         _POSTGRES,
         "PostgresSyncProjectionAdapter",
         "CredentialPgStore",
@@ -111,6 +117,12 @@ _MIXED_IN = [
         "PostgresSyncProjectionAdapter",
         "CredentialPgStore",
         "write_credential_row",
+    ),
+    (
+        _POSTGRES,
+        "PostgresSyncProjectionAdapter",
+        "CredentialPgStore",
+        "record_credential_last_used",
     ),
 ]
 

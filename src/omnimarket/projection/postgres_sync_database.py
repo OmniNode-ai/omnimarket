@@ -166,39 +166,6 @@ class PostgresSyncProjectionAdapter(CredentialPgStore):
             return Json(value)
         return value
 
-    def record_credential_last_used(
-        self, api_key_ref: str, used_at: str, *, tenant_id: str | None = None
-    ) -> bool:
-        """OMN-19996: move the key's last-used time forward, never insert.
-
-        TIMESTAMPTZ compares instants, so one guarded UPDATE suffices. With a
-        ``tenant_id`` it runs under that tenant like every tenant-scoped write
-        here and names it too, so another tenant's key with the same ref is
-        never touched whether or not the table carries a row-level policy.
-        ``None`` adds no tenant predicate and no tenant scope.
-        """
-        statement = (
-            "UPDATE tenant_inference_credentials "
-            "SET last_used_at = %(used_at)s::TIMESTAMPTZ "
-            "WHERE api_key_ref = %(ref)s "
-            "AND (last_used_at IS NULL OR last_used_at < %(used_at)s::TIMESTAMPTZ)"
-        )
-        params: dict[str, object] = {"ref": api_key_ref, "used_at": used_at}
-        conn = self._connect()
-        try:
-            if tenant_id is None:
-                with conn.cursor() as cur:
-                    cur.execute(statement, params)
-                    return bool(cur.rowcount > 0)
-            with self._tenant_scoped(conn, tenant_id), conn.cursor() as cur:
-                cur.execute(
-                    statement + " AND tenant_id = %(tenant)s",
-                    {**params, "tenant": tenant_id},
-                )
-                return bool(cur.rowcount > 0)
-        finally:
-            conn.close()
-
     def upsert(
         self,
         table: str,
