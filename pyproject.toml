@@ -1233,14 +1233,14 @@ omnimarket = "omnimarket.nodes"
 # OMN-21386: infra#5407 vendors the work-ledger 0006 first-ingest migration.
 # OMN-17427: infra#5449 reaches the done-write gate through omnibase_core's node contract,
 # so this tag imports no handler module that core#2135 moved.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261030130656-b1731fa31585" }
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261030213019-091013fd7adb" }
 # OMN-21478, RULINGs 2026-10-16T07:34:18Z and 2026-10-16T09:35:49Z: core, spi and
 # memory are read from their dev merge tags too, as infra is, and the
 # Internal Sibling Pins check (internal-sibling-pins.yml) refuses any other form.
 # The core tag carries omnibase_core#2103 (the FSM executor evaluates every
 # operator the condition model accepts). The version ranges in [project] stay
 # for external installs.
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261030104005-e72840439bef" }
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261030152335-66d35d2283c3" }
 omnibase-spi = { git = "https://github.com/OmniNode-ai/omnibase_spi.git", tag = "dev-20261028101803-7955bf0dff0f" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", tag = "dev-20261028085302-971553debfa3" }
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
