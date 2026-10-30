@@ -56,6 +56,7 @@ from omnibase_infra.errors import ProtocolConfigurationError
 
 from omnimarket.inference.local_byok_credential_adapter import (
     local_byok_key_test_failed,
+    read_local_first_choice,
     registered_local_byok_providers,
     resolve_local_byok_credential_model,
     resolve_local_byok_credential_models,
@@ -392,6 +393,53 @@ def registered_local_model_routes(
     return tuple(routes)
 
 
+#: The provider name ``onex models`` gives the local models declared by URL.
+_LOCAL_URL_PROVIDER = "local"
+
+
+def first_choice_route(
+    task_type: str,
+    *,
+    db_path: Path | None = None,
+) -> ModelResolvedDelegationBackend | None:
+    """The route of the model the developer chose to try first, or ``None`` (OMN-21346).
+
+    ``onex models first`` records one ``(provider, model)``. A run on this machine
+    tries it before its local models and before its ladder; when it fails, the
+    run carries on in the order it would have taken without a choice. ``None``
+    when nothing is chosen, or when the choice no longer resolves: the local
+    model was removed, the key was removed or failed its last test, or the
+    model is no longer in the key's list. The run then keeps its usual order.
+    """
+    choice = read_local_first_choice(db_path=db_path)
+    if choice is None:
+        return None
+    provider, model = choice
+    if provider == _LOCAL_URL_PROVIDER:
+        return next(
+            (
+                route
+                for route in registered_local_model_routes(task_type)
+                if route.model_id == model
+            ),
+            None,
+        )
+    if provider not in registered_local_byok_providers(db_path=db_path):
+        return None
+    if model not in resolve_local_byok_credential_models(provider, db_path=db_path):
+        return None
+    plan = resolve_local_byok_credential_plan(provider, db_path=db_path)
+    byok = resolve_byok_provider_backend(provider, plan=plan)
+    if byok is None or not byok.customer_routable:
+        return None
+    route = _registered_byok_route(
+        byok, replaced=None, tier=_BYOK_TIER, db_path=db_path
+    )
+    if route is None:
+        return None
+    return route.model_copy(update={"model_id": model})
+
+
 def registered_byok_tier_name() -> str | None:
     """The customer-key tier named by this deployment's overlay, if declared."""
     policy = load_delegation_routing_overlay().registered_byok_tier
@@ -533,6 +581,7 @@ __all__: list[str] = [
     "LOCAL_URL_BACKEND",
     "ByokKeyNotRegisteredError",
     "ByokPinNotPermittedError",
+    "first_choice_route",
     "house_provider_slug",
     "is_local_url_backend",
     "local_url_backend_id",

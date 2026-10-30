@@ -352,6 +352,7 @@ from omnimarket.routing.delegation_backend_resolution import (
     resolve_delegation_backend as _resolve_delegation_backend_uncustomized,
 )
 from omnimarket.routing.local_byok_route import (
+    first_choice_route,
     next_chosen_model_byok_route,
     next_registered_byok_route,
     registered_byok_routes,
@@ -2056,6 +2057,20 @@ class LocalDelegationDispatchPort:
         local_rungs: tuple[ModelResolvedDelegationBackend, ...] = ()
         if backend_id is None and model is None and probe_walk is None:
             local_rungs = registered_local_model_routes(task_type)
+            # OMN-21346: the model the developer chose with ``onex models
+            # first`` answers before everything else; a failure carries on in
+            # the order the run would have taken without a choice.
+            chosen_first = first_choice_route(task_type)
+            if chosen_first is not None:
+                local_rungs = (
+                    chosen_first,
+                    *(
+                        rung
+                        for rung in local_rungs
+                        if (rung.backend_id, rung.model_id)
+                        != (chosen_first.backend_id, chosen_first.model_id)
+                    ),
+                )
             if local_rungs:
                 backend = local_rungs[0]
 
