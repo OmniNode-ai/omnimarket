@@ -16,6 +16,8 @@ requirements:
     statement: 'AC2: pyproject.toml pins omnibase-core, omnibase-spi and omninode-memory to dev merge tags in [tool.uv.sources] and uv.lock locks those tags -- falsifier: uv run pytest tests/unit/workflows/test_internal_sibling_pins_omn21478.py -q -k dev_merge_tag'
   - id: AC3
     statement: 'AC3: at the bumped omnibase_core dev tag, omnimarket reads the sibling pin policy from core''s first_party_ref contract and calls the moved core node modules, so the dependency provenance check and the generated event chains run -- falsifier: uv run pytest tests/scripts/test_check_dep_provenance.py -q -k dev_tag_pattern_controls_verdict'
+  - id: AC4
+    statement: 'AC4: the pinned infra adapter imports with the pinned core after the Done-write gate moved into its node package -- falsifier: uv run pytest tests/ci/test_runtime_sweep_import_check.py -q --no-cov -k real_repo_all_ok'
 evidence_requirements:
 - kind: tests
   description: The workflow calls the core reusable at a full sha, and the required-checks and CI Summary rows exist.
@@ -68,3 +70,24 @@ dod_evidence:
     cwd: .
   binds_ac:
   - AC3
+- id: dod-omn21478-infra-core-import-compatibility
+  description: The real repository entry-point probe imports node_create_ticket through the pinned infra Linear adapter; the previous infra pin fails on the removed core handler module.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_runtime_sweep_import_check.py -q --no-cov -k real_repo_all_ok
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_create_ticket/test_handler_create_ticket.py tests/nodes/node_create_ticket/test_create_ticket_gate.py -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC4
+- id: dod-omn21478-hosted-infra-gate-binding
+  description: 'Hosted installed-package probe: resolve the pinned infra Done-write gate from the installed core contract and import the ticket node. The old infra pin fails at import. This checks package composition, not activation on a deployed host.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: uv run python -c 'from omnibase_infra.handlers.done_write_receipt_guard import resolve_done_write_receipt_gate; from omnimarket.nodes.node_create_ticket import HandlerCreateTicket; gate = resolve_done_write_receipt_gate(); assert callable(gate.decide); print("pinned infra/core Done-write binding and ticket node import OK")'
+    cwd: .
+  binds_ac:
+  - AC4
