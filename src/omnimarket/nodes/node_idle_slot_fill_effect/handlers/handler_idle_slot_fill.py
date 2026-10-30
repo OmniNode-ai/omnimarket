@@ -108,6 +108,7 @@ from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model
     load_policy,
     resolve_lane_model,
 )
+from omnimarket.nodes.node_wip_admission_compute.fill_gate import fill_wip_gate
 
 from .handler_ruling_recovery import HandlerRulingRecovery
 
@@ -757,6 +758,9 @@ class HandlerIdleSlotFill:
                 continue
             if why := fixer_hold_reason(item, request.fixer_holds):
                 dropped.append({"key": item["key"], "why": why})
+                continue
+            if request.wip_refusal and (why := request.wip_refusal(item)):
+                skipped.append({"key": item["key"], "why": why})
                 continue
             if request.fixer_holds_unread and (
                 item["repo"] or item["kind"] != "lab-repair"
@@ -2023,6 +2027,13 @@ class HandlerLabFill:
         scope = request.out_of_scope
         scope_unread = scope if isinstance(scope, str) else ""
         holds, holds_unread = read_fixer_holds(request.now, os.environ)
+        wip_sources = request.sources or default_sources(request.now, os.environ)
+        wip_refusal, wip_finding = fill_wip_gate(
+            ledger_tickets=wip_sources.ledger_tickets if wip_sources else None,
+            watcher_state=watcher,
+            now=(_stamp(request.now) or datetime.min).replace(tzinfo=UTC),
+            environ=os.environ,
+        )
         decision = HandlerIdleSlotFill().handle(
             ModelIdleSlotFillRequest(
                 now=request.now,
@@ -2046,9 +2057,12 @@ class HandlerLabFill:
                 fixer_holds=holds,
                 fixer_holds_unread=holds_unread,
                 repo_required_kinds=overlay.repo_required_kinds(),
+                wip_refusal=wip_refusal,
             )
         )
         found: list[tuple[str, str, str, str]] = list(recovery.found)
+        if wip_finding:
+            found.append(wip_finding)
         if holds_unread:
             found.append(
                 (
@@ -2111,6 +2125,7 @@ class HandlerLabFill:
                         fixer_holds=holds,
                         fixer_holds_unread=holds_unread,
                         repo_required_kinds=overlay.repo_required_kinds(),
+                        wip_refusal=wip_refusal,
                     )
                 )
         if decision.dropped:

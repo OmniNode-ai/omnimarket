@@ -128,8 +128,8 @@ def umbrella_problem(
         f"umbrella ticket {umbrella} cannot identify a lane's PR: its one contract carries every umbrella criterion, "
         f"so each umbrella-titled PR spends up to 40 minutes in dod-verify. Fix: pass a child ticket of {umbrella} with "
         f"--ticket, either an existing open child or one minted with /omni:create-ticket (parent {umbrella}) in the "
-        "launching session. When the create gate refuses with lane_intake_budget and no open child fits, carry "
-        "`Umbrella evidence: lane_intake_budget` in the brief and have the lane add its own requirement and "
+        "launching session; creating a ticket is never refused by count. A lane that cannot mint carries "
+        "`Umbrella evidence: <reason>` in the brief and adds its own requirement and "
         f"dod_evidence item to contracts/{umbrella}.yaml with a test-side path that fails at the merge base"
     )
 

@@ -68,9 +68,9 @@ def test_the_node_reads_the_brief_with_the_callers_readers(
         ("OMN-17427", "repo-a", "", True),
         ("OMN-17427", None, "", False),
         ("OMN-7", "repo-a", "", False),
-        ("OMN-17427", "repo-a", "Umbrella evidence: lane_intake_budget", False),
+        ("OMN-17427", "repo-a", "Umbrella evidence: headless_lane_cannot_mint", False),
         ("OMN-17427", "repo-a", "Umbrella evidence: <reason>", True),
-        ("OMN-17427", "repo-a", "> Umbrella evidence: lane_intake_budget", True),
+        ("OMN-17427", "repo-a", "> Umbrella evidence: headless_lane_cannot_mint", True),
     ],
 )
 def test_umbrella_ticket_needs_a_child_or_real_evidence(

@@ -474,6 +474,7 @@ node_claude_review_budget_admission_effect = "omnimarket.nodes.node_claude_revie
 node_review_defect_catalog_compute = "omnimarket.nodes.node_review_defect_catalog_compute"
 node_review_quota_reducer = "omnimarket.nodes.node_review_quota_reducer"
 node_wip_gate_reducer = "omnimarket.nodes.node_wip_gate_reducer"
+node_wip_admission_compute = "omnimarket.nodes.node_wip_admission_compute"
 node_binding_parity_orchestrator = "omnimarket.nodes.node_binding_parity_orchestrator"
 node_bus_binding_reducer = "omnimarket.nodes.node_bus_binding_reducer"
 node_glm_usage_record_compute = "omnimarket.nodes.node_glm_usage_record_compute"
