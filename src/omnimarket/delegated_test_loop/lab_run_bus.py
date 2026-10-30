@@ -40,7 +40,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from importlib import resources
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol
 
 import yaml
 from omnibase_core.event_bus.util_consumer_group import derive_service_group_id
@@ -52,6 +52,8 @@ from omnimarket.nodes.node_push_validation_effect import (
     ModelFocusedTestRunReceipt,
     ModelFocusedTestRunRequest,
 )
+from omnimarket.protocols.protocol_lab_run_bus import ProtocolLabRunBus
+from omnimarket.protocols.protocol_one_shot_reply_bus import ProtocolOneShotReplyBus
 
 logger = logging.getLogger(__name__)
 
@@ -91,39 +93,6 @@ class ProtocolBusMessage(Protocol):
 
 
 MessageCallback = Callable[[Any], Awaitable[None]]
-
-
-class ProtocolLabRunBus(Protocol):
-    """The two calls both sides make on the bus (in-memory or Kafka)."""
-
-    async def publish(
-        self, topic: str, key: bytes | None, value: bytes, headers: Any = None
-    ) -> object: ...
-
-    async def subscribe(
-        self,
-        topic: str,
-        node_identity: Any = None,
-        on_message: MessageCallback | None = None,
-        *,
-        group_id: str | None = None,
-    ) -> Callable[[], Awaitable[None]]: ...
-
-
-@runtime_checkable
-class ProtocolOneShotReplyBus(ProtocolLabRunBus, Protocol):
-    """A bus that can read a reply with no consumer group (OMN-17427).
-
-    ``subscribe_ungrouped`` reads ``topic`` from its log end at the moment it
-    returns, with no group and no committed offsets, so a caller that reads one
-    reply and leaves leaves nothing on the broker. The in-memory bus and the
-    Kafka bus (omnibase_infra) both answer it. Long-running hosts that need
-    their position committed keep ``subscribe`` with a group.
-    """
-
-    async def subscribe_ungrouped(
-        self, topic: str, on_message: MessageCallback
-    ) -> Callable[[], Awaitable[None]]: ...
 
 
 class ProtocolFocusedRunHandler(Protocol):

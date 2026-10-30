@@ -6,5 +6,12 @@ from omnimarket.nodes.node_focused_test_run_effect.handlers.handler_lab_focused_
     DEFAULT_ALLOWED_OWNERS,
     HandlerLabFocusedTestRunEffect,
 )
+from omnimarket.nodes.node_focused_test_run_effect.handlers.handler_lab_run_bus import (
+    HandlerOneShotReplyBus,
+)
 
-__all__ = ["DEFAULT_ALLOWED_OWNERS", "HandlerLabFocusedTestRunEffect"]
+__all__ = [
+    "DEFAULT_ALLOWED_OWNERS",
+    "HandlerLabFocusedTestRunEffect",
+    "HandlerOneShotReplyBus",
+]

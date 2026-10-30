@@ -4227,3 +4227,11 @@ dod_evidence:
       - check_type: "command"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/test_work_contract_pins_current.py -q --no-cov -p no:randomly --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-one-shot-canonical-bus-binding"
+    description: "The reply protocol lives in the canonical protocol package and the principal readback and capability guard live beside the focused-run node contract. Existing imports retain their identities. SCM calls, ledger appends, lab work and focused-run round trips exercise the moved binding on the hosted runner with the in-process bus; no broker or credentials are required."
+    source: "manual"
+    binds_ac: ["AC17427501"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/handlers/scm/test_scm_bus_caller_leaves_no_group_omn17427.py tests/unit/work_ledger_bus/test_work_ledger_append_bus.py tests/unit/lab_work/test_lab_work_host_bus.py tests/unit/delegated_test_loop/test_lab_run_bus.py tests/unit/delegated_test_loop/test_lane_bus_binding.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
