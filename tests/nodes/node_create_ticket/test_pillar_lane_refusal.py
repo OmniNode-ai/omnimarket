@@ -5,7 +5,7 @@
 The pillar map declares ``assignable_by_lanes: false`` for an owner whose tickets only the
 operator or the owner files. ``node_create_ticket`` run by a lane (a declared lane, a subagent or
 a headless session) then refuses ``--pillar`` for that owner, before the ticket-creation guard
-spends any of the day's intake budget; an interactive operator session, a pillar that declares no
+judges the create; an interactive operator session, a pillar that declares no
 such flag, and a ticket with no pillar are admitted. Every refusal has an admitted twin beside it.
 """
 
@@ -111,9 +111,7 @@ def test_a_lane_cannot_assign_the_locked_pillar_owner(
     with pytest.raises(RuntimeError, match="refused for a lane"):
         handler.handle(ModelCreateTicketRequest(title="t", pillar="locked"))
     assert client.assignees == []
-    assert guard.inputs == [], (
-        "the refusal came after the guard and spent intake budget"
-    )
+    assert guard.inputs == [], "the refusal came after the guard"
 
 
 def test_a_lane_dry_run_is_refused_too(

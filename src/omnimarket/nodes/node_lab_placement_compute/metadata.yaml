@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_placement_compute
+version: 1.0.0
+description: Judge which lab pool hosts the lab host table lets take one work unit (a host marked unavailable takes none;
+  a unit's weight, work kind and capability needs such as AVX2 are matched against the host's declared columns), with the
+  unit's needs and each host's own memory bar and speed as contract data.
+pack: distributed_validation
+node_role: compute
+display_name: Lab Placement Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_lab_placement_compute: omnimarket.nodes.node_lab_placement_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+- click>=8.1.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- lab-placement-compute
+- OMN-17232

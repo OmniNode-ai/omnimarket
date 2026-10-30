@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_plans_today_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: >-
+  Bring up the plans of the day, ranked, with a next action each. The caller's role is resolved through the team identity declaration on every run: an authenticated operator reads every plan task and the pr-watcher state; a member's run reads only the member's tickets (assigned in Linear or named on the member's open claims), reads their pull requests with one gh pr view each under the member's own login (at most 30), and lists every other task as other member: state not read. Unknown identity never runs the operator's mode.
+input_model:
+  name: ModelPlansTodayRequest
+  module: omnimarket.nodes.node_plans_today_effect.models.model_plans_today
+output_model:
+  name: ModelPlansTodayResult
+  module: omnimarket.nodes.node_plans_today_effect.models.model_plans_today
+handler:
+  module: omnimarket.nodes.node_plans_today_effect.handlers.handler_plans_today
+  class: HandlerPlansToday
+  input_model: omnimarket.nodes.node_plans_today_effect.models.model_plans_today.ModelPlansTodayRequest
+  output_model: omnimarket.nodes.node_plans_today_effect.models.model_plans_today.ModelPlansTodayResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_plans_today_effect.handlers.handler_plans_today:HandlerPlansToday
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerPlansToday
+      module: omnimarket.nodes.node_plans_today_effect.handlers.handler_plans_today
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation, or python -m omnimarket.nodes.node_plans_today_effect from the session-start hook and the plans-today skill.
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: false
+  timeout_ms: 600000
+  side_effects:
+  - reads the plans repository at origin/main after a git fetch
+  - reads the rolling ledger through the plugin's reader
+  - in member mode, reads each scoped pull request with gh pr view under the member's login
+  - writes plans-today.json and detail.md under the output directory
+  - sends one ledger MSG per stalled plan with no owner through the ledger-msg executor
+metadata:
+  transport_type: local
+  description: >-
+    Bring up the plans of the day, ranked, with a next action each. The caller's role is resolved through the team identity declaration on every run: an authenticated operator reads every plan task and the pr-watcher state; a member's run reads only the member's tickets (assigned in Linear or named on the member's open claims), reads their pull requests with one gh pr view each under the member's own login (at most 30), and lists every other task as other member: state not read. Unknown identity never runs the operator's mode.
+  author: OmniNode Team
+  created: '2026-10-30'
+  tags:
+  - effect
+  - plans-today-effect
+  - OMN-21392
+  related_tickets:
+  - OMN-21392

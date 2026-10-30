@@ -18,16 +18,15 @@ falsifier holds:
     2  no selected run in the window: nothing was measured
     3  the check could not run (no state root, or the declaration is ambiguous)
 
-The summary is printed as one JSON line either way.
+The summary is printed as one JSON line either way. The command line entry is
+``runtime_budget_readback`` beside this node's contract.yaml.
 """
 
 from __future__ import annotations
 
-import argparse
 import json
-import sys
 from collections.abc import Iterable, Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -155,49 +154,3 @@ def verdict(summary: dict[str, Any]) -> int:
     if not summary["deployed_lane_completed"]:
         return EXIT_NOTHING_MEASURED
     return EXIT_PASS
-
-
-def _utc(text: str) -> datetime:
-    parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument(
-        "--state-root",
-        action="append",
-        type=Path,
-        help=(
-            "onex delegate state root; repeatable "
-            "(default: ONEX_STATE_DIR, else ONEX_STATE_ROOT, else ~/.onex_state)"
-        ),
-    )
-    parser.add_argument(
-        "--since",
-        type=_utc,
-        help="window start, ISO 8601 (default: --hours before --until)",
-    )
-    parser.add_argument(
-        "--until", type=_utc, help="window end, ISO 8601 (default: now)"
-    )
-    parser.add_argument("--hours", type=float, default=24.0)
-    args = parser.parse_args(argv)
-
-    until = args.until or datetime.now(tz=UTC)
-    since = args.since or until - timedelta(hours=args.hours)
-    roots = args.state_root or default_state_roots()
-    try:
-        missing = [str(root) for root in roots if not root.is_dir()]
-        if missing:
-            raise CheckUnrunnableError(f"state root not found: {', '.join(missing)}")
-        summary = measure(roots, since, until, declared_grace_seconds())
-    except CheckUnrunnableError as error:
-        sys.stdout.write(json.dumps({"error": str(error)}) + "\n")
-        return EXIT_UNRUNNABLE
-    sys.stdout.write(json.dumps(summary) + "\n")
-    return verdict(summary)
-
-
-if __name__ == "__main__":
-    sys.exit(main())
