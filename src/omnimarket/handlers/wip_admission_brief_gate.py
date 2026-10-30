@@ -17,6 +17,7 @@ import re
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from string import Template
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.rules_wip_admission import (
@@ -67,8 +68,10 @@ def dispatch_wip_refusal(
     problems: list[str] = []
     state = None
     try:
-        state = json.loads(Path(policy.watcher_state_path).read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
+        # The overlay names the file with ${NAME} from the environment, so it holds no home path.
+        where = Template(policy.watcher_state_path).substitute(environ)
+        state = json.loads(Path(where).read_text(encoding="utf-8"))
+    except (OSError, ValueError, KeyError) as exc:
         problems.append(f"watcher state unread: {type(exc).__name__}")
     claims = []
     try:

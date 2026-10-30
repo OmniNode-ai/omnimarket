@@ -77,6 +77,20 @@ def test_a_lane_named_for_a_fix_is_never_refused(tmp_path: Path) -> None:
     assert ask(host(tmp_path, prs=11), lane="fixture-cause-core-0000") is None
 
 
+def test_the_watcher_state_path_is_read_with_the_environment_substituted(
+    tmp_path: Path,
+) -> None:
+    env = host(tmp_path / "full", prs=11)
+    overlay = tmp_path / "full" / "overlay" / "wip_admission" / "overlay.yaml"
+    doc = yaml.safe_load(overlay.read_text(encoding="utf-8"))
+    doc["watcher_state_path"] = "${FIXTURE_ROOT}/watcher.json"
+    overlay.write_text(yaml.safe_dump(doc), encoding="utf-8")
+    assert ask({**env, "FIXTURE_ROOT": str(tmp_path / "full")}) is not None
+    unset = ask(env)
+    assert unset is not None
+    assert "watcher state unread: KeyError" in unset
+
+
 def test_a_host_with_no_overlay_judges_nothing(tmp_path: Path) -> None:
     assert ask({"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "none")}) is None
 
@@ -117,3 +131,18 @@ def test_a_claim_ends_with_its_terminal_and_with_a_quiet_lane() -> None:
     assert rules.claims_from_ledger(closed, NOW, CONFIG) == []
     quiet = "2026-10-29T01:00:00Z | CLAIM | lane=l2 | ticket=OMN-2 | x\n"
     assert rules.claims_from_ledger(quiet, NOW, CONFIG) == []
+
+
+def test_the_command_line_prints_the_refusal_and_exits_3(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from omnimarket.nodes.node_wip_admission_compute import runtime_brief_gate as gate
+
+    for key, value in host(tmp_path, prs=11).items():
+        monkeypatch.setenv(key, value)
+    assert gate.main(["--lane", "fixture-lane", "--repo", REPO_A]) == gate.EXIT_REFUSE
+    assert capsys.readouterr().out.startswith("REMOTE-LANE-WIP-REFUSED ")
+    assert (
+        gate.main(["--lane", "fixture-lane", "--repo", REPO_A, "--pr", f"{REPO_A}#1"])
+        == gate.EXIT_ADMIT
+    )
