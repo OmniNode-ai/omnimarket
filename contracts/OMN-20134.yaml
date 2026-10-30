@@ -13,8 +13,8 @@ summary: No receipt-gate caller pin carried the fix-parent control fallback (con
 is_seam_ticket: false
 interface_change: true
 interfaces_touched:
-  - events
-  - topics
+- events
+- topics
 requirements:
 - id: req-caller-pins-fix-parent-dev-tag
   statement: omnimarket's Repo Evidence Gate caller pins the omnibase_core receipt-gate reusable at a dev-merge
@@ -32,14 +32,14 @@ requirements:
   - id: AC2
     statement: 'AC2: a planted stale pin at every declared caller is detected as stale and planned to the newest
       tag, and applying the plan reaches a fixed point where every caller is current -- falsifier: uv run pytest
-      tests/nodes/node_receipt_gate_pin_advance_compute -q -p no:randomly --no-cov -k "planted_stale_pin or fixed_point"
-      fails at the merge base, where the node does not exist'
+      tests/nodes/node_receipt_gate_pin_advance_compute/test_receipt_gate_pin_advance_compute.py -q -p no:randomly
+      --no-cov -k "planted_stale_pin or fixed_point" fails at the merge base, where the node does not exist'
   - id: AC3
     statement: 'AC3: a plan edits the workflow pin line and the test constant together, keeps a sha with its tag
       beside it where the caller is held to a sha, and a pin that is a commit sha where a dev-merge tag is declared,
       names no known tag, or disagrees across its sites gets a typed verdict; a site that does not match as declared
-      is refused with no edits -- falsifier: uv run pytest tests/nodes/node_receipt_gate_pin_advance_compute -q
-      -p no:randomly --no-cov fails at the merge base, where the node does not exist'
+      is refused with no edits -- falsifier: uv run pytest tests/nodes/node_receipt_gate_pin_advance_compute/test_receipt_gate_pin_advance_compute.py
+      -q -p no:randomly --no-cov fails at the merge base, where the node does not exist'
 - id: req-pin-advance-opens-prs-on-the-tag-event
   statement: On the source repository's dev-merge tag event an effect node publishes one branch with one commit
     per stale caller and opens the pull request through node_github_repo_write_effect, once per caller and tag.
@@ -47,7 +47,7 @@ requirements:
   - id: AC4
     statement: 'AC4: the effect opens one pull request per stale caller through the write node''s pr_create, a redelivered
       tag opens nothing twice, dry_run writes nothing, a tag of another repository is ignored and one refused pull
-      request does not stop the others -- falsifier: uv run pytest tests/nodes/node_receipt_gate_pin_advance_effect
+      request does not stop the others -- falsifier: uv run pytest tests/nodes/node_receipt_gate_pin_advance_effect/test_golden_chain_receipt_gate_pin_advance_effect.py
       -q -p no:randomly --no-cov fails at the merge base, where the node does not exist'
   - id: AC5
     statement: 'AC5: the webhook ingress folds the creation of a dev-<UTC14>-<sha12> tag into one observation on
@@ -59,11 +59,12 @@ evidence_requirements:
   command: uv run pytest tests/ci/test_receipt_gate_caller_pin_omn20134.py -q -p no:randomly --no-cov
 - kind: tests
   description: 'AC2 and AC3: the compute node plans from contract data.'
-  command: uv run pytest tests/nodes/node_receipt_gate_pin_advance_compute -q -p no:randomly --no-cov
+  command: uv run pytest tests/nodes/node_receipt_gate_pin_advance_compute/test_receipt_gate_pin_advance_compute.py
+    -q -p no:randomly --no-cov
 - kind: tests
   description: 'AC4 and AC5: the effect, its ports and the ingress tag fold.'
-  command: uv run pytest tests/nodes/node_receipt_gate_pin_advance_effect tests/nodes/node_github_webhook_ingress_effect
-    -q -p no:randomly --no-cov
+  command: uv run pytest tests/nodes/node_receipt_gate_pin_advance_effect/test_golden_chain_receipt_gate_pin_advance_effect.py
+    tests/nodes/node_github_webhook_ingress_effect/test_webhook_fold.py -q -p no:randomly --no-cov
 emergency_bypass:
   enabled: false
   justification: ''
@@ -84,7 +85,8 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_receipt_gate_pin_advance_compute -q -p no:randomly --no-cov
+    check_value: uv run pytest tests/nodes/node_receipt_gate_pin_advance_compute/test_receipt_gate_pin_advance_compute.py
+      -q -p no:randomly --no-cov
   binds_ac:
   - AC2
   - AC3
@@ -93,7 +95,8 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_receipt_gate_pin_advance_effect -q -p no:randomly --no-cov
+    check_value: uv run pytest tests/nodes/node_receipt_gate_pin_advance_effect/test_golden_chain_receipt_gate_pin_advance_effect.py
+      -q -p no:randomly --no-cov
   binds_ac:
   - AC4
 - id: dod-omn20134-ingress-tag-fold
