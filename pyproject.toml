@@ -1008,6 +1008,7 @@ node_feature_dashboard_compute = "omnimarket.nodes.node_feature_dashboard_comput
 node_ticket_plan_compute = "omnimarket.nodes.node_ticket_plan_compute"
 node_insights_to_plan_compute = "omnimarket.nodes.node_insights_to_plan_compute"
 node_plan_audit_compute = "omnimarket.nodes.node_plan_audit_compute"
+node_plans_today_effect = "omnimarket.nodes.node_plans_today_effect"
 node_resume_session_compute = "omnimarket.nodes.node_resume_session_compute"
 node_rewind_compute = "omnimarket.nodes.node_rewind_compute"
 node_rrh_compute = "omnimarket.nodes.node_rrh_compute"

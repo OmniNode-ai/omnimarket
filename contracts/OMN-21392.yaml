@@ -1,0 +1,89 @@
+schema_version: 1.0.0
+ticket_id: OMN-21392
+title: plans-today in a member's session
+summary: 'Adds node_plans_today_effect to omnimarket: the plans-of-the-day run as a node. Every invocation resolves the caller through node_team_identity_compute from the Linear subject recorded in the snapshot''s sidecar, so the manual call and the session-start hook run member mode with no new argument; unknown identity never runs the operator''s mode. A member''s run scopes to the tickets assigned to the member in Linear and the tickets on the member''s open CLAIMs, ranks and dispatches only those, discovers their pull requests from Linear attachments and the member''s ledger pr= cells with no GitHub search, reads them with one gh pr view each under the member''s own login capped at 30 with a refusal past the cap or on a failed read, never reads the watcher, and lists every other task as other member: state not read. The operator''s mode is unchanged and still refuses a missing or stale watcher. The output and its schema name the mode, scope and pull request source.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21392-member-plans-today
+  statement: plans-today resolves the caller's role on every invocation and, in a member's session, ranks only the member's tasks, reads only their pull requests and marks every other task unread.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the output names its scope and source, ranks only the member''s tasks and marks the other member''s as unread -- falsifier: an out-of-scope task with a state or a dispatch, or an in-scope pull request missing from the output.'
+  - id: AC2
+    statement: 'AC2: the change is one pull request in OmniNode-ai/omnimarket and its required `OmniNode-ai/omnimarket` CI check-runs are green on that pull request''s head -- falsifier: the check-runs API for that head commit in OmniNode-ai/omnimarket'
+evidence_requirements:
+- kind: tests
+  description: Member-mode tests (role resolution with no new argument, sidecar subject check, member scope, member PR source with cap and refusal, unread out-of-scope tasks, scope and source in the output and schema), the ported operator-mode suite, and the node's registration and golden chain.
+  command: uv run pytest tests/nodes/node_plans_today_effect -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21392-ac1-member-scope
+  description: 'In a member''s session with no watcher file, the run resolves member mode with no new argument, ranks only the member''s tasks, reads only the member''s pull requests (union of Linear attachments and the member''s pr= cells, one gh pr view each, refusing past 30 or on a failed read), lists another member''s task and red pull request as other member: state not read and never dispatches it, and names its scope and source in stdout, detail and JSON.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_plans_today_effect/test_plans_today_member.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21392-ac2-node-registered
+  description: node_plans_today_effect is registered as an onex.nodes entry point in omnimarket and its packaged contract invokes with a typed request in a member's session.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_plans_today_effect/test_golden_chain_plans_today_effect.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21392-operator-mode-unchanged
+  description: 'The operator''s mode is unchanged by the move into a node: selection, task states, owners, ranking, summaries, stalled-plan MSGs, the schema, bounded children, and the refusal of a missing or stale watcher.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_plans_today_effect/test_plans_today_operator.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21392-deploy-plans-today-node
+  description: 'Hosted deploy smoke, runnable on the hosted runner with no lab route, broker, database or GitHub read: dispatch the packaged node_plans_today_effect through the in-process ONEX runtime against the fake team identity declaration, a two-member plan and a member''s Linear sidecar, and require a successful typed receipt in member mode whose scope holds only the member''s ticket, whose pull request source is gh pr view with zero reads, and whose other member''s task is unread.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      export PYTHONDONTWRITEBYTECODE=1;
+      probe_dir="$(mktemp -d)";
+      trap 'rm -rf "$probe_dir"' EXIT;
+      runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+      mkdir -p "$probe_dir/roots/team_identity" "$probe_dir/kb/beta/plans";
+      cp tests/fixtures/team_identity/valid.yaml "$probe_dir/roots/team_identity/overlay.yaml";
+      printf '# Two\n\n| Task | Ticket |\n| -- | -- |\n| T1 mine | OMN-3001 |\n| T2 theirs | OMN-3002 |\n' > "$probe_dir/kb/beta/plans/2026-09-28-two.md";
+      git -C "$probe_dir/kb" init -q -b main;
+      git -C "$probe_dir/kb" -c user.name=probe -c user.email=probe@example.invalid add beta;
+      git -C "$probe_dir/kb" -c user.name=probe -c user.email=probe@example.invalid commit -q -m plans;
+      git -C "$probe_dir/kb" update-ref refs/remotes/origin/main HEAD;
+      printf 'ROWS n=0 newest=none kinds= detail=x\n' > "$probe_dir/rows.txt";
+      printf '{"issues": []}' > "$probe_dir/linear-2026-09-29.txt";
+      printf '{"subject": "00000000-0000-4000-8000-00000000f002", "issues": [{"id": "OMN-3001", "assignee": "00000000-0000-4000-8000-00000000f002", "pull_requests": []}, {"id": "OMN-3002", "assignee": "00000000-0000-4000-8000-00000000f003", "pull_requests": []}]}' > "$probe_dir/linear-2026-09-29.json";
+      printf '{"kb": "%s/kb", "no_fetch": true, "linear_snapshot": "%s/linear-2026-09-29.txt", "ledger_rows_file": "%s/rows.txt", "summaries": "none", "no_msg": true, "out_dir": "%s/out", "now": "2026-09-29T16:00:00Z", "omni_home": "%s", "overlay_roots": ["%s/roots"]}' "$probe_dir" "$probe_dir" "$probe_dir" "$probe_dir" "$probe_dir" "$probe_dir" > "$probe_dir/input.json";
+      env ONEX_LANE=omn21392-deploy-probe "$runtime_bin/onex" node node_plans_today_effect --input "$probe_dir/input.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 60 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+      uv run --locked python -c '
+      import json
+      import sys
+      from pathlib import Path
+      receipt = json.loads(Path(sys.argv[1]).read_text())
+      assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+      result = receipt["result"]
+      assert result["exit_code"] == 0 and result["mode"] == "member", result
+      doc = result["document"]
+      assert doc["scope"] == {"kind": "member", "member": "fixture-member-a", "tickets": ["OMN-3001"], "assigned": ["OMN-3001"], "claimed": []}, doc["scope"]
+      assert doc["sources"]["pr_source"] == "gh-pr-view" and doc["sources"]["pr_reads"] == 0, doc["sources"]
+      tasks = {t["label"]: t for t in doc["plans"][0]["tasks"]}
+      assert tasks["T1"]["state"] == "not-started" and tasks["T2"]["state"] == "unread", tasks
+      assert doc["plans"][0]["next_action_ticket"] == "OMN-3001", doc["plans"][0]
+      print(json.dumps({"run_id": receipt["run_id"], "mode": result["mode"], "scope": doc["scope"]["kind"], "unread": tasks["T2"]["state_basis"]}))
+      ' "$probe_dir/receipt.json";
+    cwd: ${OMNI_HOME}/omnimarket

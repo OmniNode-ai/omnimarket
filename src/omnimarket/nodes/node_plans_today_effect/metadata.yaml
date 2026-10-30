@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_plans_today_effect
+version: 1.0.0
+description: >-
+  Bring up the plans of the day, ranked, with a next action each. The caller's role is resolved through the team identity declaration on every run: an authenticated operator reads every plan task and the pr-watcher state; a member's run reads only the member's tickets (assigned in Linear or named on the member's open claims), reads their pull requests with one gh pr view each under the member's own login (at most 30), and lists every other task as other member: state not read. Unknown identity never runs the operator's mode.
+pack: operator_tooling
+node_role: effect
+display_name: Plans Today Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_plans_today_effect: omnimarket.nodes.node_plans_today_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: external_write
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- plans-today-effect
+- OMN-21392
