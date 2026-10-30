@@ -24,8 +24,8 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-import omnibase_core.validation.validator_first_party_ref as first_party_ref
 import omnibase_core.models.validation.model_sibling_repo_parameters as sibling_params
+import omnibase_core.validation.validator_first_party_ref as first_party_ref
 from omnibase_core.validation.checker_first_party_ref import load_rule_parameters
 
 _GIT_SOURCE_KEYS = frozenset({"git", "rev", "branch", "tag"})
@@ -109,7 +109,8 @@ def find_violations(text: str, tag_pattern: str | None = None) -> list[str]:
         sources = tomllib.loads(text).get("tool", {}).get("uv", {}).get("sources", {})
     except tomllib.TOMLDecodeError as exc:
         return [f"invalid TOML: {exc}"]
-    pairs = (sibling.split("=", 1) for sibling in load_contract().siblings)
+    contract = load_contract()
+    pairs = (sibling.split("=", 1) for sibling in contract.siblings)
     sibling_repositories = {_normalize(name): repo for name, repo in pairs}
     dev_tag_pattern = re.compile(tag_pattern or first_party_ref.dev_tag_pattern())
     block = _uv_sources_block(text) or ""
