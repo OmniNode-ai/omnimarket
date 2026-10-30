@@ -38,6 +38,11 @@ from urllib.parse import urlparse
 
 import yaml
 
+from omnimarket.handlers.delegation_first_choice import (
+    clear_first_choice,
+    read_first_choice,
+    write_first_choice,
+)
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_node_overlay,
@@ -45,9 +50,7 @@ from omnimarket.handlers.node_overlay_reader import (
 )
 from omnimarket.inference.local_byok_credential_adapter import (
     local_byok_key_test_failed,
-    local_first_choice_path,
     local_model_tests_path,
-    read_local_first_choice,
     registered_local_byok_providers,
     resolve_local_byok_credential_model,
     resolve_local_byok_credential_models,
@@ -337,7 +340,7 @@ class HandlerModelSetup:
         if request.operation == "set_first":
             return self._set_first(request)
         if request.operation == "clear_first":
-            local_first_choice_path().unlink(missing_ok=True)
+            clear_first_choice()
             return ModelModelSetupResult(operation="clear_first")
         if request.operation in ("reorder", "remove_model") and (
             request.provider == LOCAL_URL_PROVIDER
@@ -493,14 +496,7 @@ class HandlerModelSetup:
                     operation="reorder", provider=provider, models=ordered
                 )
             )
-        path = local_first_choice_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(
-            json.dumps({"provider": provider, "model": model}, indent=2),
-            encoding="utf-8",
-        )
-        tmp.replace(path)
+        write_first_choice(provider, model)
         return ModelModelSetupResult(
             operation="set_first", models=self._status(provider).models
         )
@@ -798,7 +794,7 @@ class HandlerModelSetup:
             models = resolve_local_byok_credential_models(provider) if set_up else ()
         # OMN-21346: the choice counts only while it still routes: its model is
         # still in the list, and a key's last test did not fail.
-        choice = read_local_first_choice()
+        choice = read_first_choice()
         tried_first = (
             choice is not None
             and choice[0] == provider
@@ -814,6 +810,7 @@ class HandlerModelSetup:
             last_test=last,
             models=models,
             tried_first=tried_first,
+            first_model=choice[1] if tried_first and choice is not None else None,
         )
 
     # -- the test ----------------------------------------------------------

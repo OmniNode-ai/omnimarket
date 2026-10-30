@@ -50,6 +50,8 @@ class ModelModelStatus(BaseModel):
     models: tuple[str, ...] = ()
     #: OMN-21346: this provider's first model is the one delegation tries first.
     tried_first: bool = False
+    #: OMN-21346: the model tried first, when ``tried_first``.
+    first_model: str | None = None
 
 
 class ModelModelSetupResult(BaseModel):

@@ -124,6 +124,7 @@ from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailure
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.events.emit_effect_topic_publisher import EmitEffectTopicPublisher
 from omnimarket.events.provider_quota import ModelProviderQuotaObserved
+from omnimarket.handlers.delegation_first_choice import first_choice_route
 from omnimarket.handlers.handler_size_band_measurement import measure_size_band
 from omnimarket.inference import provider_quota_state
 from omnimarket.inference.protocol_config import (
@@ -352,7 +353,6 @@ from omnimarket.routing.delegation_backend_resolution import (
     resolve_delegation_backend as _resolve_delegation_backend_uncustomized,
 )
 from omnimarket.routing.local_byok_route import (
-    first_choice_route,
     next_chosen_model_byok_route,
     next_registered_byok_route,
     registered_byok_routes,

@@ -50,10 +50,10 @@ from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import SecretStr, ValidationError
 
 from omnimarket.handlers import handler_model_keys as model_keys
+from omnimarket.handlers.handler_delegation_first_choice_cli import first_model
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     local_credential_registered_at,
-    read_local_first_choice,
     resolve_local_byok_credential_plan,
 )
 from omnimarket.nodes.node_captured_secret_resolve_effect.handlers.handler_captured_secret_resolve import (
@@ -1042,6 +1042,9 @@ def add_model(
         sys.exit(1)
 
 
+models_group.add_command(first_model)  # OMN-21346
+
+
 @models_group.command("test")
 @click.argument("provider", required=False, type=_model_choice)
 @_model_json
@@ -1065,12 +1068,7 @@ def test_models(provider: str | None, as_json: bool) -> None:
 @models_group.command("list")
 @_model_json
 def list_models(as_json: bool) -> None:
-    """Each provider: set up or not, and its last test result.
-
-    The provider whose model delegation tries first (``onex models first``) is
-    listed first, marked with that model.
-    """
-    choice = read_local_first_choice()
+    """Each provider: set up or not, and its last test result."""
     for row in model_keys.list_providers():
         if as_json:
             click.echo(row.model_dump_json())
@@ -1078,8 +1076,7 @@ def list_models(as_json: bool) -> None:
         label = f"{_MODEL_LABELS[row.provider]:<11}"
         last = row.last_test
         models = f" [models: {', '.join(row.models)}]" if row.models else ""
-        if row.tried_first and choice is not None:
-            models += f" (tried first: {choice[1]})"
+        models += f" (tried first: {row.first_model})" if row.first_model else ""
         if not row.set_up:
             click.echo(f"{label} not set up")
         elif last is None:
@@ -1099,52 +1096,6 @@ def list_models(as_json: bool) -> None:
                 row.provider in _KEY_PAGES
             ):  # a keyed provider; Ollama and local have none
                 click.echo(f"  {_NOT_ROUTED} Run: onex models test {row.provider}")
-
-
-@models_group.command("first")
-@click.argument("provider", required=False, type=_model_choice)
-@click.argument("model", required=False)
-@click.option(
-    "--clear",
-    is_flag=True,
-    help="Forget the choice; delegation keeps its usual order again.",
-)
-def first_model(provider: str | None, model: str | None, clear: bool) -> None:
-    """Make MODEL of PROVIDER the model every delegation tries first.
-
-    MODEL must be one of the models set up for PROVIDER (onex models list shows
-    them); without it, PROVIDER's own first model is chosen. It moves to the
-    front of PROVIDER's list and is tried before your local models and every
-    other key. If it fails, the run carries on in its usual order. Nothing is
-    re-run and no key is asked for.
-    """
-    handler = _model_handler()
-    if clear:
-        if provider is not None:
-            raise click.ClickException("--clear takes no provider or model.")
-        handler.handle(ModelModelSetupRequest(operation="clear_first"))
-        click.echo(
-            "No model is chosen to be tried first; delegation keeps its usual order."
-        )
-        return
-    if provider is None:
-        raise click.ClickException(
-            "name the provider, and optionally the model: onex models first "
-            "<provider> [<model>]. onex models list shows what is set up."
-        )
-    name = provider.lower()
-    try:
-        result = handler.handle(
-            ModelModelSetupRequest(
-                operation="set_first",
-                provider=cast(ModelProvider, name),
-                models=(model,) if model else (),
-            )
-        )
-    except ModelSetupRefusedError as refusal:
-        raise click.ClickException(f"{refusal}. Nothing was changed.") from None
-    chosen = model or result.models[0]
-    click.echo(f"Delegation now tries {_MODEL_LABELS[name]} {chosen} first.")
 
 
 @models_group.command("default-model")

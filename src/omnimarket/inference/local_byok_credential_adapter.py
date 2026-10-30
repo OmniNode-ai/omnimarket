@@ -636,37 +636,6 @@ def local_model_tests_path(db_path: Path | None = None) -> Path:
     return resolved_path.parent / LOCAL_MODEL_TESTS_FILE
 
 
-#: OMN-21346: the one model a developer chose for delegation to try first.
-LOCAL_FIRST_CHOICE_FILE: Final = "delegation_first_choice.json"
-
-
-def local_first_choice_path(db_path: Path | None = None) -> Path:
-    """Where ``onex models first`` records the model delegation tries first."""
-    resolved_path = db_path if db_path is not None else default_evidence_db_path()
-    return resolved_path.parent / LOCAL_FIRST_CHOICE_FILE
-
-
-def read_local_first_choice(*, db_path: Path | None = None) -> tuple[str, str] | None:
-    """The ``(provider, model)`` chosen to be tried first, or ``None`` (OMN-21346).
-
-    ``None`` when nothing was chosen or the record cannot be read: a run then
-    keeps its usual order. Whether the choice is still set up is the reader's
-    question, since a key or a local model can be removed after it was chosen.
-    """
-    try:
-        recorded = json.loads(
-            local_first_choice_path(db_path).read_text(encoding="utf-8")
-        )
-    except (OSError, ValueError):
-        return None
-    if not isinstance(recorded, dict):
-        return None
-    provider, model = recorded.get("provider"), recorded.get("model")
-    if isinstance(provider, str) and provider and isinstance(model, str) and model:
-        return provider, model
-    return None
-
-
 def local_byok_key_test_failed(provider: str, *, db_path: Path | None = None) -> bool:
     """True when ``provider``'s key failed its last pinned test (OMN-21259).
 
@@ -841,7 +810,6 @@ def local_credential_registered_at(
 __all__: list[str] = [
     "LOCAL_CREDENTIAL_MODEL_TABLE",
     "LOCAL_CREDENTIAL_TABLE",
-    "LOCAL_FIRST_CHOICE_FILE",
     "LOCAL_INSTALL_TENANT_ID",
     "LOCAL_MODEL_TESTS_FILE",
     "MODEL_CHOSEN_BY_CATALOGUE",
@@ -851,11 +819,9 @@ __all__: list[str] = [
     "is_local_store_only_ref",
     "local_byok_key_test_failed",
     "local_credential_registered_at",
-    "local_first_choice_path",
     "local_model_tests_path",
     "local_secret_remediation",
     "mint_local_byok_credential_ref",
-    "read_local_first_choice",
     "register_local_byok_credential",
     "registered_local_byok_providers",
     "resolve_local_byok_credential_model",
