@@ -50,7 +50,7 @@ from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import SecretStr, ValidationError
 
 from omnimarket.handlers import handler_model_keys as model_keys
-from omnimarket.handlers.handler_delegation_first_choice_cli import first_model
+from omnimarket.handlers.models_first_command import first_model, models_text
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     local_credential_registered_at,
@@ -1075,8 +1075,7 @@ def list_models(as_json: bool) -> None:
             continue
         label = f"{_MODEL_LABELS[row.provider]:<11}"
         last = row.last_test
-        models = f" [models: {', '.join(row.models)}]" if row.models else ""
-        models += f" (tried first: {row.first_model})" if row.first_model else ""
+        models = models_text(row)
         if not row.set_up:
             click.echo(f"{label} not set up")
         elif last is None:
@@ -1092,9 +1091,8 @@ def list_models(as_json: bool) -> None:
                 f"{label} set up, last test FAILED {last.tested_at}{failed_on}: "
                 f"{last.reason}{models}"
             )
-            if (
-                row.provider in _KEY_PAGES
-            ):  # a keyed provider; Ollama and local have none
+            # A keyed provider; Ollama and local have none.
+            if row.provider in _KEY_PAGES:
                 click.echo(f"  {_NOT_ROUTED} Run: onex models test {row.provider}")
 
 

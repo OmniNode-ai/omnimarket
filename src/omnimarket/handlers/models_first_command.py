@@ -17,6 +17,15 @@ from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request i
     ModelModelSetupRequest,
     ModelProvider,
 )
+from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result import (
+    ModelModelStatus,
+)
+
+
+def models_text(row: ModelModelStatus) -> str:
+    """The models part of an ``onex models list`` line, with the one tried first."""
+    listed = f" [models: {', '.join(row.models)}]" if row.models else ""
+    return listed + (f" (tried first: {row.first_model})" if row.first_model else "")
 
 
 @click.command("first")
@@ -67,4 +76,4 @@ def first_model(provider: str | None, model: str | None, clear: bool) -> None:
     click.echo(f"Delegation now tries {MODEL_LABELS[name]} {chosen} first.")
 
 
-__all__: list[str] = ["first_model"]
+__all__: list[str] = ["first_model", "models_text"]
