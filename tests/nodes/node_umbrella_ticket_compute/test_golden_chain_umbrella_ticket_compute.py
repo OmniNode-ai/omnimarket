@@ -19,7 +19,7 @@ from omnimarket.nodes.node_umbrella_ticket_compute.models.model_umbrella_ticket 
 pytestmark = pytest.mark.unit
 
 TICKETS = ("OMN-17427",)
-EVIDENCE = "Umbrella evidence: lane_intake_budget\n"
+EVIDENCE = "Umbrella evidence: headless_lane_cannot_mint\n"
 
 
 def parts(
@@ -47,7 +47,7 @@ def test_check_refuses_an_umbrella_claim_ticket_on_a_lane_with_a_repo() -> None:
     (refusal,) = brief_refusals()
     assert "umbrella" in refusal
     assert "/omni:create-ticket (parent OMN-17427)" in refusal
-    assert "Umbrella evidence: lane_intake_budget" in refusal
+    assert "Umbrella evidence: <reason>" in refusal
     assert "contracts/OMN-17427.yaml" in refusal
 
 
@@ -98,7 +98,7 @@ def test_check_admits_a_child_ticket_title() -> None:
     "body",
     [
         "Umbrella evidence: <reason>\n\nTicket: OMN-17427\n",
-        "We carry `Umbrella evidence: lane_intake_budget` later.\n\nTicket: OMN-17427\n",
+        "We carry `Umbrella evidence: headless_lane_cannot_mint` later.\n\nTicket: OMN-17427\n",
     ],
 )
 def test_check_reads_an_evidence_placeholder_or_a_prose_mention_as_no_evidence(
@@ -143,7 +143,7 @@ def test_child_ticket_and_a_lane_with_no_repo_are_admitted() -> None:
 
 @pytest.mark.parametrize("prefix", ["", "- ", "* ", "  "])
 def test_evidence_lines_allow_list_items(prefix: str) -> None:
-    assert umbrella.umbrella_evidence(prefix + EVIDENCE) == "lane_intake_budget"
+    assert umbrella.umbrella_evidence(prefix + EVIDENCE) == "headless_lane_cannot_mint"
 
 
 def test_claim_and_pr_detection_helpers() -> None:

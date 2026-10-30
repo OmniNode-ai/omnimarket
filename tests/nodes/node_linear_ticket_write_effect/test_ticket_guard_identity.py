@@ -123,21 +123,21 @@ def test_guard_refusal_blocks_create_with_original_codes():
     assert client.calls == []
 
 
-def test_guard_is_called_with_explicit_lane_and_dry_run_does_not_spend_budget(
+def test_guard_is_called_with_the_explicit_lane(
     monkeypatch,
 ):
     core = handler(Client(), Guard())
     observed = []
 
-    def get_guard(lane="", record=True):
-        observed.append((lane, record))
+    def get_guard(lane=""):
+        observed.append(lane)
         return Guard()
 
     monkeypatch.setattr(core, "_get_guard", get_guard)
     core.handle(
         ModelCreateTicketRequest(title="Scratch", description=BODY, dry_run=True)
     )
-    assert observed == [("remote-a", False)]
+    assert observed == ["remote-a"]
 
 
 def test_locked_pillar_is_refused_from_remote_identity_even_on_operator_worker(

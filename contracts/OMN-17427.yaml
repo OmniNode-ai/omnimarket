@@ -7,6 +7,17 @@ is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
+  - id: "req-wip-admission"
+    statement: "New work is refused while the started-but-unlanded count is at the repository's or the fleet's limit; a fix-forward and a ticket creation are never refused by count, and the limits are Little's law from a measured landing rate."
+    acceptance:
+      - id: "AC3003101"
+        statement: "AC3003101: at the repository limit and at the fleet limit new work is refused, a verified fix-forward is admitted, a ticket creation is admitted whatever the count or the read -- falsifier: tests/nodes/node_wip_admission_compute/test_wip_admission.py::test_at_the_repository_limit_new_work_is_refused, ::test_a_fix_for_a_red_pull_request_is_admitted_at_the_limit and ::test_a_ticket_is_always_created_whatever_the_count"
+      - id: "AC3003102"
+        statement: "AC3003102: a limit that is not the one its own merges_per_hour and lead_time_hours give is refused naming its key, and no limit number is in the code -- falsifier: ::test_the_limit_is_littles_law_from_its_own_measurement and ::test_no_limit_number_is_in_the_code"
+      - id: "AC3003104"
+        statement: "AC3003104: the remote-lane runner's brief gate refuses a lane that may open a PR while the count is at the limit, never a lane working a named PR or named for a fix, and judges nothing on a host with no overlay -- falsifier: tests/nodes/node_wip_admission_compute/test_brief_gate.py and tests/nodes/node_dispatch_brief_shape_compute/test_dispatch_brief_shape.py::test_a_lane_that_may_open_a_pr_waits_when_the_wip_admission_refuses"
+      - id: "AC3003103"
+        statement: "AC3003103: the lab fill skips a candidate the gate refuses and never one of a fix-forward kind, and the create-ticket node asks the guard the same way for a dry run and a real create -- falsifier: tests/nodes/node_wip_admission_compute/test_fill_gate.py and tests/nodes/node_create_ticket/test_lane_intake.py"
   - id: req-fill-runs-dry
     statement: "Green unlanded PRs provide one landing lane per repository while holds, owners and blocked outcomes stay gated; SCM reads the sibling clone."
     acceptance:
@@ -4194,6 +4205,37 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_claude_token_pool_effect/test_claude_token_pool.py -q --no-cov -p no:randomly --refuse-skips -k 'test_a_revoked_token_that_still_carries_a_limit_is_not_counted_as_limited or test_a_pool_of_one_revoked_limited_token_reports_no_limit_and_the_alarm'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-wip-admission"
+    description: "The WIP admission node decides from planted fixtures through the rule and through the in-memory local runtime. The tests fail at the merge base, where the node does not exist."
+    source: "manual"
+    binds_ac: ["AC3003101", "AC3003102"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_wip_admission_compute/test_wip_admission.py tests/nodes/node_wip_admission_compute/test_runtime_local.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-wip-admission-fill"
+    description: "The fill skips a refused candidate and passes a fix-forward kind; the create-ticket node passes the guard no flag that spent a budget. The fill test fails at the merge base."
+    source: "manual"
+    binds_ac: ["AC3003103"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_wip_admission_compute/test_fill_gate.py tests/nodes/node_create_ticket/test_lane_intake.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-wip-admission-runner"
+    description: "The runner's brief gate asks the admission with the PR watcher state and the live CLAIMs of the ledger. The tests fail at the merge base, where the seam does not exist."
+    source: "manual"
+    binds_ac: ["AC3003104"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_wip_admission_compute/test_brief_gate.py tests/nodes/node_dispatch_brief_shape_compute/test_dispatch_brief_shape.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-wip-admission-inventory-deploy-probe"
+    description: "Hosted deployment artifact probe: the checked-out admission node runs admit, refuse and ticket-create decisions through the in-memory runtime, and the relation inventory matches the source readers. Requires this checkout and locked Python dependencies, with no broker, database or credentials. This is a package readback, not a live deployment attestation."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_wip_admission_compute/test_runtime_local.py tests/unit/scripts/test_application_relation_inventory.py::test_checked_in_inventory_is_source_derived_and_current -q --no-cov -p no:randomly --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-one-fix-one-pr-fold"
     description: "The fold refuses the omnibase_core#2159/#2160/#2161 case and the second repository's #1320/#1326 case naming the first pull request, passes the unrelated and same-file-other-lines cases, and reads another lane's live CLAIM cause cell."

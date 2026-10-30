@@ -78,6 +78,9 @@ class ModelIdleSlotFillRequest:
     # Kinds whose items must name a repository (ModelBacklogItem), read by the caller from the
     # idle_slot_fill overlay; none by default.
     repo_required_kinds: Collection[str] = ()
+    # Work-in-progress admission: a candidate's reason to wait, or None to go on (the
+    # wip_admission node; none judges nothing).
+    wip_refusal: Callable[[Mapping[str, Any]], str | None] | None = None
 
 
 @dataclass(frozen=True)
