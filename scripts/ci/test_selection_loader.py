@@ -34,7 +34,7 @@ class ModelAdjacencyMap(BaseModel):
     """Repo-relative fnmatch patterns whose changes require the full suite."""
     adjacency: dict[str, ModelAdjacencyEntry]
     always_selected_paths: list[str] = Field(default_factory=list)
-    """Test directories appended to EVERY narrowed selection.
+    """Test directories and test files appended to EVERY narrowed selection.
 
     OMN-15639: a repo-wide gate (``tests/gates/``) asserts an invariant over
     files the adjacency map cannot attribute to one module -- e.g. the
@@ -51,10 +51,10 @@ class ModelAdjacencyMap(BaseModel):
     @model_validator(mode="after")
     def validate_always_selected_paths(self) -> ModelAdjacencyMap:
         for path in self.always_selected_paths:
-            if not path.startswith("tests/") or not path.endswith("/"):
+            if not path.startswith("tests/") or not path.endswith(("/", ".py")):
                 raise ValueError(
                     f"always_selected_paths entry '{path}' must be a directory "
-                    "under tests/ written with a trailing slash"
+                    "under tests/ with a trailing slash, or a test file ending in .py"
                 )
         return self
 
