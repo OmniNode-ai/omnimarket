@@ -213,7 +213,7 @@ gates:
     producer_kind: cross_repo
     caller_workflow: internal-sibling-pins.yml
     caller_job: internal-sibling-pins
-    cross_repo_ref: "OmniNode-ai/omnibase_core/.github/workflows/internal-sibling-pins.yml@97c5d1c2802acbdd13940c1a4ab1b07cf4fb7418"
+    cross_repo_ref: "OmniNode-ai/omnibase_core/.github/workflows/internal-sibling-pins.yml@dev-20261028111658-97c5d1c2802a"
     skip_semantics: never
     rationale: "OMN-21478: enforce internal sibling pins under the 2026-10-16 rulings; reuse the core validator on pull_request, merge_group, and dev/main push."
 
