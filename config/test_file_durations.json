@@ -1048,6 +1048,7 @@
   "tests/nodes/node_release_pin_guard_compute/test_release_pin_guard.py": 0.31,
   "tests/nodes/node_remote_lane_close_compute/test_receipt_usage.py": 0.17,
   "tests/nodes/node_remote_lane_close_compute/test_usage_runtime_local.py": 0.17,
+  "tests/nodes/node_remote_lane_compute/test_contributor_lane_placement.py": 0.1,
   "tests/nodes/node_remote_lane_compute/test_engine_experiment_rows.py": 0.02,
   "tests/nodes/node_remote_lane_compute/test_engine_ladder_remote_lane_compute.py": 0.16,
   "tests/nodes/node_remote_lane_compute/test_error_chain_remote_lane_compute.py": 0.08,

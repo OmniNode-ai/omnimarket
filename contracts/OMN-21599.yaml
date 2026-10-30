@@ -36,3 +36,11 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_remote_lane_compute/test_contributor_lane_placement.py -q --no-cov -p no:randomly --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21599-deploy-placement-check"
+    description: "Hosted package deploy smoke: the checked-out remote-lane placement node refuses a house-lane lane on a contributor host and the overlay model refuses a contributor row that binds a house lane. No credentials, broker or lab service is required. This checks the evaluated checkout package, not a production rollout."
+    source: "manual"
+    binds_ac: ["AC2159901", "AC2159902"]
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run --locked pytest tests/nodes/node_remote_lane_compute/test_contributor_lane_placement.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "."
