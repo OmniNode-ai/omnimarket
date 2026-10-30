@@ -27,6 +27,11 @@ class _Parser(argparse.ArgumentParser):
 
 
 def main(argv: list[str] | None = None) -> int:
+    arguments = sys.argv[1:] if argv is None else argv
+    if arguments and arguments[0] == "schedule":
+        from .handlers.adapter_schedule_cli import main as schedule_main
+
+        return schedule_main(arguments[1:])
     parser = _Parser(description=__doc__)
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--verbose", action="store_true")
