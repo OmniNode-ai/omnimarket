@@ -31,6 +31,13 @@ A lane declaring a capability the Codex sandbox cannot grant skips the Codex run
 RULING 2026-10-28T13:32:09Z makes Sonnet the default and admits Opus only with an
 escalation_reason (complexity:<B4 or above> or sonnet-failed:<run or lane>), for legacy
 requests and pinned routes alike; a failed Sonnet attempt is itself that reason.
+
+Paging hosts (OMN-17232): a host the throughput tick's host-swapping check flags (the same
+``swap_reasons`` the host pool alarm applies to the probe's swap-in, memory PSI and macOS pressure
+readings) has zero free lane slots, for either engine, until the alarm resolves it after two clean
+reads (``swap_alarm_open``). At 2026-10-30T01:25Z a lab host paged at load 30 to 58 and swap-in up to
+167 MB/s while the pool counted it 6 to 9 free Claude slots, so ``--placement auto`` never overflowed
+to a cloud session.
 """
 
 from __future__ import annotations
@@ -47,6 +54,8 @@ from omnimarket.models.model_engine_experiment import (
     ModelEngineExperimentRow,
 )
 from omnimarket.models.model_engine_ladder import ModelEngineLadder
+from omnimarket.nodes.node_host_pool_alarm_effect.handler import swap_reasons
+from omnimarket.nodes.node_host_pool_alarm_effect.models import ModelHostPoolReading
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     lane_model_refusal,
 )
@@ -67,6 +76,39 @@ from ..models import (
 
 _VENV_DRIFT = "venv-drift"
 _VENV_UNKNOWN = "venv-unknown"
+
+
+def swap_refusal(reading: ModelRemoteLaneHostReading) -> str | None:
+    """Why the tick's host-swapping check keeps this host off, else None.
+
+    The reasons are the host pool alarm's own (``swap_reasons`` over its bounds); an alarm still open
+    for the host keeps it off between bursts until two clean reads resolve it.
+    """
+    reasons = swap_reasons(
+        ModelHostPoolReading(
+            host=reading.name,
+            lane_cap=reading.lane_cap,
+            error=None,
+            swap_in_kb_s=reading.swap_in_kb_s,
+            mem_psi_avg60=reading.mem_psi_avg60,
+            mem_pressure=reading.mem_pressure,
+        )
+    )
+    if reasons:
+        return f"host-swapping: {'; '.join(reasons)}"
+    if reading.swap_alarm_open:
+        return "host-swapping: alarm open until two clean reads"
+    return None
+
+
+def effective_lane_slots(reading: ModelRemoteLaneHostReading) -> int:
+    """The free lane slots the pool counts for this host: none while the host is swapping."""
+    return 0 if swap_refusal(reading) is not None else reading.lane_slots
+
+
+def pool_lane_slots(readings: tuple[ModelRemoteLaneHostReading, ...]) -> dict[str, int]:
+    """Every host's free lane slots as the pool counts them."""
+    return {reading.name: effective_lane_slots(reading) for reading in readings}
 
 
 def _rank(reading: ModelRemoteLaneHostReading) -> float:
@@ -127,6 +169,8 @@ def _select(
             reasons[reading.name] = "auth-expired"
         elif reading.name in blocked:
             reasons[reading.name] = blocked[reading.name]
+        elif (swapping := swap_refusal(reading)) is not None:
+            reasons[reading.name] = swapping
         elif reading.lane_admission_refusal is not None:
             reasons[reading.name] = f"admission: {reading.lane_admission_refusal}"
         elif request.pinned_host and reading.name != request.pinned_host:

@@ -369,11 +369,10 @@ class InstalledPluginTicketGuard:
     own convention).
     """
 
-    def __init__(self, guard_path: Path, lane: str = "", record: bool = True) -> None:
+    def __init__(self, guard_path: Path, lane: str = "") -> None:
         self.guard_path = guard_path
         self.interpreter = sys.executable
         self.lane = lane
-        self.record = record
 
     def check(self, tool_input: dict[str, object]) -> ModelTicketGuardDecision:
         payload = json.dumps(
@@ -383,9 +382,8 @@ class InstalledPluginTicketGuard:
         if self.lane:
             env["ONEX_LANE"] = self.lane
         # --node: this caller is a node, so the guard judges the create as a lane
-        # create whatever the environment says (OMN-17942). --no-record: a dry
-        # run spends none of the day's intake budget.
-        flags = ["--node", *([] if self.record else ["--no-record"])]
+        # create whatever the environment says (OMN-17942).
+        flags = ["--node"]
         done = subprocess.run(
             [self.interpreter, str(self.guard_path), *flags],
             input=payload,
@@ -700,10 +698,10 @@ class HandlerCreateTicket:
             return self._injectable_state_resolver
         return LinearTicketHttpGateway(self._linear_api_key())
 
-    def _get_guard(self, lane: str = "", record: bool = True) -> TicketGuardProtocol:
+    def _get_guard(self, lane: str = "") -> TicketGuardProtocol:
         if self._injectable_guard is not None:
             return self._injectable_guard
-        return InstalledPluginTicketGuard(locate_ticket_guard(), lane, record)
+        return InstalledPluginTicketGuard(locate_ticket_guard(), lane)
 
     def _get_lane_intake_policy(self) -> ModelLaneIntakePolicy:
         if self._injectable_lane_intake_policy is not None:
@@ -868,7 +866,7 @@ class HandlerCreateTicket:
             )
 
         # A lane may not assign a pillar whose owner the map keeps out of lanes' hands (OMN-17427),
-        # and the refusal comes before the guard so it spends none of the day's intake budget.
+        # and the refusal comes before the guard.
         if request.pillar:
             _refuse_lane_assignment(
                 request.pillar,
@@ -880,7 +878,7 @@ class HandlerCreateTicket:
         # node files: Backlog, no project, the caller's description unchanged.
         # Every item this node opens is lane-created (OMN-17942): it carries the
         # lane-intake label and a first-line stamp naming its lane, and the guard
-        # refuses a create with no lane identity or past the day's intake budget.
+        # refuses a create with no lane identity, label or stamp. No count refuses it.
         lane = self._lane_id if self._lane_id is not None else declared_lane()
         intake = self._get_lane_intake_policy()
         description = (
@@ -905,7 +903,7 @@ class HandlerCreateTicket:
         if request.project.strip():
             # Judged by the guard, which refuses it with its own project_set finding.
             tool_input["project"] = request.project
-        decision = self._get_guard(lane, record=not request.dry_run).check(tool_input)
+        decision = self._get_guard(lane).check(tool_input)
         if not decision.admitted:
             raise TicketGuardRefusedError(
                 "node_create_ticket: the ticket-creation guard refused this create "

@@ -1,0 +1,22 @@
+name: node_wip_admission_compute
+version: "0.1.0"
+description: "admits or refuses the start of new work against the started-but-unlanded count per repository and for the fleet; fix-forward and ticket creation are never refused by count"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_wip_admission_compute: "omnimarket.nodes.node_wip_admission_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "wip", "admission", "pure"]
+pack: "routing"
+display_name: "WIP Admission Compute"
+node_role: "compute"

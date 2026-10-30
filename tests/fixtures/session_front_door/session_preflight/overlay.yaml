@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Fixture session_preflight overlay in the shape of the team-profile overlay: the checks that read
+# something only the operator's machine has carry `profile: operator`; every other check runs in
+# both profiles. ledger_is_registry_ledger carries the member-mirror rule: the registry ledger
+# itself, or (a remote lane, or a member with ONEX_REMOTE_LANE unset) a ledger mirror whose bus
+# transport, declared host, executable append command and archive/ directory all check out.
+# Every value is fake.
+preflight_version: "1.0.0"
+checks:
+  - check_id: github_login
+    title: GitHub CLI is signed in (fixture)
+    kind: command
+    command: "true"
+    severity: blocker
+    fix: gh auth login
+  - check_id: overnight_drive
+    title: The overnight drive runs on this host (fixture, operator only)
+    kind: command
+    command: '[ -n "${FIXTURE_OVERNIGHT_DRIVE:-}" ]'
+    severity: blocker
+    profile: operator
+    fix: start the overnight drive
+  - check_id: ledger_path
+    title: ONEX_LEDGER_PATH names an existing file
+    kind: command
+    command: '[ -n "${ONEX_LEDGER_PATH:-}" ] && [ -f "$ONEX_LEDGER_PATH" ]'
+    severity: blocker
+    fix: export ONEX_LEDGER_PATH to the rolling work ledger
+  - check_id: ledger_basename
+    title: ONEX_LEDGER_PATH is named ROLLING_WORK_LEDGER.md
+    kind: command
+    command: '[ "$(basename -- "${ONEX_LEDGER_PATH:-}")" = ROLLING_WORK_LEDGER.md ]'
+    severity: blocker
+    fix: export ONEX_LEDGER_PATH to a file named ROLLING_WORK_LEDGER.md
+  - check_id: ledger_is_registry_ledger
+    title: Ledger is the registry file, or a bus mirror with a configured bus writer
+    kind: command
+    command: >-
+      python3 -c 'import os, sys, shlex, shutil;
+      from pathlib import Path;
+      e = Path(os.environ["ONEX_LEDGER_PATH"]).resolve();
+      r = Path(os.environ["OMNI_HOME"], "docs", "tracking", "ROLLING_WORK_LEDGER.md").resolve();
+      cmd = shlex.split(os.environ.get("ONEX_LEDGER_BUS_APPEND_COMMAND", ""));
+      transport = (os.environ.get("ONEX_LEDGER_WRITE_VIA") == "bus"
+      and bool(os.environ.get("ONEX_LEDGER_HOST_NAME"))
+      and bool(cmd) and shutil.which(cmd[0]) is not None
+      and e.is_file() and (e.parent / "archive").is_dir());
+      sys.exit(0 if (e == r or transport) else 1)'
+    severity: blocker
+    fix: point ONEX_LEDGER_PATH at the registry ledger, or configure the bus writer and its archive
+  - check_id: ledger_grammar
+    title: The ledger row grammar loads (fixture)
+    kind: command
+    command: '[ -n "${OMNI_HOME:-}" ]'
+    severity: blocker
+    fix: set OMNI_HOME
+  - check_id: coordination_host
+    title: This host's ledger carries recent rows from an active drain lane (operator only)
+    kind: command
+    command: >-
+      [ -z "${ONEX_LEDGER_PATH:-}" ] || [ ! -f "$ONEX_LEDGER_PATH" ]
+      || tail -n 2000 "$ONEX_LEDGER_PATH" | grep -Eq '(^|[|] )(lane|from)=(merge-drain|repo-drain)-[^ |]+ [|]'
+    severity: warning
+    profile: operator
+    fix: read the way-of-working detached-host section

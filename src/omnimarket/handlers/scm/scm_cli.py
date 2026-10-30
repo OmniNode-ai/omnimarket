@@ -83,6 +83,10 @@ from omnimarket.handlers.scm.handler_scm_local_state import (
     default_clone_path,
     default_watcher_state_path,
 )
+from omnimarket.handlers.scm.scm_duplicate_guard import (
+    duplicate_check_command,
+    refuse_or_continue,
+)
 from omnimarket.lab_work.cli import _with_bus_options
 from omnimarket.models.model_github_gateway_io import (
     EnumGithubGatewayOperation,
@@ -110,6 +114,7 @@ from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_io i
 EXIT_FAILED: Final[int] = 1
 EXIT_USAGE: Final[int] = 2
 EXIT_LOCAL_UNANSWERED: Final[int] = 3
+EXIT_DUPLICATE: Final[int] = 4
 EXIT_BUS_UNAVAILABLE: Final[int] = 69
 EXIT_NO_TERMINAL: Final[int] = 75
 READ_RETRY_PAUSE_S: Final[float] = 20.0
@@ -735,6 +740,19 @@ def _write_command(spec: ModelScmVerb) -> click.Command:
             if not sep or not key:
                 raise click.UsageError(f"--input {item!r} is not KEY=VALUE")
             inputs[key] = value
+        if spec.operation == EnumRepoWriteOperation.PR_CREATE:
+            # One fix, one pull request (OMN-17427): a duplicate or an unreadable check opens nothing.
+            refused = refuse_or_continue(
+                repo=repo,
+                head=str(fields["head"]),
+                base=_optional_str(fields.get("base")),
+                title=_optional_str(fields.get("title")),
+                body=body,
+                lane=lane,
+                watcher_state=watcher_state,
+            )
+            if refused is not None:
+                sys.exit(refused)
         run = fields.pop("run", None)
         claims_dir = fields.pop("claims_dir", None)
         claim = (
@@ -871,12 +889,14 @@ for _spec in SCM_VERBS:
     )
 for _local in SCM_LOCAL_VERBS:
     scm_group.add_command(_local_command(_local))
+scm_group.add_command(duplicate_check_command)
 for _refused in SCM_REFUSED_VERBS:
     scm_group.add_command(_refused_command(_refused.verb, _refused.handled_by))
 
 
 __all__: list[str] = [
     "EXIT_BUS_UNAVAILABLE",
+    "EXIT_DUPLICATE",
     "EXIT_FAILED",
     "EXIT_LOCAL_UNANSWERED",
     "EXIT_NO_TERMINAL",
