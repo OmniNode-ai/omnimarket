@@ -18,7 +18,6 @@ served.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import uuid
 from datetime import date, datetime
@@ -30,6 +29,9 @@ import yaml
 
 from omnimarket.handlers.handler_local_environment_judgement import (
     load_local_alert_rules,
+)
+from omnimarket.handlers.handler_projection_runtime_writer import (
+    RuntimeProjectionWriter,
 )
 from omnimarket.models.model_local_environment_status import (
     ModelLocalEnvironmentStatus,
@@ -107,9 +109,10 @@ _UPSERT_ROW = (
 def require_tenant_uuid(tenant_id: str) -> str:
     """The tenant as a canonical uuid or a registry slug, or a refusal.
 
-    Which registry row it names is confirmed against the mirror inside the
-    write's transaction (``confirm_registry_tenant``); this only refuses forms
-    that can never name one.
+    Which registry row it names is confirmed against the mirror through the
+    mirror's own read binding, before the write's transaction opens
+    (``confirm_registry_tenant``); this only refuses forms that can never name
+    one.
     """
     try:
         canonical = str(uuid.UUID(tenant_id))
@@ -165,10 +168,14 @@ def _wire_row(row: dict[str, Any]) -> dict[str, Any]:
     return wired
 
 
-class LocalEnvironmentProjectionWriter(BaseProjectionRunner):
-    """Store each report's planned rows under (tenant, mode, service) and publish them."""
+class HandlerLocalEnvironmentProjectionRunner(BaseProjectionRunner):
+    """Store each report's planned rows under (tenant, mode, service) and publish them.
 
-    onex_runtime_inprocess_dispatch = True
+    The runtime dispatches ``LocalEnvironmentProjectionWriter`` below, which
+    applies this runner once per delivery with one pool per topology binding:
+    its tables span the tenant and internal schemas, and one pool is one login
+    role.
+    """
 
     def __init__(self, contract_path: Path | None = None) -> None:
         super().__init__()
@@ -202,29 +209,6 @@ class LocalEnvironmentProjectionWriter(BaseProjectionRunner):
             raise RuntimeError(f"no DLQ publisher configured for {topic}")
         await publish(topic, value)
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        topics = self.subscribe_topics
-        data = dict(input_data)
-        topic = str(data.pop("_topic", topics[0] if topics else ""))
-        meta = MessageMeta(
-            partition=int(data.pop("_partition", 0)),
-            offset=int(data.pop("_offset", 0)),
-            fallback_id=str(data.pop("_fallback_id", "")),
-            topic=topic,
-        )
-        return asyncio.run(self._project_one_message(data, meta))
-
-    async def _project_one_message(
-        self, data: dict[str, Any], meta: MessageMeta
-    ) -> dict[str, Any]:
-        await self.db.connect()
-        try:
-            rows = await self._project_report(data, meta)
-        finally:
-            await self._stop_producer()
-            await self.db.close()
-        return {"rows_upserted": len(rows), "environment_rows": rows}
-
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
@@ -242,15 +226,23 @@ class LocalEnvironmentProjectionWriter(BaseProjectionRunner):
         require_tenant_uuid(report.tenant_id)
         written: list[dict[str, Any]] = []
         replayed: list[dict[str, Any]] = []
-        async with self.db.pool.acquire() as conn, conn.transaction():
-            tenant = await confirm_registry_tenant(conn, report.tenant_id)
-            if tenant != report.tenant_id:
-                # Stored and served under the registry's uuid. The report id is
-                # derived again from that tenant, so a redelivery of the same
-                # report is still recognised.
-                report = ModelLocalEnvironmentStatus.model_validate(
-                    {**report.model_dump(), "tenant_id": tenant, "report_id": None}
-                )
+        # The registry is read through the mirror's own binding, not the tenant
+        # write pool, whose role holds nothing on it. A tenant the registry does
+        # not know is refused here, before the write pool is touched.
+        tenant = await confirm_registry_tenant(
+            self.db_for("tenant_registry_mirror", operation="read"), report.tenant_id
+        )
+        if tenant != report.tenant_id:
+            # Stored and served under the registry's uuid. The report id is
+            # derived again from that tenant, so a redelivery of the same
+            # report is still recognised.
+            report = ModelLocalEnvironmentStatus.model_validate(
+                {**report.model_dump(), "tenant_id": tenant, "report_id": None}
+            )
+        async with (
+            self.db_for("local_environment", operation="write").pool.acquire() as conn,
+            conn.transaction(),
+        ):
             await conn.execute("SELECT set_config($1, $2, true)", TENANT_GUC, tenant)
             # One writer per tenant's mode at a time: the plan judges every row
             # of the mode, so two reports must not both plan from the same read.
@@ -300,7 +292,14 @@ class LocalEnvironmentProjectionWriter(BaseProjectionRunner):
         return written
 
 
+class LocalEnvironmentProjectionWriter(RuntimeProjectionWriter):
+    """Runtime dispatch entrypoint: apply the runner once for each delivery."""
+
+    runner_type = HandlerLocalEnvironmentProjectionRunner
+
+
 __all__ = [
+    "HandlerLocalEnvironmentProjectionRunner",
     "LocalEnvironmentProjectionWriter",
     "confirm_registry_tenant",
     "require_tenant_uuid",

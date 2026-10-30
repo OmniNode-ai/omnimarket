@@ -10,12 +10,13 @@ tests/test_omn19988_local_environment_migrations_real_postgres.py.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from urllib.parse import quote_plus
 from uuid import UUID, uuid4
 
@@ -38,6 +39,9 @@ from omnimarket.nodes.node_projection_local_environment.models import (
     ModelLocalEnvironmentPlanRequest,
 )
 from omnimarket.projection.runner import MessageMeta
+from omnimarket.projection.tenant_registry_resolution import (
+    TenantRegistryResolutionError,
+)
 
 _MIGRATIONS = (
     Path(__file__).resolve().parents[1]
@@ -114,8 +118,10 @@ async def test_real_postgres_writer_types_replay_late_and_stale_siblings(
                 name,
                 getattr(writer_module, name).replace("public.", f"{schema}."),
             )
-        writer = writer_module.LocalEnvironmentProjectionWriter()
-        monkeypatch.setattr(writer, "_db", SimpleNamespace(pool=pool))
+        writer = writer_module.HandlerLocalEnvironmentProjectionRunner()
+        monkeypatch.setattr(
+            writer, "_db", SimpleNamespace(pool=pool, fetchval=pool.fetchval)
+        )
         monkeypatch.setattr(writer, "publish_snapshot_delta", capture)
         topic = writer.subscribe_topics[0]
         meta = MessageMeta(partition=0, offset=7, fallback_id="proof", topic=topic)
@@ -234,3 +240,165 @@ async def test_real_postgres_writer_types_replay_late_and_stale_siblings(
             await pool.close()
         await conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
         await conn.close()
+
+
+def _with_search_path(dsn: str, schema: str) -> str:
+    """The DSN with ``search_path`` as a server setting (asyncpg's query form)."""
+    return f"{dsn}{'&' if '?' in dsn else '?'}search_path={schema}"
+
+
+class _ProofBindings:
+    """The topology's split: the mirror is read on its own internal binding."""
+
+    def read_binding_for(self, table: str) -> str:
+        return "internal" if table == "tenant_registry_mirror" else "tenant"
+
+    def write_binding_for(self, table: str) -> str:
+        return "tenant"
+
+
+@pytest.mark.integration
+def test_real_postgres_runtime_delivery_reads_the_mirror_on_its_own_pool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The runtime writer, on two real pools that cannot see each other's tables.
+
+    The tenant pool's search path holds the table but no mirror, as the tenant
+    writer role holds no privilege on the mirror; the internal pool's holds the
+    mirror. A delivery through ``LocalEnvironmentProjectionWriter`` stores its
+    row under the uuid the mirror records, and a tenant the mirror does not
+    record is refused with no row written.
+    """
+    dsn = _dsn_or_skip()
+    suffix = uuid4().hex
+    schema = f"omn19988_runtime_{suffix}"
+    mirror_schema = f"omn19988_mirror_{suffix}"
+    published: list[dict[str, Any]] = []
+
+    async def setup() -> None:
+        conn = await asyncpg.connect(dsn)
+        try:
+            await conn.execute(f"CREATE SCHEMA {schema}")
+            await conn.execute(f"CREATE SCHEMA {mirror_schema}")
+            for migration in sorted(_MIGRATIONS.glob("*.sql")):
+                await conn.execute(
+                    migration.read_text()
+                    .replace("public.", f"{schema}.")
+                    .replace("ON SCHEMA public ", f"ON SCHEMA {schema} ")
+                )
+            await conn.execute(
+                f"CREATE TABLE {mirror_schema}.tenant_registry_mirror ("
+                "tenant_slug TEXT PRIMARY KEY, tenant_uuid UUID NOT NULL, "
+                "status TEXT NOT NULL, observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW())"
+            )
+            await conn.execute(
+                f"INSERT INTO {mirror_schema}.tenant_registry_mirror "
+                "(tenant_slug, tenant_uuid, status) VALUES ($1, $2, 'active')",
+                "omn19988-runtime",
+                UUID(_TENANT),
+            )
+        finally:
+            await conn.close()
+
+    async def stored() -> list[dict[str, Any]]:
+        conn = await asyncpg.connect(dsn)
+        try:
+            async with conn.transaction():
+                await conn.execute(
+                    "SELECT set_config('app.tenant_id', $1, true)", _TENANT
+                )
+                return [
+                    dict(r)
+                    for r in await conn.fetch(
+                        "SELECT tenant_id, service, verdict"
+                        f" FROM {schema}.local_environment ORDER BY service"
+                    )
+                ]
+        finally:
+            await conn.close()
+
+    async def tenant_pool_sees_no_mirror() -> bool:
+        conn = await asyncpg.connect(_with_search_path(dsn, schema))
+        try:
+            await conn.fetchval("SELECT count(*) FROM tenant_registry_mirror")
+        except asyncpg.UndefinedTableError:
+            return True
+        finally:
+            await conn.close()
+        return False
+
+    async def teardown() -> None:
+        conn = await asyncpg.connect(dsn)
+        try:
+            await conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+            await conn.execute(f"DROP SCHEMA IF EXISTS {mirror_schema} CASCADE")
+        finally:
+            await conn.close()
+
+    from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+
+    asyncio.run(setup())
+    try:
+        # The control: on the tenant pool's path the mirror does not exist, so
+        # a registry read there fails, as the role split makes it fail live.
+        assert asyncio.run(tenant_pool_sees_no_mirror())
+        for name in ("_SELECT_MODE_ROWS", "_UPSERT_ROW"):
+            monkeypatch.setattr(
+                writer_module,
+                name,
+                getattr(writer_module, name).replace("public.", f"{schema}."),
+            )
+
+        class _Runner(writer_module.HandlerLocalEnvironmentProjectionRunner):
+            async def _connect_standalone_databases(self) -> None:
+                tenant = AsyncpgAdapter(
+                    dsn=_with_search_path(dsn, schema), min_size=1, max_size=1
+                )
+                mirror = AsyncpgAdapter(
+                    dsn=_with_search_path(dsn, mirror_schema), min_size=1, max_size=1
+                )
+                await tenant.connect()
+                await mirror.connect()
+                self._standalone_bindings = cast("Any", _ProofBindings())
+                self._db_by_binding = {"internal": mirror, "tenant": tenant}
+                self._db = tenant
+
+            async def _stop_producer(self) -> None:
+                return None
+
+            async def publish_snapshot_delta(
+                self, exposure: Any, **kwargs: Any
+            ) -> bool:
+                published.append({"topic": exposure.topic, **kwargs})
+                return True
+
+        class _Writer(writer_module.LocalEnvironmentProjectionWriter):
+            runner_type = _Runner
+
+        topic = _Runner().subscribe_topics[0]
+
+        def delivery(tenant: str, offset: int) -> dict[str, Any]:
+            return {
+                "tenant_id": tenant,
+                "mode": "compose",
+                "service": "postgres",
+                "observed_state": "running",
+                "reason": "GET /health returned HTTP 200.",
+                "observed_at": _AT.isoformat(),
+                "versions": {},
+                "_topic": topic,
+                "_partition": 0,
+                "_offset": offset,
+            }
+
+        _Writer().handle(delivery("omn19988-runtime", 1))
+        assert asyncio.run(stored()) == [
+            {"tenant_id": _TENANT, "service": "postgres", "verdict": "running"}
+        ]
+        assert [p["row"]["tenant_id"] for p in published] == [_TENANT]
+
+        with pytest.raises(TenantRegistryResolutionError):
+            _Writer().handle(delivery("omn19988-unknown", 2))
+        assert len(asyncio.run(stored())) == 1
+    finally:
+        asyncio.run(teardown())
