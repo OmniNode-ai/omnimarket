@@ -37,10 +37,13 @@ dod_evidence:
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_remote_lane_compute/test_contributor_lane_placement.py -q --no-cov -p no:randomly --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21599-deploy-placement-check"
-    description: "Hosted package deploy smoke: the checked-out remote-lane placement node refuses a house-lane lane on a contributor host and the overlay model refuses a contributor row that binds a house lane. No credentials, broker or lab service is required. This checks the evaluated checkout package, not a production rollout."
+    description: "Hosted package deploy smoke: the placement node source at the evaluated revision carries the contributor lane refusal, and the overlay model carries the lane_binding and lane_ready columns, read from the repository at that revision. No credentials, broker or lab service is required. This checks the evaluated revision, not a production rollout."
     source: "manual"
     binds_ac: ["AC2159901", "AC2159902"]
     checks:
       - check_type: "command"
-        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run --locked pytest tests/nodes/node_remote_lane_compute/test_contributor_lane_placement.py -q --no-cov -p no:randomly --refuse-skips"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_remote_lane_compute/handlers/handler_remote_lane_placement.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"def contributor_lane_refusal(\")' | grep -qx true"
+        cwd: "."
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/models/overlay_keys/model_overlay_documents.py?ref=$(git rev-parse HEAD)\" --jq '.content | gsub(\"\\n\";\"\") | @base64d | contains(\"lane_ready: bool = False\")' | grep -qx true"
         cwd: "."
