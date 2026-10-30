@@ -302,6 +302,12 @@ def test_added_gates_do_not_displace_release_staleness_checks(
         + '\nSTRICT_GATE_JOBS += ("Additional gate",)\n',
         encoding="utf-8",
     )
+    (tmp_path / "ci_summary_external_producers.json").write_text(
+        CI_SUMMARY_GATE.with_name("ci_summary_external_producers.json").read_text(
+            encoding="utf-8"
+        ),
+        encoding="utf-8",
+    )
     monkeypatch.setattr(sys.modules[__name__], "CI_SUMMARY_GATE", summary_path)
     test_release_staleness_is_advisory_under_ci_summary()
 
