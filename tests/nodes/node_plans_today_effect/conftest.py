@@ -56,19 +56,25 @@ def write_plans(clone: Path, plans: dict[str, str]) -> None:
         (directory / filename).write_text(text, encoding="utf-8")
 
 
-def kb_fixture(root: Path, plans: dict[str, str]) -> tuple[Path, Path]:
-    origin, clone = root / "origin.git", root / "kb"
-    git("init", "--bare", origin)
-    git("clone", origin, clone)
+def kb_fixture(
+    root: Path, plans: dict[str, str], *, origin: bool = False
+) -> tuple[Path | None, Path]:
+    """The plans clone, its ``origin/main`` at the fixture commit. ``origin`` adds a bare remote to fetch."""
+    clone = root / "kb"
+    git("init", "-q", "-b", "main", clone)
     git("-C", clone, "config", "user.name", "Test")
     git("-C", clone, "config", "user.email", "test@example.invalid")
-    git("-C", clone, "checkout", "-b", "main")
     write_plans(clone, plans)
     git("-C", clone, "add", "beta/plans")
-    git("-C", clone, "commit", "-m", "fixture plans")
-    git("-C", clone, "push", "-u", "origin", "main")
-    git("-C", clone, "fetch", "origin", "main")
-    return origin, clone
+    git("-C", clone, "commit", "-q", "-m", "fixture plans")
+    if not origin:
+        git("-C", clone, "update-ref", "refs/remotes/origin/main", "HEAD")
+        return None, clone
+    bare = root / "origin.git"
+    git("clone", "-q", "--bare", clone, bare)
+    git("-C", clone, "remote", "add", "origin", bare)
+    git("-C", clone, "fetch", "-q", "origin", "main")
+    return bare, clone
 
 
 def pr(
@@ -147,6 +153,7 @@ def make_fixture(
     subject: str | None = OPERATOR_LINEAR,
     sidecar_issues: list[dict[str, Any]] | None = None,
     watcher: bool = True,
+    origin: bool = False,
 ) -> dict[str, Any]:
     """The plans, the ledger rows, the snapshot (``linear.txt``) and its sidecar (``linear.json``).
 
@@ -158,7 +165,7 @@ def make_fixture(
     (roots / "team_identity").mkdir(parents=True)
     shutil.copyfile(IDENTITY_FIXTURE, roots / "team_identity" / "overlay.yaml")
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(roots))
-    origin, clone = kb_fixture(tmp_path, plans)
+    bare, clone = kb_fixture(tmp_path, plans, origin=origin)
     monkeypatch.setenv("ONEX_PLANS_KB_PATH", str(clone))
     watcher_file = tmp_path / "watcher.json"
     if watcher:
@@ -183,7 +190,7 @@ def make_fixture(
             json.dumps({"subject": subject, "issues": sidecar_issues or []})
         )
     return {
-        "origin": origin,
+        "origin": bare,
         "kb": clone,
         "watcher": watcher_file,
         "ledger": ledger_file,

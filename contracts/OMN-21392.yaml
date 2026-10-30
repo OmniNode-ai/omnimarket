@@ -45,7 +45,7 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_plans_today_effect/test_plans_today_operator.py -q --no-cov --tb=line
+    check_value: uv run pytest tests/nodes/node_plans_today_effect/test_plans_today_operator.py -q --no-cov --tb=line -n 4
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21392-deploy-plans-today-node
   description: 'Hosted deploy smoke, runnable on the hosted runner with no lab route, broker, database or GitHub read: dispatch the packaged node_plans_today_effect through the in-process ONEX runtime against the fake team identity declaration, a two-member plan and a member''s Linear sidecar, and require a successful typed receipt in member mode whose scope holds only the member''s ticket, whose pull request source is gh pr view with zero reads, and whose other member''s task is unread.'

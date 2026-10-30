@@ -61,6 +61,7 @@ def test_selection_origin_main_and_reasons(tmp_path, monkeypatch):
             "2026-09-20-a.md": body("A", [("first", "OMN-1001")]),
             "2026-08-01-b.md": body("B", [("second", "OMN-1002")], "\nrepo#7\n"),
         },
+        origin=True,
     )
     other = tmp_path / "other"
     git("clone", fx["origin"], other)
@@ -697,7 +698,10 @@ def test_schema_validation_and_contract(tmp_path, monkeypatch):
 
 def test_schema_goal_state_as_of_is_read_from_origin_main(tmp_path, monkeypatch):
     fx = make_fixture(
-        tmp_path, monkeypatch, {"2026-09-28-a.md": body("A", [("work", "OMN-1001")])}
+        tmp_path,
+        monkeypatch,
+        {"2026-09-28-a.md": body("A", [("work", "OMN-1001")])},
+        origin=True,
     )
     goal = fx["kb"] / "beta" / "GOAL.md"
     goal.write_text("state_as_of: 2026-09-29\n\nthe week\n")
@@ -1012,7 +1016,10 @@ def test_hang_reproduction_a_stuck_fetch_refuses_instead_of_hanging(
     import time
 
     fx = make_fixture(
-        tmp_path, monkeypatch, {"2026-09-28-a.md": body("A", [("work", "OMN-1001")])}
+        tmp_path,
+        monkeypatch,
+        {"2026-09-28-a.md": body("A", [("work", "OMN-1001")])},
+        origin=True,
     )
     git("-C", fx["kb"], "remote", "set-url", "origin", "ssh://stuck.invalid/kb.git")
     slow_ssh = tmp_path / "slow_ssh.sh"

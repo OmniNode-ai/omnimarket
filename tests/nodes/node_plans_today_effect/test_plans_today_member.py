@@ -68,6 +68,7 @@ def member_fixture(
     sidecar_issues: list[dict[str, Any]] | None = None,
     rows: list[str] | None = None,
     subject: str | None = MEMBER_A_LINEAR,
+    origin: bool = False,
 ) -> dict[str, Any]:
     """Member A's session: no watcher file, member B's red PR in the shared plan."""
     return make_fixture(
@@ -104,6 +105,7 @@ def member_fixture(
             issue("OMN-2003", assignee=MEMBER_B_LINEAR, prs=[]),
         ],
         watcher=False,
+        origin=origin,
     )
 
 
@@ -167,7 +169,7 @@ def test_hook_call_runs_member_mode_with_no_watcher_and_leaves_the_other_red_pr_
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The session-start hook's exact call on an opted-in resume: today's snapshot, no watcher file."""
-    fx = member_fixture(tmp_path, monkeypatch)
+    fx = member_fixture(tmp_path, monkeypatch, origin=True)
     today = datetime.now(UTC).strftime("%Y-%m-%d")
     plans_dir = tmp_path / ".claude_scratch" / "plans-today"
     plans_dir.mkdir(parents=True)
