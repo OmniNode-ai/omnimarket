@@ -207,9 +207,7 @@ def test_missing_pyproject_fails_closed(mod, tmp_path: Path) -> None:
 
 
 DEV_TAG = "dev-20261019090050-c330f5a7d597"
-SIBLING_PACKAGES = {
-    sibling.distribution: sibling.repo for sibling in load_contract().siblings
-}
+SIBLING_PACKAGES = dict(s.split("=", 1) for s in load_contract().siblings)
 
 
 @pytest.mark.parametrize(("package", "repo"), SIBLING_PACKAGES.items())
@@ -294,14 +292,17 @@ def test_contract_excludes_omnibase_compat_dev_merge_tag(mod) -> None:
 
 
 def test_contract_dev_tag_pattern_controls_verdict(mod) -> None:
-    contract = load_contract().model_copy(update={"dev_tag_pattern": r"^rel-[0-9]+$"})
+    pattern = r"^rel-[0-9]+$"
     text = (
         "[tool.uv.sources]\n"
         'omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core", '
         'tag = "rel-1" }\n'
     )
-    assert mod.find_violations(text, contract) == []
-    assert len(mod.find_violations(text.replace("rel-1", DEV_TAG), contract)) == 1
+    assert mod.find_violations(text, tag_pattern=pattern) == []
+    assert (
+        len(mod.find_violations(text.replace("rel-1", DEV_TAG), tag_pattern=pattern))
+        == 1
+    )
 
 
 def test_script_uses_contract_without_its_own_tag_regex() -> None:

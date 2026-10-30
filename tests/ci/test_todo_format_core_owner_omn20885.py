@@ -78,7 +78,10 @@ def test_step_names_no_onex_change_control() -> None:
 
 
 def test_step_runs_the_core_handler() -> None:
-    assert "omnibase_core.nodes.node_todo_format_check_effect.runtime_todo_format" in _run_block()
+    assert (
+        "omnibase_core.nodes.node_todo_format_check_effect.runtime_todo_format"
+        in _run_block()
+    )
 
 
 def test_clean_tree_passes(tmp_path: Path) -> None:

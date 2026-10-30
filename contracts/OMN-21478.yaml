@@ -14,6 +14,8 @@ requirements:
     statement: 'AC1: omnimarket CI calls the core reusable at a full 40-hex sha and the context is a required row of .github/required-checks.yaml and asserted by the CI Summary gate -- falsifier: uv run pytest tests/unit/workflows/test_internal_sibling_pins_omn21478.py tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q'
   - id: AC2
     statement: 'AC2: pyproject.toml pins omnibase-core, omnibase-spi and omninode-memory to dev merge tags in [tool.uv.sources] and uv.lock locks those tags -- falsifier: uv run pytest tests/unit/workflows/test_internal_sibling_pins_omn21478.py -q -k dev_merge_tag'
+  - id: AC3
+    statement: 'AC3: at the bumped omnibase_core dev tag, omnimarket reads the sibling pin policy from core''s first_party_ref contract and calls the moved core node modules, so the dependency provenance check and the generated event chains run -- falsifier: uv run pytest tests/scripts/test_check_dep_provenance.py tests/chains/generated/test_generated_chains.py -q'
 evidence_requirements:
 - kind: tests
   description: The workflow calls the core reusable at a full sha, and the required-checks and CI Summary rows exist.
@@ -44,3 +46,21 @@ dod_evidence:
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC2
+- id: dod-omn21478-core-moved-modules
+  description: The dependency provenance check takes the dev tag form from core's first_party_ref contract (find_violations accepts tag_pattern, absent at the merge base), and the generated event chains run the walker's node runtime.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/scripts/test_check_dep_provenance.py tests/chains/generated/test_generated_chains.py -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC3
+- id: dod-omn21478-deploy-published-imports
+  description: 'Hosted source deployment probe: the published duplication sweep handler and linear triage receipt gate on dev import the moved core node modules. Fails on the merge base, where both import the removed omnibase_core.handlers paths. Public HTTPS only; proves published source, not activation on a host.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_duplication_sweep/handlers/handler_duplication_sweep.py?ref=dev' --jq .content | base64 -d | grep -q 'node_cross_repo_boundary_check_effect.runtime_migration_conflicts' && gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_linear_triage/services/done_write_receipt_gate.py?ref=dev' --jq .content | base64 -d | grep -q 'node_done_write_receipt_gate_compute.handler_done_write_receipt_gate'
+    cwd: .
+  binds_ac:
+  - AC3

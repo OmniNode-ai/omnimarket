@@ -6,10 +6,8 @@
 
 A sibling git source is accepted without a suppression only when it names the
 package's own repository and uses a dev merge tag matching the contract.
-The rule and sibling list come from omnibase_core's packaged
-validation/contracts/first_party_ref.validation.yaml (its wrong_repo and
-first_party_source_not_dev_tag rules), which replaced the
-contracts/internal_sibling_pins.yaml of OMN-19998. Run this script in the project environment (uv run --frozen).
+The rule and sibling list come from omnibase_core's first_party_ref
+validation contract (its wrong_repo and first_party_source_not_dev_tag rules). Run this script in the project environment (uv run --frozen).
 Branches, raw revisions and foreign repositories do not qualify. The existing
 per-line temporary override annotation remains supported.
 
@@ -23,67 +21,14 @@ import argparse
 import re
 import sys
 import tomllib
-from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
-import yaml
-from pydantic import BaseModel, ConfigDict
-
-_FIRST_PARTY_REF_CONTRACT = (
-    "omnibase_core.validation.contracts",
-    "first_party_ref.validation.yaml",
+import omnibase_core.validation.validator_first_party_ref as first_party_ref
+from omnibase_core.models.validation.model_sibling_repo_parameters import (
+    ModelSiblingRepoParameters,
 )
-_SIBLINGS_RULE = "wrong_repo"
-_DEV_TAG_RULE = "first_party_source_not_dev_tag"
-
-
-class ModelSiblingPin(BaseModel):
-    """One internal sibling: its distribution name and its own repository."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-    distribution: str
-    repo: str
-
-
-class ModelSiblingPinPolicy(BaseModel):
-    """Sibling list, GitHub org and dev merge tag form read from core's contract."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-    github_org: str
-    dev_tag_pattern: str
-    siblings: tuple[ModelSiblingPin, ...]
-
-
-# This script is also loaded by file path (spec_from_file_location), where the
-# postponed annotation cannot be resolved from sys.modules; name it here.
-ModelSiblingPinPolicy.model_rebuild(
-    _types_namespace={"ModelSiblingPin": ModelSiblingPin}
-)
-
-
-def load_contract() -> ModelSiblingPinPolicy:
-    """Read the sibling pin policy from omnibase_core's packaged first_party_ref contract."""
-    package, name = _FIRST_PARTY_REF_CONTRACT
-    document = yaml.safe_load(files(package).joinpath(name).read_text(encoding="utf-8"))
-    rules = {
-        rule["rule_id"]: rule["parameters"] for rule in document["validation"]["rules"]
-    }
-    siblings_rule = rules[_SIBLINGS_RULE]
-    siblings = []
-    for entry in siblings_rule["siblings"]:
-        distribution, _, repo = str(entry).partition("=")
-        if not distribution or not repo:
-            raise ValueError(
-                f"{name}: sibling entry {entry!r} is not distribution=repo"
-            )
-        siblings.append(ModelSiblingPin(distribution=distribution, repo=repo))
-    return ModelSiblingPinPolicy(
-        github_org=siblings_rule["github_org"],
-        dev_tag_pattern=rules[_DEV_TAG_RULE]["tag_pattern"],
-        siblings=tuple(siblings),
-    )
-
+from omnibase_core.validation.checker_first_party_ref import load_rule_parameters
 
 _GIT_SOURCE_KEYS = frozenset({"git", "rev", "branch", "tag"})
 
@@ -150,8 +95,15 @@ def _line_for_package(block: str, pkg: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 
+def load_contract() -> ModelSiblingRepoParameters:
+    rules = load_rule_parameters(first_party_ref.ValidatorFirstPartyRef().contract)
+    return ModelSiblingRepoParameters.model_validate(rules["wrong_repo"])
+
+
 def find_violations(
-    text: str, contract: ModelSiblingPinPolicy | None = None
+    text: str,
+    contract: ModelSiblingRepoParameters | None = None,
+    tag_pattern: str | None = None,
 ) -> list[str]:
     """Return diagnostic messages for each forbidden git-source override.
 
@@ -163,12 +115,12 @@ def find_violations(
         sources = tomllib.loads(text).get("tool", {}).get("uv", {}).get("sources", {})
     except tomllib.TOMLDecodeError as exc:
         return [f"invalid TOML: {exc}"]
-    if contract is None:
-        contract = load_contract()
+    contract = contract or load_contract()
     sibling_repositories = {
-        _normalize(sibling.distribution): sibling.repo for sibling in contract.siblings
+        _normalize(name): repo
+        for name, repo in (s.split("=", 1) for s in contract.siblings)
     }
-    dev_tag_pattern = re.compile(contract.dev_tag_pattern)
+    dev_tag_pattern = re.compile(tag_pattern or first_party_ref.dev_tag_pattern())
     block = _uv_sources_block(text) or ""
     violations: list[str] = []
 
@@ -236,7 +188,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  - {msg}", file=sys.stderr)
         print(
             f"\nUse PyPI or a sibling's own https://github.com/{contract.github_org}/ "
-            f"repository with a tag matching {contract.dev_tag_pattern}. "
+            f"repository with a tag matching {first_party_ref.dev_tag_pattern()}. "
             "Branches, bare revisions and foreign git sources are refused. "
             "A temporary override requires a non-empty per-line annotation.",
             file=sys.stderr,

@@ -11,10 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import omnibase_core.nodes.node_routing_authority_check_compute.runtime_routing_authority_check as routing_authority
 import yaml
-from omnibase_core.nodes.node_routing_authority_check_compute.runtime_routing_authority_check import (
-    main as core_main,
-)
 
 from omnimarket.handlers.handler_contract_routing_overlay import (
     load_routing_contract,
@@ -256,7 +254,7 @@ def _check_routing_authority(root: Path) -> int:
     except (OSError, ValueError, KeyError, TypeError, yaml.YAMLError) as exc:
         print(f"routing-authority-gate: {exc}")
         return 1
-    return core_main(
+    return routing_authority.main(
         ["--repo-root", str(root), "--contract", str(overlay.relative_to(root))]
     )
 
