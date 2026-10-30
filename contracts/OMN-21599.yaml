@@ -88,4 +88,3 @@ dod_evidence:
           assert (decision["selected_lane"], decision["verdict"], decision["refusal"]) == ("lane-home", "operator", None), decision
           print("OMN-21599 published-source deploy readback: 5 admission decisions PASS")
           '
-    binds_ac: ["AC1"]
