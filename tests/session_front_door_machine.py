@@ -94,7 +94,11 @@ class Machine:
             "preflight_script": str(FIXTURES / "fake_session_preflight.py"),
             "preflight_overlay": str(self.overlay),
             "python": sys.executable,
-            "ledger_command": [sys.executable, str(FIXTURES / "fake_onex_ledger.py")],
+            "ledger_command": [
+                sys.executable,
+                "-S",
+                str(FIXTURES / "fake_onex_ledger.py"),
+            ],
         }
         body.update(spec)
         return self.run("start", claims, start=body)

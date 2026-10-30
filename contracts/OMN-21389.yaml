@@ -23,13 +23,22 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn21389-ac1-entry-team-profile
-  description: 'Fixture-level proof of the member path through the session-start entry node: a session the identity declaration does not positively match as the operator (member, unknown broker login, environment-only, no identity, missing declaration) runs the preflight with --profile team; a member session on a local bus mirror starts bus-member, its first CLAIM lands on the mirror under the member''s principal and session.env records SESSION_PRINCIPAL and SESSION_PROFILE; a refused or unknown append, a preflight blocker or a taken lane stops startup with nothing written; the operator''s session runs --profile operator with coordination_host required and its host mode as before. The read on the member''s own machine (handover section 1 steps 7 to 9: the team preflight receipt, the host-mode line and the step 9 reads of the first row and hook events) is the remaining lab proof and is not claimed here.'
+  description: 'Fixture-level proof of the member path through the session-start entry node: a session the identity declaration does not positively match as the operator (member, unknown broker login, environment-only, no identity, missing declaration) runs the preflight with --profile team, resolved from the installed onex plugin when none is named; a member session on a local bus mirror starts bus-member with the verdict reached before the CLAIM, its first CLAIM lands on the mirror under the member''s principal and session.env records SESSION_PRINCIPAL and SESSION_PROFILE; an unbound team session records no principal and is never bus-member. The read on the member''s own machine (handover section 1 steps 7 to 9: the team preflight receipt, the host-mode line and the step 9 reads of the first row and hook events) is the remaining lab proof and is not claimed here.'
   source: manual
   binds_ac:
   - AC1
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_session_front_door_compute/test_member_front_door_entry.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21389-ac1-entry-stops-operator
+  description: 'Where the entry node stops and the operator''s path: a refused or unknown CLAIM append, a preflight blocker (a member mirror without its archive), a taken lane or a missing ledger command stops startup with no session.env; a member machine with no bus writer starts detached, never bus-member; the operator''s session runs --profile operator with coordination_host required and reads coordination or detached exactly as before. The read on the member''s own machine (handover section 1 steps 7 to 9: the team preflight receipt, the host-mode line and the step 9 reads of the first row and hook events) is the remaining lab proof and is not claimed here.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_session_front_door_compute/test_front_door_entry_stops_and_operator.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21389-ac1-bus-member-receipt
   description: 'Fixture-level proof of the host-mode verdict and the kept required-check assertion: bus-member only when the current team receipt passes and each bus condition holds (bound lane login, declared host, bus transport with an executable append command, ledger mirror and archive, the writer principal is the bound login); a member mirror outside the registry path with ONEX_REMOTE_LANE unset passes while a bad transport or a missing archive fails; the team assertion requires the four ledger checks without coordination_host and validates profile, overlay hash, per-check success and overall OK, rejecting a stale overlay; the operator assertion still requires coordination_host and host mode reads coordination, detached or unknown as before. The read on the member''s own machine (handover section 1 steps 7 to 9: the team preflight receipt, the host-mode line and the step 9 reads of the first row and hook events) is the remaining lab proof and is not claimed here.'
