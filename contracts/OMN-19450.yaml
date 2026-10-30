@@ -131,3 +131,11 @@ dod_evidence:
         check_value: "uv run pytest tests/chains/fault_suite/test_bus_path_faults_omn19450.py tests/chains/fault_suite/test_five_faults_told_apart_omn19450.py tests/chains/fault_suite/test_local_path_faults_omn19450.py -q -n 0 --no-cov -m 'not kafka' -k 'told_apart or stop_reason_and_the_flag or finish_reason_length or pairwise_distinct'"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
+  - id: "dod-omn19450-ac1-amended-reading-in-contract"
+    description: "AC1 in the contract carries the 2026-09-25 amended reading: the truncated flag tells the truncation fault apart, and no claim of five distinct causes remains. Fails at the merge base, whose AC1 still reads five distinct causes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/chains/fault_suite/test_contract_ac1_amended_reading_omn19450.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
