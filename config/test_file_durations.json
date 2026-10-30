@@ -2044,6 +2044,7 @@
   "tests/test_omn21206_view_population_real_postgres.py": 4.99,
   "tests/test_omn21208_harness_terminal_savings_row.py": 0.8,
   "tests/test_omn21208_real_postgres_harness_savings_totals.py": 0.88,
+  "tests/test_omn21217_canonical_shape_restructure.py": 1.16,
   "tests/test_omn21217_credential_state_replay_postgres.py": 2.05,
   "tests/test_omn21217_credential_state_topic.py": 19.76,
   "tests/test_omn21217_overlay_state_topic.py": 0.38,

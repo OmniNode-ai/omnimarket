@@ -72,6 +72,7 @@ _MOVED = [
     (_PROTOCOL_DATABASE, "ProtocolProjectionAttestedWrite", _PROTOCOLS),
     (_PROTOCOL_DATABASE, "DatabaseAdapter", _PROTOCOLS),
     (_RESOLVER, "TENANT_CREDENTIALS_TABLE", _KEYS),
+    (_RESOLVER, "ProtocolTenantOverlayReader", _KEYS),
     (_RESOLVER, "_selected_key_model", _KEYS),
     (_RESOLVER, "_select_pool_secret_ref", _KEYS),
     (_RESOLVER, "_not_expired", _KEYS),

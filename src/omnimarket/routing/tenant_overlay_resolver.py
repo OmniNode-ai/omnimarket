@@ -53,12 +53,12 @@ from __future__ import annotations
 import logging
 import os
 from datetime import UTC, datetime
-from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict
 
 from omnimarket.nodes.node_delegation_routing_reducer.tenant_key_selection import (
     TENANT_CREDENTIALS_TABLE,
+    ProtocolTenantOverlayReader,
     _select_pool_secret_ref,
     _selected_key_model,
 )
@@ -132,17 +132,6 @@ class ModelTenantRoutingOverlayBackend(BaseModel):
     secret_ref: str | None = None
     timeout_ms: int | None = None
     max_tokens: int | None = None
-
-
-@runtime_checkable
-class ProtocolTenantOverlayReader(Protocol):
-    """Structural protocol satisfied by ``PostgresReadDatabaseAdapter`` and fakes."""
-
-    def query(
-        self, table: str, filters: dict[str, object] | None = None
-    ) -> list[dict[str, object]]:
-        """Return rows from ``table`` matching ``filters``."""
-        raise NotImplementedError
 
 
 def resolve_tenant_overlay_db() -> ProtocolTenantOverlayReader | None:
