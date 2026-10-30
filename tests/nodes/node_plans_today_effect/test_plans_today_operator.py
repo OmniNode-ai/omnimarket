@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
 
@@ -143,7 +144,8 @@ def test_row_state_owners_idle_and_no_github(tmp_path, monkeypatch):
         parts = list(argv) if not isinstance(argv, str) else argv.split()
         seen.append(parts)
         if Path(str(parts[0])).name == "gh" or any(
-            str(x) == "gh" or "api.github.com" in str(x) for x in parts
+            str(x) == "gh" or urlparse(str(x)).hostname == "api.github.com"
+            for x in parts
         ):
             raise AssertionError(f"GitHub client/API spawned: {parts}")
 

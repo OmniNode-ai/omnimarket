@@ -29,16 +29,16 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_team_identity_compute.handlers import (
-    HandlerTeamIdentity,
-    TeamIdentityError,
-    load_team_identity,
-)
-from omnimarket.nodes.node_team_identity_compute.models import (
+from omnimarket.models.team_identity import (
     ModelIdentityClaim,
     ModelTeamIdentityEntry,
     ModelTeamIdentityRequest,
     ModelTeamIdentityResult,
+)
+from omnimarket.nodes.node_team_identity_compute.handlers import (
+    HandlerTeamIdentity,
+    TeamIdentityError,
+    load_team_identity,
 )
 
 from .models.model_plans_today import ModelLinearSidecar
