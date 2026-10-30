@@ -18,7 +18,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "The planted cases: bound with a declared principal passes, binding removed refuses, principal removed refuses, a collaborator selecting the barred lane refuses, the operator's own flow is unchanged; plus the by-path load and the standard-library-only module level."
-    command: "uv run pytest tests/nodes/node_developer_lane_admission_compute -q --no-cov"
+    command: "uv run pytest tests/nodes/node_developer_lane_admission_compute/test_developer_lane_admission.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -29,6 +29,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_developer_lane_admission_compute -q -n 0 --no-cov"
+        check_value: "uv run pytest tests/nodes/node_developer_lane_admission_compute/test_developer_lane_admission.py -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
