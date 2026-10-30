@@ -1,74 +1,103 @@
 schema_version: 1.0.0
 ticket_id: OMN-17232
-title: Pre-push host authority comes from the private full table
-summary: 'Supporting overlay lane only: remove deployment rows and built-in host identities from the public
-  hook, use one committed private full table through dependency injection, and carry verified configuration
-  to remote guards. The ticket-wide runtime rollout acceptance criteria below are retained as obligations,
-  not declared satisfied by this hook change.'
+title: Lab placement reads the host table, and the pre-push host authority comes from the private full table
+summary: 'Bus placement read only the pool hosts'' capacity advertisements, so available: false in the lab host
+  table kept a host out of the ssh path alone. On 2026-10-29 a host marked unavailable ran seven or more units from
+  other lanes, one omnibase_core suite ending 128 failed (cause not read). A census of fifteen repositories on that
+  Ivy Bridge host (no AVX2) found one (a private repository) whose unit suite dies of the missing instruction set,
+  in a wheel; its rule is data of the private host table. A new pure node, node_lab_placement_compute, judges each
+  advertising host against the host table for one unit (a row of the table, not available: false, takes the unit''s
+  work kind and weight, has the capabilities the unit needs). A unit''s weight and needs are contract data of that
+  node and of the host table document (a unit of a repository that needs avx2 is not placed on a row with avx2:
+  false); a host row may carry its own memory bar (min_free_gb), job_kinds, max_weight and a measured speed. Lab-work
+  placement refuses on a table it cannot read. The omni lab-run shim calls the same rule through onex lab-work judge.
+  Second part, supporting overlay lane: Supporting overlay lane only: remove deployment rows and built-in host identities
+  from the public hook, use one committed private full table through dependency injection, and carry verified configuration
+  to remote guards. The ticket-wide runtime rollout acceptance criteria below are retained as obligations, not declared
+  satisfied by this hook change.'
 is_seam_ticket: false
-interface_change: false
-interfaces_touched: []
+interface_change: true
+interfaces_touched:
+- public_api
 requirements:
 - id: req-omn17232-ac1
-  statement: Every host in the table either runs a runtime brought up by C-a's recipe unmodified, or carries
-    a recorded, reasoned exclusion naming the constraint that excludes it. "Not done yet" is not an exclusion.
+  statement: Every host in the table either runs a runtime brought up by C-a's recipe unmodified, or carries a recorded,
+    reasoned exclusion naming the constraint that excludes it. "Not done yet" is not an exclusion.
   acceptance:
   - id: AC1
-    statement: Every host in the table either runs a runtime brought up by C-a's recipe unmodified, or
-      carries a recorded, reasoned exclusion naming the constraint that excludes it. "Not done yet" is
-      not an exclusion.
+    statement: Every host in the table either runs a runtime brought up by C-a's recipe unmodified, or carries a
+      recorded, reasoned exclusion naming the constraint that excludes it. "Not done yet" is not an exclusion.
 - id: req-omn17232-ac2
-  statement: Zero per-host deviations. Any deviation required is filed back against C-a's recipe and this
-    ticket waits — it does not absorb the exception.
+  statement: Zero per-host deviations. Any deviation required is filed back against C-a's recipe and this ticket
+    waits — it does not absorb the exception.
   acceptance:
   - id: AC2
-    statement: Zero per-host deviations. Any deviation required is filed back against C-a's recipe and
-      this ticket waits — it does not absorb the exception.
+    statement: Zero per-host deviations. Any deviation required is filed back against C-a's recipe and this ticket
+      waits — it does not absorb the exception.
 - id: req-omn17232-ac3
-  statement: Each host's EFFECT node shows a live consumer group on the broker lane its contract resolved
-    (memory `reference_node_liveness_verification`). One census, listing group / member / offset per host.
+  statement: Each host's EFFECT node shows a live consumer group on the broker lane its contract resolved (memory
+    `reference_node_liveness_verification`). One census, listing group / member / offset per host.
   acceptance:
   - id: AC3
-    statement: Each host's EFFECT node shows a live consumer group on the broker lane its contract resolved
-      (memory `reference_node_liveness_verification`). One census, listing group / member / offset per
-      host.
+    statement: Each host's EFFECT node shows a live consumer group on the broker lane its contract resolved (memory
+      `reference_node_liveness_verification`). One census, listing group / member / offset per host.
 - id: req-omn17232-ac4
-  statement: Each host survives a reboot with the runtime returning unattended — same bar as C-a AC2,
-    run per host, not extrapolated from one.
+  statement: Each host survives a reboot with the runtime returning unattended — same bar as C-a AC2, run per host,
+    not extrapolated from one.
   acceptance:
   - id: AC4
-    statement: Each host survives a reboot with the runtime returning unattended — same bar as C-a AC2,
-      run per host, not extrapolated from one.
+    statement: Each host survives a reboot with the runtime returning unattended — same bar as C-a AC2, run per
+      host, not extrapolated from one.
 - id: req-omn17232-ac5
-  statement: No host's broker address comes from an env var. A single grep-assert across all hosts, not
-    per-host eyeballing.
+  statement: No host's broker address comes from an env var. A single grep-assert across all hosts, not per-host
+    eyeballing.
   acceptance:
   - id: AC5
-    statement: No host's broker address comes from an env var. A single grep-assert across all hosts,
-      not per-host eyeballing.
+    statement: No host's broker address comes from an env var. A single grep-assert across all hosts, not per-host
+      eyeballing.
 - id: req-omn17232-ac6
-  statement: The Studio (`h200`) is added only after its load question is settled — either OMN-17226's
-    pre-push offload has moved heavy work off it, or the runtime's footprint on the Studio is measured
-    and recorded as acceptable. Not assumed.
+  statement: The Studio (`h200`) is added only after its load question is settled — either OMN-17226's pre-push
+    offload has moved heavy work off it, or the runtime's footprint on the Studio is measured and recorded as acceptable.
+    Not assumed.
   acceptance:
   - id: AC6
-    statement: The Studio (`h200`) is added only after its load question is settled — either OMN-17226's
-      pre-push offload has moved heavy work off it, or the runtime's footprint on the Studio is measured
-      and recorded as acceptable. Not assumed.
+    statement: The Studio (`h200`) is added only after its load question is settled — either OMN-17226's pre-push
+      offload has moved heavy work off it, or the runtime's footprint on the Studio is measured and recorded as
+      acceptable. Not assumed.
+- id: req-omn17232-unavailable
+  statement: 'A host the lab host table marks available: false, or does not list, is never placed on over the bus.'
+  acceptance:
+  - id: AC7
+    statement: 'AC7: placement refuses an advertising host the table marks unavailable -- falsifier: tests/unit/lab_work/test_lab_work_host_table.py
+      places a unit on the unavailable host that advertises 80 idle cores'
+- id: req-omn17232-capabilities
+  statement: A unit's needs, read from the placement contract, are matched against the capabilities each host row
+    declares.
+  acceptance:
+  - id: AC8
+    statement: 'AC8: an avx2 unit (a repository named by the table''s unit_needs) is refused on a host row with
+      avx2: false and placed on an avx2 host -- falsifier: the same test file places it on the no-avx2 host'
+  - id: AC9
+    statement: 'AC9: a light unit is placed on the small laptop''s row under its own min_free_gb bar and a standard
+      unit is refused there -- falsifier: the same test file refuses the light unit at 5.2 GB free, or places the
+      standard one'
 evidence_requirements:
 - kind: tests
-  description: Synthetic full-table fixtures cover the neutral shipped shape, no configured deployment,
-    concurrent placement, and refusal of uncommitted private state.
+  description: Synthetic full-table fixtures cover the neutral shipped shape, no configured deployment, concurrent
+    placement, and refusal of uncommitted private state.
   command: uv run pytest tests/scripts/test_prepush_host_table.py tests/scripts/test_pytest_full_suite_host_guard.py
     -q -p no:randomly
+- kind: tests
+  description: The host table judgement, its contract rules and the bus path through onex lab-work run.
+  command: uv run pytest tests/unit/lab_work/test_lab_work_host_table.py -q -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn17232-ac1-reviewed-private-host-authority
-  description: The host authority is deployment configuration. This supports the rollout prerequisite;
-    it does not claim the per-host runtime census or reasoned exclusions.
+  description: The host authority is deployment configuration. This supports the rollout prerequisite; it does not
+    claim the per-host runtime census or reasoned exclusions.
   source: manual
   checks:
   - check_type: test_passes
@@ -87,8 +116,8 @@ dod_evidence:
   binds_ac:
   - AC2
 - id: dod-omn17232-ac3-remote-identity-parity
-  description: Remote guard configuration is preserved across transport. This supporting check does not
-    prove a broker consumer-group census; AC3 remains pending.
+  description: Remote guard configuration is preserved across transport. This supporting check does not prove a
+    broker consumer-group census; AC3 remains pending.
   source: manual
   checks:
   - check_type: test_passes
@@ -97,21 +126,22 @@ dod_evidence:
   binds_ac:
   - AC3
 - id: dod-omn17232-ac4-committed-configuration
-  description: Committed configuration is reproducibly resolved and divergent state refuses. This supporting
-    check does not prove reboot survival; AC4 remains pending. Both shell and direct pytest entry points
-    refuse present unreadable, divergent or never-committed private tables before authorizing a run.
+  description: Committed configuration is reproducibly resolved and divergent state refuses. This supporting check
+    does not prove reboot survival; AC4 remains pending. Both shell and direct pytest entry points refuse present
+    unreadable, divergent or never-committed private tables before authorizing a run.
   source: manual
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/scripts/test_prepush_host_table.py -q -p no:randomly -k "test_a_committed_deployment_table_in_a_git_root_is_read
       or test_an_uncommitted_edit_to_the_deployment_table_is_refused or test_a_deployment_table_never_committed_in_a_git_root_is_refused"
   - check_type: test_passes
-    check_value: uv run pytest tests/scripts/test_pytest_full_suite_host_guard.py -q -p no:randomly -k "present_untrusted_private_table or no_configured_table_refusal"
+    check_value: uv run pytest tests/scripts/test_pytest_full_suite_host_guard.py -q -p no:randomly -k "present_untrusted_private_table
+      or no_configured_table_refusal"
   binds_ac:
   - AC4
 - id: dod-omn17232-ac5-neutral-without-config
-  description: No built-in host identity substitutes for deployment configuration. This supporting placement
-    check does not prove broker-address sourcing across runtime hosts; AC5 remains pending.
+  description: No built-in host identity substitutes for deployment configuration. This supporting placement check
+    does not prove broker-address sourcing across runtime hosts; AC5 remains pending.
   source: manual
   checks:
   - check_type: test_passes
@@ -120,9 +150,8 @@ dod_evidence:
   binds_ac:
   - AC5
 - id: dod-omn17232-ac6-offbox-placement
-  description: Synthetic off-box placement preserves prefer_remote and admits independent slots. This
-    supporting check does not settle the Studio load question or measure its runtime footprint; AC6 remains
-    pending.
+  description: Synthetic off-box placement preserves prefer_remote and admits independent slots. This supporting
+    check does not settle the Studio load question or measure its runtime footprint; AC6 remains pending.
   source: manual
   checks:
   - check_type: test_passes
@@ -131,13 +160,33 @@ dod_evidence:
   binds_ac:
   - AC6
 - id: dod-omn17232-deploy-overlay-smoke
-  description: 'Hosted-runner deploy smoke for this hook-only contribution: source the actual dispatcher
-    against a committed neutral fixture and an invented private full table, require independent high-slot
-    placement, reject an extra public capacity row, and refuse divergent private git state. No lab route
-    or private checkout is required. This check does not claim deployment of the ticket-wide runtime rollout.'
+  description: 'Hosted-runner deploy smoke for this hook-only contribution: source the actual dispatcher against
+    a committed neutral fixture and an invented private full table, require independent high-slot placement, reject
+    an extra public capacity row, and refuse divergent private git state. No lab route or private checkout is required.
+    This check does not claim deployment of the ticket-wide runtime rollout.'
   source: manual
   checks:
   - check_type: command
-    check_value: bash -n scripts/hooks/prepush_dispatch.sh scripts/hooks/prepush_smart_tests.sh && uv
-      run pytest tests/scripts/test_prepush_host_table.py -q -p no:randomly -k "neutral_disabled_row or
-      positive_control or private_high_slot or uncommitted_edit_to_the_deployment_table or never_committed"
+    check_value: bash -n scripts/hooks/prepush_dispatch.sh scripts/hooks/prepush_smart_tests.sh && uv run pytest
+      tests/scripts/test_prepush_host_table.py -q -p no:randomly -k "neutral_disabled_row or positive_control or
+      private_high_slot or uncommitted_edit_to_the_deployment_table or never_committed"
+- id: dod-omn17232-host-table-gate
+  description: The unavailable-host, avx2 and light-unit-on-h106 behaviours pass through the real contract rules
+    and the lab-work run command over the in-memory bus. Fails at the merge base, which has no host table judgement.
+  source: manual
+  binds_ac:
+  - AC7
+  - AC8
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/lab_work/test_lab_work_host_table.py -q -p no:randomly
+- id: dod-omn17232-deploy-placement-node-shipped
+  description: 'Deploy check: the pull request head carries the node_lab_placement_compute handler that judges hosts
+    against the host table. Reads the pushed pull request head through the GitHub content API, so it runs on the
+    hosted runner and fails where the handler is absent.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_placement_compute/handlers/handler_lab_placement.py?ref=refs/pull/4571/head'
+      --jq .content | base64 -d | grep -c 'class HandlerLabPlacement'
