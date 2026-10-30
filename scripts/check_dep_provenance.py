@@ -6,9 +6,9 @@
 
 A sibling git source is accepted without a suppression only when it names the
 package's own repository and uses a dev merge tag matching the contract.
-The rule and sibling list come from omnibase_core's packaged
-contracts/internal_sibling_pins.yaml (OMN-19998), shared with the Internal
-Sibling Pins check. Run this script in the project environment (uv run --frozen).
+The rule and sibling list are the rule rows of omnibase_core's first_party_ref
+validator contract (OMN-19998, OMN-21495). Run this script in the project
+environment (uv run --frozen).
 Branches, raw revisions and foreign repositories do not qualify. The existing
 per-line temporary override annotation remains supported.
 
@@ -25,10 +25,8 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-from omnibase_core.handlers.handler_internal_sibling_pins_cli import load_contract
-from omnibase_core.models.version_drift.model_internal_sibling_pins_contract import (
-    ModelInternalSiblingPinsContract,
-)
+from omnibase_core.validation.checker_first_party_ref import load_rule_parameters
+from omnibase_core.validation.validator_first_party_ref import ValidatorFirstPartyRef
 
 _GIT_SOURCE_KEYS = frozenset({"git", "rev", "branch", "tag"})
 
@@ -95,9 +93,12 @@ def _line_for_package(block: str, pkg: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-def find_violations(
-    text: str, contract: ModelInternalSiblingPinsContract | None = None
-) -> list[str]:
+def load_policy() -> dict[str, Any]:
+    """The rule rows of core's first_party_ref contract, read through its models."""
+    return load_rule_parameters(ValidatorFirstPartyRef().contract)
+
+
+def find_violations(text: str, policy: dict[str, Any] | None = None) -> list[str]:
     """Return diagnostic messages for each forbidden git-source override.
 
     An empty list means the file is clean (exit 0). A non-empty list means the
@@ -108,12 +109,13 @@ def find_violations(
         sources = tomllib.loads(text).get("tool", {}).get("uv", {}).get("sources", {})
     except tomllib.TOMLDecodeError as exc:
         return [f"invalid TOML: {exc}"]
-    if contract is None:
-        contract = load_contract()
+    policy = policy or load_policy()
+    pins = policy["first_party_source_not_dev_tag"]
+    siblings = policy["wrong_repo"].siblings
     sibling_repositories = {
-        _normalize(sibling.distribution): sibling.repo for sibling in contract.siblings
+        _normalize(d): r for d, _, r in (s.partition("=") for s in siblings)
     }
-    dev_tag_pattern = re.compile(contract.dev_tag_pattern)
+    dev_tag_pattern = re.compile(pins.tag_pattern)
     block = _uv_sources_block(text) or ""
     violations: list[str] = []
 
@@ -128,7 +130,7 @@ def find_violations(
                 continue
             git_keys = sorted(_GIT_SOURCE_KEYS & attrs.keys())
             if not git_keys or _is_sibling_dev_tag(
-                pkg, attrs, sibling_repositories, dev_tag_pattern, contract.github_org
+                pkg, attrs, sibling_repositories, dev_tag_pattern, pins.github_org
             ):
                 continue
             raw_line = _line_for_package(block, pkg)
@@ -162,14 +164,12 @@ def main(argv: list[str] | None = None) -> int:
 
     pyproject_path = Path(args.pyproject)
     if not pyproject_path.exists():
-        print(
-            f"ERROR: pyproject.toml not found: {pyproject_path}",
-            file=sys.stderr,
-        )
+        print(f"ERROR: pyproject.toml not found: {pyproject_path}", file=sys.stderr)
         return 1
 
-    contract = load_contract()
-    violations = find_violations(pyproject_path.read_text(), contract)
+    policy = load_policy()
+    pins = policy["first_party_source_not_dev_tag"]
+    violations = find_violations(pyproject_path.read_text(), policy)
 
     if violations:
         print(
@@ -180,18 +180,15 @@ def main(argv: list[str] | None = None) -> int:
         for msg in violations:
             print(f"  - {msg}", file=sys.stderr)
         print(
-            f"\nUse PyPI or a sibling's own https://github.com/{contract.github_org}/ "
-            f"repository with a tag matching {contract.dev_tag_pattern}. "
+            f"\nUse PyPI or a sibling's own https://github.com/{pins.github_org}/ "
+            f"repository with a tag matching {pins.tag_pattern}. "
             "Branches, bare revisions and foreign git sources are refused. "
             "A temporary override requires a non-empty per-line annotation.",
             file=sys.stderr,
         )
         return 1
 
-    print(
-        f"OK: no forbidden first-party git-source override in "
-        f"{pyproject_path} [tool.uv.sources]."
-    )
+    print(f"OK: no forbidden first-party git-source override in {pyproject_path}.")
     return 0
 
 

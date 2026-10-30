@@ -8,15 +8,14 @@ import os
 from pathlib import Path
 
 from omnibase_core.validation.hardcoded_model_config.handler import classify_path
-from omnibase_core.validation.hardcoded_model_config.runtime_hardcoded_model_config import (
-    load_policy,
-)
+
+from tests.helpers.hardcoded_model_policy import resolved_policy
 
 _ROOT = Path(__file__).resolve().parents[1]
 
 
 def _retired_findings(root: Path) -> list[str]:
-    policy = load_policy()
+    policy = resolved_policy()
     findings: list[str] = []
     # Walk source files directly: tests scrub inherited git plumbing, and the
     # guard must also work in a transplanted checkout without git metadata.
@@ -52,7 +51,7 @@ def test_no_retired_model_values() -> None:
 def test_retired_values_are_detected_in_comments_and_fixture_files(
     tmp_path: Path,
 ) -> None:
-    policy = load_policy()
+    policy = resolved_policy()
     for relative in ("src/fixture.py", "tests/fixture.yaml", "docs/fixture.md"):
         path = tmp_path / relative
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -66,5 +65,5 @@ def test_retired_values_are_detected_in_comments_and_fixture_files(
 def test_historical_records_keep_their_retired_values(tmp_path: Path) -> None:
     path = tmp_path / "evidence" / "fixture.yaml"
     path.parent.mkdir()
-    path.write_text("\n".join(load_policy().retired_values), encoding="utf-8")
+    path.write_text("\n".join(resolved_policy().retired_values), encoding="utf-8")
     assert _retired_findings(tmp_path) == []
