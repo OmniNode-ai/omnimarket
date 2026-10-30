@@ -4201,7 +4201,7 @@ dod_evidence:
     binds_ac: ["AC1742711", "AC1742712", "AC1742713"]
     checks:
       - check_type: "test_passes"
-        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_pr_duplicate_guard_compute -q --no-cov -p no:randomly --refuse-skips"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard.py tests/nodes/node_pr_duplicate_guard_compute/test_golden_chain_pr_duplicate_guard_compute.py -q --no-cov -p no:randomly --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-one-fix-one-pr-cli"
     description: "Against a real origin, canonical clone and lane checkout, pr-duplicate-check and pr-create refuse the second rename with exit 4, pass the unrelated branch, and exit 3 on a stale watcher, an unset ledger path or an unknown branch."
