@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_developer_lane_admission_compute
+version: "1.0.0"
+description: "Which lane a developer's hook events belong to, from the lane binding, and whether the developer's principal is declared on it"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_developer_lane_admission_compute: "omnimarket.nodes.node_developer_lane_admission_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "hooks", "lanes", "collaborators"]
+pack: "core"
+display_name: "Developer Lane Admission"
+node_role: "compute"
+tickets: ["OMN-21599"]
