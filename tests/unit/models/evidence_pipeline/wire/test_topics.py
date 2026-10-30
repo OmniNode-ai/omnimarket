@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import importlib
 import re
+from pathlib import Path
 
 import pytest
 
@@ -159,3 +160,56 @@ def test_constants_importable_via_wire_init() -> None:
     wire = importlib.import_module("omnimarket.models.evidence_pipeline.wire")
     for name in topics_module.__all__:
         assert hasattr(wire, name), f"{name!r} not re-exported from wire __init__"
+
+
+@pytest.mark.unit
+def test_topic_values_preserve_the_moved_wire_api() -> None:
+    assert {name: getattr(topics_module, name) for name in _EXPECTED_ALL} == {
+        "EVIDENCE_PIPELINE_START_CMD_V1": "onex.cmd.omnimarket.evidence-pipeline-start.v1",
+        "EVIDENCE_COLLECTED_EVT_V1": "onex.evt.omnimarket.evidence-collected.v1",
+        "EVIDENCE_EXTRACTED_EVT_V1": "onex.evt.omnimarket.evidence-extracted.v1",
+        "EVIDENCE_VALIDATED_EVT_V1": "onex.evt.omnimarket.evidence-validated.v1",
+        "EVIDENCE_OCC_PR_CREATED_EVT_V1": "onex.evt.omnimarket.evidence-occ-pr-created.v1",
+        "EVIDENCE_GAP_ANALYZED_EVT_V1": "onex.evt.omnimarket.evidence-gap-analyzed.v1",
+        "EVIDENCE_READINESS_SCORED_EVT_V1": "onex.evt.omnimarket.evidence-readiness-scored.v1",
+        "EVIDENCE_DASHBOARD_PROJECTED_EVT_V1": "onex.evt.omnimarket.evidence-dashboard-projected.v1",
+    }
+
+
+@pytest.mark.unit
+def test_node_topic_follows_its_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    node_dir = tmp_path / "node_example"
+    node_dir.mkdir()
+    contract = node_dir / "contract.yaml"
+    contract.write_text(
+        "event_bus:\n  publish_topics: [changed-topic]\n  subscribe_topics: [command-topic]\n"
+    )
+    monkeypatch.setattr(topics_module, "_NODES_ROOT", tmp_path)
+    assert topics_module._node_topic("node_example") == "changed-topic"
+    assert topics_module._node_topic("node_example", subscribe=True) == "command-topic"
+    for declarations in ("[]", "[first, second]"):
+        contract.write_text(f"event_bus:\n  publish_topics: {declarations}\n")
+        with pytest.raises(ValueError, match="expected exactly one topic"):
+            topics_module._node_topic("node_example")
+    contract.write_text("event_bus: {}\n")
+    with pytest.raises(ValueError, match="must be a string list"):
+        topics_module._node_topic("node_example")
+
+
+@pytest.mark.unit
+def test_legacy_topic_requires_a_declared_nonempty_string(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    contract = tmp_path / "contract.yaml"
+    monkeypatch.setattr(topics_module, "_LEGACY_CONTRACT", contract)
+    contract.write_text("legacy_topics: {example: preserved-topic}\n")
+    assert topics_module._legacy_topic("example") == "preserved-topic"
+    for declaration in ('""', "null", "42"):
+        contract.write_text(f"legacy_topics: {{example: {declaration}}}\n")
+        with pytest.raises(ValueError, match="must be a string"):
+            topics_module._legacy_topic("example")
+    contract.write_text("legacy_topics: {}\n")
+    with pytest.raises(ValueError, match="is missing"):
+        topics_module._legacy_topic("example")

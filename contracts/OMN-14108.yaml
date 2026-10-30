@@ -38,3 +38,41 @@ dod_evidence:
       -q -o addopts=''
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac: [AC2]
+- id: dod-omn14108-deploy-published-wire-command
+  description: |
+    Hosted source deployment probe: fetch the moved wire command from public GitHub
+    at the evaluated commit, construct its typed payload and round-trip it through
+    the installed omnimarket model. Also import the contract-backed topic exports.
+    Requires public HTTPS only. Fails before the move because the published module
+    is absent. This reads published source and installed package behavior, not a
+    rollout on a production host.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      published="$(mktemp)";
+      trap 'rm -f "$published"' EXIT;
+      curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/models/evidence_pipeline/wire/model_evidence_pipeline_command.py" --output "$published";
+      env PYTHONDONTWRITEBYTECODE=1 uv run --locked python - "$published" <<'PY'
+      import runpy
+      import sys
+      from pydantic import ValidationError
+      from omnimarket.models.evidence_pipeline.wire import ModelEvidencePipelineCommand
+      from omnimarket.models.evidence_pipeline.wire import topics
+      published_model = runpy.run_path(sys.argv[1])["ModelEvidencePipelineCommand"]
+      payload = dict(correlation_id="deploy-probe", validation_run_id="deploy-probe", ticket_id="OMN-14108", repository="omnimarket", source_commit_sha="1234567", requested_at="2026-10-30T00:00:00Z", trigger_surface="manual")
+      published_command = published_model.model_validate(payload)
+      installed_command = ModelEvidencePipelineCommand.model_validate_json(published_command.model_dump_json())
+      assert installed_command.model_dump() == published_command.model_dump()
+      try:
+          published_model.model_validate({**payload, "trigger_surface": "invalid"})
+      except ValidationError:
+          pass
+      else:
+          raise AssertionError("published command accepted an invalid trigger surface")
+      assert len(topics.__all__) == 8
+      assert len({getattr(topics, name) for name in topics.__all__}) == 8
+      print("published wire command round trip, invalid-trigger refusal and eight contract-backed topics passed")
+      PY
+    cwd: .
