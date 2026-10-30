@@ -56,11 +56,15 @@ dod_evidence:
   binds_ac:
   - AC3
 - id: dod-omn21478-deploy-published-imports
-  description: 'Hosted source deployment probe: the published duplication sweep handler and linear triage receipt gate on dev import the moved core node modules. Fails on the merge base, where both import the removed omnibase_core.handlers paths. Public HTTPS only; proves published source, not activation on a host.'
+  description: 'Hosted source deployment probe: the published duplication sweep handler and linear triage receipt gate at the evaluated checkout commit import the moved core node modules. Fails on the merge base, where both import the removed omnibase_core.handlers paths. Public HTTPS only; proves published source, not activation on a host.'
   source: manual
   checks:
   - check_type: command
-    check_value: gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_duplication_sweep/handlers/handler_duplication_sweep.py?ref=dev' --jq .content | base64 -d | grep -q 'node_cross_repo_boundary_check_effect.runtime_migration_conflicts' && gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_linear_triage/services/done_write_receipt_gate.py?ref=dev' --jq .content | base64 -d | grep -q 'node_done_write_receipt_gate_compute.handler_done_write_receipt_gate'
+    check_value: |
+      set -eu;
+      ref="$(git rev-parse HEAD)";
+      gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_duplication_sweep/handlers/handler_duplication_sweep.py?ref=${ref}" --jq .content | base64 -d | grep -q 'node_cross_repo_boundary_check_effect.runtime_migration_conflicts';
+      gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_linear_triage/services/done_write_receipt_gate.py?ref=${ref}" --jq .content | base64 -d | grep -q 'node_done_write_receipt_gate_compute.handler_done_write_receipt_gate'
     cwd: .
   binds_ac:
   - AC3
