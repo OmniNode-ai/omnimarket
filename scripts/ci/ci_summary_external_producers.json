@@ -1,0 +1,538 @@
+{
+  "advisory-job-gate / advisory-job-gate": {
+    "workflow": "advisory-job-gate.yml",
+    "events": [
+      "pull_request"
+    ],
+    "push_branches": []
+  },
+  "BYOK Catalogue No House Entry": {
+    "workflow": "byok-catalogue-no-house-entry.yml",
+    "events": [
+      "pull_request"
+    ],
+    "push_branches": []
+  },
+  "call-reject-skip-token / scan / reject-skip-gate-token": {
+    "workflow": "call-reject-skip.yml",
+    "events": [
+      "pull_request",
+      "merge_group"
+    ],
+    "push_branches": []
+  },
+  "repo-evidence / dod-verify": {
+    "workflow": "call-repo-evidence-gate.yml",
+    "events": [
+      "pull_request_target"
+    ],
+    "push_branches": []
+  },
+  "Canonical Inference Gate": {
+    "workflow": "canonical-inference-gate.yml",
+    "events": [
+      "pull_request"
+    ],
+    "push_branches": []
+  },
+  "handler-event-type-source": {
+    "workflow": "contract-topic-closure.yml",
+    "events": [
+      "pull_request",
+      "push",
+      "merge_group"
+    ],
+    "push_branches": [
+      "main"
+    ]
+  },
+  "local-ingress-alias-collision": {
+    "workflow": "contract-topic-closure.yml",
+    "events": [
+      "pull_request",
+      "push",
+      "merge_group"
+    ],
+    "push_branches": [
+      "main"
+    ]
+  },
+  "mixed-category-routing": {
+    "workflow": "contract-topic-closure.yml",
+    "events": [
+      "pull_request",
+      "push",
+      "merge_group"
+    ],
+    "push_branches": [
+      "main"
+    ]
+  },
+  "no-baseline-refreeze": {
+    "workflow": "contract-topic-closure.yml",
+    "events": [
+      "pull_request",
+      "push",
+      "merge_group"
+    ],
+    "push_branches": [
+      "main"
+    ]
+  },
+  "no-literal-event-type-in-tests": {
+    "workflow": "contract-topic-closure.yml",
+    "events": [
+      "pull_request",
+      "push",
+      "merge_group"
+    ],
+    "push_branches": [
+      "main"
+    ]
+  },
+  "key-grain-declared": {
+    "workflow": "contract-topic-closure.yml",
+    "events": [
+      "pull_request",
+      "push",
+      "merge_group"
+    ],
+    "push_branches": [
+      "main"
+    ]
+  },
+  "routing-input-model-fit": {
+    "workflow": "contract-topic-closure.yml",
+    "events": [
+      "pull_request",
+      "push",
+      "merge_group"
+    ],
+    "push_branches": [
+      "main"
+    ]
+  },
+  "contract-validation": {
+    "workflow": "contract-validation.yml",
+    "events": [
+      "pull_request",
+      "merge_group",
+      "workflow_dispatch"
+    ],
+    "push_branches": []
+  },
+  "delegation-health-check / Delegation Health Check": {
+    "workflow": "delegation-health-check.yml",
+    "events": [
+      "pull_request",
+      "merge_group"
+    ],
+    "push_branches": []
+  },
+  "Dep Provenance Gate": {
+    "workflow": "dep-provenance-gate.yml",
+    "events": [
+      "pull_request",
+      "merge_group"
+    ],
+    "push_branches": []
+  },
+  "deploy-gate / deploy-gate": {
+    "workflow": "deploy-gate.yml",
+    "events": [
+      "pull_request",
+      "merge_group"
+    ],
+    "push_branches": []
+  },
+  "Deployment Fact Gate": {
+    "workflow": "deployment-fact-gate.yml",
+    "events": [
+      "pull_request"
+    ],
+    "push_branches": []
+  },
+  "dispatcher-route-coverage": {
+    "workflow": "dispatcher-route-coverage.yml",
+    "events": [
+      "pull_request",
+      "push",
+      "merge_group"
+    ],
+    "push_branches": [
+      "main"
+    ]
+  },
+  "call / validate-docs": {
+    "workflow": "docs-validate.yml",
+    "events": [
+      "pull_request",
+      "push"
+    ],
+    "push_branches": [
+      "main",
+      "hotfix/**"
+    ]
+  },
+  "Git env scrub gate": {
+    "workflow": "git-env-scrub.yml",
+    "events": [
+      "pull_request"
+    ],
+    "push_branches": []
+  },
+  "Hostile Review Gate": {
+    "workflow": "hostile-reviewer.yml",
+    "events": [
+      "pull_request"
+    ],
+    "push_branches": []
+  },
+  "Hostile Reviewer (adversarial gate)": {
+    "workflow": "hostile-reviewer.yml",
+    "events": [
+      "pull_request"
+    ],
+    "push_branches": []
+  },
+  "imperative-contract-guard / Imperative Contract Guard": {
+    "workflow": "imperative-contract-guard.yml",
+    "events": [
+      "pull_request",
+      "push"
+    ],
+    "push_branches": [
+      "main"
+    ]
+  },
+  "internal-sibling-pins / Internal Sibling Pins": {
+    "workflow": "internal-sibling-pins.yml",
+    "events": [
+      "pull_request",
+      "merge_group",
+      "push"
+    ],
+    "push_branches": [
+      "dev",
+      "main"
+    ]
+  },
+  "main-target-guard": {
+    "workflow": "main-target-guard.yml",
+    "events": [
+      "pull_request"
+    ],
+    "push_branches": []
+  },
+  "No Coding Plan Endpoint": {
+    "workflow": "no-coding-plan-endpoint.yml",
+    "events": [
+      "pull_request"
+    ],
+    "push_branches": []
+  },
+  "No Faked Boundary Gate": {
+    "workflow": "no-faked-boundary.yml",
+    "events": [
+      "pull_request",
+      "merge_group"
+    ],
+    "push_branches": []
+  },
+  "node-drift-gate": {
+    "workflow": "node-drift-gate.yml",
+    "events": [
+      "pull_request",
+      "merge_group",
+      "workflow_dispatch"
+    ],
+    "push_branches": []
+  },
+  "node-migration-vendor-parity-gate": {
+    "workflow": "node-migration-vendor-parity-gate.yml",
+    "events": [
+      "pull_request"
+    ],
+    "push_branches": []
+  },
+  "non-dev-base-guard": {
+    "workflow": "non-dev-base-guard.yml",
+    "events": [
+      "pull_request"
+    ],
+    "push_branches": []
+  },
+  "CI Naming Convention": {
+    "workflow": "omni-standards-compliance.yml",
+    "events": [
+      "push",
+      "pull_request",
+      "workflow_dispatch"
+    ],
+    "push_branches": [
+      "main",
+      "hotfix/**"
+    ]
+  },
+  "Ecosystem Integration Validation": {
+    "workflow": "omni-standards-compliance.yml",
+    "events": [
+      "push",
+      "pull_request",
+      "workflow_dispatch"
+    ],
+    "push_branches": [
+      "main",
+      "hotfix/**"
+    ]
+  },
+  "Legacy Compatibility Check": {
+    "workflow": "omni-standards-compliance.yml",
+    "events": [
+      "push",
+      "pull_request",
+      "workflow_dispatch"
+    ],
+    "push_branches": [
+      "main",
+      "hotfix/**"
+    ]
+  },
+  "Omni Standards Gate": {
+    "workflow": "omni-standards-compliance.yml",
+    "events": [
+      "push",
+      "pull_request",
+      "workflow_dispatch"
+    ],
+    "push_branches": [
+      "main",
+      "hotfix/**"
+    ]
+  },
+  "Repository Structure Validation": {
+    "workflow": "omni-standards-compliance.yml",
+    "events": [
+      "push",
+      "pull_request",
+      "workflow_dispatch"
+    ],
+    "push_branches": [
+      "main",
+      "hotfix/**"
+    ]
+  },
+  "ONEX Change Control Schema Compatibility": {
+    "workflow": "onex-schema-compat.yml",
+    "events": [
+      "push",
+      "pull_request",
+      "workflow_dispatch"
+    ],
+    "push_branches": [
+      "main",
+      "hotfix/**"
+    ]
+  },
+  "pypi-pin-resolvability": {
+    "workflow": "pin-resolvability-gate.yml",
+    "events": [
+      "pull_request",
+      "merge_group",
+      "schedule",
+      "workflow_dispatch"
+    ],
+    "push_branches": []
+  },
+  "Architectural Compliance Lint": {
+    "workflow": "pr-arch-review.yml",
+    "events": [
+      "pull_request"
+    ],
+    "push_branches": []
+  },
+  "PR Arch Review Gate": {
+    "workflow": "pr-arch-review.yml",
+    "events": [
+      "pull_request"
+    ],
+    "push_branches": []
+  },
+  "Resolve Bot Token": {
+    "workflow": "pr-arch-review.yml",
+    "events": [
+      "pull_request"
+    ],
+    "push_branches": []
+  },
+  "pr-title / check-title": {
+    "workflow": "pr-title-check.yml",
+    "events": [
+      "pull_request"
+    ],
+    "push_branches": []
+  },
+  "Precommit Fail-Loud Gate": {
+    "workflow": "precommit-fail-loud-gate.yml",
+    "events": [
+      "push",
+      "pull_request",
+      "workflow_dispatch"
+    ],
+    "push_branches": [
+      "main",
+      "dev",
+      "hotfix/**"
+    ]
+  },
+  "Projection Exposure Drift Gate": {
+    "workflow": "projection-exposure-drift-gate.yml",
+    "events": [
+      "pull_request",
+      "merge_group"
+    ],
+    "push_branches": []
+  },
+  "public-repo-hygiene / public-repo-hygiene": {
+    "workflow": "public-repo-hygiene.yml",
+    "events": [
+      "pull_request"
+    ],
+    "push_branches": []
+  },
+  "public-repo-hygiene / deployment-config": {
+    "workflow": "public-repo-hygiene.yml",
+    "events": [
+      "pull_request"
+    ],
+    "push_branches": []
+  },
+  "receipt-honesty": {
+    "workflow": "receipt-honesty.yml",
+    "events": [
+      "pull_request",
+      "merge_group"
+    ],
+    "push_branches": []
+  },
+  "Leaked Literals Gate": {
+    "workflow": "reject-leaked-literals.yml",
+    "events": [
+      "pull_request",
+      "merge_group"
+    ],
+    "push_branches": []
+  },
+  "required-check-skip-guard / check-skip-vectors": {
+    "workflow": "required-check-skip-guard-caller.yml",
+    "events": [
+      "pull_request",
+      "merge_group",
+      "schedule"
+    ],
+    "push_branches": []
+  },
+  "reviewer-eval": {
+    "workflow": "reviewer-eval.yml",
+    "events": [
+      "pull_request"
+    ],
+    "push_branches": []
+  },
+  "Routing Tier Bindability": {
+    "workflow": "routing-tier-bindability.yml",
+    "events": [
+      "pull_request"
+    ],
+    "push_branches": []
+  },
+  "skill-mapping-input-coverage-gate": {
+    "workflow": "skill-mapping-input-coverage-gate.yml",
+    "events": [
+      "pull_request",
+      "workflow_dispatch"
+    ],
+    "push_branches": []
+  },
+  "Stale TODO Gate": {
+    "workflow": "stale-todo-gate.yml",
+    "events": [
+      "pull_request"
+    ],
+    "push_branches": []
+  },
+  "state-coverage-gate": {
+    "workflow": "state-coverage-gate.yml",
+    "events": [
+      "pull_request",
+      "merge_group",
+      "workflow_dispatch"
+    ],
+    "push_branches": []
+  },
+  "subscriber-dispatcher-resolution": {
+    "workflow": "subscriber-dispatcher-resolution.yml",
+    "events": [
+      "pull_request",
+      "push",
+      "merge_group"
+    ],
+    "push_branches": [
+      "main"
+    ]
+  },
+  "URL Authority Gate": {
+    "workflow": "url-authority-gate.yml",
+    "events": [
+      "pull_request",
+      "merge_group"
+    ],
+    "push_branches": []
+  },
+  "Enforce validator-requirements.yaml (OMN-13291)": {
+    "workflow": "validate-validator-requirements.yml",
+    "events": [
+      "push",
+      "pull_request",
+      "workflow_dispatch"
+    ],
+    "push_branches": [
+      "main",
+      "dev"
+    ]
+  },
+  "fsm-handler-drift": {
+    "workflow": "validator-fsm-handler-drift.yml",
+    "events": [
+      "push",
+      "pull_request"
+    ],
+    "push_branches": [
+      "main",
+      "develop",
+      "dev",
+      "hotfix/**"
+    ]
+  },
+  "validate": {
+    "workflow": "validator-runtime-profiles.yml",
+    "events": [
+      "push",
+      "pull_request"
+    ],
+    "push_branches": [
+      "main",
+      "develop",
+      "dev",
+      "hotfix/**"
+    ]
+  },
+  "wheel-content-parity": {
+    "workflow": "wheel-content-parity.yml",
+    "events": [
+      "pull_request",
+      "merge_group"
+    ],
+    "push_branches": []
+  }
+}

@@ -1,0 +1,86 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeWipAdmissionCompute
+#
+# The WIP admission: one caller asks to start work and the node answers admit or refuse
+# from the count of started-but-unlanded work (open non-draft pull requests plus started
+# tickets that a live CLAIM holds, once each) against the repository's limit and the
+# fleet's limit. Fix-forward work for a red, a repeat break or a landing blocker is
+# never refused, and creating a ticket is never refused by count. The limits and the
+# enforcing ruling come from the wip_admission overlay (overlay.py); the rule's other
+# numbers are config.wip_admission below. No protocol dependency, no clock read.
+name: "node_wip_admission_compute"
+contract_name: "node_wip_admission_compute"
+node_name: "node_wip_admission_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure compute deciding whether work may start: new work is refused while the
+  started-but-unlanded count is at the repository's or the fleet's limit; a verified
+  fix-forward is admitted, a ticket creation is always admitted, and an unreadable or
+  stale read refuses new work only.
+input_model:
+  name: "ModelWipAdmissionRequest"
+  module: "omnimarket.models.wip_admission"
+  description: "One caller, the work kind, the read, the overlay policy and the config."
+output_model:
+  name: "ModelWipAdmissionDecision"
+  module: "omnimarket.models.wip_admission"
+  description: "Admit or refuse, the reason, the counts judged and the printed line."
+handler:
+  module: "omnimarket.nodes.node_wip_admission_compute.handlers.handler_wip_admission"
+  class: "HandlerWipAdmission"
+  input_model: "omnimarket.models.wip_admission.ModelWipAdmissionRequest"
+  output_model: "omnimarket.models.wip_admission.ModelWipAdmissionDecision"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_wip_admission_compute.handlers.handler_wip_admission:HandlerWipAdmission"
+  handlers:
+    - operation: "wip_admission_decide"
+      handler:
+        name: "HandlerWipAdmission"
+        module: "omnimarket.nodes.node_wip_admission_compute.handlers.handler_wip_admission"
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the fill and the remote-lane runner's brief gate with the read they hold.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 2000
+replay:
+  deterministic: true
+config:
+  wip_admission:
+    limit_floor: 3
+    reading_max_age_minutes: 10
+    repeat_break_min: 2
+    started_states: ["In Progress", "In Review"]
+    ticket_pattern: "OMN-[0-9]+"
+    excluded_classes: ["held-excluded"]
+    red_classes: ["red"]
+    claim_quiet_hours: 2.0
+metadata:
+  transport_type: local
+  description: "Admits or refuses the start of work against the started-but-unlanded count."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-10-30"
+  tags:
+    - compute
+    - wip
+    - admission
+    - pure

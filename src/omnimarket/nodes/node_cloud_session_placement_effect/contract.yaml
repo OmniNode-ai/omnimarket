@@ -14,6 +14,13 @@ node_version: "0.1.0"
 description: >
   Decides cloud eligibility and account placement, maintains local account state,
   and renders or parses cloud session text. Callers perform network probes.
+# DATA (OMN-21373, operator 2026-10-29T17:47:11Z "use cloud to supplement local capacity"): the order the
+# runner tries places for --placement auto, read by the route action. A lab host that admits the lane comes
+# first; a cloud session is the overflow when none does. The runner holds no order of its own.
+placement_order:
+  auto: [lab, cloud]
+  lab: [lab]
+  cloud: [cloud]
 dependencies:
   - name: omnimarket.nodes.node_llm_delegation_call_effect
     dependency_type: internal

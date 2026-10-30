@@ -41,12 +41,12 @@ from omnimarket.lab_work.bus import (
     LabWorkCaller,
     LabWorkHost,
 )
-from omnimarket.lab_work.placement import (
+from omnimarket.nodes.node_lab_placement_compute.handlers import newest_per_host
+from omnimarket.nodes.node_lab_placement_compute.models import (
     DEFAULT_MAX_LOAD_PER_CORE,
-    EnumPlacementDecision,
     EnumRefusalReason,
-    newest_per_host,
 )
+from omnimarket.nodes.node_lab_placement_compute.runtime_lab_judge import judge_command
 from omnimarket.nodes.node_lab_work_unit_effect import (
     DEFAULT_ALLOWED_EXECUTABLES,
     DEFAULT_ALLOWED_OWNERS,
@@ -334,9 +334,11 @@ def run_command(
                     min_free_bytes=int(min_free_gb * 1024**3),
                     need_tools=need_tools,
                     only_host=only_host,
+                    repo=repo,
+                    kind=kind,
                 )
                 click.echo(placement.describe(), err=True)
-                if placement.decision is EnumPlacementDecision.REFUSED:
+                if not placement.placed:
                     click.echo(
                         "lab-work: no pool host can take this unit; not running it anywhere",
                         err=True,
@@ -384,13 +386,12 @@ def run_command(
     sys.exit(code)
 
 
-def main() -> None:
-    """``python -m omnimarket.lab_work.cli``: the same group without the onex CLI."""
-    lab_work_group()
+lab_work_group.add_command(judge_command)
 
 
+# ``python -m omnimarket.lab_work.cli``: the same group without the onex CLI.
 if __name__ == "__main__":
-    main()
+    lab_work_group()
 
 
 __all__ = [

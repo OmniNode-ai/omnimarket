@@ -7497,7 +7497,8 @@
         "node_pr_landing_github_effect",
         "node_pr_landing_orchestrator",
         "node_pr_lifecycle_orchestrator",
-        "node_pr_state_emit_effect"
+        "node_pr_state_emit_effect",
+        "node_wip_admission_compute"
       ],
       "target_schema": "omninode_internal",
       "writers": [

@@ -105,6 +105,7 @@ class ModelCloudSessionPlacementResult(BaseModel):
     error: str | None = None
     refusal: str | None = None
     lane_kind: str | None = None
+    order: list[str] = Field(default_factory=list)
     free: int = 0
     accounts: dict[str, int] = Field(default_factory=dict)
     caps: dict[str, dict[str, Any]] = Field(default_factory=dict)

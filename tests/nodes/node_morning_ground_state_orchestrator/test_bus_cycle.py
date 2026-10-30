@@ -268,7 +268,11 @@ async def drive(
 
 
 @pytest.fixture
-def bus_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+def bus_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # Placement admits only a host the lab host table lists (OMN-17232).
+    table = tmp_path / "lab_run_hosts.yaml"
+    table.write_text("hosts:\n  - name: pool-a\n    target: pool-a\n")
+    monkeypatch.setenv("ONEX_LAB_RUN_HOSTS", str(table))
     monkeypatch.setenv(OVERLAY_ENV, str(OVERLAY_FILE))
     monkeypatch.setenv("ONEX_ENVIRONMENT", "dev")
     monkeypatch.setattr(

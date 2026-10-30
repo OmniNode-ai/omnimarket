@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_team_identity_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Load the versioned team identity declaration from ONEX_SKILL_OVERLAY_ROOTS (exactly one operator entry and any number of member entries), refuse a malformed or conflicting declaration, and resolve a caller's authenticated identity to its entry; anything short of an authenticated operator match resolves to team restrictions with a diagnostic. The resolved source path and hash travel with the result.
+input_model:
+  name: ModelTeamIdentityRequest
+  module: omnimarket.nodes.node_team_identity_compute.models.model_team_identity
+output_model:
+  name: ModelTeamIdentityResult
+  module: omnimarket.nodes.node_team_identity_compute.models.model_team_identity
+handler:
+  module: omnimarket.nodes.node_team_identity_compute.handlers.handler_team_identity
+  class: HandlerTeamIdentity
+  input_model: omnimarket.nodes.node_team_identity_compute.models.model_team_identity.ModelTeamIdentityRequest
+  output_model: omnimarket.nodes.node_team_identity_compute.models.model_team_identity.ModelTeamIdentityResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_team_identity_compute.handlers.handler_team_identity:HandlerTeamIdentity
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerTeamIdentity
+      module: omnimarket.nodes.node_team_identity_compute.handlers.handler_team_identity
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation with the caller's identity claims.
+descriptor:
+  node_archetype: compute
+  purity: effectful  # reads the team identity overlay from disk, writes nothing
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local
+  description: Load the versioned team identity declaration from ONEX_SKILL_OVERLAY_ROOTS (exactly one operator entry and any number of member entries), refuse a malformed or conflicting declaration, and resolve a caller's authenticated identity to its entry; anything short of an authenticated operator match resolves to team restrictions with a diagnostic. The resolved source path and hash travel with the result.
+  author: OmniNode Team
+  created: '2026-10-29'
+  tags:
+  - compute
+  - team-identity-compute
+  - OMN-21382
+  related_tickets:
+  - OMN-21382

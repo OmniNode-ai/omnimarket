@@ -181,6 +181,7 @@ def test_inmemory_cli_uses_the_same_store_resolver_for_app_credentials(
     from omnimarket.github_landing.model_github_http_exchange import (
         ModelGithubHttpResponse,
     )
+    from omnimarket.handlers.scm import scm_cli
     from omnimarket.handlers.scm.scm_cli import scm_group
 
     seen = _resolver(
@@ -214,6 +215,8 @@ def test_inmemory_cli_uses_the_same_store_resolver_for_app_credentials(
         return Transport()
 
     monkeypatch.setattr(module, "UrllibGithubLandingTransport", transport)
+    # This test covers app credentials; the OMN-17427 duplicate guard has its own suite.
+    monkeypatch.setattr(scm_cli, "refuse_or_continue", lambda **_: None)
     answer = CliRunner().invoke(
         scm_group,
         [
