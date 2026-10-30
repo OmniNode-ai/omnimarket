@@ -44,7 +44,7 @@ class ModelCheckpointHookSpec(BaseModel):
     payload: dict[str, Any]
     entrypoint: str | None = None  # CLAUDE_CODE_ENTRYPOINT
     hook_mode: Literal["off", "force"] | None = None  # OMNI_SESSION_START_HOOK
-    omni_home: str | None = None
+    project_home: str | None = None
     landing_worker: bool = False  # LANDING_WORKER_TAG is set
     sessions_dir: str | None = None  # where */session.env live
 

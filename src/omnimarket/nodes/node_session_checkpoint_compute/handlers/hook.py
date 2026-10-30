@@ -67,16 +67,16 @@ def applies(
     *,
     entrypoint: str | None,
     hook_mode: str | None,
-    omni_home: str | None,
+    project_home: str | None,
 ) -> bool:
     if hook_mode == "force":
         return True
     if entrypoint != "cli":
         return False
     transcript = str(payload.get("transcript_path") or "")
-    if not omni_home or not transcript:
+    if not project_home or not transcript:
         return True  # cannot tell; record rather than drop
-    return Path(transcript).parent.name == project_slug(omni_home)
+    return Path(transcript).parent.name == project_slug(project_home)
 
 
 def _env_values(path: Path) -> dict[str, str]:

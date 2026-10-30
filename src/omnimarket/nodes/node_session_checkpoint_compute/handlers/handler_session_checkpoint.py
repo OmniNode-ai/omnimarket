@@ -113,7 +113,7 @@ class HandlerSessionCheckpoint:
                 spec_hook.payload,
                 entrypoint=spec_hook.entrypoint,
                 hook_mode=spec_hook.hook_mode,
-                omni_home=spec_hook.omni_home,
+                project_home=spec_hook.project_home,
             ):
                 return ModelSessionCheckpointResult(
                     **base,
