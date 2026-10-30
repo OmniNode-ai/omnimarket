@@ -4293,12 +4293,14 @@ jobs:
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           path: .ci-summary-head
-          sparse-checkout: scripts/ci/ci_summary_gate.py
+          sparse-checkout: |
+            scripts/ci/ci_summary_gate.py
+            scripts/ci/ci_summary_external_producers.json
           sparse-checkout-cone-mode: false
           persist-credentials: false
       - name: Restore head gate script
         if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
-        run: cp .ci-summary-head/scripts/ci/ci_summary_gate.py scripts/ci/ci_summary_gate.py
+        run: cp .ci-summary-head/scripts/ci/ci_summary_gate.py .ci-summary-head/scripts/ci/ci_summary_external_producers.json scripts/ci/
       - name: Poll run jobs and compute fail-closed CI Summary verdict
         working-directory: ${{ github.workspace }}
         env:

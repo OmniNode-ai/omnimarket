@@ -11,7 +11,7 @@
   unreadable command goes to the failure terminal).
 * :class:`LabWorkCaller` runs wherever the lane runs (``onex lab-work run``).
   It reads the pool's advertisements for one window, places the unit with the
-  pure :func:`omnimarket.lab_work.placement.place`, publishes it, and resolves
+  node handler :class:`omnimarket.nodes.node_lab_placement_compute.handlers.HandlerLabPoolPlace`, publishes it, and resolves
   it from the terminal whose ``parent_envelope_id`` is the command's own
   ``envelope_id``.
 
@@ -44,13 +44,7 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolLabRunBus,
     event_type_for,
 )
-from omnimarket.lab_work.placement import (
-    DEFAULT_MAX_LOAD_PER_CORE,
-    DEFAULT_MIN_FREE_BYTES,
-    EnumPlacementDecision,
-    ModelPlacement,
-    place,
-)
+from omnimarket.nodes.node_lab_placement_compute import handlers, models
 from omnimarket.nodes.node_lab_work_unit_effect.models import (
     EnumLabWorkUnitStatus,
     ModelHostCapacityAdvertisement,
@@ -493,8 +487,10 @@ class LabWorkCaller:
         topics: ModelLabWorkTopics | None = None,
         wait_slack_seconds: int = 300,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
+        placer: handlers.HandlerLabPoolPlace | None = None,
     ) -> None:
         self._bus = bus
+        self._placer = placer or handlers.HandlerLabPoolPlace()
         self._topics = topics or load_lab_work_topics()
         suffix = uuid.uuid4().hex[:12]
         base = derive_service_group_id("lab_work_client", service=GROUP_SERVICE)
@@ -566,19 +562,24 @@ class LabWorkCaller:
     def place(
         self,
         *,
-        max_load_per_core: float = DEFAULT_MAX_LOAD_PER_CORE,
-        min_free_bytes: int = DEFAULT_MIN_FREE_BYTES,
+        max_load_per_core: float = models.DEFAULT_MAX_LOAD_PER_CORE,
+        min_free_bytes: int = models.DEFAULT_MIN_FREE_BYTES,
         need_tools: tuple[str, ...] = (),
         only_host: str | None = None,
-    ) -> ModelPlacement:
-        return place(
-            self._ads,
+        repo: str = "",
+        kind: str = "other",
+    ) -> models.ModelPlacement:
+        request = models.ModelLabPoolPlaceRequest(
+            advertisements=tuple(self._ads),
             evaluated_at=self._now(),
+            repo=repo,
+            kind=kind,
             max_load_per_core=max_load_per_core,
             min_free_bytes=min_free_bytes,
             need_tools=need_tools,
             only_host=only_host,
         )
+        return self._placer.handle(request)
 
     def _terminal(self, topic: str) -> Callable[[ProtocolBusMessage], Awaitable[None]]:
         async def on_message(message: ProtocolBusMessage) -> None:
@@ -658,7 +659,6 @@ __all__ = [
     "DEFAULT_PROGRESS_SECONDS",
     "DEFAULT_TOOLS",
     "LAB_WORK_NODE",
-    "EnumPlacementDecision",
     "LabWorkCaller",
     "LabWorkHost",
     "ModelLabWorkCommandFailure",

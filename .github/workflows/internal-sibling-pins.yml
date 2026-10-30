@@ -1,0 +1,24 @@
+name: Internal Sibling Pins
+
+on:
+  pull_request:
+  merge_group:
+  push:
+    branches:
+      - dev
+      - main
+
+# OMN-19643: cancel only superseded pull request runs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+
+permissions:
+  contents: read
+
+jobs:
+  internal-sibling-pins:
+    uses: OmniNode-ai/omnibase_core/.github/workflows/internal-sibling-pins.yml@dev-20261028111658-97c5d1c2802a
+    with:
+      omnibase-core-ref: 97c5d1c2802acbdd13940c1a4ab1b07cf4fb7418

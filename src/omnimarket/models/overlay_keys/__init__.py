@@ -14,6 +14,7 @@ from omnimarket.models.overlay_keys.model_overlay_documents import (
     ModelRemoteLaneOverlay,
     ModelReposOverlay,
     ModelThroughputTickOverlay,
+    ModelUnitNeedsRule,
 )
 
 __all__ = [
@@ -28,4 +29,5 @@ __all__ = [
     "ModelRemoteLaneOverlay",
     "ModelReposOverlay",
     "ModelThroughputTickOverlay",
+    "ModelUnitNeedsRule",
 ]
