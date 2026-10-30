@@ -25,9 +25,7 @@ from pathlib import Path
 from typing import Any
 
 import omnibase_core.validation.validator_first_party_ref as first_party_ref
-from omnibase_core.models.validation.model_sibling_repo_parameters import (
-    ModelSiblingRepoParameters,
-)
+import omnibase_core.models.validation.model_sibling_repo_parameters as sibling_params
 from omnibase_core.validation.checker_first_party_ref import load_rule_parameters
 
 _GIT_SOURCE_KEYS = frozenset({"git", "rev", "branch", "tag"})
@@ -95,16 +93,12 @@ def _line_for_package(block: str, pkg: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-def load_contract() -> ModelSiblingRepoParameters:
+def load_contract() -> sibling_params.ModelSiblingRepoParameters:
     rules = load_rule_parameters(first_party_ref.ValidatorFirstPartyRef().contract)
-    return ModelSiblingRepoParameters.model_validate(rules["wrong_repo"])
+    return sibling_params.ModelSiblingRepoParameters.model_validate(rules["wrong_repo"])
 
 
-def find_violations(
-    text: str,
-    contract: ModelSiblingRepoParameters | None = None,
-    tag_pattern: str | None = None,
-) -> list[str]:
+def find_violations(text: str, tag_pattern: str | None = None) -> list[str]:
     """Return diagnostic messages for each forbidden git-source override.
 
     An empty list means the file is clean (exit 0). A non-empty list means the
@@ -115,11 +109,8 @@ def find_violations(
         sources = tomllib.loads(text).get("tool", {}).get("uv", {}).get("sources", {})
     except tomllib.TOMLDecodeError as exc:
         return [f"invalid TOML: {exc}"]
-    contract = contract or load_contract()
-    sibling_repositories = {
-        _normalize(name): repo
-        for name, repo in (s.split("=", 1) for s in contract.siblings)
-    }
+    pairs = (sibling.split("=", 1) for sibling in load_contract().siblings)
+    sibling_repositories = {_normalize(name): repo for name, repo in pairs}
     dev_tag_pattern = re.compile(tag_pattern or first_party_ref.dev_tag_pattern())
     block = _uv_sources_block(text) or ""
     violations: list[str] = []
@@ -176,7 +167,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     contract = load_contract()
-    violations = find_violations(pyproject_path.read_text(), contract)
+    violations = find_violations(pyproject_path.read_text())
 
     if violations:
         print(
