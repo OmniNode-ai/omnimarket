@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_team_identity_compute
+version: 1.0.0
+description: Load the versioned team identity declaration from ONEX_SKILL_OVERLAY_ROOTS (exactly one operator entry and any number of member entries), refuse a malformed or conflicting declaration, and resolve a caller's authenticated identity to its entry; anything short of an authenticated operator match resolves to team restrictions with a diagnostic. The resolved source path and hash travel with the result.
+pack: operator_tooling
+node_role: compute
+display_name: Team Identity Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_team_identity_compute: omnimarket.nodes.node_team_identity_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- team-identity-compute
+- OMN-21382

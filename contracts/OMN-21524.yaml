@@ -1,0 +1,82 @@
+schema_version: 1.0.0
+ticket_id: OMN-21524
+title: 'omnimarket: switch to the canonical-file-shape hook with a ticketed first-install baseline'
+summary: omnimarket runs the canonical-file-shape hook (rule group file-shape) from omnibase_core at a dev-merge tag
+  that carries the node entry and the whole-tree rules. The findings those rules add at the switch commit sit in a
+  ticketed shrink-only burn-down file, .onex_ratchets/canonical_file_shape_burndown_baseline.txt, beside the existing
+  shrink-only baseline, which is not edited. A canary test runs the published entry on throwaway trees.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-file-shape-switch
+  statement: The hook is wired at an omnibase_core dev-merge tag, passes on the whole tree, and the burn-down file holds exactly the findings the new rules report at the switch commit.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the hook is wired at the omnibase_core tag and passes on the whole tree with a baseline of exactly the measured findings, this ticket named in its header -- falsifier: `uv run pre-commit run canonical-file-shape --all-files` exits 0 and `grep -c -v ''^#'' .onex_ratchets/canonical_file_shape_baseline.txt` prints the count measured at the switch commit'
+  - id: AC2
+    statement: 'AC2: a canary commit adding one new unbound handler is refused with handler_outside_node and a canary adding one baseline line for an existing refused file is refused with baseline-growth -- falsifier: `uv run pytest` of the repository''s canary test passes on both cases'
+  - id: AC3
+    statement: 'AC3: on 2026-12-10 the baseline holds zero entries -- falsifier: `grep -c -v ''^#'' .onex_ratchets/canonical_file_shape_baseline.txt` prints 0'
+evidence_requirements:
+- kind: tests
+  description: Canary test of the published canonical-file-shape entry on throwaway trees.
+  command: uv run pytest tests/ci/test_canonical_file_shape_burndown_omn21524.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21524-ac1-hook-whole-tree
+  description: AC1 runs the entry omnibase_core publishes for canonical-file-shape, at the tag the committed config pins, over the whole tree of the committed head (it must exit 0), and reads the burn-down file header for this ticket and the entry count measured at the switch commit (276). The existing shrink-only baseline is unchanged against the base.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      uv run --no-project --with 'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261029151319-6e0a5eee541a' python -m omnibase_core.nodes.node_canonical_file_shape_check_compute.runtime_canonical_file_shape_check --rules file-shape --head HEAD
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: |
+      set -eu;
+      head -1 .onex_ratchets/canonical_file_shape_burndown_baseline.txt | grep -q '^# Burn-down ticket: OMN-21524';
+      test "$(grep -c -v '^#' .onex_ratchets/canonical_file_shape_burndown_baseline.txt)" = 276;
+      grep -q 'rev: dev-20261029151319-6e0a5eee541a' .pre-commit-config.yaml;
+      git diff --quiet origin/dev...HEAD -- .onex_ratchets/canonical_file_shape_baseline.txt
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_canonical_file_shape_burndown_omn21524.py -k committed_burndown -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21524-ac2-canary
+  description: AC2 runs the published entry on throwaway git trees at the tag the committed config pins. A listed unbound handler passes (positive control), a new unbound handler is refused as handler_outside_node, and a burn-down line added for an existing refused file is refused as baseline-growth.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_canonical_file_shape_burndown_omn21524.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21524-ac3-zero-by-target
+  description: AC3 is dated. Before 2026-12-10 the check requires the burn-down file to still name this ticket and to hold no more than the 276 entries installed; on or after 2026-12-10 it requires both baseline files to hold zero entries.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      burn=$(grep -c -v '^#' .onex_ratchets/canonical_file_shape_burndown_baseline.txt || true);
+      base=$(grep -c -v '^#' .onex_ratchets/canonical_file_shape_baseline.txt || true);
+      if [ "$(date -u +%F)" \< "2026-12-10" ]; then
+        head -1 .onex_ratchets/canonical_file_shape_burndown_baseline.txt | grep -q '^# Burn-down ticket: OMN-21524';
+        test "$burn" -le 276;
+      else
+        test "$burn" = 0;
+        test "$base" = 0;
+      fi
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_canonical_file_shape_burndown_omn21524.py -k committed_burndown -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket

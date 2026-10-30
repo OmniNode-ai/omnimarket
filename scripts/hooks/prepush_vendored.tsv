@@ -98,50 +98,29 @@
 # empty diff, with a positive control (the same stripper against the PREVIOUS
 # vendored copy) returning a 37-line diff.
 #
-# OMN-18027 RE-VENDOR, on top of everything above. Takes upstream `116b49143`
-# (#3246) as amended by `6cf0c1167` (#3249): the OMN-17996 private placement
-# overlay. `ssh_target`, `uv_abs_path` and `workroot` read `@private` in the
-# committed table; the two path columns hydrate at read time from the private
-# workspace repository, and the transport target resolves to the row's
-# committed `hostname` so an unversioned file can never redirect where a git
-# bundle is copied.
-#
-# ONE EXECUTABLE DIVERGENCE, and it is forced rather than chosen. Upstream
-# hardcodes ITS OWN overlay filename in the library
-# (`PREPUSH_HOST_OVERLAY_REL="config/lab/prepush_hosts.<upstream>.overlay.
-# tsv"`). This copy may not: the fork guard forbids naming a vendoring repo
-# inside the shared picker. That guard also names the supported seam --
-# per-repo behavior is DATA the library reads out of the host table -- so this
-# copy declares the path on a `#!placement-overlay` directive line in
-# prepush_hosts.tsv and resolves it with `prepush_overlay_rel()`. The resolved
-# path is byte-identical to the one upstream writes, and the declaration
-# inherits the table's protections: read from HEAD, refused on working-tree
-# divergence, so an uncommitted edit cannot re-point the overlay either.
-#
-# MEASURED, not asserted: comments and blank lines stripped from both files,
-# upstream `6cf0c1167` has 969 executable lines and this copy 982; the diff is
-# 29 lines and is EXACTLY the block above -- the directive constant, the
-# `prepush_overlay_rel` helper, and the four lines in `prepush_overlay_path`
-# that read `rel` instead of the constant. No other executable line differs.
-# The same identical divergence is carried by omnibase_core (OMN-18025), for
-# the same reason and in the same shape.
-#
-# RE-SYNC CONDITION: the outstanding delta is that one block, recorded above.
-# The next update is otherwise a plain verbatim re-take whenever upstream
-# moves. Re-copy the file, update BOTH
-# fields in the row below, and re-run tests/scripts/test_prepush_host_table.py
-# plus tests/scripts/test_prepush_remote_leg_policy.py. If upstream's wording
-# still names a repo at that point, the fork guard is the authority -- raise it
-# upstream, never silence the guard to make the digests match.
-#
-# OMN-19743: config-owner resolution is ported from upstream 7031f3dcbe004752c09aa47544cb1edc76448a6c.
-# The library retains the earlier 6cf0c1167 base and its documented repo-neutral
-# directive adaptation. This is a focused resolver port, not a whole-library
-# re-vendor: capacity/Docker and other unrelated upstream changes are not taken.
-# The row's upstream commit and branch identify the exact resolver patch donor;
-# sha256 identifies the complete adapted file shipped here.
+# OMN-17232 DIVERGENCE: ported the private full-table design from
+# omnibase_core commit 3bb4c76c3 (OMN-20939), retaining the upstream bases below.
+# prepush_dispatch.sh appends the caller's PREPUSH_PRIVATE_TABLE_REL through the
+# workspace-config resolver, reads committed rows in a git root and refuses
+# divergence, including newline-only edits. The old placement-only hydration
+# is removed. Equal tier/load candidates prefer the lowest slot index, so
+# the first lane takes slot 1 and a concurrent lane can take slot 2. Verified rows travel
+# beside the bundle; the wrapper's eleventh positional declares their path and
+# ONEX_WORKSPACE_CONFIG_ROOT points the remote guard at the transferred copy.
+# pytest_full_suite_host_guard.py reads the same full table, has no built-in
+# hostname, and explains how to configure a table when none is available. It
+# owns all table reads, shared by the dispatcher through its CLI. The existing
+# shell workspace-owner resolver remains the single source of the owner fallback.
+# Present unreadable, divergent or uncommitted private tables
+# refuse with a specific reason in both entry points, before grants are spent.
+# The duplicated shell reader and legacy placement hydration are removed.
+# Local temporary files use an explicit TMPDIR template on macOS and Linux.
+# The earlier config-owner resolver port and repository-neutral shared-library
+# wording remain. A re-sync from upstream MUST re-apply these changes and run
+# the host-table, direct guard and remote-leg tests. The upstream commit column
+# records the original upstream donor, not an assertion of byte identity.
 #
 #path	upstream_repo	upstream_path	upstream_commit	upstream_branch	sha256	copied_at
-scripts/hooks/prepush_dispatch.sh	OmniNode-ai/omnibase_infra	scripts/hooks/prepush_dispatch.sh	7031f3dcbe004752c09aa47544cb1edc76448a6c	refs/pull/4630/head	5f33f80373d7f83baeb987da205ea2dca8585ceb4a604c097c1667b1b3beba3c	2026-10-06
+scripts/hooks/prepush_dispatch.sh	OmniNode-ai/omnibase_infra	scripts/hooks/prepush_dispatch.sh	7031f3dcbe004752c09aa47544cb1edc76448a6c	refs/pull/4630/head	a64a0fa9d451d76b494ac39303346fc1aaf367a57dad7ef434bb67bb02232521	2026-10-06
 scripts/hooks/prepush_override_grant.py	OmniNode-ai/omnibase_infra	scripts/hooks/prepush_override_grant.py	eddf4a9d20a294bed00a3c7e73ab14f73f2c6911	dev	6777c592a944fe1964a195bf088c00c7747551e5e9a20705ca49d9e59dbc3f3c	2026-09-01
-scripts/hooks/pytest_full_suite_host_guard.py	OmniNode-ai/omnibase_infra	scripts/hooks/pytest_full_suite_host_guard.py	eddf4a9d20a294bed00a3c7e73ab14f73f2c6911	dev	6047c156734805553bf23d2fd7a1e14bd67b8c23bcf69acbaac0228536347e49	2026-09-07
+scripts/hooks/pytest_full_suite_host_guard.py	OmniNode-ai/omnibase_infra	scripts/hooks/pytest_full_suite_host_guard.py	eddf4a9d20a294bed00a3c7e73ab14f73f2c6911	dev	a1a1d0293577d948161fbbe745463b7b79b2cda73e1ef34c3172484c92c4a25b	2026-09-07

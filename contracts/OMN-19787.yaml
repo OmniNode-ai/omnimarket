@@ -1,44 +1,39 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-19787"
-title: "Serve the newest acceptance-eval run on the first page of its exposure"
-summary: "The acceptance-eval projection exposure selects its top rows by observed_at DESC over the whole row set when no since cursor is given, so the dashboard's first page carries the latest run for every class. A focused test proves the first page and that since still walks the cursor."
+title: "Delegation evals: measure the acceptance gate's false-pass rate per task class, standing, as nodes and a projection"
+summary: "The ticket now carries AC1 to AC4. The requirements declare them with the ticket's text, one appended item retires every merged claim on the deleted AC5 to AC7 and supersedes the earlier AC1 to AC4 claims, which proved other changes under the same labels, and four new items bind the ticket's own criteria: the eval run's recorded arm per class, the check register, the acceptance-eval exposure the dashboard panel reads, and the rollup's eval-line gate."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-  - id: "req-acceptance-eval-latest-first"
+  - id: "req-omn19787-eval-run"
     statement: |-
-      The acceptance-eval exposure must serve the newest run first and keep the since cursor walk.
+      An eval run over a labelled manifest on the dev lane writes per-class results whose recorded-verdict arm reproduces the committed recorded-arm counts per class.
     acceptance:
       - id: "AC1"
         statement: |-
-          AC1: the latest acceptance-eval run has every class on the first page of its exposure -- falsifier: uv run pytest tests/unit/projection/test_omn19787_acceptance_eval_latest_first.py -q -k latest_run_every_class
+          AC-1: an eval run over a labelled manifest on the dev lane writes per-class results, and its recorded-verdict arm reproduces the slice-40 task 40.5 counts per class -- falsifier: select count(*) from delegation_eval_results for the run on the dev lane returns 0, or a class count differs from the committed 40.5 report
+  - id: "req-omn19787-check-register"
+    statement: |-
+      Every class of the plan's section 2.3 has a declared false-pass range and every delegation gate check has a check-register entry.
+    acceptance:
       - id: "AC2"
         statement: |-
-          AC2: a read with since still walks the cursor and is not reordered by the latest-first selection -- falsifier: uv run pytest tests/unit/projection/test_omn19787_acceptance_eval_latest_first.py -q -k since_still_walks
-  - id: "req-rubric-declared-answers"
+          AC-2: every class of the plan's section 2.3 has a declared false-pass range and every delegation gate check has a check-register entry -- falsifier: uv run python -m omnimarket.ranges check-register in omnimarket exits non-zero, or a class or gate check has no entry
+  - id: "req-omn19787-dashboard-panel"
     statement: |-
-      The review and test class rubrics must decide an answer against what its prompt declares, and the lab run must re-measure named classes only.
+      The dashboard panel shows every class of the latest eval run with its false-pass bound.
     acceptance:
       - id: "AC3"
         statement: |-
-          AC3: declared_format_met decides a single-word reply, a JSON field with declared alternatives and facts echoed exactly as given, and an unreadable Facts object never passes -- falsifier: uv run pytest tests/nodes/node_delegation_rubric_check_compute/test_rubric_checks.py -q -k "single_word or json_decision"
+          AC-3: the dashboard panel shows every class of the latest eval run with its false-pass bound -- falsifier: npx vitest run server/__tests__/postgres-projection-reader.test.ts in omnidash, and the dev dashboard row count against select count(distinct task_class) for the latest run
+  - id: "req-omn19787-rollup-eval-line"
+    statement: |-
+      The outcome rollup never suppresses a tier for a class whose false-pass line is not met.
+    acceptance:
       - id: "AC4"
         statement: |-
-          AC4: lab_run run --task-class keeps only the named task classes -- falsifier: uv run pytest tests/nodes/node_delegation_eval_orchestrator/test_lab_run_task_class.py -q -k task_class_keeps_only
-  - id: "req-ground-truth-labels"
-    statement: |-
-      A delegated run must be labelled from evidence the acceptance gate never produced, so the gate's false-pass rate is measured against ground truth.
-    acceptance:
-      - id: "AC5"
-        statement: |-
-          AC5: a code run is adequate only when a hidden test the delegated model never saw passes every case, a document run only when every checklist item is met by a scorer that is not the delegated model, and the labelled items count the gate's false passes per class -- falsifier: uv run pytest tests/nodes/node_delegation_ground_truth_label_compute/test_ground_truth_label.py -q
-      - id: "AC6"
-        statement: |-
-          AC6: every golden code task's reference passes its hidden test, its control fails it, and no hidden-test line appears in the task prompt -- falsifier: uv run pytest tests/nodes/node_delegation_ground_truth_label_compute/test_golden_hidden_test_tasks.py -q
-      - id: "AC7"
-        statement: |-
-          AC7: the summarization, planning, reasoning and research task classes each hold eight golden tasks with four to six yes-or-no checklist items, unique task ids across the four sets, and a last item that tests for invented content -- falsifier: uv run pytest tests/nodes/node_delegation_ground_truth_label_compute/test_golden_hidden_test_tasks.py -q -k eight_tasks_for_each_class
+          AC-4: the outcome rollup never suppresses a tier for a class whose false-pass line is not met -- falsifier: uv run pytest tests/unit/delegation -k eval_not_met_is_unknown -v in omnimarket
 evidence_requirements:
   - kind: "tests"
     description: "The first page of the exposure carries the newest run for every class."
@@ -61,6 +56,19 @@ evidence_requirements:
   - kind: "tests"
     description: "Four more task classes carry golden checklist tasks that a scorer other than the delegated model can judge."
     command: "uv run pytest tests/nodes/node_delegation_ground_truth_label_compute/test_golden_hidden_test_tasks.py -q -k eight_tasks_for_each_class"
+  - kind: "tests"
+    description: "AC1: the eval run's recorded arm reproduces the dev-lane rows and the committed first-run table per class."
+    command: "uv run pytest tests/nodes/node_delegation_eval_run_orchestrator/test_run_terminals.py -q --no-cov -k \"omn19787 or reproduces_the_label_set_and_run_id or recorded_arm_matches_the_report\""
+  - kind: "tests"
+    description: "AC2: every section 2.3 class has a declared false-pass range and every gate check a gate entry, and the register CLI exits zero."
+    command: "uv run pytest tests/test_omn19320_check_register.py -q --no-cov -k \"omn19787 or RequiredDelegationAcceptance\""
+  - kind: "tests"
+    description: "AC3, omnimarket half: the exposure's first page carries every class of the latest run with its false-pass bound."
+    command: "uv run pytest tests/unit/projection/test_omn19787_acceptance_eval_latest_first.py -q --no-cov -k \"latest_run_every_class\""
+  - kind: "tests"
+    description: "AC4: a class whose line is not met never suppresses a tier."
+    command: "uv run pytest tests/unit/delegation/test_routing_eval_line_gate_omn19797.py -k eval_not_met_is_unknown -v"
+
 emergency_bypass:
   enabled: false
   justification: ""
@@ -153,3 +161,166 @@ dod_evidence:
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegation_ground_truth_label_compute/golden/checklist_tasks_research.v1.yaml?ref=$(git rev-parse HEAD)" --jq '.content | gsub("\n"; "") | @base64d | contains("task_class: research")' | grep -qx true
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC7"]
+  - id: "dod-omn19787-ac1-eval-run-recorded-arm-per-class"
+    description: >-
+      Ticket AC-1, repository half. The eval run handler over the committed content-free verdicts of the dev-lane run
+      735b18b8-734e-5c7d-bc00-47926ac70963 (manifest 4960f691...a5c6, a labelled manifest) writes one recorded-arm results
+      row for each of its nine classes, and each row's accepted n, false passes, refused n, false refusals and false-pass
+      decision bound equal the dev-lane delegation_eval_results row of that class, read read-only on 2026-10-29, and the
+      published table of reports/2026-09-30-delegation-gate-false-pass-first-run.md. No slice-40 task 40.5 report has been
+      committed (that report says so under Limits), so the reproduction is against this committed recorded-arm baseline,
+      not a 40.5 table. The dev-lane half is the local-gate readback dod-omn19787-ac1-dev-lane-rows-readback.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: >-
+          uv run pytest tests/nodes/node_delegation_eval_run_orchestrator/test_run_terminals.py -q --no-cov -p no:cacheprovider
+          -k "omn19787 or reproduces_the_label_set_and_run_id or recorded_arm_matches_the_report"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn19787-ac1-dev-lane-rows-readback"
+    description: >-
+      Ticket AC-1, dev-lane half, read on 2026-10-29: delegation_eval_results holds nine recorded-arm stratum-all rows for
+      eval run 735b18b8-734e-5c7d-bc00-47926ac70963, one per class, and every class's accepted n, false passes, refused n
+      and false refusals equal the committed first-run table (60 false passes of 178 accepted, 25 false refusals of 90
+      refused). The query raises on a zero row count or any class that differs, and runs in a read-only transaction.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          ssh -o BatchMode=yes -o ConnectTimeout=10 "${DELEGATION_DEV_SSH_TARGET:?set the dev-lane SSH target}" 'docker exec -e PGOPTIONS="-c default_transaction_read_only=on" -i omnibase-infra-postgres psql -X -q -v ON_ERROR_STOP=1 -U postgres -d omnidash_analytics' <<'SQL'
+          DO $$
+          DECLARE n int; matched int;
+          BEGIN
+            SELECT count(*) INTO n FROM delegation_eval_results
+             WHERE eval_run_id = '735b18b8-734e-5c7d-bc00-47926ac70963' AND arm = 'recorded' AND stratum = 'all';
+            IF n <> 9 THEN RAISE EXCEPTION 'expected 9 recorded-arm class rows, found %', n; END IF;
+            SELECT count(*) INTO matched FROM delegation_eval_results r
+              JOIN (VALUES ('code_review',20,16,6,3), ('document',20,10,12,6), ('planning',20,10,12,4),
+                           ('research',20,7,8,2), ('review',20,7,12,0), ('reasoning',19,4,4,2),
+                           ('summarization',20,3,12,4), ('code_generation',19,2,12,3), ('test',20,1,12,1))
+                AS v(task_class, accepted_n, false_pass_count, refused_n, false_refusal_count)
+                ON r.task_class = v.task_class
+               AND (r.accepted_n, r.false_pass_count, r.refused_n, r.false_refusal_count)
+                 = (v.accepted_n, v.false_pass_count, v.refused_n, v.false_refusal_count)
+             WHERE r.eval_run_id = '735b18b8-734e-5c7d-bc00-47926ac70963' AND r.arm = 'recorded' AND r.stratum = 'all';
+            IF matched <> 9 THEN RAISE EXCEPTION 'only % of 9 classes match the committed counts', matched; END IF;
+          END $$;
+          SQL
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19787-ac2-check-register"
+    description: >-
+      Ticket AC-2. The check-register CLI over the committed register exits zero; each of the plan's section 2.3 classes
+      (test, document, summarization, research, planning, reasoning, code_generation, written out in the test) has a
+      declared false-pass range on slice 40's 10% line that blocks that class's routing read; every check name of the
+      live quality gate inventory has a gate entry; and the gate-eval compute reports each class against the register's
+      floor, confidence and n. The required-entry tests refuse a register missing any one entry, naming it.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run python -m omnimarket.ranges check-register"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: >-
+          uv run pytest tests/test_omn19320_check_register.py -q --no-cov -p no:cacheprovider
+          -k "omn19787 or RequiredDelegationAcceptance"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn19787-ac3-latest-run-classes-and-bound"
+    description: >-
+      Ticket AC-3, the half omnimarket owns. The acceptance-eval exposure the dashboard panel reads
+      (onex.snapshot.projection.delegation.acceptance-eval.v1) serves, on its first page without since, every class of the
+      latest eval run, and each class's recorded row carries that run's false-pass decision bound and line verdict. The
+      panel itself and its falsifier (server/__tests__/postgres-projection-reader.test.ts and the dev dashboard row count)
+      live in omnidash, which needs its own contract item for this ticket; this item does not prove the rendered panel.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: >-
+          uv run pytest tests/unit/projection/test_omn19787_acceptance_eval_latest_first.py -q --no-cov -p no:cacheprovider
+          -k "latest_run_every_class"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn19787-ac4-unmet-class-keeps-tiers"
+    description: >-
+      Ticket AC-4, its falsifier's selection run on the one file under tests/unit/delegation that holds every
+      eval_not_met_is_unknown test (the evidence gate refuses a bare directory selector). For every class with a
+      registered false-pass range and the two review classes the eval also reports, stored outcomes that would demote the
+      local tier suppress nothing on the routing overlay while the class's latest line is missed or refused, absent, or
+      unreadable; the same rows with the line met do suppress, so the tests are not vacuous.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/delegation/test_routing_eval_line_gate_omn19797.py -k eval_not_met_is_unknown -v"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn19787-retire-deleted-and-superseded-claims"
+    description: >-
+      AC5 to AC7 were deleted from OMN-19787, and the merged items that bound AC1 to AC4 proved other changes (the
+      latest-first exposure read, the since cursor, the declared-format rubric and the lab-run class filter) under labels
+      the ticket now uses for different criteria. This item binds no criterion: it retires each deleted claim and
+      supersedes each earlier AC1 to AC4 claim with the item that proves the ticket's criterion. Its check keeps the
+      earlier items' tests running.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: >-
+          uv run pytest tests/unit/projection/test_omn19787_acceptance_eval_latest_first.py
+          tests/nodes/node_delegation_rubric_check_compute/test_rubric_checks.py
+          tests/nodes/node_delegation_eval_orchestrator/test_lab_run_task_class.py -q --no-cov -p no:cacheprovider
+          -k "since_still_walks or single_word or json_decision or task_class_keeps_only"
+        cwd: "${OMNI_HOME}/omnimarket"
+    supersedes_ac_binding:
+      - item: "dod-latest-first-ac1"
+        label: "AC1"
+        reason_kind: "superseded_by"
+        superseded_by: "dod-omn19787-ac1-eval-run-recorded-arm-per-class"
+        reason: "AC1 now reads that an eval run reproduces the recorded-arm counts per class; the latest-first exposure test proves a different change."
+        retired_by: "jake"
+        retired_at: "2026-10-29T23:46:02Z"
+      - item: "dod-latest-first-ac2"
+        label: "AC2"
+        reason_kind: "superseded_by"
+        superseded_by: "dod-omn19787-ac2-check-register"
+        reason: "AC2 now reads that every class and gate check has a check-register entry; the since-cursor test proves a different change."
+        retired_by: "jake"
+        retired_at: "2026-10-29T23:46:02Z"
+      - item: "dod-rubric-declared-answers-ac3"
+        label: "AC3"
+        reason_kind: "superseded_by"
+        superseded_by: "dod-omn19787-ac3-latest-run-classes-and-bound"
+        reason: "AC3 now reads that the dashboard panel shows every class with its bound; the declared-format rubric test proves a different change."
+        retired_by: "jake"
+        retired_at: "2026-10-29T23:46:02Z"
+      - item: "dod-rubric-declared-answers-ac4"
+        label: "AC4"
+        reason_kind: "superseded_by"
+        superseded_by: "dod-omn19787-ac4-unmet-class-keeps-tiers"
+        reason: "AC4 now reads that the rollup never suppresses an unmet class; the lab-run class filter test proves a different change."
+        retired_by: "jake"
+        retired_at: "2026-10-29T23:46:02Z"
+      - item: "dod-ground-truth-labels-ac5"
+        label: "AC5"
+        reason_kind: "no_longer_applicable"
+        reason: "AC5 was deleted from the ticket, so the item that bound it no longer proves a criterion the ticket carries."
+        retired_by: "jake"
+        retired_at: "2026-10-29T23:46:02Z"
+      - item: "dod-golden-hidden-tests-ac6"
+        label: "AC6"
+        reason_kind: "no_longer_applicable"
+        reason: "AC6 was deleted from the ticket, so the item that bound it no longer proves a criterion the ticket carries."
+        retired_by: "jake"
+        retired_at: "2026-10-29T23:46:02Z"
+      - item: "dod-golden-checklist-classes-ac7"
+        label: "AC7"
+        reason_kind: "no_longer_applicable"
+        reason: "AC7 was deleted from the ticket, so the item that bound it no longer proves a criterion the ticket carries."
+        retired_by: "jake"
+        retired_at: "2026-10-29T23:46:02Z"
+      - item: "dod-golden-checklist-classes-deploy-probe"
+        label: "AC7"
+        reason_kind: "no_longer_applicable"
+        reason: "AC7 was deleted from the ticket, so the item that bound it no longer proves a criterion the ticket carries."
+        retired_by: "jake"
+        retired_at: "2026-10-29T23:46:02Z"
