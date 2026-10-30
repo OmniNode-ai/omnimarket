@@ -22,7 +22,7 @@ acceptance:
     - '{answer}'
     environment:
       path: uv.lock
-      sha256: f7cf3aa05708d019118b11b70984d61afcbb3206af859c7c7d449768684fd7bb
+      sha256: b26a9e8f2d35e8122b7786ba500dc43104636e8a212001b8b341bea2b8c158b9
     expected_exit: 0
     target: src/omnibase_core/models/delegation/model_invocation_command.py
     patch:
