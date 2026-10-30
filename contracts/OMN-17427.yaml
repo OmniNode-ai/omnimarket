@@ -4253,3 +4253,10 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/handlers/scm/test_scm_duplicate_guard.py -q --no-cov -p no:randomly --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-core-dev-tag-repoint"
+    description: "With omnibase_core at its dev merge tag dev-20261030104005-e72840439bef, the dependency-provenance script reads the sibling list and dev-tag shape from core's first_party_ref contract rows, the todo-format, duplicate-id, routing-authority and contract-walker callers run core's node runtimes, and the OCC contract ports, the Done-write receipt gate and the migration-conflicts consumer import their node homes. These tests fail at the merge base once the core pin moves, because the old handler modules are gone."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/scripts/test_check_dep_provenance.py tests/ci/test_duplicate_registry_ids.py tests/ci/test_todo_format_core_owner_omn20885.py tests/ci/test_precommit_hooks_local_omn20068.py tests/test_routing_authority_gate.py tests/test_no_retired_model_values.py tests/chains/generated tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_emitter_literal_pins_omn_15407.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
