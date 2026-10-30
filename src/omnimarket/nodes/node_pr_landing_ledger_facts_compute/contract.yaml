@@ -28,7 +28,8 @@ node_version:
   patch: 0
 description: >
   Pure definition-B derivation of the landing controller's row-only ledger facts:
-  fixer_hold, cause_owners, cause_releases, cause_fixes, lab_passes and
+  fixer_hold, cause_owners (and cause_owners_skipped, the CLAIMs whose owner the model
+  refuses, which are left out and never raised), cause_releases, cause_fixes, lab_passes and
   drain_lane, from the tick's ledger rows and clock. Deterministic in the row
   order the ledger gives. Per-PR owners, holds and merge-order waits are not
   derived here.
