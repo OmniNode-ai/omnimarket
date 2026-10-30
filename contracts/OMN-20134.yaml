@@ -1,29 +1,107 @@
-schema_version: "1.0.0"
-ticket_id: "OMN-20134"
-title: "omnimarket's Repo Evidence Gate caller pins the omnibase_core dev-merge tag whose receipt-gate carries the fix-parent fallback"
-summary: "No receipt-gate caller pin carried the fix-parent control fallback (control_uses_fix_parent); omnimarket's caller pinned dev-20261022114039-578228977721, whose receipt-gate.yml predates the fallback. The caller moves to the omnibase_core dev-merge tag dev-20261030152335-66d35d2283c3, whose receipt-gate.yml carries the fallback, and tests/ci/receipt_gate_pin.py holds that pin as the one test-side constant."
+---
+schema_version: 1.0.0
+ticket_id: OMN-20134
+title: 'Receipt-gate caller pins advance on core''s dev-merge tag: omnimarket''s caller moves, and a compute node
+  plus an effect node keep every caller current'
+summary: No receipt-gate caller pin carried the fix-parent control fallback (control_uses_fix_parent) and nothing
+  advanced a caller pin when the gate changed. omnimarket's caller moves to the omnibase_core dev-merge tag dev-20261030152335-66d35d2283c3,
+  whose receipt-gate.yml carries the fallback, and tests/ci/receipt_gate_pin.py holds that pin as the one test-side
+  constant. node_receipt_gate_pin_advance_compute reads the callers' pin sites from its contract and plans one pull
+  request per caller whose pinned gate differs from the newest dev tag's; node_receipt_gate_pin_advance_effect,
+  triggered by the dev-merge tag event the webhook ingress now folds, publishes one branch per stale caller and
+  opens the pull request through node_github_repo_write_effect.
 is_seam_ticket: false
-interface_change: false
-interfaces_touched: []
+interface_change: true
+interfaces_touched:
+  - events
+  - topics
 requirements:
-  - id: "req-caller-pins-fix-parent-dev-tag"
-    statement: "omnimarket's Repo Evidence Gate caller pins the omnibase_core receipt-gate reusable at a dev-merge tag whose receipt-gate.yml carries the fix-parent control fallback, keeping its job id and inputs."
-    acceptance:
-      - id: "AC1"
-        statement: "AC1: .github/workflows/call-repo-evidence-gate.yml pins receipt-gate.yml at the dev-merge tag dev-20261030152335-66d35d2283c3 -- falsifier: uv run pytest tests/ci/test_receipt_gate_caller_pin_omn20134.py -q -p no:randomly --no-cov fails at the merge base, where the caller pins dev-20261022114039-578228977721"
+- id: req-caller-pins-fix-parent-dev-tag
+  statement: omnimarket's Repo Evidence Gate caller pins the omnibase_core receipt-gate reusable at a dev-merge
+    tag whose receipt-gate.yml carries the fix-parent control fallback, keeping its job id and inputs.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: .github/workflows/call-repo-evidence-gate.yml pins receipt-gate.yml at the dev-merge tag dev-20261030152335-66d35d2283c3
+      -- falsifier: uv run pytest tests/ci/test_receipt_gate_caller_pin_omn20134.py -q -p no:randomly --no-cov fails
+      at the merge base, where the caller pins dev-20261022114039-578228977721'
+- id: req-pin-advance-planned-from-contract-data
+  statement: A compute node reads the callers' receipt-gate pin sites from its contract, with no repository, path
+    or pin in code, and detects a caller whose pinned gate differs from the newest dev tag's, planning the pin line
+    and its test constant as one edit set.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: a planted stale pin at every declared caller is detected as stale and planned to the newest
+      tag, and applying the plan reaches a fixed point where every caller is current -- falsifier: uv run pytest
+      tests/nodes/node_receipt_gate_pin_advance_compute -q -p no:randomly --no-cov -k "planted_stale_pin or fixed_point"
+      fails at the merge base, where the node does not exist'
+  - id: AC3
+    statement: 'AC3: a plan edits the workflow pin line and the test constant together, keeps a sha with its tag
+      beside it where the caller is held to a sha, and a pin that is a commit sha where a dev-merge tag is declared,
+      names no known tag, or disagrees across its sites gets a typed verdict; a site that does not match as declared
+      is refused with no edits -- falsifier: uv run pytest tests/nodes/node_receipt_gate_pin_advance_compute -q
+      -p no:randomly --no-cov fails at the merge base, where the node does not exist'
+- id: req-pin-advance-opens-prs-on-the-tag-event
+  statement: On the source repository's dev-merge tag event an effect node publishes one branch with one commit
+    per stale caller and opens the pull request through node_github_repo_write_effect, once per caller and tag.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: the effect opens one pull request per stale caller through the write node''s pr_create, a redelivered
+      tag opens nothing twice, dry_run writes nothing, a tag of another repository is ignored and one refused pull
+      request does not stop the others -- falsifier: uv run pytest tests/nodes/node_receipt_gate_pin_advance_effect
+      -q -p no:randomly --no-cov fails at the merge base, where the node does not exist'
+  - id: AC5
+    statement: 'AC5: the webhook ingress folds the creation of a dev-<UTC14>-<sha12> tag into one observation on
+      onex.evt.github.dev-merge-tag.v1 and folds no other tag, move or deletion -- falsifier: uv run pytest tests/nodes/node_github_webhook_ingress_effect/test_webhook_fold.py
+      -q -p no:randomly --no-cov -k DevMergeTag fails at the merge base, where a tag push folds to nothing'
 evidence_requirements:
-  - kind: "tests"
-    description: "The caller's reusable pin is the dev-merge tag."
-    command: "uv run pytest tests/ci/test_receipt_gate_caller_pin_omn20134.py -q -p no:randomly --no-cov"
+- kind: tests
+  description: The caller's reusable pin is the dev-merge tag.
+  command: uv run pytest tests/ci/test_receipt_gate_caller_pin_omn20134.py -q -p no:randomly --no-cov
+- kind: tests
+  description: 'AC2 and AC3: the compute node plans from contract data.'
+  command: uv run pytest tests/nodes/node_receipt_gate_pin_advance_compute -q -p no:randomly --no-cov
+- kind: tests
+  description: 'AC4 and AC5: the effect, its ports and the ingress tag fold.'
+  command: uv run pytest tests/nodes/node_receipt_gate_pin_advance_effect tests/nodes/node_github_webhook_ingress_effect
+    -q -p no:randomly --no-cov
 emergency_bypass:
   enabled: false
-  justification: ""
-  follow_up_ticket_id: ""
+  justification: ''
+  follow_up_ticket_id: ''
 dod_evidence:
-  - id: "dod-omn20134-caller-pins-dev-tag"
-    description: "AC1: the Repo Evidence Gate caller pins the omnibase_core receipt-gate reusable at the dev-merge tag dev-20261030152335-66d35d2283c3."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_receipt_gate_caller_pin_omn20134.py -q -p no:randomly --no-cov"
-    binds_ac: ["AC1"]
+- id: dod-omn20134-caller-pins-dev-tag
+  description: 'AC1: the Repo Evidence Gate caller pins the omnibase_core receipt-gate reusable at the dev-merge
+    tag dev-20261030152335-66d35d2283c3.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_receipt_gate_caller_pin_omn20134.py -q -p no:randomly --no-cov
+  binds_ac:
+  - AC1
+- id: dod-omn20134-plan-from-contract
+  description: 'AC2 and AC3: the compute node detects a planted stale pin, plans the pin line and test constant
+    together, and reaches a fixed point.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_receipt_gate_pin_advance_compute -q -p no:randomly --no-cov
+  binds_ac:
+  - AC2
+  - AC3
+- id: dod-omn20134-effect-opens-prs
+  description: 'AC4: the effect opens one pull request per stale caller through pr_create, idempotently.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_receipt_gate_pin_advance_effect -q -p no:randomly --no-cov
+  binds_ac:
+  - AC4
+- id: dod-omn20134-ingress-tag-fold
+  description: 'AC5: the webhook ingress folds a created dev-merge tag into onex.evt.github.dev-merge-tag.v1.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_github_webhook_ingress_effect/test_webhook_fold.py -q -p no:randomly
+      --no-cov -k DevMergeTag
+  binds_ac:
+  - AC5
