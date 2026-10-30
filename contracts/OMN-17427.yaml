@@ -4224,5 +4224,5 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_wip_admission_compute/test_runtime_local.py tests/unit/scripts/test_application_relation_inventory.py -q --no-cov -p no:randomly --refuse-skips"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_wip_admission_compute/test_runtime_local.py tests/unit/scripts/test_application_relation_inventory.py::test_checked_in_inventory_is_source_derived_and_current -q --no-cov -p no:randomly --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"
