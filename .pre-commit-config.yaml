@@ -943,13 +943,13 @@ repos:
         stages: [pre-commit]
 
       # Require TODO/FIXME/HACK comments to carry a ticket reference (OMN-20068,
-      # OCC retirement S8). Runs omnibase_core's own handler, which owns this
+      # OCC retirement S8). Runs omnibase_core's own todo-format node runtime, which owns this
       # behaviour; the hook of the same id used to be pulled from the
       # onex_change_control repo block.
       - id: no-untracked-todos
         name: No untracked TODO/FIXME/HACK comments
         language: system
-        entry: uv run python -m omnibase_core.handlers.handler_todo_format
+        entry: uv run python -m omnibase_core.nodes.node_todo_format_check_effect.runtime_todo_format
         require_serial: true
         types: [python]
         stages: [pre-commit]
@@ -1311,7 +1311,7 @@ repos:
         stages: [pre-commit]
 
       # OMN-13285 (W6/GAP-3): routing-authority demo gate. PORTED to the canonical
-      # core COMPUTE validator omnibase_core.validation.validator_routing_authority
+      # core COMPUTE node omnibase_core.nodes.node_routing_authority_check_compute
       # (replaces the deleted omnimarket-local scripts/ci/check_routing_authority.py
       # and folds in the previously-unwired core validator_delegation_profile).
       # Proves the demo path resolves provider/served_model_id/endpoint_ref/
@@ -2201,7 +2201,7 @@ repos:
 
       - id: normalization-symmetry
         name: normalization-symmetry
-        entry: uv run python -m omnibase_core.validation.checker_normalization_symmetry
+        entry: uv run python -m omnibase_core.nodes.node_normalization_symmetry_check_compute.runtime_normalization_symmetry_check
         language: system
         pass_filenames: false
 
