@@ -13,6 +13,7 @@ capabilities:
   requires_secrets: false
   side_effect_class: write_db
 dependencies:
+  - "click>=8.1.0"
   - "omnibase_core>=0.39.0"
   - "pyyaml>=6.0"
 tags:

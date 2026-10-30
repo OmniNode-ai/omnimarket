@@ -28,7 +28,6 @@ silently mutating a shared, migration-governed table.
 from __future__ import annotations
 
 import contextlib
-import logging
 import re
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from types import MappingProxyType
@@ -39,15 +38,12 @@ from omnibase_core.models.projection.model_upsert_plan import build_upsert_plan
 from omnimarket.handlers.handler_projection_derived_write import (
     HandlerProjectionDerivedWrite,
 )
-from omnimarket.models.model_credential_route_write import ModelCredentialRouteWrite
-from omnimarket.models.model_credential_row_write import ModelCredentialRowWrite
+from omnimarket.nodes.node_projection_tenant_credentials.stores import CredentialPgStore
 from omnimarket.projection.tenant_isolation import (
     TENANT_GUC,
     resolve_read_tenant,
     resolve_write_tenant,
 )
-
-logger = logging.getLogger(__name__)
 
 # Strict identifier validation for table/column names composed into SQL. These
 # come from trusted internal projection constants and typed row keys (never user
@@ -72,7 +68,7 @@ def _search_path_option(schema: str) -> str:
     return f"-c search_path={_validate_identifier(schema, kind='schema')}"
 
 
-class PostgresSyncProjectionAdapter:
+class PostgresSyncProjectionAdapter(CredentialPgStore):
     """``ProtocolProjectionDatabaseSync`` over a psycopg2 Postgres connection.
 
     UPSERT keys on the conflict column(s); JSON/list/dict values are adapted to
@@ -169,56 +165,6 @@ class PostgresSyncProjectionAdapter:
 
             return Json(value)
         return value
-
-    def write_credential_row(self, plan: ModelCredentialRowWrite) -> int | None:
-        """OMN-21217: one statement; the version is raised in SQL, never read first."""
-        conn = self._connect()
-        try:
-            with self._tenant_scoped(conn, plan.tenant_id), conn.cursor() as cur:
-                cur.execute(
-                    plan.postgres_write,
-                    {key: self._adapt(value) for key, value in plan.parameters.items()},
-                )
-                written = cur.fetchone()
-                return None if written is None else int(written[0])
-        finally:
-            conn.close()
-
-    def replace_credential_route(
-        self,
-        plan: ModelCredentialRouteWrite,
-    ) -> tuple[bool, int | None]:
-        conn = self._connect()
-        try:
-            with (
-                self._tenant_scoped(conn, str(plan.row["tenant_id"])),
-                conn.cursor() as cur,
-            ):
-                cur.execute(
-                    plan.postgres_write,
-                    {key: self._adapt(value) for key, value in plan.parameters.items()},
-                )
-                written = cur.fetchone()
-                if written is not None and plan.postgres_models_write is not None:
-                    # OMN-21217: the key's own choices change with its route or
-                    # not at all; raising rolls both back.
-                    cur.execute(
-                        plan.postgres_models_write,
-                        {
-                            key: self._adapt(value)
-                            for key, value in plan.parameters.items()
-                        },
-                    )
-                    if cur.fetchone() is None:
-                        raise RuntimeError("credential model target is unavailable")
-                cur.execute(
-                    plan.postgres_read,
-                    {key: self._adapt(value) for key, value in plan.parameters.items()},
-                )
-                current = cur.fetchone()
-                return written is not None, None if current is None else int(current[0])
-        finally:
-            conn.close()
 
     def record_credential_last_used(
         self, api_key_ref: str, used_at: str, *, tenant_id: str | None = None

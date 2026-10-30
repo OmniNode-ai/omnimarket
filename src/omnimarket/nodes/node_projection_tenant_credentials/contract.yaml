@@ -83,6 +83,22 @@ handler_routing:
         module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_runtime_writer
       handler_module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_runtime_writer
 
+# OMN-21217: the credential write paths this node owns beside its runtime
+# writer. Descriptive bindings only; handler_routing above is what routes.
+credential_writes:
+  deployed_projection:
+    handler:
+      name: HandlerTenantCredentialsProjectionRunner
+      module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_projection
+  local_store:
+    handler:
+      name: apply_credential_registered
+      module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_store
+  route_write:
+    handler:
+      name: HandlerCredentialRouteWrite
+      module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_credential_route_write
+
 terminal_event: onex.evt.omnimarket.tenant-credential-projection-applied.v1
 
 golden_path:
