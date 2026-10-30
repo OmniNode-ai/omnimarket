@@ -1003,6 +1003,11 @@ requirements:
         statement: "AC1742713: in a second repository, #1326 against open #1320 (the same dispatch_fix_guard rewrite) is refused naming #1320, and another lane's live CLAIM with the same cause= cell refuses with that lane named -- falsifier: the fold reads clear for either planted case"
       - id: "AC1742714"
         statement: "AC1742714: a watcher state older than 15 minutes, an unset ONEX_LEDGER_PATH or a branch no checkout holds exits 3 and opens nothing -- falsifier: pr-create reaches the bus with any of the three"
+  - id: "req-ledger-facts-quoted-cause"
+    statement: "The landing ledger facts compute reads a quoted CLAIM cause cell as its quoted text and reports an owner the model refuses instead of raising."
+    acceptance:
+      - id: "AC1742715"
+        statement: "AC1742715: a CLAIM cause cell written as cause=\"omnibase_infra:Hostile Review Thread Gate\" followed by free text reads as owner OmniNode-ai/omnibase_infra with check Hostile Review Thread Gate, and an unclosed-quote CLAIM is listed in cause_owners_skipped while every other owner is returned -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_ledger_facts_compute/test_landing_ledger_facts.py -k 'quoted_cause or model_refuses' -q fails at the merge base"
 evidence_requirements:
   - kind: "tests"
     description: "AC71: token-pool unit and contract-handler golden-chain tests use temporary stores and fake tokens."
@@ -4259,4 +4264,12 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/scripts/test_check_dep_provenance.py tests/ci/test_duplicate_registry_ids.py tests/ci/test_todo_format_core_owner_omn20885.py tests/ci/test_precommit_hooks_local_omn20068.py tests/test_routing_authority_gate.py tests/test_no_retired_model_values.py tests/chains/generated tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_emitter_literal_pins_omn_15407.py -q --no-cov -p no:randomly --refuse-skips"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn17427-ledger-facts-quoted-cause"
+    description: "The quoted cause cell reads as its text and a refused owner is skipped and reported, not raised."
+    source: "manual"
+    binds_ac: ["AC1742715"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_pr_landing_ledger_facts_compute/test_landing_ledger_facts.py -q --no-cov -p no:randomly --refuse-skips"
         cwd: "${OMNI_HOME}/omnimarket"

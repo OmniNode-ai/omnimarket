@@ -28,6 +28,8 @@ from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from typing import Final
 
+from pydantic import ValidationError
+
 from omnimarket.handlers.work_ledger_fixer_holds import fixer_hold_reasons
 from omnimarket.models.landing_decision import (
     ModelLandingCauseOwner,
@@ -35,6 +37,7 @@ from omnimarket.models.landing_decision import (
 )
 from omnimarket.nodes.node_pr_landing_ledger_facts_compute.models.model_landing_ledger_facts import (
     ModelLandingCauseFix,
+    ModelLandingCauseOwnerSkipped,
     ModelLandingLedgerFacts,
     ModelLandingLedgerRow,
     ModelLandingLedgerRows,
@@ -66,12 +69,25 @@ LAB_PASS_MEMBER_RE: Final = re.compile(
 LAB_PASS_PREFIX: Final[str] = "LAB PROOF PASS: "
 
 
+def unquote(value: str) -> str:
+    """``value`` as a quoted lane wrote it: one that opens with a straight quote ends at the matching quote, and what
+    follows is free text, not the value (``"a b" read the logs`` is ``a b``). A CLAIM wrote
+    ``cause="omnibase_infra:Hostile Review Thread Gate" read failing runs ...`` and the quote was taken as part of the
+    repository. A value whose quote never closes is kept as written."""
+    v = value.strip()
+    if v[:1] in ('"', "'"):
+        end = v.find(v[0], 1)
+        if end > 0:
+            return v[1:end].strip()
+    return v
+
+
 def cell(text: str, name: str) -> str:
-    """The value of the first pipe cell ``name=<value>`` on a row's first line, or ''."""
+    """The value of the first pipe cell ``name=<value>`` on a row's first line, or ''; a quoted value is its inner text."""
     for part in str(text).split("\n", 1)[0].split("|"):
         part = part.strip().strip("`")
         if part.startswith(name + "="):
-            return part[len(name) + 1 :].strip()
+            return unquote(part[len(name) + 1 :])
     return ""
 
 
@@ -181,9 +197,21 @@ def cause_owners(
     dispatchers: Iterable[str],
     now: datetime,
 ) -> list[ModelLandingCauseOwner]:
-    """The live lanes that own a shared cause. ``cause=`` is a cause key, or ``<repo>:<check>``."""
+    """The live lanes that own a shared cause. ``cause=`` is a cause key, or ``<repo>:<check>``. An owner the model
+    refuses is left out; ``split_cause_owners`` also reports it."""
+    return split_cause_owners(claims, last_row, dispatchers, now)[0]
+
+
+def split_cause_owners(
+    claims: Iterable[ModelLandingLedgerRow],
+    last_row: dict[str, str],
+    dispatchers: Iterable[str],
+    now: datetime,
+) -> tuple[list[ModelLandingCauseOwner], list[ModelLandingCauseOwnerSkipped]]:
+    """The cause owners, and the CLAIMs whose owner ``ModelLandingCauseOwner`` refuses (never raised: one malformed
+    CLAIM would otherwise stop the whole landing decision, 2026-10-30T11:32:03Z)."""
     skip = set(dispatchers)
-    out: list[dict[str, str | None]] = []
+    out: list[tuple[dict[str, str | None], str]] = []
     for c in claims:
         lane = str(c.lane or "")
         cause, check, repo = (
@@ -210,23 +238,36 @@ def cause_owners(
             repo, check = cause.split(":", 1)
         if not repo or not (key or check):
             continue
-        out.append(
-            {
-                "lane": lane,
-                "repo": _owner_repo(repo),
-                "check": check.strip() or None,
-                "cause": key,
-            }
-        )
+        owner = {
+            "lane": lane,
+            "repo": _owner_repo(repo),
+            "check": check.strip() or None,
+            "cause": key,
+        }
+        out.append((owner, c.ts))
     out.sort(
-        key=lambda o: (
-            o["lane"] or "",
-            o["repo"] or "",
-            o["check"] or "",
-            o["cause"] or "",
+        key=lambda item: (
+            item[0]["lane"] or "",
+            item[0]["repo"] or "",
+            item[0]["check"] or "",
+            item[0]["cause"] or "",
         )
     )
-    return [ModelLandingCauseOwner.model_validate(o) for o in out]
+    owners: list[ModelLandingCauseOwner] = []
+    skipped: list[ModelLandingCauseOwnerSkipped] = []
+    for o, claim_ts in out:
+        try:
+            owners.append(ModelLandingCauseOwner.model_validate(o))
+        except ValidationError as exc:
+            first = exc.errors()[0]
+            skipped.append(
+                ModelLandingCauseOwnerSkipped(
+                    lane=o["lane"] or "",
+                    claim=claim_ts,
+                    reason=f"{'.'.join(str(p) for p in first['loc'])}: {first['msg']} (input {first['input']!r})",
+                )
+            )
+    return owners, skipped
 
 
 def cause_fixes(claims: Iterable[ModelLandingLedgerRow]) -> list[ModelLandingCauseFix]:
@@ -316,10 +357,14 @@ def derive_ledger_facts(request: ModelLandingLedgerRows) -> ModelLandingLedgerFa
         for r in (*rows, *request.history_rows)
         if r.rtype == "RELEASE" and (s := _stamp(r.ts)) is not None and s <= now
     ]
+    owners, owners_skipped = split_cause_owners(
+        claims, last_row, dispatcher_lanes(rows), now
+    )
     return ModelLandingLedgerFacts(
         rows_read=len(rows),
         fixer_hold=tuple(fixer_holds(rows, now)),
-        cause_owners=tuple(cause_owners(claims, last_row, dispatcher_lanes(rows), now)),
+        cause_owners=tuple(owners),
+        cause_owners_skipped=tuple(owners_skipped),
         cause_releases=tuple(cause_releases(rows)),
         cause_fixes=tuple(cause_fixes(claims)),
         lab_passes=lab_passes(history),
@@ -346,4 +391,5 @@ __all__: list[str] = [
     "last_rows",
     "live_drain_lane",
     "open_claims",
+    "split_cause_owners",
 ]
