@@ -129,7 +129,7 @@ def test_contract_golden_chain_in_a_members_session(tmp_path: Path) -> None:
                 "no_msg": True,
                 "out_dir": str(tmp_path / "out"),
                 "now": NOW,
-                "omni_home": str(tmp_path),
+                "home": str(tmp_path),
                 "overlay_roots": [str(roots)],
             }
         )

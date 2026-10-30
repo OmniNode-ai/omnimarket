@@ -68,7 +68,7 @@ dod_evidence:
       printf 'ROWS n=0 newest=none kinds= detail=x\n' > "$probe_dir/rows.txt";
       printf '{"issues": []}' > "$probe_dir/linear-2026-09-29.txt";
       printf '{"subject": "00000000-0000-4000-8000-00000000f002", "issues": [{"id": "OMN-3001", "assignee": "00000000-0000-4000-8000-00000000f002", "pull_requests": []}, {"id": "OMN-3002", "assignee": "00000000-0000-4000-8000-00000000f003", "pull_requests": []}]}' > "$probe_dir/linear-2026-09-29.json";
-      printf '{"kb": "%s/kb", "no_fetch": true, "linear_snapshot": "%s/linear-2026-09-29.txt", "ledger_rows_file": "%s/rows.txt", "summaries": "none", "no_msg": true, "out_dir": "%s/out", "now": "2026-09-29T16:00:00Z", "omni_home": "%s", "overlay_roots": ["%s/roots"]}' "$probe_dir" "$probe_dir" "$probe_dir" "$probe_dir" "$probe_dir" "$probe_dir" > "$probe_dir/input.json";
+      printf '{"kb": "%s/kb", "no_fetch": true, "linear_snapshot": "%s/linear-2026-09-29.txt", "ledger_rows_file": "%s/rows.txt", "summaries": "none", "no_msg": true, "out_dir": "%s/out", "now": "2026-09-29T16:00:00Z", "home": "%s", "overlay_roots": ["%s/roots"]}' "$probe_dir" "$probe_dir" "$probe_dir" "$probe_dir" "$probe_dir" "$probe_dir" > "$probe_dir/input.json";
       env ONEX_LANE=omn21392-deploy-probe "$runtime_bin/onex" node node_plans_today_effect --input "$probe_dir/input.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 60 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
       uv run --locked python -c '
       import json

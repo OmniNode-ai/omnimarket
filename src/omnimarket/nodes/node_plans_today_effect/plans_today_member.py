@@ -41,7 +41,7 @@ from omnimarket.nodes.node_team_identity_compute.models import (
     ModelTeamIdentityResult,
 )
 
-from ..models.model_plans_today import ModelLinearSidecar
+from .models.model_plans_today import ModelLinearSidecar
 
 PR_READ_CAP = 30
 DEFAULT_OWNER = "OmniNode-ai"

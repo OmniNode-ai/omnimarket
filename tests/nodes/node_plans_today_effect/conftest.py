@@ -6,6 +6,7 @@ its sidecar, the fake team identity declaration, and a fake omni plugin root. Ev
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -13,11 +14,14 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from omnibase_core.validators.no_unguarded_git_subprocess import (
+    scrub_git_location_env,
+)
 
 from omnimarket.nodes.node_plans_today_effect.handlers import (
     handler_plans_today as plans_today,
 )
-from omnimarket.nodes.node_plans_today_effect.handlers.handler_plans_today_cli import (
+from omnimarket.nodes.node_plans_today_effect.runtime_plans_today import (
     main as cli_main,
 )
 
@@ -37,7 +41,11 @@ UNKNOWN_LINEAR = "00000000-0000-4000-8000-0000000fffff"
 
 def git(*args: Any) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["git", *map(str, args)], check=True, capture_output=True, text=True
+        ["git", *map(str, args)],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=scrub_git_location_env(os.environ),
     )
 
 

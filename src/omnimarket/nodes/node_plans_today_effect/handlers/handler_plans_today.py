@@ -6,7 +6,7 @@ Reads, in this order:
   * the plans repository's ``beta/plans`` at ``origin/main`` after a ``git fetch`` (never the local
     working tree, which lags), plus ``PLAN_LIFECYCLE.yaml`` there;
   * the caller's identity, resolved through the team identity declaration on every invocation from the
-    Linear subject the snapshot's sidecar records (see :mod:`.handler_plans_today_member`); only an
+    Linear subject the snapshot's sidecar records (see :mod:`..plans_today_member`); only an
     authenticated operator match runs the operator's mode;
   * the operator's mode: the pr-watcher state file (``$OMNI_HOME/.claude_scratch/pr-watcher/state.json``)
     is the only PR source, and no GitHub call of any kind is made;
@@ -44,7 +44,7 @@ from typing import Any
 
 from ..models.model_plans_today import ModelPlansTodayRequest, ModelPlansTodayResult
 from ..models.model_plans_today_schema import PLANS_TODAY_SCHEMA_ID
-from .handler_plans_today_member import (
+from ..plans_today_member import (
     PR_READ_CAP,
     Identity,
     MemberRefusedError,
@@ -203,7 +203,7 @@ def timed_out(argv: list[str], limit: float | None) -> RefusedError:
     )
 
 
-def omni_home(override: str | None = None) -> Path:
+def home_dir(override: str | None = None) -> Path:
     home = (override or os.environ.get("OMNI_HOME", "")).strip()
     if not home:
         raise RefusedError(
@@ -1984,7 +1984,7 @@ def run_plans_today(req: ModelPlansTodayRequest) -> ModelPlansTodayResult:
 
 
 def _run(req: ModelPlansTodayRequest) -> ModelPlansTodayResult:
-    home = omni_home(req.omni_home)
+    home = home_dir(req.home)
     now = parse_ts(req.now) if req.now else datetime.now(UTC).replace(microsecond=0)
     kb_raw = req.kb or os.environ.get(KB_ENV, "").strip()
     if not kb_raw:

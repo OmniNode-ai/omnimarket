@@ -14,14 +14,14 @@ import argparse
 import os
 import sys
 
-from ..models.model_plans_today import ModelPlansTodayRequest
-from .handler_plans_today import (
+from .handlers.handler_plans_today import (
     DEFAULT_SUMMARY_TIMEOUT_S,
     KB_ENV,
     SUMMARY_BUDGET_S,
     WATCHER_MAX_AGE_MIN,
     run_plans_today,
 )
+from .models.model_plans_today import ModelPlansTodayRequest
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

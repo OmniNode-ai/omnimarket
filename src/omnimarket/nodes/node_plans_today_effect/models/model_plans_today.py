@@ -96,7 +96,7 @@ class ModelPlansTodayRequest(BaseModel):
     orchestrator: str = "orchestrator"
     lane: str = "plans-today"
     now: str | None = None
-    omni_home: str | None = None
+    home: str | None = None  # the session home; None reads OMNI_HOME
     overlay_roots: tuple[str, ...] | None = None
     plugin_root: str | None = None
 

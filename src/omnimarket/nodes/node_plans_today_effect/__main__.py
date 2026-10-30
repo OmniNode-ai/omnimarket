@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """``python -m omnimarket.nodes.node_plans_today_effect``: the plans-today command line."""
 
-from omnimarket.nodes.node_plans_today_effect.handlers.handler_plans_today_cli import (
+from omnimarket.nodes.node_plans_today_effect.runtime_plans_today import (
     main,
 )
 

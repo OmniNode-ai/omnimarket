@@ -16,10 +16,10 @@ import pytest
 from omnimarket.nodes.node_plans_today_effect.handlers import (
     handler_plans_today as plans_today,
 )
-from omnimarket.nodes.node_plans_today_effect.handlers.handler_plans_today_cli import (
+from omnimarket.nodes.node_plans_today_effect.models import PLANS_TODAY_JSON_SCHEMA
+from omnimarket.nodes.node_plans_today_effect.runtime_plans_today import (
     main as cli_main,
 )
-from omnimarket.nodes.node_plans_today_effect.models import PLANS_TODAY_JSON_SCHEMA
 from tests.nodes.node_plans_today_effect.conftest import (
     NOW,
     body,

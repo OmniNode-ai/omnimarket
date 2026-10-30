@@ -19,11 +19,11 @@ from typing import Any
 
 import pytest
 
-from omnimarket.nodes.node_plans_today_effect.handlers import (
-    handler_plans_today as plans_today,
+from omnimarket.nodes.node_plans_today_effect import (
+    plans_today_member as member,
 )
 from omnimarket.nodes.node_plans_today_effect.handlers import (
-    handler_plans_today_member as member,
+    handler_plans_today as plans_today,
 )
 from omnimarket.nodes.node_plans_today_effect.models import PLANS_TODAY_JSON_SCHEMA
 from tests.nodes.node_plans_today_effect.conftest import (
@@ -182,7 +182,7 @@ def test_hook_call_runs_member_mode_with_no_watcher_and_leaves_the_other_red_pr_
     fake = gh_for_member(monkeypatch)
     assert not (tmp_path / ".claude_scratch" / "pr-watcher" / "state.json").exists()
 
-    from omnimarket.nodes.node_plans_today_effect.handlers.handler_plans_today_cli import (
+    from omnimarket.nodes.node_plans_today_effect.runtime_plans_today import (
         main,
     )
 
@@ -644,7 +644,7 @@ def test_handler_does_not_name_a_github_client_outside_the_member_module() -> No
 
     source = Path(plans_today.__file__).read_text()
     assert not re.search(r'\[\s*["\']gh["\']', source)
-    assert os.path.basename(member.__file__) == "handler_plans_today_member.py"
+    assert os.path.basename(member.__file__) == "plans_today_member.py"
 
 
 def test_unrelated_child_processes_still_run(tmp_path: Path) -> None:
