@@ -109,6 +109,22 @@ def test_route(tmp_path: Path) -> None:
     assert result.refusal == "repo_a is excluded from cloud sessions"
 
 
+def test_route_names_the_placement_order_from_the_contract(tmp_path: Path) -> None:
+    """auto tries every lab host first and overflows to a cloud session; the order is contract data."""
+    declared = _contract()["placement_order"]
+    assert declared["auto"] == ["lab", "cloud"]
+    for placement in ("auto", "lab", "cloud"):
+        result = call(
+            tmp_path,
+            "route",
+            brief="Lane kind: small-code",
+            repo="repo_a",
+            model="sonnet",
+            placement=placement,
+        )
+        assert result.order == declared[placement]
+
+
 def test_pick_protocol_and_slot_hold(tmp_path: Path) -> None:
     first = call(tmp_path, "pick", hosts=HOSTS, run_id="run_a")
     assert first.needs_probe == "host_a"

@@ -156,6 +156,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from fnmatch import fnmatchcase
+from pathlib import Path
 
 # The poller's own job — excluded to avoid self-deadlock.
 SELF_JOB_NAME = "CI Summary"
@@ -608,6 +609,8 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     # is for subscriber-dispatcher-resolution below.
     "handler-event-type-source",
     "imperative-contract-guard / Imperative Contract Guard",
+    # OMN-21478: enforce the core reusable's internal sibling pin policy.
+    "internal-sibling-pins / Internal Sibling Pins",
     # OMN-17888 (contract-topic-closure.yml): two routes may not claim one local-ingress
     # alias. Same workflow file and same L4 reasoning as handler-event-type-source above.
     "local-ingress-alias-collision",
@@ -1754,6 +1757,8 @@ def verdict_is_provisional(state: CheckRunState, now: datetime | None) -> bool:
 # Branch filters matter: a main-only producer cannot mint on a dev push.
 # The merge-group bridge keeps the existing queue policy; it is not a push
 # producer. Admission events retain their current asserted set below.
+# The table is data in ci_summary_external_producers.json beside this script
+# (OMN-20304: the baselined gate file only shrinks); CI restores both files.
 @dataclass(frozen=True)
 class ExternalContextProducer:
     workflow: str
@@ -1761,296 +1766,16 @@ class ExternalContextProducer:
     push_branches: tuple[str, ...]
 
 
+EXTERNAL_CONTEXT_PRODUCERS_FILE = Path(__file__).with_name(
+    "ci_summary_external_producers.json"
+)
 EXTERNAL_CONTEXT_PRODUCERS: dict[str, ExternalContextProducer] = {
-    context: ExternalContextProducer(workflow, events, push_branches)
-    for workflow, events, push_branches, contexts in (
-        (
-            "advisory-job-gate.yml",
-            ("pull_request",),
-            (),
-            ("advisory-job-gate / advisory-job-gate",),
-        ),
-        (
-            "byok-catalogue-no-house-entry.yml",
-            ("pull_request",),
-            (),
-            ("BYOK Catalogue No House Entry",),
-        ),
-        (
-            "call-reject-skip.yml",
-            ("pull_request", "merge_group"),
-            (),
-            ("call-reject-skip-token / scan / reject-skip-gate-token",),
-        ),
-        (
-            "call-repo-evidence-gate.yml",
-            ("pull_request_target",),
-            (),
-            ("repo-evidence / dod-verify",),
-        ),
-        (
-            "canonical-inference-gate.yml",
-            ("pull_request",),
-            (),
-            ("Canonical Inference Gate",),
-        ),
-        (
-            "contract-topic-closure.yml",
-            ("pull_request", "push", "merge_group"),
-            ("main",),
-            (
-                "handler-event-type-source",
-                "local-ingress-alias-collision",
-                "mixed-category-routing",
-                "no-baseline-refreeze",
-                "no-literal-event-type-in-tests",
-                "key-grain-declared",
-                "routing-input-model-fit",
-            ),
-        ),
-        (
-            "contract-validation.yml",
-            ("pull_request", "merge_group", "workflow_dispatch"),
-            (),
-            ("contract-validation",),
-        ),
-        (
-            "delegation-health-check.yml",
-            ("pull_request", "merge_group"),
-            (),
-            ("delegation-health-check / Delegation Health Check",),
-        ),
-        (
-            "dep-provenance-gate.yml",
-            ("pull_request", "merge_group"),
-            (),
-            ("Dep Provenance Gate",),
-        ),
-        (
-            "deploy-gate.yml",
-            ("pull_request", "merge_group"),
-            (),
-            ("deploy-gate / deploy-gate",),
-        ),
-        (
-            "deployment-fact-gate.yml",
-            ("pull_request",),
-            (),
-            ("Deployment Fact Gate",),
-        ),
-        (
-            "dispatcher-route-coverage.yml",
-            ("pull_request", "push", "merge_group"),
-            ("main",),
-            ("dispatcher-route-coverage",),
-        ),
-        (
-            "docs-validate.yml",
-            ("pull_request", "push"),
-            ("main", "hotfix/**"),
-            ("call / validate-docs",),
-        ),
-        (
-            "git-env-scrub.yml",
-            ("pull_request",),
-            (),
-            ("Git env scrub gate",),
-        ),
-        (
-            "hostile-reviewer.yml",
-            ("pull_request",),
-            (),
-            ("Hostile Review Gate", "Hostile Reviewer (adversarial gate)"),
-        ),
-        (
-            "imperative-contract-guard.yml",
-            ("pull_request", "push"),
-            ("main",),
-            ("imperative-contract-guard / Imperative Contract Guard",),
-        ),
-        (
-            "main-target-guard.yml",
-            ("pull_request",),
-            (),
-            ("main-target-guard",),
-        ),
-        (
-            "no-coding-plan-endpoint.yml",
-            ("pull_request",),
-            (),
-            ("No Coding Plan Endpoint",),
-        ),
-        (
-            "no-faked-boundary.yml",
-            ("pull_request", "merge_group"),
-            (),
-            ("No Faked Boundary Gate",),
-        ),
-        (
-            "node-drift-gate.yml",
-            ("pull_request", "merge_group", "workflow_dispatch"),
-            (),
-            ("node-drift-gate",),
-        ),
-        (
-            "node-migration-vendor-parity-gate.yml",
-            ("pull_request",),
-            (),
-            ("node-migration-vendor-parity-gate",),
-        ),
-        (
-            "non-dev-base-guard.yml",
-            ("pull_request",),
-            (),
-            ("non-dev-base-guard",),
-        ),
-        (
-            "omni-standards-compliance.yml",
-            ("push", "pull_request", "workflow_dispatch"),
-            ("main", "hotfix/**"),
-            (
-                "CI Naming Convention",
-                "Ecosystem Integration Validation",
-                "Legacy Compatibility Check",
-                "Omni Standards Gate",
-                "Repository Structure Validation",
-            ),
-        ),
-        (
-            "onex-schema-compat.yml",
-            ("push", "pull_request", "workflow_dispatch"),
-            ("main", "hotfix/**"),
-            ("ONEX Change Control Schema Compatibility",),
-        ),
-        (
-            "pin-resolvability-gate.yml",
-            ("pull_request", "merge_group", "schedule", "workflow_dispatch"),
-            (),
-            ("pypi-pin-resolvability",),
-        ),
-        (
-            "pr-arch-review.yml",
-            ("pull_request",),
-            (),
-            (
-                "Architectural Compliance Lint",
-                "PR Arch Review Gate",
-                "Resolve Bot Token",
-            ),
-        ),
-        (
-            "pr-title-check.yml",
-            ("pull_request",),
-            (),
-            ("pr-title / check-title",),
-        ),
-        (
-            "precommit-fail-loud-gate.yml",
-            ("push", "pull_request", "workflow_dispatch"),
-            ("main", "dev", "hotfix/**"),
-            ("Precommit Fail-Loud Gate",),
-        ),
-        (
-            "projection-exposure-drift-gate.yml",
-            ("pull_request", "merge_group"),
-            (),
-            ("Projection Exposure Drift Gate",),
-        ),
-        (
-            "public-repo-hygiene.yml",
-            ("pull_request",),
-            (),
-            (
-                "public-repo-hygiene / public-repo-hygiene",
-                "public-repo-hygiene / deployment-config",
-            ),
-        ),
-        (
-            "receipt-honesty.yml",
-            ("pull_request", "merge_group"),
-            (),
-            ("receipt-honesty",),
-        ),
-        (
-            "reject-leaked-literals.yml",
-            ("pull_request", "merge_group"),
-            (),
-            ("Leaked Literals Gate",),
-        ),
-        (
-            "required-check-skip-guard-caller.yml",
-            ("pull_request", "merge_group", "schedule"),
-            (),
-            ("required-check-skip-guard / check-skip-vectors",),
-        ),
-        (
-            "reviewer-eval.yml",
-            ("pull_request",),
-            (),
-            ("reviewer-eval",),
-        ),
-        (
-            "routing-tier-bindability.yml",
-            ("pull_request",),
-            (),
-            ("Routing Tier Bindability",),
-        ),
-        (
-            "skill-mapping-input-coverage-gate.yml",
-            ("pull_request", "workflow_dispatch"),
-            (),
-            ("skill-mapping-input-coverage-gate",),
-        ),
-        (
-            "stale-todo-gate.yml",
-            ("pull_request",),
-            (),
-            ("Stale TODO Gate",),
-        ),
-        (
-            "state-coverage-gate.yml",
-            ("pull_request", "merge_group", "workflow_dispatch"),
-            (),
-            ("state-coverage-gate",),
-        ),
-        (
-            "subscriber-dispatcher-resolution.yml",
-            ("pull_request", "push", "merge_group"),
-            ("main",),
-            ("subscriber-dispatcher-resolution",),
-        ),
-        (
-            "url-authority-gate.yml",
-            ("pull_request", "merge_group"),
-            (),
-            ("URL Authority Gate",),
-        ),
-        (
-            "validate-validator-requirements.yml",
-            ("push", "pull_request", "workflow_dispatch"),
-            ("main", "dev"),
-            ("Enforce validator-requirements.yaml (OMN-13291)",),
-        ),
-        (
-            "validator-fsm-handler-drift.yml",
-            ("push", "pull_request"),
-            ("main", "develop", "dev", "hotfix/**"),
-            ("fsm-handler-drift",),
-        ),
-        (
-            "validator-runtime-profiles.yml",
-            ("push", "pull_request"),
-            ("main", "develop", "dev", "hotfix/**"),
-            ("validate",),
-        ),
-        (
-            "wheel-content-parity.yml",
-            ("pull_request", "merge_group"),
-            (),
-            ("wheel-content-parity",),
-        ),
+    context: ExternalContextProducer(
+        row["workflow"], tuple(row["events"]), tuple(row["push_branches"])
     )
-    for context in contexts
+    for context, row in json.loads(
+        EXTERNAL_CONTEXT_PRODUCERS_FILE.read_text(encoding="utf-8")
+    ).items()
 }
 
 

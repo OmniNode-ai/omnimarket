@@ -103,3 +103,56 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/delegation/test_deployed_budget_grace_omn21326.py::test_a_run_past_its_budget_and_grace_ends_as_a_typed_timeout -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn21326-ac3-exit-coded-readback"
+    description: >-
+      The delegation node's budget-readback handler selects completed deployed-lane runs whose caller named a timeout
+      by run.json mtime in a window (default the last 24 h), and exits 1 when any duration exceeds the execution timeout
+      plus the task-class declaration's grace, 2 when none was measured, and 3 when it cannot run. Tests exercise the
+      exit-coded readback, including its packaged module entry point. They fail at the merge base where the handler
+      does not exist. AC3's deployed observation remains a separate lab readback using
+      `uv run python -m omnimarket.nodes.node_delegate_skill_orchestrator.runtime_budget_readback`
+      on the host whose state root holds the receipts.
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/scripts/test_verify_omn21326_ac3_budget_bound.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21326-readback-shared-state-root"
+    description: >-
+      The readback resolves its default state root through the shared runtime configuration, honoring ONEX_STATE_DIR
+      before ONEX_STATE_ROOT and retaining the CLI home default when no absolute root is configured.
+      The ONEX_STATE_ROOT cases fail before this change because the readback ignores that runtime setting.
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/scripts/test_verify_omn21326_ac3_budget_bound.py -q --no-cov -k default_state_roots"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21326-ac3-readback-fails-on-its-falsifier"
+    description: >-
+      AC4 was never a criterion of OMN-21326: the ticket carries AC1 to AC3, so the AC4 claims of
+      dod-omn21326-ac3-exit-coded-readback and dod-omn21326-readback-shared-state-root are retired and the AC4
+      requirement is dropped. Their readback is AC3's check, so this item binds it there: the budget-readback handler's
+      tests show the AC3 readback exits 1 for a completed run over (execution_timeout_seconds + grace) * 1000 and 2 for
+      an empty window. The deployed 24 h observation still runs on the host whose state root holds the receipts, as
+      `uv run python -m omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_budget_readback`.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/scripts/test_verify_omn21326_ac3_budget_bound.py -q --no-cov -k 'inside_the_bound or past_budget_plus_grace or empty_window'"
+        cwd: "${OMNI_HOME}/omnimarket"
+    supersedes_ac_binding:
+      - item: dod-omn21326-ac3-exit-coded-readback
+        label: AC4
+        reason_kind: no_longer_applicable
+        reason: OMN-21326 carries no AC4; the label was added to the contract only, so the item proved a criterion the ticket never had.
+        retired_by: claude-code-omn21326-ac4-retirement
+        retired_at: '2026-10-29T16:30:00Z'
+      - item: dod-omn21326-readback-shared-state-root
+        label: AC4
+        reason_kind: no_longer_applicable
+        reason: OMN-21326 carries no AC4; the label was added to the contract only, so the item proved a criterion the ticket never had.
+        retired_by: claude-code-omn21326-ac4-retirement
+        retired_at: '2026-10-29T16:30:00Z'

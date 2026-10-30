@@ -1,0 +1,46 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-21478
+title: omnimarket enforces the internal sibling pins and reads omnibase_core, omnibase_spi and omninode-memory from their dev merge tags
+summary: omnimarket calls omnibase_core's reusable Internal Sibling Pins check on every pull request, merge group and dev push, lists it as a required check, and pins omnibase_core, omnibase_spi and omninode-memory to dev merge tags in pyproject.toml and uv.lock so the core fix of OMN-21478 reaches omnimarket.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21478-omnimarket-sibling-pins
+  statement: omnimarket must run the core Internal Sibling Pins check as a required context and resolve its internal siblings from dev merge tags.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: omnimarket CI calls the core reusable at a full 40-hex sha and the context is a required row of .github/required-checks.yaml and asserted by the CI Summary gate -- falsifier: uv run pytest tests/unit/workflows/test_internal_sibling_pins_omn21478.py tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q'
+  - id: AC2
+    statement: 'AC2: pyproject.toml pins omnibase-core, omnibase-spi and omninode-memory to dev merge tags in [tool.uv.sources] and uv.lock locks those tags -- falsifier: uv run pytest tests/unit/workflows/test_internal_sibling_pins_omn21478.py -q -k dev_merge_tag'
+evidence_requirements:
+- kind: tests
+  description: The workflow calls the core reusable at a full sha, and the required-checks and CI Summary rows exist.
+  command: uv run pytest tests/unit/workflows/test_internal_sibling_pins_omn21478.py tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q
+- kind: tests
+  description: pyproject.toml and uv.lock pin each of the three siblings to one dev merge tag.
+  command: uv run pytest tests/unit/workflows/test_internal_sibling_pins_omn21478.py -q -k dev_merge_tag
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21478-omnimarket-workflow-and-rows
+  description: The workflow calls the core reusable at a full sha, and the required-checks and CI Summary rows exist.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/workflows/test_internal_sibling_pins_omn21478.py tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn21478-omnimarket-lock
+  description: pyproject.toml and uv.lock pin each sibling to one dev merge tag.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/workflows/test_internal_sibling_pins_omn21478.py -q -k dev_merge_tag
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2

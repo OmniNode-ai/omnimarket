@@ -477,3 +477,135 @@ class TestEachUnderpoweredRangeIsRefusedByNameAC2:
         completed = _cli(tmp_path, document)
         assert completed.returncode != 0
         assert expected in completed.stdout + completed.stderr
+
+
+class TestEveryPlanClassAndGateCheckIsRegisteredOMN19787:
+    """OMN-19787 AC-2: every class of the delegation evals plan's section 2.3 has a
+    declared false-pass range, every delegation gate check has a register entry,
+    and the CLI over the committed register exits zero.
+
+    The class list is the plan's own (section 2.3: the six OMN-19457 names plus
+    code_generation), written out here rather than read from the module constant,
+    so dropping a class from the requirement cannot hide a missing range.
+    """
+
+    _PLAN_SECTION_2_3_CLASSES = (
+        "test",
+        "document",
+        "summarization",
+        "research",
+        "planning",
+        "reasoning",
+        "code_generation",
+    )
+
+    def test_omn19787_every_plan_class_has_a_declared_false_pass_range(
+        self,
+    ) -> None:
+        document = yaml.safe_load(
+            DEFAULT_CHECK_REGISTER_PATH.read_text(encoding="utf-8")
+        )
+        entries = {entry["check_id"]: entry for entry in document["checks"]}
+        for task_class in self._PLAN_SECTION_2_3_CLASSES:
+            check_id = FALSE_PASS_ID_PREFIX + task_class
+            entry = entries.get(check_id)
+            assert entry is not None, f"{task_class}: no false-pass range"
+            assert entry["check_class"] == "range", check_id
+            assert entry["range_status"] == "declared", check_id
+            assert entry["acceptance_line"]["check_id"] == check_id
+            # Slice 40's bar restated as a floor: false-pass upper bound <= 10%.
+            assert entry["acceptance_line"]["floor"] == 0.90, check_id
+            assert entry["blocks"] == [
+                f"routing read of the {task_class} acceptance eval"
+            ], check_id
+
+    def test_omn19787_every_gate_check_has_a_gate_entry(self) -> None:
+        gate_checks = (
+            set(SUPPORTED_DETERMINISTIC_CHECKS)
+            | set(_HEURISTIC_SIMPLE_CHECKS)
+            | set(_HEURISTIC_CONTAINS_ANY_CHECKS)
+            | {
+                resolve_numeric_grounding_policy().check_name,
+                resolve_claim_grounding_policy().check_name,
+                resolve_identifier_grounding_policy().check_name,
+                resolve_evidence_comment_policy().criteria_check_name,
+                resolve_evidence_comment_policy().evidence_check_name,
+            }
+        )
+        document = yaml.safe_load(
+            DEFAULT_CHECK_REGISTER_PATH.read_text(encoding="utf-8")
+        )
+        classes = {
+            entry["check_id"]: entry["check_class"] for entry in document["checks"]
+        }
+        missing = sorted(
+            name for name in gate_checks if classes.get(GATE_ID_PREFIX + name) != "gate"
+        )
+        assert gate_checks
+        assert missing == []
+
+    def test_omn19787_the_cli_over_the_committed_register_exits_zero(self) -> None:
+        completed = subprocess.run(
+            [sys.executable, "-m", "omnimarket.ranges", "check-register"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        assert "every one classified" in completed.stdout
+
+    def test_omn19787_the_eval_reports_each_class_against_its_registered_line(
+        self,
+    ) -> None:
+        """The bound the eval reports for a class is computed on the register's line."""
+        from unittest.mock import Mock
+
+        from omnimarket.events.delegation_gate_eval.model_delegation_gate_eval_request import (
+            ModelDelegationGateEvalRequest,
+        )
+        from omnimarket.events.delegation_gate_eval.model_gate_eval_item import (
+            ModelGateEvalItem,
+        )
+        from omnimarket.events.delegation_gate_eval.model_gate_replay_verdict import (
+            ModelGateReplayVerdict,
+        )
+        from omnimarket.nodes.node_delegation_gate_eval_compute.handlers.handler_delegation_gate_eval import (
+            HandlerDelegationGateEval,
+        )
+
+        document = yaml.safe_load(
+            DEFAULT_CHECK_REGISTER_PATH.read_text(encoding="utf-8")
+        )
+        lines = {
+            entry["check_id"]: entry["acceptance_line"]
+            for entry in document["checks"]
+            if entry["check_id"].startswith(FALSE_PASS_ID_PREFIX)
+        }
+        items = tuple(
+            ModelGateEvalItem(
+                item_id=f"{task_class}-{index}:0",
+                task_class=task_class,
+                stratum="accepted",
+                label=label,
+                prompt_text="",
+                recorded_verdict="accepted",
+            )
+            for task_class in self._PLAN_SECTION_2_3_CLASSES
+            for index, label in enumerate(("adequate", "inadequate"))
+        )
+        result = HandlerDelegationGateEval(
+            Mock(return_value=ModelGateReplayVerdict(verdict="accepted"))
+        ).handle(ModelDelegationGateEvalRequest(run_id="omn19787-ac2", items=items))
+        rows = {
+            row.task_class: row
+            for row in result.rate_rows
+            if row.arm == "recorded" and row.stratum == "all"
+        }
+        assert set(rows) == set(self._PLAN_SECTION_2_3_CLASSES)
+        for task_class, row in rows.items():
+            line = lines[FALSE_PASS_ID_PREFIX + task_class]
+            evaluation = row.false_pass_evaluation
+            assert (row.accepted_n, row.false_pass_count) == (2, 1), task_class
+            assert evaluation.floor == line["floor"], task_class
+            assert evaluation.confidence == line["method"]["confidence"], task_class
+            assert evaluation.declared_n == line["method"]["sample_size"], task_class

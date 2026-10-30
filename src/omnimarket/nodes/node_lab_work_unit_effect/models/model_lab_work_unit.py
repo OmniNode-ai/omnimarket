@@ -4,7 +4,7 @@
 
 A LAB WORK UNIT is one heavy command (a test suite, a build, lint over a tree,
 a code draft by a lab-model agent) run at one exact pushed commit of one repository, on ONE named
-pool host. The caller places it (see ``omnimarket.lab_work.placement``) and
+pool host. The caller places it (see ``omnimarket.nodes.node_lab_placement_compute``) and
 names the host on the request; each pool host's serve process runs only the
 units addressed to it. The receipt carries the exit code, the log path on the
 host and a bounded tail of the output.

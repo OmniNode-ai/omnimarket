@@ -2,7 +2,8 @@
 # ONEX Pre-commit Configuration — omnimarket
 #
 # Hooks:
-#   - ruff format + lint (auto-fix)
+#   - ruff format + lint (check-only)
+#   - Check-only commit hooks (from omnibase_core: hook-writes, commit-hygiene)
 #   - Stub implementation detection (from omnibase_core)
 #   - TODO format enforcement (from omnibase_core)
 #   - Hardcoded topic string prevention (from omnibase_core)
@@ -33,11 +34,22 @@ repos:
   # full 40-hex sha, first-party refs are a dev-merge tag. rev is the dev-merge tag
   # of the core commit that carries the hook. SYNC with the ci.yml step 'GitHub
   # Actions pin check'.
+  # OMN-21496: the same block consumes the check-only hooks of omnibase_core
+  # (check-hook-writes refuses a hook that rewrites files; commit-hygiene refuses
+  # a missing or extra final newline and a staged tmp/ file; commit-hygiene-message
+  # refuses an AI co-author trailer). Stages and types are the published ones.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: dev-20261028202452-b8b19b0b4bff
+    rev: dev-20261029044430-3f33be0d5364
     hooks:
       - id: check-action-pins
         files: ^\.github/workflows/[^/]+\.ya?ml$
+        require_serial: true
+      - id: check-hook-writes
+        require_serial: true
+      - id: commit-hygiene
+        require_serial: true
+      - id: commit-hygiene-message
+        stages: [commit-msg]
         require_serial: true
   # OMN-19998: public-repository runner placement (RULING 2026-10-16T07:07:09Z,
   # "Ci runners should be for private repos only"). CI twin job
@@ -151,6 +163,15 @@ repos:
   # Shrink-only baseline at .onex_ratchets/canonical_file_shape_baseline.txt.
   # OMN-21002: the historical rev refused the caller-owned guard allowlist.
   # The pinned core revision reads the reusable caller's shrink-only declaration.
+  #
+  # The canonical-file-shape hook runs the node_canonical_file_shape_check_compute entry
+  # (hook id unchanged), pinned to an omnibase_core dev-merge tag. Its own block below.
+  - repo: https://github.com/OmniNode-ai/omnibase_core
+    rev: dev-20261029151319-6e0a5eee541a
+    hooks:
+      - id: canonical-file-shape
+        args: [--rules, file-shape]
+        require_serial: true
   - repo: https://github.com/OmniNode-ai/omnibase_core
     rev: 031148215620031436cba30619bbae67c0bb38ad # pragma: allowlist secret
     hooks:
@@ -164,8 +185,6 @@ repos:
         require_serial: true
         args: [--allowlist, .onex_ratchets/noncanonical_class_allowlist.yaml, src/omnimarket]
         files: ^src/omnimarket/.*\.py$
-      - id: canonical-file-shape
-        require_serial: true
       # OMN-20295: direct-model-call gate, BLOCKING. A model call must sit in a
       # sanctioned delegation node package named in omnibase_core's policy.yaml.
       # Shrink-only baseline, declared here so the shape ratchet accepts it.
@@ -372,7 +391,6 @@ repos:
     rev: v6.0.0
     hooks:
       - id: check-yaml
-      - id: end-of-file-fixer
       # This verbatim captured prompt intentionally contains merge-marker text.
       - id: check-merge-conflict
         exclude: ^tests/fixtures/delegation/omn19523/prompts/run_6bfe152a_t2a\.txt$
@@ -1480,7 +1498,7 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
-  # Ruff — standalone pre-commit hooks (no uv source resolution needed)
+  # Ruff — standalone check-only pre-commit hooks (no uv source resolution needed)
   # Using astral-sh/ruff-pre-commit avoids `uv run ruff` which fails in worktrees
   # because uv.sources relative paths (../omnibase_core) resolve against the worktree
   # parent directory instead of $OMNI_HOME. (OMN-8103)
@@ -1488,14 +1506,14 @@ repos:
     rev: v0.15.9
     hooks:
       - id: ruff-format
+        args: [--check]
         pass_filenames: true
         types: [python]
         files: ^(src|tests)/
 
       - id: ruff
-        alias: ruff-fix
-        name: ruff check (auto-fix)
-        args: [--fix, --exit-non-zero-on-fix]
+        name: ruff check (check only)
+        args: [--no-fix]
         pass_filenames: true
         types: [python]
         files: ^(src|tests)/
@@ -1507,7 +1525,7 @@ repos:
         name: CI Summary external producer trigger parity (OMN-18963)
         language: system
         entry: uv run pytest tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q -p no:randomly
-        files: ^(\.github/workflows/.*\.ya?ml|scripts/ci/ci_summary_gate\.py|tests/unit/scripts/ci/test_l4_event_scope_omn18963\.py|\.pre-commit-config\.yaml)$
+        files: ^(\.github/workflows/.*\.ya?ml|scripts/ci/(ci_summary_gate\.py|ci_summary_external_producers\.json)|tests/unit/scripts/ci/test_l4_event_scope_omn18963\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         require_serial: true
         stages: [pre-commit]
@@ -2275,13 +2293,6 @@ repos:
         name: Reject skip-gate bypass tokens in commit messages (OMN-10414)
         entry: .pre-commit-hooks/reject-deploy-gate-skip-token.sh
         language: script
-        pass_filenames: true
-        stages: [commit-msg]
-      - id: strip-ai-coauthor-trailer
-        require_serial: true
-        name: Strip AI-generated Co-Authored-By trailers from commit messages
-        entry: perl -i -ne 'print unless /^co-authored-by:.*claude.*noreply\@anthropic\.com/i'
-        language: system
         pass_filenames: true
         stages: [commit-msg]
 

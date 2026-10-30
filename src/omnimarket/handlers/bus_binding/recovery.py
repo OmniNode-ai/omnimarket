@@ -5,6 +5,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from datetime import datetime
 from importlib import resources
 from pathlib import Path
@@ -53,9 +55,22 @@ def read_record(state_dir: Path, lane: str) -> dict[str, Any]:
 def _write_record(state_dir: Path, lane: str, record: dict[str, Any]) -> None:
     path = state_path(state_dir, lane)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(record, sort_keys=True), encoding="utf-8")
-    tmp.replace(path)
+    tmp: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.stem}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            tmp = Path(handle.name)
+            handle.write(json.dumps(record, sort_keys=True))
+        os.replace(tmp, path)
+    finally:
+        if tmp is not None:
+            tmp.unlink(missing_ok=True)
 
 
 def observe(state_dir: Path, decision: ModelBusBindingDecision) -> None:

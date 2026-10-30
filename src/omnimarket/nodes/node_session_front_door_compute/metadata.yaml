@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_session_front_door_compute
+version: 1.0.0
+description: The session-start entry and the session file and row operations, bound to the session's principal through the team identity declaration. A session the declaration does not positively match as the operator runs the preflight under the team profile; the required-check assertion on the receipt requires, under team, the four ledger checks without coordination_host and validates profile, overlay hash, per-check success and the overall verdict, and under operator all five as before. The host mode is coordination, detached or unknown for the operator as before, and bus-member for a team session only when its current receipt passes and the bus configuration holds (bound lane login, declared host, executable append command, ledger mirror and archive); it is decided before the first CLAIM and is never attachment proof. A refused or unknown CLAIM append stops startup, and session.env records the session's profile and principal.
+pack: operator_tooling
+node_role: compute
+display_name: Session Front Door Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_session_front_door_compute: omnimarket.nodes.node_session_front_door_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem_write
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- session-front-door-compute
+- OMN-21389
