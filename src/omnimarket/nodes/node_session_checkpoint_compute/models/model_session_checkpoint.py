@@ -14,8 +14,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from omnimarket.models.session_scope import ModelSessionScope
 from omnimarket.nodes.node_team_identity_compute.models import ModelIdentityClaim
-from omnimarket.session_scope import ModelSessionScope
 
 Operation = Literal["write", "read", "validate", "record"]
 

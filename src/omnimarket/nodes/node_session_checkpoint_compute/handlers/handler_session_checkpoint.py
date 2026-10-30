@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Session checkpoints bound to the session's principals.
 
-The session is bound first, through the team identity declaration (``omnimarket.session_scope``):
+The session is bound first, through the team identity declaration (``omnimarket.handlers.session_scope``):
 an operator session reads every checkpoint as before; a member session reads, resumes from and
 inherits from only checkpoints carrying one of its own principals, and every checkpoint it writes
 carries its principal.
@@ -14,7 +14,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from omnimarket.session_scope import bind_session_scope
+from omnimarket.handlers.session_scope import bind_session_scope
 
 from ..models.model_session_checkpoint import (
     ModelSessionCheckpointRequest,

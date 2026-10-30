@@ -35,7 +35,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from omnimarket.session_scope import ModelSessionScope
+from omnimarket.models.session_scope import ModelSessionScope
 
 SCHEMA_ID = "omni.session-checkpoint/1"
 STAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")

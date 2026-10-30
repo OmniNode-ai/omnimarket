@@ -14,8 +14,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, StringConstraints
 
+from omnimarket.models.session_scope import ModelSessionScope
 from omnimarket.nodes.node_team_identity_compute.models import ModelIdentityClaim
-from omnimarket.session_scope import ModelSessionScope
 
 Stamp = Annotated[
     str, StringConstraints(pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")

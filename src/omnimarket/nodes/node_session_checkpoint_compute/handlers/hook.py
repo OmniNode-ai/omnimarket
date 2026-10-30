@@ -26,7 +26,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from omnimarket.session_scope import ModelSessionScope
+from omnimarket.models.session_scope import ModelSessionScope
 
 from . import checkpoint as ckpt
 

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Session recovery over the rolling ledger, bound to the session's principals.
 
-The session is bound first, through the team identity declaration (``omnimarket.session_scope``).
+The session is bound first, through the team identity declaration (``omnimarket.handlers.session_scope``).
 Then one operation runs:
 
 * ``dangling``: every CLAIM no later row closes, each with the principal that wrote it and an
@@ -22,7 +22,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
-from omnimarket.session_scope import ModelSessionScope, bind_session_scope
+from omnimarket.handlers.session_scope import bind_session_scope
+from omnimarket.models.session_scope import ModelSessionScope
 
 from ..models.model_session_resume import (
     ModelSessionResumeRequest,

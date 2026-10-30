@@ -18,44 +18,14 @@ through ``node_team_identity_compute``'s loader and resolver, never from an envi
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
-
+from omnimarket.models.session_scope import ModelSessionScope
 from omnimarket.nodes.node_team_identity_compute.handlers import (
     TeamIdentityError,
     load_team_identity,
     resolve_role,
 )
 from omnimarket.nodes.node_team_identity_compute.models import ModelIdentityClaim
-
-
-class ModelSessionScope(BaseModel):
-    """The principals a session acts for. ``privileges`` is ``team`` unless the operator matched."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    privileges: Literal["operator", "team"]
-    entry_id: str | None
-    principals: tuple[str, ...]
-    # The principal this session records on what it writes (a checkpoint); None when unbound.
-    writer_principal: str | None
-    diagnostic: str | None
-    source_sha256: str | None
-
-    @property
-    def is_operator(self) -> bool:
-        return self.privileges == "operator"
-
-    def owns(self, principal: str | None) -> bool:
-        """Whether this session may act on something ``principal`` wrote.
-
-        An operator session owns everything, as before the team existed. A member session owns only
-        its own principals; a missing principal is unverified and never owned.
-        """
-        if self.is_operator:
-            return True
-        return principal is not None and principal in self.principals
 
 
 def _restricted(diagnostic: str, sha256: str | None) -> ModelSessionScope:

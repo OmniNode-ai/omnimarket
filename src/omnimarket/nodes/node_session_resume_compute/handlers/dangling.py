@@ -28,7 +28,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from omnimarket.session_scope import ModelSessionScope
+from omnimarket.models.session_scope import ModelSessionScope
 
 from ..models.model_session_resume import ModelDanglingClaim, Owner
 from .ledger_grammar import (

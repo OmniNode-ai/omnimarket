@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import re
 
-from omnimarket.session_scope import ModelSessionScope
+from omnimarket.models.session_scope import ModelSessionScope
 
 from ..models.model_session_resume import ModelCloseSpec, ModelRelaunchSpec
 from .dangling import FULL_TOKEN_RE, Ledger, Ownership, find_claims
