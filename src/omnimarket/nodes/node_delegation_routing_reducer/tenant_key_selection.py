@@ -11,16 +11,24 @@ from __future__ import annotations
 import hashlib
 import logging
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import Protocol, runtime_checkable
 
 from omnimarket.routing.byok_provider_backends import BYOK_MODEL_UNRESOLVED
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
-if TYPE_CHECKING:
-    from omnimarket.routing.tenant_overlay_resolver import ProtocolTenantOverlayReader
-
 # The resolver's logger name, so these warnings read exactly as before the move.
 logger = logging.getLogger("omnimarket.routing.tenant_overlay_resolver")
+
+
+@runtime_checkable
+class ProtocolTenantOverlayReader(Protocol):
+    """Structural protocol satisfied by ``PostgresReadDatabaseAdapter`` and fakes."""
+
+    def query(
+        self, table: str, filters: dict[str, object] | None = None
+    ) -> list[dict[str, object]]:
+        """Return rows from ``table`` matching ``filters``."""
+        raise NotImplementedError
 
 
 #: The tenant's key catalog (node_projection_tenant_credentials, OMN-16316).
