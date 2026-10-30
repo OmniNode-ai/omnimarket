@@ -949,7 +949,7 @@ repos:
       - id: no-untracked-todos
         name: No untracked TODO/FIXME/HACK comments
         language: system
-        entry: uv run python -m omnibase_core.handlers.handler_todo_format
+        entry: uv run python -m omnibase_core.nodes.node_todo_format_check_effect.runtime_todo_format
         require_serial: true
         types: [python]
         stages: [pre-commit]

@@ -9,7 +9,6 @@ import importlib.util
 from pathlib import Path
 
 import pytest
-from omnibase_core.handlers.handler_internal_sibling_pins_cli import load_contract
 
 pytestmark = pytest.mark.unit
 
@@ -28,6 +27,9 @@ def _load_module():
 @pytest.fixture
 def mod():
     return _load_module()
+
+
+load_contract = _load_module().load_contract
 
 
 def _write_pyproject(tmp_path: Path, sources_block: str) -> Path:

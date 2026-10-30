@@ -12,7 +12,9 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from omnibase_core.validation.validator_routing_authority import main as core_main
+from omnibase_core.nodes.node_routing_authority_check_compute.runtime_routing_authority_check import (
+    main as core_main,
+)
 
 from omnimarket.handlers.handler_contract_routing_overlay import (
     load_routing_contract,

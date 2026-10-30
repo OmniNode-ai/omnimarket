@@ -26,8 +26,9 @@ from typing import Any
 
 import pytest
 import yaml
-from omnibase_core.handlers.handler_internal_sibling_pins_cli import load_contract
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
+
+from scripts.check_dep_provenance import load_contract
 
 pytestmark = pytest.mark.unit
 

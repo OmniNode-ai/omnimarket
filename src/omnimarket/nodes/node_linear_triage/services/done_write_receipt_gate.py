@@ -5,7 +5,7 @@
 Operator ruling (2026-10-02): a ticket reaches Done only on a PASS dod_verify
 whose checks bind every acceptance criterion; a merged PR or ticked boxes is
 never enough. The rule itself is
-``omnibase_core.handlers.handler_done_write_receipt_gate`` -- the evidence-autoclose
+``omnibase_core.nodes.node_done_write_receipt_gate_compute.handler_done_write_receipt_gate`` -- the evidence-autoclose
 closer's rule, lifted into the layer both repos import. This module is the
 triage half: it runs the verifier node, reads the verdict it prints, and hands
 verdict plus the ticket's current description to that rule.
@@ -26,12 +26,12 @@ import subprocess
 import sys
 from typing import Protocol, runtime_checkable
 
-from omnibase_core.handlers.handler_done_write_receipt_gate import (
-    evaluate_done_write_receipt,
-    extract_dod_verify_verdict,
-)
 from omnibase_core.models.ticket.model_done_write_decision import (
     ModelDoneWriteDecision,
+)
+from omnibase_core.nodes.node_done_write_receipt_gate_compute.handler_done_write_receipt_gate import (
+    evaluate_done_write_receipt,
+    extract_dod_verify_verdict,
 )
 
 #: A verifier run executes the contract's checks, so it is slow by design.

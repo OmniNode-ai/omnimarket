@@ -56,7 +56,7 @@ def test_no_untracked_todos_is_a_local_hook_running_the_core_handler() -> None:
     assert repo == "local"
     entry = hook["entry"]
     assert isinstance(entry, str)
-    assert "omnibase_core.handlers.handler_todo_format" in entry
+    assert "omnibase_core.nodes.node_todo_format_check_effect.runtime_todo_format" in entry
     assert "check-todo-format" not in entry
 
 

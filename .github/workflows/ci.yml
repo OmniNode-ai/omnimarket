@@ -397,7 +397,7 @@ jobs:
           # omnibase_core owns the rule: this is the handler the no-untracked-todos
           # pre-commit hook runs. It prints file:line for each violation and exits 1.
           find src/ -name '*.py' -not -path '*/tests/*' -print0 \
-            | xargs -0 uv run python -m omnibase_core.handlers.handler_todo_format
+            | xargs -0 uv run python -m omnibase_core.nodes.node_todo_format_check_effect.runtime_todo_format
       # NOTE: This step requires PR #75 (OMN-7922, fix legacy contracts) to be merged
       # before it is active in CI. The build_loop_orchestrator handler still contains
       # hardcoded onex.evt.* constants until OMN-7922 migrates them to contract-declared
@@ -544,7 +544,7 @@ jobs:
       - name: Duplicate registry IDs gate (enforce)
         run: |
           test -f .duplicate-id-registries.yaml
-          uv run python -m omnibase_core.validation.validator_duplicate_config_ids \
+          uv run python -m omnibase_core.nodes.node_duplicate_config_ids_check_compute.runtime_duplicate_config_ids_check \
             --manifest .duplicate-id-registries.yaml --repo-root .
       # OMN-12821 (plan A1.5): routing-authority demo gate. Proves the demo path
       # (generation + delegation) resolves provider/model/endpoint_ref/endpoint/

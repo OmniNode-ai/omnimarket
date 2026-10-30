@@ -50,7 +50,7 @@ def walker_report() -> dict[str, object]:
         [
             sys.executable,
             "-m",
-            "omnibase_core.validation.validator_contract_walker",
+            "omnibase_core.nodes.node_contract_walker_check_compute.runtime_contract_walker_check",
             str(REPO / "src"),
             "--json-out",
             str(out),
