@@ -13,13 +13,15 @@ class ModelDeveloperLaneFacts(BaseModel):
     """What the hook read for one lane of the hook-edge contract.
 
     ``declaration`` is the lane's own principal declaration document, parsed, or ``None``
-    when none is installed. ``env_principal`` is the login name the operator env file holds
-    for the lane, read only for a lane whose credential source is that file.
+    when none is installed. ``credential_source`` is the lane's ``sasl_credential_source`` in the
+    hook-edge contract, ``None`` for a lane that declares none. ``env_principal`` is the login
+    name the operator env file holds for the lane, read only for a lane whose credential source
+    is that file.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    credential_source: Literal["lane_store", "operator_env", "none"]
+    credential_source: Literal["onex_lane_store", "operator_env_file"] | None = None
     env_principal: str | None = None
     declaration: dict[str, JsonValue] | None = None
 

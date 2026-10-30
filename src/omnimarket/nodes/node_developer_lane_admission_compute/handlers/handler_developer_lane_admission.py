@@ -45,9 +45,8 @@ LANE_STORE_LANES_BLOCK = "lanes"
 LANE_STORE_USERNAME_KEY = "sasl_username"
 DECLARATION_SCHEMA_VERSION = "developer_principal.v1"
 
-SOURCE_LANE_STORE = "lane_store"
-SOURCE_OPERATOR_ENV = "operator_env"
-SOURCE_NONE = "none"
+# The hook-edge contract's own value for a lane whose credential is in the operator env file.
+SOURCE_OPERATOR_ENV = "operator_env_file"
 
 VERDICT_OPERATOR = "operator"
 VERDICT_COLLABORATOR = "collaborator"
@@ -126,14 +125,11 @@ def _binding(store: Mapping[str, Any] | None) -> tuple[str | None, bool]:
 
 
 def _principal(
-    store: Mapping[str, Any] | None, lane: str, facts: Mapping[str, Any], bound: bool
+    store: Mapping[str, Any] | None, lane: str, facts: Mapping[str, Any]
 ) -> str | None:
-    source = facts.get("credential_source", SOURCE_NONE)
-    if source == SOURCE_OPERATOR_ENV:
+    if facts.get("credential_source") == SOURCE_OPERATOR_ENV:
         value = facts.get("env_principal")
         return value if isinstance(value, str) and value.strip() else None
-    if source != SOURCE_LANE_STORE and not bound:
-        return None
     lanes = (store or {}).get(LANE_STORE_LANES_BLOCK)
     entry = lanes.get(lane) if isinstance(lanes, Mapping) else None
     value = entry.get(LANE_STORE_USERNAME_KEY) if isinstance(entry, Mapping) else None
@@ -186,7 +182,10 @@ def admit(request: Mapping[str, Any]) -> dict[str, Any]:
             REFUSAL_DECLARATION_MISSING,
             f"bound lane {selected!r} has no principal declaration installed to check against",
         )
-    principal = _principal(store, selected, facts, bound)
+    if facts.get("credential_source") is None and not bound:
+        # The declared lane has no bus identity to check; nothing to judge.
+        return _decision(selected, VERDICT_OPERATOR)
+    principal = _principal(store, selected, facts)
     if principal is None:
         return _refuse(
             selected, REFUSAL_NO_PRINCIPAL, "selected lane has no declared principal"

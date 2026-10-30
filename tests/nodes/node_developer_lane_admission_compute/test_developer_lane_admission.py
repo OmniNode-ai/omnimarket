@@ -75,16 +75,16 @@ def request(
         "lane_store": lane_store,
         "lanes": {
             HOME_LANE: {
-                "credential_source": "lane_store",
+                "credential_source": "onex_lane_store",
                 "declaration": None if home_list is None else declaration(*home_list),
             },
             COLLAB_LANE: {
-                "credential_source": "none",
+                "credential_source": None,
                 "declaration": None
                 if collab_list is None
                 else declaration(*collab_list),
             },
-            OTHER_LANE: {"credential_source": "none", "declaration": None},
+            OTHER_LANE: {"credential_source": None, "declaration": None},
         },
     }
 
@@ -220,12 +220,18 @@ def test_malformed_declaration_of_another_lane_is_not_the_selected_lanes_fault()
 
 def test_operator_env_lane_reads_the_env_principal() -> None:
     req = request(None, home_list=(HOME_COLLAB,))
-    req["lanes"][HOME_LANE].update(credential_source="operator_env")
+    req["lanes"][HOME_LANE].update(credential_source="operator_env_file")
     for env, verdict in ((OPERATOR, "operator"), (None, "refused")):
         req["lanes"][HOME_LANE]["env_principal"] = env
         assert admit(req)["verdict"] == verdict
     req["lanes"][HOME_LANE]["env_principal"] = HOME_COLLAB
     assert admit(req)["refusal"] == "collaborator-on-barred-lane"
+
+
+def test_declared_lane_with_no_bus_identity_keeps_the_operator_behaviour() -> None:
+    req = request(None)
+    req["lanes"][HOME_LANE]["credential_source"] = None
+    assert admit(req)["verdict"] == "operator"
 
 
 def test_lane_store_principal_is_stripped_like_the_broker_identity() -> None:
