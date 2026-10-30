@@ -79,7 +79,7 @@ def stamp_of(lane: str) -> str:
     raise AssertionError(lane)
 
 
-def close(lane: str, mode: str = "released", **extra: Any) -> dict[str, Any]:
+def close_request(lane: str, mode: str = "released", **extra: Any) -> dict[str, Any]:
     spec: dict[str, Any] = {
         "lane": "sess-a2",
         "dead_lane": lane,
@@ -94,7 +94,7 @@ def close(lane: str, mode: str = "released", **extra: Any) -> dict[str, Any]:
     return {"operation": "close", "close": spec}
 
 
-def relaunch(lane: str, parent: str | None = None) -> dict[str, Any]:
+def relaunch_request(lane: str, parent: str | None = None) -> dict[str, Any]:
     return {
         "operation": "relaunch",
         "relaunch": {
@@ -143,14 +143,14 @@ def test_member_runs_the_reconciler_in_report_mode_only(env: dict[str, Any]) -> 
 def test_member_closes_and_relaunches_its_own_lanes(
     env: dict[str, Any], lane: str
 ) -> None:
-    closed = run(env, MEMBER_A, **close(lane))
+    closed = run(env, MEMBER_A, **close_request(lane))
     assert closed.status == "ok", closed.reason
     assert closed.row is not None
     assert (
         f"| TERMINAL | lane={lane} | closed-by=sess-a2 | closes-CLAIM={stamp_of(lane)}-{lane} |"
         in closed.row
     )
-    relaunched = run(env, MEMBER_A, **relaunch(lane))
+    relaunched = run(env, MEMBER_A, **relaunch_request(lane))
     assert relaunched.status == "ok"
     assert relaunched.route == "relaunch"
     assert relaunched.row is not None
@@ -168,11 +168,13 @@ def test_member_session_never_composes_a_row_for_a_foreign_claim(
         "ticket=OMN-9000004 | repo=omnimarket | pr=omnimarket#902 | head=abcdef1 | needs=land | hand off"
     )
     attempts = [
-        close(lane, "released"),
-        close(lane, "landed"),
-        close(lane, "after_msg", after_msg=after_msg),
-        relaunch(lane),
-        relaunch(lane, parent="landing"),  # the landing route would send a notice MSG
+        close_request(lane, "released"),
+        close_request(lane, "landed"),
+        close_request(lane, "after_msg", after_msg=after_msg),
+        relaunch_request(lane),
+        relaunch_request(
+            lane, parent="landing"
+        ),  # the landing route would send a notice MSG
     ]
     for attempt in attempts:
         result = run(env, MEMBER_A, **attempt)
@@ -191,7 +193,7 @@ def test_member_is_refused_a_foreign_claim_named_by_its_token(
         if "| CLAIM | lane=lane-b |" in row
     )
     token = f"LCT1-100-4-{claim_row_digest(line)}-2026-10-29T08:05:01Z"
-    result = run(env, MEMBER_A, **close("lane-b", dead_claim=token))
+    result = run(env, MEMBER_A, **close_request("lane-b", dead_claim=token))
     assert result.status == "refused"
     assert result.row is None
     own_line = next(
@@ -200,14 +202,16 @@ def test_member_is_refused_a_foreign_claim_named_by_its_token(
         if "| CLAIM | lane=lane-a |" in row
     )
     own_token = f"LCT1-100-3-{claim_row_digest(own_line)}-2026-10-29T08:05:01Z"
-    own = run(env, MEMBER_A, **close("lane-a", dead_claim=own_token))
+    own = run(env, MEMBER_A, **close_request("lane-a", dead_claim=own_token))
     assert own.status == "ok"
     assert own.row is not None
     assert f"closes-CLAIM={own_token}" in own.row
 
 
 def test_member_is_refused_a_claim_it_cannot_find(env: dict[str, Any]) -> None:
-    result = run(env, MEMBER_A, **close("lane-a", dead_claim="2026-10-29T08:59:59Z"))
+    result = run(
+        env, MEMBER_A, **close_request("lane-a", dead_claim="2026-10-29T08:59:59Z")
+    )
     assert result.status == "refused"
     assert result.row is None
     assert "cannot be verified" in (result.reason or "")
@@ -227,8 +231,8 @@ def test_unknown_identity_gets_member_restrictions_and_owns_nothing(
     assert listing.reconciler_mode == "report"
     assert {item.owner for item in listing.dangling} == {"foreign"}
     for lane in sorted(OWN):
-        assert run(env, claims, **close(lane)).status == "refused"
-        assert run(env, claims, **relaunch(lane)).status == "refused"
+        assert run(env, claims, **close_request(lane)).status == "refused"
+        assert run(env, claims, **relaunch_request(lane)).status == "refused"
 
 
 def test_missing_declaration_gets_member_restrictions(
@@ -238,7 +242,7 @@ def test_missing_declaration_gets_member_restrictions(
     result = run(env, OPERATOR, operation="dangling")
     assert result.scope.privileges == "team"
     assert result.reconciler_mode == "report"
-    assert run(env, OPERATOR, **close("lane-a")).status == "refused"
+    assert run(env, OPERATOR, **close_request("lane-a")).status == "refused"
 
 
 # (d) an operator session behaves as before.
@@ -253,13 +257,15 @@ def test_operator_session_behaves_as_before(env: dict[str, Any]) -> None:
     assert {item.owner for item in result.dangling} == {"own"}
     assert {item.lane for item in result.dangling} == OWN | FOREIGN
     for lane in sorted(FOREIGN - {"landing-sub-b"}):
-        assert run(env, OPERATOR, **close(lane)).status == "ok"
-        assert run(env, OPERATOR, **relaunch(lane)).route == "relaunch"
-    routed = run(env, OPERATOR, **relaunch("landing-sub-b", parent="landing"))
+        assert run(env, OPERATOR, **close_request(lane)).status == "ok"
+        assert run(env, OPERATOR, **relaunch_request(lane)).route == "relaunch"
+    routed = run(env, OPERATOR, **relaunch_request("landing-sub-b", parent="landing"))
     assert routed.status == "ok"
     assert routed.route == "landing-lane"
     assert routed.row is None
-    unknown = run(env, OPERATOR, **close("lane-a", dead_claim="2026-10-29T08:59:59Z"))
+    unknown = run(
+        env, OPERATOR, **close_request("lane-a", dead_claim="2026-10-29T08:59:59Z")
+    )
     assert unknown.status == "ok", "an operator closes by reference, as before"
 
 
