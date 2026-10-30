@@ -32,3 +32,60 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_developer_lane_admission_compute/test_developer_lane_admission.py -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
+  - id: "dod-omn21599-deploy-source-admission-readback"
+    description: |-
+      Hosted-runner source-artifact deploy check for this pure compute handler: fetch the
+      handler at the checkout's exact published commit and load it as the prompt hook does,
+      without importing the package. Admit the bound collaborator, refuse removal of the
+      binding or principal and selection of the barred lane, and retain the operator verdict.
+      Missing source, a missing entry point or a wrong decision fails the command. This is
+      published source readback, not an assertion that a live runtime has been deployed.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_developer_lane_admission_compute/handlers/handler_developer_lane_admission.py" | python3 -c '
+          import copy, sys
+          namespace = {"__name__": "admission_deploy_readback"}
+          exec(compile(sys.stdin.read(), "published_handler", "exec"), namespace)
+          admit = namespace["admit"]
+          request = {
+              "declared_lane": "lane-home",
+              "barred_lanes": ["lane-home"],
+              "lane_store": {
+                  "developer": {"lane_binding": "lane-collab"},
+                  "lanes": {"lane-collab": {"sasl_username": "collab-principal"}},
+              },
+              "lanes": {
+                  "lane-home": {
+                      "credential_source": "onex_lane_store",
+                      "declaration": {"schema_version": "developer_principal.v1", "principals": [{"principal": "home-collaborator"}]},
+                  },
+                  "lane-collab": {
+                      "credential_source": None,
+                      "declaration": {"schema_version": "developer_principal.v1", "principals": [{"principal": "collab-principal"}]},
+                  },
+              },
+          }
+          decision = admit(copy.deepcopy(request))
+          assert (decision["selected_lane"], decision["verdict"], decision["refusal"]) == ("lane-collab", "collaborator", None), decision
+          unbound = copy.deepcopy(request)
+          del unbound["lane_store"]["developer"]
+          decision = admit(unbound)
+          assert (decision["verdict"], decision["refusal"]) == ("refused", "no-declared-principal"), decision
+          missing_principal = copy.deepcopy(request)
+          missing_principal["lane_store"]["lanes"] = {}
+          decision = admit(missing_principal)
+          assert (decision["verdict"], decision["refusal"]) == ("refused", "no-declared-principal"), decision
+          barred = copy.deepcopy(request)
+          barred["lane_store"]["developer"]["lane_binding"] = "lane-home"
+          barred["lane_store"]["lanes"]["lane-home"] = {"sasl_username": "home-collaborator"}
+          decision = admit(barred)
+          assert (decision["verdict"], decision["refusal"]) == ("refused", "collaborator-on-barred-lane"), decision
+          operator = copy.deepcopy(barred)
+          operator["lane_store"]["lanes"]["lane-home"]["sasl_username"] = "operator-principal"
+          decision = admit(operator)
+          assert (decision["selected_lane"], decision["verdict"], decision["refusal"]) == ("lane-home", "operator", None), decision
+          print("OMN-21599 published-source deploy readback: 5 admission decisions PASS")
+          '
+    binds_ac: ["AC1"]
