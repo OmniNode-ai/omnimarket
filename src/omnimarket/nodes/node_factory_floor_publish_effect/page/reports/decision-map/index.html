@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>October Decision Map</title>
+<link rel="icon" href="data:,">
+<style>
+/* Layout: summary band, then a full-width network (problems feed decisions, decisions feed the ones that amend them) with a detail card beside it; stacks on phones. */
+:root{
+  --bg:#f5f6f4; --surface:#ffffff; --ink:#1d2421; --muted:#5d6862; --rule:#d9ddd8; --accent:#1f6f5c; --accent-soft:#e2efe9;
+  --ok:#2f7d4f; --part:#b7791f; --none:#a2453b; --rev:#6b4fa0; --unk:#a7afaa;
+  --pnew:#c4612a; --pold:#5b6f86; --up:#b23a32; --down:#2f7d4f; --edge:#9aa49f;
+  --display:Georgia, "Times New Roman", serif;
+  --body:system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono:ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#141917; --surface:#1b211e; --ink:#e4e9e6; --muted:#9aa6a0; --rule:#2e3733; --accent:#5fbf9f; --accent-soft:#1f3a31;
+  --ok:#5cb57f; --part:#d9a24a; --none:#d77a6f; --rev:#a68ad8; --unk:#5e6762; --pnew:#e58a54; --pold:#8aa0bb; --up:#e0766c; --down:#5cb57f; --edge:#55605b; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#141917; --surface:#1b211e; --ink:#e4e9e6; --muted:#9aa6a0; --rule:#2e3733; --accent:#5fbf9f; --accent-soft:#1f3a31;
+  --ok:#5cb57f; --part:#d9a24a; --none:#d77a6f; --rev:#a68ad8; --unk:#5e6762; --pnew:#e58a54; --pold:#8aa0bb; --up:#e0766c; --down:#5cb57f; --edge:#55605b; color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.55}
+.wrap{max-width:1280px;margin:0 auto;padding-block:28px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:28px}
+h1,h2,h3{font-family:var(--display);font-weight:650;text-wrap:balance;margin:0;line-height:1.2}
+h1{font-size:2.1rem} h2{font-size:1.35rem} h3{font-size:1.05rem;font-weight:500}
+p{margin:0;max-width:70ch}
+.eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.lede{display:grid;gap:10px} .lede p{color:var(--muted)}
+.nums{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:6px;overflow:hidden}
+.num{background:var(--surface);padding:14px 16px;display:grid;gap:2px}
+.num b{font-family:var(--mono);font-size:1.4rem;font-weight:500;font-variant-numeric:tabular-nums}
+.num span{font-size:.82rem;color:var(--muted)}
+.finding{background:var(--accent-soft);border-radius:6px;padding:16px 18px;display:grid;gap:8px}
+.finding p{max-width:none}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:end}
+.field{display:grid;gap:4px;min-width:0}
+.field select,.field input[type=search]{font:inherit;font-size:.88rem;padding:6px 8px;border:1px solid var(--rule);border-radius:4px;background:var(--surface);color:var(--ink)}
+.check{display:flex;gap:6px;align-items:center;font-size:.88rem}
+.seg{display:inline-flex;border:1px solid var(--rule);border-radius:5px;overflow:hidden}
+.seg button{font:inherit;font-size:.86rem;padding:6px 12px;border:0;background:var(--surface);color:var(--ink);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--surface)}
+.seg button:focus-visible,.chip:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.stage{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
+@media (max-width:900px){.stage{grid-template-columns:minmax(0,1fr)}}
+#cy{height:680px;background:var(--surface);border:1px solid var(--rule);border-radius:6px;min-width:0}
+@media (max-width:600px){#cy{height:520px}}
+.side{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:16px;display:grid;gap:12px;min-width:0;max-height:680px;overflow:auto}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.8rem;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;margin-right:6px;vertical-align:-1px}
+.legend .c{border-radius:50%} .legend .s{border-radius:2px}
+.legend .l{width:18px;height:0;border-top:2px solid var(--edge);vertical-align:3px}
+dl{display:grid;grid-template-columns:96px minmax(0,1fr);gap:6px 10px;margin:0;font-size:.88rem}
+dt{color:var(--muted)} dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.badge{font-family:var(--mono);font-size:.68rem;padding:1px 7px;border-radius:10px;color:var(--surface);white-space:nowrap}
+.note{font-size:.84rem;color:var(--muted)}
+.fx{display:grid;gap:6px;background:var(--bg);border-radius:4px;padding:10px 12px;font-size:.86rem}
+.spark{display:block;width:100%;height:48px}
+.mini{display:grid;gap:4px;font-size:.85rem}
+.mini button{font:inherit;text-align:left;background:none;border:0;padding:4px 0;color:var(--ink);cursor:pointer;border-bottom:1px solid var(--rule)}
+.mini button:hover{color:var(--accent)}
+.lists{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px}
+.listbox{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:14px 16px;display:grid;gap:8px;min-width:0}
+table{border-collapse:collapse;width:100%;font-size:.85rem}
+td,th{text-align:left;padding:5px 6px;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font-weight:500;color:var(--muted)} td.n{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.tw{overflow-x:auto}
+.themes{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px 24px}
+.theme{display:grid;gap:4px;padding-top:10px;border-top:1px solid var(--rule)} .theme small{color:var(--muted)}
+footer{font-size:.82rem;color:var(--muted);display:grid;gap:6px;border-top:1px solid var(--rule);padding-top:16px}
+.loading{display:grid;place-items:center;height:100%;color:var(--muted)}
+.nav{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:baseline;font-size:.86rem}
+.nav a{color:var(--accent);text-decoration:none;border-bottom:1px solid var(--accent-soft)}
+.nav a:hover{border-bottom-color:var(--accent)}
+.age{font-family:var(--mono);font-size:.78rem;color:var(--muted)}
+.snap{background:var(--surface);border:1px dashed var(--rule);border-radius:6px;padding:10px 14px;font-size:.86rem;color:var(--muted)}
+*{box-sizing:border-box}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <section class="lede">
+    <nav class="nav" aria-label="Reports"><a href="../">All reports</a></nav>
+    <div class="eyebrow">Operator decision ledger · 30 Sep to 30 Oct 2026</div>
+    <h1>October Decision Map</h1>
+    <p>Problems the system ran into, the decisions they led to, and whether each problem came back after the change. Problems are clustered from friction, correction and failed-lane rows on the work ledger; decisions are the operator's recorded rulings and consents, normalized and cleaned.</p>
+  </section>
+
+  <div class="snap" id="snap" role="note">Reading the snapshot.</div>
+
+  <section class="nums" id="nums" aria-label="Totals"></section>
+  <section class="finding" id="finding"></section>
+
+  <section style="display:grid;gap:12px">
+    <h2>The map</h2>
+    <div class="toolbar">
+      <div class="field"><span class="eyebrow">View</span>
+        <div class="seg" role="group" aria-label="View">
+          <button id="v-prob" aria-pressed="true">Problems to decisions</button>
+          <button id="v-chain" aria-pressed="false">Decision chains</button>
+        </div></div>
+      <div class="field"><label class="eyebrow" for="pstat">Problems</label>
+        <select id="pstat"><option value="all">All linked</option><option value="new">New since 30 Sep</option><option value="existing">Existing before</option><option value="rec">Recurring</option></select></div>
+      <div class="field"><label class="eyebrow" for="area">Area</label><select id="area"><option value="">All areas</option></select></div>
+      <div class="field"><label class="eyebrow" for="q">Find</label><input id="q" type="search" placeholder="words, ticket, problem"></div>
+      <label class="check"><input type="checkbox" id="inf"> Include inferred links</label>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="stage">
+      <div id="cy"><div class="loading">Laying out the map…</div></div>
+      <aside class="side" id="side"><p class="note">Click a problem or a decision to see its detail. Drag to pan, scroll or pinch to zoom.</p></aside>
+    </div>
+  </section>
+
+  <section class="lists">
+    <div class="listbox"><h3>Largest problems by incident time, and where they stop</h3><div class="tw"><table id="unans"></table></div></div>
+    <div class="listbox"><h3>Problems that moved after their fix was in use</h3><div class="tw"><table id="moved"></table></div></div>
+  </section>
+
+  <section class="listbox" style="display:grid;gap:8px">
+    <h3>Open boundary: person-gated approvals</h3>
+    <div id="boundary"></div>
+  </section>
+
+  <section style="display:grid;gap:14px">
+    <h2>How the operator decides</h2>
+    <div class="themes" id="themes"></div>
+  </section>
+
+  <footer id="foot"></footer>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js" integrity="sha384-J7Q85oZE4GJ/e7+n2aOQsLXfDwwfnA8S2nZAL5BpFsfpCF84zQD7LroZ/dMnLgex" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/elkjs@0.9.2/lib/elk.bundled.js" integrity="sha384-/FjsS2O22zscq93IrPa2D4sEO84oam6LzXXdy92KPQwKiOiNFKYFq58FNlueyQEJ" crossorigin="anonymous"></script>
+<script>
+const OUT={delivered:["Delivered","--ok"],partial:["Partly built","--part"],"not built":["Not built","--none"],reversed:["Reversed","--rev"],unknown:["No change named","--unk"]};
+const oc=o=>OUT[o]||OUT.unknown, tok=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const short=(s,n)=>{s=String(s||"");return s.length>n?s.slice(0,n-1)+"…":s};
+let D,R={},P={},cy=null,view="prob";
+let layoutRun=0;
+
+fetch("decisions.json").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json()})
+  .then(d=>{D=d;try{init()}catch(e){console.error(e);document.getElementById("cy").innerHTML='<div class="loading">The map could not be drawn: '+esc(e.message)+'</div>'}})
+  .catch(e=>{document.getElementById("cy").innerHTML='<div class="loading">The map data did not load ('+esc(e.message)+'). Reload the page to try again.</div>'});
+
+// ELK computes a layered left-to-right layout; Cytoscape then places nodes at those positions. Falls back to breadthfirst if ELK is unavailable or fails.
+function runLayout(){
+  const run=++layoutRun,nodes=cy.nodes(),edges=cy.edges();
+  const fallback=()=>{if(run===layoutRun)cy.layout({name:"breadthfirst",directed:true,padding:20,spacingFactor:.9}).run()};
+  if(typeof ELK==="undefined"){fallback();return}
+  const g={id:"root",layoutOptions:{"elk.algorithm":"layered","elk.direction":"RIGHT","elk.layered.spacing.nodeNodeBetweenLayers":"70","elk.spacing.nodeNode":"22","elk.layered.nodePlacement.strategy":"BRANDES_KOEPF","elk.separateConnectedComponents":"true","elk.spacing.componentComponent":"40"},
+    children:nodes.map(n=>({id:n.id(),width:Math.max(n.width(),110),height:n.height()+26})),
+    edges:edges.map(e=>({id:e.id(),sources:[e.source().id()],targets:[e.target().id()]}))};
+  new ELK().layout(g).then(r=>{if(run!==layoutRun)return;const pos={};r.children.forEach(c=>pos[c.id]={x:c.x+c.width/2,y:c.y+c.height/2});
+    cy.batch(()=>nodes.forEach(n=>{const p=pos[n.id()];if(p)n.position(p)}));cy.fit(undefined,20)}).catch(e=>{console.error(e);fallback()});
+}
+
+function init(){
+  document.getElementById("snap").innerHTML="Snapshot of the ledger as of <b>"+esc(D.asof)+"</b> ("+esc(D.window)+"). No node refreshes this data yet; the reports index shows the same age and says so.";
+  D.records.forEach(r=>R[r.id]=r); D.problems.forEach(p=>P[p.id]=p);
+  const linked=new Set(D.plinks.map(l=>l.p));
+  const sc=D.smeta.counts,cnt=k=>sc[k]||0,strong=D.plinks.filter(l=>!l.b.startsWith("inferred")).length;
+  const nums=[[D.problems.length,"problems tracked"],[cnt("awaiting decision"),"awaiting a decision"],[cnt("awaiting implementation"),"awaiting implementation"],[cnt("awaiting adoption"),"awaiting adoption"],[cnt("recurring despite remedy"),"recurring despite the fix"],[cnt("resolved after remedy"),"resolved after the fix"],[cnt("insufficiently observed"),"not enough to tell"]];
+  document.getElementById("nums").innerHTML=nums.map(([n,l])=>`<div class="num"><b>${n}</b><span>${l}</span></div>`).join("");
+  const cmp=D.plinks.filter(l=>l.ws),mv=cmp.filter(l=>l.note==="rose"||l.note==="fell"),rose=mv.filter(l=>l.note==="rose").length,fell=mv.length-rose;
+  document.getElementById("finding").innerHTML=`<h3>Where problems stop</h3>
+   <p>Each problem is placed on the path observed problem → decision → remedy built → remedy in use → measured result, at the first stage the record cannot show. ${cnt("awaiting decision")} problems have no decision that names them, their guard or a ticket specific to them; that is a missing attribution as often as a missing decision. ${cnt("awaiting adoption")} have a merged remedy with no record that it is running. ${cnt("recurring despite remedy")} kept recurring after their fix was in use. None is shown resolved yet. Most (${cnt("insufficiently observed")}) cannot be placed from the record: weak links, too few incidents, or a remedy with nothing merged to date it from.</p>
+   <p>Links are kept only where the decision names the problem's own row, terms or a specific ticket (${strong} strong, ${D.plinks.length-strong} by the problem's own terms); links through broad coordination tickets were dropped. Of ${cmp.length} before-and-after comparisons, each starting when the remedy was adopted or merged and counting failures per attempted operation where that exists, ${mv.length} moved (${fell} fell, ${rose} rose); the rest had too few events. These mark cases to investigate, not a verdict on any decision.</p>`;
+  const areas=[...new Set(D.records.map(r=>r.area))].sort(),sa=document.getElementById("area");areas.forEach(a=>sa.insertAdjacentHTML("beforeend",`<option>${esc(a)}</option>`));
+  ["pstat","area","inf"].forEach(i=>document.getElementById(i).addEventListener("change",draw));
+  document.getElementById("q").addEventListener("input",debounce(highlight,250));
+  document.getElementById("v-prob").onclick=()=>setView("prob"); document.getElementById("v-chain").onclick=()=>setView("chain");
+  renderLegend();renderLists(linked);renderThemes();renderFoot();draw();
+}
+function debounce(f,ms){let t;return()=>{clearTimeout(t);t=setTimeout(f,ms)}}
+function setView(v){view=v;document.getElementById("v-prob").setAttribute("aria-pressed",v==="prob");document.getElementById("v-chain").setAttribute("aria-pressed",v==="chain");
+  document.getElementById("pstat").disabled=v!=="prob";document.getElementById("inf").disabled=v!=="prob";renderLegend();draw()}
+function renderLegend(){
+  const dots=Object.entries(OUT).filter(([k])=>k!=="not_built").map(([k,[l,c]])=>`<span><i class="c" style="background:var(${c})"></i>Decision: ${l}</span>`).join("");
+  const probs=view==="prob"?`<span><i class="s" style="background:var(--pnew)"></i>Problem: new</span><span><i class="s" style="background:var(--pold)"></i>Problem: existing</span><span><i class="s" style="border:2px dashed var(--ink)"></i>Recurring</span>
+   <span><i class="l" style="border-color:var(--down)"></i>Problem fell after</span><span><i class="l" style="border-color:var(--up)"></i>Problem rose after</span><span><i class="l" style="border-top-style:dotted"></i>Same ticket</span><span><i class="l" style="border-top-style:dashed;opacity:.6"></i>Inferred</span>`:
+   `<span><i class="l"></i>Amends or extends</span><span><i class="l" style="border-color:var(--rev);border-top-style:dashed"></i>Reverses</span>`;
+  document.getElementById("legend").innerHTML=probs+dots;
+}
+function decisionNode(r){return {data:{id:r.id,kind:"d",label:short(r.q,46),col:tok(oc(r.outcome)[1]),size:22}}}
+function draw(){
+  const area=document.getElementById("area").value,els=[],have=new Set();
+  const addD=id=>{const r=R[id];if(!r||have.has(id))return;if(area&&r.area!==area)return;have.add(id);els.push(decisionNode(r))};
+  if(view==="prob"){
+    const st=document.getElementById("pstat").value,inf=document.getElementById("inf").checked;
+    const ls=D.plinks.filter(l=>(inf||!l.b.startsWith("inferred"))&&R[l.d]&&(!area||R[l.d].area===area)).filter(l=>{const p=P[l.p];return p&&(st==="all"||(st==="rec"?p.rec:p.status===st))});
+    ls.forEach(l=>{const p=P[l.p];if(!have.has(p.id)){have.add(p.id);els.push({data:{id:p.id,kind:"p",label:short(p.name,44),col:tok(p.status==="new"?"--pnew":"--pold"),size:Math.round(18+8*Math.log10(1+p.n)),rec:p.rec?1:0}})}
+      addD(l.d);const ec=l.note==="rose"?tok("--up"):l.note==="fell"?tok("--down"):tok("--edge");
+      els.push({data:{id:"pl"+l.p+l.d,source:l.p,target:l.d,col:ec,style:l.b.startsWith("cited")?"solid":l.b.startsWith("same_ticket")?"dotted":"dashed",w:l.b.startsWith("inferred")?1:2}})});
+    D.edges.forEach(e=>{if(have.has(e.f)&&have.has(e.t))els.push({data:{id:"de"+e.f+e.t,source:e.t,target:e.f,col:tok(e.r?"--rev":"--edge"),style:e.r?"dashed":"solid",w:1.5}})});
+  }else{
+    const inChain=new Set();D.edges.forEach(e=>{inChain.add(e.f);inChain.add(e.t)});
+    inChain.forEach(addD);
+    D.edges.forEach(e=>{if(have.has(e.f)&&have.has(e.t))els.push({data:{id:"de"+e.f+e.t,source:e.t,target:e.f,col:tok(e.r?"--rev":"--edge"),style:e.r?"dashed":"solid",w:e.r?2.5:1.5}})});
+  }
+  if(cy)cy.destroy();
+  const box=document.getElementById("cy");box.innerHTML="";
+  cy=cytoscape({container:box,elements:els,minZoom:.05,maxZoom:3,
+    style:[{selector:"node",style:{"background-color":"data(col)",width:"data(size)",height:"data(size)",label:"data(label)","font-family":"Public Sans, system-ui, sans-serif","font-size":9,color:tok("--ink"),"text-wrap":"wrap","text-max-width":120,"text-valign":"bottom","text-margin-y":3,"text-background-color":tok("--surface"),"text-background-opacity":.75,"text-background-padding":1,"min-zoomed-font-size":7}},
+      {selector:"node[kind='p']",style:{shape:"round-rectangle"}},
+      {selector:"node[rec=1]",style:{"border-width":2,"border-style":"dashed","border-color":tok("--ink")}},
+      {selector:"edge",style:{"line-color":"data(col)","target-arrow-color":"data(col)","target-arrow-shape":"triangle","arrow-scale":.7,width:"data(w)","line-style":"data(style)","curve-style":"bezier",opacity:.85}},
+      {selector:".dim",style:{opacity:.12}},
+      {selector:":selected",style:{"border-width":3,"border-color":tok("--accent"),"border-style":"solid"}}],
+    layout:{name:"preset"}});
+  cy.on("tap","node",e=>show(e.target.id()));
+  if(!els.length){box.innerHTML='<div class="loading">Nothing matches these filters. Pick another area or include inferred links.</div>';return}
+  runLayout();
+  highlight();
+}
+function highlight(){if(!cy)return;const q=document.getElementById("q").value.trim().toLowerCase();cy.elements().removeClass("dim");if(!q)return;
+  const hit=cy.nodes().filter(n=>{const id=n.id(),t=n.data("kind")==="p"?P[id].name:(R[id].q+" "+R[id].d+" "+(R[id].fx?R[id].fx.change:""));return (id+" "+t).toLowerCase().includes(q)});
+  if(!hit.length)return;const keep=hit.union(hit.neighborhood());cy.elements().difference(keep).addClass("dim")}
+function spark(days){const ks=Object.keys(days||{}).sort();if(!ks.length)return"";const vs=ks.map(k=>days[k]),mx=Math.max(1,...vs),w=300,h=44,step=w/Math.max(1,ks.length-1);
+  const pts=vs.map((v,i)=>`${(i*step).toFixed(1)},${(h-2-(h-6)*v/mx).toFixed(1)}`).join(" ");
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-label="Daily count"><polyline points="0,${h} ${pts} ${w},${h}" fill="${tok("--accent-soft")}" stroke="none"/><polyline points="${pts}" fill="none" stroke="${tok("--accent")}" stroke-width="1.5"/></svg><div class="note">Daily rows, ${ks[0].slice(5)} to ${ks[ks.length-1].slice(5)} · peak ${mx}</div>`}
+function show(id){const s=document.getElementById("side");
+  if(P[id]){const p=P[id],ls=D.plinks.filter(l=>l.p===id);
+    s.innerHTML=`<div class="eyebrow">Problem ${esc(id)}</div><h3>${esc(p.name)}</h3><dl>
+     <dt>Status</dt><dd><span class="badge" style="background:var(${p.status==="new"?"--pnew":"--pold"})">${p.status==="new"?"New":"Existing"}</span>${p.rec?" · recurring":""}</dd><dt>Stops at</dt><dd>${esc(p.stage||"not placed")}${p.sbasis?`<br><span class="note">${esc(p.sbasis)}</span>`:""}</dd><dt>Incidents</dt><dd>${p.inc??"–"}${p.incmin!=null?` · ${Math.round(p.incmin/60)} h in total`:""}</dd>
+     <dt>Rows</dt><dd>${p.n}${p.cost?` · about ${p.cost} lane-minutes stated`:""}</dd><dt>Seen</dt><dd>${p.first} to ${p.last}</dd>${p.repos&&p.repos.length?`<dt>Repos</dt><dd>${esc(p.repos.join(", "))}</dd>`:""}</dl>
+     ${spark(p.days)}<div class="mini"><div class="eyebrow">Decisions it led to</div>${ls.length?ls.map(l=>`<button data-id="${l.d}">${esc(short(R[l.d].q,90))}<br><span class="note">${l.b.replace("_"," ")}${l.w?" · "+esc(l.w.slice(0,4).join(", ")):""} · after: ${esc(l.note||"not measured")}${l.ba!=null?` (${l.ba}/h to ${l.aa}/h)`:""}</span></button>`).join(""):'<span class="note">None. No recorded decision addresses this problem.</span>'}</div>`;
+  }else{const r=R[id],o=oc(r.outcome),ps=D.plinks.filter(l=>l.d===id);
+    const rel=D.edges.filter(e=>e.f===id||e.t===id).map(e=>e.f===id?`${e.r?"reverses":e.k} ${e.t.slice(0,10)}`:`${e.r?"reversed by":e.k==="amends"?"amended by":e.k==="extends"?"extended by":e.k+" by"} ${e.f.slice(0,10)}`);
+    let fx="";if(r.fx){const f=r.fx;fx=`<div class="fx"><div><b>Change:</b> ${esc(f.change)}</div><div class="note">Took effect ${esc((f.at||"").replace("T"," "))} UTC · ${esc(f.measure)}: ${f.b??"–"}/h before, ${f.a??"–"}/h after</div><div><b>Effect on that measure:</b> ${esc(f.v)}${f.lean==="helped"||f.lean==="hurt"?` (leans ${f.lean}, not enough to call)`:""}</div></div>`}
+    s.innerHTML=`<div class="eyebrow">Decision ${r.date}</div><h3>${esc(r.q)}</h3><dl><dt>Decided</dt><dd>${esc(r.d)}</dd><dt>Area</dt><dd>${esc(r.area)} · ${esc(r.kind)}</dd><dt>Status</dt><dd>${esc(r.status)}</dd>
+     <dt>Outcome</dt><dd><span class="badge" style="background:var(${o[1]})">${o[0]}</span></dd>${rel.length?`<dt>Links</dt><dd>${esc(rel.join(" · "))}</dd>`:""}</dl>${fx}
+     <div class="mini"><div class="eyebrow">Problems behind it</div>${ps.length?ps.map(l=>`<button data-id="${l.p}">${esc(P[l.p].name)}<br><span class="note">${l.b.replace("_"," ")} · after: ${esc(l.note||"not measured")}</span></button>`).join(""):'<span class="note">No problem on the ledger links to this decision.</span>'}</div>`;}
+  s.querySelectorAll("button[data-id]").forEach(b=>b.onclick=()=>{const t=b.dataset.id;show(t);if(cy){const n=cy.getElementById(t);if(n.length){cy.elements().unselect();n.select();cy.animate({center:{eles:n},duration:300})}}});
+}
+function renderLists(linked){
+  const un=D.problems.filter(p=>p.incmin!=null).sort((a,b)=>b.incmin-a.incmin).slice(0,12);
+  document.getElementById("unans").innerHTML=`<tr><th>Problem</th><th>Stops at</th><th class="n">Incidents</th><th class="n">Hours</th></tr>`+un.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.stage||"")}</td><td class="n">${p.inc??"–"}</td><td class="n">${p.incmin!=null?Math.round(p.incmin/60):"–"}</td></tr>`).join("");
+  const mv=D.plinks.filter(l=>l.ws&&(l.note==="rose"||l.note==="fell"));
+  document.getElementById("moved").innerHTML=mv.length?`<tr><th>Problem, after its fix</th><th class="n">Rate</th></tr>`+mv.map(l=>`<tr><td>${esc(P[l.p].name)}<br><span class="note">${l.note} after the fix was ${esc(l.ws)}ed: ${esc(short(R[l.d].q,70))}</span></td><td class="n">${l.ba} → ${l.aa}<br><span class="note">${esc(l.unit||"")}</span></td></tr>`).join(""):'<tr><td class="note">No comparison moved enough to judge.</td></tr>';
+  const b=D.boundary||{},row=x=>`<li><span style="font-family:var(--mono);font-size:.78rem">${esc(x.id)}</span> ${esc(x.decision||x.question||"")}</li>`;
+  document.getElementById("boundary").innerHTML=`<p>${esc(b.question||"")}</p><div class="lists"><div><div class="eyebrow">Person-gated for certain writers</div><ul>${(b.person_gated_for_certain_writers||[]).map(row).join("")}</ul></div><div><div class="eyebrow">No PR waits on a person</div><ul>${(b.standing_preference_against_person_dependent_gates||[]).map(row).join("")}</ul></div></div><p class="note">${esc(b.note||"")}</p>`;
+}
+function renderThemes(){document.getElementById("themes").innerHTML=(D.themes||[]).map(t=>`<div class="theme"><h3>${esc(t.theme)}</h3><small>${esc(t.note||"")}</small></div>`).join("")}
+function renderFoot(){const dn=(D.dropped&&D.dropped.total)||0;
+  document.getElementById("foot").innerHTML=`<p>Source: the rolling work ledger, ${esc(D.window)}. Decisions are every RULING and OPERATOR-CONSENT row; problems are FRICTION, CORRECTION and failed or blocked lane rows grouped by signature, with new meaning first seen on or after 30 September. Wording is paraphrased and cleaned, people appear only by role, and records about credentials, people, contracts or customers are left out${dn?` (${dn} decisions)`:""}.</p>
+   <p>A cited link means the decision names the problem's row or ticket; same-ticket links share a ticket; inferred links share subject words within 48 hours and are hidden unless you include them. "Fell" and "rose" compare the problem's own rate for 72 hours either side of the change; a problem that stopped being logged also reads as fell.</p>`}
+</script>
+</body>
+</html>

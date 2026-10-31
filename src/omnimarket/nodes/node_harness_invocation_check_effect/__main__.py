@@ -7,8 +7,8 @@ from __future__ import annotations
 import argparse
 import sys
 
-from omnimarket.nodes.node_harness_invocation_check_effect.handlers.handler_harness_invocation_check import (
-    HandlerHarnessInvocationCheck,
+from omnimarket.nodes.node_harness_invocation_check_effect.container import (
+    container_harness_invocation_check_effect,
 )
 from omnimarket.nodes.node_harness_invocation_check_effect.models.model_harness_invocation_check import (
     ModelHarnessInvocationCheckRequest,
@@ -20,7 +20,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repo-root", default=".")
     parser.add_argument("paths", nargs="*")
     args = parser.parse_args(argv)
-    result = HandlerHarnessInvocationCheck().handle(
+    result = container_harness_invocation_check_effect.build_handler_harness_invocation_check().handle(
         ModelHarnessInvocationCheckRequest(
             repo_root=args.repo_root, paths=tuple(args.paths)
         )

@@ -12,7 +12,7 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
-from .handlers.handler_prrp_snapshot_publish import HandlerPrrpSnapshotPublish
+from .container import container_prrp_snapshot_publish_effect
 from .models import ModelPrrpSnapshotHost, ModelPrrpSnapshotPublishRequest
 
 
@@ -48,7 +48,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (OSError, UnicodeError, ValueError, yaml.YAMLError) as error:
         sys.stderr.write(f"ERROR: invalid hosts file {args.hosts_file}: {error}\n")
         return 2
-    result = HandlerPrrpSnapshotPublish().handle(
+    result = container_prrp_snapshot_publish_effect.build_handler_prrp_snapshot_publish().handle(
         ModelPrrpSnapshotPublishRequest(
             gate_script=args.gate_script,
             repos_file=args.repos_file,
