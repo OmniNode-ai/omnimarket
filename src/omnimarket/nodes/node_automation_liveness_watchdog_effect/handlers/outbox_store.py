@@ -18,6 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from uuid import UUID
 
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.models.liveness.model_automation_liveness import EnumAlarmSeverity
 from omnimarket.nodes.node_automation_liveness_watchdog_effect.models.model_watchdog_delivery import (
     EnumOutboxStatus,
@@ -53,7 +54,13 @@ class OutboxStore:
 
     @contextmanager
     def _transaction(self) -> Iterator[sqlite3.Connection]:
-        db = sqlite3.connect(self._path, isolation_level=None, timeout=30)
+        db = sqlite3.connect(
+            self._path,
+            isolation_level=None,
+            timeout=load_node_timeouts("node_automation_liveness_watchdog_effect").get(
+                "sqlite_lock_timeout_seconds"
+            ),
+        )
         try:
             db.execute("BEGIN IMMEDIATE")
             try:

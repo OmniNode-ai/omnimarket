@@ -250,3 +250,6 @@ tags:
 
 metadata:
   transport_type: http
+
+timeouts:
+  embedding_request_timeout_seconds: 30.0  # Bounds embedding HTTP requests.

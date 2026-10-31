@@ -53,6 +53,7 @@ from omnimarket.events.pr_arm_gate import (
     ModelArmGateRequest,
 )
 from omnimarket.events.repo_health import EnumFailureOrigin
+from omnimarket.handlers.runtime_paths import runtime_path
 from omnimarket.merge_control.model_outage_breaker_policy import (
     ModelOutageBreakerPolicy,
 )
@@ -3458,7 +3459,9 @@ class HandlerPrLifecycleOrchestrator:
         omni_home = os.environ.get("OMNI_HOME")
         if omni_home:
             return (Path(omni_home).expanduser() / ".onex_state").resolve()
-        return Path(os.path.expanduser("~/.onex_state")).resolve()
+        return Path(
+            os.path.expanduser(runtime_path("onex_state.default_dir"))
+        ).resolve()
 
     def _write_occ_dependency_edges_file(
         self,

@@ -24,6 +24,7 @@ import signal
 import sys
 from pathlib import Path
 
+from omnimarket.handlers.runtime_paths import runtime_location
 from omnimarket.nodes.node_emit_daemon.kafka_publish import (
     build_kafka_confirmation_bindings,
     build_kafka_publish_fn,
@@ -116,42 +117,30 @@ def _configure_logging(
 
 
 def _resolve_socket_path(cli_arg: str | None) -> str:
-    """Resolve socket path: CLI arg > env > XDG_RUNTIME_DIR > /tmp."""
+    """Resolve socket path: CLI arg > env > XDG_RUNTIME_DIR > runtime-path authority."""
     if cli_arg:
         return cli_arg
-    env_path = os.environ.get("ONEX_EMIT_SOCKET_PATH")
-    if env_path:
-        return env_path
-    xdg = os.environ.get("XDG_RUNTIME_DIR")
-    if xdg:
-        return os.path.join(xdg, "onex", "emit.sock")
-    return "/tmp/onex-emit.sock"
+    return runtime_location(
+        "emit_daemon.socket_path", "ONEX_EMIT_SOCKET_PATH", ("onex", "emit.sock")
+    )
 
 
 def _resolve_pid_path(cli_arg: str | None) -> str:
-    """Resolve PID path: CLI arg > env > XDG_RUNTIME_DIR > /tmp."""
+    """Resolve PID path: CLI arg > env > XDG_RUNTIME_DIR > runtime-path authority."""
     if cli_arg:
         return cli_arg
-    env_path = os.environ.get("ONEX_EMIT_PID_PATH")
-    if env_path:
-        return env_path
-    xdg = os.environ.get("XDG_RUNTIME_DIR")
-    if xdg:
-        return os.path.join(xdg, "onex", "emit.pid")
-    return "/tmp/onex-emit.pid"
+    return runtime_location(
+        "emit_daemon.pid_path", "ONEX_EMIT_PID_PATH", ("onex", "emit.pid")
+    )
 
 
 def _resolve_spool_dir(cli_arg: str | None) -> str:
-    """Resolve spool directory: CLI arg > env > XDG_RUNTIME_DIR > /tmp."""
+    """Resolve spool directory: CLI arg > env > XDG_RUNTIME_DIR > runtime-path authority."""
     if cli_arg:
         return cli_arg
-    env_path = os.environ.get("ONEX_EMIT_SPOOL_DIR")
-    if env_path:
-        return env_path
-    xdg = os.environ.get("XDG_RUNTIME_DIR")
-    if xdg:
-        return os.path.join(xdg, "onex", "event-spool")
-    return "/tmp/onex-event-spool"
+    return runtime_location(
+        "emit_daemon.spool_dir", "ONEX_EMIT_SPOOL_DIR", ("onex", "event-spool")
+    )
 
 
 def _resolve_outbox_dir(spool_dir: str) -> str:

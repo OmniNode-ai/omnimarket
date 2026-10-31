@@ -121,6 +121,10 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # environment projection on every report it stores; it subscribes to no
     # topic and publishes none, so it has no onex.nodes entry point.
     "node_local_alert_compute",
+    # OMN-19991: the local alert transition compute is called in process by the
+    # local environment writer around each write it makes; it subscribes to no
+    # topic, so it has no onex.nodes entry point.
+    "node_local_alert_transition_compute",
     # OMN-17427: the Claude token pool runs as `python -m` on the lab host whose
     # pool it is (the remote-lane runner at lane start, the operator adding a
     # token); it publishes nothing and subscribes to no topic, so it has no
