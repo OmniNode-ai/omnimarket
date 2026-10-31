@@ -14,6 +14,14 @@ from pathlib import Path
 
 import yaml
 
+from omnimarket.nodes.node_exception_queue_effect.container.container_exception_queue_effect import (
+    create_handler_exception_cli,
+    create_handler_exception_emit,
+    create_handler_exception_queue,
+    create_handler_exception_queue_read,
+    create_handler_exception_resolve,
+)
+
 ROOT = Path(__file__).resolve().parents[3]
 NODE = "omnimarket.nodes.node_exception_queue_effect"
 handler = importlib.import_module(f"{NODE}.handler")
@@ -43,7 +51,7 @@ def fake_runner(tmp_path: Path, code: int = 0) -> tuple[Path, Path]:
 
 
 def emit(tmp_path, r, runner=None, now="2026-10-19T00:30:00Z"):
-    return handler.HandlerExceptionEmit().handle(
+    return create_handler_exception_emit().handle(
         models.ModelExceptionEmitRequest(
             tmp_path / "q", r, now, runner, "orchestrator-bb1a"
         )
@@ -51,7 +59,7 @@ def emit(tmp_path, r, runner=None, now="2026-10-19T00:30:00Z"):
 
 
 def queue(tmp_path, audience):
-    return handler.HandlerExceptionQueue().handle(
+    return create_handler_exception_queue().handle(
         models.ModelExceptionQueueRequest(tmp_path / "q", audience)
     )
 
@@ -163,7 +171,7 @@ def test_a_resolved_row_leaves_the_queue_and_its_recurrence_counts_as_a_new_occu
 ):
     runner, _seen = fake_runner(tmp_path)
     first = emit(tmp_path, row(key="host-a"), runner)
-    done = handler.HandlerExceptionResolve().handle(
+    done = create_handler_exception_resolve().handle(
         models.ModelExceptionResolveRequest(
             tmp_path / "q",
             first.id,
@@ -177,7 +185,7 @@ def test_a_resolved_row_leaves_the_queue_and_its_recurrence_counts_as_a_new_occu
     again = emit(tmp_path, row(key="host-a"), runner)
     assert (again.status, again.occurrence) == ("appended", 2)
     assert again.mechanize.startswith("sent:")
-    missing = handler.HandlerExceptionResolve().handle(
+    missing = create_handler_exception_resolve().handle(
         models.ModelExceptionResolveRequest(
             tmp_path / "q", "no-such-id", "x", "y", "2026-10-19T00:35:00Z"
         )
@@ -220,7 +228,7 @@ def test_the_cli_handler_emits_lists_and_resolves_through_the_node(
 ):
     runner, _seen = fake_runner(tmp_path)
     monkeypatch.setenv("ONEX_EXCEPTION_RUNNER", str(runner))
-    cli = handler.HandlerExceptionCli()
+    cli = create_handler_exception_cli()
     common = [
         "--state-dir",
         str(tmp_path / "q"),
@@ -272,7 +280,7 @@ def test_the_cli_handler_emits_lists_and_resolves_through_the_node(
 
 
 def read(tmp_path):
-    return handler.HandlerExceptionQueueRead().handle(
+    return create_handler_exception_queue_read().handle(
         models.ModelExceptionQueueReadRequest(tmp_path / "q")
     )
 
