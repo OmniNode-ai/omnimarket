@@ -89,7 +89,7 @@ _SLICE_MODULES = (
     "node_contract_seams_orchestrator/handlers/handler_contract_seams_run.py",
     "node_data_verification/handlers/handler_data_verification.py",
     "node_integration_test_runner/di_profiles.py",
-    "node_lab_secret_store_override_effect/handlers/handler_lab_secret_store_override_cli.py",
+    "node_lab_secret_store_override_effect/runtime_lab_secret_store_override_cli.py",
     "node_merge_sweep_compute/handlers/handler_merge_sweep.py",
     "node_observability_sink_effect/handlers/handler_observability_sink_effect.py",
     "node_overnight/handlers/handler_overnight.py",
@@ -98,7 +98,7 @@ _SLICE_MODULES = (
     "node_pr_lifecycle_fix_effect/handlers/handler_pr_lifecycle_fix.py",
     "node_pr_lifecycle_orchestrator/__main__.py",
     "node_pr_lifecycle_orchestrator/consumer.py",
-    "node_runtime_deploy_effect/handlers/handler_runtime_deploy_cli.py",
+    "node_runtime_deploy_effect/runtime_deploy_cli.py",
     "node_trajectory_evaluation_effect/handlers/handler_trajectory_evaluation.py",
 )
 
