@@ -13,6 +13,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from omnimarket.config.service_endpoints import service_endpoint_url
+
 CLOUD_STATE_FILE = "cloud-accounts.json"
 
 
@@ -77,7 +79,10 @@ def consented_accounts(hosts: Sequence[Any]) -> frozenset[str]:
 
 
 CLOUD_SESSION_RE = re.compile(r"\b((?:session|cse)_[A-Za-z0-9]{8,})\b")
-CLOUD_URL_RE = re.compile(r"https://claude\.ai/code/(?:session|cse)_[A-Za-z0-9]+")
+CLOUD_URL_RE = re.compile(
+    re.escape(service_endpoint_url("claude.web_url"))
+    + r"/code/(?:session|cse)_[A-Za-z0-9]+"
+)
 
 
 def cloud_login(stdout: str) -> str:

@@ -1,0 +1,118 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21682"
+title: "A compute node joins plans, task manifests, PRs, ledger rows and lab placement into one assembly-line record per plan"
+summary: "node_factory_floor_compute is a pure compute node that turns plans with their .tasks.yaml manifests (or the plans-today task table when a plan has none), the PR watcher state and merges, ledger CLAIM, TERMINAL, HOLD, RELEASE and gate STATUS rows, the Linear snapshot, the lab placement reading and the friction report into one record per selected plan (line id, name, status pill, percent built, stations with items and feeders, andon flag with reason) and a floor section (bays, shipped and waiting pull requests, stoppages). node_factory_floor_effect reads the sources and writes the JSON to the path its contract declares, through a thin runtime_factory_floor.py entry."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21682-factory-floor"
+    statement: |-
+      The assembly-line artifact updates itself from data the system already holds: one pure node computes the per-plan line records and the floor, one effect node reads the sources and writes the JSON to a contract-declared path.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: node_factory_floor_compute has contract.yaml, metadata.yaml, typed input and output models and a pure handler, registered under onex.nodes -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -k purity -q fails on a handler that reads the clock, the network or a file"
+      - id: "AC2"
+        statement: "AC2: a plan with a .tasks.yaml manifest yields one record per plan with line id, name, status pill, percent built, stations (id, name, state done/active/prep/wait/stop, items with state and note, feeders) and an andon flag with reason -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -k manifest -q"
+      - id: "AC3"
+        statement: "AC3: a plan stopped by an open andon HOLD or a failed gate sets andon true with the reason and puts the stopped station in state stop, and a plan with no manifest falls back to the plans-today task table -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -k andon_or_fallback -q"
+      - id: "AC4"
+        statement: "AC4: the output carries a floor section with bays (host, running, free), shipped and waiting PRs, and stoppages from the friction report when one is supplied -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute -k floor -q"
+      - id: "AC5"
+        statement: "AC5: the same input run twice yields byte-identical JSON, and the CLI writes it to the output path declared in the contract, with no path, host or plan selection hard-coded in the handler -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute tests/nodes/node_factory_floor_effect -k determinism_or_cli -q"
+      - id: "AC6"
+        statement: "AC6: the suite passes on the lab host -- falsifier: lab-run receipt with exit code 0 for uv run pytest tests/nodes/node_factory_floor_compute tests/nodes/node_factory_floor_effect -q"
+      - id: "AC7"
+        statement: "AC7: the floor section carries one machine bay per overlay-declared machine (pool-read load, memory and swap, cap, placed lanes, placed units, CI runners, read, unread or in repair), a cloud bay (accounts, sessions, a stop lamp when the newest finished session could not push) and every live lane (ticket title, kind, engine, newest STATUS with its age, pull request with CI state, run time, stalled after the contract's stall minutes, the station that holds its ticket); a machine or cloud account the overlay does not declare is never drawn and a source that could not be read is unread, not zero -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py -q"
+      - id: "AC8"
+        statement: "AC8: node_factory_floor_effect reads the remote-lane receipts, the pool read receipt, the placement markers, the cloud accounts file, the lab host table, the runner fleet observation, the Linear titles and the watcher CI verdict from contract-declared locations, and a source that is absent or malformed is recorded as unread -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py -k 'lane_sources or machine_bays' -q"
+      - id: "AC9"
+        statement: "AC9: a HOLD stops a line only when no sentence of its text that carries an exemption marker names the line, the reason a hold shows is its own text and never an empty string, and a line with a red open pull request on a part being built is stopped with that pull request as its cause -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_hold_exemption.py -q"
+evidence_requirements:
+  - kind: "tests"
+    description: "Fixture tests of the compute node (an andon-stopped plan, a plan with no manifest, the floor) and of the effect node's command line and loaders."
+    command: "uv run pytest tests/nodes/node_factory_floor_compute tests/nodes/node_factory_floor_effect -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21682-ac1"
+    description: "AC1 purity test passes."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_handler_factory_floor.py -q --no-cov --tb=line -k purity"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21682-ac2"
+    description: "AC2 manifest tests pass."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_handler_factory_floor.py -q --no-cov --tb=line -k manifest"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21682-ac3"
+    description: "AC3 andon and fallback tests pass."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_handler_factory_floor.py -q --no-cov --tb=line -k andon_or_fallback"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21682-ac4"
+    description: "AC4 floor tests pass."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_handler_factory_floor.py -q --no-cov --tb=line -k floor"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21682-ac5"
+    description: "AC5 determinism and command line tests pass."
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_handler_factory_floor.py tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py -q --no-cov --tb=line -k determinism_or_cli"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21682-ac6"
+    description: "AC6 the whole suite passes on the lab host."
+    source: "manual"
+    binds_ac: ["AC6"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_handler_factory_floor.py tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py -q --no-cov --tb=line"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21682-deploy-probe"
+    description: "Deploy probe. The effect node's handler file that GitHub serves at the checked-out commit declares HandlerFactoryFloorEffect, the entry this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_effect/handlers/handler_factory_floor_effect.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^class HandlerFactoryFloorEffect:'"
+  - id: "dod-omn21682-ac7"
+    description: "AC7 machine bay, cloud bay and lane tests pass."
+    source: "manual"
+    binds_ac: ["AC7"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_floor_lanes.py -q --no-cov --tb=line"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21682-ac8"
+    description: "AC8 source loader tests pass."
+    source: "manual"
+    binds_ac: ["AC8"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_effect/test_floor_lane_sources.py tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py -q --no-cov --tb=line -k 'lane_sources or machine_bays'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21682-ac9"
+    description: "AC9 hold exemption and red pull request cause tests pass."
+    source: "manual"
+    binds_ac: ["AC9"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_hold_exemption.py -q --no-cov --tb=line"
+        cwd: "${OMNI_HOME}/omnimarket"

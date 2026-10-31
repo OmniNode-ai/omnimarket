@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_factory_floor_compute
+version: 1.0.0
+description: >-
+  Join plans, their task manifests, the PR watcher state, ledger rows, the Linear snapshot, the lab placement
+  reading and the landing controller's merges into one assembly-line record per selected plan and one floor
+  section. Pure and deterministic.
+pack: operator_tooling
+node_role: compute
+display_name: Factory Floor Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_factory_floor_compute: omnimarket.nodes.node_factory_floor_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- factory-floor-compute
+- OMN-21682
