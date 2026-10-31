@@ -62,8 +62,9 @@ EXIT_NO_HOST = 75
 #: bar) because the instruction differs: a serve process is down, or the interim ssh path is needed.
 EXIT_NO_ADVERTISEMENT = 69
 EXIT_NOT_RUN = 70
-#: ``serve`` found its worker holding one unit past two of that unit's limits: the process is
-#: alive and still advertising, and it has stopped doing work.
+#: ``serve`` found its worker holding one unit past two of that unit's limits (alive and
+#: still advertising, no longer working), or its advertiser silent past the contract's
+#: ``capacity.silent_exit_seconds`` (alive and working, no longer visible to the pool, OMN-21811).
 EXIT_STUCK_WORKER = 71
 
 _bus_options = [

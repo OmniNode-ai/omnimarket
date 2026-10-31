@@ -13,7 +13,6 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 
-from omnimarket.handlers.session_stream_barrier import HandlerSessionStreamBarrier
 from omnimarket.models.context_compaction.model_context_compaction_requested import (
     ModelContextCompactionRequested,
 )
@@ -23,6 +22,8 @@ from omnimarket.models.model_session_stream_barrier import (
 from omnimarket.protocols.protocol_session_barrier_probe_source import (
     ProtocolSessionBarrierProbeSource,
 )
+
+from ..container.container_barrier import create_barrier
 
 
 class HandlerSessionBarrierWait:
@@ -42,7 +43,7 @@ class HandlerSessionBarrierWait:
         self._poll_interval_s = poll_interval_s
         self._monotonic = monotonic
         self._sleep = sleep
-        self._barrier = HandlerSessionStreamBarrier()
+        self._barrier = create_barrier()
 
     def wait(
         self, request: ModelContextCompactionRequested

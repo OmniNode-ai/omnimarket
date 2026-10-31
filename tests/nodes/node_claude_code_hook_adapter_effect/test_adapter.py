@@ -26,13 +26,6 @@ from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_clau
     HandlerClaudeCodeHookAdapter,
     build_command_payload,
 )
-from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_claude_code_hook_cli import (
-    EXIT_BAD_INPUT,
-    EXIT_NO_CLIENT,
-    EXIT_RESERVE_MS,
-    main,
-    watch_parent,
-)
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_client_bindings_loader import (
     load_client_section,
 )
@@ -40,6 +33,13 @@ from omnimarket.nodes.node_claude_code_hook_adapter_effect.models import (
     ModelClientSection,
     ModelHookAdapterRequest,
     ModelReceiptEvent,
+)
+from omnimarket.nodes.node_claude_code_hook_adapter_effect.runtime_claude_code_hook_cli import (
+    EXIT_BAD_INPUT,
+    EXIT_NO_CLIENT,
+    EXIT_RESERVE_MS,
+    main,
+    watch_parent,
 )
 
 from .conftest import EVENT_TOPIC, make_binding
@@ -372,8 +372,8 @@ def test_ac1_the_real_command_hosts_no_node_handler(
     contract = _write_fixture_contract(tmp_path, replacing_binding)
     probe = (
         "import json, sys\n"
-        "from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers."
-        "handler_claude_code_hook_cli import main\n"
+        "from omnimarket.nodes.node_claude_code_hook_adapter_effect."
+        "runtime_claude_code_hook_cli import main\n"
         "code = main(['--binding', 'delegation'])\n"
         "loaded = sorted(m for m in sys.modules if '.nodes.node_' in m and "
         "'node_claude_code_hook_adapter_effect' not in m)\n"
@@ -405,8 +405,8 @@ def test_the_entry_exits_when_its_parent_goes_away(replacing_binding, tmp_path) 
         "import subprocess, sys, time\n"
         f"fh = open({str(stdin_file)!r})\n"
         "p = subprocess.Popen([sys.executable, '-m', "
-        "'omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers."
-        "handler_claude_code_hook_cli', '--binding', 'delegation'], stdin=fh, "
+        "'omnimarket.nodes.node_claude_code_hook_adapter_effect."
+        "runtime_claude_code_hook_cli', '--binding', 'delegation'], stdin=fh, "
         f"stdout=subprocess.DEVNULL, stderr=open({str(ready)!r}, 'w'))\n"
         "end = time.monotonic() + 30\n"
         f"while 'max_mode' not in open({str(ready)!r}).read() and time.monotonic() < end:\n"
