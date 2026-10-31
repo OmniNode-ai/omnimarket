@@ -20,7 +20,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "The machine-row cases fail on the unfixed admission and pass on the fix; the collaborator cases are unchanged."
-    command: "uv run pytest tests/nodes/node_developer_lane_admission_compute -q --no-cov"
+    command: "uv run pytest tests/nodes/node_developer_lane_admission_compute/test_developer_lane_admission.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -34,13 +34,16 @@ dod_evidence:
       - check_type: "command"
         check_value: "grep -q 'ROLE_MACHINE' src/omnimarket/nodes/node_developer_lane_admission_compute/handlers/handler_developer_lane_admission.py"
         cwd: "."
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_developer_lane_admission_compute/test_developer_lane_admission.py -k quiet_host -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21662-quiet-host"
     description: "The quiet-host regression cases pass on the fix."
     source: "manual"
     binds_ac: ["AC2"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_developer_lane_admission_compute -k quiet_host -q --no-cov"
+        check_value: "uv run pytest tests/nodes/node_developer_lane_admission_compute/test_developer_lane_admission.py -k quiet_host -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21662-no-false-alarm"
     description: "A machine row is never held back as a collaborator."
@@ -48,7 +51,7 @@ dod_evidence:
     binds_ac: ["AC3"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_developer_lane_admission_compute -k quiet_host_no_false_alarm -q --no-cov"
+        check_value: "uv run pytest tests/nodes/node_developer_lane_admission_compute/test_developer_lane_admission.py -k quiet_host_no_false_alarm -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21662-deploy-published-handler-readback"
     description: |-
