@@ -11,7 +11,7 @@ description: >
 handler:
   module: omnimarket.nodes.node_readiness_scorer_compute.handlers.handler_readiness_scorer_compute
   class: HandlerReadinessScorerCompute
-  input_model: omnibase_compat.contracts.evidence_pipeline.wire.model_gap_report.ModelGapReport
+  input_model: omnimarket.models.evidence_pipeline.wire.model_gap_report.ModelGapReport
 
 handler_routing:
   handlers:
@@ -22,11 +22,11 @@ handler_routing:
 
 input_model:
   name: ModelGapReport
-  module: omnibase_compat.contracts.evidence_pipeline.wire.model_gap_report
+  module: omnimarket.models.evidence_pipeline.wire.model_gap_report
   description: "Deployment evidence gap report."
 output_model:
   name: ModelDeploymentReadinessResult
-  module: omnibase_compat.contracts.evidence_pipeline.wire.model_deployment_readiness_result
+  module: omnimarket.models.evidence_pipeline.wire.model_deployment_readiness_result
   description: "Deployment readiness result with state, blocking reason codes, and topology metadata."
 
 descriptor:
