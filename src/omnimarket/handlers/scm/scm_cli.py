@@ -146,6 +146,21 @@ def _emit(answer: ModelScmAnswer, *, attempts: int | None = None) -> int:
     return EXIT_FAILED if answer.outcome == "failed" else 0
 
 
+def _write_has_no_consumer(exc: TimeoutError) -> bool:
+    """A write is republished only when the broker shows no consumer on its command topic.
+
+    A recreated effects runtime holds no consumer for the minutes it takes to
+    rejoin its group, so a write made then reaches nobody. The command carries
+    its idempotency key, so one republished to the rejoined consumer writes
+    once. A consumer that is present, or evidence that cannot be read, is not
+    that case: the first command may be running, and nothing is republished.
+    """
+    return (
+        isinstance(exc, ScmNoTerminalError)
+        and exc.evidence.reason == "no_consumer_for_topic"
+    )
+
+
 def _call_bus(
     spec: ModelScmVerb,
     repo: str,
@@ -163,13 +178,14 @@ def _call_bus(
                 timeout_s=timeout_s,
             )
 
-    max_attempts = 3 if spec.node is EnumScmNode.GATEWAY else 1
+    max_attempts = 3
+    is_read = spec.node is EnumScmNode.GATEWAY
     attempt = 1
     while True:
         try:
             terminal = asyncio.run(main())
         except TimeoutError as exc:
-            if attempt == max_attempts:
+            if attempt == max_attempts or not (is_read or _write_has_no_consumer(exc)):
                 click.echo(
                     json.dumps(
                         {
@@ -190,7 +206,7 @@ def _call_bus(
         except (LabRunBusError, InfraConnectionError) as exc:
             # A broker that refuses this principal a topic (an ACL) lands here too.
             click.echo(f"bus: {exc}", err=True)
-            if attempt == max_attempts:
+            if attempt == max_attempts or not is_read:
                 return EXIT_BUS_UNAVAILABLE
         else:
             failed = (
