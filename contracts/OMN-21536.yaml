@@ -1,0 +1,49 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-21536
+title: 'omnimarket: handler-shape debt burn-down, slice 5: multi-parameter handle signatures take one typed request'
+summary: The handler-shape validator of omnibase_core reports a handler class whose handle takes several positional
+  parameters (noncanonical_handle), which the shared runtime cannot adapt. Fourteen handlers did. Each now takes one
+  typed request model, passed as the one parameter of handle and built from the parameters it took, and its callers, the
+  build-loop sub-handler protocols and live adapters, and its tests follow. A correlation id the handler only ignored or
+  logged leaves the signature; one it forwards moves into the request model.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-multiparam-handle-takes-one-request
+  statement: No handler class of the fourteen takes more than one parameter in handle, every caller builds the typed request, and the nodes behave as before.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the handler-shape validator of omnibase_core run over src reports no noncanonical_handle finding in the fourteen handler modules -- falsifier: the command of the evidence below prints a number above 0'
+  - id: AC2
+    statement: 'AC2: the tests of every touched node pass -- falsifier: the pytest command of the evidence below exits non-zero'
+evidence_requirements:
+- kind: tests
+  description: The tests of the nodes whose handle signature changed, run on a lab host at the pushed head.
+  command: uv run pytest tests/test_golden_chain_build_dispatch_effect.py tests/test_golden_chain_closeout_effect.py tests/test_golden_chain_verify_effect.py tests/test_golden_chain_build_loop_orchestrator.py tests/test_golden_chain_build_loop_events.py tests/unit/nodes/node_build_loop_orchestrator tests/integration/node_verify_effect tests/test_golden_chain_design_to_plan.py tests/test_handler_handoff_effect.py tests/test_handoff_failure_modes.py tests/test_handoff_validation_gate.py tests/unit/nodes/node_monitor_alert_responder tests/nodes/node_omnigate_receipt_generator tests/nodes/node_omnigate_receipt_verifier tests/unit/nodes/node_persona_lifecycle_orchestrator tests/nodes/node_polish_task_classifier tests/unit/projection/test_delegation_data_source_experiment_omn19448.py tests/test_golden_chain_state_persist_effect.py tests/nodes/node_thread_reply_effect tests/test_golden_chain_thread_reply_effect.py tests/test_golden_chain_ticket_query.py tests/unit/nodes/node_pr_lifecycle_orchestrator tests/test_golden_chain_pr_lifecycle_orchestrator.py tests/test_market_node_runtime_dogfood.py tests/test_handler_routing_boot_resolvable.py src/omnimarket/nodes/node_projection_delegation/tests src/omnimarket/nodes/node_build_loop_orchestrator/tests -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21536-ac1-no-multiparam-handle
+  description: AC1 runs the handler-shape validator over src at the committed head and counts the noncanonical_handle findings that name one of the fourteen handler modules.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: |
+      set -u;
+      test "$(uv run python -c "import sys; from omnibase_core.validation.validator_handler_shape import ValidatorHandlerShape as V; sys.exit(V.main())" src 2>&1 | grep 'noncanonical_handle' | grep -c -E '(handler_build_dispatch|handler_closeout|handler_verify|handler_design_to_plan_phase3_launch|handler_handoff_effect|handler_alert_classify|handler_receipt_generator|handler_receipt_verifier|handler_persona_rebuild|handler_classifier|handler_delegation_data_source_fold|handler_state_persist_effect|handler_thread_reply|handler_ticket_query)\.py')" -eq 0
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21536-ac2-touched-node-tests
+  description: AC2 runs the tests of the nodes whose handle signature changed.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_build_dispatch_effect.py tests/test_golden_chain_closeout_effect.py tests/test_golden_chain_verify_effect.py tests/test_golden_chain_build_loop_orchestrator.py tests/test_golden_chain_build_loop_events.py tests/unit/nodes/node_build_loop_orchestrator tests/integration/node_verify_effect tests/test_golden_chain_design_to_plan.py tests/test_handler_handoff_effect.py tests/test_handoff_failure_modes.py tests/test_handoff_validation_gate.py tests/unit/nodes/node_monitor_alert_responder tests/nodes/node_omnigate_receipt_generator tests/nodes/node_omnigate_receipt_verifier tests/unit/nodes/node_persona_lifecycle_orchestrator tests/nodes/node_polish_task_classifier tests/unit/projection/test_delegation_data_source_experiment_omn19448.py tests/test_golden_chain_state_persist_effect.py tests/nodes/node_thread_reply_effect tests/test_golden_chain_thread_reply_effect.py tests/test_golden_chain_ticket_query.py tests/unit/nodes/node_pr_lifecycle_orchestrator tests/test_golden_chain_pr_lifecycle_orchestrator.py tests/test_market_node_runtime_dogfood.py tests/test_handler_routing_boot_resolvable.py src/omnimarket/nodes/node_projection_delegation/tests src/omnimarket/nodes/node_build_loop_orchestrator/tests -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
