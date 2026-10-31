@@ -41,6 +41,18 @@ from omnibase_core.models.projection.model_upsert_plan import (
 from omnimarket.handlers.handler_projection_derived_write import (
     HandlerProjectionDerivedWrite,
 )
+from omnimarket.nodes.node_projection_tenant_credentials.stores import (
+    _CREDENTIAL_CHOSEN_MODELS_STEP as _CREDENTIAL_CHOSEN_MODELS_STEP,
+)
+from omnimarket.nodes.node_projection_tenant_credentials.stores import (
+    _CREDENTIAL_ROUTE_VERSIONS_STEP as _CREDENTIAL_ROUTE_VERSIONS_STEP,
+)
+from omnimarket.nodes.node_projection_tenant_credentials.stores import (
+    _DELEGATION_ROUTING_TENANT_OVERLAY_DDL,
+    _TENANT_INFERENCE_CREDENTIALS_ADDED_COLUMNS,
+    _TENANT_INFERENCE_CREDENTIALS_DDL,
+    CredentialSqliteStore,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -535,58 +547,6 @@ CREATE TABLE IF NOT EXISTS automation_alarm_episodes (
 )
 """
 
-# OMN-19968: the local half of the tenant BYOK credential projection's two
-# tables, declared from node_projection_tenant_credentials/migrations (0000,
-# 0001: name and provider nullable for a revoke tombstone) and
-# node_delegation_routing_reducer/migrations (0001, 0004: provider). Timestamps
-# are ISO text; the primary key and the (tenant_id, task_type) unique key back
-# the two upserts in handler_tenant_credentials_store.
-_TENANT_INFERENCE_CREDENTIALS_DDL = """
-CREATE TABLE IF NOT EXISTS tenant_inference_credentials (
-    api_key_ref TEXT PRIMARY KEY,
-    tenant_id   TEXT NOT NULL,
-    name        TEXT,
-    provider    TEXT,
-    created_at  TEXT NOT NULL,
-    revoked_at  TEXT,
-    fingerprint TEXT,
-    set_at      TEXT,
-    expires_at  TEXT,
-    bound_host  TEXT,
-    workspace_id TEXT
-)
-"""
-
-# 0005: a file made before the fingerprint and set time existed gains them on open,
-# so a read of the exposure's declared columns never meets a missing one.
-_TENANT_INFERENCE_CREDENTIALS_ADDED_COLUMNS: dict[str, object] = {
-    "fingerprint": None,
-    "set_at": None,
-    # 0006 (OMN-20991): the key's expiry date.
-    "expires_at": None,
-    # 0007 (OMN-21012): the lab host the key is bound to.
-    "bound_host": None,
-    # 0008 (OMN-20967): the Anthropic workspace the key belongs to.
-    "workspace_id": None,
-}
-
-_DELEGATION_ROUTING_TENANT_OVERLAY_DDL = """
-CREATE TABLE IF NOT EXISTS delegation_routing_tenant_overlay (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    tenant_id    TEXT NOT NULL,
-    task_type    TEXT NOT NULL,
-    backend_id   TEXT NOT NULL,
-    provider     TEXT,
-    endpoint_url TEXT NOT NULL,
-    model_name   TEXT NOT NULL,
-    secret_ref   TEXT,
-    timeout_ms   INTEGER CHECK (timeout_ms IS NULL OR timeout_ms > 0),
-    max_tokens   INTEGER CHECK (max_tokens IS NULL OR max_tokens > 0),
-    created_at   TEXT NOT NULL,
-    updated_at   TEXT NOT NULL,
-    UNIQUE (tenant_id, task_type)
-)
-"""
 
 # OMN-19968: the local half of llm_call_metrics, declared beside the Postgres
 # schema (node_projection_llm_cost/migrations/0001_create_llm_call_metrics.sql).
@@ -777,7 +737,7 @@ def default_evidence_db_path() -> Path:
     return _DEFAULT_EVIDENCE_DB_PATH
 
 
-class SqliteDatabaseAdapter:
+class SqliteDatabaseAdapter(CredentialSqliteStore):
     """``ProtocolProjectionDatabaseSync`` over a local SQLite file.
 
     Idempotent schema creation; additive columns inferred from the row dict so a
@@ -832,6 +792,7 @@ class SqliteDatabaseAdapter:
                 "tenant_inference_credentials",
                 _TENANT_INFERENCE_CREDENTIALS_ADDED_COLUMNS,
             )
+            self._ensure_credential_route_columns(conn)
             self._apply_store_steps(conn, self._db_path)
         except BaseException:
             conn.close()
@@ -1044,6 +1005,7 @@ class SqliteDatabaseAdapter:
                     "indexed the delegate-skill command claims by correlation",
                 )
             )
+        pending.extend(cls._credential_store_steps(conn))
         for index, (step, apply, _) in enumerate(pending):
             try:
                 conn.execute("BEGIN IMMEDIATE")
@@ -1553,7 +1515,7 @@ class SqliteDatabaseAdapter:
                 ).fetchall()
             else:
                 rows = conn.execute(f"SELECT * FROM {table}{suffix}").fetchall()
-            return [dict(row) for row in rows]
+            return self._decoded_credential_models(table, [dict(row) for row in rows])
         finally:
             conn.close()
 
