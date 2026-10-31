@@ -300,3 +300,17 @@ externally_produced_topics:
     producer: "omnimarket.logging.structured_logger.StructuredLogger.publish (structured_logger.py:131) -- the process-wide log emitter, not a node contract"
   - topic: onex.evt.platform.node-state-change.v1
     producer: "the runtime host's node registration/heartbeat emitter in omnibase_infra, not a node contract"
+
+# OMN-21753 (under OMN-21288): when the one-runtime fold moves this writer from
+# its own container into the runtime, the runtime's consumer group starts from
+# the committed offsets of the container's group,
+# {env}.omnimarket-projections.live-events-writer.consume.v1, instead of the bus default
+# (latest), so events published while the container is stopped and the runtime
+# has not yet joined are projected. The container's runner reads a partition it
+# never committed from the earliest offset, and the handover does the same.
+# omnibase_infra's HandlerContractSubscribePreflight reads this key.
+consumer_group_handover:
+  from_service: omnimarket-projections
+  from_node: live-events-writer
+  from_version: v1
+  from_auto_offset_reset: earliest
