@@ -16,8 +16,8 @@ from __future__ import annotations
 import argparse
 import sys
 
-from omnimarket.nodes.node_dependency_health_sweep.handlers.handler_dep_health_sweep import (
-    HandlerDepHealthSweep,
+from omnimarket.nodes.node_dependency_health_sweep.container import (
+    container_dependency_health_sweep,
 )
 from omnimarket.nodes.node_dependency_health_sweep.models import (
     ModelDepHealthSweepRequest,
@@ -68,7 +68,7 @@ def main(argv: list[str] | None = None) -> int:
         baseline_path=args.baseline_path,
     )
 
-    handler = HandlerDepHealthSweep()
+    handler = container_dependency_health_sweep.build_handler_dep_health_sweep()
     result = handler.handle(request)
 
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")

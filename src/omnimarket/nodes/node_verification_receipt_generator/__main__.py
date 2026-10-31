@@ -18,8 +18,8 @@ import sys
 from omnimarket.events.verification import (
     ModelVerificationReceiptRequest,
 )
-from omnimarket.nodes.node_verification_receipt_generator.handlers.handler_verification_receipt import (
-    HandlerVerificationReceiptGenerator,
+from omnimarket.nodes.node_verification_receipt_generator.container.container_verification_receipt_generator import (
+    create_handler_verification_receipt_generator,
 )
 
 _log = logging.getLogger(__name__)
@@ -96,7 +96,7 @@ def main() -> None:
         dry_run=args.dry_run,
     )
 
-    handler = HandlerVerificationReceiptGenerator()
+    handler = create_handler_verification_receipt_generator()
     receipt = handler.handle(request)
 
     sys.stdout.write(receipt.model_dump_json(indent=2) + "\n")

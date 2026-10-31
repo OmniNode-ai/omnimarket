@@ -8,11 +8,12 @@ import argparse
 import logging
 import sys
 
-from omnimarket.nodes.node_dirty_canonical_sweep.handlers import (
-    HandlerDirtyCanonicalSweep,
-)
 from omnimarket.nodes.node_dirty_canonical_sweep.models import (
     ModelDirtyCanonicalSweepCommand,
+)
+
+from .container.container_dirty_canonical_sweep import (
+    build_handler_dirty_canonical_sweep,
 )
 
 
@@ -63,7 +64,7 @@ def main() -> None:
         pr_label=args.pr_label,
         base_branch=args.base_branch,
     )
-    result = HandlerDirtyCanonicalSweep().handle(command)
+    result = build_handler_dirty_canonical_sweep().handle(command)
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")
 
 

@@ -25,14 +25,14 @@ from omnimarket.events.model_ledger_row_event import (
 from omnimarket.models.model_work_ledger_projection_inbound import (
     ModelWorkLedgerProjectionInbound,
 )
-from omnimarket.nodes.node_event_emit_effect.handlers.handler_event_emit_effect import (
-    HandlerEventEmitEffect,
-)
 from omnimarket.nodes.node_event_emit_effect.models.model_emit_request import (
     ModelEmitRequest,
 )
 from omnimarket.nodes.node_event_emit_effect.models.model_emit_result import (
     ModelEmitResult,
+)
+from omnimarket.nodes.node_work_ledger_emit_effect.container.container_work_ledger_emit_effect import (
+    create_handler_event_emit_effect,
 )
 from omnimarket.nodes.node_work_ledger_emit_effect.handlers.handler_work_ledger_emit_guard import (
     HandlerWorkLedgerEmitGuard,
@@ -96,7 +96,9 @@ class HandlerWorkLedgerEmit:
         """
         HandlerWorkLedgerEmitGuard.check()
         emitter = (
-            self._emitter if self._emitter is not None else HandlerEventEmitEffect()
+            self._emitter
+            if self._emitter is not None
+            else create_handler_event_emit_effect()
         )
         event_id = str(work_ledger_event_id(event.ledger_id, event.row_id))
         return emitter.handle(
@@ -124,7 +126,9 @@ class HandlerWorkLedgerEmit:
                 event=request.event,
             )
             emitter = (
-                self._emitter if self._emitter is not None else HandlerEventEmitEffect()
+                self._emitter
+                if self._emitter is not None
+                else create_handler_event_emit_effect()
             )
             result = emitter.handle(
                 ModelEmitRequest(
