@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Protocol
 
 from omnimarket.config.service_endpoints import service_endpoint_url
+from omnimarket.handlers.runtime_paths import runtime_path_list
 from omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit import (
     MAX_TAIL_CHARS,
     EnumLabWorkUnitStatus,
@@ -31,7 +32,7 @@ from omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit impor
     ModelLabWorkUnitRequest,
 )
 
-_EXTRA_PATH = ("~/.local/bin", "/opt/homebrew/bin", "/usr/local/bin")
+_EXTRA_PATH = runtime_path_list("lab_work_unit.extra_path_dirs")
 _GIT_TIMEOUT_SECONDS = 600
 
 

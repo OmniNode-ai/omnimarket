@@ -24,7 +24,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-_EXTRA_PATH = ("~/.local/bin", "/opt/homebrew/bin", "/usr/local/bin")
+from omnimarket.handlers.runtime_paths import runtime_path_list
+
+_EXTRA_PATH = runtime_path_list("lab_work_unit.extra_path_dirs")
 #: A pseudo-tool: present only when ``claude auth status`` reports ``loggedIn: true``. A binary on
 #: the PATH is not a login (a Mac's keychain is locked over ssh and the same binary reports logged
 #: out), so a headless Claude unit asks for this, never for ``claude``.
