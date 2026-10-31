@@ -453,7 +453,11 @@ class HandlerTypedDecisionWorkflow:
                 calibration=self._calibrate(request.calibration)
             )
         assert request.decision is not None
-        observed = (self._decision_handler or HandlerTypedDecision()).handle(
+        from omnimarket.nodes.node_typed_decision_effect.container.container_typed_decision_effect import (
+            create_handler_typed_decision,
+        )
+
+        observed = (self._decision_handler or create_handler_typed_decision()).handle(
             request.decision
         )
         receipt = ModelTypedDecisionShadowResult.model_validate(

@@ -148,6 +148,8 @@ def test_credential_registered_event_never_carries_a_secret_field() -> None:
         "name",
         "api_key_ref",
         "metadata",
+        "models",
+        "expected_version",
         "fingerprint",
         "set_at",
         # OMN-20991: the key's expiry date, so routing can skip a lapsed key.

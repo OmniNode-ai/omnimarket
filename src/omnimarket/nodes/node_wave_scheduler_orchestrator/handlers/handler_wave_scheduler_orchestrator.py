@@ -30,6 +30,9 @@ from typing import Any, Protocol
 
 import yaml
 
+from omnimarket.nodes.node_wave_scheduler_orchestrator.container.container_wave_scheduler_orchestrator import (
+    create_handler_wave_dispatch_state_store,
+)
 from omnimarket.nodes.node_wave_scheduler_orchestrator.handlers.handler_wave_dispatch_state_store import (
     HandlerWaveDispatchStateStore,
 )
@@ -125,7 +128,7 @@ class HandlerWaveSchedulerOrchestrator:
         checkpoint = load_checkpoint(state_dir, run_id) if request.resume else None
         resumed = checkpoint is not None
 
-        dispatcher = self._dispatcher or HandlerWaveDispatchStateStore(
+        dispatcher = self._dispatcher or create_handler_wave_dispatch_state_store(
             state_dir=state_dir, run_id=run_id
         )
 
