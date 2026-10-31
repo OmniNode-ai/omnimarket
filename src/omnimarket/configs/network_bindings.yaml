@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# network_bindings.yaml -- the authority for the hosts, addresses and ports that
+# omnimarket code binds, probes or compares against (OMN-21623).
+#
+# No handler, model or entry point holds a host, IP or port as a literal; it reads
+# the value here by dotted reference through omnimarket.handlers.network_bindings.
+# The reader fails closed: a missing file, key or value of the wrong shape raises.
+
+loopback:
+  # The loopback names and addresses a caller treats as "this machine".
+  ipv4: "127.0.0.1"
+  ipv6: "::1"
+  name: "localhost"
+  hosts:
+    - "127.0.0.1"
+    - "localhost"
+    - "::1"
+
+# The wildcard address a server binds to listen on every interface of its host.
+all_interfaces: "0.0.0.0"
+
+projection_api:
+  # Port of the projection API server (uvicorn entry point).
+  port: 3002
+
+emit_daemon:
+  # The emit daemon's local socket the process watchdog probes.
+  host: "127.0.0.1"
+  port: 9877
+
+valkey:
+  # Valkey's fixed port in the RSD static policy address.
+  port: 6379

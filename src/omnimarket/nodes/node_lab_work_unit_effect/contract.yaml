@@ -79,6 +79,15 @@ runtime_dispatch:
 capacity:
   capacity_topic: "onex.evt.omnimarket.lab-host-capacity-advertised.v1"
   cadence_seconds: 10
+# HOW THE CALLER READS. The caller (omnimarket.lab_work.bus.LabWorkCaller, behind
+# `onex lab-work run` and `onex lab-work hosts`) is a one-shot reader: it listens for
+# one capacity window and one receipt and leaves. It joins no consumer group
+# (`ungrouped`: EventBusKafka.subscribe_ungrouped, OMN-17427), so a call leaves
+# nothing on the broker. A group per call left about 15,400 Empty groups on the CI
+# bus, and replaying their offsets log exhausted the broker's memory (OMN-21764).
+# The serve side keeps one stable group per host, named from the host name.
+caller_subscription:
+  mode: ungrouped
 # The capacity advertisements leave the node graph here: they are read by the
 # caller (omnimarket.lab_work.bus.LabWorkCaller, behind `onex lab-work run` and
 # `onex lab-work hosts`), which is not a node contract.
