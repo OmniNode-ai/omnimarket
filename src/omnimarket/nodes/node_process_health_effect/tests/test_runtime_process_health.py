@@ -81,3 +81,23 @@ def test_cli_output_path_can_be_overridden_by_the_declared_environment_variable(
     monkeypatch.setenv("HOME", str(tmp_path))
     assert main(["--generated-at", "2026-10-30T12:00:00Z"]) == 0
     assert json.loads(target.read_text(encoding="utf-8"))["schema_version"] == 1
+
+
+@pytest.mark.unit
+def test_a_clone_root_that_does_not_exist_makes_git_merges_unread(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "out.json"
+    for name in _SOURCE_ENV:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv(load_runtime_io()["output"]["env_var"], str(target))
+    monkeypatch.setenv("ONEX_LEDGER_PATH", str(tmp_path / "missing.md"))
+    monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path))
+    monkeypatch.setenv("OMNI_HOME", str(tmp_path / "no-such-home"))
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert main(["--generated-at", "2026-10-30T12:00:00Z"]) == 0
+    sources = {
+        s["name"]: s for s in json.loads(target.read_text(encoding="utf-8"))["sources"]
+    }
+    assert sources["git_merges"]["status"] == "unread"
+    assert "does not exist" in sources["git_merges"]["reason"]

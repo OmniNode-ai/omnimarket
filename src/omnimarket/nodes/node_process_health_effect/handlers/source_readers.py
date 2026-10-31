@@ -171,7 +171,7 @@ def read_ledger(
             locator=f"{locator} and {display(live.parent / io['archive_dir_name'], environ)}/{io['archive_glob']}",
             reason=f"{len(files)} files, {len(seen)} distinct rows parsed",
             covered_from=max(first, keep_from) if first < keep_from else first,
-            covered_to=last,
+            covered_to=max(last, datetime.fromtimestamp(live.stat().st_mtime, UTC)),
         )
     )
 
@@ -508,6 +508,15 @@ def read_git(
         if io["clone_root_env_var"] in environ
         else []
     )
+    if roots and not roots[0].is_dir():
+        out.reads.append(
+            _unread(
+                EnumSourceName.GIT_MERGES,
+                display(roots[0], environ),
+                f"{io['clone_root_env_var']} names a directory that does not exist",
+            )
+        )
+        return
     if not roots:
         out.reads.append(
             _unread(
