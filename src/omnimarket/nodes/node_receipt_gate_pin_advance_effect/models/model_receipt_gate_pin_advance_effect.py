@@ -8,10 +8,14 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from omnimarket.models.model_receipt_gate_pin_advance import (
     EnumCallerVerdict,
+)
+from omnimarket.models.receipt_gate_pin_friction import (
+    EnumPinKind,
+    EnumPinRefusalClass,
 )
 
 DEV_TAG = r"^dev-\d{14}-[0-9a-f]{12}$"
@@ -32,7 +36,7 @@ class ModelDevMergeTagEvent(BaseModel):
     tag: str = Field(pattern=DEV_TAG)
     sha: str = Field(pattern=r"^[0-9a-f]{40}$")
     delivery_id: UUID | None = None
-    as_of: datetime | None = None
+    as_of: AwareDatetime | None = None
     requested_by_lane: str = Field(default="receipt-gate-pin-advance", min_length=1)
     dry_run: bool = Field(
         default=False,
@@ -67,10 +71,15 @@ class ModelPinPrResult(BaseModel):
     outcome: EnumPinPrOutcome
     target_tag: str
     branch: str
+    pin_kind: EnumPinKind
     branch_head_sha: str | None = None
     pr_number: int | None = None
     pr_url: str | None = None
     detail: str = ""
+    refusal_class: EnumPinRefusalClass | None = None
+    at: datetime | None = Field(
+        default=None, description="When the updater reached this outcome."
+    )
 
 
 class ModelPinUnjudged(BaseModel):
@@ -80,6 +89,7 @@ class ModelPinUnjudged(BaseModel):
 
     repository: str
     verdict: EnumCallerVerdict
+    pin_kind: EnumPinKind
     detail: str
 
 
