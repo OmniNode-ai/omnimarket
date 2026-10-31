@@ -4,6 +4,7 @@
 
 from omnimarket.nodes.node_lab_work_unit_effect.handlers.handler_host_capacity_advertise_effect import (
     HandlerHostCapacityAdvertiseEffect,
+    HostAdvertiser,
 )
 from omnimarket.nodes.node_lab_work_unit_effect.handlers.handler_lab_work_unit_effect import (
     DEFAULT_ALLOWED_EXECUTABLES,
@@ -16,4 +17,5 @@ __all__ = [
     "DEFAULT_ALLOWED_OWNERS",
     "HandlerHostCapacityAdvertiseEffect",
     "HandlerLabWorkUnitEffect",
+    "HostAdvertiser",
 ]

@@ -12,11 +12,12 @@ from datetime import UTC, datetime
 from omnimarket.nodes.node_platform_readiness.handlers.handler_platform_readiness import (
     DimensionInput,
     InfraSshTargetNotConfiguredError,
-    NodePlatformReadiness,
     PlatformReadinessRequest,
     PlatformReadinessResult,
     ReadinessStatus,
 )
+
+from .container.container_platform_readiness import build_node_platform_readiness
 
 DRY_RUN_NOW = datetime(2025, 1, 1, tzinfo=UTC)
 
@@ -185,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     try:
-        raw_result = NodePlatformReadiness().handle(request)
+        raw_result = build_node_platform_readiness().handle(request)
     except InfraSshTargetNotConfiguredError as exc:
         print(f"CONFIG ERROR: {exc}", file=sys.stderr)  # noqa: T201
         return 2
