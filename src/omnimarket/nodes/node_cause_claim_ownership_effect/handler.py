@@ -373,6 +373,10 @@ def emit_near_misses(
     from omnimarket.nodes.node_exception_queue_effect import handler as exceptions
     from omnimarket.nodes.node_exception_queue_effect import models as exception_models
 
+    from .container.container_cause_claim_ownership_effect import (
+        build_handler_exception_emit,
+    )
+
     claims = live_cause_claims(
         qs, Path(request.registry_root), request.now, request.ledger
     )
@@ -404,7 +408,7 @@ def emit_near_misses(
                     raise ValueError(
                         "plugin_repo is not set; supply the repos overlay's plugin_source"
                     )
-                done = exceptions.HandlerExceptionEmit().handle(
+                done = build_handler_exception_emit().handle(
                     exception_models.ModelExceptionEmitRequest(
                         state_dir=request.exception_dir or exceptions.state_dir(),
                         row=row,

@@ -6,8 +6,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from omnimarket.nodes.node_bus_audit_compute.handlers.handler_bus_audit_compute import (
-    HandlerBusAuditCompute,
+from omnimarket.nodes.node_bus_audit_compute.container.container_bus_audit_compute import (
+    build_handler_bus_audit_compute,
 )
 from omnimarket.nodes.node_bus_audit_compute.models.model_bus_audit_compute_request import (
     ModelBusAuditComputeRequest,
@@ -67,7 +67,7 @@ def main(argv: list[str] | None = None) -> int:
         sample_count=args.sample_count,
         dry_run=args.dry_run,
     )
-    result = HandlerBusAuditCompute().handle(request)
+    result = build_handler_bus_audit_compute().handle(request)
 
     # The skill contract asks for JSON stdout. Keep --json for compatibility,
     # but emit JSON unconditionally so `onex run` has one stable parse surface.
