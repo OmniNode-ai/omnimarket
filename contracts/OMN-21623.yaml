@@ -1,0 +1,59 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21623"
+title: "Loopback hosts, bind addresses and ports, and in-memory transports of fourteen modules come from the network-binding authority and a binding site, not code"
+summary: "Fourteen modules held a loopback or wildcard address, an emit-daemon, projection or Valkey port, or an in-memory event bus, broker, transport, database adapter or row store as a literal or a hand construction. The addresses and ports now live in configs/network_bindings.yaml, which handlers/network_bindings.py reads fail-closed by dotted reference, and the in-memory implementations are built only in the binding sites handlers/container/container_inmemory.py and the PR handoff node's container/container_row_store.py. Burn-down slice of the contracts_and_di check over src/omnimarket: inmemory_outside_injection goes from 37 to 27, literal_host from 12 to 6, literal_ip from 11 to 5 and literal_port from 4 to 1, twenty-five findings in all; every previous value is unchanged."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21623-network-binding-authority"
+    statement: |-
+      Code that binds, probes or compares against a host, address or port reads it from the network-binding authority by reference, and code that needs an in-memory transport takes the one a binding site builds; an unknown reference fails at the call, and the previous values are unchanged.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: configs/network_bindings.yaml holds each host, address and port and handlers/network_bindings.py resolves it by dotted reference, failing closed on a missing file, key or wrong shape, and the binding sites build the in-memory implementations -- falsifier: uv run pytest tests/unit/handlers/test_network_bindings.py -q --no-cov"
+      - id: "AC2"
+        statement: "AC2: the contracts_and_di check reports no inmemory_outside_injection, literal_host, literal_ip or literal_port finding on the modules of the slice -- falsifier: the command of dod-omn21623-network-clean below"
+evidence_requirements:
+  - kind: "tests"
+    description: "The authority tests and the tests of the touched nodes pass."
+    command: "uv run pytest tests/unit/handlers/test_network_bindings.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21623-network-authority"
+    description: "The authority serves every previous value, fails closed, and the binding sites build the in-memory implementations."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/test_network_bindings.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21623-network-clean"
+    description: "The contracts_and_di check over the modules of the slice reports none of the four rules."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "command"
+        check_value: "! uv run --frozen python -m omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run omnibase_core.validation.validator_contracts_and_di:ValidatorContractsAndDi src/omnimarket/delegated_test_loop/lane_bus.py src/omnimarket/models/delegation/wire/model_probe_ladder.py src/omnimarket/nodes/node_binding_parity_orchestrator/handlers/handler_run_local.py src/omnimarket/nodes/node_binding_parity_orchestrator/stubs/stub_bus.py src/omnimarket/nodes/node_claude_review_gateway_effect/models/model_claude_review_gateway.py src/omnimarket/nodes/node_golden_chain_sweep/census_collector.py src/omnimarket/nodes/node_lab_secret_store_override_effect/handlers/handler_lab_secret_store_override_cli.py src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_inference_intent.py src/omnimarket/nodes/node_pr_handoff_orchestrator/state_codec.py src/omnimarket/nodes/node_process_watchdog/handlers/checktargets_production.py src/omnimarket/nodes/node_runtime_deploy_effect/handlers/handler_runtime_deploy_cli.py src/omnimarket/nodes/node_work_ledger_emit_effect/handlers/handler_work_ledger_emit_guard.py src/omnimarket/projection/api_server.py src/omnimarket/rsd/v4_static_policy.py 2>&1 | grep -qE 'inmemory_outside_injection|literal_host|literal_ip|literal_port'"
+        cwd: "."
+  - id: "dod-omn21623-deploy-published-network-readback"
+    description: |-
+      Hosted-runner source-artifact readback: fetch the network-binding authority at the
+      evaluated published commit and require it to declare the emit daemon port. A missing
+      key fails the command. No lab service, credentials or broker is required. This checks
+      the published source artifact and does not assert a live runtime rollout.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/configs/network_bindings.yaml" | uv run --frozen python -c '
+          import sys, yaml
+          doc = yaml.safe_load(sys.stdin.read())
+          assert doc["emit_daemon"]["port"], "emit_daemon.port missing"
+          print("Published network-binding authority readback: emit_daemon.port PASS")
+          '
+        cwd: "."
