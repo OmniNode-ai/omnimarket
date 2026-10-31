@@ -13,19 +13,19 @@ requirements:
       A pull request is refused as a duplicate only on shared intent (a shared ticket, or materially the same change in the same files). A pull request stacked on an open one is never its duplicate. An open draft with no live owner CLAIM never refuses. The ticket pattern and the similarity threshold are data in the node contract.
     acceptance:
       - id: "AC1"
-        statement: "AC1: a pull request is a duplicate only when it shares a ticket with the open one or changes the same files with materially the same change, and line proximity alone is clear -- falsifier: uv run pytest tests/nodes/node_pr_duplicate_guard_compute -k intent -q"
+        statement: "AC1: a pull request is a duplicate only when it shares a ticket with the open one or changes the same files with materially the same change, and line proximity alone is clear -- falsifier: uv run pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard.py tests/nodes/node_pr_duplicate_guard_compute/test_golden_chain_pr_duplicate_guard_compute.py -k intent -q"
       - id: "AC2"
-        statement: "AC2: a pull request stacked on an open one, by base name or by ancestry of its head, is never its duplicate -- falsifier: uv run pytest tests/nodes/node_pr_duplicate_guard_compute tests/unit/handlers/scm -k stacked -q"
+        statement: "AC2: a pull request stacked on an open one, by base name or by ancestry of its head, is never its duplicate -- falsifier: uv run pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard.py tests/nodes/node_pr_duplicate_guard_compute/test_golden_chain_pr_duplicate_guard_compute.py tests/unit/handlers/scm/test_scm_duplicate_guard.py tests/unit/handlers/scm/test_scm_duplicate_guard_generated_paths.py -k stacked -q"
       - id: "AC3"
-        statement: "AC3: an open draft with no live owner CLAIM is listed as evidence in the notes and does not refuse -- falsifier: uv run pytest tests/nodes/node_pr_duplicate_guard_compute -k ownerless -q"
+        statement: "AC3: an open draft with no live owner CLAIM is listed as evidence in the notes and does not refuse -- falsifier: uv run pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard.py tests/nodes/node_pr_duplicate_guard_compute/test_golden_chain_pr_duplicate_guard_compute.py -k ownerless -q"
       - id: "AC4"
-        statement: "AC4: the same-change threshold and the ticket pattern are declared in the node contract and not in code, and a same-ticket same-change pull request is still refused -- falsifier: uv run pytest tests/nodes/node_pr_duplicate_guard_compute -q"
+        statement: "AC4: the same-change threshold and the ticket pattern are declared in the node contract and not in code, and a same-ticket same-change pull request is still refused -- falsifier: uv run pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard.py tests/nodes/node_pr_duplicate_guard_compute/test_golden_chain_pr_duplicate_guard_compute.py -q"
       - id: "AC5"
-        statement: "AC5: a regression test built from the recorded 2026-10-31 refusals fails on the broken guard and passes on the fix -- falsifier: uv run pytest tests/nodes/node_pr_duplicate_guard_compute -k recorded -q"
+        statement: "AC5: a regression test built from the recorded 2026-10-31 refusals fails on the broken guard and passes on the fix -- falsifier: uv run pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard.py tests/nodes/node_pr_duplicate_guard_compute/test_golden_chain_pr_duplicate_guard_compute.py -k recorded -q"
 evidence_requirements:
   - kind: "tests"
     description: "The planted cases of 2026-10-31: the contract-derived grants branch and the gateway-off branch pass; a same-ticket same-change pull request is still refused; a stack by git ancestry is skipped."
-    command: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute tests/unit/handlers/scm/test_scm_duplicate_guard.py tests/unit/handlers/scm/test_scm_duplicate_guard_generated_paths.py -q --no-cov"
+    command: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard.py tests/nodes/node_pr_duplicate_guard_compute/test_golden_chain_pr_duplicate_guard_compute.py tests/unit/handlers/scm/test_scm_duplicate_guard.py tests/unit/handlers/scm/test_scm_duplicate_guard_generated_paths.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -34,10 +34,10 @@ dod_evidence:
   - id: "dod-omn21631-guard"
     description: "The guard's planted and recorded cases pass."
     source: "manual"
-    binds_ac: ["AC1", "AC3", "AC4", "AC5"]
+    binds_ac: ["AC1"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute -q --no-cov"
+        check_value: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard.py tests/nodes/node_pr_duplicate_guard_compute/test_golden_chain_pr_duplicate_guard_compute.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21631-scm-end-to-end"
     description: "The scm check against real git checkouts, watcher state and ancestry."
@@ -47,3 +47,52 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/handlers/scm/test_scm_duplicate_guard.py tests/unit/handlers/scm/test_scm_duplicate_guard_generated_paths.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21631-ownerless"
+    description: "Ownerless drafts supply notes while an owned draft or the same branch still refuses."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard.py -k ownerless -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21631-contract-config"
+    description: "The contract owns the intent settings and a real duplicate still refuses."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard.py -k 'contract_owns or real_duplicate' -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21631-recorded"
+    description: "The recorded unrelated refusals clear while the recorded duplicate still refuses."
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard.py -k recorded -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21631-deploy-published-model-readback"
+    description: |-
+      Hosted-runner source-artifact readback: fetch the changed model at the evaluated
+      published commit and instantiate its intent settings, changed-line digest, draft
+      and stack fields. Missing source, missing fields or incorrect values fail the
+      command. No lab service, credentials or broker is required. This checks the
+      published source artifact and does not assert a live runtime rollout.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/models/model_pr_duplicate_guard.py" | uv run --frozen python -c '
+          import sys
+          exec(compile(sys.stdin.read(), "published_duplicate_guard_model", "exec"))
+          intent = ModelDuplicateIntentConfig(ticket_pattern="OMN-[0-9]+", min_same_change_similarity=0.6)
+          assert intent.min_same_change_similarity == 0.6
+          changed = ModelFileTouch(path="src/example.py", spans=((1, 1),), digest=("aaaaaaaaaaaa",))
+          assert changed.digest == ("aaaaaaaaaaaa",)
+          opened = ModelOpenPr(number=1, head_ref="topic", base="dev", title="example", draft=True, stacked=True)
+          assert opened.draft is True and opened.stacked is True
+          defaults = ModelOpenPr(number=2, head_ref="other", base="dev", title="other")
+          assert defaults.draft is False and defaults.stacked is False
+          print("Published duplicate-guard model readback: 4 assertions PASS")
+          '
+        cwd: "."
