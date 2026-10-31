@@ -923,8 +923,8 @@ def _read_model_key(provider: str) -> str:
         value = sys.stdin.read().strip()
     if not value:
         raise click.ClickException(f"no {label} key was entered; nothing was stored.")
-    looks = key_looks_like(value)
-    if looks not in (None, provider) and provider != "openai_compatible":
+    looks = key_looks_like(value, provider)
+    if looks is not None and looks != provider:
         raise click.ClickException(
             f"that looks like a key for {_MODEL_LABELS[looks]}, not {label}. "
             "Nothing was stored."
