@@ -2,7 +2,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-21752"
 title: "The delegate-skill handler splats a bare name into dispatch(), so the omnibase_infra delegation keyword-parity hook and CI job refuse every omnibase_infra commit and PR"
-summary: "omnimarket#4653 added a splat of a bare name, session_kwargs, to the handler's dispatch call. omnibase_infra's keyword-parity check reads that call with ast and resolves only a splat of a call to a module-level helper annotated with a module-level TypedDict, so it failed closed and refused every omnibase_infra commit and PR. The splat is now a call to such a helper, the session model still reaches only a port that declares it, and a test holds every splat at the call site to the same rule."
+summary: "omnimarket#4653 added a splat of a bare name, session_kwargs, to the handler's dispatch call. omnibase_infra's keyword-parity check reads that call with ast and resolves only a splat of a call to a module-level helper annotated with a module-level TypedDict, so it failed closed and refused every omnibase_infra commit and PR. The session model now travels through a context variable only to a port that declares it reads that variable; dispatch sends no session_model keyword. A test holds every remaining splat at the call site to the same TypedDict helper rule."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -35,13 +35,68 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_dispatch_call_site_splats_omn21752.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
       - check_type: "command"
-        check_value: "grep -q '_session_model_dispatch_kwargs' src/omnimarket/nodes/node_delegate_skill_orchestrator/handlers/handler_delegate_skill.py"
+        check_value: "grep -Fq 'session_token = bind_session_model(request, self._dispatch_port)' src/omnimarket/nodes/node_delegate_skill_orchestrator/handlers/handler_delegate_skill.py"
         cwd: "."
   - id: "dod-omn21752-infra-parity"
-    description: "The omnibase_infra keyword-parity check passes against this handler."
+    description: |-
+      Run the unchanged omnibase_infra keyword-parity test from the exact source
+      revision in uv.lock against this handler and the installed locked runtime
+      port. Fetch only the test file, so hosted verification needs no sibling
+      checkout. A missing download or any parity failure refuses the check.
     source: "manual"
     binds_ac: ["AC1"]
     checks:
       - check_type: "command"
-        check_value: "cd ${OMNI_HOME}/omnibase_infra && ONEX_DELEGATION_CONSUMER_SOURCE=${OMNI_HOME}/omnimarket/src/omnimarket/nodes/node_delegate_skill_orchestrator/handlers/handler_delegate_skill.py uv run pytest tests/integration/runtime/test_delegation_dispatch_port_consumer_kwarg_parity.py -q"
+        check_value: |-
+          uv run python - <<'PY'
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+          import tempfile
+          import tomllib
+          from urllib.request import urlopen
+
+          lock = tomllib.loads(Path("uv.lock").read_text())
+          package, = (p for p in lock["package"] if p["name"] == "omnibase-infra")
+          ref = package["source"]["git"].rsplit("#", 1)[1]
+          assert len(ref) == 40 and all(c in "0123456789abcdef" for c in ref), ref
+          test_name = "test_delegation_dispatch_port_consumer_kwarg_parity.py"
+          url = f"https://raw.githubusercontent.com/OmniNode-ai/omnibase_infra/{ref}/tests/integration/runtime/{test_name}"
+          handler = Path("src/omnimarket/nodes/node_delegate_skill_orchestrator/handlers/handler_delegate_skill.py").resolve()
+          with tempfile.TemporaryDirectory() as directory:
+              test = Path(directory) / test_name
+              with urlopen(url, timeout=15) as response:
+                  test.write_bytes(response.read())
+              env = dict(os.environ, ONEX_DELEGATION_CONSUMER_SOURCE=str(handler), PYTHONDONTWRITEBYTECODE="1")
+              subprocess.run([sys.executable, "-m", "pytest", str(test), "-q", "--no-cov"], env=env, check=True)
+          PY
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21752-deploy-source-readback"
+    description: |-
+      Hosted source-artifact deploy readback at the evaluated commit. Fetch the
+      published handler and refuse a dispatch that sends session_model or lacks
+      the context-variable binding. This reads the published source artifact;
+      it does not assert that a running service has rolled out.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          set -eu;
+          directory="$(mktemp -d)";
+          trap 'rm -rf "$directory"' EXIT;
+          curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_delegate_skill_orchestrator/handlers/handler_delegate_skill.py" -o "$directory/handler.py"
+          python3 - "$directory/handler.py" <<'PY'
+          import ast
+          from pathlib import Path
+          import sys
+
+          tree = ast.parse(Path(sys.argv[1]).read_text())
+          calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)]
+          dispatches = [call for call in calls if isinstance(call.func, ast.Attribute) and call.func.attr == "dispatch" and isinstance(call.func.value, ast.Attribute) and call.func.value.attr == "_dispatch_port"]
+          assert dispatches, "published handler has no dispatch call"
+          assert all(keyword.arg != "session_model" for call in dispatches for keyword in call.keywords), "published dispatch still sends session_model"
+          assert any(isinstance(call.func, ast.Name) and call.func.id == "bind_session_model" for call in calls), "published handler lacks session-model context binding"
+          print("Published dispatch session-model readback: PASS")
+          PY
         cwd: "."
