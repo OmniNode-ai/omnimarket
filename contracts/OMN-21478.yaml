@@ -65,8 +65,6 @@ dod_evidence:
 - id: dod-omn21478-pr4618-hosted-package-deploy-readback
   description: Hosted-runner package readback checks the installed core commit against this PR's dev tag, imports both migrated product consumers, and loads the installed provenance policy. It needs only the checkout and frozen dependencies, with no credentials or services. A different core commit or a missing runtime dependency fails. This does not attest a running service rollout.
   source: manual
-  binds_ac:
-  - AC2
   checks:
   - check_type: command
     check_value: |-
