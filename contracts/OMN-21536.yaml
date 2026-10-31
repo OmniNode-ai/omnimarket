@@ -40,3 +40,28 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/validation/test_handler_modules_name_no_event_envelope_omn21536.py tests/test_golden_chain_pr_review.py tests/integration/node_pr_review_fsm_reducer src/omnimarket/nodes/node_pr_review_fsm_reducer/tests -q --no-cov --tb=line -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21536-s4-deploy-handler-smoke"
+    description: "Hosted package deploy smoke: the installed pr-review FSM reducer handler takes the typed advance command, names no event envelope, and folds one advance into a state projection. A handler that again names the envelope, or whose handle does not take the command, fails. No credentials, broker or lab service is required; this checks the evaluated checkout package, not a production rollout."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          uv run python -c '
+          import asyncio
+          import inspect
+          from uuid import uuid4
+          from omnimarket.nodes.node_pr_review_fsm_reducer.handlers import handler_pr_review_fsm as mod
+          from omnimarket.nodes.node_pr_review_fsm_reducer.models.model_pr_review_advance_command import ModelPrReviewAdvanceCommand
+          src = inspect.getsource(mod)
+          assert "ModelEventEnvelope" not in src, "handler names the event envelope"
+          hints = inspect.signature(mod.HandlerPrReviewFsm.handle).parameters
+          assert list(hints) == ["self", "request"], list(hints)
+          assert hints["request"].annotation in (ModelPrReviewAdvanceCommand, "ModelPrReviewAdvanceCommand"), hints["request"].annotation
+          cmd = ModelPrReviewAdvanceCommand(state=mod.ModelPrReviewBotState(correlation_id=uuid4(), pr_number=1, repo="o/r"), phase_success=True)
+          out = asyncio.run(mod.HandlerPrReviewFsm().handle(cmd))
+          assert len(out.projections) == 1, out
+          print("pr-review FSM reducer handler: typed command in, one projection out, no envelope named")
+          '
+        cwd: "."
