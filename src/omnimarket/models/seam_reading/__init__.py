@@ -9,13 +9,11 @@ from omnimarket.models.seam_reading.enum_seam_crossing_state import (
 )
 from omnimarket.models.seam_reading.model_seam_crossing import ModelSeamCrossing
 from omnimarket.models.seam_reading.model_seam_reading import (
-    MAX_EXAMPLES,
     ModelSeamReading,
 )
 from omnimarket.models.seam_reading.model_seam_window import ModelSeamWindow
 
 __all__ = [
-    "MAX_EXAMPLES",
     "EnumSeamCrossingState",
     "ModelSeamCrossing",
     "ModelSeamReading",
