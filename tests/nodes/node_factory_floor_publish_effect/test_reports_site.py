@@ -371,7 +371,7 @@ def test_page_reports_every_report_page_links_back_and_the_floor_links_to_the_in
 
 
 def _inline_scripts(page: str) -> list[str]:
-    return re.findall(r"<script>(.*?)</script>", page, re.DOTALL)
+    return re.findall(r"<script>(.*?)</script>", page, re.DOTALL | re.IGNORECASE)
 
 
 @pytest.mark.parametrize("name", sorted(REPORT_PAGES))

@@ -18,7 +18,7 @@ requirements:
       - id: "AC3"
         statement: "AC3: the page fetches factory-floor.json, renders lines, stations, bays, shipped, waiting and stoppages from the node record, shows how old the record is, and contains no secret, no absolute path, no hostname and no external URL -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -k page -q"
       - id: "AC6"
-        statement: "AC6: the suite passes on the lab host through the bus placement -- falsifier: lab-run receipt with exit code 0 for uv run pytest tests/nodes/node_factory_floor_publish_effect -q"
+        statement: "AC6: the suite passes on the lab host through the bus placement -- falsifier: lab-run receipt with exit code 0 for uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py tests/nodes/node_factory_floor_publish_effect/test_reports_site.py -q"
   - id: "req-omn21733-reports-site"
     statement: |-
       The lab web server also hosts a reports site: an index of every report with the age of each report's data, the process before-and-after report, the October decision map and the decision-quality report, each drawn from data files that nodes (or, for the two snapshots, a lane) wrote.
@@ -30,7 +30,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "Tests of the overlay refusals, the atomic remote write (executed through a local shell), the refresh ordering and the page."
-    command: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov"
+    command: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -42,7 +42,7 @@ dod_evidence:
     binds_ac: ["AC1"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k overlay_or_missing_key"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k overlay_or_missing_key"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21733-ac2"
     description: "AC2 atomic write tests pass."
@@ -50,7 +50,7 @@ dod_evidence:
     binds_ac: ["AC2"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k atomic"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k atomic"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21733-ac3"
     description: "AC3 page tests pass."
@@ -58,7 +58,7 @@ dod_evidence:
     binds_ac: ["AC3"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k page"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k page"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21733-ac6"
     description: "AC6 the whole suite passes on the lab host."
@@ -66,7 +66,7 @@ dod_evidence:
     binds_ac: ["AC6"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21733-ac7"
     description: "AC7 reports publish tests pass."
@@ -74,7 +74,7 @@ dod_evidence:
     binds_ac: ["AC7"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k reports"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_reports_site.py -q --no-cov --tb=line -k reports"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21733-ac8"
     description: "AC8 report page tests pass."
@@ -82,5 +82,11 @@ dod_evidence:
     binds_ac: ["AC8"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k page_reports"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_reports_site.py -q --no-cov --tb=line -k page_reports"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-deploy-probe"
+    description: "Deploy probe. The reports handler file that GitHub serves at the checked-out commit declares HandlerReportsPublish, the entry this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_publish_effect/handlers/handler_reports_publish.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^class HandlerReportsPublish:'"
