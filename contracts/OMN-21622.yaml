@@ -33,3 +33,25 @@ dod_evidence:
         check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/work_ledger_bus/test_writer_overlay_watch.py -q -n 0 -p no:cacheprovider
         cwd: ${OMNI_HOME}/omnimarket
     binds_ac: [AC1]
+  - id: dod-omn21622-deploy-overlay-runtime
+    description: >-
+      Hosted-runner deploy smoke: install this checkout with its frozen dependencies in
+      an isolated Python 3.12 Linux container and run the writer-overlay runtime scenarios.
+      The in-memory bus must subscribe a newly declared machine, accept and attribute its
+      row without reinstalling, retain writers after malformed input, and stop serving a
+      removed machine. No lab route, credentials, broker or production ledger is used.
+      This proves the evaluated checkout in a disposable runtime, not a production rollout.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |
+          docker run --rm --mount "type=bind,source=$PWD,target=/workspace,readonly" --workdir /workspace \
+            --env PYTHONDONTWRITEBYTECODE=1 --env UV_PROJECT_ENVIRONMENT=/tmp/writer-overlay-venv \
+            --env UV_CACHE_DIR=/tmp/uv-cache \
+            ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 sh -ec '
+              apt-get update -qq
+              apt-get install -y -qq --no-install-recommends git ca-certificates
+              uv run --frozen --python 3.12 pytest tests/unit/work_ledger_bus/test_writer_overlay_watch.py \
+                -q -n 0 --no-cov -p no:cacheprovider --basetemp=/tmp/writer-overlay-tests --refuse-skips
+            '
+        cwd: .
