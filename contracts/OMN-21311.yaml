@@ -73,4 +73,4 @@ dod_evidence:
     source: manual
     checks:
       - check_type: command
-        check_value: gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_onex_setup_effect/handlers/handler_onex_setup.py?ref='"$(git rev-parse HEAD)" --jq .content | base64 -d | grep -q '^class HandlerOnexSetup' && gh api 'repos/OmniNode-ai/omnimarket/contents/pyproject.toml?ref='"$(git rev-parse HEAD)" --jq .content | base64 -d | grep -q '^setup = "omnimarket.nodes.node_onex_setup_effect.cli:setup_command"'
+        check_value: gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_onex_setup_effect/handlers/handler_onex_setup.py?ref='"$(git rev-parse HEAD)" --jq .content | base64 -d | grep '^class HandlerOnexSetup' >/dev/null && gh api 'repos/OmniNode-ai/omnimarket/contents/pyproject.toml?ref='"$(git rev-parse HEAD)" --jq .content | base64 -d | grep '^setup = "omnimarket.nodes.node_onex_setup_effect.cli:setup_command"' >/dev/null
