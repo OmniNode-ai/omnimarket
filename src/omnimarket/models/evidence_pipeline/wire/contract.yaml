@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+# Historical wire names retained for consumers of the moved DTO package.
+# Active node outputs remain declared exclusively in their node contracts.
+legacy_topics:
+  occ_pr_created: onex.evt.omnimarket.evidence-occ-pr-created.v1
+  readiness_scored: onex.evt.omnimarket.evidence-readiness-scored.v1
+  dashboard_projected: onex.evt.omnimarket.evidence-dashboard-projected.v1

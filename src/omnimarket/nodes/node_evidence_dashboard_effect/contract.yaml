@@ -11,11 +11,11 @@ description: >
 
 input_model:
   name: ModelDashboardEvent
-  module: omnibase_compat.contracts.evidence_pipeline.wire.model_dashboard_event
+  module: omnimarket.models.evidence_pipeline.wire.model_dashboard_event
   description: "Raw evidence pipeline event or command envelope."
 output_model:
   name: ModelDashboardProjectionEvent
-  module: omnibase_compat.contracts.evidence_pipeline.wire.model_dashboard_projection_event
+  module: omnimarket.models.evidence_pipeline.wire.model_dashboard_projection_event
   description: "Normalized event consumed by the dashboard reducer."
 
 handler:

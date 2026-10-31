@@ -46,7 +46,7 @@ class EnumEvidenceLifecycleState(StrEnum):
     """Lifecycle state of an OCC evidence draft.
 
     Values mirror the compat ``EvidenceLifecycleState`` literal
-    (``omnibase_compat.contracts.evidence_pipeline.wire.types``). A model-drafted
+    (``omnimarket.models.evidence_pipeline.wire.types``). A model-drafted
     OCC artifact is always ``PROVISIONAL`` until the deterministic validator
     accepts it; the model may never mark its own draft authoritative.
     """

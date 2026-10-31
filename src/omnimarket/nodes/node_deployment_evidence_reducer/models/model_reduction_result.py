@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from omnibase_compat.contracts.evidence_pipeline.wire.types import ReadinessState
 from pydantic import BaseModel, ConfigDict, Field
+
+from omnimarket.models.evidence_pipeline.wire.types import ReadinessState
 
 
 class ModelDeploymentEvidenceReductionResult(BaseModel):

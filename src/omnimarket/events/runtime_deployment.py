@@ -36,10 +36,10 @@ from enum import StrEnum
 from typing import Literal, Protocol
 from uuid import UUID
 
-from omnibase_compat.contracts.evidence_pipeline.wire.types import ReadinessState
 from omnibase_core.models.runtime_deployment.wire import EnumRuntimeLane
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.evidence_pipeline.wire.types import ReadinessState
 from omnimarket.models.model_dev_deploy_route import (
     ModelDevDeployRoute,
 )
