@@ -49,11 +49,11 @@ from omnimarket.events.provider_quota import (
     EnumProviderQuotaSource,
     ModelProviderQuotaObserved,
 )
+from omnimarket.handlers import openai_compatible_endpoint as endpoints
 from omnimarket.inference.local_byok_credential_adapter import (
     MODEL_CHOSEN_BY_CATALOGUE,
     record_local_byok_model,
     resolve_local_byok_model_chooser,
-    resolve_local_byok_registered_endpoint,
 )
 from omnimarket.inference.provider_finish_reason import finish_reason_from_choice
 from omnimarket.inference.provider_quota_observation import (
@@ -127,9 +127,7 @@ from omnimarket.routing.byok_provider_backends import (
     byok_declared_price_per_1m,
     byok_model_price_per_1m,
     resolve_byok_backend_by_endpoint,
-    resolve_byok_provider_backend,
     token_limit_field_for_endpoint,
-    with_registered_base_url,
 )
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
@@ -757,20 +755,11 @@ class HandlerLlmDelegationCall:
         """The BYOK catalogue row this call is a customer route on, or ``None``."""
         if not is_tenant_credential_ref(request.secret_ref):
             return None
-        row = resolve_byok_backend_by_endpoint(endpoint_url)
-        if row is not None:
-            return row
         # OMN-21263: a generic OpenAI-compatible key's endpoint is the URL the
         # developer registered, not the row's, so it is found by its credential.
-        registered = resolve_local_byok_registered_endpoint(request.secret_ref)
-        if registered is None:
-            return None
-        provider, base_url = registered
-        generic = resolve_byok_provider_backend(provider)
-        if generic is None or not generic.endpoint_from_registration:
-            return None
-        row = with_registered_base_url(generic, base_url)
-        return row if row.endpoint_url == endpoint_url else None
+        return resolve_byok_backend_by_endpoint(
+            endpoint_url
+        ) or endpoints.registered_row_for_ref(request.secret_ref, endpoint_url)
 
     def _resolve_byok_model(
         self,

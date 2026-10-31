@@ -871,8 +871,6 @@ _KEY_PAGES: dict[str, str] = {
 }
 _OLLAMA_HOW = model_keys.OLLAMA_HOW
 _LOCAL_HOW = model_keys.LOCAL_HOW
-_OPENAI_COMPATIBLE = model_keys.OPENAI_COMPATIBLE
-_OPENAI_COMPATIBLE_HOW = model_keys.OPENAI_COMPATIBLE_HOW
 _NOT_ROUTED = "Delegation does not use this key until its test passes."
 
 
@@ -907,8 +905,6 @@ def _show_model_test(result: ModelModelTestResult, as_json: bool) -> None:
         click.echo(f"{label} not set up. {_OLLAMA_HOW}")
     elif result.provider == LOCAL_URL_PROVIDER:
         click.echo(f"{label} not set up. {_LOCAL_HOW}")
-    elif result.provider == _OPENAI_COMPATIBLE:
-        click.echo(f"{label} not set up. {_OPENAI_COMPATIBLE_HOW}")
     else:
         click.echo(
             f"{label} not set up. Add it with: onex models add {result.provider}"
@@ -918,8 +914,8 @@ def _show_model_test(result: ModelModelTestResult, as_json: bool) -> None:
 def _read_model_key(provider: str) -> str:
     """The key from stdin when piped, else one hidden prompt. Never echoed."""
     label = _MODEL_LABELS[provider]
-    where = _KEY_PAGES.get(provider, "the endpoint's own key page")
     if _stdin_is_tty():
+        where = _KEY_PAGES.get(provider, "the endpoint's own key page")
         value = getpass(
             f"Paste your {label} API key ({where}; input is hidden): "
         ).strip()
@@ -927,11 +923,8 @@ def _read_model_key(provider: str) -> str:
         value = sys.stdin.read().strip()
     if not value:
         raise click.ClickException(f"no {label} key was entered; nothing was stored.")
-    if provider == _OPENAI_COMPATIBLE:
-        # OMN-21263: an endpoint the developer chose takes keys of any shape.
-        return value
     looks = key_looks_like(value)
-    if looks is not None and looks != provider:
+    if looks is not None and looks != provider and provider in _KEY_PAGES:
         raise click.ClickException(
             f"that looks like a key for {_MODEL_LABELS[looks]}, not {label}. "
             "Nothing was stored."
@@ -975,10 +968,8 @@ models_group = click.Group(
     "--url",
     default=None,
     help=(
-        "local and openai_compatible only: the base URL of a server that "
-        "speaks the OpenAI-compatible API, such as http://<host>:<port>. A "
-        "local server needs no key; an openai_compatible endpoint's key is "
-        "read from stdin or a hidden prompt, never from an argument."
+        "local or openai_compatible: the base URL of a server speaking the "
+        "OpenAI-compatible API, such as http://<host>:<port>; local needs no key."
     ),
 )
 @_model_json
@@ -999,17 +990,10 @@ def add_model(
     there. Local models are kept in order, first tried first, and a run tries
     them before any key; ``onex models reorder local`` and ``onex models remove
     local --model`` change the list.
-
-    ``openai_compatible`` is any other endpoint that speaks the OpenAI API and
-    needs a key: ``--url`` names its base URL, the key is read as above, and
-    each ``--model`` is checked against the endpoint's own ``/v1/models`` when
-    it has that route. It is routed like any other key.
     """
     name = provider.lower()
     handler = _model_handler()
-    if name == _OPENAI_COMPATIBLE and url is None:
-        raise click.ClickException(_OPENAI_COMPATIBLE_HOW)
-    if url is not None and name not in ("local", _OPENAI_COMPATIBLE):
+    if url is not None and name not in ("local", "openai_compatible"):
         raise click.ClickException(
             "--url is for a local model server: onex models add local --url "
             "<base url> --model <name>"
@@ -1045,12 +1029,7 @@ def add_model(
         # OMN-20816: the shared path; the dashboard's GET /models lists what it stores.
         try:
             result = model_keys.add_key(
-                name,
-                key,
-                model_options,
-                url=url,
-                ask_model=_ask_model,
-                echo=click.echo,
+                name, key, model_options, url=url, ask_model=_ask_model, echo=click.echo
             )
         except model_keys.ModelKeyRefusedError as refusal:
             raise _refused(refusal) from None
@@ -1112,7 +1091,7 @@ def list_models(as_json: bool) -> None:
                 f"{last.reason}{models}"
             )
             # A keyed provider; Ollama and local have none.
-            if row.provider in model_keys.KEYED_PROVIDERS:
+            if row.provider in _KEY_PAGES:
                 click.echo(f"  {_NOT_ROUTED} Run: onex models test {row.provider}")
 
 

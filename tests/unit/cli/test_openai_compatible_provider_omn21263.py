@@ -35,9 +35,9 @@ from omnimarket.enums.enum_delegation_failure_class import (
 )
 from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.events.llm_delegation_call import ModelLlmDelegationCallRequest
+from omnimarket.handlers.openai_compatible_endpoint import stored_base_url
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
-    resolve_local_byok_credential_base_url,
     resolve_local_byok_credential_models,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
@@ -216,7 +216,7 @@ def test_add_registers_the_endpoint_with_its_key_and_models_in_order(
     # The key went to the endpoint, as a bearer header, to read its model list.
     assert f"Bearer {_KEY}" in seen.authorizations
     assert _stored_key() == _KEY
-    assert resolve_local_byok_credential_base_url(_PROVIDER) == server
+    assert stored_base_url(_PROVIDER) == server
     assert resolve_local_byok_credential_models(_PROVIDER) == (_FIRST, _SECOND)
     assert delegations.pinned == [_BACKEND]
 
@@ -257,7 +257,7 @@ def test_a_key_the_endpoint_refuses_is_refused_and_nothing_is_stored(
     assert "PROVIDER_AUTH_FAILED" in done.output
     assert "wrong-key" not in done.output
     assert _stored_key() is None
-    assert resolve_local_byok_credential_base_url(_PROVIDER) is None
+    assert stored_base_url(_PROVIDER) is None
     assert delegations.pinned == []
 
 
@@ -435,7 +435,7 @@ def test_list_reorder_and_remove_handle_the_endpoint(
     removed = _models("remove", _PROVIDER, key=None)
     assert removed.exit_code == 0, removed.output
     assert _stored_key() is None
-    assert resolve_local_byok_credential_base_url(_PROVIDER) is None
+    assert stored_base_url(_PROVIDER) is None
     after = _models("list", key=None)
     assert any(
         row.startswith("OpenAI-compatible") and "not set up" in row

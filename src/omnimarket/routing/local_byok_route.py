@@ -54,10 +54,10 @@ from pathlib import Path
 
 from omnibase_infra.errors import ProtocolConfigurationError
 
+from omnimarket.handlers.openai_compatible_endpoint import registered_endpoint_url
 from omnimarket.inference.local_byok_credential_adapter import (
     local_byok_key_test_failed,
     registered_local_byok_providers,
-    resolve_local_byok_credential_base_url,
     resolve_local_byok_credential_model,
     resolve_local_byok_credential_models,
     resolve_local_byok_credential_plan,
@@ -74,7 +74,6 @@ from omnimarket.routing.byok_provider_backends import (
     customer_provider_catalogue,
     resolve_byok_backend_by_id,
     resolve_byok_provider_backend,
-    with_registered_base_url,
 )
 from omnimarket.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
@@ -145,15 +144,10 @@ def substitute_local_byok_route(
         # secret boundary on a customer machine.
         return backend
 
-    return (
-        _registered_byok_route(
-            byok,
-            replaced=backend,
-            tier=backend.tier,
-            db_path=db_path,
-        )
-        or backend
+    route = _registered_byok_route(
+        byok, replaced=backend, tier=backend.tier, db_path=db_path
     )
+    return route or backend
 
 
 def _registered_byok_route(
@@ -179,14 +173,6 @@ def _registered_byok_route(
     customer_ref = resolve_local_byok_credential_ref(slug, db_path=db_path)
     if customer_ref is None:
         return None
-    if byok.endpoint_from_registration:
-        # OMN-21263: a generic OpenAI-compatible key routes to the endpoint the
-        # developer registered it for; the row's own URLs are placeholders. A
-        # key stored with no URL has nowhere to go and mints no route.
-        base_url = resolve_local_byok_credential_base_url(slug, db_path=db_path)
-        if base_url is None:
-            return None
-        byok = with_registered_base_url(byok, base_url)
     if not pinned and local_byok_key_test_failed(slug, db_path=db_path):
         logger.info(
             "LocalByokRoute: skipping provider=%s; its key failed its last test",
@@ -230,7 +216,8 @@ def _registered_byok_route(
     return ModelResolvedDelegationBackend(
         backend_id=byok.backend_id,
         model_id=model_id,
-        endpoint_ref=byok.endpoint_url,
+        # OMN-21263: a generic OpenAI-compatible key's endpoint is its registered URL.
+        endpoint_ref=registered_endpoint_url(byok, db_path=db_path),
         tier=tier,
         # The catalogue's budgets are the customer's, not the house rung's.
         max_tokens=max_tokens,

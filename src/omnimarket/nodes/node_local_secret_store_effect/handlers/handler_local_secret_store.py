@@ -31,6 +31,7 @@ import hashlib
 from collections.abc import Callable
 from datetime import UTC, datetime
 
+from omnimarket.handlers import openai_compatible_endpoint as endpoints
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialError,
     LocalByokCredentialStore,
@@ -80,8 +81,7 @@ def _require_base_url_fits(provider: str | None, base_url: str | None) -> None:
     Refused before anything is stored: a generic key stored with no URL would
     route nowhere, and a URL on a catalogue key would be ignored.
     """
-    row = resolve_byok_provider_backend(provider) if provider is not None else None
-    generic = row is not None and row.endpoint_from_registration
+    generic = endpoints.is_generic(provider)
     if generic and not base_url:
         raise LocalSecretStoreRefusedError(
             f"a {provider} key is stored with the endpoint it is for: run onex "
@@ -164,7 +164,8 @@ class HandlerLocalSecretStore:
                 "from a command-line argument."
             )
         provider = offered_provider(ref)
-        _require_base_url_fits(provider, request.base_url)
+        base_url = request.base_url or endpoints.registering_base_url()
+        _require_base_url_fits(provider, base_url)
         asyncio.run(store.set_secret(ref, value))
         if provider is None:
             return ModelLocalSecretResult(operation="set", secret_ref=ref)
@@ -177,9 +178,10 @@ class HandlerLocalSecretStore:
             model=request.model,
             models=request.models or None,
             model_chosen_by=request.model_chosen_by,
-            base_url=request.base_url,
             db_path=store.db_path,
         )
+        if base_url:
+            endpoints.record_base_url(route_ref, base_url, db_path=store.db_path)
         tenant_id = resolve_or_mint_local_deployment_tenant_id(None)
         events: list[ModelCredentialRevokedEvent | ModelCredentialRegisteredEvent] = []
         if replaced is not None and replaced != route_ref:

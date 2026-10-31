@@ -32,9 +32,9 @@ from typing import Any, Literal, cast
 
 from pydantic import SecretStr, ValidationError
 
+from omnimarket.handlers import openai_compatible_endpoint as endpoints
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
-    resolve_local_byok_credential_base_url,
     resolve_local_byok_credential_plan,
     resolve_local_byok_credential_ref,
 )
@@ -53,7 +53,6 @@ from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup impor
     PROVIDERS,
     HandlerModelSetup,
     ModelSetupRefusedError,
-    local_base_url,
 )
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
     ModelModelSetupRequest,
@@ -80,13 +79,11 @@ from omnimarket.routing.byok_model_discovery import (
 from omnimarket.routing.byok_plan_detection import detect_byok_plan
 from omnimarket.routing.byok_provider_backends import (
     ByokPlanNotPermittedError,
-    ModelByokProviderBackend,
     byok_automatic_plans,
     byok_provider_plans,
     byok_routable_plans,
     require_byok_plan_permitted,
     resolve_byok_provider_backend,
-    with_registered_base_url,
 )
 
 #: A progress line for whoever is watching: the terminal prints it, a script drops it.
@@ -116,7 +113,7 @@ MODEL_LABELS: dict[str, str] = {
     "glm": "GLM",
     "ollama": "Ollama",
     "local": "Local URL",
-    "openai_compatible": "OpenAI-compatible",
+    "openai_compatible": "OpenAI-compatible",  # OMN-21263: any endpoint, by URL
 }
 OLLAMA_HOW = (
     "Ollama is installed by onboarding, which downloads a model sized to this "
@@ -125,14 +122,6 @@ OLLAMA_HOW = (
 LOCAL_HOW = (
     "Declare a model server on an OpenAI-compatible URL (LM Studio, llama.cpp, "
     "vLLM, MLX) with: onex models add local --url <base url> --model <name>"
-)
-#: OMN-21263: the generic keyed endpoint, and how to add it.
-OPENAI_COMPATIBLE: ModelProvider = "openai_compatible"
-OPENAI_COMPATIBLE_HOW = (
-    "Add an endpoint that speaks the OpenAI API and needs a key (vLLM or LM "
-    "Studio behind auth, a company gateway, a hosted OpenAI-compatible service) "
-    "with: onex models add openai_compatible --url <base url> --model <id>; "
-    "the key is read from stdin or a hidden prompt"
 )
 
 #: The providers the dashboard's Credentials page lists (OMN-20816 decision (b)):
@@ -258,62 +247,16 @@ def resolve_plan(
     )
 
 
-def _key_backend(
-    provider: str, plan: str | None, base_url: str | None = None
-) -> ModelByokProviderBackend | None:
-    """The catalogue row ``provider``'s key addresses, at its registered URL (OMN-21263).
-
-    A generic OpenAI-compatible row takes ``base_url``, or else the URL stored
-    with the key; with neither it has no endpoint and resolves to ``None``.
-    """
-    backend = resolve_byok_provider_backend(provider, plan=plan)
-    if backend is None or not backend.endpoint_from_registration:
-        return backend
-    base = base_url or resolve_local_byok_credential_base_url(provider)
-    return with_registered_base_url(backend, base) if base else None
-
-
-def registered_base_url(provider: str, url: str | None) -> str | None:
-    """The base URL a key for ``provider`` is registered with, checked (OMN-21263).
-
-    Required for the generic OpenAI-compatible row and refused for any other.
-    Refused unless an http(s) URL with a host; a trailing ``/`` or ``/v1`` is
-    dropped, as for a local model server.
-    """
-    row = resolve_byok_provider_backend(provider)
-    generic = row is not None and row.endpoint_from_registration
-    if not generic:
-        if url is not None:
-            raise ModelKeyRefusedError(
-                f"--url is for a local model server or an OpenAI-compatible "
-                f"endpoint, not {MODEL_LABELS.get(provider, provider)}. Nothing "
-                "was stored."
-            )
-        return None
-    if url is None or not url.strip():
-        raise ModelKeyRefusedError(f"{OPENAI_COMPATIBLE_HOW}. Nothing was stored.")
-    try:
-        return local_base_url(url)
-    except ModelSetupRefusedError as refusal:
-        raise ModelKeyRefusedError(f"{refusal}.") from None
-
-
 def check_chosen_model(
-    provider: str,
-    plan: str | None,
-    value: str,
-    chosen: str,
-    echo: Echo = _quiet,
-    base_url: str | None = None,
+    provider: str, plan: str | None, value: str, chosen: str, echo: Echo = _quiet
 ) -> str:
     """Check the customer's model against their key's own list (OMN-20844).
 
     A model the list does not name, or a key the provider refuses, is refused
     and nothing is stored. A list that cannot be read stores the model as
-    chosen, unchecked, and says so. ``base_url`` is a generic endpoint's URL
-    (OMN-21263); omitted, the one stored with the key is read.
+    chosen, unchecked, and says so.
     """
-    backend = _key_backend(provider, plan, base_url)
+    backend = endpoints.key_backend(provider, plan)
     if backend is None:
         return chosen
     echo(f"Checking that {provider} lists {chosen} for your key.")
@@ -340,7 +283,6 @@ def resolve_model(
     *,
     ask_model: AskModel | None = None,
     echo: Echo = _quiet,
-    base_url: str | None = None,
 ) -> str | None:
     """The model this key's route will run, decided BEFORE anything is stored.
 
@@ -358,7 +300,7 @@ def resolve_model(
     customer is asked (``ask_model``, a terminal) and a caller that cannot ask is
     refused: the preference is never used to pick one for them.
     """
-    backend = _key_backend(provider, plan, base_url)
+    backend = endpoints.key_backend(provider, plan)
     if chosen is None and backend is not None and backend.customer_chooses_model:
         if ask_model is None:
             raise ModelKeyRefusedError(
@@ -366,7 +308,7 @@ def resolve_model(
             )
         chosen = ask_model(provider)
     if chosen is not None:
-        return check_chosen_model(provider, plan, value, chosen, echo, base_url)
+        return check_chosen_model(provider, plan, value, chosen, echo)
     if known is not None:
         echo(f"Model: {known} (the best match your key's model list offers).")
         return known
@@ -626,7 +568,6 @@ def store_key(
     model_option: str | None = None,
     ask_model: AskModel | None = None,
     echo: Echo = _quiet,
-    base_url: str | None = None,
 ) -> ModelLocalSecretResult:
     """Store ``value`` under ``secret_ref`` and register a provider key's route.
 
@@ -643,8 +584,9 @@ def store_key(
             "--model applies to a provider key the catalogue offers; this "
             "reference names none. Nothing was stored."
         )
-    model = (
-        resolve_model(
+    model = None
+    if provider is not None:
+        model = resolve_model(
             provider,
             plan,
             value,
@@ -652,11 +594,7 @@ def store_key(
             model_option,
             ask_model=ask_model,
             echo=echo,
-            base_url=base_url,
         )
-        if provider is not None
-        else None
-    )
     chooser = model_chosen_by(provider, plan, model, model_option)
     # OMN-19985: the local secret store effect stores the key and, for a provider
     # key, registers it under a freshly minted route ref (replacing any earlier
@@ -671,7 +609,6 @@ def store_key(
                 plan=plan,
                 model=model,
                 model_chosen_by=chooser,
-                base_url=base_url,
             )
         )
     except LocalSecretStoreRefusedError as refusal:
@@ -790,28 +727,25 @@ def add_key(
     (``ask_model``) and any other caller is refused (OMN-21059). The test is
     recorded and returned whether it passed or failed: the key stays stored
     either way, as ``onex models add`` has always left it.
-
-    ``url`` (OMN-21263) is the base URL of a generic OpenAI-compatible
-    endpoint: required for that provider, refused for any other. Its models are
-    checked against the endpoint's own ``/v1/models`` with the key.
     """
     # Credentials-page updates an earlier change could not apply go first, in order.
     drain_pending_credential_events(LocalByokCredentialStore().db_path)
     if len(set(models)) != len(models):
         raise ModelKeyRefusedError("a model is named twice. Nothing was stored.")
-    base_url = registered_base_url(provider, url)
     plan = resolve_local_byok_credential_plan(provider)
-    for extra in models[1:]:
-        check_chosen_model(provider, plan, key, extra, echo, base_url)
-    store_key(
-        f"llm.{provider}.api_key",
-        key,
-        force=True,
-        model_option=models[0] if models else None,
-        ask_model=ask_model,
-        echo=echo,
-        base_url=base_url,
-    )
+    # OMN-21263: a generic endpoint's key is checked and stored with its URL.
+    with endpoints.registering_endpoint(provider, url, ModelKeyRefusedError):
+        for extra in models[1:]:
+            check_chosen_model(provider, plan, key, extra, echo)
+        first = models[0] if models else None
+        store_key(
+            f"llm.{provider}.api_key",
+            key,
+            force=True,
+            model_option=first,
+            ask_model=ask_model,
+            echo=echo,
+        )
     handler = model_handler()
     if len(models) > 1:
         try:
@@ -891,8 +825,6 @@ __all__ = [
     "LOCAL_HOW",
     "MODEL_LABELS",
     "OLLAMA_HOW",
-    "OPENAI_COMPATIBLE",
-    "OPENAI_COMPATIBLE_HOW",
     "PENDING_CREDENTIAL_EVENTS_NAME",
     "AskModel",
     "Echo",
@@ -907,7 +839,6 @@ __all__ = [
     "model_chosen_by",
     "model_handler",
     "refuse_last_usable",
-    "registered_base_url",
     "remove_key",
     "resolve_model",
     "resolve_plan",
