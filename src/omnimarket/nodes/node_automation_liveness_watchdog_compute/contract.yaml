@@ -80,3 +80,7 @@ metadata:
     - "liveness"
     - "watchdog"
     - "deterministic"
+
+timeouts:
+  selftest_interval_seconds: 600  # Bounds the interval between planted self-test runs.
+  selftest_alarm_deadline_seconds: 86400  # Bounds the planted self-test alarm deadline.

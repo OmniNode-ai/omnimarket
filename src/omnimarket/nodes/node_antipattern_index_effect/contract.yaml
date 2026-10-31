@@ -237,3 +237,6 @@ metadata:
 runtime_dispatch:
   # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
   command_topic: onex.cmd.omnimarket.antipattern-index-requested.v1
+
+timeouts:
+  embedding_request_timeout_seconds: 30.0  # Bounds embedding HTTP requests.

@@ -486,6 +486,11 @@ _WRITE_ARGS: dict[str, list[str]] = {
     ],
     "pr-comment": [f"{REPO}#77", "--body", "hello"],
     "pr-thread-reply": [f"{REPO}#77", "--thread", "2410010001", "--body", "hello"],
+    "pr-thread-resolve": [
+        f"{REPO}#77",
+        "--review-thread",
+        "PRRT_kwDOExample0001",
+    ],
     "workflow-run": [REPO, "--workflow", "ci.yml", "--ref", "dev", "--input", "a=b"],
     "check-run-create": [
         REPO,
@@ -703,7 +708,10 @@ def _contract_1_2_0_request() -> type[BaseModel]:
 
 
 @pytest.mark.parametrize(
-    "verb_name", sorted(set(_WRITE_ARGS) - {"check-run-create", "pr-thread-reply"})
+    "verb_name",
+    sorted(
+        set(_WRITE_ARGS) - {"check-run-create", "pr-thread-reply", "pr-thread-resolve"}
+    ),
 )
 def test_older_write_envelopes_validate_against_the_deployed_contract(
     monkeypatch: pytest.MonkeyPatch, verb_name: str
@@ -723,6 +731,21 @@ def test_older_write_envelopes_validate_against_the_deployed_contract(
     assert (
         ModelRepoWriteRequest.model_validate(payload).model_dump(mode="json") == payload
     )
+
+
+def test_pr_thread_resolve_carries_the_review_thread_node_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    result = _run(
+        ["pr-thread-resolve", *_WRITE_ARGS["pr-thread-resolve"], "--lane", "lane-x"]
+    )
+    assert result.exit_code == 0, result.output
+    payload = bus.published[0][1]["payload"]
+    assert payload["operation"] == "pr_thread_resolve"
+    assert payload["review_thread_id"] == "PRRT_kwDOExample0001"
+    assert "thread_comment_id" not in payload
 
 
 def test_pr_thread_reply_carries_the_thread_id_as_an_integer(
