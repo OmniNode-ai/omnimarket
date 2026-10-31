@@ -26,6 +26,7 @@ from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
 )
 from pydantic import JsonValue
 
+from ..decision_sequence import DecisionSequence
 from ..models.model_linear_comments_sweep import (
     ModelLinearCommentsSweepRequest,
     ModelSweepPhaseReply,
@@ -55,12 +56,13 @@ class HandlerSweepBus:
         self,
         event_bus: ProtocolEventBusPublisher | None = None,
         rpc: ProtocolSweepRpc | None = None,
+        decision_sequence: DecisionSequence | None = None,
     ) -> None:
         self._rpc = rpc
         self._event_bus = event_bus
         self._lock = asyncio.Lock()
         self._instances: dict[str, dict[str, JsonValue]] | None = None
-        self._decisions_asked = 0
+        self._decision_sequence = decision_sequence or DecisionSequence()
 
     def _declared(self, name: str) -> dict[str, JsonValue]:
         if self._instances is None:
@@ -177,10 +179,8 @@ class HandlerSweepBus:
         self, run: ModelLinearCommentsSweepRequest, request: dict[str, JsonValue]
     ) -> dict[str, JsonValue]:
         instance = self._declared(DECISION_INSTANCE)
-        self._decisions_asked += 1
-        correlation = uuid5(
-            run.correlation_id, f"decision:{self._decisions_asked}:{request['kind']}"
-        )
+        asked = self._decision_sequence.next()
+        correlation = uuid5(run.correlation_id, f"decision:{asked}:{request['kind']}")
         envelope = ModelEventEnvelope[dict[str, JsonValue]](
             payload=request,
             correlation_id=correlation,

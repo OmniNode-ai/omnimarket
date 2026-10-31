@@ -523,7 +523,7 @@ def test_concurrent_dispatch_threads_share_one_loop_and_one_pool(
     assert all(result["rows_upserted"] == 1 for result in results)
     assert len(loops) == 1
     assert cast("_RecordingAdapter", writer.db).connects == 1
-    assert writer._dispatch_thread is not threading.current_thread()
+    assert writer._dispatch.thread is not threading.current_thread()
 
 
 @pytest.mark.unit
