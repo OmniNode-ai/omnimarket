@@ -104,7 +104,7 @@ class ModelFloorStoppageOut(BaseModel):
     last_seen: str
 
 
-MachineState = Literal["read", "unread", "repair"]
+MachineState = Literal["read", "unread", "repair", "out"]
 SourceState = Literal["read", "unread"]
 LaneTitleSource = Literal["linear", "claim", "unread"]
 LanePlacement = Literal["machine", "cloud", "unplaced"]

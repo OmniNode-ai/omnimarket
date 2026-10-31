@@ -454,3 +454,19 @@ def test_a_lane_takes_its_machine_from_its_newest_row_that_names_one() -> None:
 def test_the_section_states_the_stall_and_window_it_judged_lanes_by() -> None:
     result = floor()
     assert (result.stall_minutes, result.lane_window_minutes) == (45, 180)
+
+
+def test_a_host_the_table_takes_out_of_selection_for_another_reason_is_out_not_in_repair() -> (
+    None
+):
+    result = floor(
+        host_table=(
+            ModelFloorHostRow(
+                host="h051",
+                available=False,
+                unavailable_reason="placement paused for an install",
+            ),
+        )
+    )
+    bay = result.machines[0]
+    assert (bay.state, bay.note) == ("out", "placement paused for an install")

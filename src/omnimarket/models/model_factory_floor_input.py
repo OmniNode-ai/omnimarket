@@ -346,6 +346,7 @@ class ModelFactoryFloorConfig(BaseModel):
     cloud_no_push_lamp_text: str = Field(min_length=1)
     cloud_sessions_limit: int = Field(gt=0)
     repair_reason_chars: int = Field(gt=20)
+    repair_reason_markers: tuple[str, ...] = Field(min_length=1)
 
 
 class ModelFactoryFloorRequest(BaseModel):

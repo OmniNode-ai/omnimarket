@@ -86,6 +86,8 @@ config:
   lane_limit: 200
   pool_stale_minutes: 30
   repair_reason_chars: 120
+  # A machine the host table takes out of selection is in repair when its reason says so, else it is out of selection.
+  repair_reason_markers: [repair]
   # The first rule with a marker in the lane's actor, name or CLAIM text names its kind.
   lane_kinds:
     - kind: landing worker

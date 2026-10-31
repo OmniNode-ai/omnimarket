@@ -279,11 +279,16 @@ def build_machines(
         age = _minutes(now, reading.read_at) if reading is not None else None
         stale = age is not None and age > config.pool_stale_minutes
         if row is not None and not row.available:
-            state, note = (
-                "repair",
-                _short(
-                    row.unavailable_reason.split(";")[0], config.repair_reason_chars
-                ),
+            state = (
+                "repair"
+                if any(
+                    m.casefold() in row.unavailable_reason.casefold()
+                    for m in config.repair_reason_markers
+                )
+                else "out"
+            )
+            note = _short(
+                row.unavailable_reason.split(";")[0], config.repair_reason_chars
             )
         elif request.pool is None:
             state, note = "unread", "no pool read has been recorded"
