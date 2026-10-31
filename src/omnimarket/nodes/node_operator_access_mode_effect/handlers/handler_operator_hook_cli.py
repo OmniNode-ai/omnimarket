@@ -43,6 +43,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from ..container import container_operator_access_mode_effect as bind
 from ..models.enum_access_mode import EnumAccessMode
 from ..models.model_access_mode_request import ModelAccessModeRequest
 from ..models.model_access_mode_result import ModelAccessModeResult
@@ -53,7 +54,6 @@ from ..models.model_operator_reply_request import ModelOperatorReplyRequest
 from ..models.model_push_gate_request import ModelPushGateRequest
 from ..models.model_remote_setup_request import ModelRemoteSetupRequest
 from ..models.model_silence_request import ModelSilenceRequest
-from .handler_access_mode_detect import HandlerAccessModeDetect
 from .handler_access_mode_state import (
     prune_stale_sessions,
     read_global_override,
@@ -64,21 +64,18 @@ from .handler_access_mode_state import (
     write_global_override,
     write_global_silent,
 )
-from .handler_attention_push_gate import ATTENTION_KINDS, HandlerAttentionPushGate
-from .handler_foreground_bash_guard import FETCH_TOOLS, HandlerForegroundBashGuard
+from .handler_attention_push_gate import ATTENTION_KINDS
+from .handler_foreground_bash_guard import FETCH_TOOLS
 from .handler_lab_dispatch_gate import (
-    HandlerLabDispatchGate,
     mac_route_count,
     read_lab_pool,
 )
 from .handler_operator_reply_check import (
     REPEAT_WINDOW,
-    HandlerOperatorReplyCheck,
     normalise_reply,
 )
 from .handler_refusal_row import record_refusal
-from .handler_remote_setup_check import HandlerRemoteSetupCheck
-from .handler_silence_guard import HandlerSilenceGuard, is_silence_tick
+from .handler_silence_guard import is_silence_tick
 
 OPTIN_DIR_ENV = "ONEX_SESSION_OPTIN_DIR"
 OPTIN_ENV = "ONEX_SESSION_OPTIN"
@@ -215,7 +212,7 @@ def resolve(
 ) -> ModelAccessModeResult:
     skip = environ.get("CLAUDE_CODE_ENTRYPOINT") or environ.get("OMNI_ACCESS_MODE")
     entry = "" if skip else _transcript_entrypoint(payload)
-    return HandlerAccessModeDetect().handle(
+    return bind.build_handler_access_mode_detect().handle(
         ModelAccessModeRequest(
             session_id=str(payload.get("session_id") or ""),
             state_dir=state_dir(environ),
@@ -309,7 +306,7 @@ def on_session_start(payload: Mapping[str, Any], environ: Mapping[str, str]) -> 
     message = ""
     if result.mode is EnumAccessMode.REMOTE:
         home = Path.home()
-        setup = HandlerRemoteSetupCheck().handle(
+        setup = bind.build_handler_remote_setup_check().handle(
             ModelRemoteSetupRequest(
                 permission_mode=str(payload.get("permission_mode") or ""),
                 settings=_read_json(home / ".claude" / "settings.json"),
@@ -408,7 +405,7 @@ def on_pre_tool(payload: Mapping[str, Any], environ: Mapping[str, str]) -> int:
     if tool in {"Workflow", "Agent"}:
         if not mac_route_count(str(tool), tool_input):
             return 0  # the pool is read only for a call that names the Mac
-        verdict = HandlerLabDispatchGate().handle(
+        verdict = bind.build_handler_lab_dispatch_gate().handle(
             ModelLabDispatchRequest(str(tool), tool_input, read_lab_pool(environ))
         )
         return 0 if verdict.allowed else _refuse(verdict, payload, environ)
@@ -422,7 +419,7 @@ def on_pre_tool(payload: Mapping[str, Any], environ: Mapping[str, str]) -> int:
             return 0
         timeout = tool_input.get("timeout")
         result = resolve(payload, environ)
-        verdict = HandlerForegroundBashGuard().handle(
+        verdict = bind.build_handler_foreground_bash_guard().handle(
             ModelForegroundBashRequest(
                 command=command,
                 main_session=True,
@@ -439,7 +436,7 @@ def on_pre_tool(payload: Mapping[str, Any], environ: Mapping[str, str]) -> int:
             return 0
         result = resolve(payload, environ)
         state = read_session(state_dir(environ), str(payload.get("session_id") or ""))
-        verdict = HandlerAttentionPushGate().handle(
+        verdict = bind.build_handler_attention_push_gate().handle(
             ModelPushGateRequest(message, result.mode, _idle_seconds(state))
         )
         return 0 if verdict.allowed else _refuse(verdict, payload, environ)
@@ -454,7 +451,7 @@ def on_pre_tool(payload: Mapping[str, Any], environ: Mapping[str, str]) -> int:
         result = resolve(payload, environ)
         if not result.operator_facing:
             return 0
-        verdict = HandlerOperatorReplyCheck().handle(
+        verdict = bind.build_handler_operator_reply_check().handle(
             ModelOperatorReplyRequest(text, result.mode)
         )
         return 0 if verdict.allowed else _refuse(verdict, payload, environ)
@@ -477,14 +474,14 @@ def on_stop(payload: Mapping[str, Any], environ: Mapping[str, str]) -> int:
             or state.get("silent")
             or state.get("silence_tick")
         )
-        silence = HandlerSilenceGuard().handle(
+        silence = bind.build_handler_silence_guard().handle(
             ModelSilenceRequest(turn_texts(payload, text) if silent else (), silent)
         )
         if not silence.allowed:
             _record(silence, payload, environ)
             print(json.dumps({"decision": "block", "reason": silence.reason}))
             return 0
-    verdict = HandlerOperatorReplyCheck().handle(
+    verdict = bind.build_handler_operator_reply_check().handle(
         ModelOperatorReplyRequest(
             text, result.mode, recent_replies=recent_replies(payload, text)
         )

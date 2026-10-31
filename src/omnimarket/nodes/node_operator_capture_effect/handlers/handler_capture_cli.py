@@ -33,16 +33,14 @@ from omnimarket.models.operator_capture import (
     ModelCaptureDigestResult,
     ModelCaptureProcessRequest,
 )
+from omnimarket.nodes.node_operator_capture_effect.container.container_operator_capture_effect import (
+    build_handler_capture_digest,
+    build_handler_capture_process,
+)
 from omnimarket.nodes.node_operator_capture_effect.handlers import capture_store
 from omnimarket.nodes.node_operator_capture_effect.handlers.capture_ports import (
     onex_delegate_runner,
     onex_ledger_appender,
-)
-from omnimarket.nodes.node_operator_capture_effect.handlers.handler_capture_digest import (
-    HandlerCaptureDigest,
-)
-from omnimarket.nodes.node_operator_capture_effect.handlers.handler_capture_process import (
-    HandlerCaptureProcess,
 )
 
 ALERT_LIB_ENV = "ONEX_ALERT_CHANNEL_LIB"
@@ -99,7 +97,7 @@ def operator_capture_group(ctx: click.Context) -> None:
 )
 def process_command(max_captures: int, delegate_lane: str | None) -> None:
     """One worker run over the store's inbox."""
-    result = HandlerCaptureProcess(
+    result = build_handler_capture_process(
         onex_delegate_runner(delegate_lane), onex_ledger_appender()
     ).handle(
         ModelCaptureProcessRequest(
@@ -115,7 +113,7 @@ def process_command(max_captures: int, delegate_lane: str | None) -> None:
 
 
 def digest(push_overdue: bool) -> ModelCaptureDigestResult:
-    return HandlerCaptureDigest(push=alert_channel_push).handle(
+    return build_handler_capture_digest(push=alert_channel_push).handle(
         ModelCaptureDigestRequest(
             store_dir=capture_store.store_dir(),
             ledger_path=_ledger_path(),

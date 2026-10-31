@@ -31,7 +31,16 @@ from omnimarket.models.delegation.model_delegation_target import (
     ModelDelegationTargetRequest,
     ModelDelegationTargetResult,
 )
-from omnimarket.nodes.node_model_router import HandlerModelRouter, ModelRoutingRequest
+from omnimarket.nodes.node_llm_delegation_call_effect.container.container_llm_delegation_call_effect import (
+    build_handler_antigravity_arguments,
+    build_handler_claude_code_arguments,
+    build_handler_claude_glm_arguments,
+    build_handler_codex_arguments,
+    build_handler_delegation_model_call,
+    build_handler_llm_openai_compatible,
+    build_handler_model_router,
+)
+from omnimarket.nodes.node_model_router import ModelRoutingRequest
 
 
 def load_delegation_config() -> dict[str, Any]:
@@ -339,9 +348,6 @@ class HandlerDelegationTarget:
         timeout: float,
     ) -> ModelDelegationTargetResult:
         from omnibase_infra.mixins.mixin_llm_http_transport import MixinLlmHttpTransport
-        from omnibase_infra.nodes.node_llm_inference_effect import (
-            HandlerLlmOpenaiCompatible,
-        )
 
         class Transport(MixinLlmHttpTransport):
             def __init__(self) -> None:
@@ -350,7 +356,7 @@ class HandlerDelegationTarget:
             async def close(self) -> None:
                 await self._close_http_client()
 
-        router = HandlerModelRouter(
+        router = build_handler_model_router(
             policy=ModelRoutingPolicy.model_validate(site["model_routing"]),
             registry=self._config["model_registry"],
             event_bus=self._bus,
@@ -360,8 +366,9 @@ class HandlerDelegationTarget:
         ).overridden_by(request.generation)
         transport = Transport()
         try:
-            return await HandlerDelegationModelCall(
-                router=router, inference=HandlerLlmOpenaiCompatible(transport=transport)
+            return await build_handler_delegation_model_call(
+                router=router,
+                inference=build_handler_llm_openai_compatible(transport=transport),
             ).execute(
                 request,
                 generation=generation,
@@ -399,10 +406,10 @@ class HandlerDelegationTarget:
             | HandlerCodexArguments
             | HandlerAntigravityArguments,
         ] = {
-            "codex": HandlerCodexArguments(),
-            "claude-code": HandlerClaudeCodeArguments(),
-            "claude-glm": HandlerClaudeGlmArguments(),
-            "antigravity": HandlerAntigravityArguments(),
+            "codex": build_handler_codex_arguments(),
+            "claude-code": build_handler_claude_code_arguments(),
+            "claude-glm": build_handler_claude_glm_arguments(),
+            "antigravity": build_handler_antigravity_arguments(),
         }
         adapter = adapters[request.target]
         session_config = site.get("agents", {}).get(request.target, {})

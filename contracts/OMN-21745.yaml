@@ -1,0 +1,47 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-21745
+title: omnimarket contracts_and_di handler_hand_construction burn-down, slice rf1625-c2
+summary: Six handler modules of five node packages built thirty Handler classes inline. Each node now has a container package with one binding module whose build_* factories hold the constructions, and the handler modules call the factories. The contracts_and_di check over src/omnimarket reports handler_hand_construction 517 before and 487 after at dev 4b7f7afcc, with no other rule changing, and no baseline entry or suppression added.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21745-rf1625-handler-binding
+  statement: The six slice handler modules resolve their handlers through the node's binding module and hold no inline construction, so the handler_hand_construction count over src/omnimarket drops by thirty.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the contracts_and_di count for handler_hand_construction over the slice paths drops to zero and the repo total drops by the slice size, with no baseline entry or suppression added -- falsifier: onex run of runtime_validator_run with the contracts_and_di reference over omnimarket src before and after, counts compared per rule'
+  - id: AC2
+    statement: 'AC2: every hand-built handler is resolved through the container and its dependencies are injected, none constructed inline in the touched code -- falsifier: uv run pytest tests/unit -q over the touched modules plus the checker re-run on the slice paths'
+  - id: AC3
+    statement: 'AC3: the slice lands as one PR titled with this ticket id and carries lab proof of the tests and the checker re-run -- falsifier: uv run pytest tests/unit -q on the lab through lab-run at the PR head, receipt path in the PR body'
+evidence_requirements:
+- kind: tests
+  description: The slice test, run on a lab host at the pushed head.
+  command: uv run pytest tests/unit/nodes/test_cdi_handler_binding_sites_rf1625.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21745-rf1625-slice-check-clean
+  description: The contracts_and_di check reports no handler_hand_construction finding on any of the six slice handler modules.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/test_cdi_handler_binding_sites_rf1625.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21745-rf1625-touched-tests
+  description: The tests of the five touched nodes pass.
+  source: manual
+  binds_ac:
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_operator_access_mode_effect tests/nodes/node_lane_placement_recovery_effect tests/nodes/node_idle_slot_fill_effect tests/nodes/node_llm_delegation_call_effect tests/unit/nodes/node_operator_capture_effect -q --no-cov --tb=line
+    cwd: .

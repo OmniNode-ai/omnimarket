@@ -37,6 +37,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
+from ..container import container_lane_placement_recovery_effect as bind
 from ..models.model_claude_account_limit import (
     ModelClaudeAccountLimitRequest,
     ModelClaudeAccountLimitResult,
@@ -49,9 +50,7 @@ from ..models.model_lane_engine_failover import (
     ModelLaneEngineFailoverRequest,
     ModelLaneEngineFailoverResult,
 )
-from .handler_claude_account_limit import HandlerClaudeAccountLimit
-from .handler_codex_lane_limit import CODEX_LIMITED_PREFIX, HandlerCodexLaneLimit, _read
-from .handler_lane_engine_failover import HandlerLaneEngineFailover
+from .handler_codex_lane_limit import CODEX_LIMITED_PREFIX, _read
 
 LOST_STATUS = "placement-lost"
 PLACEMENT_REFUSAL_WINDOW_S = 600.0  # the throughput tick's own interval
@@ -71,8 +70,8 @@ class HandlerLanePlacementRecovery:
 
     def __init__(self, runtime: Mapping[str, Any]) -> None:
         self.runtime = runtime
-        self.account_handler = HandlerClaudeAccountLimit(runtime)
-        self.engine_handler = HandlerLaneEngineFailover(runtime)
+        self.account_handler = bind.build_handler_claude_account_limit(runtime)
+        self.engine_handler = bind.build_handler_lane_engine_failover(runtime)
 
     def handle(
         self,
@@ -85,7 +84,7 @@ class HandlerLanePlacementRecovery:
         | ModelCodexLaneLimitResult
     ):
         if isinstance(request, ModelCodexLaneLimitRequest):
-            return HandlerCodexLaneLimit().handle(request)
+            return bind.build_handler_codex_lane_limit().handle(request)
         if isinstance(request, ModelLaneEngineFailoverRequest):
             return self.engine_handler.handle(request)
         return self.account_handler.handle(request)
@@ -109,7 +108,7 @@ class HandlerLanePlacementRecovery:
         current.receipt = str(path)
         code = self.runtime["execute_once"](current, **kwargs)
         if current.model == "codex":
-            HandlerCodexLaneLimit().handle(
+            bind.build_handler_codex_lane_limit().handle(
                 ModelCodexLaneLimitRequest(
                     str(path),
                     str(self.runtime["landing_placement"].placement_dir()),
@@ -161,7 +160,7 @@ class HandlerLanePlacementRecovery:
                     paths.append(str(attempt["receipt"]))
             if not str(data.get("ended_at", "")).startswith(now.date().isoformat()):
                 continue
-            result = HandlerCodexLaneLimit().handle(
+            result = bind.build_handler_codex_lane_limit().handle(
                 ModelCodexLaneLimitRequest(str(path), str(directory), now)
             )
             key = (data.get("host"), data.get("run_id") or str(path))

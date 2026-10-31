@@ -96,6 +96,11 @@ from omnimarket.models.model_backlog_item import (
     backlog_item_refusal,
 )
 from omnimarket.nodes.node_idle_slot_fill_effect import overlay
+from omnimarket.nodes.node_idle_slot_fill_effect.container.container_idle_slot_fill_effect import (
+    build_handler_idle_slot_fill,
+    build_handler_idle_turn_guard,
+    build_handler_ruling_recovery,
+)
 from omnimarket.nodes.node_idle_slot_fill_effect.models import (
     ModelBacklogSources,
     ModelIdleSlotFillRequest,
@@ -1952,7 +1957,7 @@ def tick_row_recorder(
 
 class HandlerLabFill:
     def __init__(self, ruling_recovery: HandlerRulingRecovery | None = None) -> None:
-        self._ruling_recovery = ruling_recovery or HandlerRulingRecovery()
+        self._ruling_recovery = ruling_recovery or build_handler_ruling_recovery()
 
     def handle(self, request: ModelLabFillRequest) -> ModelLabFillResult:
         if request.read_only:
@@ -2034,7 +2039,7 @@ class HandlerLabFill:
             now=(_stamp(request.now) or datetime.min).replace(tzinfo=UTC),
             environ=os.environ,
         )
-        decision = HandlerIdleSlotFill().handle(
+        decision = build_handler_idle_slot_fill().handle(
             ModelIdleSlotFillRequest(
                 now=request.now,
                 hosts=list(
@@ -2101,7 +2106,7 @@ class HandlerLabFill:
                 completed.update(
                     completed_experiments(generated, sent, now=request.now, lanes=lanes)
                 )
-                decision = HandlerIdleSlotFill().handle(
+                decision = build_handler_idle_slot_fill().handle(
                     ModelIdleSlotFillRequest(
                         now=request.now,
                         hosts=list(
@@ -2369,7 +2374,7 @@ def guard(raw: str) -> str:
         raise IdleGuardError(
             "idle-guard: the Stop payload carries no readable transcript_path; nothing was checked"
         )
-    verdict = HandlerIdleTurnGuard().handle(
+    verdict = build_handler_idle_turn_guard().handle(
         ModelIdleTurnGuardRequest(*turn(Path(transcript)))
     )
     return (
