@@ -217,7 +217,7 @@ async def test_a_reply_posted_through_the_node_counts_even_for_one_identity() ->
 
 
 async def test_an_already_resolved_thread_is_replayed_without_a_mutation() -> None:
-    transport = _Recorded(_read_pages(_pages()))
+    transport = _Recorded(_read_pages(_pages()[:1]))
     result = await _handler(transport).handle(_resolve(_RESOLVED))
     assert isinstance(result, ModelRepoWriteCompleted)
     assert result.replayed is True
