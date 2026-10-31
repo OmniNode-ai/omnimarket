@@ -103,7 +103,28 @@ dod_evidence:
     check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_linear_ticket_write_effect/test_golden_chain_linear_ticket_write_effect.py tests/nodes/node_linear_ticket_write_effect/test_lab_proof.py tests/nodes/node_linear_ticket_write_effect/test_ticket_cli.py tests/nodes/node_linear_ticket_write_effect/test_ticket_guard_identity.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
   - check_type: test_passes
-    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_operator_access_mode_effect/test_foreground_wait_guard.py tests/nodes/node_operator_access_mode_effect/test_golden_chain_operator_access_mode_effect.py tests/nodes/node_operator_access_mode_effect/test_lab_dispatch_gate.py tests/nodes/node_operator_access_mode_effect/test_operator_access_mode.py tests/nodes/node_operator_access_mode_effect/test_operator_hooks_refusal_row_omn21020.py tests/nodes/node_operator_access_mode_effect/test_silence_guard.py -q --no-cov --tb=line
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_operator_access_mode_effect/test_foreground_wait_guard.py -q --no-cov --tb=line -k 'test_a_wait_refuses_both_modes_and_names_the_workflow'
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_operator_access_mode_effect/test_foreground_wait_guard.py -q --no-cov --tb=line -k 'test_a_wait_is_background_allowed_inside_a_workflow_agent or test_the_wait_refusal_is_mode_independent'
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_operator_access_mode_effect/test_foreground_wait_guard.py -q --no-cov --tb=line -k 'not test_a_wait_refuses_both_modes_and_names_the_workflow and not test_a_wait_is_background_allowed_inside_a_workflow_agent and not test_the_wait_refusal_is_mode_independent'
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_operator_access_mode_effect/test_golden_chain_operator_access_mode_effect.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_operator_access_mode_effect/test_lab_dispatch_gate.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_operator_access_mode_effect/test_operator_access_mode.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_operator_access_mode_effect/test_operator_hooks_refusal_row_omn21020.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_operator_access_mode_effect/test_silence_guard.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
   - check_type: test_passes
     check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_rsd_migration_orchestrator/test_handler_rsd_migration_orchestrator.py -q --no-cov --tb=line
