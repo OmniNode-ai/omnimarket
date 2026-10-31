@@ -90,3 +90,17 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_publish_effect/handlers/handler_reports_publish.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^class HandlerReportsPublish:'"
+  - id: "dod-omn21733-floor-artwork"
+    description: "AC3 declared lines, record counts, bays and delegation are rendered from their sources."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k 'draws_the_declared_lines or shows_each_number or draws_the_bays'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-floor-artwork-deploy"
+    description: "Deploy probe reads the floor page at the checked-out commit from GitHub and requires buildSlots, which draws the overlay-declared lines and is absent from the base page."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_publish_effect/page/index.html?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^function buildSlots(lines, status){'"

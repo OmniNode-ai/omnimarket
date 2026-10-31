@@ -25,8 +25,12 @@ from pathlib import Path, PurePosixPath
 
 import yaml
 
-from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayError,
+    load_structured_overlay,
+)
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_floor_publish import (
+    ModelDeclaredLines,
     ModelFactoryFloorPublishContract,
     ModelFactoryFloorPublishOverlay,
     ModelFactoryFloorPublishRequest,
@@ -171,11 +175,14 @@ class HandlerFactoryFloorPublish:
         generated_at = str(json.loads(data)["generated_at"])
         page = (NODE_DIR / rt.page_relpath).read_bytes()
         health = self._read_process_health(home / rt.process_health_relpath)
+        delegation = self._read_delegation(home / rt.delegation_relpath)
         status = json.dumps(
             {
                 "published_at": now.astimezone(UTC).isoformat(),
                 "steps": [r.model_dump(exclude={"diagnostic"}) for r in results],
                 "process_health": "published" if health is not None else "absent",
+                "delegation": "published" if delegation is not None else "absent",
+                "lines_declared": self._declared_lines(rt, env),
             },
             sort_keys=True,
         ).encode("utf-8")
@@ -187,6 +194,8 @@ class HandlerFactoryFloorPublish:
         ]
         if health is not None:
             files.append((rt.names.process_health, health))
+        if delegation is not None:
+            files.append((rt.names.delegation, delegation))
         files.append((rt.names.data, data))
         for name, payload in files:
             self._copy(rt, overlay, name, payload)
@@ -207,6 +216,7 @@ class HandlerFactoryFloorPublish:
             serve_url=overlay.serve_url,
             steps=tuple(results),
             process_health_published=health is not None,
+            delegation_published=delegation is not None,
         )
 
     def _step(
@@ -304,6 +314,44 @@ class HandlerFactoryFloorPublish:
         ):
             return None
         return data
+
+    @staticmethod
+    def _read_delegation(path: Path) -> bytes | None:
+        """The delegation counts, or ``None`` when absent or not that shape (the page then draws the card unread)."""
+        try:
+            data = path.read_bytes()
+            record = json.loads(data)
+        except (OSError, ValueError):
+            return None
+        if (
+            not isinstance(record, dict)
+            or not isinstance(record.get("generated_at"), str)
+            or not isinstance(record.get("outcomes"), list)
+        ):
+            return None
+        return data
+
+    @staticmethod
+    def _declared_lines(
+        rt: ModelFactoryFloorPublishRuntime, env: Mapping[str, str]
+    ) -> dict[str, object]:
+        """Which plans the factory floor effect's overlay declares as lines, or why that is unread."""
+        try:
+            declared = load_structured_overlay(
+                rt.lines_overlay.overlay_id,
+                ModelDeclaredLines,
+                env,
+                file_env=rt.lines_overlay.file_env,
+            )
+        except NodeOverlayError:
+            return {
+                "state": "unread",
+                "reason": "the factory floor effect's overlay is missing or invalid",
+            }
+        return {
+            "state": "read",
+            "plan_path_contains": list(declared.plan_path_contains),
+        }
 
     def _copy(
         self,
