@@ -29,15 +29,13 @@ from __future__ import annotations
 
 import logging
 
+import omnimarket.nodes.node_skill_dispatch_engine_orchestrator.container.container_dispatch_dependencies as binding
 from omnimarket.events.self_healing_dispatch import (
     ModelDispatchGroup,
     ModelSelfHealingDispatchRequest,
 )
 from omnimarket.models.model_rsd_fill_input import (
     ModelRsdFillInput,
-)
-from omnimarket.nodes.node_rsd_fill_compute.handlers.handler_rsd_fill import (
-    HandlerRsdFill,
 )
 from omnimarket.nodes.node_self_healing_dispatch_orchestrator.handlers.handler_self_healing_dispatch_orchestrator import (
     HandlerSelfHealingDispatchOrchestrator,
@@ -62,17 +60,19 @@ class HandlerDispatchEngineRouter:
 
     def __init__(
         self,
-        rsd_handler: HandlerRsdFill | None = None,
+        rsd_handler: binding.HandlerRsdFill | None = None,
         self_healing_handler: HandlerSelfHealingDispatchOrchestrator | None = None,
         dispatcher: ProtocolSelfHealingDispatcher | None = None,
     ) -> None:
-        self._rsd = rsd_handler or HandlerRsdFill()
+        self._rsd = rsd_handler or binding.create_handler_rsd_fill()
         self._dispatcher = dispatcher
         # When a live dispatcher is injected, route the fan-out through a
         # self-healing orchestrator that owns it; otherwise operate in plan mode.
         self._self_healing = (
             self_healing_handler
-            or HandlerSelfHealingDispatchOrchestrator(dispatcher=dispatcher)
+            or binding.create_handler_self_healing_dispatch_orchestrator(
+                dispatcher=dispatcher
+            )
         )
 
     async def route(
