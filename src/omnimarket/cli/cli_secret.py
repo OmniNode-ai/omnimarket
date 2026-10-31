@@ -868,6 +868,7 @@ _KEY_PAGES: dict[str, str] = {
     "openai": "platform.openai.com/api-keys",
     "anthropic": "platform.claude.com/settings/keys",
     "glm": "z.ai/manage-apikey/apikey-list",
+    "openai_compatible": "the endpoint's own key page",
 }
 _OLLAMA_HOW = model_keys.OLLAMA_HOW
 _LOCAL_HOW = model_keys.LOCAL_HOW
@@ -915,16 +916,15 @@ def _read_model_key(provider: str) -> str:
     """The key from stdin when piped, else one hidden prompt. Never echoed."""
     label = _MODEL_LABELS[provider]
     if _stdin_is_tty():
-        where = _KEY_PAGES.get(provider, "the endpoint's own key page")
         value = getpass(
-            f"Paste your {label} API key ({where}; input is hidden): "
+            f"Paste your {label} API key ({_KEY_PAGES[provider]}; input is hidden): "
         ).strip()
     else:
         value = sys.stdin.read().strip()
     if not value:
         raise click.ClickException(f"no {label} key was entered; nothing was stored.")
     looks = key_looks_like(value)
-    if looks is not None and looks != provider and provider in _KEY_PAGES:
+    if looks not in (None, provider) and provider != "openai_compatible":
         raise click.ClickException(
             f"that looks like a key for {_MODEL_LABELS[looks]}, not {label}. "
             "Nothing was stored."
