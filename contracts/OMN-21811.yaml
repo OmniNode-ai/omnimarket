@@ -1,0 +1,70 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21811"
+title: "A lab-work host keeps advertising through a failed publish and its serve process exits when its advertiser has been silent past a contract bound, so a broker outage no longer leaves every host absent from the pool"
+summary: "On 2026-10-31 the CI bus broker was down from about 10:05Z to 13:26Z. On every pool host one failed capacity publish ended the advertiser task with its exception never read, while the process and its command consumer stayed up: the capacity topic held no record newer than 11:12Z and lab-run over the bus exited 75 on zero advertisements for the rest of the day. HostAdvertiser, in the existing capacity advertise handler, catches a failed publish and logs it so the next beat retries; the host's watcher flags a host that has published nothing for the node contract's capacity.silent_exit_seconds as stuck, and serve_until_stopped leaves non-zero on it so the supervisor restarts the process. lab_work/bus.py and cli.py grow by no code line."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21811-advertiser-survives"
+    statement: |-
+      A failed capacity publish is logged and the next beat publishes, so the advertiser task is never ended by one.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a host whose bus publish raises on one beat publishes the next beat's advertisement and logs the failure -- falsifier: uv run pytest tests/unit/lab_work/test_lab_work_advertiser_survives.py -k publish_failure"
+  - id: "req-omn21811-silent-exit"
+    statement: |-
+      A host that has published no advertisement for the contract's bound is flagged and serve leaves non-zero, while a beating host and a host started without an advertiser are never flagged.
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: a host whose advertiser has published nothing for the contract's capacity silent_exit_seconds makes serve_until_stopped leave non-zero, on an injected clock -- falsifier: uv run pytest tests/unit/lab_work/test_lab_work_advertiser_survives.py -k silent_exit"
+      - id: "AC3"
+        statement: "AC3: the silent bound is read from the node contract capacity section and no module holds a literal -- falsifier: uv run pytest tests/unit/lab_work/test_lab_work_advertiser_survives.py -k bound_from_contract"
+  - id: "req-omn21811-red-on-parent"
+    statement: |-
+      The new tests fail on the parent commit and pass on the change.
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: the new tests fail on the parent commit and pass on the change -- falsifier: uv run pytest tests/unit/lab_work/test_lab_work_advertiser_survives.py run on the parent commit"
+evidence_requirements:
+  - kind: "tests"
+    description: "The advertiser tests and the existing lab-work host tests pass."
+    command: "uv run pytest tests/unit/lab_work -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21811-publish-failure"
+    description: "A failed capacity publish is logged and the next beat publishes."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/lab_work/test_lab_work_advertiser_survives.py -q --no-cov -k publish_failure"
+        cwd: "."
+  - id: "dod-omn21811-silent-exit"
+    description: "A silent advertiser makes serve leave non-zero; a beating host and a host without an advertiser are never flagged."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/lab_work/test_lab_work_advertiser_survives.py -q --no-cov -k silent_exit"
+        cwd: "."
+  - id: "dod-omn21811-bound-from-contract"
+    description: "The silent bound comes from the node contract."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/lab_work/test_lab_work_advertiser_survives.py -q --no-cov -k bound_from_contract"
+        cwd: "."
+  - id: "dod-omn21811-all-new-tests"
+    description: "The whole new file passes on the change; the PR body quotes the run on the parent commit, where it fails."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/lab_work/test_lab_work_advertiser_survives.py tests/unit/lab_work -q --no-cov"
+        cwd: "."

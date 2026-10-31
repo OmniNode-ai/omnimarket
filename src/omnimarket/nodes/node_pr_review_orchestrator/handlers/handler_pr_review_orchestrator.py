@@ -164,6 +164,9 @@ class HandlerPrReviewOrchestrator:
             mutation).
         github_diff_effect: Optional EFFECT used to resolve the PR diff.
         github_review_effect: Optional EFFECT used for thread post/watch/report.
+        prompt_builder: Optional COMPUTE used to build reviewer prompts.
+        response_parser: Optional COMPUTE used to parse reviewer responses.
+        judge_parser: Optional COMPUTE used to parse judge verdicts.
     """
 
     def __init__(
@@ -171,14 +174,45 @@ class HandlerPrReviewOrchestrator:
         inference_adapter: ModelInferenceAdapter | None = None,
         github_diff_effect: HandlerGithubDiffEffect | None = None,
         github_review_effect: HandlerGithubReviewEffect | None = None,
+        prompt_builder: HandlerPromptBuilderCompute | None = None,
+        response_parser: HandlerResponseParserCompute | None = None,
+        judge_parser: HandlerJudgeVerdictParseCompute | None = None,
     ) -> None:
+        from omnimarket.nodes.node_pr_review_orchestrator.container.container_pr_review_orchestrator import (
+            create_handler_github_diff_effect,
+            create_handler_github_review_effect,
+            create_handler_judge_verdict_parse_compute,
+            create_handler_prompt_builder_compute,
+            create_handler_response_parser_compute,
+        )
+
         self._inference_adapter = inference_adapter
-        self._github_diff_effect = github_diff_effect or HandlerGithubDiffEffect()
-        self._github_review_effect = github_review_effect or HandlerGithubReviewEffect()
-        self._prompt_builder = HandlerPromptBuilderCompute()
-        self._response_parser = HandlerResponseParserCompute()
+        self._github_diff_effect = (
+            create_handler_github_diff_effect()
+            if github_diff_effect is None
+            else github_diff_effect
+        )
+        self._github_review_effect = (
+            create_handler_github_review_effect()
+            if github_review_effect is None
+            else github_review_effect
+        )
+        self._prompt_builder = (
+            create_handler_prompt_builder_compute()
+            if prompt_builder is None
+            else prompt_builder
+        )
+        self._response_parser = (
+            create_handler_response_parser_compute()
+            if response_parser is None
+            else response_parser
+        )
         self._aggregator = FindingAggregatorGateway()
-        self._judge_parser = HandlerJudgeVerdictParseCompute()
+        self._judge_parser = (
+            create_handler_judge_verdict_parse_compute()
+            if judge_parser is None
+            else judge_parser
+        )
 
     async def handle(self, command: ReviewRequest) -> ModelPrReviewCompletedEvent:
         """Run the PR review pipeline and return the completed event.

@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Model names a node reads at composition, by node and by the name its handler asks for
+# (omnimarket.handlers.node_model_names_reader). A node contract holds no model literal
+# (contract-overlay-boundary), so the names are declared here.
+schema_version: "1.0.0"
+nodes:
+  node_thread_reply_effect:
+    fast_model: "deepseek-r1-14b"
+    coder_model: "qwen3-coder-30b"
+    glm_model: "glm-4.5"
