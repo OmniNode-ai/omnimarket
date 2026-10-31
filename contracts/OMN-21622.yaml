@@ -36,7 +36,10 @@ dod_evidence:
   - id: dod-omn21622-deploy-overlay-runtime
     description: >-
       Hosted-runner deploy smoke: install this checkout with its frozen dependencies in
-      an isolated Python 3.12 Linux container and run the writer-overlay runtime scenarios.
+      an isolated Python 3.13 Linux container and run the writer-overlay runtime scenarios.
+      Reuse the uv cache populated by the acceptance check's lock-exact environment,
+      matching the hosted verifier's Python ABI. Install offline from that cache rather
+      than downloading dependencies or installing system packages inside the 30 s probe.
       The in-memory bus must subscribe a newly declared machine, accept and attribute its
       row without reinstalling, retain writers after malformed input, and stop serving a
       removed machine. No lab route, credentials, broker or production ledger is used.
@@ -45,13 +48,12 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: |
-          docker run --rm --mount "type=bind,source=$PWD,target=/workspace,readonly" --workdir /workspace \
+          docker run --rm --user "$(id -u):$(id -g)" \
+            --mount "type=bind,source=$PWD,target=/workspace,readonly" --workdir /workspace \
+            --mount "type=bind,source=$(uv cache dir),target=/uv-cache" \
+            --env UV_CACHE_DIR=/uv-cache --env UV_LINK_MODE=copy \
             --env PYTHONDONTWRITEBYTECODE=1 --env UV_PROJECT_ENVIRONMENT=/tmp/writer-overlay-venv \
-            --env UV_CACHE_DIR=/tmp/uv-cache \
-            ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 sh -ec '
-              apt-get update -qq
-              apt-get install -y -qq --no-install-recommends git ca-certificates
-              uv run --frozen --python 3.12 pytest tests/unit/work_ledger_bus/test_writer_overlay_watch.py \
-                -q -n 0 --no-cov -p no:cacheprovider --basetemp=/tmp/writer-overlay-tests --refuse-skips
-            '
+            ghcr.io/astral-sh/uv@sha256:531f855bda2c73cd6ef67d56b733b357cea384185b3022bd09f05e002cd144ca \
+            uv run --frozen --offline --python 3.13 pytest tests/unit/work_ledger_bus/test_writer_overlay_watch.py \
+              -q --no-cov -p no:cacheprovider --basetemp=/tmp/writer-overlay-tests --refuse-skips
         cwd: .
