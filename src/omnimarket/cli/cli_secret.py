@@ -36,7 +36,6 @@ import inspect
 import json
 import os
 import socket
-import sqlite3
 import sys
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, date, datetime
@@ -88,8 +87,8 @@ from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request i
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result import (
     ModelModelTestResult,
 )
-from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_store import (
-    apply_credential_registered,
+from omnimarket.nodes.node_projection_tenant_credentials.local_catalog_fold import (
+    fold_registered_tenant_key,
 )
 from omnimarket.nodes.node_secret_store_effect.handlers.handler_secret_store import (
     HandlerSecretStore,
@@ -462,9 +461,10 @@ def _resolve_bound_host(declared: str | None) -> str | None:
 @click.option(
     "--model",
     "model_option",
-    default=None,
-    help="The model this key runs, checked against the provider's list for it.",
+    multiple=True,
+    help="A model this key runs; repeat in routing order. Each is checked with the provider.",
 )
+@click.option("--expected-version", type=click.IntRange(min=1), default=None)
 @click.option(
     "--expires",
     default=None,
@@ -512,7 +512,8 @@ def register_tenant_key(
     tenant: str,
     name: str | None,
     plan: str | None,
-    model_option: str | None,
+    model_option: tuple[str, ...],
+    expected_version: int | None,
     expires: str | None,
     host: str | None,
     workspace_id: str | None,
@@ -533,7 +534,8 @@ def register_tenant_key(
             provider=provider,
             key_value=SecretStr(value),
             plan=plan,
-            model=model_option,
+            models=list(model_option) if model_option else None,
+            expected_version=expected_version,
             expires_at=expires_at,
             bound_host=bound_host,
             workspace_id=workspace_id,
@@ -574,7 +576,7 @@ def register_tenant_key(
         raise click.ClickException(
             f"{exc}. Nothing was stored and nothing was published."
         ) from exc
-    shown: dict[str, str | None] = {
+    shown: dict[str, object] = {
         "api_key_ref": response.api_key_ref,
         "provider": response.provider,
         "plan": response.plan,
@@ -582,6 +584,7 @@ def register_tenant_key(
     }
     if response.model is not None:
         shown["model"] = response.model
+    shown["models"] = response.models
     if response.expires_at is not None:
         shown["expires_at"] = response.expires_at.astimezone(UTC).strftime(
             "%Y-%m-%dT%H:%M:%SZ"
@@ -598,35 +601,7 @@ def register_tenant_key(
 
 
 def _fold_registered_tenant_key(response: Any, tenant: str) -> None:
-    """Catalogue the key on this machine too (OMN-21014).
-
-    The value is in this machine's store; the credential-registered event goes
-    to the bus for the central catalog. The host's own review gateway reads its
-    keys from this machine's catalog, so the same row is folded into the local
-    store the value lives beside, the way ``onex secret set`` folds its events.
-    The fold is an idempotent upsert by reference; no value is written.
-    """
-    store = _tenant_key_store()
-    payload: dict[str, object] = {
-        "tenant_id": tenant,
-        "provider": response.provider,
-        "name": response.name,
-        "api_key_ref": response.api_key_ref,
-        "metadata": {},
-        "expires_at": None
-        if response.expires_at is None
-        else response.expires_at.astimezone(UTC).isoformat(),
-        "bound_host": response.bound_host,
-        "workspace_id": response.workspace_id,
-    }
-    try:
-        apply_credential_registered(payload, SqliteDatabaseAdapter(store.db_path))
-    except sqlite3.Error as error:
-        raise click.ClickException(
-            f"the key was stored as {response.api_key_ref}, but this machine's "
-            f"catalog could not record it ({type(error).__name__}); the review "
-            "gateway on this host will not see it until it is registered again."
-        ) from None
+    fold_registered_tenant_key(response, tenant, _tenant_key_store())
 
 
 def _parse_expires(expires: str | None) -> datetime | None:

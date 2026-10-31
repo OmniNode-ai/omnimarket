@@ -1,0 +1,32 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-21753
+title: A folded projection writer resumes from its retired container's committed offsets, so events published during the fold handover are projected exactly once
+summary: The omnimarket half. The five writers the one-runtime fold moves into the runtime (live-events, registration, savings, tenant-credentials, tenant-registry) declare their retired container's consumer group under consumer_group_handover. omnibase_infra's subscribe preflight (the companion pull request) reads the key and seeds the runtime's group from that group's committed offsets; the handover behaviour and its exactly-once proofs on the in-process substrate and on Redpanda are AC1 to AC4 and live in omnibase_infra. On a runtime without the preflight the key is an unread top-level key and changes nothing.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21753-writers-declare-handover
+  statement: Each writer the fold moves into the runtime declares its retired container's consumer group, so the handover the omnibase_infra preflight performs has a source.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a test publishes events while the source group is stopped and the runtime group has not joined, then wires the writer contract, and finds every event projected exactly once on the in-process group-offset substrate and on a Redpanda broker -- falsifier: uv run pytest tests/unit/runtime/auto_wiring/test_consumer_group_handover_omn21288.py tests/integration/event_bus/test_consumer_group_handover_redpanda_omn21288.py -q'
+evidence_requirements:
+- kind: tests
+  description: Each of the five folded writer contracts declares its retired group and carries its projection-writer runtime profile.
+  command: uv run pytest tests/test_omn21753_folded_writer_consumer_group_handover.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21753-writers-declare-handover
+  description: The declaration half of AC1 in this repository; the test file is new on this branch, so it fails at the merge base. The handover itself and the exactly-once runs are in omnibase_infra's contracts/OMN-21753.yaml.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn21753_folded_writer_consumer_group_handover.py -q --no-cov --tb=line
+    cwd: .

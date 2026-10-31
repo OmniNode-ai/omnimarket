@@ -21,6 +21,7 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
+from omnimarket.handlers.runtime_paths import runtime_dir
 from omnimarket.nodes.node_dispatch_worker.handlers.dispatch_record_writer import (
     write_dispatch_record,
 )
@@ -382,11 +383,7 @@ def _query_active_fences(
     collision_fences are a dispatch-time snapshot, not a live lock.
     """
     if tasks_dir is None:
-        tasks_dir = Path(
-            os.environ.get(  # contract-config-ok: config
-                "CLAUDE_TASKS_DIR", "~/.claude/tasks"
-            )
-        ).expanduser()
+        tasks_dir = Path(runtime_dir("claude.tasks_dir", "CLAUDE_TASKS_DIR"))
 
     team_dir = tasks_dir / team
     if not team_dir.exists():
@@ -766,11 +763,7 @@ class HandlerDispatchWorker:
     ) -> list[str]:
         """Read in_progress task subjects from team task dir."""
         if tasks_dir is None:
-            tasks_dir = Path(
-                os.environ.get(  # contract-config-ok: config
-                    "CLAUDE_TASKS_DIR", "~/.claude/tasks"
-                )
-            ).expanduser()
+            tasks_dir = Path(runtime_dir("claude.tasks_dir", "CLAUDE_TASKS_DIR"))
 
         team_dir = tasks_dir / team
         if not team_dir.exists():

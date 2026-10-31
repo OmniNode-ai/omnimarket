@@ -7,7 +7,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from uuid import UUID
 
 import pytest
 import pytest_asyncio
@@ -29,7 +28,6 @@ from omnimarket.nodes.node_omnigate_receipt_verifier.models.model_receipt_verifi
 
 pytestmark = pytest.mark.unit
 
-_CORRELATION_ID = UUID("00000000-0000-4000-a000-000000000145")
 _DIFF_HASH = "sha256:" + "c" * 64
 _CONFIG_HASH = "sha256:" + "d" * 64
 
@@ -77,7 +75,6 @@ async def generated_receipt(
         config_hasher=lambda _path: _CONFIG_HASH,
         schema_fingerprinter=lambda: "sha256:" + "e" * 64,
     ).handle(
-        _CORRELATION_ID,
         ModelReceiptGeneratorInput(
             config_path=str(tmp_path / ".omnigate.yaml"),
             repo_path=str(tmp_path),
@@ -104,7 +101,6 @@ async def _verify(
     receipt: dict[str, object], tmp_path: Path
 ) -> ModelReceiptVerifierResult:
     return await HandlerReceiptVerifier().handle(
-        _CORRELATION_ID,
         ModelReceiptVerifierInput(
             pr_body=(
                 "<!-- OMNIGATE_RECEIPT_START -->\n"

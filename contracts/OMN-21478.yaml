@@ -66,6 +66,9 @@ dod_evidence:
   description: Hosted-runner package readback checks the installed core commit against this PR's dev tag, imports both migrated product consumers, and loads the installed provenance policy. It needs only the checkout and frozen dependencies, with no credentials or services. A different core commit or a missing runtime dependency fails. This does not attest a running service rollout.
   source: manual
   checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/scripts/test_check_dep_provenance.py -q --no-cov -p no:randomly
+    cwd: .
   - check_type: command
     check_value: |-
       env PYTHONDONTWRITEBYTECODE=1 uv run --frozen python - <<'PY'

@@ -8,6 +8,25 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.events.design_to_plan import ModelPlanToTicketsStartCommand
+from omnimarket.nodes.node_design_to_plan.models.model_design_to_plan_command import (
+    ModelDesignToPlanCommand,
+)
+from omnimarket.nodes.node_design_to_plan.models.model_design_to_plan_state import (
+    ModelDesignToPlanState,
+)
+
+
+class ModelDesignToPlanPhase3LaunchRequest(BaseModel):
+    """Typed request for Phase 3 launch routing: the start command and FSM state."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    command: ModelDesignToPlanCommand = Field(
+        ..., description="The design_to_plan start command."
+    )
+    state: ModelDesignToPlanState = Field(
+        ..., description="FSM state carrying the finalized plan path."
+    )
 
 
 class ModelDesignToPlanPhase3Dispatch(BaseModel):
@@ -41,5 +60,6 @@ class ModelDesignToPlanPhase3LaunchResult(BaseModel):
 
 __all__ = [
     "ModelDesignToPlanPhase3Dispatch",
+    "ModelDesignToPlanPhase3LaunchRequest",
     "ModelDesignToPlanPhase3LaunchResult",
 ]

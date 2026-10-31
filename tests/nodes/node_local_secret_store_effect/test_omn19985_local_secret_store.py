@@ -219,8 +219,15 @@ def test_r2_the_other_delivery_order_ends_the_same(
     _fold(tuple(reversed(events)), reversed_)
 
     def shape(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+        # OMN-21217: version counts writes, as the Postgres runner's does, so
+        # it depends on the delivery order like created_at; the facts do not.
         return [
-            {**row, "created_at": None, "revoked_at": row["revoked_at"] is not None}
+            {
+                **row,
+                "created_at": None,
+                "revoked_at": row["revoked_at"] is not None,
+                "version": None,
+            }
             for row in rows
         ]
 
@@ -231,9 +238,13 @@ def test_r3_a_duplicate_delivery_converges(store_path: Path, tmp_path: Path) -> 
     db = SqliteDatabaseAdapter(tmp_path / "projection.sqlite")
     events = _handler().handle(_set(_PLANTED)).events
     _fold(events, db)
-    once = _rows(db)
+    [once] = _rows(db)
     _fold(events, db)
-    assert _rows(db) == once
+    [again] = _rows(db)
+    # OMN-21217: version counts writes, as the Postgres runner's does, so a
+    # redelivery raises it; every fact about the key converges.
+    assert again["version"] > once["version"]
+    assert {**again, "version": None} == {**once, "version": None}
 
 
 def test_r4_delete_then_set_writes_a_second_live_row(

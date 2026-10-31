@@ -19,8 +19,11 @@ import hashlib
 import json
 import logging
 import time
-from typing import Any, Final, Literal
+from typing import Any, Final, Literal, cast
 
+from omnimarket.handlers.handler_packaged_contract_loader import (
+    load_packaged_contract_section,
+)
 from omnimarket.inference.adapter_inference_bridge import (
     AdapterInferenceBridge,
     ModelInferenceAdapter,
@@ -195,6 +198,11 @@ def _validate_item(item: Any) -> bool:
     return 0.0 <= float(conf) <= 1.0
 
 
+def _declared_seconds(declared: Any) -> float | None:
+    """A duration the contract config declares; None leaves the packaged contract to supply it."""
+    return None if declared is None else float(declared)
+
+
 class HandlerDecisionExtraction:
     """Decision extraction handler for ADR canary pipeline.
 
@@ -208,7 +216,7 @@ class HandlerDecisionExtraction:
     def __init__(
         self,
         inference_bridge: ModelInferenceAdapter | None = None,
-        extraction_timeout_seconds: float = 120.0,
+        extraction_timeout_seconds: float | None = None,
         prompt_template_id: str = _PROMPT_TEMPLATE_ID,
         prompt_template_version: str = _PROMPT_TEMPLATE_VERSION,
         response_format: ModelInferenceJsonObjectResponseFormat = _JSON_OBJECT_RESPONSE_FORMAT,
@@ -221,7 +229,18 @@ class HandlerDecisionExtraction:
         # event loop, where the sync secret resolver fails closed.
         self._bridge: ModelInferenceAdapter | None = inference_bridge
         self._bridge_lock = asyncio.Lock()
-        self._extraction_timeout_seconds = extraction_timeout_seconds
+        self._extraction_timeout_seconds = (
+            extraction_timeout_seconds
+            if extraction_timeout_seconds is not None
+            else float(
+                cast(
+                    dict[str, Any],
+                    load_packaged_contract_section(
+                        "node_adr_decision_extraction_llm_effect", "config"
+                    ),
+                )["extraction_timeout_seconds"]["default"]
+            )
+        )
         self._prompt_template_id = prompt_template_id
         self._prompt_template_version = prompt_template_version
         self._response_format = response_format
@@ -426,8 +445,8 @@ class HandlerDecisionExtraction:
         """Build from a loaded contract.yaml config block."""
         cfg = contract.get("config", {})
         return cls(
-            extraction_timeout_seconds=float(
-                cfg.get("extraction_timeout_seconds", {}).get("default", 120.0)
+            extraction_timeout_seconds=_declared_seconds(
+                cfg.get("extraction_timeout_seconds", {}).get("default")
             ),
             prompt_template_id=str(
                 cfg.get("prompt_template_id", {}).get("default", _PROMPT_TEMPLATE_ID)

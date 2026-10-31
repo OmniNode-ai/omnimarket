@@ -83,7 +83,7 @@ class TestCloseoutEffectGoldenChain:
         inp = _make_input(dry_run=True)
 
         result = await handler.handle(
-            correlation_id=inp.correlation_id, dry_run=inp.dry_run
+            ModelCloseoutInput(correlation_id=inp.correlation_id, dry_run=inp.dry_run)
         )
 
         assert result.merge_sweep_completed is True
@@ -105,7 +105,7 @@ class TestCloseoutEffectGoldenChain:
         inp = _make_input()
 
         result = await handler.handle(
-            correlation_id=inp.correlation_id, dry_run=inp.dry_run
+            ModelCloseoutInput(correlation_id=inp.correlation_id, dry_run=inp.dry_run)
         )
 
         assert result.merge_sweep_completed is True
@@ -126,7 +126,7 @@ class TestCloseoutEffectGoldenChain:
         inp = _make_input()
 
         result = await handler.handle(
-            correlation_id=inp.correlation_id, dry_run=inp.dry_run
+            ModelCloseoutInput(correlation_id=inp.correlation_id, dry_run=inp.dry_run)
         )
 
         assert result.merge_sweep_completed is False
@@ -143,7 +143,7 @@ class TestCloseoutEffectGoldenChain:
         inp = _make_input()
 
         result = await handler.handle(
-            correlation_id=inp.correlation_id, dry_run=inp.dry_run
+            ModelCloseoutInput(correlation_id=inp.correlation_id, dry_run=inp.dry_run)
         )
 
         assert result.merge_sweep_completed is True
@@ -161,7 +161,7 @@ class TestCloseoutEffectGoldenChain:
         inp = _make_input()
 
         result = await handler.handle(
-            correlation_id=inp.correlation_id, dry_run=inp.dry_run
+            ModelCloseoutInput(correlation_id=inp.correlation_id, dry_run=inp.dry_run)
         )
 
         assert result.quality_gates_passed is False
@@ -174,7 +174,7 @@ class TestCloseoutEffectGoldenChain:
         inp = _make_input()
 
         result = await handler.handle(
-            correlation_id=inp.correlation_id, dry_run=inp.dry_run
+            ModelCloseoutInput(correlation_id=inp.correlation_id, dry_run=inp.dry_run)
         )
 
         assert result.merge_sweep_completed is True
@@ -188,7 +188,7 @@ class TestCloseoutEffectGoldenChain:
         inp = _make_input(dry_run=True)
 
         result = await handler.handle(
-            correlation_id=inp.correlation_id, dry_run=inp.dry_run
+            ModelCloseoutInput(correlation_id=inp.correlation_id, dry_run=inp.dry_run)
         )
 
         with pytest.raises(Exception, match="frozen"):
@@ -209,8 +209,10 @@ class TestCloseoutEffectGoldenChain:
         async def on_command(message: object) -> None:
             payload = json.loads(message.value)  # type: ignore[union-attr]
             result = await handler.handle(
-                correlation_id=payload["correlation_id"],
-                dry_run=payload.get("dry_run", False),
+                ModelCloseoutInput(
+                    correlation_id=payload["correlation_id"],
+                    dry_run=payload.get("dry_run", False),
+                )
             )
             result_payload = result.model_dump(mode="json")
             completed_events.append(result_payload)
@@ -247,6 +249,6 @@ class TestCloseoutEffectGoldenChain:
 
         # If this assignment works without type errors, protocols are satisfied
         handler = HandlerCloseout(merge_sweeper=sweeper, quality_gate_checker=checker)
-        result = await handler.handle(correlation_id=uuid4())
+        result = await handler.handle(ModelCloseoutInput(correlation_id=uuid4()))
 
         assert isinstance(result, ModelCloseoutResult)

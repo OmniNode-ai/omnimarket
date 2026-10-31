@@ -16,6 +16,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from omnimarket.handlers.network_bindings import network_host
 from omnimarket.projection.credential_publisher import LAB_HOST_NAME_PATTERN
 from omnimarket.routing.byok_provider_backends import ANTHROPIC_WORKSPACE_ID_PATTERN
 
@@ -54,7 +55,9 @@ class ModelClaudeReviewGatewayRequest(BaseModel):
         min_length=1,
         description="Repositories whose diffs never go to a cloud model, from a private overlay.",
     )
-    bind_host: str = Field(default="127.0.0.1", min_length=1)
+    bind_host: str = Field(
+        default_factory=lambda: network_host("loopback.ipv4"), min_length=1
+    )
     bind_port: int = Field(default=8140, ge=1, le=65535)
     thinking_mode: Literal["disabled", "adaptive"] = Field(
         default="disabled",
