@@ -1,7 +1,12 @@
 schema_version: 1.0.0
 ticket_id: OMN-21536
 title: 'omnimarket: handler-shape debt burn-down, slice 2: command line entries leave the handler modules'
-summary: The handler-shape validator of omnibase_core reports a handler module that holds module functions and no handler class (module_function_handler). Nineteen of those were command line entries, a main and its helpers in a handler_*_cli module. Each moves beside its node's contract.yaml as a runtime_*.py module, the location the canonical-file-shape rule cli_entry_outside_node names for a command line entry, and its project.scripts entry, contract, tests and burn-down line follow. The overlay check, which read files and the environment inside a compute node, gets an effect node for the reading and keeps its compute node pure.
+summary: The handler-shape validator of omnibase_core reports a handler module that holds module functions and no
+  handler class (module_function_handler). Nineteen of those were command line entries, a main and its helpers in a
+  handler_*_cli module. Each moves beside its node's contract.yaml as a runtime_*.py module, the location the
+  canonical-file-shape rule cli_entry_outside_node names for a command line entry, and its project.scripts entry,
+  contract, tests and burn-down line follow. The overlay check, which read files and the environment inside a compute
+  node, gets an effect node for the reading and keeps its compute node pure.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -15,20 +20,10 @@ requirements:
     statement: 'AC2: the burn-down baseline no longer lists the nineteen moved handler_*_cli modules and the canonical-file-shape hook passes on the whole tree -- falsifier: `uv run pre-commit run canonical-file-shape --all-files` exits non-zero, or `grep -c ''handler_.*_cli.py'' .onex_ratchets/canonical_file_shape_burndown_baseline.txt` prints a number above 0 for a moved module'
   - id: AC3
     statement: 'AC3: the tests of every touched node pass with the commands pointed at the new modules -- falsifier: the pytest command of the evidence below exits non-zero'
-- id: req-omn21536-s4-pr-review-fsm-reducer-names-no-envelope
-  statement: The pr-review FSM reducer's handler takes its typed advance command, references no event envelope type, and folds the same state as before.
-  acceptance:
-  - id: AC1
-    statement: 'AC1: the handler-shape validator of omnibase_core reports no envelope_in_core issue on the pr-review FSM reducer handler -- falsifier: uv run pytest tests/validation/test_handler_modules_name_no_event_envelope_omn21536.py exits non-zero'
-  - id: AC2
-    statement: 'AC2: the tests of the pr-review FSM reducer pass -- falsifier: the pytest command of the evidence below exits non-zero'
 evidence_requirements:
 - kind: tests
   description: The tests of the nodes whose command line entry moved, run on a lab host at the pushed head.
   command: uv run pytest tests/nodes/node_automation_liveness_overlay_check_compute tests/nodes/node_automation_liveness_overlay_check_effect tests/nodes/node_architecture_discovery_orchestrator tests/nodes/node_claude_code_hook_adapter_effect tests/nodes/node_friction_synthesis_effect tests/nodes/node_host_thermal_observe_effect tests/nodes/node_hourly_tick_effect tests/nodes/node_lab_disk_growth_effect tests/nodes/node_lab_fill_receipt_table_compute tests/nodes/node_landing_tlc_receipt_effect tests/nodes/node_linear_ticket_write_effect tests/nodes/node_operator_access_mode_effect tests/nodes/node_rsd_migration_orchestrator tests/nodes/node_runtime_deploy_effect tests/test_session_capability_digest.py tests/test_golden_chain_patch_apply_dispatch_effect.py -q --no-cov --tb=line
-- kind: tests
-  description: The pr-review FSM reducer's tests and the envelope ratchet test, run on a lab host at the pushed head.
-  command: uv run pytest tests/validation/test_handler_modules_name_no_event_envelope_omn21536.py tests/test_golden_chain_pr_review.py tests/integration/node_pr_review_fsm_reducer src/omnimarket/nodes/node_pr_review_fsm_reducer/tests -q --no-cov --tb=line -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
@@ -41,13 +36,10 @@ dod_evidence:
   - AC1
   checks:
   - check_type: command
-    check_value: 'set -eu;
-
-      test -z "$(git ls-files src | grep -E ''handlers/handler_(automation_liveness_overlay_check_cli|runtime_coverage_cli|architecture_discovery_cli|claude_code_hook_cli|compaction_latency_cli|friction_synthesis_cli|host_thermal_cli|hourly_tick_cli|lab_disk_growth_cli|lab_fill_receipt_table_cli|lab_secret_store_override_cli|landing_tlc_receipt_cli|operator_hook_cli|capture_cli|patch_apply_dispatch_cli|rsd_migration_cli|runtime_deploy_cli|session_capability_digest_cli|lab_proof)\.py$'')";
-
-      test "$(git ls-files src | grep -E ''/runtime_[a-z_]*(_cli|lab_proof)\.py$'' | xargs grep -lE ''^def main\('' | wc -l)" -ge 19"
-
-      '
+    check_value: |
+      set -eu;
+      test -z "$(git ls-files src | grep -E 'handlers/handler_(automation_liveness_overlay_check_cli|runtime_coverage_cli|architecture_discovery_cli|claude_code_hook_cli|compaction_latency_cli|friction_synthesis_cli|host_thermal_cli|hourly_tick_cli|lab_disk_growth_cli|lab_fill_receipt_table_cli|lab_secret_store_override_cli|landing_tlc_receipt_cli|operator_hook_cli|capture_cli|patch_apply_dispatch_cli|rsd_migration_cli|runtime_deploy_cli|session_capability_digest_cli|lab_proof)\.py$')";
+      test "$(git ls-files src | grep -E '/runtime_[a-z_]*(_cli|lab_proof)\.py$' | xargs grep -lE '^def main\(' | wc -l)" -ge 19
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21536-ac2-file-shape
   description: AC2 runs the canonical-file-shape hook over the whole tree of the committed head and checks that none of the moved modules is still listed in the burn-down file.
@@ -56,18 +48,14 @@ dod_evidence:
   - AC2
   checks:
   - check_type: command
-    check_value: 'set -eu;
-
+    check_value: |
+      set -eu;
       uv run pre-commit run canonical-file-shape --all-files
-
-      '
     cwd: ${OMNI_HOME}/omnimarket
   - check_type: command
-    check_value: 'set -eu;
-
-      test -z "$(grep -E ''handler_(automation_liveness_overlay_check|runtime_coverage|architecture_discovery|claude_code_hook|compaction_latency|friction_synthesis|host_thermal|hourly_tick|lab_disk_growth|lab_fill_receipt_table|lab_secret_store_override|landing_tlc_receipt|operator_hook|capture|patch_apply_dispatch|rsd_migration|runtime_deploy|session_capability_digest)_cli\.py|handler_lab_proof\.py'' .onex_ratchets/canonical_file_shape_burndown_baseline.txt)"
-
-      '
+    check_value: |
+      set -eu;
+      test -z "$(grep -E 'handler_(automation_liveness_overlay_check|runtime_coverage|architecture_discovery|claude_code_hook|compaction_latency|friction_synthesis|host_thermal|hourly_tick|lab_disk_growth|lab_fill_receipt_table|lab_secret_store_override|landing_tlc_receipt|operator_hook|capture|patch_apply_dispatch|rsd_migration|runtime_deploy|session_capability_digest)_cli\.py|handler_lab_proof\.py' .onex_ratchets/canonical_file_shape_burndown_baseline.txt)"
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21536-ac3-touched-node-tests
   description: AC3 runs the tests of the nodes whose command line entry moved.
@@ -78,67 +66,49 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_automation_liveness_overlay_check_compute tests/nodes/node_automation_liveness_overlay_check_effect tests/nodes/node_architecture_discovery_orchestrator tests/nodes/node_claude_code_hook_adapter_effect tests/nodes/node_friction_synthesis_effect tests/nodes/node_host_thermal_observe_effect tests/nodes/node_hourly_tick_effect tests/nodes/node_lab_disk_growth_effect tests/nodes/node_lab_fill_receipt_table_compute tests/nodes/node_landing_tlc_receipt_effect tests/nodes/node_linear_ticket_write_effect tests/nodes/node_operator_access_mode_effect tests/nodes/node_rsd_migration_orchestrator tests/nodes/node_runtime_deploy_effect tests/test_session_capability_digest.py tests/test_golden_chain_patch_apply_dispatch_effect.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
-- id: dod-omn21536-s4-ac1-no-envelope-in-core
-  description: AC1 runs the handler-shape validator on the pr-review FSM reducer handler and finds no envelope_in_core issue.
-  source: manual
-  binds_ac:
-  - AC1
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/validation/test_handler_modules_name_no_event_envelope_omn21536.py -q --no-cov
-    cwd: ${OMNI_HOME}/omnimarket
-- id: dod-omn21536-s4-ac2-pr-review-fsm-tests
-  description: AC2 runs the pr-review FSM reducer's tests.
-  source: manual
-  binds_ac:
-  - AC2
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/validation/test_handler_modules_name_no_event_envelope_omn21536.py tests/test_golden_chain_pr_review.py tests/integration/node_pr_review_fsm_reducer src/omnimarket/nodes/node_pr_review_fsm_reducer/tests -q --no-cov --tb=line -p no:randomly
-    cwd: ${OMNI_HOME}/omnimarket
-- id: dod-omn21536-s4-deploy-handler-smoke
-  description: 'Hosted package deploy smoke: the installed pr-review FSM reducer handler takes the typed advance command, names no event envelope, and folds one advance into a state projection. A handler that again names the envelope, or whose handle does not take the command, fails. No credentials, broker or lab service is required; this checks the evaluated checkout package, not a production rollout.'
-  source: manual
-  checks:
-  - check_type: command
-    check_value: 'set -eu;
 
-      export PYTHONDONTWRITEBYTECODE=1;
-
-      uv run python -c ''
-
-      import asyncio
-
-      import inspect
-
-      from uuid import uuid4
-
-      from omnimarket.nodes.node_pr_review_fsm_reducer.handlers import handler_pr_review_fsm as mod
-
-      from omnimarket.nodes.node_pr_review_fsm_reducer.models.model_pr_review_advance_command import ModelPrReviewAdvanceCommand
-
-      src = inspect.getsource(mod)
-
-      assert "ModelEventEnvelope" not in src, "handler names the event envelope"
-
-      hints = inspect.signature(mod.HandlerPrReviewFsm.handle).parameters
-
-      assert list(hints) == ["self", "request"], list(hints)
-
-      assert hints["request"].annotation in (ModelPrReviewAdvanceCommand, "ModelPrReviewAdvanceCommand"), hints["request"].annotation
-
-      cmd = ModelPrReviewAdvanceCommand(state=mod.ModelPrReviewBotState(correlation_id=uuid4(), pr_number=1, repo="o/r"), phase_success=True)
-
-      out = asyncio.run(mod.HandlerPrReviewFsm().handle(cmd))
-
-      assert len(out.projections) == 1, out
-
-      print("pr-review FSM reducer handler: typed command in, one projection out, no envelope named")
-
-      ''
-
-      '
-    cwd: .
-  - check_type: command
-    check_value: 'gh api repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_review_fsm_reducer/handlers/handler_pr_review_fsm.py?ref=30662b29a01e632438efea302a9bef711a0e4d98 --jq ''.content'' | base64 -d | grep -c ''request: ModelPrReviewAdvanceCommand'''
-    cwd: .
+  - id: "dod-omn21536-s4-ac1-no-envelope-in-core"
+    description: "AC1 runs the handler-shape validator on the pr-review FSM reducer handler and finds no envelope_in_core issue."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validation/test_handler_modules_name_no_event_envelope_omn21536.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21536-s4-ac2-pr-review-fsm-tests"
+    description: "AC2 runs the pr-review FSM reducer's tests."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/validation/test_handler_modules_name_no_event_envelope_omn21536.py tests/test_golden_chain_pr_review.py tests/integration/node_pr_review_fsm_reducer src/omnimarket/nodes/node_pr_review_fsm_reducer/tests -q --no-cov --tb=line -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21536-s4-deploy-handler-smoke"
+    description: "Hosted package deploy smoke: the installed pr-review FSM reducer handler takes the typed advance command, names no event envelope, and folds one advance into a state projection. A handler that again names the envelope, or whose handle does not take the command, fails. No credentials, broker or lab service is required; this checks the evaluated checkout package, not a production rollout."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          uv run python -c '
+          import asyncio
+          import inspect
+          from uuid import uuid4
+          from omnimarket.nodes.node_pr_review_fsm_reducer.handlers import handler_pr_review_fsm as mod
+          from omnimarket.nodes.node_pr_review_fsm_reducer.models.model_pr_review_advance_command import ModelPrReviewAdvanceCommand
+          src = inspect.getsource(mod)
+          assert "ModelEventEnvelope" not in src, "handler names the event envelope"
+          hints = inspect.signature(mod.HandlerPrReviewFsm.handle).parameters
+          assert list(hints) == ["self", "request"], list(hints)
+          assert hints["request"].annotation in (ModelPrReviewAdvanceCommand, "ModelPrReviewAdvanceCommand"), hints["request"].annotation
+          cmd = ModelPrReviewAdvanceCommand(state=mod.ModelPrReviewBotState(correlation_id=uuid4(), pr_number=1, repo="o/r"), phase_success=True)
+          out = asyncio.run(mod.HandlerPrReviewFsm().handle(cmd))
+          assert len(out.projections) == 1, out
+          print("pr-review FSM reducer handler: typed command in, one projection out, no envelope named")
+          '
+        cwd: "."
+      - check_type: "command"
+        check_value: |-
+          gh api repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_review_fsm_reducer/handlers/handler_pr_review_fsm.py?ref=30662b29a01e632438efea302a9bef711a0e4d98 --jq '.content' | base64 -d | grep -c 'request: ModelPrReviewAdvanceCommand'
+        cwd: "."
