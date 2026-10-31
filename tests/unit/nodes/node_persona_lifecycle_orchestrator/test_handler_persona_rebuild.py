@@ -114,8 +114,11 @@ def test_on_demand_rebuilds_single_user() -> None:
 
     response = asyncio.run(
         handler.on_demand(
-            correlation_id,
-            ModelPersonaLifecycleRequest(operation="on_demand", user_id="user_1"),
+            ModelPersonaLifecycleRequest(
+                operation="on_demand",
+                user_id="user_1",
+                correlation_id=correlation_id,
+            ),
         )
     )
 
@@ -133,7 +136,6 @@ def test_on_demand_without_user_id_returns_contract_error() -> None:
 
     response = asyncio.run(
         handler.on_demand(
-            uuid4(),
             ModelPersonaLifecycleRequest(operation="on_demand"),
         )
     )
@@ -153,7 +155,7 @@ def test_on_tick_rebuilds_candidates_with_contract_batch_cap() -> None:
     )
 
     response = asyncio.run(
-        handler.on_tick(uuid4(), ModelPersonaLifecycleRequest(operation="on_tick"))
+        handler.on_tick(ModelPersonaLifecycleRequest(operation="on_tick"))
     )
 
     assert candidate_provider.limits == [100]
@@ -169,7 +171,7 @@ def test_unconfigured_handler_returns_explicit_error() -> None:
     handler = HandlerPersonaRebuild()
 
     response = asyncio.run(
-        handler.on_tick(uuid4(), ModelPersonaLifecycleRequest(operation="on_tick"))
+        handler.on_tick(ModelPersonaLifecycleRequest(operation="on_tick"))
     )
 
     assert response.status == "error"

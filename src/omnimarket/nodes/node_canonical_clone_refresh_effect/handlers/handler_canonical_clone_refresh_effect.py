@@ -22,6 +22,7 @@ import time
 from collections.abc import Callable, Sequence
 from typing import Any
 
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.nodes.node_canonical_clone_refresh_effect.models.model_canonical_clone_refresh import (
     EnumCanonicalCloneRefreshStatus,
     ModelCanonicalCloneRefreshReceipt,
@@ -29,7 +30,9 @@ from omnimarket.nodes.node_canonical_clone_refresh_effect.models.model_canonical
 )
 
 REPO_PLACEHOLDER = "{repo}"
-SYNC_TIMEOUT_SECONDS = 300
+SYNC_TIMEOUT_SECONDS: float = load_node_timeouts(
+    "node_canonical_clone_refresh_effect"
+).get("sync_timeout_seconds")
 _RESULTS = {
     "ADVANCED": EnumCanonicalCloneRefreshStatus.ADVANCED,
     "UP_TO_DATE": EnumCanonicalCloneRefreshStatus.UP_TO_DATE,
@@ -56,7 +59,7 @@ class HandlerCanonicalCloneRefreshEffect:
         *,
         host_name: str,
         run: Callable[..., Any] = subprocess.run,
-        timeout_seconds: int = SYNC_TIMEOUT_SECONDS,
+        timeout_seconds: float = SYNC_TIMEOUT_SECONDS,
     ) -> None:
         if not any(REPO_PLACEHOLDER in part for part in sync_argv):
             raise ValueError(

@@ -7,6 +7,7 @@ written with all expected fields.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import uuid
 from pathlib import Path
@@ -14,18 +15,28 @@ from unittest.mock import patch
 
 import pytest
 import yaml
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
 from omnimarket.nodes.node_handoff_effect.handlers.handler_handoff_effect import (
     HandlerHandoffEffect,
     InfraHealthGatherError,
     _parse_env_sync_log,
 )
+from omnimarket.nodes.node_handoff_effect.models.model_handoff_request import (
+    ModelHandoffRequest,
+)
 
 _PATCH_VALIDATE = "omnimarket.nodes.node_handoff_effect.handlers.handler_handoff_effect.validate_infra_sources"
 
 
 def _git(args: list[str], cwd: Path) -> None:
-    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
+    subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        env=scrub_git_location_env(os.environ),
+    )
 
 
 @pytest.fixture
@@ -66,10 +77,12 @@ class TestHandlerHandoffEffect:
             ),
         ):
             result = handler.handle(
-                session_id=session_id,
-                correlation_id=correlation_id,
-                summary="continue auth work",
-                cwd=str(git_repo),
+                ModelHandoffRequest(
+                    session_id=session_id,
+                    correlation_id=correlation_id,
+                    summary="continue auth work",
+                    cwd=str(git_repo),
+                )
             )
 
         artifact_path = Path(result["artifact_path"])
@@ -103,9 +116,11 @@ class TestHandlerHandoffEffect:
             ),
         ):
             result = handler.handle(
-                session_id="sess-xyz",
-                correlation_id=uuid.uuid4(),
-                cwd=str(git_repo),
+                ModelHandoffRequest(
+                    session_id="sess-xyz",
+                    correlation_id=uuid.uuid4(),
+                    cwd=str(git_repo),
+                )
             )
 
         assert isinstance(result["captured_branches"], list)
@@ -129,9 +144,11 @@ class TestHandlerHandoffEffect:
             ),
         ):
             result = handler.handle(
-                session_id="sess-nogit",
-                correlation_id=uuid.uuid4(),
-                cwd=str(non_git),
+                ModelHandoffRequest(
+                    session_id="sess-nogit",
+                    correlation_id=uuid.uuid4(),
+                    cwd=str(non_git),
+                )
             )
 
         assert Path(result["artifact_path"]).exists()
@@ -203,9 +220,11 @@ class TestInfraHealthGatherError:
             handler = HandlerHandoffEffect()
             with pytest.raises(InfraHealthGatherError, match="infisical"):
                 handler.handle(
-                    session_id="sess-ssh-fail",
-                    correlation_id=uuid.uuid4(),
-                    cwd=str(git_repo),
+                    ModelHandoffRequest(
+                        session_id="sess-ssh-fail",
+                        correlation_id=uuid.uuid4(),
+                        cwd=str(git_repo),
+                    )
                 )
 
     def test_artifact_contains_infra_health_section(
@@ -243,9 +262,11 @@ class TestInfraHealthGatherError:
             ),
         ):
             result = handler.handle(
-                session_id="sess-infra",
-                correlation_id=uuid.uuid4(),
-                cwd=str(git_repo),
+                ModelHandoffRequest(
+                    session_id="sess-infra",
+                    correlation_id=uuid.uuid4(),
+                    cwd=str(git_repo),
+                )
             )
 
         data = yaml.safe_load(Path(result["artifact_path"]).read_text())
@@ -257,3 +278,15 @@ class TestInfraHealthGatherError:
         assert ih["kafka_redpanda"] == "Up 3 hours"
         assert ih["postgres"] == "Up 3 hours"
         assert ih["open_infra_blockers"] == "OMN-9999"
+
+
+def test_contract_publishes_handoff_completed_topic() -> None:
+    """The node's declared publish surface is its completion event (OMN-21536)."""
+    contract_path = (
+        Path(__file__).resolve().parents[1]
+        / "src/omnimarket/nodes/node_handoff_effect/contract.yaml"
+    )
+    contract = yaml.safe_load(contract_path.read_text())
+    assert contract["event_bus"]["publish_topics"] == [
+        "onex.evt.omnimarket.handoff-effect-completed.v1"
+    ]

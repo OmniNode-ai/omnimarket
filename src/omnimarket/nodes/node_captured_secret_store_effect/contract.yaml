@@ -56,3 +56,7 @@ event_bus:
 
 metadata:
   transport_type: kafka
+
+timeouts:
+  store_call_timeout_seconds: 5.0  # Bounds each secret-store API call.
+  credential_close_timeout_seconds: 30.0  # Bounds the credential holder close operation.

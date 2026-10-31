@@ -12,6 +12,8 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from omnimarket.handlers.network_bindings import network_port
+
 _SHA256 = r"^[0-9a-f]{64}$"
 _IDENTIFIER = r"^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
 _CONTAINER_ENVIRONMENT_CONSTRUCTION_V2_DOMAIN = (
@@ -21,7 +23,6 @@ _VALKEY_STATIC_CONFIGURATION_V2_DOMAIN = (
     b"omninode-rsd.valkey-static-configuration.sha256.v2\x00"
 )
 _VALKEY_SCHEME = "redis:"
-_VALKEY_FIXED_PORT = 6379
 
 
 class _Model(BaseModel):
@@ -87,7 +88,7 @@ def valkey_static_authority(static_ipv4: str) -> str:
         address = ipaddress.IPv4Address(static_ipv4)
     except ipaddress.AddressValueError:
         raise ValueError("Valkey static authority is invalid") from None
-    return f"{_VALKEY_SCHEME}//{address}:{_VALKEY_FIXED_PORT}"
+    return f"{_VALKEY_SCHEME}//{address}:{network_port('valkey.port')}"
 
 
 class ContainerSecretSinkV1(StrEnum):

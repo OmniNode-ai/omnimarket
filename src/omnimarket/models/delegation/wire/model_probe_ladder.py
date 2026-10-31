@@ -21,10 +21,12 @@ from omnibase_core.enums.enum_delegation_traffic_class import (
 from omnibase_core.models.delegation.wire import ModelDelegationProvenance
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from omnimarket.handlers.network_bindings import network_hosts
+
 # The one producer surface whose synthetic requests may carry a probe ladder.
 PROBE_LADDER_SOURCE_SURFACE = "doctor_escalation_check"
 
-_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+_LOOPBACK_HOSTS = frozenset(network_hosts("loopback.hosts"))
 
 
 class ModelProbeRung(BaseModel):

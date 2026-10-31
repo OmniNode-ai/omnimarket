@@ -24,8 +24,9 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
-import os
 import socket
+
+from omnimarket.handlers.runtime_paths import runtime_location
 
 logger = logging.getLogger(__name__)
 
@@ -40,15 +41,11 @@ _MAX_READ_ITERATIONS = 64
 def default_socket_path() -> str:
     """Resolve the default socket path.
 
-    Resolution order: ONEX_EMIT_SOCKET_PATH env > XDG_RUNTIME_DIR > /tmp fallback.
+    Resolution order: ONEX_EMIT_SOCKET_PATH env > XDG_RUNTIME_DIR > the runtime-path authority.
     """
-    env_path = os.environ.get("ONEX_EMIT_SOCKET_PATH")
-    if env_path:
-        return env_path
-    xdg = os.environ.get("XDG_RUNTIME_DIR")
-    if xdg:
-        return os.path.join(xdg, "onex", "emit.sock")
-    return "/tmp/onex-emit.sock"
+    return runtime_location(
+        "emit_daemon.socket_path", "ONEX_EMIT_SOCKET_PATH", ("onex", "emit.sock")
+    )
 
 
 class EmitClient:

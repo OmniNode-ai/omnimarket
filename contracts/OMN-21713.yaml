@@ -1,0 +1,65 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21713"
+title: "Every operator ask or idea is reported with its state (owned, ticketed, parked, done or dropped) by one compute node, and an ask with no owner, ticket or parked row is reported as dropped"
+summary: "node_ask_state_compute folds the captured operator prompts and the ledger rows into one state per ask, the parked queue in sequence order, the dropped ids and a WIP read. node_ask_state_effect reads the capture store and the ledger and prints it; the command exits 1 while any ask is dropped."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21713-ask-state"
+    statement: |-
+      An ask the operator stated is owned, ticketed, parked or done, or it is reported dropped once the grace window passes. Parked asks stay visible in a queue ordered by sequence.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a fixture ask answered in chat only (no ledger row cites it) is reported dropped, and a fixture ask that spawned a lane (a CLAIM citing ask=<id>) is reported owned, then done after that lane's TERMINAL -- falsifier: uv run pytest tests/unit/nodes/node_ask_state_compute/test_handler_ask_state.py -q"
+      - id: "AC2"
+        statement: "AC2: a parked row with reason and sequence puts the ask in the parked queue ordered by sequence, and an ask younger than the grace window is never reported dropped -- falsifier: uv run pytest tests/unit/nodes/node_ask_state_compute/test_handler_ask_state.py -q"
+      - id: "AC3"
+        statement: "AC3: the CLI run over the operator prompts since 2026-10-31T00:00Z lists every tracked ask with its state and exits non-zero while any ask is dropped -- falsifier: uv run pytest tests/unit/nodes/node_ask_state_effect/test_handler_ask_state_report.py tests/unit/nodes/test_golden_chain_ask_state.py -q"
+evidence_requirements:
+  - kind: "tests"
+    description: "Chat-only, lane-owned, done, parked, grace-window and inferred-link cases pass; the CLI exit code follows the dropped count."
+    command: "uv run pytest tests/unit/nodes/node_ask_state_compute/test_handler_ask_state.py tests/unit/nodes/node_ask_state_effect/test_handler_ask_state_report.py tests/unit/nodes/test_golden_chain_ask_state.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21713-states"
+    description: "The state fixtures pass."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_ask_state_compute/test_handler_ask_state.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21713-parked-grace"
+    description: "Parked queue order and the grace window pass."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_ask_state_compute/test_handler_ask_state.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21713-cli"
+    description: "The command line and the golden chain pass."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_ask_state_effect/test_handler_ask_state_report.py tests/unit/nodes/test_golden_chain_ask_state.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21713-deploy-shared-report"
+    description: "The evaluated GitHub head serves the shared report model to compute and local effect consumers; the behavior tests exercise the local CLI without a broker or lab service."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "command"
+        check_value: |-
+          set -eu;
+          curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/models/model_ask_state.py" | grep -q "class ModelAskStateReport"
+        cwd: "."
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_ask_state_effect/test_handler_ask_state_report.py tests/unit/nodes/test_golden_chain_ask_state.py -q --no-cov"
+        cwd: "."
