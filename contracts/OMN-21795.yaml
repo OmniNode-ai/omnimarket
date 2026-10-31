@@ -11,15 +11,15 @@ requirements:
   statement: A docker or docker compose command from a Claude session that would recreate, remove, stop or restart a dev runtime container is refused unless a live ledger grant names the project, and read-only calls and other projects pass.
   acceptance:
   - id: AC1
-    statement: 'AC1: a PreToolUse Bash hook refuses docker or docker compose up, down, rm, restart, stop, kill, start or create aimed at the omnibase-infra project (by -p, COMPOSE_PROJECT_NAME, its compose file, its project label or a declared container name, locally or over ssh) unless a live grant row on the ledger names compose:omnibase-infra; planted refusal tests fail on the unguarded hook and pass on the guard -- falsifier: uv run pytest tests/nodes/node_dev_runtime_mutation_guard_effect -q'
+    statement: 'AC1: a PreToolUse Bash hook refuses docker or docker compose up, down, rm, restart, stop, kill, start or create aimed at the omnibase-infra project (by -p, COMPOSE_PROJECT_NAME, its compose file, its project label or a declared container name, locally or over ssh) unless a live grant row on the ledger names compose:omnibase-infra; planted refusal tests fail on the unguarded hook and pass on the guard -- falsifier: uv run pytest tests/nodes/node_dev_runtime_mutation_guard_effect/test_handler_dev_runtime_mutation_guard.py -q'
   - id: AC2
-    statement: 'AC2: the protected projects, their container names and compose files, the mutating verbs and the grant row shape are read from the node contract and an optional overlay, never from code constants -- falsifier: uv run pytest tests/nodes/node_dev_runtime_mutation_guard_effect -k overlay -q'
+    statement: 'AC2: the protected projects, their container names and compose files, the mutating verbs and the grant row shape are read from the node contract and an optional overlay, never from code constants -- falsifier: uv run pytest tests/nodes/node_dev_runtime_mutation_guard_effect/test_handler_dev_runtime_mutation_guard.py -k overlay -q'
   - id: AC3
-    statement: 'AC3: read-only docker calls (ps, logs, inspect, events, compose config or ps) and every other compose project are never refused by this hook -- falsifier: uv run pytest tests/nodes/node_dev_runtime_mutation_guard_effect -k allow -q'
+    statement: 'AC3: read-only docker calls (ps, logs, inspect, events, compose config or ps) and every other compose project are never refused by this hook -- falsifier: uv run pytest tests/nodes/node_dev_runtime_mutation_guard_effect/test_handler_dev_runtime_mutation_guard.py -k allow -q'
 evidence_requirements:
 - kind: tests
   description: The node's unit suite, run on a lab host at the pushed head.
-  command: uv run pytest tests/nodes/node_dev_runtime_mutation_guard_effect -q --no-cov --tb=line
+  command: uv run pytest tests/nodes/node_dev_runtime_mutation_guard_effect/test_handler_dev_runtime_mutation_guard.py -q --no-cov --tb=line
 emergency_bypass:
   enabled: false
   justification: ''
@@ -32,7 +32,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_dev_runtime_mutation_guard_effect -k ac1 -q --no-cov --tb=line
+    check_value: uv run pytest tests/nodes/node_dev_runtime_mutation_guard_effect/test_handler_dev_runtime_mutation_guard.py -k ac1 -q --no-cov --tb=line
     cwd: .
 - id: dod-omn21795-ac2-contract-overlay
   description: AC2 reads the policy from the contract and proves an overlay adds a container and cannot replace the grant rules.
@@ -41,7 +41,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_dev_runtime_mutation_guard_effect -k ac2 -q --no-cov --tb=line
+    check_value: uv run pytest tests/nodes/node_dev_runtime_mutation_guard_effect/test_handler_dev_runtime_mutation_guard.py -k ac2 -q --no-cov --tb=line
     cwd: .
 - id: dod-omn21795-ac3-allowed
   description: AC3 runs read-only calls, other projects and prose that names a mutation, and lite mode.
@@ -50,5 +50,5 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_dev_runtime_mutation_guard_effect -k ac3 -q --no-cov --tb=line
+    check_value: uv run pytest tests/nodes/node_dev_runtime_mutation_guard_effect/test_handler_dev_runtime_mutation_guard.py -k ac3 -q --no-cov --tb=line
     cwd: .
