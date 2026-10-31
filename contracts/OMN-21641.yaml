@@ -1,0 +1,53 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-21641"
+title: "onex scm resolves a pull request review thread through the GitHub write node"
+summary: "node_github_repo_write_effect serves a pr_thread_resolve operation (onex scm pr-thread-resolve). A request names the pull request and the review thread's GraphQL node id; the effect reads the PR's review threads, refuses a thread not on the PR (not_found) or with no reply from the fixing lane (thread_not_replied) before any mutation, returns an already resolved thread replayed, and otherwise sends the GraphQL resolveReviewThread mutation under the node's write identity. The live resolution of the six replied threads on omnibase_infra#5484 is a post-merge step on a runtime that serves the new verb."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched: ["events", "protocols"]
+requirements:
+  - id: "req-omn21641-thread-resolve"
+    statement: "A lane that fixed and replied to a review thread resolves it through onex scm, and a thread with no fixing reply is never resolved."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a request naming the PR and a review thread id resolves the thread through GraphQL resolveReviewThread and answers Completed -- falsifier: uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_pr_thread_resolve.py -q"
+      - id: "AC2"
+        statement: "AC2: the handler refuses thread_not_replied when the thread has no reply from the fixing lane, and sends no mutation -- falsifier: uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_pr_thread_resolve.py -q -k not_replied"
+evidence_requirements:
+  - kind: "tests"
+    description: "The pr_thread_resolve tests on a recorded transport, red at the merge base where the operation does not exist."
+    command: "uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_pr_thread_resolve.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21641-ac1-resolve"
+    description: "AC1: a thread with a fixing reply is resolved through the resolveReviewThread mutation, found on a later page, replayed when already resolved, and the dry_run plan is the thread read then the mutation."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_pr_thread_resolve.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn21641-ac2-not-replied"
+    description: "AC2: a thread with no reply, or only the reviewer's own comments, is refused thread_not_replied with no mutation sent."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_pr_thread_resolve.py -q --no-cov -k not_replied"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn21641-deploy-published-source-readback"
+    description: |-
+      Hosted-runner source-artifact readback: fetch the pr_thread_resolve service at the
+      evaluated commit and require the resolveReviewThread mutation. A missing file or a
+      missing marker fails the command.
+      No lab service, credentials or broker is required. This checks the published
+      source artifact and does not assert a live runtime rollout.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_github_repo_write_effect/services/pr_thread_resolve.py" | grep -q "resolveReviewThread"
+        cwd: "."

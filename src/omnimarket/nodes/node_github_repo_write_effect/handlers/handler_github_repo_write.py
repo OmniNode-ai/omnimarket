@@ -135,6 +135,15 @@ from omnimarket.nodes.node_github_repo_write_effect.protocols import (
     ProtocolLeaseFence,
     ProtocolPrClaimLookup,
 )
+from omnimarket.nodes.node_github_repo_write_effect.services.pr_thread_resolve import (
+    IDEMPOTENCY_MARKER_PREFIX,
+    THREAD_SCAN_PAGES,
+    dict_at,
+    has_fix_reply,
+    resolve_review_thread_request,
+    thread_nodes,
+    threads_page_request,
+)
 
 _log = logging.getLogger(__name__)
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
@@ -174,7 +183,7 @@ async def _credential_from_store(ref: str) -> SecretStr | None:
 
 def idempotency_marker(key: str) -> str:
     """The hidden line a pr_comment carries so a retry can find it."""
-    return f"<!-- onex-idempotency-key: {key} -->"
+    return f"{IDEMPOTENCY_MARKER_PREFIX}{key} -->"
 
 
 def _resource_of(request: ModelGithubHttpRequest) -> str:
@@ -665,6 +674,8 @@ class HandlerGithubRepoWriteEffect:
             return await _pr_comment(run)
         if op is EnumRepoWriteOperation.PR_THREAD_REPLY:
             return await _pr_thread_reply(run)
+        if op is EnumRepoWriteOperation.PR_THREAD_RESOLVE:
+            return await _pr_thread_resolve(run)
         if op is EnumRepoWriteOperation.CHECK_RUN_CREATE:
             return await _check_run_create(run)
         return await _workflow_dispatch(run)
@@ -899,6 +910,45 @@ async def _pr_thread_reply(run: _Run) -> ModelRepoWriteCompleted:
     )
 
 
+async def _pr_thread_resolve(run: _Run) -> ModelRepoWriteCompleted:
+    c = run.command
+    number = c.pr_number or 0
+    thread_id = c.review_thread_id or ""
+    head_sha: str | None = None
+    if c.expected_head_sha is not None:
+        head_sha = _str_at(await run.expect_pr_head(), "head", "sha")
+    after: str | None = None
+    found: dict[str, object] | None = None
+    for _page in range(THREAD_SCAN_PAGES):
+        nodes, after = thread_nodes(
+            await run.send(threads_page_request(c.repo, number, after))
+        )
+        found = next(
+            (n for n in nodes if isinstance(n, dict) and n.get("id") == thread_id),
+            None,
+        )
+        if found is not None or after is None:
+            break
+    if found is None:
+        raise run.refused(
+            EnumRepoWriteRefusal.NOT_FOUND,
+            f"review thread {thread_id} is not on {c.repo}#{number}; no mutation sent",
+        )
+    comments = dict_at(found, "comments").get("nodes")
+    comment_list = comments if isinstance(comments, list) else []
+    url = _str_at(comment_list[0] if comment_list else None, "url")
+    if found.get("isResolved") is True:
+        return run.completed(replayed=True, html_url=url, head_sha=head_sha)
+    if not has_fix_reply(comment_list):
+        raise run.refused(
+            EnumRepoWriteRefusal.THREAD_NOT_REPLIED,
+            f"review thread {thread_id} on {c.repo}#{number} has no reply from the "
+            "fixing lane; reply with pr-thread-reply first; no mutation sent",
+        )
+    await run.send(resolve_review_thread_request(thread_id))
+    return run.completed(html_url=url, head_sha=head_sha)
+
+
 def _check_run_create_request(c: ModelRepoWriteRequest) -> ModelGithubHttpRequest:
     body: dict[str, object] = {
         "name": c.name,
@@ -995,6 +1045,13 @@ def planned_requests(
                 c.thread_comment_id or 0,
                 f"{c.body}\n\n{idempotency_marker(c.idempotency_key)}",
             ),
+        )
+    if op is EnumRepoWriteOperation.PR_THREAD_RESOLVE:
+        read = [pull_request_request(c.repo, n)] if c.expected_head_sha else []
+        return (
+            *read,
+            threads_page_request(c.repo, n, None),
+            resolve_review_thread_request(c.review_thread_id or ""),
         )
     read_pr = pull_request_request(c.repo, n)
     if op is EnumRepoWriteOperation.PR_READY:

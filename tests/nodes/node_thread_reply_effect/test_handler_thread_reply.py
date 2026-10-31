@@ -39,6 +39,9 @@ from omnimarket.nodes.node_thread_reply_effect.handlers.handler_thread_reply imp
 from omnimarket.nodes.node_thread_reply_effect.models.model_thread_replied_event import (
     ModelThreadRepliedEvent,
 )
+from omnimarket.nodes.node_thread_reply_effect.models.model_thread_reply_request import (
+    ModelThreadReplyRequest,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -134,11 +137,13 @@ async def test_default_draft_first_policy(monkeypatch: pytest.MonkeyPatch) -> No
 
     h = _handler()
     result = await h.handle(
-        correlation_id=uuid4(),
-        pr_number=PR_NUM,
-        repo=REPO,
-        thread_body=THREAD_BODY,
-        routing_policy=ROUTING_POLICY,
+        ModelThreadReplyRequest(
+            correlation_id=uuid4(),
+            pr_number=PR_NUM,
+            repo=REPO,
+            thread_body=THREAD_BODY,
+            routing_policy=ROUTING_POLICY,
+        )
     )
 
     assert isinstance(result, ModelThreadRepliedEvent)
@@ -162,11 +167,13 @@ async def test_direct_post_env_disables_draft(monkeypatch: pytest.MonkeyPatch) -
 
     h = _handler()
     result = await h.handle(
-        correlation_id=uuid4(),
-        pr_number=PR_NUM,
-        repo=REPO,
-        thread_body=THREAD_BODY,
-        routing_policy=ROUTING_POLICY,
+        ModelThreadReplyRequest(
+            correlation_id=uuid4(),
+            pr_number=PR_NUM,
+            repo=REPO,
+            thread_body=THREAD_BODY,
+            routing_policy=ROUTING_POLICY,
+        )
     )
 
     assert result.is_draft is False
@@ -188,11 +195,13 @@ async def test_ci_mode_forces_draft_even_with_direct_post(
 
     h = _handler()
     result = await h.handle(
-        correlation_id=uuid4(),
-        pr_number=PR_NUM,
-        repo=REPO,
-        thread_body=THREAD_BODY,
-        routing_policy=ROUTING_POLICY,
+        ModelThreadReplyRequest(
+            correlation_id=uuid4(),
+            pr_number=PR_NUM,
+            repo=REPO,
+            thread_body=THREAD_BODY,
+            routing_policy=ROUTING_POLICY,
+        )
     )
 
     assert result.is_draft is True
@@ -214,11 +223,13 @@ async def test_llm_error_reraises(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(RuntimeError, match="LLM endpoint unreachable"):
         await h.handle(
-            correlation_id=uuid4(),
-            pr_number=PR_NUM,
-            repo=REPO,
-            thread_body=THREAD_BODY,
-            routing_policy=ROUTING_POLICY,
+            ModelThreadReplyRequest(
+                correlation_id=uuid4(),
+                pr_number=PR_NUM,
+                repo=REPO,
+                thread_body=THREAD_BODY,
+                routing_policy=ROUTING_POLICY,
+            )
         )
 
 
@@ -237,11 +248,13 @@ async def test_gh_api_failure_reraises(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(RuntimeError, match="gh api post-comment failed"):
         await h.handle(
-            correlation_id=uuid4(),
-            pr_number=PR_NUM,
-            repo=REPO,
-            thread_body=THREAD_BODY,
-            routing_policy=ROUTING_POLICY,
+            ModelThreadReplyRequest(
+                correlation_id=uuid4(),
+                pr_number=PR_NUM,
+                repo=REPO,
+                thread_body=THREAD_BODY,
+                routing_policy=ROUTING_POLICY,
+            )
         )
 
 
@@ -258,11 +271,13 @@ async def test_used_fallback_propagated(monkeypatch: pytest.MonkeyPatch) -> None
 
     h = _handler(llm_fallback=True)
     result = await h.handle(
-        correlation_id=uuid4(),
-        pr_number=PR_NUM,
-        repo=REPO,
-        thread_body=THREAD_BODY,
-        routing_policy=ROUTING_POLICY,
+        ModelThreadReplyRequest(
+            correlation_id=uuid4(),
+            pr_number=PR_NUM,
+            repo=REPO,
+            thread_body=THREAD_BODY,
+            routing_policy=ROUTING_POLICY,
+        )
     )
 
     assert result.used_fallback is True
@@ -333,12 +348,14 @@ async def test_protected_branch_raises_before_api_call(
 
     with pytest.raises(ValueError, match="protected branch"):
         await h.handle(
-            correlation_id=uuid4(),
-            pr_number=PR_NUM,
-            repo=REPO,
-            thread_body=THREAD_BODY,
-            routing_policy=ROUTING_POLICY,
-            head_ref_name="main",
+            ModelThreadReplyRequest(
+                correlation_id=uuid4(),
+                pr_number=PR_NUM,
+                repo=REPO,
+                thread_body=THREAD_BODY,
+                routing_policy=ROUTING_POLICY,
+                head_ref_name="main",
+            )
         )
 
     assert not gh_called, "gh api must not be called for protected branch"
@@ -354,12 +371,14 @@ async def test_unprotected_branch_does_not_raise(
 
     h = _handler()
     result = await h.handle(
-        correlation_id=uuid4(),
-        pr_number=PR_NUM,
-        repo=REPO,
-        thread_body=THREAD_BODY,
-        routing_policy=ROUTING_POLICY,
-        head_ref_name="jonahgabriel/omn-8990-thread-reply-impl",
+        ModelThreadReplyRequest(
+            correlation_id=uuid4(),
+            pr_number=PR_NUM,
+            repo=REPO,
+            thread_body=THREAD_BODY,
+            routing_policy=ROUTING_POLICY,
+            head_ref_name="feature/omn-8990-thread-reply-impl",
+        )
     )
     assert result.reply_posted is True
 
@@ -384,11 +403,13 @@ async def test_routing_policy_missing_primary_propagates(
 
     with pytest.raises((ValidationError, RuntimeError)):
         await h.handle(
-            correlation_id=uuid4(),
-            pr_number=PR_NUM,
-            repo=REPO,
-            thread_body=THREAD_BODY,
-            routing_policy={},  # missing required 'primary'
+            ModelThreadReplyRequest(
+                correlation_id=uuid4(),
+                pr_number=PR_NUM,
+                repo=REPO,
+                thread_body=THREAD_BODY,
+                routing_policy={},  # missing required 'primary'
+            )
         )
 
 
@@ -429,11 +450,13 @@ async def test_real_llm_path_produces_reply(monkeypatch: pytest.MonkeyPatch) -> 
     h = HandlerThreadReply(gh_run_fn=_make_gh_run())
 
     result = await h.handle(
-        correlation_id=uuid4(),
-        pr_number=PR_NUM,
-        repo=REPO,
-        thread_body=THREAD_BODY,
-        routing_policy=ROUTING_POLICY,
+        ModelThreadReplyRequest(
+            correlation_id=uuid4(),
+            pr_number=PR_NUM,
+            repo=REPO,
+            thread_body=THREAD_BODY,
+            routing_policy=ROUTING_POLICY,
+        )
     )
 
     assert result.reply_posted is True
@@ -475,11 +498,13 @@ async def test_real_llm_path_fallback_flag_propagated(
     h = HandlerThreadReply(gh_run_fn=_make_gh_run())
 
     result = await h.handle(
-        correlation_id=uuid4(),
-        pr_number=PR_NUM,
-        repo=REPO,
-        thread_body=THREAD_BODY,
-        routing_policy=ROUTING_POLICY,
+        ModelThreadReplyRequest(
+            correlation_id=uuid4(),
+            pr_number=PR_NUM,
+            repo=REPO,
+            thread_body=THREAD_BODY,
+            routing_policy=ROUTING_POLICY,
+        )
     )
 
     assert result.used_fallback is True

@@ -20,10 +20,13 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import Any, Final, Literal
+from typing import Any, Final, Literal, cast
 
 import yaml
 
+from omnimarket.handlers.handler_packaged_contract_loader import (
+    load_packaged_contract_section,
+)
 from omnimarket.inference.adapter_inference_bridge import (
     AdapterInferenceBridge,
     ModelInferenceAdapter,
@@ -230,6 +233,11 @@ def _parse_segments(
     return segments
 
 
+def _declared_seconds(declared: Any) -> float | None:
+    """A duration the contract config declares; None leaves the packaged contract to supply it."""
+    return None if declared is None else float(declared)
+
+
 class HandlerSegmentation:
     """Semantic segmentation handler using a configurable LLM.
 
@@ -245,7 +253,7 @@ class HandlerSegmentation:
         inference_bridge: ModelInferenceAdapter | None = None,
         segmentation_model_key: str = _DEFAULT_SEGMENTATION_MODEL_KEY,
         segmentation_temperature: float = 0.1,
-        segmentation_timeout_seconds: float = 120.0,
+        segmentation_timeout_seconds: float | None = None,
         low_confidence_threshold: float = 0.4,
         prompt_template_id: str = "adr_segmentation_v1",
         prompt_template_version: str = "1.0.0",
@@ -261,7 +269,18 @@ class HandlerSegmentation:
         self._bridge_lock = asyncio.Lock()
         self._model_key = segmentation_model_key
         self._temperature = segmentation_temperature
-        self._timeout = segmentation_timeout_seconds
+        self._timeout = (
+            segmentation_timeout_seconds
+            if segmentation_timeout_seconds is not None
+            else float(
+                cast(
+                    dict[str, Any],
+                    load_packaged_contract_section(
+                        "node_adr_segmentation_llm_effect", "config"
+                    ),
+                )["segmentation_timeout_seconds"]["default"]
+            )
+        )
         self._low_confidence_threshold = low_confidence_threshold
         self._prompt_template_id = prompt_template_id
         self._prompt_template_version = prompt_template_version
@@ -429,8 +448,8 @@ class HandlerSegmentation:
             segmentation_temperature=float(
                 cfg.get("segmentation_temperature", {}).get("default", 0.1)
             ),
-            segmentation_timeout_seconds=float(
-                cfg.get("segmentation_timeout_seconds", {}).get("default", 120.0)
+            segmentation_timeout_seconds=_declared_seconds(
+                cfg.get("segmentation_timeout_seconds", {}).get("default")
             ),
             low_confidence_threshold=float(
                 cfg.get("low_confidence_threshold", {}).get("default", 0.4)

@@ -310,3 +310,174 @@ def test_engines_and_custom_engine_selection(tmp_path: Path) -> None:
         ].name
         == "host_b"
     )
+
+
+NOW_CREDIT = datetime(2026, 10, 22, 17, 35, tzinfo=UTC)
+RESET_CREDIT = datetime(2026, 10, 22, 18, tzinfo=UTC)
+
+
+def _rate(kind: str, status: str = "allowed_warning") -> dict[str, Any]:
+    return {
+        "rateLimitType": kind,
+        "status": status,
+        "resetsAt": RESET_CREDIT.timestamp(),
+    }
+
+
+def _account(pdir: Path) -> dict[str, Any]:
+    state = json.loads((pdir / acc.CLOUD_STATE_FILE).read_text())
+    return dict(state["accounts"]["host_a"])
+
+
+def _login_ok(_host: Any) -> str:
+    return acc.CLOUD_LOGIN_OK
+
+
+@pytest.mark.parametrize("kind", ["five_hour", "seven_day"])
+def test_positive_cloud_credit_keeps_subscription_warning_slots_open(
+    tmp_path: Path, kind: str
+) -> None:
+    """OMN-20266: a subscription warning alone does not show the cloud credit is spent."""
+
+    acc.record_cloud_credit(
+        tmp_path, "host_a", 242.21, "usage reading", now=NOW_CREDIT - timedelta(hours=4)
+    )
+    assert (
+        acc.record_cloud_rate(tmp_path, "host_a", _rate(kind), now=NOW_CREDIT) is None
+    )
+    assert (
+        acc.cloud_pick(tmp_path, host_pool()[:1], _login_ok, now=NOW_CREDIT)[0]
+        is not None
+    )
+    assert acc.cloud_slots(tmp_path, NOW_CREDIT, consented={"host_a"}) == {
+        "host_a": acc.CLOUD_CAP_START
+    }
+
+
+def test_existing_warning_hold_is_released_by_positive_credit(tmp_path: Path) -> None:
+    """The hold the node wrote before this fix (h200, seven_day, 2026-10-30) reopens without a session read."""
+
+    acc.record_cloud_credit(
+        tmp_path, "host_a", 244.0, "usage reading", now=NOW_CREDIT - timedelta(hours=4)
+    )
+    entry = _account(tmp_path)
+    entry.update(
+        login=acc.CLOUD_LOGIN_OK,
+        limited_until="2026-10-22T18:00:00Z",
+        limited_why="draws on its seven_day subscription limit at a warning, not the cloud credit",
+        rate={"type": "seven_day", "status": "allowed_warning", "read_at": "x"},
+    )
+    (tmp_path / acc.CLOUD_STATE_FILE).write_text(
+        json.dumps({"accounts": {"host_a": entry}})
+    )
+    assert acc.cloud_slots(tmp_path, NOW_CREDIT, consented={"host_a"}) == {
+        "host_a": acc.CLOUD_CAP_START
+    }
+    assert (
+        acc.record_cloud_rate(tmp_path, "host_a", _rate("seven_day"), now=NOW_CREDIT)
+        is None
+    )
+    assert "limited_until" not in _account(tmp_path)
+
+
+@pytest.mark.parametrize("status", ["not_allowed", "rejected"])
+@pytest.mark.parametrize("kind", ["five_hour", "ccr_promotional"])
+def test_refused_rate_holds_even_with_positive_credit(
+    tmp_path: Path, status: str, kind: str
+) -> None:
+    acc.record_cloud_credit(tmp_path, "host_a", 242.21, "usage reading", now=NOW_CREDIT)
+    assert acc.record_cloud_rate(
+        tmp_path, "host_a", _rate(kind, status), now=NOW_CREDIT
+    )
+    assert (
+        acc.cloud_pick(tmp_path, host_pool()[:1], _login_ok, now=NOW_CREDIT)[0] is None
+    )
+    # A later warning does not erase a real refusal's unexpired hold.
+    acc.record_cloud_rate(
+        tmp_path, "host_a", _rate("seven_day"), now=NOW_CREDIT + timedelta(seconds=1)
+    )
+    assert (
+        acc.cloud_pick(tmp_path, host_pool()[:1], _login_ok, now=NOW_CREDIT)[0] is None
+    )
+
+
+def test_zero_credit_stays_held_after_an_allowed_rate(tmp_path: Path) -> None:
+    acc.record_cloud_credit(tmp_path, "host_a", 0, "usage reading", now=NOW_CREDIT)
+    acc.record_cloud_rate(
+        tmp_path, "host_a", _rate("five_hour", "allowed"), now=NOW_CREDIT
+    )
+    assert (
+        acc.cloud_pick(tmp_path, host_pool()[:1], _login_ok, now=NOW_CREDIT)[0] is None
+    )
+    assert "credit read zero" in str(
+        acc.cloud_account_skip(_account(tmp_path), NOW_CREDIT)
+    )
+
+
+@pytest.mark.parametrize("status", ["allowed", "allowed_warning"])
+def test_promotional_to_subscription_fallback_keeps_spent_credit_held(
+    tmp_path: Path, status: str
+) -> None:
+    acc.record_cloud_credit(
+        tmp_path, "host_a", 2.0, "earlier reading", now=NOW_CREDIT - timedelta(hours=1)
+    )
+    acc.record_cloud_rate(
+        tmp_path, "host_a", _rate("ccr_promotional", "allowed"), now=NOW_CREDIT
+    )
+    assert acc.record_cloud_rate(
+        tmp_path,
+        "host_a",
+        _rate("five_hour", status),
+        now=NOW_CREDIT + timedelta(seconds=1),
+    )
+    assert acc.record_cloud_rate(
+        tmp_path,
+        "host_a",
+        _rate("seven_day", status),
+        now=NOW_CREDIT + timedelta(seconds=2),
+    )
+    assert (
+        acc.cloud_pick(tmp_path, host_pool()[:1], _login_ok, now=NOW_CREDIT)[0] is None
+    )
+
+
+def test_manual_account_hold_is_preserved_with_positive_credit(tmp_path: Path) -> None:
+    acc.record_cloud_credit(tmp_path, "host_a", 242.21, "usage reading", now=NOW_CREDIT)
+    acc.mark_cloud_limited(tmp_path, "host_a", "2099-01-01T00:00:00Z", "operator hold")
+    acc.record_cloud_rate(tmp_path, "host_a", _rate("five_hour"), now=NOW_CREDIT)
+    assert (
+        acc.cloud_pick(tmp_path, host_pool()[:1], _login_ok, now=NOW_CREDIT)[0] is None
+    )
+
+
+def test_new_positive_reading_disproves_an_earlier_promotional_fallback(
+    tmp_path: Path,
+) -> None:
+    acc.record_cloud_credit(
+        tmp_path, "host_a", 2.0, "earlier reading", now=NOW_CREDIT - timedelta(hours=1)
+    )
+    acc.record_cloud_rate(
+        tmp_path, "host_a", _rate("ccr_promotional", "allowed"), now=NOW_CREDIT
+    )
+    acc.record_cloud_rate(
+        tmp_path, "host_a", _rate("five_hour"), now=NOW_CREDIT + timedelta(seconds=1)
+    )
+    assert (
+        acc.cloud_pick(tmp_path, host_pool()[:1], _login_ok, now=NOW_CREDIT)[0] is None
+    )
+    acc.record_cloud_credit(
+        tmp_path, "host_a", 250.0, "new reading", now=NOW_CREDIT + timedelta(seconds=2)
+    )
+    assert (
+        acc.cloud_pick(
+            tmp_path, host_pool()[:1], _login_ok, now=NOW_CREDIT + timedelta(seconds=3)
+        )[0]
+        is not None
+    )
+
+
+def test_unknown_credit_still_holds_subscription_warning(tmp_path: Path) -> None:
+    assert acc.record_cloud_rate(tmp_path, "host_a", _rate("five_hour"), now=NOW_CREDIT)
+    assert (
+        acc.cloud_pick(tmp_path, host_pool()[:1], _login_ok, now=NOW_CREDIT)[0] is None
+    )
