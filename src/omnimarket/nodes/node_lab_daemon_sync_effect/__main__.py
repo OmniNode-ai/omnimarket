@@ -16,9 +16,12 @@ from typing import Never
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.nodes.node_lab_daemon_sync_effect.container import (
+    container_lab_daemon_sync_effect,
+)
+
 from .handlers.adapter_host import LabSyncHostIo
 from .handlers.adapter_publisher import ContractEventPublisher, publish_topics
-from .handlers.handler_lab_daemon_sync import HandlerLabDaemonSync
 from .models.model_lab_daemon_sync import ModelDaemonOverlay, ModelLabDaemonSyncCommand
 
 DEFAULT_OVERLAY = Path(__file__).parent / "overlays" / "lab_daemons.yaml"
@@ -132,7 +135,7 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(f"INDETERMINATE: {exc}\n")
         return 3
     refused_topic, completed_topic = publish_topics()
-    handler = HandlerLabDaemonSync(
+    handler = container_lab_daemon_sync_effect.build_handler_lab_daemon_sync(
         host=LabSyncHostIo(),
         publisher=ContractEventPublisher(),
         refused_topic=refused_topic,
