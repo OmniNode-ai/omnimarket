@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The Phase 2 LLM routing policy of HandlerTriageOrchestrator (OMN-21691); code names no model.
+# It must match omnibase_compat.routing.model_routing_policy.ModelRoutingPolicy.
+routing_policy:
+  primary: deepseek-r1-14b
+  fallback: qwen3-coder-30b
+  fallback_allowed_roles: [ci_fixer, thread_reply, conflict_hunk]
+  max_tokens: 2048
+  temperature: 0.0
+  ci_override:
+    primary: deepseek-r1-14b

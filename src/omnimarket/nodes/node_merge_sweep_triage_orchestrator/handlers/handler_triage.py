@@ -30,12 +30,14 @@ import contextlib
 import json
 import logging
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
 from omnimarket.config.env_flags import env_flag
+from omnimarket.nodes.contract_topics import contract_section
 from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep import (
     EnumPRTrack,
     ModelClassifiedPR,
@@ -86,17 +88,11 @@ FAILED_CHECK_CONCLUSIONS = {
     "TIMED_OUT",
 }
 
-# Default routing policy for Phase 2 LLM commands. It must match
-# omnibase_compat.routing.model_routing_policy.ModelRoutingPolicy because effect
-# handlers fail-loud on malformed command routing.
-_DEFAULT_ROUTING_POLICY: dict[str, Any] = {
-    "primary": "deepseek-r1-14b",
-    "fallback": "qwen3-coder-30b",
-    "fallback_allowed_roles": ["ci_fixer", "thread_reply", "conflict_hunk"],
-    "max_tokens": 2048,
-    "temperature": 0.0,
-    "ci_override": {"primary": "deepseek-r1-14b"},
-}
+_ROUTING_CONFIG_PATH = (
+    Path(__file__).resolve().parents[3]
+    / "configs"
+    / "merge_sweep_triage_routing.v1.yaml"
+)
 
 
 def _approval_gate_cleared(
@@ -137,6 +133,21 @@ class HandlerTriageOrchestrator:
     Resolution failures are tracked in run_metadata but do NOT count toward total_prs
     (only actionable PRs count).
     """
+
+    def __init__(self, routing_policy: dict[str, Any] | None = None) -> None:
+        # The Phase 2 LLM routing policy must match
+        # omnibase_compat.routing.model_routing_policy.ModelRoutingPolicy because effect
+        # handlers fail-loud on malformed command routing. The routing config declares it.
+        declared = (
+            routing_policy
+            if routing_policy is not None
+            else contract_section(_ROUTING_CONFIG_PATH, "routing_policy")
+        )
+        if not isinstance(declared, dict):
+            raise ValueError(
+                f"{_ROUTING_CONFIG_PATH}: routing_policy must be a mapping"
+            )
+        self._routing_policy: dict[str, Any] = declared
 
     async def handle(self, request: ModelTriageRequest) -> ModelHandlerOutput:  # type: ignore[type-arg]
         """Classify each PR and emit the appropriate command event."""
@@ -291,7 +302,7 @@ class HandlerTriageOrchestrator:
             thread_comment_ids=thread_ids,
             correlation_id=correlation_id,
             run_id=str(run_id),
-            routing_policy=_DEFAULT_ROUTING_POLICY,
+            routing_policy=self._routing_policy,
         )
 
     async def _classify_track_a(
@@ -419,7 +430,7 @@ class HandlerTriageOrchestrator:
                 conflict_files=conflict_files,
                 correlation_id=correlation_id,
                 run_id=str(run_id),
-                routing_policy=_DEFAULT_ROUTING_POLICY,
+                routing_policy=self._routing_policy,
             )
 
         # Rule 9: DIRTY (not CONFLICTING) → Phase 2: emit ModelCiFixCommand
@@ -440,7 +451,7 @@ class HandlerTriageOrchestrator:
                 failing_job_name=failing_job or "unknown",
                 correlation_id=correlation_id,
                 run_id=str(run_id),
-                routing_policy=_DEFAULT_ROUTING_POLICY,
+                routing_policy=self._routing_policy,
             )
 
         # Rule 6: MERGEABLE + BLOCKED + checks failing → CI rerun

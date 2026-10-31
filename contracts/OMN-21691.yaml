@@ -1,0 +1,60 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21691"
+title: "omnimarket contracts_and_di literal_model_name burn-down, slice rf1145-c1"
+summary: "A slice of the literal_model_name findings of omnimarket: the model ids of the OpenRouter free catalog, the inference bridge's local model keys, the merge-sweep triage routing policy, the thread-reply registries, the design-to-plan model and the navigation-history embedding model move out of code into the owning node contract or a configs file, and each reaches the code through a loader that fails closed on a gap. No baseline entry and no suppression is added."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21691-model-ids-declared"
+    statement: |-
+      A model id comes from the owning node contract or a declared configs file, bound through an injected parameter or a loader that fails closed, and no hard-coded value stays in the touched code.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the contracts_and_di count for literal_model_name over the slice paths drops to zero and the repo total drops by the slice size, with no baseline entry or suppression added -- falsifier: onex run of runtime_validator_run with the contracts_and_di reference over omnimarket src before and after, counts compared per rule"
+      - id: "AC2"
+        statement: "AC2: every moved value is taken through an injected parameter bound from the node contract or overlay and none remains hard-coded in the touched code -- falsifier: uv run pytest tests/unit -q over the touched modules plus the checker re-run on the slice paths"
+      - id: "AC3"
+        statement: "AC3: the slice lands as one PR titled with this ticket id and carries lab proof of the tests and the checker re-run -- falsifier: uv run pytest tests/unit -q on the lab through lab-run at the PR head, receipt path in the PR body"
+evidence_requirements:
+  - kind: "tests"
+    description: "The loaders return the declared values, fail closed on a gap, and take an injected value over the declared one."
+    command: "uv run pytest tests/unit/config/test_model_ids_declared_in_contract_omn21691.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21691-checker-slice-zero"
+    description: "The contracts_and_di check over the slice paths reports no literal_model_name finding."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "command"
+        check_value: "uv run python -m omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run omnibase_core.validation.validator_contracts_and_di:ValidatorContractsAndDi src/omnimarket/inference/openrouter_models.py src/omnimarket/inference/bridge_config_loader.py src/omnimarket/nodes/node_merge_sweep_triage_orchestrator src/omnimarket/nodes/node_design_to_plan src/omnimarket/nodes/node_navigation_history_reducer --report-json /tmp/omn21691-slice.json | { ! grep -q literal_model_name; }"
+        cwd: "."
+  - id: "dod-omn21691-loaders-tested"
+    description: "The moved values are read through loaders that fail closed on a gap."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/config/test_model_ids_declared_in_contract_omn21691.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21691-declared-in-contract"
+    description: "The triage routing policy is declared in its configs file."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "command"
+        check_value: "grep -q 'routing_policy:' src/omnimarket/configs/merge_sweep_triage_routing.v1.yaml"
+        cwd: "."
+  - id: "dod-omn21691-lab-proof"
+    description: "The PR body carries the lab run of the tests and the checker re-run."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "command"
+        check_value: "test -s contracts/OMN-21691.yaml"
+        cwd: "."

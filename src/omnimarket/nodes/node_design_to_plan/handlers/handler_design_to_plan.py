@@ -7,6 +7,7 @@ import json
 import logging
 import re
 from datetime import UTC, datetime
+from pathlib import Path
 
 from omnimarket.inference.adapter_inference_bridge import (
     AdapterInferenceBridge,
@@ -15,6 +16,7 @@ from omnimarket.inference.adapter_inference_bridge import (
 from omnimarket.inference.bridge_config_loader import (
     load_inference_bridge_config_from_env_async,
 )
+from omnimarket.nodes.contract_topics import contract_section
 from omnimarket.nodes.node_design_to_plan.models.model_design_to_plan_command import (
     ModelDesignToPlanCommand,
 )
@@ -31,6 +33,10 @@ from omnimarket.nodes.node_design_to_plan.models.model_design_to_plan_state impo
 )
 
 logger = logging.getLogger(__name__)
+
+_MODEL_CONFIG_PATH = (
+    Path(__file__).resolve().parents[3] / "configs" / "design_to_plan_model.v1.yaml"
+)
 
 _PLAN_TASK_HEADING = re.compile(r"^## (?:Task|Phase) \d+:.+$", re.MULTILINE)
 _THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
@@ -91,12 +97,16 @@ class HandlerDesignToPlan:
     def __init__(
         self,
         inference_bridge: ModelInferenceAdapter | None = None,
-        plan_model_key: str = "qwen3-coder",
+        plan_model_key: str | None = None,
         plan_timeout_seconds: float = 240.0,
     ) -> None:
         self._bridge: ModelInferenceAdapter | None = inference_bridge
         self._bridge_lock = asyncio.Lock()
-        self._plan_model_key = plan_model_key
+        self._plan_model_key = (
+            plan_model_key
+            if plan_model_key is not None
+            else str(contract_section(_MODEL_CONFIG_PATH, "plan_model_key"))
+        )
         self._plan_timeout_seconds = plan_timeout_seconds
 
     async def _ensure_bridge(self) -> ModelInferenceAdapter:

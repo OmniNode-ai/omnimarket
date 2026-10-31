@@ -1,0 +1,4 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The model key HandlerDesignToPlan asks for a plan (OMN-21691); code names no model.
+plan_model_key: qwen3-coder

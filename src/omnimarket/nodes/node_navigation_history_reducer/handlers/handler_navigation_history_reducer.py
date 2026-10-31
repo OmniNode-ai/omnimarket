@@ -30,6 +30,7 @@ import hashlib
 import json
 import logging
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from uuid import UUID
 
@@ -40,6 +41,7 @@ from qdrant_client.http import models as qdrant_models
 if TYPE_CHECKING:
     import asyncpg
 
+from omnimarket.nodes.contract_topics import contract_section
 from omnimarket.nodes.node_navigation_history_reducer.models.model_navigation_history_request import (
     ModelNavigationHistoryRequest,
 )
@@ -98,7 +100,14 @@ def _parse_qdrant_port(value: str | None) -> int:
 
 _DEFAULT_QDRANT_PORT = _parse_qdrant_port(os.environ.get("QDRANT_PORT"))  # contract-config-ok: config  # fmt: skip
 _DEFAULT_EMBEDDING_URL = os.environ.get("LLM_EMBEDDING_URL", "")  # contract-config-ok: config  # fmt: skip
-_DEFAULT_EMBEDDING_MODEL = "Qwen3-Embedding-8B"
+_EMBEDDING_CONFIG_PATH = (
+    Path(__file__).resolve().parents[3]
+    / "configs"
+    / "navigation_history_embedding.v1.yaml"
+)
+_DEFAULT_EMBEDDING_MODEL = str(
+    contract_section(_EMBEDDING_CONFIG_PATH, "embedding_model")
+)
 _QDRANT_COLLECTION = "navigation_paths"
 
 # Qdrant vector dimension for Qwen3-Embedding-8B (4096-dim output)
