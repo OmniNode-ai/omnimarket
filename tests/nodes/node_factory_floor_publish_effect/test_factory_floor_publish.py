@@ -713,6 +713,7 @@ BAYS_RECORD = {
             machine_cells(),
             machine_cells(host="bay-y", label="bay-y", state="unread", note="rc=255 timed out after 20s", lanes=[], lanes_placed=0, cap=None, load_per_core=None, mem_free_gb=None, mem_total_gb=None),
             machine_cells(host="bay-z", label="bay-z", state="repair", note="down for repair", lanes=[], lanes_placed=0),
+            machine_cells(host="bay-w", label="bay-w", state="out", note="placement paused", lanes=[], lanes_placed=0),
         ],
         "stall_minutes": 45,
         "lane_window_minutes": 180,
@@ -760,6 +761,8 @@ def test_page_draws_a_machine_the_pool_could_not_read_as_unread_and_one_in_repai
     assert "mbay unread" in grid
     assert "rc=255 timed out after 20s" in grid
     assert "mbay repair" in grid
+    assert "out of selection" in grid
+    assert "placement paused" in grid
     assert "down for repair" in grid
     assert "Nothing is drawn" in grid
 
@@ -812,8 +815,8 @@ def test_page_puts_a_lane_with_no_machine_in_its_own_bay_and_a_cloud_lane_in_the
 def test_page_lights_the_andon_lamps_for_machines_lanes_and_the_cloud_stop() -> None:
     andon = _run_floor({"factory-floor.json": BAYS_RECORD})["andon"]
     assert "Machines · 2 lanes placed" in andon
-    assert "1 of 3 read" in andon
-    assert "1 unread, 1 in repair" in andon
+    assert "1 of 4 read" in andon
+    assert "1 unread, 2 in repair or out" in andon
     assert "Lanes · 4 live" in andon
     assert "1 stalled" in andon
     assert "Cloud · stop" in andon

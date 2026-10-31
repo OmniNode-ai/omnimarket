@@ -568,7 +568,7 @@ function renderAndon(slots, floor, health, bayState){
   });
   if (bayState.declared){
     const bad = bayState.unread + bayState.repair;
-    lamps.push(`<div class="lamp ${bayState.unread ? "c-warn" : "c-ok"}" role="listitem"><i></i><b>Machines · ${bayState.placed} lanes placed</b><span>${bayState.read} of ${bayState.declared} read, against ${bayState.cap} lane slots${bad ? `; ${bayState.unread} unread, ${bayState.repair} in repair` : ""}</span></div>`);
+    lamps.push(`<div class="lamp ${bayState.unread ? "c-warn" : "c-ok"}" role="listitem"><i></i><b>Machines · ${bayState.placed} lanes placed</b><span>${bayState.read} of ${bayState.declared} read, against ${bayState.cap} lane slots${bad ? `; ${bayState.unread} unread, ${bayState.repair} in repair or out` : ""}</span></div>`);
     lamps.push(`<div class="lamp ${bayState.stalled ? "c-stop" : "c-ok"}" role="listitem"><i></i><b>Lanes · ${bayState.lanes} live</b><span>${bayState.stalled ? `${bayState.stalled} stalled: nothing written for the stall time` : "none stalled"}</span></div>`);
     const c = bayState.cloud;
     if (c) lamps.push(`<div class="lamp ${(c.lamps || []).length ? "c-stop" : c.state === "read" ? "c-ok" : "c-idle"}" role="listitem"><i></i><b>Cloud · ${(c.lamps || []).length ? "stop" : c.state === "read" ? "clear" : "unread"}</b><span>${(c.lamps || []).length ? esc(c.lamps[0].text) : c.state === "read" ? `${(c.accounts || []).length} account${(c.accounts || []).length === 1 ? "" : "s"} signed in` : "the cloud accounts file was not read"}</span></div>`);
@@ -696,8 +696,8 @@ function gauge(label, value, frac, unreadWhy){
 
 function machineHTML(m, byId){
   const lanes = (m.lanes || []).map(id => byId[id]).filter(Boolean);
-  const stateWord = m.state === "read" ? (m.stale ? "reading stale" : "read") : m.state === "repair" ? "in repair" : "unread";
-  const cls = m.state === "read" ? (m.stale ? " stale" : "") : m.state === "repair" ? " repair" : " unread";
+  const stateWord = m.state === "read" ? (m.stale ? "reading stale" : "read") : m.state === "repair" ? "in repair" : m.state === "out" ? "out of selection" : "unread";
+  const cls = m.state === "read" ? (m.stale ? " stale" : "") : m.state === "repair" || m.state === "out" ? " repair" : " unread";
   const cap = m.cap == null ? null : num(m.cap);
   let slots;
   if (m.state === "read" && cap != null){
@@ -709,7 +709,7 @@ function machineHTML(m, byId){
   } else if (m.state === "read"){
     slots = `<div class="cap">${lanes.map(l => `<i class="${l.stalled ? "stall" : l.engine || "none"}"></i>`).join("")}</div><div class="capline"><span class="mono">${lanes.length}</span> lanes placed · cap ${unreadSpan("no cap in the host table or the pool read")}</div>`;
   } else {
-    slots = `<div class="cap unread" role="img" aria-label="Nothing is drawn: ${esc(m.state === "repair" ? "the machine is in repair" : "the machine was not read")}"></div>
+    slots = `<div class="cap unread" role="img" aria-label="Nothing is drawn: ${esc(m.state === "repair" ? "the machine is in repair" : m.state === "out" ? "the machine is out of selection" : "the machine was not read")}"></div>
       <div class="capline">${esc(m.note || "no reading")}${lanes.length ? ` · the ledger still places ${lanes.length} lane${lanes.length === 1 ? "" : "s"} here` : ""}</div>`;
   }
   const rd = m.state === "read";
@@ -768,7 +768,7 @@ function renderMachines(floor){
 function machineFacts(floor){
   const ms = floor.machines || [], lanes = floor.lanes || [];
   const read = ms.filter(m => m.state === "read");
-  return {declared: ms.length, read: read.length, repair: ms.filter(m => m.state === "repair").length,
+  return {declared: ms.length, read: read.length, repair: ms.filter(m => m.state === "repair" || m.state === "out").length,
     unread: ms.filter(m => m.state === "unread").length, placed: ms.reduce((a, m) => a + num(m.lanes_placed), 0),
     cap: read.reduce((a, m) => a + num(m.cap), 0), lanes: lanes.length, stalled: lanes.filter(l => l.stalled).length,
     cloud: floor.cloud || null};
