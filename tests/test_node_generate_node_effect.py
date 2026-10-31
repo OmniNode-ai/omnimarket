@@ -154,3 +154,41 @@ def test_handler_writes_generated_files(tmp_path: Path) -> None:
     assert (output_dir / "contract.yaml").is_file()
     assert (output_dir / "handlers" / "handler_generated_test_compute.py").is_file()
     assert (output_dir / "models" / "model_generated_test_compute_request.py").is_file()
+
+
+@pytest.mark.unit
+def test_handler_writes_a_given_contract_in_place_of_the_template(
+    tmp_path: Path,
+) -> None:
+    """Contracts first (OMN-21627): a contract written before the scaffold is kept."""
+    written = "name: node_contract_first_compute\nevent_bus:\n  subscribe_topics: []\n"
+    output_dir = tmp_path / "node_contract_first_compute"
+    result = HandlerGenerateNode().handle(
+        ModelGenerateNodeCommand(
+            correlation_id=uuid4(),
+            node_name="node_contract_first_compute",
+            node_type=EnumNodeType.COMPUTE,
+            output_dir=str(output_dir),
+            contract_yaml=written,
+        )
+    )
+
+    assert "contract.yaml" in result.created_files
+    assert (output_dir / "contract.yaml").read_text(encoding="utf-8") == written
+    assert (output_dir / "handlers" / "handler_contract_first_compute.py").is_file()
+
+
+@pytest.mark.unit
+def test_command_without_a_contract_keeps_the_template(tmp_path: Path) -> None:
+    output_dir = tmp_path / "node_template_compute"
+    HandlerGenerateNode().handle(
+        ModelGenerateNodeCommand(
+            correlation_id=uuid4(),
+            node_name="node_template_compute",
+            node_type=EnumNodeType.COMPUTE,
+            output_dir=str(output_dir),
+        )
+    )
+
+    contract = yaml.safe_load((output_dir / "contract.yaml").read_text())
+    assert contract["metadata"]["generated_by"] == "node_generate_node_effect"
