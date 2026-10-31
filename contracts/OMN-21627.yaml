@@ -30,6 +30,8 @@ requirements:
   - id: AC4
     statement: 'AC4: The scaffold keeps a contract written before it; without one it writes the template -- falsifier: the
       two contract_yaml cases in tests/test_node_generate_node_effect.py'
+  - id: AC5
+    statement: 'AC5: uv.lock pins virtualenv 21.7.12 or later, which Dependency Security Scan needs to report no virtualenv vulnerability (SFTY-20260930-16258 and SFTY-20260930-15304), and only virtualenv and its python-discovery dependency move -- falsifier: test_virtualenv_lock_floor_clears_the_crlf_and_seed_integrity_advisories in tests/ci/test_omn21627_virtualenv_lock_floor.py fails against a lock that pins virtualenv 21.7.9'
 evidence_requirements:
 - kind: tests
   description: Focused node tests.
@@ -78,6 +80,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/test_node_generate_node_effect.py -q --no-cov --tb=line -k contract
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21627-ac5
+  description: AC5 falsifier test passes. It fails at the merge base, whose lock pins virtualenv 21.7.9.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_omn21627_virtualenv_lock_floor.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21627-deploy-probe
   description: 'Deploy probe: the orchestrator handler read from GitHub at the checked-out commit defines class HandlerContractSeamsRun. The merge base lacks the file, so the probe fails there.'
