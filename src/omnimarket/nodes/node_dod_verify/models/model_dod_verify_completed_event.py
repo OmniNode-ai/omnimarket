@@ -13,7 +13,7 @@ from omnimarket.enums.enum_dod_contract_source import EnumDodContractSource
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
 )
-from omnimarket.nodes.node_dod_verify.models.model_criteria_drift import (
+from omnimarket.models.model_criteria_drift import (
     ModelCriteriaAmendment,
     ModelCriterionDrift,
 )
@@ -99,6 +99,8 @@ class ModelDodVerifyCompletedEvent(BaseModel):
     criteria_amendment: ModelCriteriaAmendment | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    # OMN-21676: see the state.
+    criteria_delegated: bool = Field(default=False, exclude_if=lambda value: not value)
     error_message: str | None = Field(default=None)
     # OMN-17022: carried on the terminal event so a bus consumer branches on
     # the typed cause instead of re-parsing ``error_message``. Set exactly

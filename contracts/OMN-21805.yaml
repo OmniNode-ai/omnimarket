@@ -1,0 +1,52 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21805"
+title: "omnimarket contracts_and_di literal_model_name burn-down, slice rf1730-c8: four modules take their model names from the node model-name manifest or the engine enum"
+summary: "Four modules held 8 literal_model_name findings. node_thread_reply_effect now declares its model names in configs/node_model_names.v1.yaml (a node contract may hold no model literal, contract-overlay-boundary) and reads them through the shared omnimarket.handlers.node_model_names_reader adapter (an undeclared node or name refuses); node_lane_brief_parse_compute, node_idle_slot_fill_effect and models/model_execution_identity.py take the Claude engine names from EnumLaneEngine. The other literal_model_name files were held by an open PR (omnimarket#4694) when the slice was cut. No baseline entry or suppression was added."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21805-model-names"
+    statement: |-
+      The four modules of the slice hold 8 fewer model-name literals in code. Every name sits in the node model-name manifest or the engine enum with the value it held before, a name the contract does not declare stops the node, and no baseline entry or suppression was added.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the contracts_and_di count for literal_model_name and literal_path over the slice paths drops to zero and the repo total drops by the slice size, with no baseline entry or suppression added -- falsifier: onex run of runtime_validator_run with the contracts_and_di reference over omnimarket src before and after, counts compared per rule"
+      - id: "AC2"
+        statement: "AC2: every model name and path comes from the owning node contract or overlay and is injected, none hard-coded in the touched code -- falsifier: uv run pytest tests/unit -q over the touched modules plus the checker re-run on the slice paths"
+      - id: "AC3"
+        statement: "AC3: the slice lands as one PR titled with this ticket id and carries lab proof of the tests and the checker re-run -- falsifier: uv run pytest tests/unit -q on the lab through lab-run at the PR head, receipt path in the PR body"
+evidence_requirements:
+  - kind: "tests"
+    description: "The contract model-name tests and the existing tests of the touched modules pass."
+    command: "uv run pytest tests/test_node_model_names_contract.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21805-model-names-tests"
+    description: "Declared names, refusals, manifest-sourced registries and enum-sourced engine names all behave as stated."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_node_model_names_contract.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21805-check-clean"
+    description: "The pinned contracts_and_di validator scans the three slice files that are now literal-free; its structured findings contain no literal_model_name rule."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_node_model_names_contract.py -k slice_has_no_literal_model_name_findings -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21805-lab-proof"
+    description: "The unit tests of the slice pass on a lab host at the PR head; the receipt path is in the PR body."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_node_model_names_contract.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
