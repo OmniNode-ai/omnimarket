@@ -7,6 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from omnibase_core.validation.validator_contracts_and_di import ValidatorContractsAndDi
 
 from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.models.model_node_timeouts import ModelNodeTimeouts
@@ -90,6 +91,28 @@ DECLARED: dict[str, dict[str, float]] = {
         "credential_close_timeout_seconds": 30.0,
     },
 }
+
+
+@pytest.mark.unit
+def test_slice_has_no_literal_timeout_findings() -> None:
+    nodes = (
+        *DECLARED,
+        "node_adr_decision_extraction_llm_effect",
+        "node_adr_extraction_grader_llm_effect",
+        "node_adr_segmentation_llm_effect",
+    )
+    node_root = Path(__file__).resolve().parents[1] / "src/omnimarket/nodes"
+    paths = [node_root / name for name in nodes]
+    assert all(path.is_dir() for path in paths), "a target node is missing"
+    result = ValidatorContractsAndDi().validate(paths)
+    assert result.metadata is not None, "the validator returned no scan metadata"
+    processed = result.metadata.files_processed
+    assert processed is not None, "the validator returned no file count"
+    assert processed >= len(paths), "the validator did not scan the targets"
+    findings = [
+        issue for issue in result.issues if issue.rule_name == "literal_timeout"
+    ]
+    assert not findings, findings
 
 
 @pytest.mark.unit
