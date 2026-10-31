@@ -22,8 +22,8 @@ from __future__ import annotations
 import argparse
 import sys
 
-from omnimarket.nodes.node_verification_sweep_orchestrator.handlers.handler_verification_sweep_orchestrator import (
-    HandlerVerificationSweepOrchestrator,
+from omnimarket.nodes.node_verification_sweep_orchestrator.container.container_verification_sweep_orchestrator import (
+    create_handler_verification_sweep_orchestrator,
 )
 from omnimarket.nodes.node_verification_sweep_orchestrator.models.model_verification_sweep_orchestrator_request import (
     ModelVerificationSweepOrchestratorRequest,
@@ -81,7 +81,7 @@ def main() -> None:
         dry_run=args.dry_run,
     )
 
-    handler = HandlerVerificationSweepOrchestrator()
+    handler = create_handler_verification_sweep_orchestrator()
     result = handler.handle(request)
 
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")
