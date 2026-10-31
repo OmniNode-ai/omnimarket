@@ -1,0 +1,140 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lab receipt check (OMN-21826, task L2 of the lab-receipt design note)
+name: node_lab_receipt_check_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: EFFECT_GENERIC
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  The only impure part of the lab-receipt rule (operator ruling 2026-10-31T17:16:31Z, ticket
+  OMN-21823). For one pull request head it gathers the facts the omnibase_core lab_receipt
+  validator judges (every changed file, the criteria of the cited tickets at that head, every
+  receipt record of the pull request whatever head it names, and in the verify phase the lab
+  reads) and makes one call to that validator. It holds no rule text: which files run, what a
+  receipt must name, the exemptions and the prod carve-out are rows of the core contract.
+  Phase present reads only what the repository token can read and never touches the lab.
+  Phase verify also reads the lab; a lab that cannot be read is passed on as no lab read, which
+  the validator refuses (lab_read_unavailable), never as a pass. Any error issue, and anything
+  unreadable, sets merge_blocked.
+
+input_model:
+  name: ModelLabReceiptCheckRequest
+  module: omnimarket.nodes.node_lab_receipt_check_effect.models.model_lab_receipt_check
+
+output_model:
+  name: ModelLabReceiptCheckResult
+  module: omnimarket.nodes.node_lab_receipt_check_effect.models.model_lab_receipt_check
+
+handler:
+  module: omnimarket.nodes.node_lab_receipt_check_effect.handlers.handler_lab_receipt_check
+  class: HandlerLabReceiptCheck
+  input_model: omnimarket.nodes.node_lab_receipt_check_effect.models.model_lab_receipt_check.ModelLabReceiptCheckRequest
+
+# Every value the handler would otherwise hold as a literal. The handler reads them through
+# contract_section and fails closed when one is absent.
+lab_receipt_check:
+  ticket_pattern: 'OMN-[0-9]+'
+  ticket_contract_path: 'contracts/{ticket}.yaml'
+  document_name: '{repo}#{pr_number}.lab-receipt.json'
+  files_per_page: 100
+  max_file_pages: 30
+  # GitHub's name for a file status on the left, git's name-status letter the core facts use on the right.
+  file_status_letters:
+    added: A
+    modified: M
+    removed: D
+    renamed: R
+    copied: C
+    changed: T
+    unchanged: U
+  # Letter given to the old path of a rename, so that removing a unit is judged as removing it.
+  renamed_from_letter: D
+
+operations:
+  - name: read_pull_request
+    description: "GET /repos/{owner}/{repo}/pulls/{number}: title, state and head sha."
+    transport: rest
+  - name: read_files
+    description: "GET /repos/{owner}/{repo}/pulls/{number}/files, every page."
+    transport: rest
+  - name: read_contract
+    description: "GET /repos/{owner}/{repo}/contents/contracts/{ticket}.yaml?ref={head sha}, once per ticket the title cites."
+    transport: rest
+  - name: read_receipts
+    description: "ProtocolLabReceiptCarrier.read_receipts: every receipt record found for the pull request."
+    transport: carrier
+  - name: read_installs
+    description: "ProtocolLabInstallReader.read_installs: what each receipt host reports installed and running (verify only)."
+    transport: lab
+
+# `onex node` runs the handler once with the request file; a caller refuses the merge on merge_blocked.
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lab-receipt-check-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.lab-receipt-check-completed.v1
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 120000
+  runtime_profiles:
+    - effects
+
+runtime_profiles:
+  - effects
+
+dependencies:
+  - name: "ProtocolLabReceiptCarrier"
+    type: "protocol"
+    required: true
+    module: "omnimarket.nodes.node_lab_receipt_check_effect.protocols.protocol_lab_receipt_carrier"
+    description: "Where a receipt record lives; the validator takes records and does not decide the carrier."
+  - name: "ProtocolLabInstallReader"
+    type: "protocol"
+    required: false
+    module: "omnimarket.nodes.node_lab_receipt_check_effect.protocols.protocol_lab_install_reader"
+    description: "The lab host install read; required in the verify phase, never built in the present phase."
+
+secrets:
+  GITHUB_TOKEN:
+    description: "GitHub PAT or Actions token for the pull request, files and contract reads."
+    required: true
+
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - onex.cmd.omnimarket.lab-receipt-check-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.lab-receipt-check-completed.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.lab-receipt-check.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.lab-receipt-check-completed.v1
+
+published_events:
+  - event_type: "LabReceiptCheckCompleted"
+    topic: onex.evt.omnimarket.lab-receipt-check-completed.v1
+    description: "One pull request head was checked in one phase: the verdict (not_required, pass, refused, unreadable), whether the merge is blocked and the validator issues."
+
+handler_routing:
+  routing_strategy: "payload_type_match"
+  handlers:
+    - operation: "lab_receipt.check"
+      message_category: "command"
+      handler:
+        name: "HandlerLabReceiptCheck"
+        module: "omnimarket.nodes.node_lab_receipt_check_effect.handlers.handler_lab_receipt_check"
+      event_model:
+        name: "ModelLabReceiptCheckRequest"
+        module: "omnimarket.nodes.node_lab_receipt_check_effect.models.model_lab_receipt_check"
+      topic: onex.cmd.omnimarket.lab-receipt-check-requested.v1
+      description: "One pull request head's lab receipt check in one phase; answered by one completed event."
+
+metadata:
+  transport_type: kafka

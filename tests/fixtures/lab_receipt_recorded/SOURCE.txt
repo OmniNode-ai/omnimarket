@@ -1,0 +1,3 @@
+A recorded lab session for the recorded-lab overlay test of node_lab_receipt_check_effect (OMN-21826).
+lab_session.json is what the lab host reported when read; receipts.json is the receipt record the lane wrote.
+Both match the core clean_receipt_not_on_lab fixture so the two overlays are comparable.

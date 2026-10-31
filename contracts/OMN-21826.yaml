@@ -1,0 +1,91 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21826"
+title: "node_lab_receipt_check_effect gathers the facts of one PR and makes the one call to the core lab_receipt validator in both phases"
+summary: "Task L2 of the lab-receipt design note (operator ruling 2026-10-31T17:16:31Z, ticket OMN-21823). The node is the one impure consumer of the omnibase_core lab_receipt validator: it reads the pull request, every changed file, the criteria of the cited tickets at the head, every receipt record of the pull request and, in the verify phase, the lab reads, then makes one call to the validator. An unclassified file counts (Q1), a receipt of another head is passed on and named (Q3), an unreadable lab is refused and never passed, and every gathering parameter is in the node contract."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21826-lab-receipt-check-node"
+    statement: "One node gathers the facts of a pull request head and makes the one call to the core lab_receipt validator in both phases, with no rule text of its own."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the node is contract-first: a contract.yaml declares the handler, the protocols (GitHub reader, ticket reader, receipt carrier, lab reader) and the phase, every collaborator is resolved from the container, and no repository name, path pattern, host name or threshold is a literal in the handler -- falsifier: uv run pytest tests/nodes/node_lab_receipt_check_effect -q -k contract_first_and_no_hardcoded_values"
+      - id: "AC2"
+        statement: "AC2: every planted violation fixture of the core lab_receipt fixture set, replayed through the node in both phases, is refused naming its rule id, and every paired clean fixture yields zero issues -- falsifier: uv run pytest tests/nodes/node_lab_receipt_check_effect -q -k core_fixture_set"
+      - id: "AC3"
+        statement: "AC3: an unclassified file in the changed list reaches the checker and is refused without a receipt (Q1), and a receipt that names an older head is reported as receipt_head_mismatch, never as a missing receipt (Q3) -- falsifier: uv run pytest tests/nodes/node_lab_receipt_check_effect -q -k unclassified_and_head_move"
+      - id: "AC4"
+        statement: "AC4: the present phase reads only what the repository token can read and never calls the lab reader, and a verify run whose lab reader is unreachable returns lab_read_unavailable and merge_blocked, never a pass -- falsifier: uv run pytest tests/nodes/node_lab_receipt_check_effect -q -k phase"
+      - id: "AC5"
+        statement: "AC5: the in-memory overlay and the recorded-lab overlay give the same golden report for the planted set -- falsifier: uv run pytest tests/nodes/node_lab_receipt_check_effect -q -k overlay_parity"
+      - id: "AC6"
+        statement: "AC6: the pyproject pins the omnibase_core dev tag that carries the lab_receipt validator and holds no sha pin for it -- falsifier: uv run pytest tests/nodes/node_lab_receipt_check_effect -q -k core_pin_is_a_tag"
+      - id: "AC7"
+        statement: "AC7: the node ran on lab host h200 at the PR head with exit 0 and the PR body carries the Lab line naming host and head -- falsifier: the lab work unit receipt on the ledger for the PR head and the PR body Lab line, checked by uv run pytest tests/nodes/node_lab_receipt_check_effect -q on the lab host"
+evidence_requirements:
+  - kind: "tests"
+    description: "The core fixture set, the Q1 and Q3 cases, both phases, both overlays and the contract-first checks pass."
+    command: "uv run pytest tests/nodes/node_lab_receipt_check_effect -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21826-ac1"
+    description: "AC1: the node is contract-first: a contract.yaml declares the handler, the protocols (GitHub reader, ticket reader, receipt carrier, lab reader) and the phase, every collaborator is resolved from the container, and no repository name, path pattern, host name or threshold is a literal in the handler"
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_receipt_check_effect -q -k contract_first_and_no_hardcoded_values --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21826-ac2"
+    description: "AC2: every planted violation fixture of the core lab_receipt fixture set, replayed through the node in both phases, is refused naming its rule id, and every paired clean fixture yields zero issues"
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_receipt_check_effect -q -k core_fixture_set --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21826-ac3"
+    description: "AC3: an unclassified file in the changed list reaches the checker and is refused without a receipt (Q1), and a receipt that names an older head is reported as receipt_head_mismatch, never as a missing receipt (Q3)"
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_receipt_check_effect -q -k unclassified_and_head_move --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21826-ac4"
+    description: "AC4: the present phase reads only what the repository token can read and never calls the lab reader, and a verify run whose lab reader is unreachable returns lab_read_unavailable and merge_blocked, never a pass"
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_receipt_check_effect -q -k phase --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21826-ac5"
+    description: "AC5: the in-memory overlay and the recorded-lab overlay give the same golden report for the planted set"
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_receipt_check_effect -q -k overlay_parity --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21826-ac6"
+    description: "AC6: the pyproject pins the omnibase_core dev tag that carries the lab_receipt validator and holds no sha pin for it"
+    source: "manual"
+    binds_ac: ["AC6"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_receipt_check_effect -q -k core_pin_is_a_tag --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21826-ac7"
+    description: "AC7: the node ran on lab host h200 at the PR head with exit 0 and the PR body carries the Lab line naming host and head"
+    source: "manual"
+    binds_ac: ["AC7"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_receipt_check_effect -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
