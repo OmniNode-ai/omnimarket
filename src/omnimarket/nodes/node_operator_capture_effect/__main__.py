@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """``python -m omnimarket.nodes.node_operator_capture_effect <command>``."""
 
-from omnimarket.nodes.node_operator_capture_effect.handlers.handler_capture_cli import (
+from omnimarket.nodes.node_operator_capture_effect.runtime_capture_cli import (
     main,
 )
 

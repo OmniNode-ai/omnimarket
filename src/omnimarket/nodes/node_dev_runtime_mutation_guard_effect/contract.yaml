@@ -1,0 +1,146 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Operator, 2026-10-31: dev runtime containers may be recreated only by a
+# deployment or under a grant. The omniclaude PreToolUse Bash entrypoint hands this
+# node any Bash command that names docker with a lifecycle verb; the node refuses
+# one that would recreate, remove, stop or restart a container of a protected
+# compose project, unless a live grant row on the rolling work ledger names that
+# project. The deploy agent runs its compose commands outside every Claude session,
+# so a deployment never reaches the hook.
+#
+# What is protected, which verbs mutate and what a grant row looks like are
+# declared in guard_policy below. The node's deployment overlay
+# (<root>/node_dev_runtime_mutation_guard_effect/overlay.yaml under
+# ONEX_SKILL_OVERLAY_ROOTS) can add projects, containers, compose files and verbs,
+# never remove one.
+name: node_dev_runtime_mutation_guard_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Refuse a Bash command that would recreate, remove, stop or restart a
+  container of a protected dev runtime compose project (named by -p,
+  COMPOSE_PROJECT_NAME, its compose file, its project label or a container name,
+  locally or over ssh) unless a live grant row on the rolling work ledger names the
+  project. Read-only docker calls and other projects pass. Reads the contract, the
+  overlay and the tail of the ledger; writes nothing.
+input_model:
+  name: ModelDevRuntimeMutationRequest
+  module: omnimarket.nodes.node_dev_runtime_mutation_guard_effect.models
+output_model:
+  name: ModelDevRuntimeMutationDecision
+  module: omnimarket.nodes.node_dev_runtime_mutation_guard_effect.models
+handler:
+  module: omnimarket.nodes.node_dev_runtime_mutation_guard_effect.handlers.handler_dev_runtime_mutation_guard
+  class: HandlerDevRuntimeMutationGuard
+  input_model: omnimarket.nodes.node_dev_runtime_mutation_guard_effect.models.ModelDevRuntimeMutationRequest
+  output_model: omnimarket.nodes.node_dev_runtime_mutation_guard_effect.models.ModelDevRuntimeMutationDecision
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_dev_runtime_mutation_guard_effect.handlers.handler_dev_runtime_mutation_guard:HandlerDevRuntimeMutationGuard
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerDevRuntimeMutationGuard
+      module: omnimarket.nodes.node_dev_runtime_mutation_guard_effect.handlers.handler_dev_runtime_mutation_guard
+  - operation: load_policy
+    handler:
+      name: ContractGuardPolicySource
+      module: omnimarket.nodes.node_dev_runtime_mutation_guard_effect.handlers.handler_contract_policy_source
+  - operation: live_grants
+    handler:
+      name: LedgerGrantSource
+      module: omnimarket.nodes.node_dev_runtime_mutation_guard_effect.handlers.handler_ledger_grant_source
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the omniclaude PreToolUse Bash entrypoint (python -m the runtime_dev_runtime_mutation module).
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+guard_policy:
+  # The compose projects only a deployment or a grant may mutate.
+  protected_projects:
+    - project: omnibase-infra
+      description: the dev runtime
+      # A compose command with no -p and no COMPOSE_PROJECT_NAME takes the
+      # project from its compose file's top-level name; these files name it.
+      compose_files:
+        - docker-compose.infra.yml
+        - docker-compose.dev-lane.yml
+      # The fixed container names the project's compose files declare, so a
+      # direct docker rm, stop, kill or restart by name is recognised.
+      containers:
+        - omnibase-infra-postgres
+        - omnibase-infra-redpanda
+        - omnibase-infra-redpanda-partition-cap
+        - omnibase-infra-redpanda-scram-user
+        - omnibase-infra-redpanda-sasl-enable
+        - omnibase-infra-valkey
+        - omnibase-infra-memgraph
+        - omnibase-infra-infisical
+        - omnibase-infra-keycloak
+        - omnibase-infra-forward-migration
+        - omnibase-infra-migration-gate
+        - omnibase-infra-intelligence-migration
+        - omnibase-infra-cloud-migration-files
+        - omnibase-infra-cloud-migration
+        - omnibase-infra-phoenix
+        - omnibase-infra-autoheal
+        - omninode-runtime
+        - omninode-runtime-effects
+        - omninode-runtime-worker
+        - omninode-agent-actions-consumer
+        - omninode-skill-lifecycle-consumer
+        - omninode-context-audit-consumer
+        - omninode-contract-resolver
+        - omninode-infra-routing-decisions-consumer
+        - omninode-cost-estimator-web
+        - omnibase-intelligence-api
+        - onex-api
+        - omnimarket-projection-api
+        - omnimarket-tenant-projection-writer
+        - omnimarket-projection-claude-hook-events-writer
+        - omnimarket-projection-tenant-registry-writer
+        - omnimarket-projection-delegation-writer
+        - omnimarket-projection-registration-writer
+        - omnimarket-projection-savings-writer
+        - omnimarket-projection-tenant-credentials-writer
+        - omnimarket-projection-live-events-writer
+  # docker compose subcommands that create, replace, stop or remove containers.
+  compose_mutating_verbs: [up, down, rm, restart, stop, kill, start, create, pause, unpause, scale]
+  # docker (and docker container) subcommands that act on a named container.
+  docker_mutating_verbs: [rm, restart, stop, kill, start, pause, unpause, rename, update]
+  # A live grant: a ledger row of one of these kinds whose grant cell names
+  # compose:<project> and whose until cell is a time in the future, at most
+  # max_grant_hours after the row's own timestamp (no standing grants).
+  grant:
+    row_kinds: [GRANT, OPERATOR-CONSENT]
+    target_cell: grant
+    target_prefix: "compose:"
+    until_cell: until
+    max_grant_hours: 24
+    ledger_path_env: ONEX_LEDGER_PATH
+    tail_bytes: 4000000
+  # Named in every refusal: how a lane gets a recreate without a grant.
+  deployment_route: >-
+    ask the deploy agent for it (a rebuild request on the deploy command topic,
+    the /onex:redeploy skill), which recreates the dev runtime under the lane
+    lock with boot-guard recovery
+metadata:
+  transport_type: local
+  created: '2026-10-31'
+  tags:
+  - effect
+  - dev-runtime-mutation-guard
+  related_tickets:
+  - OMN-21795

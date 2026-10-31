@@ -18,8 +18,8 @@ from __future__ import annotations
 import logging
 import sys
 
+import omnimarket.nodes.node_volume_config_drift_sweep.container.container_volume_config_drift_sweep as binding
 from omnimarket.nodes.node_volume_config_drift_sweep.handlers.handler_volume_config_drift_sweep import (
-    NodeVolumeConfigDriftSweep,
     VolumeConfigDriftSweepRequest,
 )
 
@@ -75,7 +75,7 @@ def main() -> None:
         dry_run=args.dry_run,
     )
 
-    handler = NodeVolumeConfigDriftSweep()
+    handler = binding.create_node_volume_config_drift_sweep()
     result = handler.handle(request)
 
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")
