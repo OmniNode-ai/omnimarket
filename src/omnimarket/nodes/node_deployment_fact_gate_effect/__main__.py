@@ -22,12 +22,13 @@ from pathlib import Path
 
 from omnimarket.nodes.node_deployment_fact_gate_effect.handlers.handler_deployment_fact_gate import (
     DeploymentFactGateError,
-    HandlerDeploymentFactGate,
 )
 from omnimarket.nodes.node_deployment_fact_gate_effect.models.model_deployment_fact_gate import (
     ModelDeploymentFactGateRequest,
     ModelDeploymentFactGateResult,
 )
+
+from .container.container_deployment_fact_gate_effect import build_fact_gate
 
 _REMEDY = (
     "Routing decisions belong in a deployment overlay, not in the config this "
@@ -109,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
         base_ref=None if args.no_base else args.base,
     )
     try:
-        result = HandlerDeploymentFactGate().handle(request)
+        result = build_fact_gate().handle(request)
     except DeploymentFactGateError as exc:
         sys.stderr.write(f"deployment-fact gate cannot judge: {exc}\n")
         return 2
