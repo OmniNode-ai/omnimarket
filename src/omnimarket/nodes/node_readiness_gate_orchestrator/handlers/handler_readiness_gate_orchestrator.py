@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from omnibase_compat.contracts.evidence_pipeline.wire.model_deployment_readiness_result import (
+from omnimarket.models.evidence_pipeline.wire.model_deployment_readiness_result import (
     ModelDeploymentReadinessResult,
 )
-from omnibase_compat.contracts.evidence_pipeline.wire.model_gap_report import (
+from omnimarket.models.evidence_pipeline.wire.model_gap_report import (
     ModelGapReport,
 )
-
 from omnimarket.nodes.evidence_pipeline_native import (
     NativeReadinessGatePorts,
     ReadinessGatePorts,

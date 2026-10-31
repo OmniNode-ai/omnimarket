@@ -27,9 +27,6 @@ from uuid import uuid4
 
 import pytest
 import yaml
-from omnibase_core.validation.hardcoded_model_config.runtime_hardcoded_model_config import (
-    load_policy,
-)
 from omnibase_infra.errors import ProtocolConfigurationError
 from omnibase_infra.runtime.models import (
     enum_bifrost_lane_locale as _locale,
@@ -47,6 +44,7 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_reque
 from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
     handler_delegation_routing as routing,
 )
+from tests.helpers.hardcoded_model_policy import resolved_policy
 
 pytestmark = pytest.mark.integration
 
@@ -226,7 +224,7 @@ def test_packaged_contract_renders_and_routes_after_retirement(
         verify_endpoints=False,
     )
     rendered = target.read_text(encoding="utf-8")
-    assert not any(value in rendered for value in load_policy().retired_values)
+    assert not any(value in rendered for value in resolved_policy().retired_values)
     monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(target))
     monkeypatch.delenv("BIFROST_OVERLAY_PATH", raising=False)
     routing._load_bifrost_endpoints.cache_clear()

@@ -10,6 +10,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.ci.receipt_gate_pin import RECEIPT_GATE_PIN_TAG
+
 pytestmark = pytest.mark.unit
 
 CALLER_PATH = (
@@ -22,7 +24,7 @@ CALLER_PATH = (
 # omnibase_core#2079 scopes evidence; #2077 gives dod-verify 60 minutes.
 # Umbrella-contract PRs had dod-verify cancelled at the 40-minute limit because
 # every carried item ran at the head and again at the merge base.
-_SCOPE_REUSABLE_TAG = "dev-20261022114039-578228977721"
+_SCOPE_REUSABLE_TAG = RECEIPT_GATE_PIN_TAG
 _PREVIOUS_REUSABLE_SHA = "4d16322dae9d62f96089b93421a768fb8dd8c8fe"
 
 _REUSABLE = "OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml"
