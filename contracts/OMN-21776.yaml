@@ -1,0 +1,46 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21776"
+title: "node_dod_verify refuses a receipt root inside a retired repository and reads the evidence home from the runtime-path authority"
+summary: "The node_dod_verify command line wrote dod_report.json and dod_retry_state.json under ONEX_EVIDENCE_ROOT, which a host env file still set to the retired onex_change_control clone, so 36 live evidence directories kept that non-git folder in place and the workspace reconcile failed on every tick. configs/runtime_paths.yaml now declares the evidence home beneath the runtime state root and the retired repository directory names, and the command line refuses a root or --output-path with a retired name as a path component before writing anything, naming the declared home."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21776-refuse-retired-root"
+    statement: |-
+      node_dod_verify exits 2 and writes nothing, the retry record included, when ONEX_EVIDENCE_ROOT or --output-path has a retired repository directory name as a path component or resolves into one through a symlink, and its message names the declared evidence home.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a run with the retired root or output path exits 2, creates no directory and names the declared home, while a root under the declared home still writes the receipt and the retry record -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify/test_evidence_root_retired_refusal.py -q --no-cov"
+  - id: "req-omn21776-declared-not-literal"
+    statement: |-
+      The evidence home and the retired directory names are read from configs/runtime_paths.yaml by dotted reference, so changing the declaration changes the refusal and the node holds no literal of either.
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: patching the authority to retire another name refuses that name and admits the old one -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify/test_evidence_root_retired_refusal.py -q --no-cov -k declared"
+evidence_requirements:
+  - kind: "tests"
+    description: "The refusal tests and the receipt write tests pass."
+    command: "uv run pytest tests/unit/nodes/node_dod_verify/test_evidence_root_retired_refusal.py tests/unit/nodes/node_dod_verify/test_main_receipt_write.py tests/unit/handlers/test_runtime_paths.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21776-refusal"
+    description: "The command line refuses a receipt root or output path inside a retired repository directory and names the declared home."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_evidence_root_retired_refusal.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21776-declared"
+    description: "The retired names and the evidence home come from the runtime-path authority."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_evidence_root_retired_refusal.py -q --no-cov -k declared"
+        cwd: "."

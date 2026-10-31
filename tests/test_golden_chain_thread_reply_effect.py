@@ -17,6 +17,9 @@ from omnimarket.nodes.node_thread_reply_effect.handlers.handler_thread_reply imp
 from omnimarket.nodes.node_thread_reply_effect.models.model_thread_replied_event import (
     ModelThreadRepliedEvent,
 )
+from omnimarket.nodes.node_thread_reply_effect.models.model_thread_reply_request import (
+    ModelThreadReplyRequest,
+)
 
 _REPO = "OmniNode-ai/omnimarket"
 _CORRELATION_ID = uuid4()
@@ -44,11 +47,13 @@ async def test_golden_chain_thread_reply_posts_comment() -> None:
     )
 
     result = await handler.handle(
-        correlation_id=_CORRELATION_ID,
-        pr_number=100,
-        repo=_REPO,
-        thread_body="This PR breaks the golden chain.",
-        routing_policy={},
+        ModelThreadReplyRequest(
+            correlation_id=_CORRELATION_ID,
+            pr_number=100,
+            repo=_REPO,
+            thread_body="This PR breaks the golden chain.",
+            routing_policy={},
+        )
     )
 
     assert isinstance(result, ModelThreadRepliedEvent)
@@ -78,11 +83,13 @@ async def test_golden_chain_thread_reply_draft_mode(
     )
 
     await handler.handle(
-        correlation_id=_CORRELATION_ID,
-        pr_number=200,
-        repo=_REPO,
-        thread_body="needs review",
-        routing_policy={},
+        ModelThreadReplyRequest(
+            correlation_id=_CORRELATION_ID,
+            pr_number=200,
+            repo=_REPO,
+            thread_body="needs review",
+            routing_policy={},
+        )
     )
 
     assert posted_bodies, "post_comment_fn must be called"

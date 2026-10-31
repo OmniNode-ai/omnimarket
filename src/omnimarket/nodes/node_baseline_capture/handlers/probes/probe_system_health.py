@@ -6,6 +6,7 @@ import logging
 import os
 import time
 
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.nodes.node_baseline_capture.models.model_baseline import (
     ModelServiceHealthSnapshot,
     ProbeSnapshotItem,
@@ -13,7 +14,9 @@ from omnimarket.nodes.node_baseline_capture.models.model_baseline import (
 
 logger = logging.getLogger(__name__)
 
-_TIMEOUT_S = 3.0
+_TIMEOUT_S: float = load_node_timeouts("node_baseline_capture").get(
+    "system_health_timeout_seconds"
+)
 
 
 def _services_from_env() -> list[tuple[str, str]]:
