@@ -73,10 +73,15 @@ class ModelModelSetupResult(BaseModel):
         "remove_local",
         "set_first",
         "clear_first",
+        "set_only",
+        "clear_only",
     ]
     tests: tuple[ModelModelTestResult, ...] = ()
     providers: tuple[ModelModelStatus, ...] = ()
     models: tuple[str, ...] = ()
+    #: OMN-21267: the local-only or free-only rule in force, on a ``status`` or
+    #: ``set_only``; ``None`` when delegation may use any model set up.
+    only: Literal["local", "free"] | None = None
 
 
 __all__ = ["ModelModelSetupResult", "ModelModelStatus", "ModelModelTestResult"]
