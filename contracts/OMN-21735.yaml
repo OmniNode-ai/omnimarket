@@ -1,0 +1,63 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21735"
+title: "Burn-down of the contracts_and_di literal_timeout findings of omnimarket, slice rf1730-c7: the CI fix and delegated fix nodes declare their timeouts in their contract"
+summary: "node_ci_fix_effect and node_pr_delegated_fix_effect held 30 subprocess and HTTP timeout literals in code (13 in handler_ci_fix, 15 in handler_delegated_fix, 2 in diff_classifier). Each value is now declared in its node's contract.yaml under timeouts, with the value it held before, and is read through the shared omnimarket.handlers.node_timeouts_reader adapter. The contracts_and_di check over src/omnimarket reports 580 literal_timeout findings before the slice and 550 after, with no baseline entry or suppression added."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21735-node-timeouts"
+    statement: |-
+      The two nodes hold no timeout literal in code. Every duration is declared in the node contract with the value it held before, and a name the contract does not declare stops the node.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the contracts_and_di literal_timeout count over the two node directories is zero and the repo total drops by 30 -- falsifier: the command of dod-omn21735-check-clean below exits nonzero when a timeout literal returns to either node"
+      - id: "AC2"
+        statement: "AC2: every moved timeout is taken from the node contract and none remains hard-coded in the touched code -- falsifier: uv run pytest tests/unit/test_omn21735_node_timeouts.py -q --no-cov fails when a declared value or name differs from the table or a literal default returns"
+      - id: "AC3"
+        statement: "AC3: the slice lands as one PR titled with this ticket id and carries lab proof of the tests and the checker re-run -- falsifier: the lab-run receipt path in the PR body"
+evidence_requirements:
+  - kind: "tests"
+    description: "The contract timeout tests pass."
+    command: "uv run pytest tests/unit/test_omn21735_node_timeouts.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21735-timeouts-contract-tests"
+    description: "Declared values, refusals, contract-sourced defaults and the clean checker result all hold."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_omn21735_node_timeouts.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21735-check-clean"
+    description: "The pinned contracts_and_di validator scans both node directories; its structured findings contain no literal_timeout rule. Import, scan and path errors fail the probe."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "command"
+        check_value: |-
+          uv run --frozen python -c '
+          from pathlib import Path
+          from omnibase_core.validation.validator_contracts_and_di import ValidatorContractsAndDi
+          paths = [Path("src/omnimarket/nodes") / name for name in ("node_ci_fix_effect", "node_pr_delegated_fix_effect")]
+          assert all(path.is_dir() for path in paths), "a target node is missing"
+          result = ValidatorContractsAndDi().validate(paths)
+          assert result.metadata.files_processed >= len(paths), "the validator did not scan the targets"
+          findings = [issue for issue in result.issues if issue.rule_name == "literal_timeout"]
+          print(f"files_processed={result.metadata.files_processed}; literal_timeout={len(findings)}")
+          assert not findings, findings
+          '
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21735-lab-proof"
+    description: "The slice tests ran on a lab host at the PR head; the receipt path is in the PR body."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "command"
+        check_value: "test -s contracts/OMN-21735.yaml"
+        cwd: "${OMNI_HOME}/omnimarket"
