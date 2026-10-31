@@ -1,0 +1,52 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21672"
+title: "A GitHub write on a host whose secret store cannot be built names the missing bootstrap variable instead of an opaque lookup failure"
+summary: "onex scm pr-comment returned credential_unavailable with the text 'credential lookup failed for declared ref GITHUB_TOKEN' when the in-memory fallback injected the dev lane's Infisical store on a host whose environment lacks INFISICAL_ENVIRONMENT_SLUG. The store's configuration error names only variables, yet the write node folded it into one generic message. The write node now carries that message, so the lane sees which variable its host lacks."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21672-store-config-error"
+    statement: |-
+      A secret store that cannot be built on the host refuses with the store's own value-free message, and any other resolver error still refuses without its text.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a store configuration error reaches the credential_unavailable detail with the missing variable name -- falsifier: uv run pytest tests/unit/nodes/node_github_repo_write_effect -k unbuildable_store"
+      - id: "AC2"
+        statement: "AC2: an arbitrary resolver exception still never reaches the detail or the log -- falsifier: uv run pytest tests/unit/nodes/node_github_repo_write_effect -k resolver_error"
+evidence_requirements:
+  - kind: "tests"
+    description: "The unbuildable-store case fails on the unfixed handler and passes on the fix."
+    command: "uv run pytest tests/unit/nodes/node_github_repo_write_effect -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21672-unbuildable-store"
+    description: "The unbuildable-store case passes on the fix."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_github_repo_write_effect -k unbuildable_store -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21672-resolver-error"
+    description: "An arbitrary resolver error still exposes nothing."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_github_repo_write_effect -k resolver_error -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21672-deploy-handler-source"
+    description: "Hosted deploy check: the write node handler at the evaluated head carries the store configuration error branch. It reads the checked-out source only, with no credentials, broker or lab service. This checks the pushed source, not a production rollout."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "command"
+        check_value: |-
+          set -eu;
+          grep -q "except SecretStoreConfigurationError as exc" src/omnimarket/nodes/node_github_repo_write_effect/handlers/handler_github_repo_write.py
+        cwd: "."
