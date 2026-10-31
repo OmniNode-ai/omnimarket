@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import subprocess
 from datetime import UTC, datetime, timedelta
+from hashlib import sha1
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +24,9 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
 
 from omnimarket.handlers.scm import scm_cli
 from omnimarket.nodes.node_pr_duplicate_snapshot_effect.handlers.handler_pr_duplicate_snapshot import (
+    load_digest_config,
     parse_diff,
+    read_request,
 )
 
 pytestmark = pytest.mark.unit
@@ -52,12 +55,14 @@ def git(repo: Path, *args: str) -> str:
     ).stdout.strip()
 
 
-def commit_edit(repo: Path, path: str, line: int, text: str) -> str:
+def commit_edit(
+    repo: Path, path: str, line: int, text: str, *, message: str | None = None
+) -> str:
     target = repo / path
     lines = target.read_text().splitlines()
     lines[line - 1] = text
     target.write_text("\n".join(lines) + "\n")
-    git(repo, "commit", "-qam", f"edit {path}:{line}")
+    git(repo, "commit", "-qam", message or f"edit {path}:{line}")
     return git(repo, "rev-parse", "HEAD")
 
 
@@ -94,7 +99,7 @@ class World:
             git(seed, "checkout", "-q", "-b", branch, "dev")
             for path, line in edits:
                 self.shas[number] = commit_edit(
-                    seed, path, line, f"{branch} rewrote {line}"
+                    seed, path, line, "renamed to the node path"
                 )
             git(seed, "push", "-q", "origin", branch)
             git(seed, "checkout", "-q", "dev")
@@ -146,7 +151,9 @@ class World:
 
     def lane_branch(self, path: str, line: int) -> None:
         git(self.lane, "checkout", "-q", "-b", NEW_BRANCH, "origin/dev")
-        commit_edit(self.lane, path, line, "renamed to the node path")
+        commit_edit(
+            self.lane, path, line, "renamed to the node path", message="lane rename"
+        )
 
     def check_args(self) -> list[str]:
         return [
@@ -364,3 +371,104 @@ def test_parse_diff_keeps_replaced_lines_and_ignores_pure_insertions() -> None:
     assert touch["new file.txt"].added
     assert touch["new file.txt"].spans == ()
     assert touch["b.bin"].spans == ()
+
+
+def test_parse_diff_intent_digest_normalizes_signed_lines_and_excludes_headers() -> (
+    None
+):
+    diff = "\n".join(
+        [
+            "diff --git a/a.txt b/a.txt",
+            "--- a/a.txt",
+            "+++ b/a.txt",
+            "@@ -1,4 +1,5 @@",
+            "-  original line  ",
+            "+  replacement line  ",
+            "+replacement line",
+            "+   ",
+            "+abc",
+            "-abc",
+            "+abcd",
+            "-abcd",
+            "+--- literal text",
+            " context is ignored",
+            "\\ No newline at end of file",
+            "diff --git a/b.txt b/b.txt",
+            "--- a/b.txt",
+            "+++ b/b.txt",
+            "@@ -1 +1 @@",
+            "-another original",
+            "+another replacement",
+        ]
+    )
+    files = {f.path: f for f in parse_diff(diff).files}
+    expected = tuple(
+        sorted(
+            sha1(s.encode(), usedforsecurity=False).hexdigest()[:12]
+            for s in (
+                "-original line",
+                "+replacement line",
+                "+abcd",
+                "-abcd",
+                "+--- literal text",
+            )
+        )
+    )
+    assert files["a.txt"].digest == expected
+    assert len(files["b.txt"].digest) == 2
+    assert load_digest_config().min_line_chars == 4
+
+
+def test_stacked_git_ancestry_with_default_base_reads_only_tip_ancestor_delta(
+    world: World,
+) -> None:
+    parent_branch = "fix/omn-21533-protocol-binding-race"
+    git(world.lane, "checkout", "-q", "-b", NEW_BRANCH, f"origin/{parent_branch}")
+    tip = commit_edit(world.lane, "tests/test_binding.py", 71, "parent followup")
+    new_head = commit_edit(world.lane, "src/metrics.py", 15, "new lane behavior")
+    descendant = commit_edit(world.lane, "src/metrics.py", 16, "child lane behavior")
+    git(world.lane, "reset", "--hard", new_head)
+    state = json.loads(world.state.read_text())
+    template = state["prs"]["omnibase_core#2159"]["facts"]
+    for number, head, sha in (
+        (2200, "parent-followup", tip),
+        (2201, "same-commits", new_head),
+        (2202, "child-branch", descendant),
+    ):
+        state["prs"][f"omnibase_core#{number}"] = {
+            "facts": {
+                **template,
+                "number": number,
+                "head_ref": head,
+                "head_sha": sha,
+                "draft": number == 2200,
+            }
+        }
+    world.state.write_text(json.dumps(state))
+    request = read_request(
+        repo=TARGET,
+        head_ref=NEW_BRANCH,
+        base="dev",
+        title=TITLE,
+        body="",
+        lane=LANE,
+        cause=None,
+        watcher_state=world.state,
+        ledger=world.ledger,
+        clone=world.root / "omnibase_core",
+        worktree=world.lane,
+    )
+    prs = {pr.number: pr for pr in request.open_prs}
+    assert prs[2159].stacked
+    assert prs[2200].stacked
+    assert prs[2200].draft
+    assert prs[2202].stacked
+    assert not prs[2201].stacked
+    assert request.base == "dev"
+    assert request.touch is not None
+    assert [(f.path, f.spans) for f in request.touch.files] == [
+        ("src/metrics.py", ((15, 15),))
+    ]
+    assert request.touch == parse_diff(
+        git(world.lane, "diff", "-U0", f"{tip}...{new_head}")
+    )

@@ -68,9 +68,9 @@ def plan_branch(
         (repo / plan).write_text(f"# {plan}\n")
     else:
         lines = (repo / plan).read_text().splitlines()
-        lines[edit_line - 1] = f"{branch} rewrote line {edit_line}"
+        lines[edit_line - 1] = f"revised plan line {edit_line}"
         (repo / plan).write_text("\n".join(lines) + "\n")
-    regenerate_index(repo, branch)
+    regenerate_index(repo, "one more plan")
     with (repo / "plans/PLAN_LIFECYCLE.yaml").open("a") as registry:
         registry.write(f"  - plan: {plan}\n")
     git(repo, "add", "-A")
