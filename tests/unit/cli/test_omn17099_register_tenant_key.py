@@ -33,9 +33,8 @@ from omnimarket.routing.byok_provider_backends import (
     require_byok_plan_permitted,
 )
 
-# OMN-21059: every shipped row has the customer choose the model; this file
-# exercises the catalogue-pick path, which a row reaches with that flag off.
-pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("catalogue_picks_models")]
+# OMN-21217: hosted intake requires an explicit customer model choice.
+pytestmark = pytest.mark.unit
 _VALUE = "sk-test-tenant-secret-never-published"
 _TENANT = "developer-tenant"
 
@@ -83,7 +82,16 @@ def test_registers_the_value_and_publishes_only_the_reference(
     intake: tuple[LocalByokCredentialStore, FakeBus], named: bool
 ) -> None:
     store, bus = intake
-    args = ["register-tenant-key", "glm", "--tenant", _TENANT, "--plan", "general_api"]
+    args = [
+        "register-tenant-key",
+        "glm",
+        "--tenant",
+        _TENANT,
+        "--plan",
+        "general_api",
+        "--model",
+        "glm-5",
+    ]
     if named:
         args += ["--name", "my-provider"]
     result = CliRunner().invoke(cli_secret.secret_group, args, input=f"{_VALUE}\n")
@@ -97,6 +105,8 @@ def test_registers_the_value_and_publishes_only_the_reference(
         "provider": "glm",
         "plan": "general_api",
         "tenant": _TENANT,
+        "model": "glm-5",
+        "models": ["glm-5"],
         # OMN-20991: no --expires, so nothing can alert before the key lapses.
         "expiry_warning": "EXPIRY_ABSENT",
     }
@@ -111,7 +121,7 @@ def test_registers_the_value_and_publishes_only_the_reference(
     assert payload["api_key_ref"] == ref
     assert payload["tenant_id"] == _TENANT
     assert payload["name"] == ("my-provider" if named else "glm")
-    assert payload["metadata"] == {"plan": "general_api"}
+    assert payload["metadata"] == {"plan": "general_api", "model": "glm-5"}
 
 
 def test_command_exposes_no_secret_value_or_lane_parameter() -> None:
@@ -122,6 +132,7 @@ def test_command_exposes_no_secret_value_or_lane_parameter() -> None:
         "name",
         "plan",
         "model_option",
+        "expected_version",
         "expires",
         "host",
         "workspace_id",
@@ -150,7 +161,14 @@ def test_omitted_plan_uses_the_shared_publishers_detection(
     monkeypatch.setattr(cli_secret, "register_inference_credential", register)
     result = CliRunner().invoke(
         cli_secret.secret_group,
-        ["register-tenant-key", "glm", "--tenant", _TENANT],
+        [
+            "register-tenant-key",
+            "glm",
+            "--tenant",
+            _TENANT,
+            "--model",
+            "glm-5",
+        ],
         input=f"{_VALUE}\n",
     )
     assert result.exit_code == 0, result.output
@@ -193,7 +211,14 @@ def test_empty_stdin_is_refused(
     store, bus = intake
     result = CliRunner().invoke(
         cli_secret.secret_group,
-        ["register-tenant-key", "openrouter", "--tenant", _TENANT],
+        [
+            "register-tenant-key",
+            "openrouter",
+            "--tenant",
+            _TENANT,
+            "--model",
+            "openai/gpt-5-nano",
+        ],
         input=stdin,
     )
     assert result.exit_code != 0
@@ -208,7 +233,14 @@ def test_provider_outside_customer_catalogue_is_refused(
     store, bus = intake
     result = CliRunner().invoke(
         cli_secret.secret_group,
-        ["register-tenant-key", "vertex", "--tenant", _TENANT],
+        [
+            "register-tenant-key",
+            "vertex",
+            "--tenant",
+            _TENANT,
+            "--model",
+            "glm-5",
+        ],
         input=f"{_VALUE}\n",
     )
     assert result.exit_code != 0
@@ -236,7 +268,16 @@ def test_publisher_refusals_become_click_errors(
     monkeypatch.setattr(cli_secret, "register_inference_credential", refuse)
     result = CliRunner().invoke(
         cli_secret.secret_group,
-        ["register-tenant-key", "glm", "--tenant", _TENANT, "--plan", "general_api"],
+        [
+            "register-tenant-key",
+            "glm",
+            "--tenant",
+            _TENANT,
+            "--plan",
+            "general_api",
+            "--model",
+            "glm-5",
+        ],
         input=f"{_VALUE}\n",
     )
     assert result.exit_code == 1
@@ -253,7 +294,16 @@ def test_detection_only_plan_is_refused_before_storing(
     refusal = refused.value
     result = CliRunner().invoke(
         cli_secret.secret_group,
-        ["register-tenant-key", "glm", "--tenant", _TENANT, "--plan", "coding_plan"],
+        [
+            "register-tenant-key",
+            "glm",
+            "--tenant",
+            _TENANT,
+            "--plan",
+            "coding_plan",
+            "--model",
+            "glm-5",
+        ],
         input=f"{_VALUE}\n",
     )
     assert result.exit_code == 1
@@ -280,6 +330,8 @@ def _register_with_expiry(expires: str) -> Any:
             "general_api",
             "--expires",
             expires,
+            "--model",
+            "glm-5",
         ],
         input=f"{_VALUE}\n",
     )
@@ -385,6 +437,8 @@ def test_register_tenant_key_anthropic_expires_reaches_the_catalog(
             _TENANT,
             "--expires",
             expires,
+            "--model",
+            "claude-haiku-5-5",
         ],
         input=f"{_VALUE}\n",
     )

@@ -15,6 +15,8 @@ class NodeHostPoolAlarmEffect:
     contract_path = CONTRACT
 
     def handle(self, request: ModelHostPoolAlarmRequest) -> ModelHostPoolAlarm:
-        from .handler import HandlerHostPoolAlarm
+        from .container.container_host_pool_alarm_effect import (
+            create_handler_host_pool_alarm,
+        )
 
-        return HandlerHostPoolAlarm().handle(request)
+        return create_handler_host_pool_alarm().handle(request)

@@ -65,6 +65,10 @@ EXPECTED_SUBSCRIPTIONS = {
     "tenant_credentials": (
         "onex.evt.omnimarket.credential-registered.v1",
         "onex.evt.omnimarket.credential-revoked.v1",
+        # OMN-21217: the node reads back its own two compacted state topics
+        # (the registries' replay source), routed to the same runtime writer.
+        "onex.evt.omnimarket.tenant-credential-state.v1",
+        "onex.evt.omnimarket.tenant-routing-overlay-state.v1",
     ),
     "tenant_registry": ("onex.tenant.events",),
 }

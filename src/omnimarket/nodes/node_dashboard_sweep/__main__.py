@@ -23,10 +23,10 @@ import sys
 
 from pydantic import ValidationError
 
+from omnimarket.nodes.node_dashboard_sweep.container import container_dashboard_sweep
 from omnimarket.nodes.node_dashboard_sweep.handlers.handler_dashboard_sweep import (
     DashboardSweepRequest,
     ModelPageInput,
-    NodeDashboardSweep,
 )
 
 _log = logging.getLogger(__name__)
@@ -81,7 +81,7 @@ def main() -> None:
         dry_run=args.dry_run,
     )
 
-    handler = NodeDashboardSweep()
+    handler = container_dashboard_sweep.build_node_dashboard_sweep()
     result = handler.handle(request)
 
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")

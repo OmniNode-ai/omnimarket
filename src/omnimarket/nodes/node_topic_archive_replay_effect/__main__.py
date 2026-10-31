@@ -24,11 +24,11 @@ import os
 import sys
 from pathlib import Path
 
+from omnimarket.nodes.node_topic_archive_replay_effect.container.container_topic_archive_replay_effect import (
+    create_handler_topic_archive_replay,
+)
 from omnimarket.nodes.node_topic_archive_replay_effect.handlers._kafka_replay_writer import (
     AiokafkaReplayWriter,
-)
-from omnimarket.nodes.node_topic_archive_replay_effect.handlers.handler_topic_archive_replay import (
-    HandlerTopicArchiveReplay,
 )
 from omnimarket.topic_archive.live import (
     AgeArchiveCipher,
@@ -62,7 +62,7 @@ async def _run(args: argparse.Namespace) -> ModelTopicArchiveReplayResult:
         )
     writer = AiokafkaReplayWriter(args.bootstrap)
     try:
-        return await HandlerTopicArchiveReplay(
+        return await create_handler_topic_archive_replay(
             sink=sink,
             cipher=cipher,
             writer=writer,
