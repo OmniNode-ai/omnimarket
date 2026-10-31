@@ -9,14 +9,14 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from ..models import ModelLabPluginSnapshotEvictRequest, ModelLabUvCacheColocateRequest
-from .handler_lab_plugin_snapshot_evict import (
+from .handlers.handler_lab_plugin_snapshot_evict import (
     HandlerLabPluginSnapshotEvict,
 )
-from .handler_lab_uv_cache_colocate import (
+from .handlers.handler_lab_uv_cache_colocate import (
     HandlerLabUvCacheColocate,
     default_uv_config,
 )
+from .models import ModelLabPluginSnapshotEvictRequest, ModelLabUvCacheColocateRequest
 
 
 def main(argv: Sequence[str] | None = None) -> int:

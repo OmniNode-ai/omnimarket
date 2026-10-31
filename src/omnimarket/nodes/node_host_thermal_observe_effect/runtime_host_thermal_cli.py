@@ -11,9 +11,9 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from ..models import ModelHostThermalObserveRequest
-from .handler_host_thermal_observe import HandlerHostThermalObserve
-from .handler_host_thermal_report import report
+from .handlers.handler_host_thermal_observe import HandlerHostThermalObserve
+from .handlers.handler_host_thermal_report import report
+from .models import ModelHostThermalObserveRequest
 
 
 def _state_dir(arg: Path | None) -> Path:

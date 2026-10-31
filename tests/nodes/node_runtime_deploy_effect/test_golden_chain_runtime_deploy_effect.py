@@ -14,12 +14,12 @@ from omnimarket.nodes.node_runtime_deploy_effect.handlers.handler_runtime_deploy
     HandlerRuntimeDeploy,
     contract_topics,
 )
-from omnimarket.nodes.node_runtime_deploy_effect.handlers.handler_runtime_deploy_cli import (
-    dispatch,
-)
 from omnimarket.nodes.node_runtime_deploy_effect.models.model_runtime_deploy_request import (
     ModelRuntimeDeployOptions,
     ModelRuntimeDeployRequest,
+)
+from omnimarket.nodes.node_runtime_deploy_effect.runtime_deploy_cli import (
+    dispatch,
 )
 
 pytestmark = pytest.mark.unit
