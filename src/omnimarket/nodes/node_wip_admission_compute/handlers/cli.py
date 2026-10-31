@@ -31,8 +31,8 @@ from omnimarket.models.wip_admission import (
     ModelWipAdmissionRequest,
     ModelWipClaim,
 )
-from omnimarket.nodes.node_wip_admission_compute.handlers.handler_wip_admission import (
-    HandlerWipAdmission,
+from omnimarket.nodes.node_wip_admission_compute.container.container_wip_admission_compute import (
+    create_handler_wip_admission,
 )
 
 EXIT_ADMIT, EXIT_UNREADABLE, EXIT_REFUSE = 0, 2, 3
@@ -63,7 +63,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (ValueError, KeyError, TypeError, ValidationError, NodeOverlayError) as exc:
         sys.stderr.write(f"wip admission: unreadable request or overlay: {exc}\n")
         return EXIT_UNREADABLE
-    decision = HandlerWipAdmission().handle(request)
+    decision = create_handler_wip_admission().handle(request)
     sys.stdout.write(decision.model_dump_json() + "\n")
     return EXIT_ADMIT if decision.outcome is EnumWipOutcome.ADMIT else EXIT_REFUSE
 
