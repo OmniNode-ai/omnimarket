@@ -18,6 +18,15 @@
 # reused and the write node returns an open pull request for the head replayed,
 # so a redelivered tag opens nothing twice. A port that cannot answer raises: the
 # runtime dead-letters the trigger instead of advancing half the callers.
+#
+# Friction measurement (OMN-20134, ruling 2026-10-31T00:13:02Z "we should measure
+# friction overtime"): the handler returns the completed event and then one
+# PinOutcomeEvent per caller outcome, which the runtime's fan-out routes to
+# onex.evt.omnimarket.receipt-gate-pin-outcome.v1. Each carries the caller's pin
+# kind (sha or tag), the core tag, the seconds from the tag to the pull request
+# and a refusal class when the pull request could not be opened.
+# node_projection_receipt_gate_pin_friction folds those with the merge and CI
+# observations into one row per pin pull request.
 name: node_receipt_gate_pin_advance_effect
 lifecycle: experimental
 contract_version: {major: 1, minor: 0, patch: 0}
@@ -48,6 +57,18 @@ pin_advance_effect_config:
   bus_lane_env: ONEX_GITHUB_GATEWAY_BUS_LANE
   default_bus_lane: dev
   bus_timeout_s: 90
+  # How a failed pull request's error text is classed for the friction
+  # measurement (OMN-20134). First match wins; a failure matching none takes
+  # default_refusal_class. A refusal found later on the open pull request (a red
+  # audit or guard check, a conflict) is classed by node_projection_receipt_gate_pin_friction.
+  refusal_classes:
+    - refusal_class: conflict
+      pattern: 'HTTP (409|422)|already exists|not a fast.?forward|conflict'
+    - refusal_class: audit
+      pattern: 'audit'
+    - refusal_class: guard
+      pattern: 'refused|quota|floor|expected.?head|mode|guard'
+  default_refusal_class: other
 
 placement:
   mode: any
@@ -74,6 +95,13 @@ event_bus:
     - onex.evt.github.dev-merge-tag.v1
   publish_topics:
     - onex.evt.omnimarket.receipt-gate-pin-advance-completed.v1
+    - onex.evt.omnimarket.receipt-gate-pin-outcome.v1
+
+# The outcome events are consumed by whatever holds the pin friction rows: it sends
+# each, with the pull request's prior row, to node_projection_receipt_gate_pin_friction
+# (OMN-20134).
+externally_consumed_topics:
+  - onex.evt.omnimarket.receipt-gate-pin-outcome.v1
 
 # Produced by node_github_webhook_ingress_effect, which folds a signed push
 # delivery of a dev-<UTC14>-<sha12> tag into this event. Declared here as the
@@ -92,6 +120,9 @@ published_events:
   - event_type: "ReceiptGatePinAdvanceCompleted"
     topic: onex.evt.omnimarket.receipt-gate-pin-advance-completed.v1
     description: "The advance ran for the tag: one result per caller that needed a pull request, the callers the planner could not judge, or why nothing ran."
+  - event_type: "PinOutcomeEvent"
+    topic: onex.evt.omnimarket.receipt-gate-pin-outcome.v1
+    description: "One typed event per caller outcome (opened, replayed, refused, failed) with the caller's pin kind (sha or tag), the core tag, the time from the tag to the pull request, and any refusal class; node_projection_receipt_gate_pin_friction keeps them as rows."
 
 handler_routing:
   routing_strategy: "payload_type_match"

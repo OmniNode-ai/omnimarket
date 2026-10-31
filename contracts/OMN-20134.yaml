@@ -9,7 +9,11 @@ summary: No receipt-gate caller pin carried the fix-parent control fallback (con
   constant. node_receipt_gate_pin_advance_compute reads the callers' pin sites from its contract and plans one pull
   request per caller whose pinned gate differs from the newest dev tag's; node_receipt_gate_pin_advance_effect,
   triggered by the dev-merge tag event the webhook ingress now folds, publishes one branch per stale caller and
-  opens the pull request through node_github_repo_write_effect.
+  opens the pull request through node_github_repo_write_effect. The updater emits one typed outcome event per caller
+  outcome with the caller's pin kind (sha or tag), node_projection_receipt_gate_pin_friction folds each observation into one row per pin
+  pull request, node_receipt_gate_pin_friction_report_compute shows the comparison per pin kind over a window, and
+  node_receipt_gate_pin_friction_ledger_effect writes a failed or touched pin pull request as a FRICTION row with
+  class=pin-advance.
 is_seam_ticket: false
 interface_change: true
 interfaces_touched:
@@ -53,6 +57,40 @@ requirements:
     statement: 'AC5: the webhook ingress folds the creation of a dev-<UTC14>-<sha12> tag into one observation on
       onex.evt.github.dev-merge-tag.v1 and folds no other tag, move or deletion -- falsifier: uv run pytest tests/nodes/node_github_webhook_ingress_effect/test_webhook_fold.py
       -q -p no:randomly --no-cov -k DevMergeTag fails at the merge base, where a tag push folds to nothing'
+- id: req-pin-friction-measured-per-pin-kind
+  statement: Ruling 2026-10-31T00:13:02Z keeps omnibase_infra's caller on a full sha (its pull_request_target audit
+    requires one) and lets four repositories' pin tests accept a dev-merge tag or a sha, "but we should measure friction
+    overtime". The updater emits one typed event per caller outcome, a reducer folds each observation into one row per pin pull request,
+    a query shows the comparison per pin kind over a window, and an updater failure or a touched pin pull request
+    writes a FRICTION ledger row with class=pin-advance and the site.
+  acceptance:
+  - id: AC6
+    statement: 'AC6: the updater emits, after its completed event, one PinOutcomeEvent per caller outcome (opened, replayed,
+      refused, failed) carrying the caller''s pin kind (sha or tag), the core tag, the seconds from the tag to the pull
+      request and a refusal class, and none for a dry run or an ignored tag -- falsifier: uv run pytest tests/nodes/node_receipt_gate_pin_advance_effect/test_golden_chain_receipt_gate_pin_advance_effect.py
+      -q -p no:randomly --no-cov -k "outcome or refused or redelivered or dry_run" fails at the merge base, where the
+      updater emits no outcome event'
+  - id: AC7
+    statement: 'AC7: the reducer folds the outcome, the merge, the head changes, the workflow-run attempts and the red
+      checks into the row of the pin pull request (prior row in, next row out), counting a merge with no fix push and no CI
+      re-run as untouched, recording audit, guard and conflict refusals, and flagging a failed updater run or a first
+      touch exactly once -- falsifier:
+      uv run pytest tests/nodes/node_projection_receipt_gate_pin_friction -q -p no:randomly --no-cov fails at the
+      merge base, where the node does not exist'
+  - id: AC8
+    statement: 'AC8: a query over the projection''s rows and a window returns, per pin kind, the pull requests opened,
+      the number merged untouched, the median time to merge, the touches per pull request and the refusals -- falsifier:
+      uv run pytest tests/nodes/node_receipt_gate_pin_friction_report_compute -q -p no:randomly --no-cov fails at the
+      merge base, where the node does not exist'
+  - id: AC9
+    statement: 'AC9: a pin friction event is appended to the rolling ledger as a FRICTION row with class=pin-advance, the
+      site, a parseable cost and an existing ticket, which the friction rollup counts by class, and the append is answered
+      accepted, duplicate, refused, error or pending -- falsifier: uv run pytest tests/nodes/node_receipt_gate_pin_friction_ledger_effect
+      -q -p no:randomly --no-cov fails at the merge base, where the node does not exist'
+  - id: AC10
+    statement: 'AC10: the webhook ingress folds a workflow run''s attempt number onto its observation, so an attempt above
+      1 is a CI re-run -- falsifier: uv run pytest tests/nodes/node_github_webhook_ingress_effect/test_webhook_fold_red_checks.py
+      -q -p no:randomly --no-cov -k RunAttempt fails at the merge base, where the observation carries no attempt'
 evidence_requirements:
 - kind: tests
   description: The caller's reusable pin is the dev-merge tag.
@@ -65,6 +103,23 @@ evidence_requirements:
   description: 'AC4 and AC5: the effect, its ports and the ingress tag fold.'
   command: uv run pytest tests/nodes/node_receipt_gate_pin_advance_effect/test_golden_chain_receipt_gate_pin_advance_effect.py
     tests/nodes/node_github_webhook_ingress_effect/test_webhook_fold.py -q -p no:randomly --no-cov
+- kind: tests
+  description: 'AC6: the updater''s outcome events.'
+  command: uv run pytest tests/nodes/node_receipt_gate_pin_advance_effect/test_golden_chain_receipt_gate_pin_advance_effect.py
+    -q -p no:randomly --no-cov -k "outcome or refused or redelivered or dry_run"
+- kind: tests
+  description: 'AC7: the reducer fold and handler.'
+  command: uv run pytest tests/nodes/node_projection_receipt_gate_pin_friction -q -p no:randomly --no-cov
+- kind: tests
+  description: 'AC8: the per-pin-kind query.'
+  command: uv run pytest tests/nodes/node_receipt_gate_pin_friction_report_compute -q -p no:randomly --no-cov
+- kind: tests
+  description: 'AC9: the FRICTION ledger row.'
+  command: uv run pytest tests/nodes/node_receipt_gate_pin_friction_ledger_effect -q -p no:randomly --no-cov
+- kind: tests
+  description: 'AC10: the workflow-run attempt on the ingress observation.'
+  command: uv run pytest tests/nodes/node_github_webhook_ingress_effect/test_webhook_fold_red_checks.py -q -p no:randomly --no-cov
+    -k RunAttempt
 emergency_bypass:
   enabled: false
   justification: ''
@@ -135,3 +190,45 @@ dod_evidence:
   - AC2
   - AC3
   - AC4
+- id: dod-omn20134-outcome-events
+  description: 'AC6: the updater emits one typed outcome event per caller outcome with the pin kind and the tag-to-PR time.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_receipt_gate_pin_advance_effect/test_golden_chain_receipt_gate_pin_advance_effect.py
+      -q -p no:randomly --no-cov -k "outcome or refused or redelivered or dry_run"
+  binds_ac:
+  - AC6
+- id: dod-omn20134-friction-projection
+  description: 'AC7: the reducer folds observations into one row per pin pull request and flags a failed updater run or a first touch once.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_projection_receipt_gate_pin_friction -q -p no:randomly --no-cov
+  binds_ac:
+  - AC7
+- id: dod-omn20134-friction-report
+  description: 'AC8: the per-pin-kind comparison over a window.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_receipt_gate_pin_friction_report_compute -q -p no:randomly --no-cov
+  binds_ac:
+  - AC8
+- id: dod-omn20134-friction-ledger-row
+  description: 'AC9: a pin friction event is a FRICTION ledger row with class=pin-advance and the site.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_receipt_gate_pin_friction_ledger_effect -q -p no:randomly --no-cov
+  binds_ac:
+  - AC9
+- id: dod-omn20134-run-attempt
+  description: 'AC10: the ingress folds a workflow run attempt number.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_github_webhook_ingress_effect/test_webhook_fold_red_checks.py -q -p no:randomly
+      --no-cov -k RunAttempt
+  binds_ac:
+  - AC10

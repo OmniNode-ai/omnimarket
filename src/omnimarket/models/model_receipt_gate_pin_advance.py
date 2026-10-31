@@ -142,6 +142,10 @@ class ModelCallerPlan(BaseModel):
 
     repository: str
     verdict: EnumCallerVerdict
+    pin_kind: EnumPinForm | None = Field(
+        default=None,
+        description="What the caller's reference pin site holds: the dev-merge tag or the tag's sha.",
+    )
     detail: str = ""
     base_branch: str = ""
     base_head_sha: str = ""

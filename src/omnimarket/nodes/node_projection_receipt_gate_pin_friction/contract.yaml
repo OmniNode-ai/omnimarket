@@ -1,0 +1,132 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Receipt Gate Pin Friction Reducer (OMN-20134)
+#
+# Ruling 2026-10-31T00:13:02Z: omnibase_infra's receipt-gate caller stays a full
+# sha (its pull_request_target audit requires one) and four repositories' pin
+# tests accept a dev-merge tag or a sha, "but we should measure friction
+# overtime". This reducer is the measurement's fold. A pin pull request's row is
+# (prior row, observation) -> next row, where the observation is one of:
+#
+#   - the updater's PinOutcomeEvent (pin kind, core tag, seconds from the tag to
+#     the pull request, a refusal class when it could not open one);
+#   - the merge (onex.evt.github.pr-merged.v1);
+#   - the pull request's head and mergeability (onex.evt.github.pr-status.v1):
+#     a head other than the published one is a fix push;
+#   - a workflow run (onex.evt.github.workflow-run.v1): an attempt above 1 on one
+#     of the pull request's heads is a CI re-run;
+#   - a red check (onex.evt.github.check-run.v1), classed audit or guard by name.
+#
+# The reducer keeps no state and reads no clock: the caller that holds the rows
+# sends the prior row and persists the answer, and every timestamp comes from the
+# observation. A failed or refused updater run, or the first touch of a pin pull
+# request, also leaves one typed friction event in the answer, which
+# node_receipt_gate_pin_friction_ledger_effect writes as a FRICTION ledger row with
+# class=pin-advance. The comparison per pin kind over a window is
+# node_receipt_gate_pin_friction_report_compute, fed with the rows.
+name: node_projection_receipt_gate_pin_friction
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: REDUCER_GENERIC
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure definition-B reducer: folds one observation of a receipt-gate pin pull
+  request into its row (the caller's pin kind, the core tag, the time from the tag
+  to the pull request, the time to merge, fix pushes, CI re-runs and any refusal),
+  and returns a friction event when the updater failed or the pull request was
+  touched.
+input_model:
+  name: ModelPinFrictionFoldRequest
+  module: omnimarket.models.receipt_gate_pin_friction
+  description: "The pin pull request's prior row, if the caller holds one, and one observation."
+output_model:
+  name: ModelPinFrictionFoldResult
+  module: omnimarket.models.receipt_gate_pin_friction
+  description: "The next row, whether it changed, and the friction event the observation newly caused, if any."
+
+handler:
+  module: omnimarket.nodes.node_projection_receipt_gate_pin_friction.handlers.handler_pin_friction_reducer
+  class: HandlerReceiptGatePinFrictionReducer
+  input_model: omnimarket.models.receipt_gate_pin_friction.ModelPinFrictionFoldRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_projection_receipt_gate_pin_friction.handlers.handler_pin_friction_reducer:HandlerReceiptGatePinFrictionReducer
+  handlers:
+    - operation: fold_pin_friction
+      handler:
+        name: HandlerReceiptGatePinFrictionReducer
+        module: omnimarket.nodes.node_projection_receipt_gate_pin_friction.handlers.handler_pin_friction_reducer
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles:
+    - main
+
+replay:
+  deterministic: true
+
+# What the fold treats as a red check, a refusal by check name, a conflict and a
+# closed pull request. Declared once here; nothing in code names a check or a state.
+pin_friction_config:
+  red_conclusions: [failure, timed_out, action_required, startup_failure]
+  # First match wins. An audit check refuses a caller whose pull_request_target
+  # workflow is not held to a full sha; a guard check is the sibling-ref and pin
+  # test guards that hold a caller to the dev-merge tag or a sha.
+  check_refusal_classes:
+    - refusal_class: audit
+      pattern: 'runner.?routing|workflow.?audit|pull_request_target'
+    - refusal_class: guard
+      pattern: 'sibling.?ref|pin.?guard|receipt.?gate.?pin|ref.?guard'
+  conflicting_mergeable: CONFLICTING
+  closed_triage_states: [closed]
+
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - onex.cmd.omnimarket.pin-friction-fold-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.pin-friction-folded.v1
+
+# Sent by whatever holds the rows: it reads the prior row, sends it with the
+# observation, and keeps the answer.
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.pin-friction-fold-requested.v1
+    producer: "the runner that holds the pin friction rows: it sends the prior row with each observation of a pin pull request"
+
+published_events:
+  - event_type: "PinFrictionFoldResult"
+    topic: onex.evt.omnimarket.pin-friction-folded.v1
+    description: "The pin pull request's next row for the observation, and its friction event when it newly caused one."
+
+terminal_event: onex.evt.omnimarket.pin-friction-folded.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.pin-friction-fold-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.pin-friction-folded.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.pin-friction-folded.v1
+
+metadata:
+  transport_type: kafka
+  description: "Receipt gate pin friction REDUCER - folds one observation into a pin pull request's row (OMN-20134)"
+  author: "OmniNode Team"
+  created: "2026-10-31"
+  tags:
+    - "reducer"
+    - "ci"
+    - "pin"
+    - "receipt-gate"
+    - "friction"
+    - "OMN-20134"
+  related_tickets:
+    - "OMN-20134"
