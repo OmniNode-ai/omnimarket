@@ -406,6 +406,8 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # dispatched once per consumed event by runtime auto-wiring on its
     # standalone writer operation; the per-node walk above proves no pure
     # handler in those nodes also declares the capability.
+    # DelegationBudgetReadingsProjectionWriter is its node's only DB writer,
+    # dispatched once per consumed event by runtime auto-wiring.
     assert declared == {
         "AlertChannelLivenessProjectionWriter",
         "AutomationLivenessProjectionWriter",
@@ -441,6 +443,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "SavingsProjectionWriter",
         "TenantCredentialsProjectionWriter",
         "TenantMirrorProjectionWriter",
+        "DelegationBudgetReadingsProjectionWriter",
     }, f"unexpected {attr} declarations: {sorted(declared)}"
 
 
