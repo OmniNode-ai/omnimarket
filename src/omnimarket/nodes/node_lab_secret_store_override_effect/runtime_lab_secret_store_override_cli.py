@@ -15,10 +15,10 @@ from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_core.runtime.runtime_dispatch import DispatchRoute, RuntimeDispatch
 from omnibase_core.runtime.transport import InMemoryBroker, InMemoryTransport
 
-from ..models.model_lab_secret_store_override_request import (
+from .models.model_lab_secret_store_override_request import (
     ModelLabSecretStoreOverrideRequest,
 )
-from ..models.model_lab_secret_store_override_result import (
+from .models.model_lab_secret_store_override_result import (
     ModelLabSecretStoreOverrideResult,
 )
 

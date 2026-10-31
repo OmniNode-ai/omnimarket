@@ -28,8 +28,8 @@ from typing import Any
 
 MARKER = "operator-access-mode"
 RETIRED_MARKERS = ("foreground-bash-shape-guard.py",)
-ENTRY_MODULE = "omnimarket.nodes.node_operator_access_mode_effect.handlers.handler_operator_hook_cli"
 NODE_DIR = Path(__file__).resolve().parents[1]
+ENTRY_MODULE = f"omnimarket.nodes.{NODE_DIR.name}.runtime_operator_hook_cli"
 REGISTRATIONS: tuple[tuple[str, str | None, str, str], ...] = (
     (
         "SessionStart",

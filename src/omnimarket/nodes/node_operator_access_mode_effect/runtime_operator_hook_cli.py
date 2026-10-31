@@ -3,7 +3,7 @@
 """The one entry every operator-supervision hook calls, and the ``onex-access-mode`` switch.
 
 Registered by ``onex-user-hooks-install`` in the user settings file, run as
-``python -m ...handler_operator_hook_cli <event>`` with the payload on stdin:
+``python -m ...runtime_operator_hook_cli <event>`` with the payload on stdin:
 
 * ``session-start`` (SessionStart): resolve and record the access mode. For a session that opted in
   to session start (OMN-21149), also tell the model which mode it is in and, in REMOTE mode, run the
@@ -43,18 +43,8 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from ..models.enum_access_mode import EnumAccessMode
-from ..models.model_access_mode_request import ModelAccessModeRequest
-from ..models.model_access_mode_result import ModelAccessModeResult
-from ..models.model_foreground_bash_request import ModelForegroundBashRequest
-from ..models.model_hook_verdict import ModelHookVerdict
-from ..models.model_lab_dispatch_request import ModelLabDispatchRequest
-from ..models.model_operator_reply_request import ModelOperatorReplyRequest
-from ..models.model_push_gate_request import ModelPushGateRequest
-from ..models.model_remote_setup_request import ModelRemoteSetupRequest
-from ..models.model_silence_request import ModelSilenceRequest
-from .handler_access_mode_detect import HandlerAccessModeDetect
-from .handler_access_mode_state import (
+from .handlers.handler_access_mode_detect import HandlerAccessModeDetect
+from .handlers.handler_access_mode_state import (
     prune_stale_sessions,
     read_global_override,
     read_global_silent,
@@ -64,21 +54,37 @@ from .handler_access_mode_state import (
     write_global_override,
     write_global_silent,
 )
-from .handler_attention_push_gate import ATTENTION_KINDS, HandlerAttentionPushGate
-from .handler_foreground_bash_guard import FETCH_TOOLS, HandlerForegroundBashGuard
-from .handler_lab_dispatch_gate import (
+from .handlers.handler_attention_push_gate import (
+    ATTENTION_KINDS,
+    HandlerAttentionPushGate,
+)
+from .handlers.handler_foreground_bash_guard import (
+    FETCH_TOOLS,
+    HandlerForegroundBashGuard,
+)
+from .handlers.handler_lab_dispatch_gate import (
     HandlerLabDispatchGate,
     mac_route_count,
     read_lab_pool,
 )
-from .handler_operator_reply_check import (
+from .handlers.handler_operator_reply_check import (
     REPEAT_WINDOW,
     HandlerOperatorReplyCheck,
     normalise_reply,
 )
-from .handler_refusal_row import record_refusal
-from .handler_remote_setup_check import HandlerRemoteSetupCheck
-from .handler_silence_guard import HandlerSilenceGuard, is_silence_tick
+from .handlers.handler_refusal_row import record_refusal
+from .handlers.handler_remote_setup_check import HandlerRemoteSetupCheck
+from .handlers.handler_silence_guard import HandlerSilenceGuard, is_silence_tick
+from .models.enum_access_mode import EnumAccessMode
+from .models.model_access_mode_request import ModelAccessModeRequest
+from .models.model_access_mode_result import ModelAccessModeResult
+from .models.model_foreground_bash_request import ModelForegroundBashRequest
+from .models.model_hook_verdict import ModelHookVerdict
+from .models.model_lab_dispatch_request import ModelLabDispatchRequest
+from .models.model_operator_reply_request import ModelOperatorReplyRequest
+from .models.model_push_gate_request import ModelPushGateRequest
+from .models.model_remote_setup_request import ModelRemoteSetupRequest
+from .models.model_silence_request import ModelSilenceRequest
 
 OPTIN_DIR_ENV = "ONEX_SESSION_OPTIN_DIR"
 OPTIN_ENV = "ONEX_SESSION_OPTIN"
@@ -568,7 +574,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     handler = EVENTS.get(args[0] if args else "")
     if handler is None:
         print(
-            f"usage: handler_operator_hook_cli {{{'|'.join(EVENTS)}|mode|silent}}",
+            f"usage: runtime_operator_hook_cli {{{'|'.join(EVENTS)}|mode|silent}}",
             file=sys.stderr,
         )
         return 0

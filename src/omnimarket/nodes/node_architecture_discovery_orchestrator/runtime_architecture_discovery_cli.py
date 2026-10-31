@@ -15,9 +15,9 @@ from omnibase_core.cli.cli_run_node import (
     publish_and_poll,
 )
 
-from ..models.model_discovery_request import ModelDiscoveryRequest
-from ..models.model_discovery_result import ModelDiscoveryResult
-from .handler_architecture_discovery import load_contract
+from .handlers.handler_architecture_discovery import load_contract
+from .models.model_discovery_request import ModelDiscoveryRequest
+from .models.model_discovery_result import ModelDiscoveryResult
 
 NODE = "node_architecture_discovery_orchestrator"
 
