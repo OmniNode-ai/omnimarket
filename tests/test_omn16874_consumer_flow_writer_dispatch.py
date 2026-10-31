@@ -406,6 +406,8 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # dispatched once per consumed event by runtime auto-wiring on its
     # standalone writer operation; the per-node walk above proves no pure
     # handler in those nodes also declares the capability.
+    # DelegationBudgetReadingsProjectionWriter is its node's only DB writer,
+    # dispatched once per consumed event by runtime auto-wiring.
     assert declared == {
         "AlertChannelLivenessProjectionWriter",
         "AutomationLivenessProjectionWriter",
@@ -441,6 +443,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "SavingsProjectionWriter",
         "TenantCredentialsProjectionWriter",
         "TenantMirrorProjectionWriter",
+        "DelegationBudgetReadingsProjectionWriter",
     }, f"unexpected {attr} declarations: {sorted(declared)}"
 
 
@@ -523,7 +526,7 @@ def test_concurrent_dispatch_threads_share_one_loop_and_one_pool(
     assert all(result["rows_upserted"] == 1 for result in results)
     assert len(loops) == 1
     assert cast("_RecordingAdapter", writer.db).connects == 1
-    assert writer._dispatch_thread is not threading.current_thread()
+    assert writer._dispatch.thread is not threading.current_thread()
 
 
 @pytest.mark.unit

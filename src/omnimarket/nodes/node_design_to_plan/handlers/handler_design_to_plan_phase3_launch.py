@@ -8,16 +8,13 @@ from pathlib import Path
 import yaml
 
 from omnimarket.events.design_to_plan import ModelPlanToTicketsStartCommand
-from omnimarket.nodes.node_design_to_plan.models.model_design_to_plan_command import (
-    ModelDesignToPlanCommand,
-)
 from omnimarket.nodes.node_design_to_plan.models.model_design_to_plan_phase3_launch import (
     ModelDesignToPlanPhase3Dispatch,
+    ModelDesignToPlanPhase3LaunchRequest,
     ModelDesignToPlanPhase3LaunchResult,
 )
 from omnimarket.nodes.node_design_to_plan.models.model_design_to_plan_state import (
     EnumDesignToPlanPhase,
-    ModelDesignToPlanState,
 )
 
 _NODES_ROOT = Path(__file__).resolve().parents[2]
@@ -110,11 +107,11 @@ class HandlerDesignToPlanPhase3Launch:
     """Build typed Onex-native launch commands for a finalized plan."""
 
     def handle(
-        self,
-        command: ModelDesignToPlanCommand,
-        state: ModelDesignToPlanState,
+        self, request: ModelDesignToPlanPhase3LaunchRequest
     ) -> ModelDesignToPlanPhase3LaunchResult:
         """Build the Phase 3 downstream dispatch plan from contract truth."""
+        command = request.command
+        state = request.state
         if state.current_phase != EnumDesignToPlanPhase.LAUNCH:
             msg = (
                 "Phase 3 launch routing requires state.current_phase='launch' "

@@ -41,6 +41,7 @@ from omnimarket.nodes.node_build_loop_orchestrator.models.model_dispatch_trace i
 )
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
     BuildTarget,
+    DispatchRequest,
 )
 
 # ---------------------------------------------------------------------------
@@ -584,7 +585,9 @@ async def test_handle_writes_metrics_file_after_dispatch(tmp_path: Path) -> None
     with patch.object(
         AdapterLlmDispatch, "_generate_with_review", new=_fake_generate_with_review
     ):
-        await adapter.handle(correlation_id=corr_id, targets=targets, dry_run=False)
+        await adapter.handle(
+            DispatchRequest(correlation_id=corr_id, targets=targets, dry_run=False)
+        )
 
     metrics_file = state_dir / "dispatch-metrics" / f"{corr_id}.json"
     assert metrics_file.exists(), f"Expected metrics file at {metrics_file}"
@@ -607,7 +610,9 @@ async def test_handle_dry_run_does_not_write_metrics(tmp_path: Path) -> None:
     targets = (
         BuildTarget(ticket_id="OMN-DRY", title="Dry", buildability="auto_buildable"),
     )
-    await adapter.handle(correlation_id=corr_id, targets=targets, dry_run=True)
+    await adapter.handle(
+        DispatchRequest(correlation_id=corr_id, targets=targets, dry_run=True)
+    )
 
     metrics_dir = state_dir / "dispatch-metrics"
     assert not metrics_dir.exists() or not any(metrics_dir.iterdir())

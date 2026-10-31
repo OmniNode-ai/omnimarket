@@ -18,10 +18,10 @@ from collections.abc import Callable
 from importlib.resources import files
 
 import yaml
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.models.event_bus.model_event_message import ModelEventMessage
 from pydantic import BaseModel, JsonValue
 
+from omnimarket.handlers.container.container_inmemory import bind_core_event_bus
 from omnimarket.nodes.node_binding_parity_orchestrator.models.model_run_local import (
     ModelRunLocalConfig,
 )
@@ -30,9 +30,9 @@ from omnimarket.nodes.node_binding_parity_orchestrator.protocols.protocol_local_
 )
 
 
-def build_local_bus() -> EventBusInmemory:
+def build_local_bus() -> ProtocolLocalBus:
     """The container's default bus: core's in-memory event bus."""
-    return EventBusInmemory(environment="in-process-entry", group="run-in-process")
+    return bind_core_event_bus(environment="in-process-entry", group="run-in-process")
 
 
 def _split(path: str) -> tuple[str, str]:

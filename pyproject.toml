@@ -715,6 +715,7 @@ node_projection_runtime_error_fingerprints = "omnimarket.nodes.node_projection_r
 node_projection_lab_lane_health = "omnimarket.nodes.node_projection_lab_lane_health"
 node_projection_lab_container_memory = "omnimarket.nodes.node_projection_lab_container_memory"
 node_projection_lab_proof_receipts = "omnimarket.nodes.node_projection_lab_proof_receipts"
+node_projection_delegation_budget_readings = "omnimarket.nodes.node_projection_delegation_budget_readings"
 node_projection_compaction_receipts = "omnimarket.nodes.node_projection_compaction_receipts"
 node_projection_work_ledger = "omnimarket.nodes.node_projection_work_ledger"
 node_work_ledger_render_effect = "omnimarket.nodes.node_work_ledger_render_effect"
@@ -1051,6 +1052,8 @@ node_landing_placement_wait_effect = "omnimarket.nodes.node_landing_placement_wa
 node_landing_tick_bounds_compute = "omnimarket.nodes.node_landing_tick_bounds_compute"
 node_landing_tick_speed_effect = "omnimarket.nodes.node_landing_tick_speed_effect"
 node_landing_upstream_gate_compute = "omnimarket.nodes.node_landing_upstream_gate_compute"
+node_process_health_compute = "omnimarket.nodes.node_process_health_compute"
+node_process_health_effect = "omnimarket.nodes.node_process_health_effect"
 node_host_capability_compute = "omnimarket.nodes.node_host_capability_compute"
 node_lane_guard_admission_compute = "omnimarket.nodes.node_lane_guard_admission_compute"
 node_lane_placement_recovery_effect = "omnimarket.nodes.node_lane_placement_recovery_effect"
@@ -1248,6 +1251,8 @@ omnimarket = "omnimarket.nodes"
 # OMN-21386: infra#5407 vendors the work-ledger 0006 first-ingest migration.
 # OMN-17427: infra#5449 reaches the done-write gate through omnibase_core's node contract,
 # so this tag imports no handler module that core#2135 moved.
+# OMN-17427: infra#5469 vendors the delegation budget readings migrations and
+# declares the runtime SELECT/INSERT/UPDATE grants needed by this projection.
 # OMN-17427: infra#5483 pins omnibase-core at the core tag below; the two tags
 # move together (tests/ci/test_sibling_core_pin_pair_omn17427.py).
 omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261031054837-4284f5bf5587" }

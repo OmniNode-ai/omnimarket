@@ -10,7 +10,6 @@ from datetime import UTC, datetime
 from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
-from uuid import UUID
 
 from omnimarket.nodes.node_omnigate_receipt_generator.models.model_receipt_generator_input import (
     ModelReceiptGeneratorInput,
@@ -125,11 +124,8 @@ class HandlerReceiptGenerator:
         return "compute"
 
     async def handle(
-        self,
-        correlation_id: UUID,
-        request: ModelReceiptGeneratorInput,
+        self, request: ModelReceiptGeneratorInput
     ) -> ModelReceiptGeneratorResult:
-        _ = correlation_id
         config_path = Path(request.config_path)
         repo_path = Path(request.repo_path)
         config = self._config_loader(config_path)
