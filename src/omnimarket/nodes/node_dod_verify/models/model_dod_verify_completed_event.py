@@ -13,7 +13,7 @@ from omnimarket.enums.enum_dod_contract_source import EnumDodContractSource
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
 )
-from omnimarket.nodes.node_dod_verify.models.model_criteria_drift import (
+from omnimarket.models.model_criteria_drift import (
     ModelCriteriaAmendment,
     ModelCriterionDrift,
 )

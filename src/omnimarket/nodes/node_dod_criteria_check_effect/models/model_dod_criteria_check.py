@@ -8,12 +8,12 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_dod_criteria_check_effect.models.enum_dod_criteria_verdict import (
-    EnumDodCriteriaVerdict,
-)
-from omnimarket.nodes.node_dod_verify.models.model_criteria_drift import (
+from omnimarket.models.model_criteria_drift import (
     ModelCriteriaAmendment,
     ModelCriterionDrift,
+)
+from omnimarket.nodes.node_dod_criteria_check_effect.models.enum_dod_criteria_verdict import (
+    EnumDodCriteriaVerdict,
 )
 
 

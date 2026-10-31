@@ -71,6 +71,12 @@ from omnimarket.enums.enum_dod_verify_execution_audience import (
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
 )
+from omnimarket.models.model_criteria_drift import (
+    ModelCriteriaCheck,
+)
+from omnimarket.models.model_criteria_pins import (
+    ModelCriteriaPins,
+)
 from omnimarket.nodes.node_dod_verify.handlers.dod_evidence_local_source import (
     SCM_CACHE_DIR_ENV,
 )
@@ -78,12 +84,6 @@ from omnimarket.nodes.node_dod_verify.handlers.handler_dod_evidence_github_effec
     HandlerDodEvidenceGithubEffect,
     HandlerDurableEvidenceGateEffect,
     pypi_release_files,
-)
-from omnimarket.nodes.node_dod_verify.models.model_criteria_drift import (
-    ModelCriteriaCheck,
-)
-from omnimarket.nodes.node_dod_verify.models.model_criteria_pins import (
-    ModelCriteriaPins,
 )
 from omnimarket.nodes.node_dod_verify.models.model_dod_acceptance_summary import (
     ModelDodAcceptanceSummary,

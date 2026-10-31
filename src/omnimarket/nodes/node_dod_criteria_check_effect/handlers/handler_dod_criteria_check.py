@@ -53,6 +53,9 @@ from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubHttpResponse,
 )
 from omnimarket.inference.secret_store_resolver import resolve_api_key_async
+from omnimarket.models.model_criteria_pins import (
+    ModelCriteriaPins,
+)
 from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
     contract_secret_ref,
@@ -66,9 +69,6 @@ from omnimarket.nodes.node_dod_criteria_check_effect.models import (
 from omnimarket.nodes.node_dod_criteria_check_effect.protocols import (
     ProtocolCriteriaEventPublisher,
     ProtocolCriteriaGithubTransport,
-)
-from omnimarket.nodes.node_dod_verify.models.model_criteria_pins import (
-    ModelCriteriaPins,
 )
 from omnimarket.nodes.node_dod_verify.services.criteria_drift import (
     evaluate_criteria,
