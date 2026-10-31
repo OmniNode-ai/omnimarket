@@ -32,6 +32,7 @@ import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
+from omnimarket.config.service_endpoints import service_endpoint_url
 from omnimarket.nodes.node_push_validation_effect.models.model_push_validation_request import (
     MAX_BUNDLE_BYTES,
     ModelBundleRef,
@@ -110,7 +111,7 @@ class GitPushValidationSubprocess:
                 [
                     "git",
                     "clone",
-                    f"https://github.com/{repo}.git",
+                    f"{service_endpoint_url('github.web_url')}/{repo}.git",
                     str(repo_dir),
                 ],
                 cwd=repo_dir.parent,

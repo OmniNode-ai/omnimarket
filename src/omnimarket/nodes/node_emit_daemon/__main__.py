@@ -272,11 +272,11 @@ def _do_start(args: argparse.Namespace) -> int:
             backup_count=args.log_backup_count,
         )
 
+    from omnimarket.nodes.node_emit_daemon.emit_lifecycle import (
+        EmitLifecycle,
+    )
     from omnimarket.nodes.node_emit_daemon.event_queue import BoundedEventQueue
     from omnimarket.nodes.node_emit_daemon.event_registry import EventRegistry
-    from omnimarket.nodes.node_emit_daemon.handlers.handler_emit_daemon import (
-        HandlerEmitDaemon,
-    )
     from omnimarket.nodes.node_emit_daemon.socket_server import EmitSocketServer
 
     socket_path = _resolve_socket_path(args.socket_path)
@@ -312,7 +312,7 @@ def _do_start(args: argparse.Namespace) -> int:
             logger.warning("No event registry found, starting with empty registry")
 
     # Create components
-    handler = HandlerEmitDaemon()
+    lifecycle = EmitLifecycle()
     queue = BoundedEventQueue(spool_dir=spool_dir, outbox_dir=outbox_dir)
 
     # Spool-only fallback when no Kafka bootstrap servers are supplied: events
@@ -360,7 +360,7 @@ def _do_start(args: argparse.Namespace) -> int:
     shutdown_event = asyncio.Event()
 
     async def _run() -> None:
-        handler.transition_to_binding(socket_path, os.getpid())
+        lifecycle.transition_to_binding(socket_path, os.getpid())
 
         event_bus: object | None = None
         try:
@@ -378,9 +378,9 @@ def _do_start(args: argparse.Namespace) -> int:
 
             await server.start()
             await publisher.start()
-            handler.transition_to_listening()
+            lifecycle.transition_to_listening()
         except Exception as e:
-            handler.transition_to_failed(str(e))
+            lifecycle.transition_to_failed(str(e))
             if event_bus is not None:
                 await _close_bus(event_bus)
             raise
@@ -392,7 +392,7 @@ def _do_start(args: argparse.Namespace) -> int:
         logger.info(f"Emit daemon running (socket={socket_path}, pid={os.getpid()})")
         await shutdown_event.wait()
 
-        handler.transition_to_draining()
+        lifecycle.transition_to_draining()
         await server.stop()
         await publisher.stop()
 
@@ -403,7 +403,7 @@ def _do_start(args: argparse.Namespace) -> int:
         if event_bus is not None:
             await _close_bus(event_bus)
 
-        handler.transition_to_stopped(
+        lifecycle.transition_to_stopped(
             events_published=publisher.events_published,
             events_dropped=publisher.events_dropped,
         )

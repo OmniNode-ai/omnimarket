@@ -325,7 +325,11 @@ from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_projec
 from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_usage_by_model_day_store import (
     apply_usage_call,
 )
-from omnimarket.pricing import ModelBaselineSavings, compute_baseline_savings
+from omnimarket.pricing import (
+    ModelBaselineSavings,
+    compute_baseline_savings,
+    resolve_baseline_model,
+)
 from omnimarket.projection.protocol_database import DatabaseAdapter
 from omnimarket.projection.snapshot_publisher import ModelSnapshotDeltaMessage
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
@@ -1426,6 +1430,11 @@ _RUNG_SKIPS: ContextVar[list[dict[str, object]] | None] = ContextVar(
     "rung_skips", default=None
 )
 
+# OMN-20557: the caller's session model for the dispatch running in this
+# context. The run's saving, its evidence row and its metering fold are all
+# stated against the baseline it resolves.
+_SESSION_MODEL: ContextVar[str | None] = ContextVar("session_model", default=None)
+
 
 def _rung_call_cap_seconds(*, deadline_left_seconds: float | None) -> float | None:
     """The wall-clock seconds one attempt's effect child may run, boot included.
@@ -1723,6 +1732,7 @@ class LocalDelegationDispatchPort:
         trace_id: UUID | None = None,
         queue_wait_ms: int | None = None,
         probe_ladder: ModelProbeLadder | None = None,
+        session_model: str | None = None,
     ) -> dict[str, object]:
         """Run one delegation, on the routing contract's ladder or a probe ladder.
 
@@ -1759,6 +1769,7 @@ class LocalDelegationDispatchPort:
                 named_tests=named_tests,
                 trace_id=trace_id,
                 queue_wait_ms=queue_wait_ms,
+                session_model=session_model,
             )
         refusal: str | None = None
         if not probe_ladder_admitted(provenance):
@@ -1817,17 +1828,22 @@ class LocalDelegationDispatchPort:
                 named_tests=named_tests,
                 trace_id=trace_id,
                 queue_wait_ms=queue_wait_ms,
+                session_model=session_model,
             )
         finally:
             _ACTIVE_PROBE_LADDER.reset(token)
 
-    async def _dispatch_rungs_naming_skips(self, **kwargs: Any) -> dict[str, object]:
+    async def _dispatch_rungs_naming_skips(
+        self, *, session_model: str | None = None, **kwargs: Any
+    ) -> dict[str, object]:
         """Run the ladder; name each rung it skipped on the result (OMN-21310)."""
         skipped_rungs: list[dict[str, object]] = []
         token = _RUNG_SKIPS.set(skipped_rungs)
+        session_token = _SESSION_MODEL.set(session_model)
         try:
             result = await self._dispatch_rungs(**kwargs)
         finally:
+            _SESSION_MODEL.reset(session_token)
             _RUNG_SKIPS.reset(token)
         if skipped_rungs and "skipped_rungs" not in result:
             result = {**result, "skipped_rungs": skipped_rungs}
@@ -3371,6 +3387,7 @@ class LocalDelegationDispatchPort:
                     prompt_tokens=result.tokens_in,
                     completion_tokens=result.tokens_out,
                     actual_cost_usd=float(cumulative_cost_usd),
+                    session_model=_SESSION_MODEL.get() or "",
                 )
                 self._project_evidence(
                     correlation_id=correlation_id,
@@ -5781,6 +5798,10 @@ class LocalDelegationDispatchPort:
                 store,
                 tenant_id=tenant_id,
                 terminal_at=terminal_at,
+                # OMN-20557: folded under the baseline this run resolved.
+                baseline_model=resolve_baseline_model(
+                    overlay={}, store={}, session_model=_SESSION_MODEL.get()
+                ).model,
                 publisher=self._metering_refresh_publisher
                 or InProcessMeteringRefreshPublisher(store),
             )
