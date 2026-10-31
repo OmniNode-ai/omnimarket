@@ -1,0 +1,76 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21693"
+title: "omnimarket contracts_and_di literal_url burn-down, slice rf1145-c3"
+summary: "Thirteen modules of omnimarket spelled a web origin, a schema dialect URI or a transport sentinel as a literal in code: 16 literal_url findings. Each value is now a key of configs/service_endpoints.yaml (github.web_url, pypi.base_url, claude.web_url, json_schema.draft_2020_12_url and two transport_sentinels) and every module of the slice reads it through the existing service_endpoint_url resolver. The contracts_and_di check over src/omnimarket reports 43 literal_url findings before the slice and 27 after, with no baseline entry and no suppression added."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21693-literal-url-slice"
+    statement: |-
+      The values the thirteen modules of the slice used to spell are declared once, in configs/service_endpoints.yaml, and the resolver fails closed on a missing or empty key. No module of the slice holds an origin or sentinel as a string constant in code, so the contracts_and_di check reports no literal_url finding on any of them.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the contracts_and_di count for literal_url over the slice paths drops to zero and the repo total drops by the slice size, with no baseline entry or suppression added -- falsifier: onex run of runtime_validator_run with the contracts_and_di reference over omnimarket src before and after, counts compared per rule"
+      - id: "AC2"
+        statement: "AC2: every moved value is taken through an injected parameter bound from the node contract or overlay and none remains hard-coded in the touched code -- falsifier: uv run pytest tests/unit -q over the touched modules plus the checker re-run on the slice paths"
+      - id: "AC3"
+        statement: "AC3: the slice lands as one PR titled with this ticket id and carries lab proof of the tests and the checker re-run -- falsifier: uv run pytest tests/unit -q on the lab through lab-run at the PR head, receipt path in the PR body"
+evidence_requirements:
+  - kind: "tests"
+    description: "The endpoint authority tests pass."
+    command: "uv run pytest tests/test_service_endpoints_scheme_literals.py tests/test_service_endpoints_contract.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21693-check-clean"
+    description: "The contracts_and_di check over the thirteen slice modules reports no literal_url finding."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "command"
+        check_value: "out=$(uv run --frozen python -m omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run omnibase_core.validation.validator_contracts_and_di:ValidatorContractsAndDi src/omnimarket/nodes/node_build_loop_orchestrator/handlers/adapter_delegation_router.py src/omnimarket/nodes/node_cloud_session_placement_effect/handlers/cloud_accounts.py src/omnimarket/nodes/node_cloud_session_placement_effect/handlers/cloud_session.py src/omnimarket/nodes/node_codex_landing_compute/handlers/handler_codex_landing.py src/omnimarket/nodes/node_contract_graph_ir_compute/handlers/handler_contract_graph_ir.py src/omnimarket/nodes/node_dod_verify/handlers/handler_dod_evidence_github_effect.py src/omnimarket/nodes/node_dod_verify/services/durable_evidence_gate.py src/omnimarket/nodes/node_dod_verify/services/evidence_collector.py src/omnimarket/nodes/node_dod_verify/services/local_gh_reads.py src/omnimarket/nodes/node_legacy_worktree_audit_effect/handlers/handler_legacy_worktree_audit.py src/omnimarket/nodes/node_morning_ground_state_orchestrator/tools/effects.py src/omnimarket/nodes/node_plans_today_effect/models/model_plans_today_schema.py src/omnimarket/nodes/node_prod_promotion_grant_resolver_effect/handlers/handler_prod_promotion_grant_resolver.py 2>&1); ! echo \"$out\" | grep -Eq 'literal_url|Traceback|ModuleNotFoundError'"
+        cwd: "."
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_service_endpoints_scheme_literals.py tests/test_service_endpoints_contract.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21693-endpoint-authority"
+    description: "The endpoint authority declares every moved value and no slice module spells it."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_service_endpoints_scheme_literals.py tests/test_service_endpoints_contract.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21693-lab-proof"
+    description: "The PR body carries the lab run of the tests and the checker re-run at the PR head."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "command"
+        check_value: "git log -1 --format=%s | grep -q OMN-21693"
+        cwd: "."
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_service_endpoints_scheme_literals.py tests/test_service_endpoints_contract.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21693-deploy-published-endpoint-readback"
+    description: |-
+      Hosted-runner source-artifact readback: fetch the endpoint authority file at the
+      evaluated published commit and require it to declare the moved keys. A missing
+      key fails the command. No lab service, credentials or broker is required. This
+      checks the published source artifact and does not assert a live runtime rollout.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/configs/service_endpoints.yaml" | uv run --frozen python -c '
+          import sys, yaml
+          doc = yaml.safe_load(sys.stdin.read())
+          for section, key in (("github", "web_url"), ("pypi", "base_url"), ("claude", "web_url"), ("json_schema", "draft_2020_12_url"), ("transport_sentinels", "gemini_cli_url")):
+              assert key in doc[section], section + "." + key + " missing"
+          print("Published endpoint authority readback: moved keys PASS")
+          '
+        cwd: "."
