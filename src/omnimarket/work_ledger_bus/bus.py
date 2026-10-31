@@ -32,6 +32,7 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolLabRunBus,
     event_type_for,
 )
+from omnimarket.handlers.work_ledger_consume.writer_topics import take_writer_topics
 from omnimarket.lab_work.bus import _bytes, _subscribe, _uuid_or_none
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelDelegateSkillTerminalProjection,
@@ -184,6 +185,7 @@ class WorkLedgerAppendHost:
         ] = asyncio.Queue()
         self._task: asyncio.Task[None] | None = None
         self._unsubscribes: list[Callable[[], Awaitable[None]]] = []
+        self.unserved_writer_topics: tuple[str, ...] = ()
         # One retake at a time: the consume watch and a writer-set change may both ask.
         self._resubscribing = asyncio.Lock()
         self.processed = 0
@@ -282,12 +284,10 @@ class WorkLedgerAppendHost:
             partial(self._enqueue, writer_principal=None),
             append_group,
         )
-        for principal in sorted(self._writer_principals):
-            await take(
-                self._topics.writer_command_topic(principal),
-                partial(self._enqueue, writer_principal=principal),
-                append_group,
-            )
+        # OMN-21288: a writer topic the broker cannot serve is logged and skipped, never fatal.
+        self.unserved_writer_topics = await take_writer_topics(
+            take, append_group, self._writer_principals, self._topics, self._enqueue
+        )
         if self._operator_principal is None:
             logger.warning(
                 "work-ledger host: no operator principal, terminals not mirrored"

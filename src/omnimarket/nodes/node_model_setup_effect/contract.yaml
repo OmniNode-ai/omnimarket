@@ -35,6 +35,9 @@ description: >
   tries first, before the local models and any key, and moves it to the front
   of its provider's list; `clear_first` forgets it. A status lists that
   provider first, marked `tried_first`.
+  `set_only` records the developer's rule, `local` or `free`, under which every
+  delegation on this machine skips a model outside it; `clear_only` removes it.
+  A status carries the rule in force as `only`.
 
 output_model: omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result.ModelModelSetupResult
 
