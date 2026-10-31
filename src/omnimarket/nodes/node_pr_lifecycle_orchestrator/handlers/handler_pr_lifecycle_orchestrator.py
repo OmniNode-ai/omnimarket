@@ -3124,10 +3124,8 @@ class HandlerPrLifecycleOrchestrator:
             )
 
         try:
-            from omnimarket.nodes.node_verify_effect.handlers.handler_verify import (
+            from omnimarket.nodes.node_verify_effect import (
                 HandlerVerify,
-            )
-            from omnimarket.nodes.node_verify_effect.models.model_verify_input import (
                 ModelVerifyInput,
             )
         except ImportError:

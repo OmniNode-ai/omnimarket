@@ -70,12 +70,7 @@ from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handle
     VerifyRequest,
     VerifyResult,
 )
-from omnimarket.nodes.node_closeout_effect.handlers.handler_closeout import (
-    HandlerCloseout,
-)
-from omnimarket.nodes.node_closeout_effect.models.model_closeout_input import (
-    ModelCloseoutInput,
-)
+from omnimarket.nodes.node_closeout_effect import HandlerCloseout, ModelCloseoutInput
 
 logger = logging.getLogger(__name__)
 
