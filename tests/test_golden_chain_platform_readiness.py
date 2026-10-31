@@ -261,7 +261,7 @@ class TestPlatformReadinessGoldenChain:
             raise ValueError("handler failure")
 
         monkeypatch.setattr(
-            "omnimarket.nodes.node_platform_readiness.__main__."
+            "omnimarket.nodes.node_platform_readiness.container.container_platform_readiness."
             "NodePlatformReadiness.handle",
             raise_runtime_value_error,
         )

@@ -41,12 +41,12 @@ import sys
 
 from pydantic import ValidationError
 
+from omnimarket.nodes.node_data_flow_sweep.container import container_data_flow_sweep
 from omnimarket.nodes.node_data_flow_sweep.handlers.handler_data_flow_sweep import (
     _DEFAULT_FLOW_STUBS,
     DataFlowSweepRequest,
     DataFlowSweepResult,
     ModelFlowInput,
-    NodeDataFlowSweep,
     _collect_live,
 )
 from omnimarket.nodes.node_data_flow_sweep.lane_target import (
@@ -194,7 +194,7 @@ def main() -> None:
         dry_run=args.dry_run,
     )
 
-    handler = NodeDataFlowSweep()
+    handler = container_data_flow_sweep.build_node_data_flow_sweep()
     result = handler.handle(request)
 
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")
