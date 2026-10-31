@@ -34,6 +34,9 @@ dod_evidence:
       set -u;
       test "$(uv run python -c "import sys; from omnibase_core.validation.validator_handler_shape import ValidatorHandlerShape as V; sys.exit(V.main())" src 2>&1 | grep -c 'is a public method that mutates handler state')" -eq 0
     cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov --tb=line
+    cwd: .
 - id: dod-omn21536-ac4-touched-node-tests
   description: AC1 runs the tests of the nodes whose handler state moved, in groups that each finish inside the verifier's 30 s per-check budget. The slower suites of the same nodes (tests/unit/delegation, tests/unit/nodes/node_dod_verify) run in the evidence requirement above on a lab host, and in the CI test shards.
   source: manual
@@ -75,6 +78,9 @@ dod_evidence:
       set -eu;
       curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/handlers/overlay_source.py" | grep -q "class OverlaySource"
     cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov --tb=line
+    cwd: .
 - id: dod-omn21712-ac2-own-contract-file
   description: 'AC2 reads the PR''s diff against the base branch: it lists this ticket''s own contract file and does not list the shared parent contract file.'
   source: manual
@@ -86,4 +92,7 @@ dod_evidence:
       set -eu;
       git diff --name-only origin/dev...HEAD -- contracts/ | grep -qx 'contracts/OMN-21712.yaml';
       ! git diff --name-only origin/dev...HEAD -- contracts/ | grep -qx 'contracts/OMN-21536.yaml'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov --tb=line
     cwd: .
