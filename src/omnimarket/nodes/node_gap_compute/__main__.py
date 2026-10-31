@@ -4,9 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from omnimarket.nodes.node_gap_compute.handlers.handler_gap_compute import (
-    HandlerGapCompute,
-)
+from omnimarket.nodes.node_gap_compute.container import container_gap_compute
 from omnimarket.nodes.node_gap_compute.models.model_gap_compute_request import (
     ModelGapComputeRequest,
 )
@@ -77,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
         lag_threshold=args.lag_threshold,
         dry_run=args.dry_run,
     )
-    result = HandlerGapCompute().handle(request)
+    result = container_gap_compute.build_handler_gap_compute().handle(request)
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")
     return 0
 
