@@ -42,6 +42,9 @@ dod_evidence:
       set -eu;
       uv run python -c "import ast,pathlib,sys; bad=[str(p) for p in pathlib.Path('src/omnimarket/nodes').rglob('handler_*.py') for c in ast.parse(p.read_text()).body if isinstance(c,ast.ClassDef) and any('BaseProjectionRunner' in ast.unparse(b) for b in c.bases) and any(isinstance(m,ast.FunctionDef) and m.name=='handle' and any(a.arg=='input_data' for a in m.args.args) for m in c.body)]; print(bad); sys.exit(1 if bad else 0)"
     cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_projection_request.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21536-ac2-validator-clean-on-runners
   description: AC2 runs the handler-shape rules of the installed omnibase_core over every handler module and fails on a noncanonical_handle finding whose class is a BaseProjectionRunner subclass.
   source: manual
@@ -52,6 +55,9 @@ dod_evidence:
     check_value: |
       set -eu;
       uv run python -c "import ast,pathlib,sys,yaml; import omnibase_core.validation as v; from omnibase_core.models.contracts.subcontracts.model_validator_rule import ModelValidatorRule as R; from omnibase_core.validation.validator_handler_shape import module_facts; from omnibase_core.validation.checker_handler_shape import check_handler_shape as chk; rules=[R(**x) for x in yaml.safe_load((pathlib.Path(v.__file__).parent/'contracts'/'handler_shape.validation.yaml').read_text())['validation']['rules']]; bad=[(str(p),i.line_number) for p in pathlib.Path('src/omnimarket/nodes').rglob('handler_*.py') for i in chk(module_facts(p.as_posix(),p.read_text()),rules) if i.code=='noncanonical_handle' and i.message.split('.handle')[0] in {c.name for c in ast.parse(p.read_text()).body if isinstance(c,ast.ClassDef) and any('BaseProjectionRunner' in ast.unparse(b) for b in c.bases)}]; print(bad); sys.exit(1 if bad else 0)"
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_projection_request.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21536-ac3-shim-and-node-tests
   description: AC3 runs the shim tests, the OMN-18905 coordinate guard and every projection suite test file in separate commands to stay inside the verifier's 30-second per-check budget.
@@ -100,4 +106,7 @@ dod_evidence:
       env PYTHONDONTWRITEBYTECODE=1 uv run pytest \
         tests/test_lab_job_projection_real_postgres.py::test_the_shim_strips_the_delivery_keys_before_the_event_model \
         -q --no-cov --tb=line --refuse-skips
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_lab_job_projection_real_postgres.py::test_the_shim_strips_the_delivery_keys_before_the_event_model --refuse-skips -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket

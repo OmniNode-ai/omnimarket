@@ -5,18 +5,16 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Self
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.model_message_meta import MessageMeta
 from omnimarket.projection.handler_shim import (
     INJECTED_OFFSET_KEY,
     INJECTED_PARTITION_KEY,
     INJECTED_TOPIC_KEY,
 )
-
-if TYPE_CHECKING:
-    from omnimarket.projection.runner import MessageMeta
 
 # The runtime-injected key that carries a delivery's dedup identity, beside the topic,
 # partition and offset. handler_shim does not name it because the producer does not

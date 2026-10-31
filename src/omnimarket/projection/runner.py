@@ -14,7 +14,6 @@ import sys
 import threading
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Coroutine
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -32,6 +31,7 @@ from pydantic import (
 )
 
 from omnimarket.config.settings import Settings
+from omnimarket.models.model_message_meta import MessageMeta as MessageMeta
 from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.models.model_projection_stats import ProjectionStats
 from omnimarket.projection.dlq import (
@@ -170,25 +170,6 @@ class _ProjectionHealthRequestHandler(http.server.BaseHTTPRequestHandler):
         # structured logger (module-level `logger`) is authoritative for
         # this process's diagnostics.
         return
-
-
-@dataclass
-class MessageMeta:
-    """Kafka message coordinates for deterministic dedup.
-
-    ``topic`` defaults to "" so the many pre-existing positional/keyword
-    call sites across handler test suites that predate OMN-15800 round 3
-    keep constructing valid instances; every live consumption path
-    (``BaseProjectionRunner._handle_message`` and each node's ``handle()``
-    RuntimeLocal shim) populates it for real. It is the authoritative
-    source-ordering coordinate (with partition/offset) consumed by
-    ``publish_snapshot_delta`` -- see CodeRabbit discussion r3745850632.
-    """
-
-    partition: int
-    offset: int
-    fallback_id: str
-    topic: str = ""
 
 
 class ModelProjectionRuntimeBinding(BaseModel):

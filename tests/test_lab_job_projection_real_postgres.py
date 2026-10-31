@@ -246,3 +246,33 @@ def test_migration_is_idempotent_and_checks_every_state(
             await conn.close()
 
     _run(check())
+
+
+@pytest.mark.integration
+def test_the_request_builds_the_coordinates_the_runner_dedups_on(
+    schema_factory: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-21536: the request's message_meta is the MessageMeta the runner imports.
+
+    The model builds it from its own module, with no import of the runner, and a
+    delivery written through the runner carries the same coordinates.
+    """
+    from omnimarket.models.model_message_meta import MessageMeta
+    from omnimarket.models.model_projection_request import ModelProjectionRequest
+    from omnimarket.projection import runner
+
+    assert runner.MessageMeta is MessageMeta
+    delivery = {
+        **transitioned(1, S.RUNNING),
+        "_topic": "t",
+        "_partition": 3,
+        "_offset": 41,
+        "_fallback_id": "fallback-1",
+    }
+    meta = ModelProjectionRequest.from_injected(delivery).message_meta("t")
+    assert meta == MessageMeta(
+        partition=3, offset=41, fallback_id="fallback-1", topic="t"
+    )
+
+    schema = schema_factory()
+    assert schema.writer(monkeypatch).handle(delivery)["rows_upserted"] == 2
