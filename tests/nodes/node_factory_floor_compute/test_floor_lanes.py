@@ -337,14 +337,13 @@ def test_a_lane_links_to_the_station_that_holds_its_ticket() -> None:
 
 
 def cloud_receipt(lane: str, minutes_ago: float, **cells: Any) -> ModelFloorReceipt:
-    return receipt(
-        lane,
-        host="cloud:h200",
-        placement="cloud",
-        account="h200",
-        started_at=ago(minutes_ago),
-        **cells,
-    )
+    base: dict[str, Any] = {
+        "host": "cloud:h200",
+        "placement": "cloud",
+        "account": "h200",
+        "started_at": ago(minutes_ago),
+    }
+    return receipt(lane, **{**base, **cells})
 
 
 def test_the_cloud_bay_lists_ready_accounts_sessions_and_a_lamp_when_the_newest_could_not_push() -> (
