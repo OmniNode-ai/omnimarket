@@ -141,6 +141,7 @@ jobs:
               "omnimarket-projection-delegation",
               "omnimarket-projection-tenant-credentials",
               "omnimarket-projection-llm-cost",
+              "omnimarket-projection-run-trace",
           }
           missing = required - services.keys()
           if missing:
@@ -270,7 +271,7 @@ jobs:
           sys.stdout.write(hits[0]["run"])
           PY
           [ -s "$step_file" ] || { echo "::error::could not read the health step text"; exit 1; }
-          for svc in projection-api omnimarket-projection-delegation omnimarket-projection-tenant-credentials omnimarket-projection-llm-cost consumer-health-projection tenant-projection-writer; do
+          for svc in projection-api omnimarket-projection-delegation omnimarket-projection-tenant-credentials omnimarket-projection-llm-cost omnimarket-projection-run-trace consumer-health-projection tenant-projection-writer; do
             container="${LOCAL_PROJECT}-${svc}"
             before="$(docker inspect --format '{{.State.Health.Status}}' "$container")"
             if [ "$before" != "healthy" ]; then
