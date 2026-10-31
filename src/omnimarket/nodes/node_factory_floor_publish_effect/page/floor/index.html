@@ -13,6 +13,7 @@
   --steel:#4b5c68; --car:#3d6f8f; --car-edge:#24475d;
   --safety:#d9a300; --safety-soft:#f6e6ae;
   --ok:#2e8649; --warn:#bf7400; --stop:#c3352b; --stop-soft:#f3d2ce; --idle:#b4bdb6;
+  --ok-text:#1f6b38; --warn-text:#8a5300; --stop-text:#a3271f;
   --belt:#3a403d; --roller:#5b625e;
   --f-display:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
   --f-body:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
@@ -23,12 +24,14 @@
   --steel:#90a4b3; --car:#5f9cc4; --car-edge:#9cc7e3;
   --safety:#f0c232; --safety-soft:#4a3f17;
   --ok:#5ac277; --warn:#e8a43a; --stop:#ef5b4f; --stop-soft:#4a2421; --idle:#4a554f;
+  --ok-text:#5ac277; --warn-text:#e8a43a; --stop-text:#ef5b4f;
   --belt:#0f1211; --roller:#2c3330; color-scheme:dark}}
 :root[data-theme="dark"]{
   --floor:#161a18; --panel:#202623; --ink:#e7ebe7; --muted:#9ba69f; --rule:#343d39;
   --steel:#90a4b3; --car:#5f9cc4; --car-edge:#9cc7e3;
   --safety:#f0c232; --safety-soft:#4a3f17;
   --ok:#5ac277; --warn:#e8a43a; --stop:#ef5b4f; --stop-soft:#4a2421; --idle:#4a554f;
+  --ok-text:#5ac277; --warn-text:#e8a43a; --stop-text:#ef5b4f;
   --belt:#0f1211; --roller:#2c3330; color-scheme:dark}
 
 *{box-sizing:border-box}
@@ -41,8 +44,9 @@ h1{font-size:clamp(2.4rem,6vw,3.6rem);font-weight:800;line-height:.95;text-trans
 h2{font-size:1.7rem;font-weight:800;text-transform:uppercase}
 h3{font-size:1.15rem;font-weight:600;text-transform:uppercase;letter-spacing:.03em}
 p{margin:0}
+small{font-size:.75rem}
 .mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
-.eyebrow{font:500 .72rem/1 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.eyebrow{font:600 .75rem/1.3 var(--f-body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .hazard{height:10px;border-radius:2px;background:repeating-linear-gradient(-45deg,var(--safety) 0 12px,var(--belt) 12px 24px)}
 .muted{color:var(--muted)}
 
@@ -51,34 +55,20 @@ header{display:grid;gap:14px}
 .head-row{display:flex;flex-wrap:wrap;gap:18px 32px;align-items:end;justify-content:space-between}
 .head-row>div{min-width:0}
 .lede{max-width:66ch;color:var(--muted)}
-.sitenav{font-size:.86rem}
+.sitenav{font-size:.875rem}
 .sitenav a{color:var(--car-edge)}
 .sitenav a:focus-visible{outline:2px solid var(--car-edge);outline-offset:2px}
 
-/* andon board */
-.andon{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:2px;background:var(--belt);border-radius:6px;overflow:hidden}
-.lamp{background:var(--panel);padding:14px 16px;display:grid;grid-template-columns:auto 1fr;gap:4px 12px;align-items:center}
-.lamp i{width:18px;height:18px;border-radius:50%;grid-row:span 2;box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 25%,transparent)}
-.lamp b{font:600 1.05rem/1.1 var(--f-display);text-transform:uppercase;letter-spacing:.03em}
-.lamp span{font-size:.82rem;color:var(--muted)}
+/* verdict: one line, the Dashboard carries the summary */
+.verdict{font-size:1.0625rem;font-weight:600;border-left:5px solid var(--c,var(--ok));padding:8px 14px;background:var(--panel);border-radius:0 4px 4px 0}
+.verdict a{color:var(--car-edge);font-weight:500}
 .c-ok{--c:var(--ok)} .c-warn{--c:var(--warn)} .c-stop{--c:var(--stop)}
-.lamp i{background:var(--c)}
-.lamp.c-stop i{animation:blink 1.1s steps(2,jump-none) infinite}
-@keyframes blink{50%{opacity:.25}}
-
-/* shift report */
-.report{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:24px;align-items:start}
-.report .prose{display:grid;gap:12px;max-width:68ch}
-.tally{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-.tally div{background:var(--panel);border:1px solid var(--rule);border-radius:4px;padding:12px 14px}
-.tally b{display:block;font:800 2rem/1 var(--f-display)}
-.tally span{font-size:.8rem;color:var(--muted)}
-@media (max-width:760px){.report{grid-template-columns:1fr}}
+.lamp-stop-dot{display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--c);margin-right:8px;vertical-align:-1px}
 
 /* how to read */
-.key{display:flex;flex-wrap:wrap;gap:10px 22px;font-size:.85rem;color:var(--muted)}
+.key{display:flex;flex-wrap:wrap;gap:10px 22px;font-size:.875rem;color:var(--muted)}
 .key span{display:inline-flex;gap:8px;align-items:center}
-.sw{width:22px;height:12px;border-radius:2px;border:1.5px solid}
+.sw{width:22px;height:14px;border-radius:2px;border:1.5px solid}
 .sw.done{background:var(--car);border-color:var(--car-edge)}
 .sw.active{background:var(--safety-soft);border-color:var(--safety);border-style:dashed}
 .sw.prep{border-color:var(--steel);background:repeating-linear-gradient(45deg,transparent 0 3px,var(--steel) 3px 4px)}
@@ -90,10 +80,10 @@ header{display:grid;gap:14px}
 .line-head{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:24px;padding:20px 22px;align-items:center}
 @media (max-width:760px){.line-head{grid-template-columns:1fr}}
 .car-svg{width:100%;max-width:340px;height:auto;display:block}
-.sign{display:inline-block;font:800 .8rem/1 var(--f-display);letter-spacing:.16em;text-transform:uppercase;background:var(--belt);color:var(--safety);padding:6px 9px;border-radius:2px}
+.sign{display:inline-block;font:800 .875rem/1 var(--f-display);letter-spacing:.12em;text-transform:uppercase;background:var(--belt);color:var(--safety);padding:6px 9px;border-radius:2px}
 .line-head .meta{display:grid;gap:10px;min-width:0}
-.pill{display:inline-flex;align-items:center;gap:6px;font:500 .75rem/1 var(--f-mono);text-transform:uppercase;letter-spacing:.08em;padding:5px 8px;border-radius:3px;border:1px solid currentColor}
-.pill.active{color:var(--warn)} .pill.stop{color:var(--stop)} .pill.done{color:var(--ok)} .pill.prep{color:var(--steel)} .pill.wait{color:var(--muted)}
+.pill{display:inline-flex;align-items:center;gap:6px;font:600 .875rem/1.1 var(--f-body);padding:5px 9px;border-radius:3px;border:1px solid currentColor}
+.pill.active{color:var(--warn-text)} .pill.stop{color:var(--stop-text)} .pill.done{color:var(--ok-text)} .pill.prep{color:var(--steel)} .pill.wait{color:var(--muted)}
 .meter{height:8px;background:var(--rule);border-radius:4px;overflow:hidden;max-width:420px}
 .meter b{display:block;height:100%;background:var(--car);width:var(--w)}
 
@@ -113,21 +103,21 @@ header{display:grid;gap:14px}
 .st:first-child{border-left:0}
 .st-top{display:flex;justify-content:space-between;align-items:baseline;gap:6px}
 .st-num{font:800 1.6rem/1 var(--f-display);color:var(--muted)}
-.st.active .st-num{color:var(--warn)} .st.stop .st-num{color:var(--stop)}
+.st.active .st-num{color:var(--warn-text)} .st.stop .st-num{color:var(--stop-text)}
 .st h3{font-size:1rem}
-.st .part{font:500 .68rem/1 var(--f-mono);text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
-.st p.plain{font-size:.8rem;color:var(--muted)}
+.st .part{font:600 .75rem/1.3 var(--f-body);color:var(--muted)}
+.st p.plain{font-size:.875rem;color:var(--muted)}
 .items{list-style:none;margin:0;padding:0;display:grid;gap:6px}
-.items li{display:grid;grid-template-columns:10px minmax(0,1fr);gap:7px;font-size:.8rem;line-height:1.35}
+.items li{display:grid;grid-template-columns:10px minmax(0,1fr);gap:7px;font-size:.875rem;line-height:1.35}
 .items li i{width:9px;height:9px;border-radius:50%;margin-top:4px;border:1.5px solid var(--idle)}
 .items li.done i{background:var(--ok);border-color:var(--ok)}
 .items li.active i{background:var(--safety);border-color:var(--safety)}
 .items li.prep i{background:transparent;border-color:var(--steel)}
 .items li.stop i{background:var(--stop);border-color:var(--stop)}
-.items small{display:block;color:var(--muted);font-size:.74rem}
+.items small{display:block;color:var(--muted);font-size:.75rem}
 .feed{margin-top:4px;border-top:2px solid var(--safety);padding-top:8px;display:grid;gap:6px}
-.feed .eyebrow{font-size:.62rem}
-.feed div{font-size:.76rem;line-height:1.35;background:color-mix(in srgb,var(--safety) 10%,transparent);border-left:3px solid var(--safety);padding:5px 7px;border-radius:0 3px 3px 0}
+.feed .eyebrow{font-size:.75rem}
+.feed div{font-size:.875rem;line-height:1.35;background:color-mix(in srgb,var(--safety) 10%,transparent);border-left:3px solid var(--safety);padding:5px 7px;border-radius:0 3px 3px 0}
 .feed div small{display:block;color:var(--muted)}
 
 /* car parts */
@@ -149,7 +139,7 @@ header{display:grid;gap:14px}
 .mbay.repair{border-left-color:var(--warn);background:repeating-linear-gradient(-45deg,color-mix(in srgb,var(--safety) 14%,var(--panel)) 0 10px,var(--panel) 10px 20px)}
 .mbay-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
 .mbay-top b{font:800 1.4rem/1 var(--f-display);text-transform:uppercase}
-.mbay-top .pill{font:500 .66rem/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;padding:4px 7px;border-radius:3px;border:1px solid var(--rule)}
+.mbay-top .pill{font:600 .875rem/1.1 var(--f-body);padding:4px 8px;border-radius:3px;border:1px solid var(--rule)}
 .cap{display:flex;flex-wrap:wrap;gap:4px}
 .cap i{width:16px;height:16px;border-radius:3px;border:1.5px solid var(--idle);display:block}
 .cap i.claude{background:var(--car);border-color:var(--car-edge)}
@@ -158,10 +148,10 @@ header{display:grid;gap:14px}
 .cap i.stall{background:repeating-linear-gradient(45deg,var(--stop) 0 3px,var(--panel) 3px 6px);border-color:var(--stop)}
 .cap i.over{outline:2px solid var(--stop);outline-offset:1px}
 .cap.unread{height:16px;width:100%;border-radius:3px;border:1.5px dashed var(--idle);background:repeating-linear-gradient(45deg,transparent 0 5px,var(--idle) 5px 6px);display:block}
-.capline{font-size:.8rem;color:var(--muted)}
+.capline{font-size:.875rem;color:var(--muted)}
 .gauges{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px 14px}
-.gauge{display:grid;gap:4px;font-size:.78rem;color:var(--muted);min-width:0}
-.gauge .v{font:500 .82rem/1.2 var(--f-mono);color:var(--ink);overflow-wrap:anywhere}
+.gauge{display:grid;gap:4px;font-size:.8125rem;color:var(--muted);min-width:0}
+.gauge .v{font:600 .875rem/1.2 var(--f-body);font-variant-numeric:tabular-nums;color:var(--ink);overflow-wrap:anywhere}
 .gauge .v.unread{color:var(--muted)}
 .gbar{height:6px;border-radius:3px;background:var(--rule);overflow:hidden}
 .gbar b{display:block;height:100%;width:var(--w);background:var(--steel)}
@@ -173,55 +163,55 @@ header{display:grid;gap:14px}
 .lane summary::-webkit-details-marker{display:none}
 .lane summary:focus-visible{outline:2px solid var(--safety);outline-offset:-2px}
 .lane .tt{font-weight:600;line-height:1.3;overflow-wrap:anywhere}
-.lane .tk{font:500 .72rem/1 var(--f-mono);color:var(--muted)}
-.lane .doing{font-size:.84rem;color:var(--ink);overflow-wrap:anywhere}
-.lane .when{font:500 .7rem/1.3 var(--f-mono);color:var(--muted)}
+.lane .tk{font:500 .75rem/1.3 var(--f-body);color:var(--muted)}
+.lane .doing{font-size:.875rem;color:var(--ink);overflow-wrap:anywhere}
+.lane .when{font:500 .75rem/1.3 var(--f-body);color:var(--muted)}
 .chips{display:flex;flex-wrap:wrap;gap:5px}
-.chip{font:500 .64rem/1 var(--f-mono);letter-spacing:.06em;text-transform:uppercase;padding:4px 6px;border:1px solid var(--rule);border-radius:3px;background:var(--panel);color:var(--ink)}
-.chip.ci-green{border-color:var(--ok);color:var(--ok)}
-.chip.ci-red{border-color:var(--stop);color:var(--stop)}
-.chip.ci-pending{border-color:var(--warn);color:var(--warn)}
+.chip{font:600 .8125rem/1.1 var(--f-body);padding:4px 7px;border:1px solid var(--rule);border-radius:3px;background:var(--panel);color:var(--ink)}
+.chip.ci-green{border-color:var(--ok);color:var(--ok-text)}
+.chip.ci-red{border-color:var(--stop);color:var(--stop-text)}
+.chip.ci-pending{border-color:var(--warn);color:var(--warn-text)}
 .chip.ci-unread,.chip.ci-none{border-style:dashed;color:var(--muted)}
 .chip.stall{background:var(--stop);border-color:var(--stop);color:var(--panel)}
-.lane-body{padding:9px 11px 11px;display:grid;gap:6px;font-size:.84rem;border-top:1px dashed var(--rule)}
+.lane-body{padding:9px 11px 11px;display:grid;gap:6px;font-size:.875rem;border-top:1px dashed var(--rule)}
 .lane-body dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;margin:0}
-.lane-body dt{color:var(--muted);font:500 .68rem/1.6 var(--f-mono);letter-spacing:.08em;text-transform:uppercase}
+.lane-body dt{color:var(--muted);font:600 .75rem/1.6 var(--f-body)}
 .lane-body dd{margin:0;overflow-wrap:anywhere}
 .lane-body a,.stlink{color:var(--car-edge)}
-.stlink{font:500 .72rem/1.3 var(--f-mono)}
-.lamp-stop{border:1px solid var(--stop);background:var(--stop-soft);border-radius:4px;padding:10px 12px;display:grid;gap:3px;font-size:.86rem}
+.stlink{font:500 .8125rem/1.3 var(--f-body)}
+.lamp-stop{border:1px solid var(--stop);background:var(--stop-soft);border-radius:4px;padding:10px 12px;display:grid;gap:3px;font-size:.875rem}
 .lamp-stop b{display:flex;gap:8px;align-items:center}
 .lamp-stop b::before{content:"";width:12px;height:12px;border-radius:50%;background:var(--stop);flex:none}
 .lamp-stop small{color:var(--muted);overflow-wrap:anywhere}
-.sessions{list-style:none;margin:0;padding:0;display:grid;gap:6px;font-size:.84rem}
+.sessions{list-style:none;margin:0;padding:0;display:grid;gap:6px;font-size:.875rem}
 .sessions li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;border-bottom:1px dashed var(--rule);padding-bottom:6px}
 .sessions li small{grid-column:1/-1;color:var(--muted);overflow-wrap:anywhere}
 .st.flash,.items li.flash,.line.flash,.mbay.flash,.lane.flash{animation:flash 1.6s ease-out 1}
 @keyframes flash{0%{box-shadow:0 0 0 4px var(--safety)}100%{box-shadow:0 0 0 0 transparent}}
-.builtby{display:block;font-size:.7rem}
+.builtby{display:block;font-size:.75rem}
 .builtby a{color:var(--car-edge)}
 
 /* dock + delegation */
 .two{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:20px}
 .card{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:18px 20px;display:grid;gap:14px;align-content:start;min-width:0}
 .big{font:800 3.2rem/0.9 var(--f-display)}
-.list{list-style:none;padding:0;margin:0;display:grid;gap:8px;font-size:.86rem}
+.list{list-style:none;padding:0;margin:0;display:grid;gap:8px;font-size:.9375rem}
 .list li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;border-bottom:1px dashed var(--rule);padding-bottom:6px}
-.list li span:last-child{color:var(--muted);font-family:var(--f-mono);font-size:.76rem;white-space:nowrap}
+.list li span:last-child{color:var(--muted);font-size:.8125rem;font-variant-numeric:tabular-nums}
 .stack{display:flex;height:22px;border-radius:3px;overflow:hidden}
 .stack b{display:block;height:100%}
-.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.8rem;color:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.875rem;color:var(--muted)}
 .legend span{display:inline-flex;align-items:center;gap:6px}
 .legend i{width:10px;height:10px;border-radius:2px}
 
 /* stoppages chart */
 .chart{width:100%;height:auto;display:block}
 .chart text{fill:var(--ink);font-family:var(--f-body);font-size:12px}
-.chart .lbl-muted{fill:var(--muted);font-size:11px}
+.chart .lbl-muted{fill:var(--muted);font-size:12px}
 .chart .grid{stroke:var(--rule)}
 .chart-scroll{overflow-x:auto}
 
-footer{font-size:.8rem;color:var(--muted);display:grid;gap:6px;max-width:80ch}
+footer{font-size:.875rem;color:var(--muted);display:grid;gap:6px;max-width:80ch}
 :focus-visible{outline:2px solid var(--safety);outline-offset:2px}
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
 </style>
@@ -229,35 +219,39 @@ footer{font-size:.8rem;color:var(--muted);display:grid;gap:6px;max-width:80ch}
 /* Additions to the plant-floor styles: section nav, shift report, unread drawings, delegation. */
 html{scroll-behavior:smooth;scroll-padding-top:64px}
 .sitenav{display:flex;flex-wrap:wrap;gap:6px 6px;position:sticky;top:0;z-index:5;margin:0 -4px;padding:8px 4px;background:color-mix(in srgb,var(--floor) 92%,transparent);backdrop-filter:blur(6px);border-bottom:1px solid var(--rule)}
-.sitenav a{font:500 .72rem/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;text-decoration:none;color:var(--ink);padding:8px 10px;border:1px solid var(--rule);border-radius:3px;background:var(--panel)}
+.sitenav a{font:600 .875rem/1 var(--f-body);text-decoration:none;color:var(--ink);padding:8px 10px;border:1px solid var(--rule);border-radius:3px;background:var(--panel)}
 .sitenav a:hover{border-color:var(--safety);background:var(--safety-soft)}
 @media (max-width:760px){.sitenav{flex-wrap:nowrap;overflow-x:auto}.sitenav a{white-space:nowrap}}
 
-.andon{display:flex;flex-wrap:wrap}
-.andon .lamp{flex:1 1 220px}
 #stamp{line-height:1.5;margin-bottom:6px}
-.lamp.c-idle{--c:var(--idle)}
-.lamp.c-idle i{animation:none}
+.sub{color:var(--muted);max-width:68ch;font-size:.9375rem}
+.slotlegend{display:flex;flex-wrap:wrap;gap:8px 20px;font-size:.875rem;color:var(--muted)}
+.slotlegend span{display:inline-flex;align-items:center;gap:7px}
+.slotlegend i{width:16px;height:16px;border-radius:3px;border:1.5px solid var(--idle);display:inline-block}
+.slotlegend i.claude{background:var(--car);border-color:var(--car-edge)}
+.slotlegend i.codex{background:var(--safety);border-color:var(--belt)}
+.slotlegend i.stall{background:repeating-linear-gradient(45deg,var(--stop) 0 3px,var(--panel) 3px 6px);border-color:var(--stop)}
+.slotlegend i.free{background:transparent}
+details.ghosts{border:1px dashed var(--idle);border-radius:4px;padding:10px 14px;background:color-mix(in srgb,var(--idle) 12%,var(--panel));font-size:.9375rem}
+details.ghosts summary{cursor:pointer;color:var(--ink)}
+details.ghosts ul{margin:8px 0 0;padding-left:20px;display:grid;gap:4px;color:var(--muted)}
 
-.report .prose p{max-width:68ch}
-.tally .unread-n{font-size:1.2rem;color:var(--muted);font-style:italic}
-
-.line-head .plan{font:400 .72rem/1.3 var(--f-mono);color:var(--muted);word-break:break-all}
+.plan{font:400 .75rem/1.3 var(--f-body);color:var(--muted);overflow-wrap:anywhere}
 .line.ghost{border-style:dashed}
 .line.ghost .car-svg{opacity:.8}
 .line.ghost .meter b{width:0}
-.ghost-note{border:1px dashed var(--idle);border-radius:4px;padding:10px 12px;font-size:.86rem;color:var(--muted);background:color-mix(in srgb,var(--idle) 12%,var(--panel))}
-.hint{font:500 .68rem/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding:8px 22px 0}
+.ghost-note{border:1px dashed var(--idle);border-radius:4px;padding:10px 12px;font-size:.9375rem;color:var(--muted);background:color-mix(in srgb,var(--idle) 12%,var(--panel))}
+.hint{font:500 .8125rem/1.3 var(--f-body);color:var(--muted);padding:8px 22px 0}
 .floor-scroll{scroll-behavior:smooth}
 .st.stop{background:color-mix(in srgb,var(--stop) 6%,transparent)}
 .st.active{background:color-mix(in srgb,var(--safety) 8%,transparent)}
-.cause{border-left:3px solid var(--stop);background:var(--stop-soft);color:var(--ink);padding:6px 10px;border-radius:0 3px 3px 0;font-size:.84rem}
-.feed .eyebrow+small{display:block;color:var(--muted);font-size:.7rem}
+.cause{border-left:3px solid var(--stop);background:var(--stop-soft);color:var(--ink);padding:6px 10px;border-radius:0 3px 3px 0;font-size:.9375rem}
+.feed .eyebrow+small{display:block;color:var(--muted);font-size:.75rem}
 .items small{overflow-wrap:anywhere}
 .st.solo .items{grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:10px 24px}
 
 /* dock lists */
-details.more summary{cursor:pointer;color:var(--muted);font-size:.8rem;padding:2px 0}
+details.more summary{cursor:pointer;color:var(--muted);font-size:.875rem;padding:2px 0}
 details.more[open] summary{margin-bottom:8px}
 .list li span:first-child{min-width:0;overflow-wrap:anywhere}
 .list li .empty{font-style:italic}
@@ -269,11 +263,11 @@ details.more[open] summary{margin-bottom:8px}
 /* stoppages */
 .chart-scroll .chart{min-width:640px}
 .unread{color:var(--muted);font-style:italic}
-.age-stale{color:var(--stop);font-weight:600}
-.banner{background:var(--stop-soft);color:var(--ink);border:1px solid var(--stop);border-radius:4px;padding:10px 14px;font-size:.9rem}
+.age-stale{color:var(--stop-text);font-weight:600}
+.banner{background:var(--stop-soft);color:var(--ink);border:1px solid var(--stop);border-radius:4px;padding:10px 14px;font-size:.9375rem}
 .banner[hidden]{display:none}
 .empty{color:var(--muted);font-size:.9rem}
-.list li small{color:var(--muted);font-size:.72rem}
+.list li small{color:var(--muted);font-size:.75rem}
 
 .pills{display:flex;flex-wrap:wrap;gap:8px}
 
@@ -287,32 +281,24 @@ html.embed .wrap{padding-block:14px 48px}
   <header id="top">
     <div class="hazard" aria-hidden="true"></div>
     <nav class="sitenav" aria-label="Sections">
-      <a href="#shift">Shift report</a><a href="#lines">Lines</a><a href="#bays">Machines</a><a href="#dock">Shipping</a><a href="#deleg">Delegation</a><a href="#stops">Stoppages</a><a href="#sourcesCard">Sources</a>
+      <a href="#lines">Lines</a><a href="#bays">Machines</a><a href="#dock">Shipping</a><a href="#deleg">Delegation</a><a href="#stops">Stoppages</a><a href="#sourcesCard">Sources</a>
     </nav>
     <div class="head-row">
       <div>
         <div class="eyebrow" id="stamp">Reading the factory record</div>
         <h1>Lean Factory Floor</h1>
       </div>
-      <p class="lede">Every plan is a car on its own assembly line. Each station is a stage or wave, and the car is built part by part as stations finish. Feeder lines under a station are the work that supplies it. Bays are the machines doing the work, with the lanes placed on each. Everything below is read from the factory record and the process-health series, published on every tick; a source that could not be read is drawn as unread.</p>
+      <p class="lede">Every plan is a car on its own assembly line. Each station is a stage, and the car is built part by part as stations finish. Machines are where the workers run. Everything below is read from the factory record, which is refreshed every minute; anything that could not be read is shown as unread.</p>
     </div>
     <div class="banner" id="banner" role="alert" hidden></div>
-    <div class="andon" role="list" aria-label="Andon board" id="andon"></div>
+    <p class="verdict c-warn" id="verdict">Reading the record.</p>
   </header>
 
-  <section class="report" aria-labelledby="rep" id="shift">
-    <div class="prose" id="shiftProse">
-      <h2 id="rep">Shift report</h2>
-      <p class="empty">Reading the record.</p>
-    </div>
-    <div class="tally" aria-label="Shift numbers" id="tally"></div>
-  </section>
-
-  <div class="key" aria-label="How to read the car">
+  <div class="key" aria-label="How to read the car"><strong>Car parts:</strong>
     <span><i class="sw done"></i>Part finished</span>
     <span><i class="sw active"></i>Part being built</span>
     <span><i class="sw prep"></i>Parts staged</span>
-    <span><i class="sw stop"></i>Stopped by the andon cord</span>
+    <span><i class="sw stop"></i>Stopped</span>
     <span><i class="sw wait"></i>Not started</span>
   </div>
 
@@ -320,41 +306,43 @@ html.embed .wrap{padding-block:14px 48px}
 
   <section aria-labelledby="baysH" style="display:grid;gap:14px" id="bays">
     <div><div class="eyebrow">Where the work runs</div><h2 id="baysH">Machines</h2></div>
+    <p class="sub">Which machine each worker runs on, and how full each machine is. Tap a worker to read its newest log entry in full; its link jumps to the part of the car it builds.</p>
     <p class="muted" id="baysNote" style="max-width:68ch"></p>
-    <p class="muted" style="max-width:72ch;font-size:.86rem">One bay per machine. Each square is a lane placed there, against the machine's cap: blue for Claude, amber for Codex, hatched red for a lane that has written nothing for the stall time. Tap a lane to read its newest row in full; its station link jumps to the part of the car it builds.</p>
+    <div class="slotlegend" aria-label="How to read the squares"><strong>Squares, one per worker slot:</strong>
+      <span><i class="claude"></i>Claude worker</span><span><i class="codex"></i>Codex worker</span><span><i class="stall"></i>stalled worker</span><span><i class="free"></i>free slot</span></div>
     <div class="mgrid" id="bayGrid"></div>
   </section>
 
   <section class="two">
     <div class="card" aria-labelledby="dockH" id="dock">
-      <div><div class="eyebrow">Out the door</div><h2 id="dockH">Shipping dock</h2></div>
-      <div style="display:flex;gap:16px;align-items:end;flex-wrap:wrap"><span class="big mono" id="shippedCount">0</span><span class="muted">changes in the record's shipped list</span></div>
+      <div><div class="eyebrow">Out the door</div><h2 id="dockH">Shipping dock</h2><p class="sub">Changes that went out, and changes still waiting to go.</p></div>
+      <div style="display:flex;gap:16px;align-items:end;flex-wrap:wrap"><span class="big mono" id="shippedCount">0</span><span class="muted">changes shipped</span></div>
       <h3>Shipped</h3>
       <div id="shipped"></div>
       <h3>Waiting at the dock</h3>
       <div id="waiting"></div>
     </div>
     <div class="card" aria-labelledby="delegH" id="deleg">
-      <div><div class="eyebrow">Work sent to other models</div><h2 id="delegH">Delegation</h2></div>
+      <div><div class="eyebrow">Work sent to other models</div><h2 id="delegH">Delegation</h2><p class="sub">How many tasks were handed to other models, and how they ended.</p></div>
       <div id="delegBody"><p class="empty">Reading the delegation counts.</p></div>
     </div>
   </section>
 
   <section class="card" aria-labelledby="stopsH" id="stops">
-    <div><div class="eyebrow" id="stopsStamp">Friction report · stated cost in minutes</div><h2 id="stopsH">Biggest stoppages</h2></div>
+    <div><div class="eyebrow" id="stopsStamp">Friction report · stated cost in minutes</div><h2 id="stopsH">Biggest stoppages</h2><p class="sub">What cost the most time, so the next fix goes where it saves the most.</p></div>
     <p class="muted" id="stopsNote" style="font-size:.86rem"></p>
     <div class="chart-scroll"><svg class="chart" id="stopChart" viewBox="0 0 760 120" role="img" aria-label="Stoppage cost by cause"></svg></div>
   </section>
 
 
   <section class="card" aria-labelledby="sources" id="sourcesCard">
-    <div><div class="eyebrow">What the record was computed from</div><h2 id="sources">Sources</h2></div>
+    <div><div class="eyebrow">What the record was computed from</div><h2 id="sources">Sources</h2><p class="sub">Where each figure comes from and how fresh it is.</p></div>
     <ul class="list" id="sourceList"></ul>
   </section>
 
   <footer>
     <div class="hazard" aria-hidden="true"></div>
-    <p>The record is computed by the factory floor nodes from the plans and their task manifests, the pull request watcher, the rolling work ledger, the Linear snapshot, the lab placement reading and the friction report. The page reloads it every minute and shows how old it is. Nothing on the page is typed in: a figure that has no source is drawn unread, never as a zero.</p>
+    <p>The record is computed by the factory floor nodes from the plans and their task manifests, the change watcher, the work log, the ticket snapshot, the lab placement reading and the friction report. The page reloads it every minute and shows how old it is. Nothing on the page is typed in: a figure that has no source is drawn unread, never as a zero.</p>
   </footer>
 </div>
 
@@ -372,10 +360,10 @@ const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 const PART_NAMES = {frame:"Frame",engine:"Engine",wiring:"Wiring",body:"Body",glass:"Glass",lights:"Lights",wheels:"Wheels"};
 const PART_ORDER = ["frame","wiring","engine","body","glass","lights","wheels"];
-const STATE_LABEL = {done:"Done",active:"Working",prep:"Parts staged",wait:"Waiting",stop:"Stopped"};
+const STATE_LABEL = {done:"Done",active:"Being built",prep:"Parts staged",wait:"Waiting",stop:"Stopped"};
 const STATE_WORD = {done:"finished",active:"being built",prep:"parts staged",wait:"not started",stop:"stopped"};
 const PILL_CLASS = {stopped:"stop",done:"done",building:"active",queued:"wait"};
-const PILL_LABEL = {stopped:"Andon cord pulled",done:"Done",building:"Building",queued:"Queued"};
+const PILL_LABEL = {stopped:"Stopped",done:"Done",building:"Building",queued:"Queued"};
 const TONE = {ok:"var(--ok)",warn:"var(--warn)",stop:"var(--stop)",idle:"var(--idle)"};
 
 const esc = s => String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
@@ -383,6 +371,25 @@ const safeId = s => String(s).replace(/[^A-Za-z0-9_-]/g,"_");
 const el = id => document.getElementById(id);
 const num = (v, d = 0) => Number.isFinite(Number(v)) ? Number(v) : d;
 const fmt = v => Number(v).toLocaleString("en-US", {maximumFractionDigits: 1});
+// Times are shown in Eastern with a relative age; the UTC reading sits only in a hover title.
+const ET = "America/New_York";
+function etText(iso){
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return null;
+  const d = new Date(t), now = new Date();
+  const day = x => x.toLocaleDateString("en-US", {timeZone: ET, year: "numeric", month: "numeric", day: "numeric"});
+  const clock = d.toLocaleTimeString("en-US", {timeZone: ET, hour: "numeric", minute: "2-digit"}).replace(" AM", " am").replace(" PM", " pm");
+  if (day(d) === day(now)) return clock + " ET";
+  return d.toLocaleDateString("en-US", {timeZone: ET, weekday: "short", day: "numeric", month: "short"}) + ", " + clock + " ET";
+}
+function whenText(iso){
+  const e = etText(iso);
+  return e == null ? "unread" : `${e}, ${ageText(Date.now() - Date.parse(iso))} ago`;
+}
+function whenSpan(iso){
+  const e = etText(iso);
+  return e == null ? `<span class="unread">${esc(iso || "unread")}</span>` : `<span title="${esc(new Date(Date.parse(iso)).toISOString().slice(0, 16).replace("T", " "))} UTC">${esc(whenText(iso))}</span>`;
+}
 
 // Which part of the car a station builds. With seven or more stations the stations are grouped over the seven
 // parts in order; with fewer, each part is built by the station whose share of the line it falls in.
@@ -471,21 +478,7 @@ function stationName(stations, id){
 function renderLine(slot, i){
   const letter = "Line " + (LETTERS[i] || i + 1);
   const L = slot.line;
-  if (!L){
-    const sid = "ghost-" + i;
-    return `<section class="line ghost" id="line-${sid}" aria-labelledby="h-${sid}">
-      <div class="line-head">
-        ${carSVG(sid, {})}
-        <div class="meta">
-          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><span class="sign">${esc(letter)}</span><span class="pill wait">Not in the record</span></div>
-          <h2 id="h-${sid}">No plan read for this line</h2>
-          <p class="ghost-note">The deployment overlay declares this line as a plan whose path contains <b class="mono">${esc(slot.fragment)}</b>. No plan in the plans repository matched it, so there are no stations, no parts and no percent to draw. The car stays empty until that plan exists and the factory floor effect reads it.</p>
-          <div class="meter" role="img" aria-label="Unread"><b style="--w:0%"></b></div>
-          <span class="eyebrow">Unread</span>
-        </div>
-      </div>
-    </section>`;
-  }
+  if (!L) return "";
   const f = lineFacts(L);
   const sid = safeId(L.line_id);
   const parts = partStates(f.stations);
@@ -501,10 +494,10 @@ function renderLine(slot, i){
         <div class="meta">
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><span class="sign">${esc(letter)}</span><span class="pill ${PILL_CLASS[L.status_pill] || "wait"}">${esc(PILL_LABEL[L.status_pill] || L.status_pill)}</span></div>
           <h2 id="h-${sid}">${esc(L.name)}</h2>
-          <span class="plan">${esc(L.plan_path)} · read from its ${esc(source)}</span>
-          ${L.andon && L.andon.flag ? `<p class="cause">Cord pulled: ${esc(reason.replace(/[:\s]+$/, ""))}${causes ? ` (${causes})` : ""}</p>` : ""}
+          <span class="plan">Plan file ${esc(L.plan_path)} · read from its ${esc(source)}</span>
+          ${L.andon && L.andon.flag ? `<p class="cause"><b>Stopped:</b> ${esc(reason.replace(/[:\s]+$/, ""))}${causes ? ` (${causes})` : ""}</p>` : ""}
           <div class="meter" role="img" aria-label="About ${pct} percent built"><b style="--w:${pct}%"></b></div>
-          <span class="eyebrow">About ${pct}% of the car built · station ${Math.min(f.cur + 1, Math.max(f.n, 1))} of ${f.n} · ${f.done} of ${f.items.length} parts done</span>
+          <span class="eyebrow">About <span class="mono">${pct}%</span> of the car built · station <span class="mono">${Math.min(f.cur + 1, Math.max(f.n, 1))}</span> of <span class="mono">${f.n}</span> · <span class="mono">${f.done}</span> of <span class="mono">${f.items.length}</span> parts done</span>
         </div>
       </div>
       ${f.n > 3 ? `<div class="hint">${f.n} stations: scroll sideways along the belt</div>` : ""}
@@ -518,8 +511,8 @@ function renderLine(slot, i){
             <div class="st-top"><span class="st-num mono">${k}</span><span class="pill ${esc(s.state)}">${esc(STATE_LABEL[s.state] || s.state)}</span></div>
             <h3>${esc(s.name)}</h3>
             ${builds ? `<span class="part">Builds the ${esc(builds)}</span>` : ""}
-            <ul class="items">${(s.items || []).map(it => `<li class="${esc(it.state)}" id="part-${sid}-${safeId(s.id)}-${safeId(it.id)}"><i></i><span>${esc(it.title)}${it.note || (it.prs && it.prs.length) ? `<small>${esc([it.note].concat(it.prs || []).filter(Boolean).join(" · "))}</small>` : ""}${(LANES_BY_ITEM[[L.line_id, s.id, it.id].join("|")] || []).map(b => `<small class="builtby">Built by <a data-jump="lane-${esc(safeId(b.lane))}" href="#lane-${esc(safeId(b.lane))}">${esc(b.lane)}</a>${b.stalled ? " (stalled)" : ""}</small>`).join("")}</span></li>`).join("")}</ul>
-            ${(s.feeders || []).length ? `<div class="feed"><span class="eyebrow">Feeder lines</span>${s.feeders.map(x => `<div>${esc(stationName(f.stations, x))}<small>feeds this station</small></div>`).join("")}</div>` : ""}
+            <ul class="items">${(s.items || []).map(it => `<li class="${esc(it.state)}" id="part-${sid}-${safeId(s.id)}-${safeId(it.id)}"><i></i><span>${esc(it.title)}<small>${esc([STATE_LABEL[it.state] || it.state, it.note].concat(it.prs || []).filter(Boolean).join(" · "))}</small>${(LANES_BY_ITEM[[L.line_id, s.id, it.id].join("|")] || []).map(b => `<small class="builtby">Worker: <a data-jump="lane-${esc(safeId(b.lane))}" href="#lane-${esc(safeId(b.lane))}">${esc(b.lane)}</a>${b.stalled ? " (stalled)" : ""}</small>`).join("")}</span></li>`).join("")}</ul>
+            ${(s.feeders || []).length ? `<div class="feed"><span class="eyebrow">Feeder lines (work that supplies this station)</span>${s.feeders.map(x => `<div>${esc(stationName(f.stations, x))}<small>supplies this station</small></div>`).join("")}</div>` : ""}
           </div>`;
         }).join("")}
         </div>
@@ -532,7 +525,9 @@ function renderLines(slots, declared, reason){
   if (!slots.length){ host.innerHTML = `<p class="empty">The record holds no lines.</p>`; return; }
   const keep = {};
   host.querySelectorAll(".floor-scroll").forEach(s => { keep[s.dataset.line] = s.scrollLeft; });
-  host.innerHTML = (declared ? "" : `<p class="ghost-note">Which lines the overlay declares is unread (${esc(reason)}), so a declared line with no plan cannot be drawn.</p>`) + slots.map(renderLine).join("");
+  const ghosts = slots.map((slot, i) => ({slot, i})).filter(x => !x.slot.line);
+  const ghostNote = ghosts.length ? `<details class="ghosts"><summary>${ghosts.length} more line${ghosts.length === 1 ? " is" : "s are"} planned but ${ghosts.length === 1 ? "has" : "have"} no plan file yet (show)</summary><ul>${ghosts.map(x => `<li><b>${esc("Line " + (LETTERS[x.i] || x.i + 1))}</b>: no plan file matches <span class="mono">${esc(x.slot.fragment)}</span> yet, so there is nothing to draw.</li>`).join("")}</ul></details>` : "";
+  host.innerHTML = (declared ? "" : `<p class="ghost-note">Which lines are planned is unread (${esc(reason)}), so a planned line with no plan file cannot be shown.</p>`) + slots.map(renderLine).join("") + ghostNote;
   host.querySelectorAll(".mini-wrap").forEach(w => { const s = w.firstElementChild; s.style.setProperty("--pos", w.style.getPropertyValue("--pos")); w.replaceWith(s); });
   host.querySelectorAll(".floor-scroll").forEach(s => {
     const track = s.firstElementChild, n = num(getComputedStyle(track).getPropertyValue("--n"), 1);
@@ -540,64 +535,19 @@ function renderLines(slots, declared, reason){
   });
 }
 
-function renderAndon(slots, floor, health, bayState){
-  const lamps = slots.map((slot, i) => {
-    const letter = "Line " + (LETTERS[i] || i + 1);
-    if (!slot.line) return `<div class="lamp c-idle" role="listitem"><i></i><b>${esc(letter)} · not in the record</b><span>No plan matched ${esc(slot.fragment)}</span></div>`;
-    const L = slot.line, f = lineFacts(L);
-    const cls = f.stopped ? "c-stop" : L.status_pill === "done" ? "c-ok" : "c-warn";
-    const word = f.stopped ? "cord pulled" : (PILL_LABEL[L.status_pill] || "").toLowerCase();
-    const cur = f.stations[f.cur];
-    const sub = f.stopped ? ((L.andon && L.andon.reason) || "").replace(/[:\s]+$/, "") : `Station ${f.cur + 1} of ${f.n}${cur ? `, ${cur.name}` : ""}; ${f.done} of ${f.items.length} parts done`;
-    return `<div class="lamp ${cls}" role="listitem"><i></i><b>${esc(letter)} · ${esc(word)}</b><span>${esc(sub)}</span></div>`;
-  });
-  if (bayState.declared){
-    const bad = bayState.unread + bayState.repair;
-    lamps.push(`<div class="lamp ${bayState.unread ? "c-warn" : "c-ok"}" role="listitem"><i></i><b>Machines · ${bayState.placed} lanes placed</b><span>${bayState.read} of ${bayState.declared} read, against ${bayState.cap} lane slots${bad ? `; ${bayState.unread} unread, ${bayState.repair} in repair or out` : ""}</span></div>`);
-    lamps.push(`<div class="lamp ${bayState.stalled ? "c-stop" : "c-ok"}" role="listitem"><i></i><b>Lanes · ${bayState.lanes} live</b><span>${bayState.stalled ? `${bayState.stalled} stalled: nothing written for the stall time` : "none stalled"}</span></div>`);
-    const c = bayState.cloud;
-    if (c) lamps.push(`<div class="lamp ${(c.lamps || []).length ? "c-stop" : c.state === "read" ? "c-ok" : "c-idle"}" role="listitem"><i></i><b>Cloud · ${(c.lamps || []).length ? "stop" : c.state === "read" ? "clear" : "unread"}</b><span>${(c.lamps || []).length ? esc(c.lamps[0].text) : c.state === "read" ? `${(c.accounts || []).length} account${(c.accounts || []).length === 1 ? "" : "s"} signed in` : "the cloud accounts file was not read"}</span></div>`);
-  } else {
-    lamps.push(`<div class="lamp c-idle" role="listitem"><i></i><b>Machines · unread</b><span>The record declares no machine bays</span></div>`);
-  }
-  lamps.push(`<div class="lamp c-ok" role="listitem"><i></i><b>Shipping · ${floor.shipped.length}</b><span>${floor.waiting.length} waiting at the dock</span></div>`);
-  if (health && health.summary){
-    const sm = health.summary;
-    if (sm.measured === false) lamps.push(`<div class="lamp c-idle" role="listitem"><i></i><b>Process health · unmeasured</b><span>${esc(sm.reason || "the comparison could not be measured")}</span></div>`);
-    else lamps.push(`<div class="lamp ${num(sm.worse) > 0 ? "c-warn" : "c-ok"}" role="listitem"><i></i><b>Process health · ${num(sm.improved)} better</b><span>${num(sm.worse)} worse, ${num(sm.flat)} flat, ${num(sm.unmeasured)} unmeasured since the reset</span></div>`);
-  } else {
-    lamps.push(`<div class="lamp c-idle" role="listitem"><i></i><b>Process health · unread</b><span>The series is not published</span></div>`);
-  }
-  el("andon").innerHTML = lamps.join("");
-}
-
-function renderShift(slots, floor, rec, bayState){
-  const paras = [];
-  slots.forEach((slot, i) => {
-    const letter = "Line " + (LETTERS[i] || i + 1);
-    if (!slot.line){ paras.push(`<p><b>${esc(letter)}</b> is declared but unread: no plan matched ${esc(slot.fragment)}.</p>`); return; }
-    const L = slot.line, f = lineFacts(L), cur = f.stations[f.cur];
-    let t = `<b>${esc(letter)}</b>, ${esc(L.name)}, is at station ${f.cur + 1} of ${f.n}${cur ? ` (${esc(cur.name)})` : ""} with ${f.done} of ${f.items.length} parts done${f.active ? ` and ${f.active} being built` : ""}, about ${num(L.percent_built)}% of the car.`;
-    if (f.stopped) t += ` The andon cord is pulled${L.andon && L.andon.reason ? `: ${esc(L.andon.reason.replace(/[:\s]+$/, ""))}` : ""}.`;
-    paras.push(`<p>${t}</p>`);
-  });
-  let fl = `${floor.shipped.length} changes are in the shipped list and ${floor.waiting.length} are waiting at the dock.`;
-  fl += bayState.declared ? ` ${bayState.read} of ${bayState.declared} machines were read, ${bayState.placed} lanes are placed on them against ${bayState.cap} lane slots, and ${bayState.stalled} of the ${bayState.lanes} live lanes are stalled.` : ` The record declares no machine bays, so they are unread.`;
-  const top = floor.stoppages.slice().sort((a, b) => b.cost_minutes - a.cost_minutes)[0];
-  fl += top ? ` The costliest stoppage in the friction report is ${esc(top.name)}: ${fmt(top.cost_minutes)} minutes over ${num(top.occurrences)} occurrences.` : ` No friction report was supplied.`;
-  paras.push(`<p>${fl}</p>`);
-  el("shiftProse").innerHTML = `<h2 id="rep">Shift report</h2>${paras.join("")}`;
-  const f = slots.filter(s => s.line).map(s => lineFacts(s.line));
-  const inFlight = f.reduce((a, x) => a + x.active, 0), cords = f.filter(x => x.stopped).length;
-  const sh = rec.sources || {};
-  el("tally").innerHTML = [
-    [`<b class="mono">${floor.shipped.length}</b>`, "changes in the shipped list"],
-    [bayState.declared ? `<b class="mono">${bayState.lanes}</b>` : `<b class="unread-n">unread</b>`, bayState.declared ? `live lanes, ${bayState.stalled} stalled` : "no machine bays in the record"],
-    [`<b class="mono">${inFlight}</b>`, "parts being built across the lines"],
-    [`<b class="mono">${cords}</b>`, cords === 1 ? "andon cord pulled" : "andon cords pulled"],
-    [`<b class="mono">${num(sh.ledger_rows).toLocaleString("en-US")}</b>`, "ledger rows read"],
-    [`<b class="mono">${num(sh.linear_issues).toLocaleString("en-US")}</b>`, "Linear issues read"]
-  ].map(([b, s]) => `<div>${b}<span>${esc(s)}</span></div>`).join("");
+// One line only: the Dashboard tab is the summary, this tab opens on the lines.
+function renderVerdict(slots, floor, bayState, health){
+  const real = slots.filter(x => x.line).map(x => lineFacts(x.line));
+  const stopped = real.filter(x => x.stopped).length;
+  const parts = [];
+  parts.push(real.length ? (stopped ? `${stopped} of ${real.length} line${real.length === 1 ? " is" : "s are"} stopped` : `${real.length} line${real.length === 1 ? " is" : "s are"} running`) : "No line has a plan file yet");
+  if (bayState.declared) parts.push(bayState.stalled ? `${bayState.stalled} of ${bayState.lanes} workers stalled` : `${bayState.lanes} workers, none stalled`);
+  parts.push(`${floor.shipped.length} changes shipped, ${floor.waiting.length} waiting`);
+  const sm = health && health.summary;
+  if (sm && sm.measured !== false) parts.push(`process: ${num(sm.improved)} better, ${num(sm.worse)} worse, ${num(sm.flat)} flat, ${num(sm.unmeasured)} not yet measured`);
+  const v = el("verdict");
+  v.textContent = parts.join(" · ") + ".";
+  v.className = "verdict " + (stopped || bayState.stalled ? "c-stop" : "c-ok");
 }
 
 // ---- Machines, lanes and the cloud bay. Every figure comes from floor.machines, floor.lanes and floor.cloud.
@@ -630,14 +580,14 @@ function sinceText(iso){
 }
 
 function ciChip(l){
-  if (!l.pr) return `<span class="chip ci-none" title="This lane has written no pull request">no PR yet</span>`;
-  const word = {green: "CI green", red: "CI red", pending: "CI pending", none: "no CI runs", unread: "CI unread"}[l.pr_ci] || "CI unread";
+  if (!l.pr) return `<span class="chip ci-none" title="This worker has not opened a change">no change yet</span>`;
+  const word = {green: "checks passing", red: "failing checks", pending: "checks running", none: "no checks yet", unread: "checks unread"}[l.pr_ci] || "CI unread";
   const state = l.pr_state && l.pr_state !== "OPEN" && l.pr_state !== "unread" ? ` · ${String(l.pr_state).toLowerCase()}` : "";
-  return `<span class="chip ci-${esc(l.pr_ci || "unread")}" title="${esc(l.pr + (l.pr_title ? ": " + l.pr_title : "") + (l.pr_ci_note ? " · " + l.pr_ci_note : ""))}">${esc(l.pr)} · ${word}${esc(state)}</span>`;
+  return `<span class="chip ci-${esc(l.pr_ci || "unread")}" title="${esc(l.pr + (l.pr_title ? ": " + l.pr_title : "") + (l.pr_ci_note ? " · " + l.pr_ci_note : ""))}">${word}${esc(state)} <small>${esc(l.pr)}</small></span>`;
 }
 
 function stationLink(l){
-  if (!l.station) return `<span class="unread">no station on the lines holds this ticket</span>`;
+  if (!l.station) return `<span class="unread">no station on the lines holds this worker's ticket</span>`;
   const hit = ITEM_INDEX[itemKey(l.station)];
   if (!hit) return `<span class="unread">${esc(l.station.line_id)} · station ${esc(l.station.station_id)}</span>`;
   const target = "st-" + safeId(l.station.line_id) + "-" + safeId(l.station.station_id);
@@ -645,29 +595,29 @@ function stationLink(l){
 }
 
 function laneHTML(l){
-  const titleNote = l.title_source === "claim" ? " (from the lane's claim)" : l.title_source === "unread" ? "" : "";
+  const titleNote = l.title_source === "claim" ? " (from the worker's claim)" : "";
   const title = l.title ? esc(l.title) : `<span class="unread">ticket title unread</span>`;
   const doing = l.status_text
     ? esc(l.status_text)
-    : `<span class="unread">no status written</span>`;
-  const hover = [l.ticket, l.title, l.status_full].filter(Boolean).join(" · ");
+    : `<span class="unread">no update written</span>`;
+  const hover = [l.title, l.ticket, l.status_full].filter(Boolean).join(" · ");
   const sid = safeId(l.lane);
   const cls = ["lane", l.engine === "codex" ? "codex" : "", l.stalled ? "stalled" : ""].filter(Boolean).join(" ");
   return `<details class="${cls}" id="lane-${sid}">
     <summary title="${esc(hover)}">
-      <span class="tk">${esc(l.ticket || "no ticket")} · ${esc(l.lane)}</span>
       <span class="tt">${title}</span>
-      <span class="chips"><span class="chip">${esc(l.kind)}</span><span class="chip">${esc(KIND_NOTE[l.engine] || "engine unread")}</span>${ciChip(l)}${l.stalled ? `<span class="chip stall">stalled · silent ${esc(ageText(num(l.silent_minutes) * 60000))}</span>` : ""}</span>
+      <span class="tk">Worker ${esc(l.lane)} · ${esc(l.ticket || "no ticket")}</span>
+      <span class="chips"><span class="chip">${esc(l.kind)}</span><span class="chip">${esc(KIND_NOTE[l.engine] || "model unread")}</span>${ciChip(l)}${l.stalled ? `<span class="chip stall">stalled · silent for ${esc(ageText(num(l.silent_minutes) * 60000))}</span>` : ""}</span>
       <span class="doing">${doing}</span>
-      <span class="when">${l.status_source === "status" ? "newest status" : "claim, no status yet"} ${esc(sinceText(l.status_at))} ago · running ${esc(sinceText(l.started_at))}</span>
+      <span class="when">${l.status_source === "status" ? "newest update" : "claimed, no update yet"} ${esc(sinceText(l.status_at))} ago · running ${esc(sinceText(l.started_at))}</span>
     </summary>
     <div class="lane-body"><dl>
       <dt>Ticket</dt><dd>${esc(l.ticket || "none named")}${l.title ? ` · ${esc(l.title)}${esc(titleNote)}` : ""}</dd>
-      <dt>Newest row</dt><dd>${l.status_full ? esc(l.status_full) : unreadSpan("the lane wrote no text")}</dd>
-      <dt>Written</dt><dd>${esc(l.status_at)} UTC · ${esc(sinceText(l.status_at))} ago</dd>
+      <dt>Newest log entry</dt><dd>${l.status_full ? esc(l.status_full) : unreadSpan("the worker wrote no text")}</dd>
+      <dt>Written</dt><dd>${whenSpan(l.status_at)}</dd>
       <dt>Claimed for</dt><dd>${l.claim_full ? esc(l.claim_full) : unreadSpan("")}</dd>
-      <dt>Running</dt><dd>${esc(sinceText(l.started_at))} since ${esc(l.started_at)} UTC</dd>
-      <dt>Pull request</dt><dd>${l.pr ? `${esc(l.pr)}${l.pr_title ? ` · ${esc(l.pr_title)}` : ""}${l.pr_ci_note ? ` · ${esc(l.pr_ci_note)}` : ""}` : "none written yet"}</dd>
+      <dt>Running</dt><dd>${esc(sinceText(l.started_at))} since ${whenSpan(l.started_at)}</dd>
+      <dt>Change</dt><dd>${l.pr ? `${esc(l.pr)}${l.pr_title ? ` · ${esc(l.pr_title)}` : ""}${l.pr_ci_note ? ` · ${esc(l.pr_ci_note)}` : ""}` : "none opened yet"}</dd>
       <dt>Builds</dt><dd>${stationLink(l)}</dd>
     </dl></div>
   </details>`;
@@ -677,6 +627,10 @@ function gauge(label, value, frac, unreadWhy){
   if (value == null) return `<div class="gauge"><span>${esc(label)}</span><span class="v unread">unread${unreadWhy ? ` (${esc(unreadWhy)})` : ""}</span></div>`;
   const bar = frac == null ? "" : `<div class="gbar" role="img" aria-label="${esc(label)}"><b style="--w:${Math.max(0, Math.min(100, Math.round(frac * 100)))}%"></b></div>`;
   return `<div class="gauge"><span>${esc(label)}</span><span class="v">${esc(value)}</span>${bar}</div>`;
+}
+
+function slotCount(running, stalled, free){
+  return `${running} running, ${stalled} stalled, ${free} free`;
 }
 
 function machineHTML(m, byId){
@@ -689,13 +643,14 @@ function machineHTML(m, byId){
     const used = lanes.map(l => `<i class="${l.stalled ? "stall" : l.engine || "none"}" title="${esc(l.lane + (l.title ? ": " + l.title : ""))}"></i>`);
     const over = Math.max(0, lanes.length - cap);
     const free = Math.max(0, cap - lanes.length);
-    slots = `<div class="cap" role="img" aria-label="${lanes.length} lanes placed of ${cap}">${used.join("")}${"<i></i>".repeat(free)}</div>
-      <div class="capline"><span class="mono">${lanes.length}</span> lanes placed of a cap of <span class="mono">${cap}</span>${over ? ` · <b class="age-stale">${over} over the cap</b>` : ""}${m.refusal ? ` · placement refuses new work: ${esc(m.refusal)}` : ""}</div>`;
+    const stalledN = lanes.filter(l => l.stalled).length;
+    slots = `<div class="cap" role="img" aria-label="${slotCount(lanes.length - stalledN, stalledN, free)}">${used.join("")}${"<i></i>".repeat(free)}</div>
+      <div class="capline"><b>${slotCount(lanes.length - stalledN, stalledN, free)}</b> · <span class="mono">${lanes.length}</span> of <span class="mono">${cap}</span> worker slots in use${over ? ` · <b class="age-stale">${over} over the limit</b>` : ""}${m.refusal ? ` · not taking new work: ${esc(m.refusal)}` : ""}</div>`;
   } else if (m.state === "read"){
-    slots = `<div class="cap">${lanes.map(l => `<i class="${l.stalled ? "stall" : l.engine || "none"}"></i>`).join("")}</div><div class="capline"><span class="mono">${lanes.length}</span> lanes placed · cap ${unreadSpan("no cap in the host table or the pool read")}</div>`;
+    slots = `<div class="cap">${lanes.map(l => `<i class="${l.stalled ? "stall" : l.engine || "none"}"></i>`).join("")}</div><div class="capline"><b>${lanes.length} running</b> · slot limit ${unreadSpan("no limit in the host table or the pool read")}</div>`;
   } else {
     slots = `<div class="cap unread" role="img" aria-label="Nothing is drawn: ${esc(m.state === "repair" ? "the machine is in repair" : m.state === "out" ? "the machine is out of selection" : "the machine was not read")}"></div>
-      <div class="capline">${esc(m.note || "no reading")}${lanes.length ? ` · the ledger still places ${lanes.length} lane${lanes.length === 1 ? "" : "s"} here` : ""}</div>`;
+      <div class="capline">${esc(m.note || "no reading")}${lanes.length ? ` · the log still places ${lanes.length} worker${lanes.length === 1 ? "" : "s"} here` : ""}</div>`;
   }
   const rd = m.state === "read";
   const memFrac = rd && m.mem_total_gb ? 1 - num(m.mem_free_gb) / num(m.mem_total_gb) : null;
@@ -704,15 +659,15 @@ function machineHTML(m, byId){
     gauge("load per core", m.load_per_core == null ? null : String(m.load_per_core), m.load_per_core == null ? null : num(m.load_per_core)),
     gauge("memory free", m.mem_free_gb == null ? null : `${fmt(m.mem_free_gb)} GB${m.mem_total_gb ? " of " + fmt(m.mem_total_gb) : ""}`, memFrac),
     gauge("swap used", m.swap_used_pct == null ? null : `${fmt(m.swap_used_pct)}%`, m.swap_used_pct == null ? null : num(m.swap_used_pct) / 100, "not reported on this host"),
-    gauge("CI runners", runners.state === "read" ? `${num(runners.busy)} busy of ${num(runners.total)}` : null, runners.state === "read" && num(runners.total) ? num(runners.busy) / num(runners.total) : null, runners.note),
-    gauge("unit work", m.unit_work == null ? null : `${num(m.unit_work)} placed beside the lanes`, null, "placement markers not read")
+    gauge("check runners", runners.state === "read" ? `${num(runners.busy)} busy of ${num(runners.total)}` : null, runners.state === "read" && num(runners.total) ? num(runners.busy) / num(runners.total) : null, runners.note),
+    gauge("unit work", m.unit_work == null ? null : `${num(m.unit_work)} placed beside the workers`, null, "placement markers not read")
   ].join("") : "";
   const age = m.read_age_min == null ? "" : `${ageText(num(m.read_age_min) * 60000)} ago`;
   return `<article class="mbay${cls}" id="bay-${safeId(m.host)}" aria-label="${esc(m.label)}">
     <div class="mbay-top"><b>${esc(m.label)}</b><span class="pill">${esc(stateWord)}${age ? ` · ${esc(age)}` : ""}</span></div>
     ${slots}
     ${gauges ? `<div class="gauges">${gauges}</div>` : ""}
-    ${lanes.length ? `<div class="lanes">${lanes.map(laneHTML).join("")}</div>` : (rd ? `<p class="empty">No lane is placed here.</p>` : "")}
+    ${lanes.length ? `<div class="lanes">${lanes.map(laneHTML).join("")}</div>` : (rd ? `<p class="empty">No worker is placed here.</p>` : "")}
   </article>`;
 }
 
@@ -722,7 +677,7 @@ function cloudHTML(cloud, lanes){
   const accts = (cloud.accounts || []).map(a => `<li><span><b>${esc(a.name)}</b> · ${a.ready ? "signed in" : esc(a.login || "not signed in")}</span><span class="mono">${num(a.open_sessions)} open${a.cap != null ? " of " + num(a.cap) : ""}</span>
       <small>${a.credit_remaining != null ? `credit left: ${fmt(a.credit_remaining)} (read ${esc(sinceText(a.credit_read_at))} ago)` : "credit unread"}${a.rate_status ? ` · rate: ${esc(a.rate_status)}` : ""}</small></li>`).join("");
   const sessions = (cloud.sessions || []).map(s => `<li><span>${esc(s.lane)} · ${esc(s.account || "account unread")}</span><span class="mono">${s.open ? "open" : esc(s.status)} · ${esc(ageText(num(s.run_minutes) * 60000))}</span>${s.result ? `<small>${esc(s.result)}</small>` : ""}</li>`).join("");
-  const lamps = (cloud.lamps || []).map(x => `<div class="lamp-stop" role="alert"><b>${esc(x.text)}</b><small>${x.evidence ? esc(x.evidence) + " · " : ""}since ${esc(x.since)} UTC</small></div>`).join("");
+  const lamps = (cloud.lamps || []).map(x => `<div class="lamp-stop" role="alert"><b>${esc(x.text)}</b><small>${x.evidence ? esc(x.evidence) + " · " : ""}since ${whenSpan(x.since)}</small></div>`).join("");
   return `<article class="mbay${cloud.state === "read" ? "" : " unread"}" id="bay-cloud" aria-label="Cloud">
     <div class="mbay-top"><b>Cloud</b><span class="pill">${cloud.state === "read" ? "read" : "unread"}</span></div>
     ${lamps}
@@ -740,12 +695,12 @@ function renderMachines(floor){
   lanes.forEach(l => { byId[l.lane] = l; });
   const unplaced = lanes.filter(l => l.placement === "unplaced");
   el("baysNote").textContent = ms.length
-    ? (floor.stall_minutes ? `A lane is marked stalled after ${floor.stall_minutes} minutes without a row of any kind, and is no longer drawn after ${floor.lane_window_minutes} minutes.` : "")
-    : "The record declares no machine bays: the deployment overlay lists none, or the record was written before the bays existed.";
+    ? (floor.stall_minutes ? `A worker is marked stalled after ${floor.stall_minutes} minutes without a log entry of any kind, and is no longer drawn after ${floor.lane_window_minutes} minutes.` : "")
+    : "The record lists no machines: the deployment lists none, or the record was written before machines were recorded.";
   const cards = ms.map(m => machineHTML(m, byId));
   cards.push(cloudHTML(floor.cloud, lanes));
-  if (unplaced.length) cards.push(`<article class="mbay unread" id="bay-unplaced"><div class="mbay-top"><b>No machine recorded</b><span class="pill">${unplaced.length} lane${unplaced.length === 1 ? "" : "s"}</span></div>
-    <p class="capline">These lanes are live in the ledger, but neither their claim nor a remote-lane receipt names a machine the floor draws.</p>
+  if (unplaced.length) cards.push(`<article class="mbay unread" id="bay-unplaced"><div class="mbay-top"><b>No machine recorded</b><span class="pill">${unplaced.length} worker${unplaced.length === 1 ? "" : "s"}</span></div>
+    <p class="capline">These workers are live in the log, but neither their claim nor a remote receipt names a machine the floor draws.</p>
     <div class="lanes">${unplaced.map(laneHTML).join("")}</div></article>`);
   el("bayGrid").innerHTML = cards.join("");
 }
@@ -773,7 +728,7 @@ document.addEventListener("click", ev => {
 });
 
 function prList(items){
-  const row = p => `<li><span>${esc(p.title)} (${esc(p.pr)})</span><span>${esc(p.detail || p.line_id)}</span></li>`;
+  const row = p => `<li><span>${esc(p.title)} <small>${esc(p.pr)}</small></span><span>${esc(p.detail || p.line_id)}</span></li>`;
   if (!items.length) return `<ul class="list"><li><span class="empty">None</span><span></span></li></ul>`;
   const rest = items.slice(5);
   return `<ul class="list">${items.slice(0, 5).map(row).join("")}</ul>` + (rest.length ? `<details class="more"><summary>Show the other ${rest.length}</summary><ul class="list">${rest.map(row).join("")}</ul></details>` : "");
@@ -782,14 +737,14 @@ function prList(items){
 function renderDelegation(d, err){
   const host = el("delegBody");
   if (!d || !Array.isArray(d.outcomes)){
-    host.innerHTML = `<p class="muted">Unread (${esc(err || "no data")}): no delegation counts are in the record, so none is drawn. A node that writes ${esc(DELEGATION_FILE)} (a window, the outcome counts and the calls per route) fills this card; the bar below stays hatched until then.</p>
+    host.innerHTML = `<p class="muted">Unread (${esc(err || "no data")}): no delegation counts are in the record, so none is drawn. The bar below stays hatched until the counts are published.</p>
       <div class="stack unread" role="img" aria-label="Delegation outcomes are unread"></div>`;
     return;
   }
   const total = Math.max(1, d.outcomes.reduce((a, o) => a + num(o.count), 0));
   const w = d.window || {};
   host.innerHTML = `
-    <p class="muted">${esc(num(d.total, total))} delegation calls${w.start && w.end ? ` from ${esc(String(w.start).slice(11, 16))} to ${esc(String(w.end).slice(11, 16))} UTC` : ""}.</p>
+    <p class="muted">${esc(num(d.total, total))} delegation calls${w.start && w.end ? ` from ${whenSpan(w.start)} to ${whenSpan(w.end)}` : ""}.</p>
     <div class="stack" role="img" aria-label="${esc(d.outcomes.map(o => num(o.count) + " " + o.label).join(", "))}">${d.outcomes.map(o => `<b style="width:${(num(o.count) / total * 100).toFixed(1)}%;background:${TONE[o.tone] || TONE.idle}"></b>`).join("")}</div>
     <div class="legend">${d.outcomes.map(o => `<span><i style="background:${TONE[o.tone] || TONE.idle}"></i>${esc(num(o.count))} ${esc(o.label)}</span>`).join("")}</div>
     ${Array.isArray(d.routes) && d.routes.length ? `<ul class="list">${d.routes.map(r => `<li><span>${esc(r.label)}</span><span>${esc(num(r.done))} of ${esc(num(r.total))}</span></li>`).join("")}</ul>` : ""}
@@ -812,12 +767,12 @@ function renderStops(stops){
   let out = ticks.map(v => { const x = x0 + v / max * w; return `<line class="grid" x1="${x}" y1="${top - 8}" x2="${x}" y2="${top + stops.length * rowH}" stroke-width="1"/><text class="lbl-muted" x="${x}" y="${top - 12}" text-anchor="middle">${esc(label(v))}</text>`; }).join("");
   out += stops.map((s, i) => {
     const y = top + i * rowH, bw = Math.max(2, num(s.cost_minutes) / max * w), tk = (s.tickets || []);
-    const fix = tk.length ? tk.join(", ") : "no ticket yet";
+    const fix = tk.length ? "ticket " + tk.join(", ") : "no ticket yet";
     const cls = tk.length ? "muted" : "stop";
     return `<text x="${x0 - 10}" y="${y + 15}" text-anchor="end">${esc(s.name.length > 34 ? s.name.slice(0, 33) + "…" : s.name)}</text>
       <rect x="${x0}" y="${y + 4}" width="${bw}" height="16" rx="2" style="fill:${s.recurring ? "var(--warn)" : "var(--idle)"}"/>
       <text class="lbl-muted" x="${x0 + bw + 8}" y="${y + 16}">${esc(fmt(s.cost_minutes))} min · ${esc(num(s.occurrences))}×</text>
-      <text x="${x0}" y="${y + 33}" class="lbl-muted" style="fill:${cls === "stop" ? "var(--stop)" : "var(--muted)"}">${esc(fix)}${s.last_seen ? ` · last seen ${esc(s.last_seen)}` : ""}</text>`;
+      <text x="${x0}" y="${y + 33}" class="lbl-muted" style="fill:${cls === "stop" ? "var(--stop)" : "var(--muted)"}">${esc(fix)}${s.last_seen ? ` · last seen ${esc(Number.isNaN(Date.parse(s.last_seen)) ? s.last_seen : whenText(s.last_seen))}` : ""}</text>`;
   }).join("");
   svg.setAttribute("viewBox", `0 0 760 ${top + stops.length * rowH + 6}`);
   svg.innerHTML = out;
@@ -832,22 +787,22 @@ function ageSpan(iso){
   const t = Date.parse(iso);
   if (Number.isNaN(t)) return `<span class="unread">${esc(iso || "unread")}</span>`;
   const ms = Date.now() - t;
-  return `<span class="${ms > STALE_MIN * 60000 ? "age-stale" : ""}">${esc(ageText(ms))} ago</span> <small>${esc(new Date(t).toISOString().replace("T", " ").slice(0, 16))} UTC</small>`;
+  return `<span class="${ms > STALE_MIN * 60000 ? "age-stale" : ""}" title="${esc(new Date(t).toISOString().slice(0, 16).replace("T", " "))} UTC">${esc(whenText(iso))}</span>`;
 }
 
 function renderSources(s, status){
   const rows = [
-    ["Pull request watcher, last tick", s.watcher_last_tick ? ageSpan(s.watcher_last_tick) : `<span class="unread">unread</span>`],
-    ["Newest ledger row read", s.ledger_newest_row ? ageSpan(s.ledger_newest_row) : `<span class="unread">unread</span>`],
-    ["Ledger rows read", esc(num(s.ledger_rows).toLocaleString("en-US"))],
-    ["Linear issues read", esc(num(s.linear_issues).toLocaleString("en-US"))],
+    ["Change watcher, last check", s.watcher_last_tick ? ageSpan(s.watcher_last_tick) : `<span class="unread">unread</span>`],
+    ["Newest log entry read", s.ledger_newest_row ? ageSpan(s.ledger_newest_row) : `<span class="unread">unread</span>`],
+    ["Log entries read", esc(num(s.ledger_rows).toLocaleString("en-US"))],
+    ["Tickets read", esc(num(s.linear_issues).toLocaleString("en-US"))],
     ["Lab hosts advertising slots", s.placement_hosts ? esc(s.placement_hosts) : `<span class="unread">none read</span>`],
-    ["Pool read of the machines", s.pool_read_at ? ageSpan(s.pool_read_at) : `<span class="unread">unread</span>`],
-    ["Lab host table (caps, repair)", s.host_table_read ? "read" : `<span class="unread">unread</span>`],
-    ["Placement markers (units)", s.placement_markers_read ? "read" : `<span class="unread">unread</span>`],
-    ["Remote-lane receipts", s.receipts_read ? "read" : `<span class="unread">unread</span>`],
+    ["Machine read", s.pool_read_at ? ageSpan(s.pool_read_at) : `<span class="unread">unread</span>`],
+    ["Lab host table (slot limits, repairs)", s.host_table_read ? "read" : `<span class="unread">unread</span>`],
+    ["Placement markers", s.placement_markers_read ? "read" : `<span class="unread">unread</span>`],
+    ["Remote worker receipts", s.receipts_read ? "read" : `<span class="unread">unread</span>`],
     ["Cloud accounts", s.cloud_accounts_read ? "read" : `<span class="unread">unread</span>`],
-    ["CI runner fleet observation", s.runner_fleet_read ? "read" : `<span class="unread">unread</span>`],
+    ["Check runner fleet", s.runner_fleet_read ? "read" : `<span class="unread">unread</span>`],
     ["Friction report", s.stoppage_report ? "read" : `<span class="unread">not supplied</span>`]
   ];
   if (status && Array.isArray(status.steps)){
@@ -855,7 +810,7 @@ function renderSources(s, status){
     if (!status.steps.length) rows.push(["Input steps", `<span class="unread">skipped in this publish</span>`]);
     status.steps.forEach(st => rows.push([`Input step: ${st.name}`, st.status === "ok" ? "ok" : `<span class="age-stale">failed (${esc(st.detail)})</span>`]));
     const d = status.lines_declared;
-    rows.push(["Lines declared by the overlay", d && d.state === "read" ? esc(d.plan_path_contains.length) : `<span class="unread">unread</span>`]);
+    rows.push(["Lines planned", d && d.state === "read" ? esc(d.plan_path_contains.length) : `<span class="unread">unread</span>`]);
   } else {
     rows.push(["Input steps", `<span class="unread">status not published</span>`]);
   }
@@ -868,7 +823,8 @@ function render(parts){
   const key = JSON.stringify([rec, parts.status, parts.health && parts.health.generated_at, parts.delegation]);
   const gen = Date.parse(rec.generated_at);
   const age = Number.isNaN(gen) ? null : Date.now() - gen;
-  el("stamp").textContent = Number.isNaN(gen) ? "Record time unreadable" : `Record computed ${new Date(gen).toISOString().replace("T", " ").slice(0, 16)} UTC · ${ageText(age)} old`;
+  el("stamp").textContent = Number.isNaN(gen) ? "Record time unreadable" : `Record computed ${whenText(rec.generated_at)}`;
+  if (!Number.isNaN(gen)) el("stamp").title = new Date(gen).toISOString().slice(0, 16).replace("T", " ") + " UTC";
   const banner = el("banner");
   if (age != null && age > STALE_MIN * 60000){ banner.hidden = false; banner.textContent = `This record is ${ageText(age)} old. The tick that refreshes it has not published since; what follows may be out of date.`; }
   else { banner.hidden = true; }
@@ -880,8 +836,7 @@ function render(parts){
   const bayState = machineFacts(floor);
   indexLines(built.slots);
   indexLanes(floor.lanes);
-  renderAndon(built.slots, floor, parts.health, bayState);
-  renderShift(built.slots, floor, rec, bayState);
+  renderVerdict(built.slots, floor, bayState, parts.health);
   renderLines(built.slots, built.declared, built.reason);
   renderMachines(floor);
   el("shippedCount").textContent = String(floor.shipped.length);
@@ -890,7 +845,7 @@ function render(parts){
   renderDelegation(parts.delegation, parts.delegationError);
   renderSources(rec.sources || {}, parts.status);
   renderStops(floor.stoppages);
-  el("stopsNote").textContent = floor.stoppages.length ? "Bars in amber are classes that recurred; grey ones did not. A class with no ticket says so." : "";
+  el("stopsNote").textContent = floor.stoppages.length ? "Amber bars are causes that came back; grey ones did not. A cause with no ticket says so." : "";
 }
 
 async function fetchOptional(name){
@@ -913,7 +868,7 @@ async function load(){
   } catch (e) {
     const banner = el("banner");
     banner.hidden = false;
-    banner.textContent = "The factory record could not be read (" + e.message + "). Retrying every minute.";
+    banner.textContent = "The factory record could not be read (" + e.message + "). Trying again every minute.";
   }
 }
 load();
