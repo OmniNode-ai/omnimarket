@@ -11,8 +11,8 @@ from pathlib import Path
 
 from omnibase_core.runtime.runtime_local import RuntimeLocal
 
-from ..models.model_friction_synthesis_request import ModelFrictionSynthesisRequest
-from ..models.model_friction_synthesis_result import ModelFrictionSynthesisResult
+from .models.model_friction_synthesis_request import ModelFrictionSynthesisRequest
+from .models.model_friction_synthesis_result import ModelFrictionSynthesisResult
 
 
 def dispatch(request: ModelFrictionSynthesisRequest) -> ModelFrictionSynthesisResult:
@@ -22,7 +22,7 @@ def dispatch(request: ModelFrictionSynthesisRequest) -> ModelFrictionSynthesisRe
         payload = root / "request.json"
         payload.write_text(request.model_dump_json(), encoding="utf-8")
         runtime = RuntimeLocal(
-            Path(__file__).parents[1] / "contract.yaml",
+            Path(__file__).parent / "contract.yaml",
             state_root=root / "state",
             input_path=payload,
             backend_overrides={"event_bus": "inmemory"},
