@@ -52,6 +52,16 @@ class ModelGenerateNodeCommand(BaseModel):
         default=False,
         description="When True, compute the file manifest without writing to disk.",
     )
+    contract_yaml: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "A contract already written for this node (contracts first, OMN-21627). "
+            "When given, the scaffold writes it as the package's contract.yaml in "
+            "place of the template contract, so the topics and seams it declares "
+            "are the ones the package carries."
+        ),
+    )
 
 
 class ModelGenerateNodeResult(BaseModel):

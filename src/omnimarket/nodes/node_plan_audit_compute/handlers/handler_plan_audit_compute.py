@@ -14,6 +14,11 @@ Supported-format contract (OMN-13923):
   (a ``verified: <date> via <command>`` line or a heading containing
   "verified ... state" — the Current-Verified-State gate contract).
   A missing verified-state marker is advisory (WARN), not a violation.
+  A plan with a task catalogue whose ``state_as_of`` is on or after the
+  contract's ``plan_rules.companion_readable.effective_from_state_as_of``
+  must link a non-empty human-readable companion file
+  (``<plan>.readable.md``) from its top; the rule is declared in the node
+  contract, not in this module.
 - any other extension — reported as SKIPPED with a reason, never an error.
 
 ``plan_path`` may also point at a directory, in which case every regular file
@@ -24,10 +29,12 @@ error, never a vacuous pass.
 from __future__ import annotations
 
 import re
+from datetime import date
 from pathlib import Path
 from typing import Any, TypeGuard
 
 import yaml
+from pydantic import BaseModel, ConfigDict
 
 from omnimarket.nodes.node_plan_audit_compute.models.model_plan_audit_compute_request import (
     ModelPlanAuditComputeRequest,
@@ -65,6 +72,40 @@ _VERIFIED_HEADING_RE = re.compile(
     r"|^#{1,6}\s+[^\n]*\bstate\b[^\n]*\bverified\b",
     re.IGNORECASE | re.MULTILINE,
 )
+
+
+_CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
+
+# The "state_as_of" header line, bold or plain: "state_as_of: 2026-10-31T..".
+_STATE_AS_OF_RE = re.compile(
+    r"^[\s>*_-]*state_as_of[\s:*_]*(\d{4}-\d{2}-\d{2})",
+    re.IGNORECASE | re.MULTILINE,
+)
+_MARKDOWN_LINK_TARGET_RE = re.compile(r"\]\(\s*<?([^)\s>]+)")
+
+
+class ModelCompanionRule(BaseModel):
+    """The contract-declared companion rule (``plan_rules.companion_readable``)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    effective_from_state_as_of: date
+    companion_suffix: str
+    link_within_lines: int
+    task_catalogue_heading_pattern: str
+
+
+def _read_text(path: Path) -> str:
+    """The one file read of this node: plan files and its own contract."""
+    # fmt: off
+    return path.read_text(encoding="utf-8")  # node-purity-ok: OMN-9048
+    # fmt: on
+
+
+def load_companion_rule() -> ModelCompanionRule:
+    """Read the rule from this node's contract; a missing rule is an error."""
+    raw = yaml.safe_load(_read_text(_CONTRACT_PATH))
+    return ModelCompanionRule.model_validate(raw["plan_rules"]["companion_readable"])
 
 
 class HandlerPlanAuditCompute:
@@ -154,9 +195,7 @@ class HandlerPlanAuditCompute:
         violations: list[str] = []
 
         try:
-            # fmt: off
-            raw_plan = yaml.safe_load(plan_path.read_text(encoding="utf-8"))  # node-purity-ok: OMN-9048
-            # fmt: on
+            raw_plan = yaml.safe_load(_read_text(plan_path))
         except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
             detail = f"failed to read or parse YAML: {exc}"
             checks.append(
@@ -194,9 +233,7 @@ class HandlerPlanAuditCompute:
         warnings: list[str] = []
 
         try:
-            # fmt: off
-            text = plan_path.read_text(encoding="utf-8")  # node-purity-ok: OMN-9048
-            # fmt: on
+            text = _read_text(plan_path)
         except (OSError, UnicodeDecodeError) as exc:
             detail = f"failed to read markdown plan: {exc}"
             checks.append(ModelCheckResult(name="read", passed=False, detail=detail))
@@ -217,6 +254,10 @@ class HandlerPlanAuditCompute:
             )
         )
         violations.extend(structure_issues)
+
+        if plan_path.name.endswith(load_companion_rule().companion_suffix):
+            # A companion is prose for a reader: only its structure is audited.
+            return self._file_result(plan_path, checks, violations, warnings)
 
         has_ticket = bool(_TICKET_RE.search(text))
         ticket_detail = "" if has_ticket else "no Linear ticket reference (OMN-XXXX)"
@@ -251,7 +292,96 @@ class HandlerPlanAuditCompute:
         if not has_verified_state:
             warnings.append(verified_detail)
 
+        self._check_companion(plan_path, text, checks, violations, warnings)
+
         return self._file_result(plan_path, checks, violations, warnings)
+
+    def _check_companion(
+        self,
+        plan_path: Path,
+        text: str,
+        checks: list[ModelCheckResult],
+        violations: list[str],
+        warnings: list[str],
+    ) -> None:
+        """Companion rule: a plan with a task catalogue links a readable twin."""
+        rule = load_companion_rule()
+        if plan_path.name.endswith(rule.companion_suffix):
+            return
+        if not re.search(
+            rule.task_catalogue_heading_pattern, text, re.IGNORECASE | re.MULTILINE
+        ):
+            return
+
+        match = _STATE_AS_OF_RE.search(text)
+        if match is None:
+            detail = (
+                "companion rule not evaluated: plan has a task catalogue but no "
+                "parsable state_as_of date"
+            )
+            checks.append(
+                ModelCheckResult(name="companion_readable", passed=True, detail=detail)
+            )
+            warnings.append(detail)
+            return
+        try:
+            state_as_of = date.fromisoformat(match.group(1))
+        except ValueError:
+            detail = (
+                f"companion rule not evaluated: invalid state_as_of {match.group(1)}"
+            )
+            checks.append(
+                ModelCheckResult(name="companion_readable", passed=True, detail=detail)
+            )
+            warnings.append(detail)
+            return
+        if state_as_of < rule.effective_from_state_as_of:
+            checks.append(
+                ModelCheckResult(
+                    name="companion_readable",
+                    passed=True,
+                    detail=(
+                        f"not required: state_as_of {state_as_of} is before "
+                        f"{rule.effective_from_state_as_of}"
+                    ),
+                )
+            )
+            return
+
+        companion_name = plan_path.stem + rule.companion_suffix
+        top = "\n".join(text.splitlines()[: rule.link_within_lines])
+        linked = any(
+            target.replace("\\", "/").rsplit("/", 1)[-1] == companion_name
+            for target in _MARKDOWN_LINK_TARGET_RE.findall(top)
+        )
+        companion = plan_path.with_name(companion_name)
+        issues: list[str] = []
+        if not linked:
+            issues.append(
+                f"plan with a task catalogue (state_as_of {state_as_of}) does not "
+                f"link its companion {companion_name} within the first "
+                f"{rule.link_within_lines} lines"
+            )
+        if not companion.is_file():
+            issues.append(f"companion file {companion_name} does not exist")
+        else:
+            try:
+                companion_text = _read_text(companion)
+            except (OSError, UnicodeDecodeError) as exc:
+                issues.append(f"companion file {companion_name} unreadable: {exc}")
+            else:
+                if not _H1_RE.search(companion_text):
+                    issues.append(
+                        f"companion file {companion_name} is empty or has no H1 title"
+                    )
+        checks.append(
+            ModelCheckResult(
+                name="companion_readable",
+                passed=not issues,
+                detail="; ".join(issues),
+            )
+        )
+        violations.extend(issues)
 
     # ------------------------------------------------------------------
     # Result assembly
