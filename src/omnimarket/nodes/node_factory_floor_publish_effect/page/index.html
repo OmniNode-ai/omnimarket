@@ -165,7 +165,7 @@ header{display:grid;gap:14px}
 .gauge .v.unread{color:var(--muted)}
 .gbar{height:6px;border-radius:3px;background:var(--rule);overflow:hidden}
 .gbar b{display:block;height:100%;width:var(--w);background:var(--steel)}
-.lanes{display:grid;gap:8px}
+.lanes{display:grid;gap:8px;max-height:640px;overflow-y:auto;padding-right:2px}
 .lane{border:1px solid var(--rule);border-left:4px solid var(--car);border-radius:4px;background:var(--floor);min-width:0}
 .lane.codex{border-left-color:var(--safety)}
 .lane.stalled{border-left-color:var(--stop);background:color-mix(in srgb,var(--stop) 7%,var(--floor))}
@@ -722,7 +722,7 @@ function machineHTML(m, byId){
     gauge("CI runners", runners.state === "read" ? `${num(runners.busy)} busy of ${num(runners.total)}` : null, runners.state === "read" && num(runners.total) ? num(runners.busy) / num(runners.total) : null, runners.note),
     gauge("unit work", m.unit_work == null ? null : `${num(m.unit_work)} placed beside the lanes`, null, "placement markers not read")
   ].join("") : "";
-  const age = m.read_age_min == null ? "" : `read ${ageText(num(m.read_age_min) * 60000)} ago`;
+  const age = m.read_age_min == null ? "" : `${ageText(num(m.read_age_min) * 60000)} ago`;
   return `<article class="mbay${cls}" id="bay-${safeId(m.host)}" aria-label="${esc(m.label)}">
     <div class="mbay-top"><b>${esc(m.label)}</b><span class="pill">${esc(stateWord)}${age ? ` · ${esc(age)}` : ""}</span></div>
     ${slots}
