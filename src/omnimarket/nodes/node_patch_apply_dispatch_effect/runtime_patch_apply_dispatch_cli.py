@@ -15,12 +15,12 @@ import yaml
 from omnibase_core.enums.enum_workflow_result import EnumWorkflowResult
 from omnibase_core.runtime.runtime_local import RuntimeLocal
 
-from ..models import (
+from .models import (
     ModelPatchApplyDispatchRequest,
     ModelPatchApplyDispatchResult,
 )
 
-CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
+CONTRACT = Path(__file__).resolve().parent / "contract.yaml"
 
 
 def dispatch(request: ModelPatchApplyDispatchRequest) -> ModelPatchApplyDispatchResult:
