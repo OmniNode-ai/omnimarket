@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
 from omnimarket.nodes.node_data_verification.container.container_inmemory import (
+    InmemoryDataSource,
     bind_data_source,
 )
 from omnimarket.nodes.node_data_verification.models.model_data_verification_completed_event import (
@@ -60,26 +61,6 @@ _GARBAGE_UUIDS = frozenset(
         "ffffffff-ffff-ffff-ffff-ffffffffffff",
     }
 )
-
-
-class InmemoryDataSource:
-    """Mock data source for testing."""
-
-    def __init__(self, rows: list[dict[str, str]] | None = None) -> None:
-        self._rows = rows or []
-
-    def get_row_count(self, table_name: str) -> int:
-        return len(self._rows)
-
-    def get_sample_rows(
-        self, table_name: str, sample_size: int
-    ) -> list[dict[str, str]]:
-        return self._rows[:sample_size]
-
-    def get_columns(self, table_name: str) -> list[str]:
-        if not self._rows:
-            return []
-        return list(self._rows[0].keys())
 
 
 def _is_garbage_uuid(value: str) -> bool:
