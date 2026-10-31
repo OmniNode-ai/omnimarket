@@ -22,7 +22,7 @@ evidence_requirements:
     description: "An hour of compose health reports through the real environment store and the local_alerts fold on a real SQLite file; replaying the reports or the transitions changes no row, a second run derives the same transition ids, the transitions folded in reverse or shuffled order give the same rows, a repeated condition updates one row, and an alert clears only on a report meeting the clear condition. The handler module does not exist at the merge base, so the file cannot be collected there."
     command: "uv run pytest tests/test_omn19991_local_alert_transitions.py -q"
   - kind: "tests"
-    description: "Every rule the compute's contract declares has a positive and a negative fixture in the fixture file, read by rule code, and a rule without one is reported missing. The fixture file does not exist at the merge base, so these tests fail there."
+    description: "Every rule the compute's contract declares has a positive and a negative fixture in the compute node's rule_fixtures.yaml, read by rule code, and a rule without one is reported missing. The fixture file, a source file of the compute node, does not exist at the merge base, so these tests fail there."
     command: "uv run pytest tests/test_omn19991_local_alert_rule_fixtures.py -q"
 emergency_bypass:
   enabled: false
@@ -38,7 +38,7 @@ dod_evidence:
         check_value: "uv run pytest tests/test_omn19991_local_alert_transitions.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn19991-ac2-every-rule-has-fixtures"
-    description: "AC2. The rules are read from node_local_alert_compute's contract and parametrise the positive and negative fixture tests, so the set grows with the contract; each positive fixture opens exactly its rule and each negative one does not; a rule added with no fixture, or with only a positive one, is reported missing. Absent at the merge base."
+    description: "AC2. The rules are read from node_local_alert_compute's contract and parametrise the positive and negative fixture tests, so the set grows with the contract; each positive fixture opens exactly its rule and each negative one does not; a rule added with no fixture, or with only a positive one, is reported missing. The fixtures ship beside the contract as src/omnimarket/nodes/node_local_alert_compute/rule_fixtures.yaml, absent at the merge base, so the check fails there."
     source: "manual"
     binds_ac: ["AC2"]
     checks:

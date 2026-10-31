@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT
 """OMN-19991: every rule in the local alert compute's contract has a positive and a negative fixture.
 
-The rules are read from the contract and the fixtures from one data file keyed
-by rule code, so the parametrisation grows with the contract: a rule added to
+The rules are read from the contract and the fixtures from the data file the
+compute node ships beside it, keyed by rule code, so the parametrisation grows with the contract: a rule added to
 the contract with no fixture fails here, rather than going untested because a
 hand-written list of indexes did not grow with it.
 
@@ -18,7 +18,7 @@ Failure modes each test is written against:
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
+from importlib.resources import files
 from typing import Any
 
 import pytest
@@ -41,16 +41,18 @@ from omnimarket.nodes.node_local_alert_compute.models import ModelLocalAlertRequ
 
 pytestmark = pytest.mark.unit
 
-FIXTURES = (
-    Path(__file__).parent / "fixtures" / "omn19991" / "local_alert_rule_fixtures.yaml"
-)
 T0 = datetime(2026, 10, 31, 9, 0, 0, tzinfo=UTC)
 TENANT = "11111111-1111-4111-8111-111111111111"
 CONTRACT_RULES = load_local_alert_rules()
 
 
 def _fixtures() -> dict[str, dict[str, dict[str, Any]]]:
-    loaded: dict[str, dict[str, dict[str, Any]]] = yaml.safe_load(FIXTURES.read_text())
+    text = (
+        files("omnimarket.nodes.node_local_alert_compute")
+        .joinpath("rule_fixtures.yaml")
+        .read_text(encoding="utf-8")
+    )
+    loaded: dict[str, dict[str, dict[str, Any]]] = yaml.safe_load(text)
     return loaded
 
 

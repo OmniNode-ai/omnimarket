@@ -1,10 +1,11 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 #
-# One positive and one negative fixture per rule of node_local_alert_compute's
-# contract, keyed by the rule's code. A positive fixture must open the rule's
+# One positive and one negative fixture per rule of this node's contract, keyed
+# by the rule's code, kept beside the contract so a rule and its fixtures change
+# together. A positive fixture must open the rule's
 # alert and a negative one must not. A rule added to the contract with no entry
-# here fails tests/test_omn19991_local_alert_rule_fixtures.py.
+# here fails the rule fixture test.
 #
 # observed_state is the service's last report; silence_seconds is how long ago
 # that report was, at the time the compute judges it.
