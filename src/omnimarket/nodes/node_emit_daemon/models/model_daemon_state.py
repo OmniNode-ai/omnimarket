@@ -43,8 +43,11 @@ class ModelEmitDaemonCommand(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    action: str = Field(..., pattern=r"^(start|stop|health)$")
+    action: str = Field(default="status", pattern=r"^(start|stop|health|status)$")
     socket_path: str | None = Field(default=None)
+    pid: int = Field(default=0, ge=0)
+    events_published: int = Field(default=0, ge=0)
+    events_dropped: int = Field(default=0, ge=0)
     kafka_bootstrap_servers: str | None = Field(default=None)
     event_registry_path: str | None = Field(default=None)
 
