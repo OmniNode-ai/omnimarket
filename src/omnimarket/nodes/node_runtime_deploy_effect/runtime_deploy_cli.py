@@ -24,12 +24,12 @@ from omnibase_infra.runtime.auto_wiring.models.model_auto_wiring_manifest import
 from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
 from pydantic import ValidationError
 
-from ..models.model_runtime_deploy_request import (
+from .handlers.handler_runtime_deploy import CONTRACT_PATH, contract_topics
+from .models.model_runtime_deploy_request import (
     ModelRuntimeDeployOptions,
     ModelRuntimeDeployRequest,
 )
-from ..models.model_runtime_deploy_result import ModelRuntimeDeployResult
-from .handler_runtime_deploy import CONTRACT_PATH, contract_topics
+from .models.model_runtime_deploy_result import ModelRuntimeDeployResult
 
 
 async def dispatch(

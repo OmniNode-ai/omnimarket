@@ -14,10 +14,6 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import TextIO, cast
 
-from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_claude_code_hook_cli import (
-    CLIENT_ENV,
-    DEFAULT_CLIENT,
-)
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_compaction_latency_run import (
     HandlerCompactionLatencyRun,
 )
@@ -27,6 +23,10 @@ from omnimarket.nodes.node_claude_code_hook_adapter_effect.models import (
 )
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.protocols import (
     ProtocolReceiptModeClient,
+)
+from omnimarket.nodes.node_claude_code_hook_adapter_effect.runtime_claude_code_hook_cli import (
+    CLIENT_ENV,
+    DEFAULT_CLIENT,
 )
 
 
