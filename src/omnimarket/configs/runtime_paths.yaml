@@ -62,3 +62,14 @@ automation_liveness:
 shadow_mode_parity_proof:
   # Default output of scripts/shadow_mode_parity_proof.py; --out overrides it.
   report_path: /tmp/omn-15971-shadow-parity-report.json
+
+dod_evidence:
+  # Directory, beneath the runtime state root (ONEX_STATE_DIR), that holds the per-ticket DoD
+  # receipt (dod_report.json) and retry record (dod_retry_state.json) node_dod_verify writes
+  # (OMN-21776). A host sets ONEX_EVIDENCE_ROOT to <state root>/<home_subdir>.
+  home_subdir: evidence
+  # Directory names of retired repositories. node_dod_verify refuses a receipt root or output path
+  # with any of these as a path component, so a retired clone is never recreated by a stale
+  # ONEX_EVIDENCE_ROOT.
+  retired_roots:
+    - onex_change_control

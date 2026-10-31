@@ -41,6 +41,7 @@ from omnimarket.analysis.ast_import_scanner import (
     _extract_imports,
     _module_name,
 )
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.nodes.node_architecture_graph_populate_effect.models import (
     ModelArchitectureGraphPopulateConfig,
     ModelArchitectureGraphPopulateRequestedEvent,
@@ -108,16 +109,31 @@ _T = TypeVar("_T")
 
 def _retry_on_transient_error(
     max_attempts: int = 3,
-    initial_backoff: float = 0.1,
-    backoff_multiplier: float = 2.0,
+    initial_backoff: float | None = None,
+    backoff_multiplier: float | None = None,
 ) -> Callable[[Callable[..., Awaitable[_T]]], Callable[..., Awaitable[_T]]]:
+    retry_initial_backoff = (
+        initial_backoff
+        if initial_backoff is not None
+        else load_node_timeouts("node_architecture_graph_populate_effect").get(
+            "retry_initial_backoff_seconds"
+        )
+    )
+    retry_backoff_multiplier = (
+        backoff_multiplier
+        if backoff_multiplier is not None
+        else load_node_timeouts("node_architecture_graph_populate_effect").get(
+            "retry_backoff_multiplier"
+        )
+    )
+
     def decorator(
         func: Callable[..., Awaitable[_T]],
     ) -> Callable[..., Awaitable[_T]]:
         @wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> _T:
             attempt = 0
-            backoff = initial_backoff
+            backoff = retry_initial_backoff
             while True:
                 try:
                     return await func(*args, **kwargs)
@@ -141,7 +157,7 @@ def _retry_on_transient_error(
                         str(exc)[:200],
                     )
                     await asyncio.sleep(backoff)
-                    backoff *= backoff_multiplier
+                    backoff *= retry_backoff_multiplier
 
         return wrapper
 

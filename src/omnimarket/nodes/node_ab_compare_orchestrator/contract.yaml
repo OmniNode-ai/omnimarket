@@ -96,3 +96,7 @@ runtime_dispatch:
 externally_consumed_topics:
   # referenced outside the node graph at omnimarket/src/omnimarket/nodes/node_ab_compare_reducer/models/model_ab_compare_completed.py
   - onex.evt.omnimarket.ab-compare-completed.v1
+
+timeouts:
+  quality_check_timeout_seconds: 10  # Bounds the ruff quality check subprocess.
+  llm_call_timeout_seconds: 120.0  # Bounds each LLM inference call.

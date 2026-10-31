@@ -1,12 +1,24 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-21623"
-title: "Burn-down of the contracts_and_di findings of omnimarket, third slice: the GitHub web origin is read from the service endpoint authority"
-summary: "Ten modules across eight node packages spelled the GitHub web origin as a literal in code. The origin is now a key of configs/service_endpoints.yaml (github.web_url), and every module of the slice builds its repository, clone and release URLs from it through the existing service_endpoint_url resolver. The contracts_and_di check over src/omnimarket and scripts reports 1575 findings before the slice and fewer after, and no file of the slice carries a literal_url finding."
+title: "Burn-down of the contracts_and_di literal_timeout findings of omnimarket, slice A: sixteen nodes declare their timeouts in their contract"
+summary: "Sixteen node packages (node_ab_compare_orchestrator through node_captured_secret_store_effect, alphabetically, without node_build_loop_orchestrator and node_capture_item_identity_effect, whose hook module may import only the standard library) held 29 timeout, interval, delay, backoff and TTL literals in code. Each value is now declared in its node's contract.yaml under timeouts (the three ADR nodes read the config entry their contract already declared) and is read through the shared omnimarket.handlers.node_timeouts_reader adapter or injected through the constructor. The contracts_and_di check over src/omnimarket and scripts reports 1575 findings before the slice; no literal_timeout finding remains in the sixteen node directories."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
+  - id: "req-omn21623-node-timeouts-a"
+    statement: |-
+      The sixteen nodes hold no timeout, interval, delay, backoff or TTL literal in code. Every duration is declared in the node contract with the value it held before, a name the contract does not declare stops the node, and an injected duration wins over the declared one.
+    acceptance:
+      - id: "AC6"
+        statement: "AC6: the contracts_and_di check reports no literal_timeout finding in the sixteen node directories of the slice -- falsifier: the command of dod-omn21623-timeouts-check-clean below exits nonzero when a timeout literal returns to any of them"
+      - id: "AC7"
+        statement: "AC7: every node of the slice declares its durations in its contract.yaml with the value its code held before -- falsifier: uv run pytest tests/test_node_timeouts_contract.py -k declares_every_duration fails when a declared value or name differs from the table"
+      - id: "AC8"
+        statement: "AC8: a contract with no timeouts section, or a name it does not declare, refuses instead of supplying a value -- falsifier: uv run pytest tests/test_node_timeouts_contract.py -k 'undeclared or without' fails when a fallback value returns"
+      - id: "AC9"
+        statement: "AC9: constructor defaults and module constants come from the contract and an injected duration wins -- falsifier: uv run pytest tests/test_node_timeouts_contract.py -k 'constructor or module_constants or injected' fails when a literal default returns"
   - id: "req-omn21623-github-web-origin"
     statement: |-
       The GitHub web origin is declared once, in configs/service_endpoints.yaml, and the resolver fails closed when the key is missing or empty. The ten modules of the slice build their GitHub URLs from the resolver and hold no literal of the origin in code, so the contracts_and_di check reports no literal_url finding on any of them.
@@ -35,6 +47,9 @@ requirements:
         statement: "AC5: the contracts_and_di check reports no inmemory_outside_injection, literal_host, literal_ip or literal_port finding on the modules of the slice -- falsifier: the command of dod-omn21623-network-clean below"
 evidence_requirements:
   - kind: "tests"
+    description: "The contract timeout tests and the existing tests of the touched nodes pass."
+    command: "uv run pytest tests/test_node_timeouts_contract.py -q --no-cov"
+  - kind: "tests"
     description: "The endpoint authority tests pass."
     command: "uv run pytest tests/test_service_endpoints_contract.py -q --no-cov"
   - kind: "tests"
@@ -48,6 +63,62 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn21623-timeouts-contract-tests"
+    description: "Declared values, refusals, contract-sourced defaults and injection all behave as stated."
+    source: "manual"
+    binds_ac: ["AC7", "AC8", "AC9"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_node_timeouts_contract.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21623-timeouts-check-clean"
+    description: "The pinned contracts_and_di validator scans all sixteen node directories; its structured findings contain no literal_timeout rule. Import, scan and path errors fail the probe."
+    source: "manual"
+    binds_ac: ["AC6"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_node_timeouts_contract.py -k slice_has_no_literal_timeout_findings -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: |-
+          uv run --frozen python -c '
+          from pathlib import Path
+          from omnibase_core.validation.validator_contracts_and_di import ValidatorContractsAndDi
+          names = "node_ab_compare_orchestrator node_adr_decision_extraction_llm_effect node_adr_extraction_grader_llm_effect node_adr_segmentation_llm_effect node_antipattern_index_effect node_antipattern_match_effect node_architecture_graph_populate_effect node_auto_merge_effect node_automation_liveness_deadman_effect node_automation_liveness_watchdog_compute node_automation_liveness_watchdog_effect node_automation_run_observer_effect node_baseline_capture node_beacon_trace_capture_effect node_canonical_clone_refresh_effect node_captured_secret_store_effect".split()
+          paths = [Path("src/omnimarket/nodes") / name for name in names]
+          assert all(path.is_dir() for path in paths), "a target node is missing"
+          result = ValidatorContractsAndDi().validate(paths)
+          assert result.metadata.files_processed >= len(paths), "the validator did not scan the targets"
+          findings = [issue for issue in result.issues if issue.rule_name == "literal_timeout"]
+          print(f"files_processed={result.metadata.files_processed}; literal_timeout={len(findings)}")
+          assert not findings, findings
+          '
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21623-deploy-timeouts-source-readback"
+    description: |-
+      Hosted-runner container readback: execute the timeout loader against this tree in an
+      isolated Python container with a read-only source mount. Assert the contract-declared
+      auto-merge poll interval and secret-store timeout and the refusal of an undeclared name.
+      Missing code, missing declarations and changed values fail the running container.
+      This exercises the composition adapter; it does not assert a fleet rollout.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -v "$PWD/src:/product:ro" -w /tmp python:3.12-bookworm sh -ec '
+          python -m pip install --disable-pip-version-check --quiet pydantic==2.13.5 PyYAML==6.0.3
+          PYTHONPATH=/product python - <<"PY"
+          from unittest import TestCase
+          from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
+          poll = load_node_timeouts("node_auto_merge_effect").get("poll_interval_s")
+          store = load_node_timeouts("node_captured_secret_store_effect").get("store_call_timeout_seconds")
+          assert poll == 60, poll
+          assert store == 5.0, store
+          TestCase().assertRaises(KeyError, load_node_timeouts("node_auto_merge_effect").get, "undeclared")
+          print(dict(poll_interval_s=poll, store_call_timeout_seconds=store, undeclared="refused"))
+          PY
+          '
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21623-endpoint-authority"
     description: "The endpoint authority exposes the web origin and every slice module resolves it instead of spelling it."
     source: "manual"
