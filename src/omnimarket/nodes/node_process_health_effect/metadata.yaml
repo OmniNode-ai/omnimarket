@@ -1,0 +1,22 @@
+name: node_process_health_effect
+version: "1.0.0"
+description: "Reads the process-health sources, runs the pure process-health compute and writes the series JSON to the contract-declared path"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_process_health_effect: "omnimarket.nodes.node_process_health_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem_write
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "process-health", "factory-floor"]
+pack: "routing"
+display_name: "Process Health Effect"
+node_role: "effect"

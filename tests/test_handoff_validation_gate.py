@@ -11,17 +11,22 @@ Gate criteria: abort with exit code 2 when any of:
 
 from __future__ import annotations
 
+import os
 import subprocess
 import uuid
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
 from omnimarket.nodes.node_handoff_effect.handlers.handler_handoff_effect import (
     HandlerHandoffEffect,
     HandoffGateError,
     validate_infra_sources,
+)
+from omnimarket.nodes.node_handoff_effect.models.model_handoff_request import (
+    ModelHandoffRequest,
 )
 
 _SSH_TARGET = "jonah@192.168.86.201"  # onex-allow-internal-ip OMN-11266 reason="test fixture: known .201 SSH target for gate validation tests"
@@ -30,7 +35,13 @@ _PATCH_SSH = "omnimarket.nodes.node_handoff_effect.handlers.handler_handoff_effe
 
 
 def _git(args: list[str], cwd: Path) -> None:
-    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
+    subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        env=scrub_git_location_env(os.environ),
+    )
 
 
 @pytest.fixture
@@ -169,9 +180,11 @@ class TestHandlerHandoffEffectGate:
             handler = HandlerHandoffEffect()
             with pytest.raises(HandoffGateError):
                 handler.handle(
-                    session_id="sess-timeout",
-                    correlation_id=uuid.uuid4(),
-                    cwd=str(git_repo),
+                    ModelHandoffRequest(
+                        session_id="sess-timeout",
+                        correlation_id=uuid.uuid4(),
+                        cwd=str(git_repo),
+                    )
                 )
 
         handoff_dir = state_dir / "session" / "handoff"
@@ -192,9 +205,11 @@ class TestHandlerHandoffEffectGate:
             handler = HandlerHandoffEffect()
             with pytest.raises(HandoffGateError) as exc_info:
                 handler.handle(
-                    session_id="sess-nolog",
-                    correlation_id=uuid.uuid4(),
-                    cwd=str(git_repo),
+                    ModelHandoffRequest(
+                        session_id="sess-nolog",
+                        correlation_id=uuid.uuid4(),
+                        cwd=str(git_repo),
+                    )
                 )
 
         assert exc_info.value.exit_code == 2
@@ -222,9 +237,11 @@ class TestHandlerHandoffEffectGate:
             handler = HandlerHandoffEffect()
             with pytest.raises(HandoffGateError):
                 handler.handle(
-                    session_id="sess-partial",
-                    correlation_id=uuid.uuid4(),
-                    cwd=str(git_repo),
+                    ModelHandoffRequest(
+                        session_id="sess-partial",
+                        correlation_id=uuid.uuid4(),
+                        cwd=str(git_repo),
+                    )
                 )
 
         handoff_dir = state_dir / "session" / "handoff"
@@ -250,9 +267,11 @@ class TestHandlerHandoffEffectGate:
         ):
             handler = HandlerHandoffEffect()
             result = handler.handle(
-                session_id="sess-ok",
-                correlation_id=uuid.uuid4(),
-                cwd=str(git_repo),
+                ModelHandoffRequest(
+                    session_id="sess-ok",
+                    correlation_id=uuid.uuid4(),
+                    cwd=str(git_repo),
+                )
             )
 
         assert Path(result["artifact_path"]).exists()
