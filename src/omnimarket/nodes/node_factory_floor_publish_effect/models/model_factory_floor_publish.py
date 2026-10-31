@@ -45,7 +45,7 @@ class ModelPublishStep(BaseModel):
     """One input step run before the record is read.
 
     ``module`` runs ``python -m <module> <args>``; ``capture`` runs ``argv`` and keeps its standard output as a
-    JSON list at ``output_relpath``; ``copy`` copies ``source_relpath`` to ``output_relpath``. ``{home}``,
+    JSON list at ``output_relpath``; ``copy`` copies ``source_relpath`` to ``output_relpath`` (the JSON object at the key path ``select`` when it is given). ``{home}``,
     ``{bus_lane}`` in ``args`` and ``argv`` are the registry home and the overlay's bus lane. A step that is not
     ``required`` may fail: the failure is recorded in the status file and the page shows its source as unread.
     """
@@ -61,6 +61,7 @@ class ModelPublishStep(BaseModel):
     argv: tuple[str, ...] = ()
     source_relpath: str | None = None
     output_relpath: str | None = None
+    select: tuple[str, ...] = ()
 
     @model_validator(mode="after")
     def _shape(self) -> ModelPublishStep:

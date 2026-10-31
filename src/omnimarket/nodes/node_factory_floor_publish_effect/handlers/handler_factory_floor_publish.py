@@ -203,7 +203,13 @@ class HandlerFactoryFloorPublish:
                 if step.source_relpath is None or step.output_relpath is None:
                     raise ValueError("a copy step names a source and an output")
                 raw = (home / step.source_relpath).read_bytes()
-                json.loads(raw)
+                document = json.loads(raw)
+                for key in step.select:
+                    if not isinstance(document, dict) or key not in document:
+                        raise ValueError(f"the source has no {'.'.join(step.select)}")
+                    document = document[key]
+                if step.select:
+                    raw = json.dumps(document, sort_keys=True).encode("utf-8")
                 write_atomic(home / step.output_relpath, raw)
                 return ModelPublishStepResult(name=step.name, status="ok")
             if step.kind == "module":

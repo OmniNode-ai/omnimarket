@@ -59,6 +59,7 @@ descriptor:
 # (OMN-21686, its ${ONEX_STATE_DIR}/process-health/process-health.json, the tick sets ONEX_STATE_DIR). The
 # serving host, its directory, the URL and the bus lane are the deployment overlay's: a file named by
 # overlay_file_env, else <ONEX_SKILL_OVERLAY_ROOTS root>/node_factory_floor_publish_effect/overlay.yaml.
+# The friction step keeps the 24-hour window of the rollup's report (the part with the classes the record reads).
 # Steps run in order. A step that is not required may fail: the status file records it and the page shows that
 # source as unread. The factory floor effect is last and required: without a record nothing is published.
 runtime:
@@ -81,6 +82,7 @@ runtime:
     required: false
     timeout_seconds: 30
     source_relpath: .onex_state/friction-rollup/latest.json
+    select: [windows, 24h]
     output_relpath: .claude_scratch/friction/friction-report.json
   - name: process_health
     kind: module

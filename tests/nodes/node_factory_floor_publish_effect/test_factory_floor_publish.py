@@ -334,17 +334,22 @@ def test_refresh_a_capture_that_is_not_a_json_list_is_a_failed_step(
     assert not (tmp_path / "home/.claude_scratch/lab-run/hosts.json").exists()
 
 
-def test_refresh_the_friction_report_is_copied_only_when_it_is_json(
+def test_refresh_the_friction_report_keeps_the_rollup_window_with_its_classes(
     tmp_path: Path,
 ) -> None:
     request = _refresh_request(tmp_path)
     source = Path(request.home or "") / ".onex_state/friction-rollup/latest.json"
     source.parent.mkdir(parents=True)
-    source.write_text('{"classes": []}', encoding="utf-8")
+    wrapper = {"windows": {"24h": {"classes": [{"class": "lab-idle"}]}, "2h": {}}}
+    source.write_text(json.dumps(wrapper), encoding="utf-8")
     result = HandlerFactoryFloorPublish(Scripted({})).handle(request, environ={})
     assert next(s for s in result.steps if s.name == "friction").status == "ok"
     copied = Path(request.home or "") / ".claude_scratch/friction/friction-report.json"
-    assert copied.read_text() == '{"classes": []}'
+    assert json.loads(copied.read_text()) == wrapper["windows"]["24h"]
+    source.write_text('{"windows": {}}', encoding="utf-8")
+    missing = HandlerFactoryFloorPublish(Scripted({})).handle(request, environ={})
+    friction = next(s for s in missing.steps if s.name == "friction")
+    assert (friction.status, friction.detail) == ("failed", "ValueError")
     source.write_text("not json", encoding="utf-8")
     again = HandlerFactoryFloorPublish(Scripted({})).handle(request, environ={})
     assert next(s for s in again.steps if s.name == "friction").status == "failed"
