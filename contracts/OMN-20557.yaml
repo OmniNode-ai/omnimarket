@@ -17,7 +17,7 @@ requirements:
       - id: "AC2"
         statement: "AC2: a session model absent from the pricing manifest yields BASELINE_UNRESOLVED with a null saving, never the fixed default and never a number -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_session_model_baseline_omn20557.py -k unpriced -q"
       - id: "AC3"
-        statement: "AC3: a request with no session model still resolves the fixed default and the receipt says fixed_default -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_session_model_baseline_omn20557.py -k 'no_session_model or blank' -q"
+        statement: "AC3: a request with no session model still resolves the fixed default and the receipt says fixed_default; after a session-model run, the next run without one restores the fixed default in metering -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_session_model_baseline_omn20557.py -k 'no_session_model or blank or newest_run' -q"
       - id: "AC4"
         statement: "AC4 (local half): the run's metering rows are folded under the session model and onex metering --json prints it as the baseline, then the newest run's baseline -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_session_model_baseline_omn20557.py -k 'metering' -q"
 evidence_requirements:
@@ -46,12 +46,12 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_session_model_baseline_omn20557.py -k unpriced -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20557-fixed-default"
-    description: "No session model resolves the fixed default and the receipt says so."
+    description: "No session model resolves the fixed default and the receipt says so; a later run without a session model restores the fixed default in metering."
     source: "manual"
     binds_ac: ["AC3"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_session_model_baseline_omn20557.py -k 'no_session_model or blank' -q --no-cov"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_session_model_baseline_omn20557.py -k 'no_session_model or blank or newest_run' -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20557-metering-baseline"
     description: "onex metering --json prints the session model as the baseline after a run from that session."
