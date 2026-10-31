@@ -394,7 +394,7 @@ def test_page_reports_node_syntax_is_valid(name: str) -> None:
 HARNESS = textwrap.dedent(
     """
     const fs = require("fs");
-    const [pagePath, filesJson] = process.argv.slice(2);
+    const [pagePath, filesJson] = process.argv.slice(1);
     const files = JSON.parse(filesJson);
     const page = fs.readFileSync(pagePath, "utf8");
     const script = /<script>([\\s\\S]*?)<\\/script>/.exec(page)[1];
