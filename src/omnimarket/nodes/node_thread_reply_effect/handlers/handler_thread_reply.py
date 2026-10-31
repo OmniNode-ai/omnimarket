@@ -29,6 +29,7 @@ from omnibase_infra.adapters.llm.adapter_llm_provider_openai import (
 from omnibase_infra.adapters.llm.model_llm_adapter_request import ModelLlmAdapterRequest
 
 from omnimarket.github_api import GitHubApiError, rest_json
+from omnimarket.handlers.node_model_names_reader import load_node_model_names
 from omnimarket.inference.bridge_config_loader import resolve_bifrost_backend
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import contract_secret_ref
@@ -81,9 +82,11 @@ _SECRET_RE = re.compile(
     re.IGNORECASE,
 )
 
+_MODEL_NAMES = load_node_model_names("node_thread_reply_effect")
+
 # The unchanged fast-model entry retains its declared environment configuration.
 _BASE_REGISTRY: dict[str, dict[str, str]] = {
-    "deepseek-r1-14b": {
+    _MODEL_NAMES.get("fast_model"): {
         "base_url": os.environ.get(  # contract-config-ok: config
             "LLM_CODER_FAST_URL", ""
         ),
@@ -92,7 +95,10 @@ _BASE_REGISTRY: dict[str, dict[str, str]] = {
 }
 
 # Legacy policy keys remain aliases; the contract owns URLs and served models.
-_CONTRACT_BACKENDS = {"qwen3-coder-30b": "local-coder", "glm-4.5": "cloud-glm"}
+_CONTRACT_BACKENDS = {
+    _MODEL_NAMES.get("coder_model"): "local-coder",
+    _MODEL_NAMES.get("glm_model"): "cloud-glm",
+}
 
 _THREAD_REPLY_SYSTEM_PROMPT = (
     "You are a helpful code-review assistant. Given a PR review thread, "

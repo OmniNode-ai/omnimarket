@@ -17,8 +17,8 @@ import logging
 import sys
 from datetime import UTC, datetime
 
+import omnimarket.nodes.node_task_execution_orchestrator.container.container_task_execution_orchestrator as binding
 from omnimarket.nodes.node_task_execution_orchestrator.handlers.handler_task_execution_orchestrator import (
-    HandlerTaskExecutionOrchestrator,
     UnsupportedTaskActionError,
 )
 from omnimarket.nodes.node_task_execution_orchestrator.models.model_task_execution import (
@@ -62,7 +62,7 @@ def main() -> None:
         dry_run=True,
     )
 
-    handler = HandlerTaskExecutionOrchestrator()
+    handler = binding.create_handler_task_execution_orchestrator()
     try:
         result = handler.handle(request, generated_at=datetime.now(UTC))
     except UnsupportedTaskActionError as exc:
