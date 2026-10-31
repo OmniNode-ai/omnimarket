@@ -11,8 +11,8 @@ from pydantic import ValidationError
 from omnimarket.models.model_internal_release_path_guard import (
     ModelInternalReleasePathGuardRequest,
 )
-from omnimarket.nodes.node_internal_release_path_guard_compute import (
-    NodeInternalReleasePathGuardCompute,
+from omnimarket.nodes.node_internal_release_path_guard_compute.container import (
+    container_internal_release_path_guard_compute,
 )
 
 
@@ -24,7 +24,9 @@ def main() -> int:
     except ValidationError as exc:
         sys.stderr.write(f"internal-release-path: invalid request: {exc}\n")
         return 2
-    result = NodeInternalReleasePathGuardCompute().handle(request)
+    result = container_internal_release_path_guard_compute.build_node_internal_release_path_guard_compute().handle(
+        request
+    )
     sys.stdout.write(result.model_dump_json() + "\n")
     return result.exit_code
 
