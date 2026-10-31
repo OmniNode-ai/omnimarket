@@ -14,6 +14,8 @@ import asyncio
 import base64
 import os
 import subprocess
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -22,11 +24,17 @@ import yaml
 from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
 )
-from pydantic import JsonValue
+from pydantic import BaseModel, JsonValue
 
 from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubHttpRequest,
     ModelGithubHttpResponse,
+)
+from omnimarket.models.receipt_gate_pin_friction import (
+    EnumPinKind,
+    EnumPinOutcomeKind,
+    EnumPinRefusalClass,
+    ModelPinOutcomeEvent,
 )
 from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_io import (
     EnumRepoWriteOperation,
@@ -61,6 +69,7 @@ from omnimarket.nodes.node_receipt_gate_pin_advance_effect.models import (
     EnumPinAdvanceMode,
     EnumPinPrOutcome,
     ModelDevMergeTagEvent,
+    ModelReceiptGatePinAdvanceCompleted,
 )
 from omnimarket.nodes.node_receipt_gate_pin_advance_effect.policy_source import (
     load_pin_policy,
@@ -195,6 +204,7 @@ def _handler(
     *,
     mode: EnumPinAdvanceMode = EnumPinAdvanceMode.ENFORCE,
     opener: FakeOpener | None = None,
+    clock: Callable[[], datetime] | None = None,
 ) -> tuple[HandlerReceiptGatePinAdvanceEffect, FakeRepository, FakeOpener, FakeTags]:
     planner = HandlerReceiptGatePinAdvance()
     repository = FakeRepository(pinned)
@@ -207,6 +217,7 @@ def _handler(
         tag_source=tags,
         repository=repository,
         pr_opener=opener,
+        clock=clock,
     )
     return handler, repository, opener, tags
 
@@ -218,8 +229,13 @@ def test_contract_wires_the_dev_merge_tag_event_to_one_completed_event() -> None
         "onex.evt.github.dev-merge-tag.v1"
     ]
     assert contract["event_bus"]["publish_topics"] == [
-        "onex.evt.omnimarket.receipt-gate-pin-advance-completed.v1"
+        "onex.evt.omnimarket.receipt-gate-pin-advance-completed.v1",
+        "onex.evt.omnimarket.receipt-gate-pin-outcome.v1",
     ]
+    assert {e["event_type"]: e["topic"] for e in contract["published_events"]} == {
+        "ReceiptGatePinAdvanceCompleted": "onex.evt.omnimarket.receipt-gate-pin-advance-completed.v1",
+        "PinOutcomeEvent": "onex.evt.omnimarket.receipt-gate-pin-outcome.v1",
+    }
     assert (
         contract["externally_produced_topics"][0]["topic"]
         == "onex.evt.github.dev-merge-tag.v1"
@@ -230,7 +246,7 @@ def test_contract_wires_the_dev_merge_tag_event_to_one_completed_event() -> None
 
 def test_a_stale_pin_opens_one_pull_request_per_caller_each_with_one_commit() -> None:
     handler, repository, opener, tags = _handler()
-    done = asyncio.run(handler.handle(_event()))
+    done = asyncio.run(handler.advance(_event()))
     assert tags.required == [NEW.tag]
     assert done.disposition is EnumPinAdvanceDisposition.ADVANCED
     assert done.newest_tag == NEW.tag
@@ -256,15 +272,15 @@ def test_a_stale_pin_opens_one_pull_request_per_caller_each_with_one_commit() ->
 
 def test_a_redelivered_tag_opens_nothing_twice() -> None:
     handler, repository, _, _ = _handler()
-    asyncio.run(handler.handle(_event()))
-    again = asyncio.run(handler.handle(_event()))
+    asyncio.run(handler.advance(_event()))
+    again = asyncio.run(handler.advance(_event()))
     assert len(repository.published) == 6
     assert {r.outcome for r in again.results} == {EnumPinPrOutcome.REPLAYED}
 
 
 def test_callers_already_on_the_newest_gate_get_nothing() -> None:
     handler, repository, opener, _ = _handler(NEW)
-    done = asyncio.run(handler.handle(_event()))
+    done = asyncio.run(handler.advance(_event()))
     assert done.disposition is EnumPinAdvanceDisposition.NOTHING_STALE
     assert done.results == ()
     assert repository.published == []
@@ -276,7 +292,7 @@ def test_dry_run_plans_and_reports_without_writing() -> None:
         (_handler(mode=EnumPinAdvanceMode.DRY_RUN)[0], _event()),
         (_handler()[0], _event(dry_run=True)),
     ):
-        done = asyncio.run(handler.handle(event))
+        done = asyncio.run(handler.advance(event))
         assert {r.outcome for r in done.results} == {EnumPinPrOutcome.DRY_RUN}
         assert len(done.results) == 6
     _, repository, opener, _ = _handler(mode=EnumPinAdvanceMode.DRY_RUN)
@@ -286,7 +302,7 @@ def test_dry_run_plans_and_reports_without_writing() -> None:
 
 def test_a_tag_of_another_repository_is_ignored_before_any_read() -> None:
     handler, repository, opener, tags = _handler()
-    done = asyncio.run(handler.handle(_event(repo="OmniNode-ai/omnimarket")))
+    done = asyncio.run(handler.advance(_event(repo="OmniNode-ai/omnimarket")))
     assert done.disposition is EnumPinAdvanceDisposition.IGNORED
     assert tags.required == []
     assert repository.published == []
@@ -297,7 +313,7 @@ def test_one_refused_pull_request_does_not_stop_the_others() -> None:
     handler, _, opener, _ = _handler(
         opener=FakeOpener(fail_for="OmniNode-ai/omniclaude")
     )
-    done = asyncio.run(handler.handle(_event()))
+    done = asyncio.run(handler.advance(_event()))
     assert [r.repository for r in done.failed] == ["OmniNode-ai/omniclaude"]
     assert "quota_floor" in done.failed[0].detail
     assert len(opener.opened) == 5
@@ -310,7 +326,7 @@ def test_one_refused_pull_request_does_not_stop_the_others() -> None:
 def test_a_trigger_tag_the_clone_does_not_hold_raises_instead_of_advancing() -> None:
     handler, repository, _, _ = _handler()
     with pytest.raises(PinAdvanceError, match="not a dev tag"):
-        asyncio.run(handler.handle(_event(tag="dev-20261031000000-aaaaaaaaaaaa")))
+        asyncio.run(handler.advance(_event(tag="dev-20261031000000-aaaaaaaaaaaa")))
     assert repository.published == []
 
 
@@ -324,7 +340,7 @@ def test_the_planned_unjudged_callers_are_reported_not_advanced() -> None:
 
     handler, _, _, _ = _handler()
     handler._repository = EmptySpi(OLD)
-    done = asyncio.run(handler.handle(_event()))
+    done = asyncio.run(handler.advance(_event()))
     assert [(u.repository, u.verdict) for u in done.unjudged] == [
         ("OmniNode-ai/omnibase_spi", EnumCallerVerdict.PIN_SITE_UNMATCHED)
     ]
@@ -535,3 +551,120 @@ def test_the_opener_sends_the_write_nodes_pr_create_command() -> None:
     assert request.expected_head_sha == "e" * 40
     assert request.idempotency_key == plan.idempotency_key
     assert request.requested_by_lane == "lane-x"
+
+
+# --- the friction measurement: one typed outcome event per caller outcome ------
+
+TAG_PUSHED = datetime(2026, 10, 31, 1, 0, 0, tzinfo=UTC)
+OPENED_AT = TAG_PUSHED + timedelta(seconds=90)
+
+
+def _outcomes(
+    handler: HandlerReceiptGatePinAdvanceEffect, event: ModelDevMergeTagEvent
+) -> tuple[BaseModel, tuple[ModelPinOutcomeEvent, ...]]:
+    emitted = asyncio.run(handler.handle(event))
+    outcomes = tuple(e for e in emitted if isinstance(e, ModelPinOutcomeEvent))
+    return emitted[0], outcomes
+
+
+def test_every_opened_pull_request_emits_one_outcome_with_its_pin_kind_and_timing() -> (
+    None
+):
+    handler, _, _, _ = _handler(clock=lambda: OPENED_AT)
+    completed, outcomes = _outcomes(handler, _event(as_of=TAG_PUSHED))
+    assert isinstance(completed, ModelReceiptGatePinAdvanceCompleted)
+    assert completed.disposition is EnumPinAdvanceDisposition.ADVANCED
+    assert len(outcomes) == 6
+    by_repo = {o.repository: o for o in outcomes}
+    assert by_repo["OmniNode-ai/omnibase_infra"].pin_kind is EnumPinKind.SHA
+    assert {
+        o.pin_kind for r, o in by_repo.items() if r != "OmniNode-ai/omnibase_infra"
+    } == {EnumPinKind.TAG}
+    for outcome in outcomes:
+        assert outcome.outcome is EnumPinOutcomeKind.OPENED
+        assert outcome.core_tag == NEW.tag
+        assert outcome.tag_pushed_at == TAG_PUSHED
+        assert outcome.outcome_at == OPENED_AT
+        assert outcome.seconds_tag_to_pr_opened == 90.0
+        assert outcome.branch == f"pin-advance/receipt-gate/{NEW.tag}"
+        assert outcome.branch_head_sha is not None
+        assert outcome.pr_number is not None
+        assert outcome.refusal_class is None
+
+
+def test_the_handler_returns_the_completed_event_first_then_the_outcomes() -> None:
+    handler, _, _, _ = _handler()
+    emitted = asyncio.run(handler.handle(_event()))
+    assert type(emitted[0]).__name__ == "ModelReceiptGatePinAdvanceCompleted"
+    assert {type(e).__name__ for e in emitted[1:]} == {"ModelPinOutcomeEvent"}
+    assert len(emitted) == 7
+
+
+def test_a_refused_pull_request_emits_a_failed_outcome_classed_by_its_error() -> None:
+    handler, _, _, _ = _handler(opener=FakeOpener(fail_for="OmniNode-ai/omniclaude"))
+    _, outcomes = _outcomes(handler, _event(as_of=TAG_PUSHED))
+    failed = [o for o in outcomes if o.outcome is EnumPinOutcomeKind.FAILED]
+    assert [o.repository for o in failed] == ["OmniNode-ai/omniclaude"]
+    assert failed[0].refusal_class is EnumPinRefusalClass.GUARD
+    assert failed[0].seconds_tag_to_pr_opened is None
+    assert failed[0].pr_number is None
+    assert "quota_floor" in failed[0].detail
+    assert len(outcomes) == 6
+
+
+def test_the_error_text_names_its_refusal_class_from_the_contract_patterns() -> None:
+    from omnimarket.nodes.node_receipt_gate_pin_advance_effect.handlers.handler_receipt_gate_pin_advance_effect import (
+        classify_refusal,
+    )
+
+    config = load_effect_config()
+    assert (
+        classify_refusal(
+            "POST /repos/x/git/refs: HTTP 422 Reference already exists", config
+        )
+        is EnumPinRefusalClass.CONFLICT
+    )
+    assert (
+        classify_refusal("runner-routing audit refused the caller", config)
+        is EnumPinRefusalClass.AUDIT
+    )
+    assert (
+        classify_refusal("pr_create for x was refused: quota_floor", config)
+        is EnumPinRefusalClass.GUARD
+    )
+    assert classify_refusal("socket reset", config) is EnumPinRefusalClass.OTHER
+
+
+def test_a_caller_the_planner_could_not_judge_emits_a_refused_outcome() -> None:
+    class EmptySpi(FakeRepository):
+        def read_snapshot(self, caller: ModelPinCaller) -> ModelCallerSnapshot:
+            snapshot = super().read_snapshot(caller)
+            if caller.repository.endswith("omnibase_spi"):
+                return snapshot.model_copy(update={"files": {}})
+            return snapshot
+
+    handler, _, _, _ = _handler(clock=lambda: OPENED_AT)
+    handler._repository = EmptySpi(OLD)
+    _, outcomes = _outcomes(handler, _event(as_of=TAG_PUSHED))
+    refused = [o for o in outcomes if o.outcome is EnumPinOutcomeKind.REFUSED]
+    assert [o.repository for o in refused] == ["OmniNode-ai/omnibase_spi"]
+    assert refused[0].refusal_class is EnumPinRefusalClass.UNMATCHED
+    assert refused[0].pin_kind is EnumPinKind.TAG
+    assert refused[0].core_tag == NEW.tag
+    assert refused[0].branch == f"pin-advance/receipt-gate/{NEW.tag}"
+    assert "pin_site_unmatched" in refused[0].detail
+    assert len(outcomes) == 6
+
+
+def test_a_redelivered_tag_emits_replayed_outcomes() -> None:
+    handler, _, _, _ = _handler()
+    asyncio.run(handler.handle(_event()))
+    _, again = _outcomes(handler, _event())
+    assert {o.outcome for o in again} == {EnumPinOutcomeKind.REPLAYED}
+
+
+def test_a_dry_run_and_an_ignored_tag_emit_no_outcome() -> None:
+    _, dry = _outcomes(_handler(mode=EnumPinAdvanceMode.DRY_RUN)[0], _event())
+    _, ignored = _outcomes(_handler()[0], _event(repo="OmniNode-ai/omnimarket"))
+    _, current = _outcomes(_handler(NEW)[0], _event())
+    assert dry == ignored == current == ()

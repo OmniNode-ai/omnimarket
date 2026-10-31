@@ -151,6 +151,7 @@ def _fold_workflow_run(
             workflow=name,
             head_sha=head_sha,
             status=status,
+            run_attempt=_optional_attempt(run.get("run_attempt")),
             delivery_id=delivery_id,
             github_event="workflow_run",
             as_of=_time(run.get("updated_at")) or received_at,
@@ -472,6 +473,13 @@ def _red_check_runs(
             )
         )
     return observations
+
+
+def _optional_attempt(value: object) -> int | None:
+    """The run's attempt number when GitHub reports a positive integer, else nothing."""
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return None
+    return value
 
 
 def _repo(payload: Mapping[str, object]) -> str:

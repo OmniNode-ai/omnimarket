@@ -130,6 +130,7 @@ class HandlerReceiptGatePinAdvance:
             return ModelCallerPlan(
                 repository=caller.repository,
                 verdict=verdict,
+                pin_kind=caller.pin_sites[0].ref_form,
                 detail=detail,
                 base_branch=caller.base_branch,
                 base_head_sha="" if snapshot is None else snapshot.base_head_sha,
@@ -176,6 +177,7 @@ class HandlerReceiptGatePinAdvance:
             return ModelCallerPlan(
                 repository=caller.repository,
                 verdict=verdict,
+                pin_kind=caller.pin_sites[0].ref_form,
                 detail=detail,
                 base_branch=caller.base_branch,
                 base_head_sha=snapshot.base_head_sha,
@@ -284,6 +286,7 @@ class HandlerReceiptGatePinAdvance:
         return ModelCallerPlan(
             repository=caller.repository,
             verdict=verdict,
+            pin_kind=caller.pin_sites[0].ref_form,
             detail=detail,
             base_branch=caller.base_branch,
             base_head_sha=snapshot.base_head_sha,
