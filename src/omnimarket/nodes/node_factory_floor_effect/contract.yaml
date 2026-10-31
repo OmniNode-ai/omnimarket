@@ -1,0 +1,87 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_factory_floor_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: >-
+  Read the factory floor's sources (plans and their .tasks.yaml manifests, the PR watcher state, the ledger
+  through the ledger reader, the Linear snapshot plans-today writes, the lab placement reading, the friction
+  report), call node_factory_floor_compute with them and write its JSON to the path this contract declares.
+  The only reads and the only write of the factory floor live here; the compute node is pure.
+input_model:
+  name: ModelFactoryFloorRunRequest
+  module: omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_run
+  description: The flags of one run.
+output_model:
+  name: ModelFactoryFloorRunResult
+  module: omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_run
+  description: Where the JSON was written and how many lines it holds.
+handler:
+  module: omnimarket.nodes.node_factory_floor_effect.handlers.handler_factory_floor_effect
+  class: HandlerFactoryFloorEffect
+  input_model: omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_run.ModelFactoryFloorRunRequest
+  output_model: omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_run.ModelFactoryFloorRunResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_factory_floor_effect.handlers.handler_factory_floor_effect:HandlerFactoryFloorEffect
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerFactoryFloorEffect
+      module: omnimarket.nodes.node_factory_floor_effect.handlers.handler_factory_floor_effect
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: python -m omnimarket.nodes.node_factory_floor_effect (runtime_factory_floor.py), from a schedule or by hand.
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 600000
+  side_effects:
+  - reads the plans repository clone, the PR watcher state, the plans-today output, the lab placement reading and the friction report
+  - reads the rolling ledger through the plugin's reader
+  - writes the factory floor JSON to runtime.output.relpath under the registry home
+
+# Where the entry reads and writes. Paths are relative to the registry home (the environment variable named by
+# home_env) except the plans, which are relative to the plans repository clone (plans_kb_env). Which plans are
+# lines is the deployment overlay's plan_path_contains: a file named by overlay_file_env, else
+# <ONEX_SKILL_OVERLAY_ROOTS root>/node_factory_floor_effect/overlay.yaml.
+runtime:
+  home_env: OMNI_HOME
+  plans_kb_env: ONEX_PLANS_KB_PATH
+  overlay_file_env: ONEX_FACTORY_FLOOR_OVERLAY
+  plugin_root_env: CLAUDE_PLUGIN_ROOT
+  ledger_window_days: 14
+  watcher_max_age_min: 90
+  manifest_suffix: .tasks.yaml
+  plans_relpath: beta/plans
+  sources:
+    watcher_relpath: .claude_scratch/pr-watcher/state.json
+    plans_today_dir: .claude_scratch/plans-today
+    plans_today_file: plans-today.json
+    linear_snapshot_glob: linear-*.txt
+    placement_relpath: .claude_scratch/lab-run/hosts.json
+    friction_report_relpath: .claude_scratch/friction/friction-report.json
+  output:
+    relpath: .claude_scratch/factory-floor/factory-floor.json
+metadata:
+  transport_type: local
+  description: >-
+    Read the factory floor's sources, call node_factory_floor_compute and write its JSON to the contract's path.
+  author: OmniNode Team
+  created: '2026-10-31'
+  tags:
+  - effect
+  - factory-floor-effect
+  - OMN-21682
+  related_tickets:
+  - OMN-21682
