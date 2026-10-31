@@ -29,9 +29,11 @@ import logging
 import os
 import subprocess
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
-from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
+from omnimarket.handlers.handler_packaged_contract_loader import (
+    load_packaged_contract_section,
+)
 from omnimarket.nodes.node_report_anchor_probe_effect.models import (
     EnumAnchorProbeStatus,
     ModelPathAnchorClaim,
@@ -49,11 +51,12 @@ logger = logging.getLogger(__name__)
 HandlerType = Literal["node_handler"]
 HandlerCategory = Literal["effect"]
 
-_SUBPROCESS_TIMEOUT_SECONDS = int(
-    load_node_timeouts("node_report_anchor_probe_effect").get(
-        "subprocess_timeout_seconds"
-    )
+_TIMEOUTS = cast(
+    "dict[str, float]",
+    load_packaged_contract_section("node_report_anchor_probe_effect", "timeouts"),
 )
+
+_SUBPROCESS_TIMEOUT_SECONDS = int(_TIMEOUTS["subprocess_timeout_seconds"])
 
 # The git environment variables that OVERRIDE an explicit `--git-dir` flag AND
 # `-C`/`cwd` (OMN-14891 corruption class). A hook/wrapper that invokes this

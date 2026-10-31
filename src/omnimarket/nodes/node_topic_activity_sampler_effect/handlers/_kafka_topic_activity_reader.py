@@ -8,14 +8,19 @@ import asyncio
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
-from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
+from omnimarket.handlers.handler_packaged_contract_loader import (
+    load_packaged_contract_section,
+)
 
 BOOTSTRAP_ENV = "KAFKA_BOOTSTRAP_SERVERS"
-_FETCH_TIMEOUT_SECONDS: float = load_node_timeouts(
-    "node_topic_activity_sampler_effect"
-).get("fetch_timeout_seconds")
+_TIMEOUTS = cast(
+    "dict[str, float]",
+    load_packaged_contract_section("node_topic_activity_sampler_effect", "timeouts"),
+)
+
+_FETCH_TIMEOUT_SECONDS: float = _TIMEOUTS["fetch_timeout_seconds"]
 # Partitions per offsets_for_times request; see watermarks_and_offsets_for_times.
 _TIME_LOOKUP_CHUNK = 100
 

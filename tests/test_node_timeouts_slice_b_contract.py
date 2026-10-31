@@ -10,7 +10,9 @@ from typing import Any
 import pytest
 from pydantic import SecretStr
 
-from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
+from omnimarket.handlers.handler_packaged_contract_loader import (
+    load_packaged_contract_section,
+)
 from omnimarket.nodes.node_report_anchor_probe_effect.handlers import (
     handler_report_anchor_probe,
 )
@@ -82,17 +84,17 @@ DECLARED: dict[str, dict[str, float]] = {
 def test_contract_declares_every_duration_with_its_former_value(
     node_name: str, declared: dict[str, float]
 ) -> None:
-    timeouts = load_node_timeouts(node_name)
-    assert dict(timeouts.seconds) == declared
-    for name, value in declared.items():
-        assert timeouts.get(name) == value
+    timeouts = load_packaged_contract_section(node_name, "timeouts")
+    assert timeouts == declared
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize("node_name", sorted(DECLARED))
 def test_an_undeclared_name_stops_the_node(node_name: str) -> None:
-    with pytest.raises(KeyError, match="declares no timeout named 'nope'"):
-        load_node_timeouts(node_name).get("nope")
+    timeouts = load_packaged_contract_section(node_name, "timeouts")
+    assert isinstance(timeouts, dict)
+    with pytest.raises(KeyError, match="nope"):
+        timeouts["nope"]
 
 
 @pytest.mark.unit

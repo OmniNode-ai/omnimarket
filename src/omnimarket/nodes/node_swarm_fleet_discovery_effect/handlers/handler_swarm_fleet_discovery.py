@@ -17,13 +17,15 @@ import time
 from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import httpx
 import yaml
 
+from omnimarket.handlers.handler_packaged_contract_loader import (
+    load_packaged_contract_section,
+)
 from omnimarket.handlers.node_overlay_reader import resolve_swarm_endpoint_registry_path
-from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.inference.openrouter_models import (
     EnumModelAvailability,
     ModelOpenRouterModelConfig,
@@ -45,9 +47,12 @@ _HttpGetFn = Callable[
     [str, float, dict[str, str]], Coroutine[Any, Any, tuple[int, bytes]]
 ]
 
-_DEFAULT_TIMEOUT_SECONDS: float = load_node_timeouts(
-    "node_swarm_fleet_discovery_effect"
-).get("request_timeout_seconds")
+_TIMEOUTS = cast(
+    "dict[str, float]",
+    load_packaged_contract_section("node_swarm_fleet_discovery_effect", "timeouts"),
+)
+
+_DEFAULT_TIMEOUT_SECONDS: float = _TIMEOUTS["request_timeout_seconds"]
 # OpenRouter base URL is resolved from the ``OPENROUTER_BASE_URL`` routing-config
 # value — there is NO hardcoded in-code provider URL default (OMN-12805 / epic
 # OMN-12803). When OpenRouter discovery is requested but the base URL is not

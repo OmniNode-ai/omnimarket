@@ -18,9 +18,11 @@ import re
 import subprocess
 import time
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
-from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
+from omnimarket.handlers.handler_packaged_contract_loader import (
+    load_packaged_contract_section,
+)
 from omnimarket.nodes.node_shadow_review_effect.models.model_shadow_review import (
     EnumShadowArm,
     EnumShadowArmStatus,
@@ -81,7 +83,10 @@ class ProtocolShadowReviewer(Protocol):
     ) -> tuple[ModelShadowArmResult, ...]: ...
 
 
-_TIMEOUTS = load_node_timeouts("node_shadow_review_effect")
+_TIMEOUTS = cast(
+    "dict[str, float]",
+    load_packaged_contract_section("node_shadow_review_effect", "timeouts"),
+)
 
 
 def _git(
@@ -91,9 +96,7 @@ def _git(
         ["git", "-C", str(clone), *args],
         capture_output=True,
         text=True,
-        timeout=(
-            timeout if timeout is not None else _TIMEOUTS.get("git_timeout_seconds")
-        ),
+        timeout=(timeout if timeout is not None else _TIMEOUTS["git_timeout_seconds"]),
         check=False,
     )
 
@@ -112,7 +115,7 @@ class CanonicalCloneDiffSource:
         self._refresh_timeout_s = (
             refresh_timeout_s
             if refresh_timeout_s is not None
-            else int(_TIMEOUTS.get("refresh_timeout_seconds"))
+            else int(_TIMEOUTS["refresh_timeout_seconds"])
         )
 
     def clone_for(self, repo: str) -> Path | None:

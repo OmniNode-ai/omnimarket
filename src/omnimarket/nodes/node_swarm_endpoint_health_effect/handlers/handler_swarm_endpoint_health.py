@@ -10,13 +10,15 @@ import time
 from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import httpx
 import yaml
 
+from omnimarket.handlers.handler_packaged_contract_loader import (
+    load_packaged_contract_section,
+)
 from omnimarket.handlers.node_overlay_reader import resolve_swarm_endpoint_registry_path
-from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.nodes.node_swarm_endpoint_health_effect.models.enums import (
     EnumEndpointStatus,
     EnumModelStatus,
@@ -39,9 +41,12 @@ _HttpGetFn = Callable[
     Coroutine[Any, Any, tuple[int, bytes]],
 ]
 
-_DEFAULT_TIMEOUT_SECONDS: float = load_node_timeouts(
-    "node_swarm_endpoint_health_effect"
-).get("request_timeout_seconds")
+_TIMEOUTS = cast(
+    "dict[str, float]",
+    load_packaged_contract_section("node_swarm_endpoint_health_effect", "timeouts"),
+)
+
+_DEFAULT_TIMEOUT_SECONDS: float = _TIMEOUTS["request_timeout_seconds"]
 
 # Shared endpoint registry used for ID-only requests from the orchestrator.
 _DEFAULT_REGISTRY_PATH = (

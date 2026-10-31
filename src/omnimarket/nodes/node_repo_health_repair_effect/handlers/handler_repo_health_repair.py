@@ -32,7 +32,7 @@ import hashlib
 import logging
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, cast, runtime_checkable
 
 import yaml
 
@@ -43,7 +43,9 @@ from omnimarket.handlers.handler_lane_intake import (
     resolve_label_id,
     stamp_description,
 )
-from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
+from omnimarket.handlers.handler_packaged_contract_loader import (
+    load_packaged_contract_section,
+)
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_repo_health_repair_effect.models.model_repair_command import (
@@ -55,7 +57,10 @@ from omnimarket.nodes.node_repo_health_repair_effect.models.model_repair_emitted
 
 logger = logging.getLogger(__name__)
 
-_TIMEOUTS = load_node_timeouts("node_repo_health_repair_effect")
+_TIMEOUTS = cast(
+    "dict[str, float]",
+    load_packaged_contract_section("node_repo_health_repair_effect", "timeouts"),
+)
 
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 
@@ -153,7 +158,7 @@ class LinearRepairHttpClient:
             method="POST",
         )
         with urllib.request.urlopen(
-            req, timeout=_TIMEOUTS.get("linear_graphql_timeout_seconds")
+            req, timeout=_TIMEOUTS["linear_graphql_timeout_seconds"]
         ) as resp:
             data = json.loads(resp.read())
         if "errors" in data:

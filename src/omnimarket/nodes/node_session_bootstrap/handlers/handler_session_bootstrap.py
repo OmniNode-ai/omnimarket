@@ -33,10 +33,13 @@ import os
 from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
+from omnimarket.handlers.handler_packaged_contract_loader import (
+    load_packaged_contract_section,
+)
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     require_lane_model,
 )
@@ -48,12 +51,15 @@ _TOPIC_SESSION_CRON_HEALTH_VIOLATION = "onex.evt.omnimarket.session-cron-health-
 
 logger = logging.getLogger(__name__)
 
-_TIMEOUTS = load_node_timeouts("node_session_bootstrap")
+_TIMEOUTS = cast(
+    "dict[str, float]",
+    load_packaged_contract_section("node_session_bootstrap", "timeouts"),
+)
 
 
 def _budget_ms(name: str) -> int:
     """The cron tick budget the contract declares for ``name``, in milliseconds."""
-    return int(_TIMEOUTS.get(name) * 1000)
+    return int(_TIMEOUTS[name] * 1000)
 
 
 # Advisory cost ceiling threshold for warnings

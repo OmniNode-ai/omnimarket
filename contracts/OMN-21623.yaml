@@ -2,7 +2,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-21623"
 title: "Burn-down of the contracts_and_di literal_timeout findings of omnimarket, slice B: eleven nodes declare their timeouts in their contract"
-summary: "Eleven node packages (node_report_anchor_probe_effect through node_topic_activity_sampler_effect, the free tail of the alphabetical second half) held 30 timeout, interval and tick-budget literals in code. Each value is now declared in its node's contract.yaml under timeouts and is read through the shared omnimarket.handlers.node_timeouts_reader adapter or injected through the constructor; the secret-store HTTP handler takes its call timeout from the overlay its factory already passes, so its default left the code. The contracts_and_di check over src/omnimarket and scripts reports 1577 findings before the slice; no literal_timeout finding remains in the eleven node directories."
+summary: "Eleven node packages (node_report_anchor_probe_effect through node_topic_activity_sampler_effect, the free tail of the alphabetical second half) held 30 timeout, interval and tick-budget literals in code. Each value is now declared in its node's contract.yaml under timeouts and is read through the existing omnimarket.handlers.handler_packaged_contract_loader adapter or injected through the constructor; the secret-store HTTP handler takes its call timeout from the overlay its factory already passes, so its default left the code. The contracts_and_di check over src/omnimarket and scripts reports 1577 findings before the slice; no literal_timeout finding remains in the eleven node directories."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -180,11 +180,11 @@ dod_evidence:
   - id: "dod-omn21623-deploy-timeouts-b-source-readback"
     description: |-
       Hosted-runner source readback: the checked-out commit carries the timeouts section in the
-      contract of node_session_orchestrator and the loader adapter that reads it. grep -c exits
+      contract of node_session_orchestrator and the handler that reads it through the packaged contract loader. grep -c exits
       nonzero on a tree without them, so the command fails at the merge base. It reads the
       source artifact and does not assert a live runtime rollout.
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "grep -c '^timeouts:' src/omnimarket/nodes/node_session_orchestrator/contract.yaml && grep -c 'def load_node_timeouts' src/omnimarket/handlers/node_timeouts_reader.py"
+        check_value: "grep -c '^timeouts:' src/omnimarket/nodes/node_session_orchestrator/contract.yaml && grep -c 'load_packaged_contract_section' src/omnimarket/nodes/node_session_orchestrator/handlers/handler_session_orchestrator.py"
         cwd: "."
