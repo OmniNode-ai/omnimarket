@@ -48,6 +48,7 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     event_type_for,
 )
 from omnimarket.nodes.node_lab_placement_compute import handlers, models
+from omnimarket.nodes.node_lab_work_unit_effect.handlers import HostAdvertiser
 from omnimarket.nodes.node_lab_work_unit_effect.models import (
     EnumLabWorkUnitStatus,
     ModelHostCapacityAdvertisement,
@@ -221,6 +222,7 @@ class LabWorkHost:
         self._progress_seconds = progress_seconds
         self._check_seconds = check_seconds
         self._clock = clock
+        self.advertiser = HostAdvertiser(self._host)
         self._queue: asyncio.Queue[ProtocolBusMessage] = asyncio.Queue()
         self._tasks: list[asyncio.Task[None]] = []
         self._beat_task: asyncio.Task[None] | None = None
@@ -248,6 +250,7 @@ class LabWorkHost:
             self._tasks.append(asyncio.create_task(self._worker(index)))
         self._tasks.append(asyncio.create_task(self._watch()))
         if advertise:
+            self.advertiser.arm()
             self._beat_task = asyncio.create_task(self._beat())
             self._tasks.append(self._beat_task)
         self._unsubscribe = await _subscribe(
@@ -291,15 +294,9 @@ class LabWorkHost:
                 "lab-work host %s: capacity unreadable, nothing published", self._host
             )
             return None
-        envelope = ModelEventEnvelope[dict[str, object]](
-            payload=ad.model_dump(mode="json"),
-            correlation_id=uuid.uuid4(),
-            event_type=event_type_for(self._topics.capacity),
+        self.advertised += await self.advertiser.publish(
+            self._bus, self._topics.capacity, ad
         )
-        await self._bus.publish(
-            self._topics.capacity, self._host.encode("utf-8"), _bytes(envelope)
-        )
-        self.advertised += 1
         return ad
 
     async def _beat(self) -> None:
@@ -355,6 +352,9 @@ class LabWorkHost:
                 )
                 held.last_logged = now
                 held.past_limit_logged = past_limit
+        if self.advertiser.silent() and not self.stuck.is_set():
+            self.stuck_unit = "<capacity advertiser>"
+            self.stuck.set()  # serve leaves non-zero on it; the log line names the silence
 
     async def _enqueue(self, message: ProtocolBusMessage) -> None:
         self._queue.put_nowait(message)

@@ -35,11 +35,11 @@ from omnimarket.models.context_pack_render.model_context_pack_render_message imp
 from omnimarket.models.model_session_stream_barrier import (
     ModelSessionStreamBarrierVerdict,
 )
+from omnimarket.nodes.node_context_compaction_orchestrator.container.container_context_compaction_orchestrator import (
+    create_handler_context_compaction_orchestrator,
+)
 from omnimarket.nodes.node_context_compaction_orchestrator.event_topics import (
     publish_topic_for,
-)
-from omnimarket.nodes.node_context_compaction_orchestrator.handlers.handler_context_compaction_orchestrator import (
-    HandlerContextCompactionOrchestrator,
 )
 
 from .bus_fixture import CannedPack
@@ -199,7 +199,7 @@ def test_unmet_barrier_does_not_time_or_run_a_build(compaction_bus) -> None:
 
 
 def test_the_unwired_default_build_falls_back_to_native() -> None:
-    result = HandlerContextCompactionOrchestrator().handle(_request())
+    result = create_handler_context_compaction_orchestrator().handle(_request())
     _assert_native_fallback(
         result, EnumContextCompactionFailureClass.PACK_BUILDER_UNAVAILABLE
     )
@@ -295,7 +295,7 @@ def test_a_native_reply_cannot_carry_a_package() -> None:
 
 def test_the_runtime_output_publishes_fallback_then_the_native_reply() -> None:
     output = asyncio.run(
-        HandlerContextCompactionOrchestrator().handle_async(_request())
+        create_handler_context_compaction_orchestrator().handle_async(_request())
     )
     assert output.correlation_id == INVOCATION
     assert [publish_topic_for(e) for e in output.events] == [

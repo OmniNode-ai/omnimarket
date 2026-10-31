@@ -21,6 +21,9 @@ from omnimarket.nodes.node_github_diff_effect.handlers import handler_github_dif
 from omnimarket.nodes.node_github_diff_effect.handlers.handler_github_diff import (
     HandlerGithubDiffEffect,
 )
+from omnimarket.nodes.node_pr_review_orchestrator.container.container_pr_review_orchestrator import (
+    create_handler_github_diff_effect,
+)
 from omnimarket.review.node_io import (
     ModelGithubDiffCommand,
     ModelGithubDiffResolvedEvent,
@@ -137,7 +140,7 @@ async def test_file_target_has_no_head_so_snapshot_is_unavailable(
     target = tmp_path / "plan.md"
     target.write_text("# plan\n", encoding="utf-8")
 
-    output = await HandlerGithubDiffEffect().handle(
+    output = await create_handler_github_diff_effect().handle(
         ModelGithubDiffCommand(correlation_id=uuid4(), file_path=str(target))
     )
 
