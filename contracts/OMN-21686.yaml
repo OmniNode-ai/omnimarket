@@ -1,0 +1,42 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21686"
+title: "A compute node turns ledger, landing, repo-status and merge history into a daily process-health series with a before and after summary around the factory reset"
+summary: "node_process_health_compute folds caller-read facts into one metric list per UTC day (dev-branch reds, regressions, bug tickets, validation failures, lane outcomes, merges and time to merge, andon stops, friction minutes, delegation share) and the same list over equal-length windows on both sides of the reset. Every metric names its sources and the hours of its window each covered; an unread source makes the metric unread and never a zero. node_process_health_effect reads the sources and writes the JSON to the path its contract declares. The shared models live in omnimarket.models.process_health so the factory floor record can embed the result."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21686-series"
+    statement: |-
+      The process-health series is a pure function of typed inputs. It reads no clock, file or network, reports an unread source as unread with the reason, and compares equal-length windows around the reset date from the node contract.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: node_process_health_compute has contract.yaml, metadata.yaml, typed input and output models and a pure handler, registered under onex.nodes, with no clock, file or network read in the handler -- falsifier: uv run pytest src/omnimarket/nodes/node_process_health_compute/tests -k purity -q"
+      - id: "AC2"
+        statement: "AC2: the output carries one entry per UTC day for dev-branch reds per repo with hours red, regressions by kind, bug tickets opened and closed, validation failures by class, lane outcome shares, merges per day with green-to-merged time, andon stops with hours stopped, friction minutes by class with measured time apart from capacity estimates, and delegation share -- falsifier: uv run pytest src/omnimarket/nodes/node_process_health_compute/tests -k series -q"
+      - id: "AC3"
+        statement: "AC3: every metric names its source and window, and a day whose source was not read is reported unread with the reason and never filled with a zero -- falsifier: uv run pytest src/omnimarket/nodes/node_process_health_compute/tests -k unread_source -q"
+      - id: "AC4"
+        statement: "AC4: the before and after summary compares equal-length windows around the reset date and marks the reset on the series -- falsifier: uv run pytest src/omnimarket/nodes/node_process_health_compute/tests -k reset_summary -q"
+      - id: "AC5"
+        statement: "AC5: the same input run twice yields byte-identical JSON and the CLI writes it to the output path declared in the contract, with no path, host or repo list hard-coded in the handler -- falsifier: uv run pytest src/omnimarket/nodes/node_process_health_compute/tests src/omnimarket/nodes/node_process_health_effect/tests -k determinism_or_cli -q"
+      - id: "AC6"
+        statement: "AC6: the suite passes on the lab host through the bus placement -- falsifier: lab-run receipt with exit code 0 for uv run pytest src/omnimarket/nodes/node_process_health_compute src/omnimarket/nodes/node_process_health_effect -q"
+evidence_requirements:
+  - kind: "tests"
+    description: "The purity, series, unread-source, reset-summary, determinism and runtime-entry cases."
+    command: "uv run pytest src/omnimarket/nodes/node_process_health_compute src/omnimarket/nodes/node_process_health_effect -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21686-suite"
+    description: "The process-health compute and effect suites pass."
+    source: "manual"
+    binds_ac: ["AC1", "AC2", "AC3", "AC4", "AC5", "AC6"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest src/omnimarket/nodes/node_process_health_compute src/omnimarket/nodes/node_process_health_effect -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
