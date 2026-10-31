@@ -273,6 +273,10 @@ details.more[open] summary{margin-bottom:8px}
 
 /* Drawn inside the site's tab page (?embed=1): the tab page already carries the title, the record's age and the hazard strip. */
 html.embed .hazard,html.embed .head-row{display:none}
+html:not(.embed) .drill{display:none}
+button.drill{font:inherit;font-size:.875rem;background:none;border:0;padding:2px 0;color:var(--car-edge);text-decoration:underline;cursor:pointer;justify-self:start}
+.drillrow{cursor:pointer}
+html.embed details.lane>summary{cursor:pointer}
 html.embed .wrap{padding-block:14px 48px}
 </style>
 </head>
@@ -494,6 +498,7 @@ function renderLine(slot, i){
         <div class="meta">
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><span class="sign">${esc(letter)}</span><span class="pill ${PILL_CLASS[L.status_pill] || "wait"}">${esc(PILL_LABEL[L.status_pill] || L.status_pill)}</span></div>
           <h2 id="h-${sid}">${esc(L.name)}</h2>
+          <button type="button" class="drill" data-drill="line-${sid}">Show this line's detail</button>
           <span class="plan">Plan file ${esc(L.plan_path)} · read from its ${esc(source)}</span>
           ${L.andon && L.andon.flag ? `<p class="cause"><b>Stopped:</b> ${esc(reason.replace(/[:\s]+$/, ""))}${causes ? ` (${causes})` : ""}</p>` : ""}
           <div class="meter" role="img" aria-label="About ${pct} percent built"><b style="--w:${pct}%"></b></div>
@@ -665,6 +670,7 @@ function machineHTML(m, byId){
   const age = m.read_age_min == null ? "" : `${ageText(num(m.read_age_min) * 60000)} ago`;
   return `<article class="mbay${cls}" id="bay-${safeId(m.host)}" aria-label="${esc(m.label)}">
     <div class="mbay-top"><b>${esc(m.label)}</b><span class="pill">${esc(stateWord)}${age ? ` · ${esc(age)}` : ""}</span></div>
+    <button type="button" class="drill" data-drill="bay-${safeId(m.host)}">Show this machine's detail</button>
     ${slots}
     ${gauges ? `<div class="gauges">${gauges}</div>` : ""}
     ${lanes.length ? `<div class="lanes">${lanes.map(laneHTML).join("")}</div>` : (rd ? `<p class="empty">No worker is placed here.</p>` : "")}
@@ -680,6 +686,7 @@ function cloudHTML(cloud, lanes){
   const lamps = (cloud.lamps || []).map(x => `<div class="lamp-stop" role="alert"><b>${esc(x.text)}</b><small>${x.evidence ? esc(x.evidence) + " · " : ""}since ${whenSpan(x.since)}</small></div>`).join("");
   return `<article class="mbay${cloud.state === "read" ? "" : " unread"}" id="bay-cloud" aria-label="Cloud">
     <div class="mbay-top"><b>Cloud</b><span class="pill">${cloud.state === "read" ? "read" : "unread"}</span></div>
+    <button type="button" class="drill" data-drill="bay-cloud">Show the cloud detail</button>
     ${lamps}
     ${cloud.state === "read" ? (accts ? `<ul class="sessions">${accts}</ul>` : `<p class="empty">No cloud account is signed in.</p>`) : `<p class="capline">${esc(cloud.note || "the cloud accounts file could not be read")}</p>`}
     ${cloud.note && cloud.state === "read" ? `<p class="capline">${esc(cloud.note)}</p>` : ""}
@@ -714,9 +721,29 @@ function machineFacts(floor){
     cloud: floor.cloud || null};
 }
 
-// A lane link jumps to its station on the belt and flashes it; the station's part links back to the lane.
-document.addEventListener("click", ev => {
-  const a = ev.target && ev.target.closest ? ev.target.closest("a[data-jump]") : null;
+// Drawn inside the board, a lane, station, machine, line or stoppage opens the board's side panel and nothing here scrolls.
+// Drawn on its own (no ?embed=1), a lane link still jumps to its station on the belt and flashes it.
+const EMBEDDED = typeof location !== "undefined" && /[?&]embed=1/.test(location.search);
+let lastDrill = null;
+function drill(anchor, from){
+  lastDrill = from;
+  parent.postMessage({type: "drill", anchor}, location.origin);
+}
+if (typeof window !== "undefined") window.__refocus = () => { if (lastDrill && lastDrill.isConnected) lastDrill.focus({preventScroll: true}); };
+if (typeof document.addEventListener === "function") document.addEventListener("click", ev => {
+  const t = ev.target && ev.target.closest ? ev.target : null;
+  if (!t) return;
+  if (EMBEDDED){
+    const d = t.closest("[data-drill]");
+    const jump = t.closest("a[data-jump]");
+    const sum = t.closest("details.lane > summary");
+    const anchor = d ? d.dataset.drill : jump ? jump.dataset.jump : sum ? sum.parentElement.id : "";
+    if (!anchor) return;
+    ev.preventDefault();
+    drill(anchor, d || jump || sum);
+    return;
+  }
+  const a = t.closest("a[data-jump]");
   if (!a) return;
   const target = document.getElementById(a.dataset.jump);
   if (!target) return;
@@ -725,6 +752,12 @@ document.addEventListener("click", ev => {
   target.classList.remove("flash");
   void target.offsetWidth;
   target.classList.add("flash");
+});
+if (typeof document.addEventListener === "function") document.addEventListener("keydown", ev => {
+  if (!EMBEDDED) return;
+  if (ev.key === "Escape") parent.postMessage({type: "close"}, location.origin);
+  const d = ev.target && ev.target.closest ? ev.target.closest(".drillrow[data-drill]") : null;
+  if (d && (ev.key === "Enter" || ev.key === " ")){ ev.preventDefault(); drill(d.dataset.drill, d); }
 });
 
 function prList(items){
@@ -769,7 +802,7 @@ function renderStops(stops){
     const y = top + i * rowH, bw = Math.max(2, num(s.cost_minutes) / max * w), tk = (s.tickets || []);
     const fix = tk.length ? "ticket " + tk.join(", ") : "no ticket yet";
     const cls = tk.length ? "muted" : "stop";
-    return `<text x="${x0 - 10}" y="${y + 15}" text-anchor="end">${esc(s.name.length > 34 ? s.name.slice(0, 33) + "…" : s.name)}</text>
+    return `<text class="drillrow" data-drill="stop-${esc(safeId(s.name))}" tabindex="0" role="button" x="${x0 - 10}" y="${y + 15}" text-anchor="end">${esc(s.name.length > 34 ? s.name.slice(0, 33) + "…" : s.name)}</text>
       <rect x="${x0}" y="${y + 4}" width="${bw}" height="16" rx="2" style="fill:${s.recurring ? "var(--warn)" : "var(--idle)"}"/>
       <text class="lbl-muted" x="${x0 + bw + 8}" y="${y + 16}">${esc(fmt(s.cost_minutes))} min · ${esc(num(s.occurrences))}×</text>
       <text x="${x0}" y="${y + 33}" class="lbl-muted" style="fill:${cls === "stop" ? "var(--stop)" : "var(--muted)"}">${esc(fix)}${s.last_seen ? ` · last seen ${esc(Number.isNaN(Date.parse(s.last_seen)) ? s.last_seen : whenText(s.last_seen))}` : ""}</text>`;
