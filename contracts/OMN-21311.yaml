@@ -1,0 +1,76 @@
+schema_version: "1.0.0"
+ticket_id: OMN-21311
+title: "Onboarding runs from the ONEX CLI: one onex setup replaces the install.sh walk"
+summary: node_onex_setup_effect runs the onboarding walk a CLI user needs (workspace root, install path and its prerequisites, user config, workspace runtime config), idempotent and resumable, and `onex setup` reaches it through an onex.cli entry point. The node's setup_step_inventory.yaml marks every step and flag of omnibase install.sh kept, moved or dropped with a reason. The core half of AC5 (init, bootstrap and install help, root quickstart) ships in omnibase_core.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21311-onex-setup
+    statement: "`onex setup` is the documented first command for a new developer and owns the moved install.sh steps."
+    acceptance:
+      - id: AC1
+        statement: "AC1: every step install.sh performs is listed against the CLI command that will own it, marked kept, moved or dropped with a reason -- falsifier: `uv run pytest -q tests/unit/cli/test_setup_step_inventory.py` fails when a step in install.sh has no entry"
+      - id: AC2
+        statement: "AC2: onex setup on a clean HOME completes non-interactively where it can and prompts only where a value cannot be derived -- falsifier: `uv run pytest -q tests/unit/cli/test_setup_command.py -k TestSetupWalk` fails on an unprompted missing value or a prompt for a derivable one"
+      - id: AC3
+        statement: "AC3: a second onex setup run changes nothing and exits 0 -- falsifier: `uv run pytest -q tests/unit/cli/test_setup_command.py -k TestSetupIdempotent` fails on any snapshot diff"
+      - id: AC4
+        statement: "AC4: a failed step names the one fix and the retry command and the retry resumes -- falsifier: `uv run pytest -q tests/unit/cli/test_setup_command.py -k TestSetupFailureAndResume` injects a failure into each step in turn"
+      - id: AC5
+        statement: "AC5 (setup half): onex setup is registered, its help claims machine setup for a new developer, and no core command claims it -- falsifier: `uv run pytest -q tests/unit/cli/test_setup_command.py -k TestSetupHelpText`"
+evidence_requirements:
+  - kind: tests
+    description: The inventory covers every install.sh step and flag, and onex setup prompts only for underivable values, is idempotent, resumes after each injected failure and owns its help text.
+    command: uv run pytest -q tests/unit/cli/test_setup_command.py tests/unit/cli/test_setup_step_inventory.py -o addopts=''
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21311-ac1-inventory
+    description: Every install.sh section and flag has an inventory entry with a disposition, owner and reason.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q tests/unit/cli/test_setup_step_inventory.py -o addopts=''
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC1]
+  - id: dod-omn21311-ac2-walk
+    description: The walk prompts only for the workspace root and only when nothing names it.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q tests/unit/cli/test_setup_command.py -o addopts='' -k TestSetupWalk
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC2]
+  - id: dod-omn21311-ac3-idempotent
+    description: A second run leaves an identical state snapshot and exits 0.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q tests/unit/cli/test_setup_command.py -o addopts='' -k TestSetupIdempotent
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC3]
+  - id: dod-omn21311-ac4-resume
+    description: Each injected step failure names one fix and a retry, and the retry completes.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q tests/unit/cli/test_setup_command.py -o addopts='' -k TestSetupFailureAndResume
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC4]
+  - id: dod-omn21311-ac5-help
+    description: onex setup is registered and claims machine setup; init, bootstrap and install do not.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q tests/unit/cli/test_setup_command.py -o addopts='' -k TestSetupHelpText
+        cwd: ${OMNI_HOME}/omnimarket
+    binds_ac: [AC5]
+  - id: dod-omn21311-deploy-source-readback
+    description: Published-source deploy check for a CLI-invoked node with no live consumer. Read the handler and pyproject.toml as published on GitHub at the checkout's exact commit and require the walk's handler class and the onex setup entry point; a commit that is not published, or lacks either, fails the command. This reads back published source, not a deployed runtime.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_onex_setup_effect/handlers/handler_onex_setup.py?ref='"$(git rev-parse HEAD)" --jq .content | base64 -d | grep '^class HandlerOnexSetup' >/dev/null && gh api 'repos/OmniNode-ai/omnimarket/contents/pyproject.toml?ref='"$(git rev-parse HEAD)" --jq .content | base64 -d | grep '^setup = "omnimarket.nodes.node_onex_setup_effect.cli:setup_command"' >/dev/null
