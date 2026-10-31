@@ -96,6 +96,7 @@ from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubHttpRequest,
     ModelGithubHttpResponse,
 )
+from omnimarket.handlers.github_quota_readings import GithubQuotaReadings
 from omnimarket.handlers.handler_lane_write_identity import (
     ModelLaneWriteIdentity,
     assert_github_token_is_actor,
@@ -305,7 +306,7 @@ class _Run:
             pass  # a response without quota headers keeps the last reading
         else:
             self.quota = reading
-            self._handler.record_reading(reading)
+            self._handler.quota_readings.record(reading)
         errors = (response.body or {}).get("errors")
         if allow_not_found and response.status == 404:
             return response
@@ -373,6 +374,7 @@ class HandlerGithubRepoWriteEffect:
         quota_floor: ModelGithubQuotaFloor | None = None,
         config: ModelRepoWriteConfig | None = None,
         clock: Callable[[], float] = time.time,
+        quota_readings: GithubQuotaReadings | None = None,
     ) -> None:
         self._transport = transport
         self._fence = fence_port
@@ -392,19 +394,18 @@ class HandlerGithubRepoWriteEffect:
         self._config = config or ModelRepoWriteConfig.from_contract(_CONTRACT_PATH)
         self._clock = clock
         self.identity = contract_secret_ref(_CONTRACT_PATH, _SECRET_NAME)
-        self._readings: dict[str, ModelGithubQuotaReading] = {}
+        self.quota_readings = (
+            GithubQuotaReadings() if quota_readings is None else quota_readings
+        )
         self._done: OrderedDict[tuple[str, str, str], ModelRepoWriteCompleted] = (
             OrderedDict()
         )
 
     # --- quota ----------------------------------------------------------------
 
-    def record_reading(self, reading: ModelGithubQuotaReading) -> None:
-        self._readings[reading.resource] = reading
-
     def floor_refusal(self, resource: str) -> ModelGithubQuotaReading | None:
         """The last reading for ``resource`` when it is under the floor, in its window."""
-        reading = self._readings.get(resource)
+        reading = self.quota_readings.last(resource)
         if reading is None or self._clock() >= reading.reset:
             return None
         if self._floor.refusal(reading) is None:
