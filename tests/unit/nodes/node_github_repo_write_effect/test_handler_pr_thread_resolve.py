@@ -24,7 +24,6 @@ from pydantic import ValidationError
 
 from omnimarket.github_landing.github_landing_requests import (
     pull_request_request,
-    resolve_review_thread_request,
     review_threads_request,
 )
 from omnimarket.github_landing.model_github_http_exchange import (
@@ -44,6 +43,9 @@ from omnimarket.nodes.node_github_repo_write_effect.models import (
     ModelRepoWriteConfig,
     ModelRepoWriteFailed,
     ModelRepoWriteRequest,
+)
+from omnimarket.nodes.node_github_repo_write_effect.services.pr_thread_resolve import (
+    resolve_review_thread_request,
 )
 
 pytestmark = pytest.mark.unit

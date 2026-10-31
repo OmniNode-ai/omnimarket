@@ -19,7 +19,7 @@ A lane does GitHub work through this command and no ``gh`` verb:
 - **Other reads** (pr-review, pr-ticket, pr-threads, branch-protection, run-list,
   run-view, job-log, run-download, release-list) publish the gateway's typed request.
 - **PR authoring writes** (pr-create, pr-edit, pr-ready, pr-close, pr-comment,
-  pr-thread-reply, workflow-run, check-run-create) publish node_github_repo_write_effect's typed
+  pr-thread-reply, pr-thread-resolve, workflow-run, check-run-create) publish node_github_repo_write_effect's typed
   request. Its guards apply: quota floor, expected head, idempotency, and the claim pr-close
   needs. pr-edit, pr-ready and pr-close take the expected head from the
   watcher state when ``--head-sha`` is not given. pr-close reads the claim the
@@ -591,6 +591,7 @@ _WRITE_OPTIONS: Final[dict[str, tuple[str, ...]]] = {
     "pr_close": ("run", "claims_dir"),
     "pr_comment": ("body", "body_file"),
     "pr_thread_reply": ("thread", "body", "body_file"),
+    "pr_thread_resolve": ("review_thread",),
     "workflow_dispatch": ("workflow", "ref", "input"),
     "check_run_create": (
         "name",
@@ -654,6 +655,14 @@ _OPTION_DECORATORS: Final[
         help="Where this host's claim registry keeps the claim you took "
         "($ONEX_PR_CLAIMS_DIR, else $ONEX_STATE_DIR/pr-queue/claims). The claim "
         "is read here and sent on the command; the directory itself is not.",
+    ),
+    "review_thread": click.option(
+        "--review-thread",
+        "review_thread_id",
+        required=True,
+        help="The GraphQL node id of the review thread (PRRT_...; "
+        "`onex scm pr-threads` lists them). Refused unless the thread has a "
+        "reply from the fixing lane.",
     ),
     "thread": click.option(
         "--thread",
