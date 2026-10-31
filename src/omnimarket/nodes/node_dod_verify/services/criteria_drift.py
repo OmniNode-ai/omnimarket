@@ -48,13 +48,13 @@ from collections.abc import Mapping, Sequence
 from typing import Any, Protocol, runtime_checkable
 
 from omnimarket.enums.enum_criteria_drift_kind import EnumCriteriaDriftKind
-from omnimarket.nodes.node_dod_verify.models.model_criteria_drift import (
+from omnimarket.models.model_criteria_drift import (
     ModelCriteriaAmendment,
     ModelCriteriaAmendmentEntry,
     ModelCriteriaCheck,
     ModelCriterionDrift,
 )
-from omnimarket.nodes.node_dod_verify.models.model_criteria_pins import (
+from omnimarket.models.model_criteria_pins import (
     ModelCriteriaPins,
     ModelCriterionClaim,
     ModelCriterionPin,

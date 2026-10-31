@@ -126,6 +126,15 @@ class ModelCriteriaCheck(BaseModel):
             "Items that claim only retired criteria; their results do not count."
         ),
     )
+    delegated: bool = Field(
+        default=False,
+        description=(
+            "True when this run compared nothing with the live ticket because a "
+            "hosted run holds no ticket credential (OMN-21676). The comparison is "
+            "the trusted pre-merge check's and the local Done gate's, so a "
+            "delegated check is neither a pass nor a drift."
+        ),
+    )
 
     @property
     def refused(self) -> bool:
