@@ -93,6 +93,17 @@ def test_parity_fixture_exercises_every_lab_headroom_finding_class() -> None:
         "NOTE lab-headroom: cannot read placement state",
     ):
         assert any(line.startswith(needle) for line in lines), needle
+    # OMN-20869: every captured lab-headroom FIX that names the host read must pass a lane, or the
+    # read it prints refuses before it reads a host. Guarded by a positive control, so a fixture
+    # that stopped carrying the read cannot make this assertion vacuous.
+    reads = [
+        line
+        for line in lines
+        if "lab-headroom" in line and "onex_lab_run.py" in line.split(" | FIX: ", 1)[-1]
+    ]
+    assert reads, "no captured lab-headroom FIX names the onex_lab_run.py host read"
+    for line in reads:
+        assert "onex_lab_run.py --hosts --lane <lane>" in line, line
 
 
 def test_free_slots_are_a_missing_finding_naming_the_host() -> None:
