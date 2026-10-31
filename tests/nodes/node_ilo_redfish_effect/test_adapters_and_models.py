@@ -418,3 +418,10 @@ def test_the_transport_never_leaves_the_redfish_tree(
             transport.request("GET", path)
         assert caught.value.kind == "protocol"
         assert caught.value.request_sent is False
+
+
+def test_a_missing_ledger_file_is_no_approval_not_a_crash(tmp_path: Path) -> None:
+    assert (
+        LedgerApprovalSource(tmp_path / "absent.md").find("2026-11-02T11:00:00Z")
+        is None
+    )

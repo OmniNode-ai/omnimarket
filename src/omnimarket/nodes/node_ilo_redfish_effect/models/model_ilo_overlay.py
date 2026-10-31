@@ -90,8 +90,8 @@ class ModelIloOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     hosts: Annotated[tuple[ModelIloHost, ...], Field(min_length=1)]
-    # Who may be named by ``approved_by`` on an approval row. A row without that cell counts as the
-    # first entry's role, so the default overlay value ``operator`` matches a plain consent row.
+    # Who may be named by ``approved_by`` on an approval row. A consent row without that cell is the
+    # operator's own, so the default ``operator`` matches a plain consent row.
     approvers: Annotated[tuple[NonEmptyStr, ...], Field(min_length=1)] = ("operator",)
     approval_max_age_hours: Annotated[int, Field(ge=1, le=168)] = 24
     # Directory of the per-host action journals. Private and writable by the caller only.

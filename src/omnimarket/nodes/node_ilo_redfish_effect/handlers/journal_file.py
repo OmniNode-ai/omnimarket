@@ -89,10 +89,14 @@ class LedgerApprovalSource:
 
     def find(self, ref: str) -> ModelIloApproval | None:
         prefix = f"{ref} | OPERATOR-CONSENT | "
-        with self._path.open("r", encoding="utf-8", errors="replace") as handle:
-            for line in handle:
-                if line.startswith(prefix):
-                    return self._parse(ref, line.rstrip("\n"))
+        try:
+            with self._path.open("r", encoding="utf-8", errors="replace") as handle:
+                for line in handle:
+                    if line.startswith(prefix):
+                        return self._parse(ref, line.rstrip("\n"))
+        except OSError:
+            # An unreadable ledger is no approval: the caller refuses the write.
+            return None
         return None
 
     @staticmethod
