@@ -189,6 +189,33 @@ def test_an_older_or_equal_seq_cannot_replace_the_state(
 
 
 @pytest.mark.integration
+def test_the_shim_strips_the_delivery_keys_before_the_event_model(
+    schema_factory: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-21536: handle splits the runtime's delivery keys off, so the row is the same.
+
+    The event model refuses a field it does not declare. A delivery that reaches
+    ``handle`` with ``_topic``, ``_partition``, ``_offset`` and ``_fallback_id`` beside the
+    event must write the row the bare event writes.
+    """
+    event = transitioned(1, S.RUNNING)
+    bare = schema_factory("bare")
+    assert bare.writer(monkeypatch).handle(dict(event))["rows_upserted"] == 2
+
+    delivery = {
+        **event,
+        "_topic": "onex.evt.test.v1",
+        "_partition": 3,
+        "_offset": 41,
+        "_fallback_id": "fallback-1",
+    }
+    delivered = schema_factory("delivered")
+    assert delivered.writer(monkeypatch).handle(delivery)["rows_upserted"] == 2
+    assert delivered.state() == bare.state()
+    assert delivered.transitions() == bare.transitions()
+
+
+@pytest.mark.integration
 def test_migration_is_idempotent_and_checks_every_state(
     schema_factory: Any,
 ) -> None:

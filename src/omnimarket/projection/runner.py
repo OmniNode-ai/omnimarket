@@ -605,12 +605,14 @@ class BaseProjectionRunner(ABC):
         """
         ...
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    def handle(self, input_data: Any) -> Any:
         # The runtime's projection arm calls handle(dict) and reads rows_upserted from
         # the result. A handle annotated with a concrete model would be wired onto the
         # typed dispatch arm instead (omnibase_infra OMN-16767) and stop receiving
         # _db, _partition and _offset, so the dict is accepted here, once, and every
-        # runner implements project_request over the typed request.
+        # runner implements project_request over the typed request. The signature is
+        # Any so a runner that is already canonical (a typed handle of its own) still
+        # overrides it.
         return self.project_request(ModelProjectionRequest.from_injected(input_data))
 
     def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
