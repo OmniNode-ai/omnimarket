@@ -42,3 +42,20 @@ dod_evidence:
       - check_type: "command"
         check_value: "! uv run --frozen python -m omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run omnibase_core.validation.validator_contracts_and_di:ValidatorContractsAndDi src/omnimarket/nodes/node_contractor_integration_note_effect/services/note_composer.py src/omnimarket/nodes/node_git_query_mirror_effect/git_mirror.py src/omnimarket/nodes/node_lab_work_unit_effect/protocols/local_shell_work_runner.py src/omnimarket/nodes/node_linear_triage/services/local_github_pr_reads.py src/omnimarket/nodes/node_local_dashboard_serve_effect/bundle.py src/omnimarket/nodes/node_pr_head_stage_compute/handlers/handler_pr_head_stage.py src/omnimarket/nodes/node_push_validation_effect/protocols/ephemeral_container_focused_run_subprocess.py src/omnimarket/nodes/node_push_validation_effect/protocols/gate_runner_suite_evaluation_subprocess.py src/omnimarket/nodes/node_push_validation_effect/protocols/git_push_validation_subprocess.py src/omnimarket/nodes/node_remote_lane_effect/handlers/handler_remote_lane_ref.py 2>&1 | grep -q literal_url"
         cwd: "."
+  - id: "dod-omn21623-deploy-published-endpoint-readback"
+    description: |-
+      Hosted-runner source-artifact readback: fetch the endpoint authority file at the
+      evaluated published commit and require it to declare github.web_url. A missing
+      key fails the command. No lab service, credentials or broker is required. This
+      checks the published source artifact and does not assert a live runtime rollout.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/configs/service_endpoints.yaml" | uv run --frozen python -c '
+          import sys, yaml
+          doc = yaml.safe_load(sys.stdin.read())
+          assert "web_url" in doc["github"], "github.web_url missing"
+          print("Published endpoint authority readback: github.web_url PASS")
+          '
+        cwd: "."

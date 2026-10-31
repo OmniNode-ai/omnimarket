@@ -247,6 +247,8 @@ class TestGithubWebOriginIsResolved:
     def test_module_holds_no_github_web_literal(self, relative: str) -> None:
         tree = ast.parse((_REPO_ROOT / relative).read_text(encoding="utf-8"))
         offenders = [
-            value for value in _string_constants(tree) if "https://github.com" in value
+            value
+            for value in _string_constants(tree)
+            if re.search(r"https?://github\.com", value)
         ]
         assert offenders == [], f"{relative} spells the GitHub web origin: {offenders}"
