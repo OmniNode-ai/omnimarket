@@ -14,6 +14,7 @@ from uuid import uuid4
 
 from omnibase_core.models.core.model_envelope_metadata import ModelEnvelopeMetadata
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.event_bus.models import ModelEventMessage
 from omnibase_infra.runtime.auto_wiring.discovery import _parse_contract
 from omnibase_infra.runtime.auto_wiring.handler_wiring import wire_from_manifest
@@ -22,8 +23,6 @@ from omnibase_infra.runtime.auto_wiring.models.model_auto_wiring_manifest import
 )
 from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
 from pydantic import ValidationError
-
-from omnimarket.handlers.container.container_inmemory import bind_infra_event_bus
 
 from ..models.model_runtime_deploy_request import (
     ModelRuntimeDeployOptions,
@@ -55,7 +54,7 @@ async def dispatch(
         contracts=(contract,), runtime_profile="operator"
     )
     engine = MessageDispatchEngine()
-    bus = bind_infra_event_bus(environment="operator", group="runtime-deploy")
+    bus = EventBusInmemory(environment="operator", group="runtime-deploy")
     terminal: asyncio.Future[ModelRuntimeDeployResult] = (
         asyncio.get_running_loop().create_future()
     )

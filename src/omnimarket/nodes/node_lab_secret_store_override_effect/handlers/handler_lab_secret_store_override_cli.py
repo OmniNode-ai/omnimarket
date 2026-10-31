@@ -13,8 +13,7 @@ from uuid import uuid4
 import yaml
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_core.runtime.runtime_dispatch import DispatchRoute, RuntimeDispatch
-
-from omnimarket.handlers.container.container_inmemory import bind_broker, bind_transport
+from omnibase_core.runtime.transport import InMemoryBroker, InMemoryTransport
 
 from ..models.model_lab_secret_store_override_request import (
     ModelLabSecretStoreOverrideRequest,
@@ -49,12 +48,12 @@ async def dispatch(
     handler = getattr(
         importlib.import_module(handler_spec["module"]), handler_spec["name"]
     )()
-    broker = bind_broker()
-    consumer = bind_transport(
+    broker = InMemoryBroker()
+    consumer = InMemoryTransport(
         broker=broker, group=contract["name"], topics=[command_topic]
     )
-    producer = bind_transport(broker=broker, group="lab-render-publisher")
-    reader = bind_transport(
+    producer = InMemoryTransport(broker=broker, group="lab-render-publisher")
+    reader = InMemoryTransport(
         broker=broker, group="lab-render-terminal", topics=[terminal_topic]
     )
     correlation_id = uuid4()

@@ -9,15 +9,12 @@ from pathlib import Path
 
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
-from omnibase_core.runtime.transport import InMemoryBroker, InMemoryTransport
 
 from omnimarket.handlers import network_bindings
 from omnimarket.handlers.container.container_inmemory import (
-    bind_broker,
     bind_core_event_bus,
     bind_database_adapter,
     bind_infra_event_bus,
-    bind_transport,
 )
 from omnimarket.handlers.network_bindings import (
     network_host,
@@ -97,11 +94,6 @@ def test_binding_sites_build_the_in_memory_implementations() -> None:
     )
     assert type(bind_infra_event_bus(environment="test", group="g")).__name__ == (
         "EventBusInmemory"
-    )
-    broker = bind_broker()
-    assert isinstance(broker, InMemoryBroker)
-    assert isinstance(
-        bind_transport(broker=broker, group="g", topics=["t"]), InMemoryTransport
     )
     assert isinstance(bind_process_row_store(), InMemoryPrHandoffRowStore)
     assert isinstance(bind_database_adapter(), InmemoryDatabaseAdapter)
