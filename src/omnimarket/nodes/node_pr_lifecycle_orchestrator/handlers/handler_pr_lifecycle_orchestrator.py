@@ -3127,6 +3127,9 @@ class HandlerPrLifecycleOrchestrator:
             from omnimarket.nodes.node_verify_effect.handlers.handler_verify import (
                 HandlerVerify,
             )
+            from omnimarket.nodes.node_verify_effect.models.model_verify_input import (
+                ModelVerifyInput,
+            )
         except ImportError:
             logger.warning(
                 "[PR-LIFECYCLE-ORCH] canonical verify node unavailable for "
@@ -3138,7 +3141,7 @@ class HandlerPrLifecycleOrchestrator:
         verify_handler = HandlerVerify()
         try:
             result = await asyncio.wait_for(
-                verify_handler.handle(correlation_id=uuid4()),
+                verify_handler.handle(ModelVerifyInput(correlation_id=uuid4())),
                 timeout=timeout_seconds,
             )
         except TimeoutError:

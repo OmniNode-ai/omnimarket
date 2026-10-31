@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
-from uuid import UUID
 
 import pytest
 import yaml
@@ -20,7 +19,6 @@ from omnimarket.nodes.node_omnigate_receipt_generator.models.model_receipt_gener
 
 pytestmark = pytest.mark.unit
 
-_CORRELATION_ID = UUID("00000000-0000-4000-a000-000000000145")
 _NODE_DIR = (
     Path(__file__).resolve().parents[3]
     / "src"
@@ -130,7 +128,7 @@ async def test_receipt_generator_binds_hashes_and_signs(tmp_path: Path) -> None:
         schema_fingerprinter=schema_fingerprint,
         receipt_builder=build_receipt,
         signer=sign,
-    ).handle(_CORRELATION_ID, request)
+    ).handle(request)
 
     assert result.signed is True
     assert result.diff_hash == "sha256:" + "c" * 64
@@ -173,7 +171,7 @@ async def test_receipt_generator_does_not_sign_when_policy_is_none(
         schema_fingerprinter=schema_fingerprint,
         receipt_builder=_Receipt,
         signer=sign,
-    ).handle(_CORRELATION_ID, request)
+    ).handle(request)
 
     assert result.signed is False
     assert "sigstore_bundle_json" not in result.receipt

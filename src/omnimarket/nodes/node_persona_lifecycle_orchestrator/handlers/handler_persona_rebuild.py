@@ -80,26 +80,22 @@ class HandlerPersonaRebuild:
             self._batch_size = _bounded_batch_size(batch_size)
 
     async def handle(
-        self,
-        correlation_id: UUID | None,
-        input_data: ModelPersonaLifecycleRequest,
+        self, request: ModelPersonaLifecycleRequest
     ) -> ModelPersonaLifecycleResponse:
         """Dispatch to the contract-routed operation for generic runtimes."""
-        if input_data.operation == "on_tick":
-            return await self.on_tick(correlation_id, input_data)
-        if input_data.operation == "on_demand":
-            return await self.on_demand(correlation_id, input_data)
+        if request.operation == "on_tick":
+            return await self.on_tick(request)
+        if request.operation == "on_demand":
+            return await self.on_demand(request)
         return _error_response(
-            f"unsupported persona lifecycle operation: {input_data.operation}"
+            f"unsupported persona lifecycle operation: {request.operation}"
         )
 
     async def on_tick(
-        self,
-        correlation_id: UUID | None,
-        input_data: ModelPersonaLifecycleRequest,
+        self, request: ModelPersonaLifecycleRequest
     ) -> ModelPersonaLifecycleResponse:
         """Process one runtime tick by rebuilding at most 100 candidate users."""
-        if input_data.operation != "on_tick":
+        if request.operation != "on_tick":
             return _error_response("on_tick route received non on_tick request")
         if self._candidate_provider is None:
             return _error_response(
@@ -109,20 +105,20 @@ class HandlerPersonaRebuild:
         candidates = await self._candidate_provider.list_persona_rebuild_candidates(
             limit=self._batch_size
         )
-        return await self._rebuild_users(candidates[: self._batch_size], correlation_id)
+        return await self._rebuild_users(
+            candidates[: self._batch_size], request.correlation_id
+        )
 
     async def on_demand(
-        self,
-        correlation_id: UUID | None,
-        input_data: ModelPersonaLifecycleRequest,
+        self, request: ModelPersonaLifecycleRequest
     ) -> ModelPersonaLifecycleResponse:
         """Process an on-demand persona rebuild command for one user."""
-        if input_data.operation != "on_demand":
+        if request.operation != "on_demand":
             return _error_response("on_demand route received non on_demand request")
-        if not input_data.user_id:
+        if not request.user_id:
             return _error_response("on_demand persona rebuild requires user_id")
 
-        return await self._rebuild_users([input_data.user_id], correlation_id)
+        return await self._rebuild_users([request.user_id], request.correlation_id)
 
     async def _rebuild_users(
         self,
