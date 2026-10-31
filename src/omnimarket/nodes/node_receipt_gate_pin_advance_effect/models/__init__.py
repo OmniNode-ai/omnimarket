@@ -5,6 +5,7 @@
 from omnimarket.nodes.node_receipt_gate_pin_advance_effect.models.model_pin_advance_effect_config import (
     EnumPinAdvanceMode,
     ModelPinAdvanceEffectConfig,
+    ModelRefusalClassPattern,
 )
 from omnimarket.nodes.node_receipt_gate_pin_advance_effect.models.model_receipt_gate_pin_advance_effect import (
     EnumPinAdvanceDisposition,
@@ -24,4 +25,5 @@ __all__ = [
     "ModelPinPrResult",
     "ModelPinUnjudged",
     "ModelReceiptGatePinAdvanceCompleted",
+    "ModelRefusalClassPattern",
 ]
