@@ -852,6 +852,7 @@ class HandlerDodVerify:
             ),
             criteria_drift=criteria_check.drift if criteria_check else (),
             criteria_amendment=(criteria_check.amendment if criteria_check else None),
+            criteria_delegated=bool(criteria_check and criteria_check.delegated),
             occ_governance_ref=occ_governance_ref,
             occ_refresh_outcome=occ_refresh_outcome,
             occ_resolved_sha=occ_resolved_sha,
@@ -927,6 +928,7 @@ class HandlerDodVerify:
             criteria_revision=state.criteria_revision,
             criteria_drift=state.criteria_drift,
             criteria_amendment=state.criteria_amendment,
+            criteria_delegated=state.criteria_delegated,
             error_message=state.error_message,
             unresolved_cause=state.unresolved_cause,
         )

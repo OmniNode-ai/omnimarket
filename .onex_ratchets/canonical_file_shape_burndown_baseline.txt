@@ -96,7 +96,6 @@ src/omnimarket/nodes/node_dispatch_watchdog_orchestrator/handlers/handler_watchd
 src/omnimarket/nodes/node_dispatch_worker/__main__.py
 src/omnimarket/nodes/node_dod_verify/__main__.py
 src/omnimarket/nodes/node_dod_verify/handlers/handler_dod_evidence_github_effect.py
-src/omnimarket/nodes/node_dod_verify/handlers/handler_dod_ticket_criteria_linear_effect.py
 src/omnimarket/nodes/node_dod_verify/handlers/handler_occ_replay.py
 src/omnimarket/nodes/node_dod_verify/handlers/handler_runtime_sha_verify.py
 src/omnimarket/nodes/node_duplication_sweep/__main__.py
