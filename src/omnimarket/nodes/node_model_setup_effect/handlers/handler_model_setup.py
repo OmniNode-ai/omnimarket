@@ -43,6 +43,11 @@ from omnimarket.handlers.delegation_first_choice import (
     read_first_choice,
     write_first_choice,
 )
+from omnimarket.handlers.delegation_model_scope import (
+    clear_model_scope,
+    read_model_scope,
+    write_model_scope,
+)
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_node_overlay,
@@ -344,7 +349,20 @@ class HandlerModelSetup:
             statuses = [self._status(p) for p in PROVIDERS]
             # OMN-21346: the provider tried first is listed first.
             statuses.sort(key=lambda status: not status.tried_first)
-            return ModelModelSetupResult(operation="status", providers=tuple(statuses))
+            return ModelModelSetupResult(
+                operation="status",
+                providers=tuple(statuses),
+                only=read_model_scope(),
+            )
+        # OMN-21267: the developer's local-only or free-only rule.
+        if request.operation == "set_only":
+            if request.only is None:
+                raise ModelSetupRefusedError("name the rule: local or free")
+            write_model_scope(request.only)
+            return ModelModelSetupResult(operation="set_only", only=request.only)
+        if request.operation == "clear_only":
+            clear_model_scope()
+            return ModelModelSetupResult(operation="clear_only")
         if request.operation == "set_first":
             return self._set_first(request)
         if request.operation == "clear_first":

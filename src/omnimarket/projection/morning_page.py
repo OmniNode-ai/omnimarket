@@ -53,8 +53,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
+from omnimarket.handlers.projection_ordering import sort_for_presentation
 from omnimarket.projection.models import ProjectionStatus, ProjectionTableConfig
-from omnimarket.projection.read_page import sort_for_presentation
 from omnimarket.projection.table_reader import ProtocolProjectionPageView
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_UUID
 

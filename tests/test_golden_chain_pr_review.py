@@ -35,7 +35,6 @@ from uuid import uuid4
 
 import pytest
 from omnibase_core.enums.enum_node_kind import EnumNodeKind
-from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
 from omnimarket.models.model_review_finding import (
     EnumFindingCategory,
@@ -195,12 +194,7 @@ class TestPrReviewFsmReducerGoldenChain:
         handler = HandlerPrReviewFsm()
         state = start_state(_make_request())
         command = ModelPrReviewAdvanceCommand(state=state, phase_success=True)
-        envelope: ModelEventEnvelope[ModelPrReviewAdvanceCommand] = ModelEventEnvelope(
-            payload=command,
-            correlation_id=state.correlation_id,
-            event_type="onex.evt.omnimarket.pr-review-bot-phase-advance.v1",
-        )
-        output = await handler.handle(envelope)
+        output = await handler.handle(command)
         assert output.node_kind == EnumNodeKind.REDUCER
         assert len(output.projections) == 1
         projected = output.projections[0]
