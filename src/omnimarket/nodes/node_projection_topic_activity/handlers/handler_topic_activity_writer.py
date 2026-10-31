@@ -13,6 +13,7 @@ from typing import Any
 import yaml
 
 from omnimarket.events.topic_activity import ModelTopicActivitySampleEvent
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_topic_activity.handlers.handler_projection_topic_activity import (
     HandlerProjectionTopicActivity,
 )
@@ -24,7 +25,10 @@ from omnimarket.nodes.node_projection_topic_activity.models import (
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.envelope import strip_runner_injected_keys
 from omnimarket.projection.models import ProjectionTableConfig
-from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
+from omnimarket.projection.runner import (
+    BaseProjectionRunner,
+    MessageMeta,
+)
 
 TABLE_TOPIC_ACTIVITY = "omninode_internal.topic_activity"
 
@@ -145,16 +149,11 @@ class TopicActivityProjectionWriter(BaseProjectionRunner):
     def topics(self) -> list[str]:
         return self.subscribe_topics
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
         topics = self.subscribe_topics
-        data = dict(input_data)
-        topic = str(data.pop("_topic", topics[0] if topics else ""))
-        meta = MessageMeta(
-            partition=int(data.pop("_partition", 0)),
-            offset=int(data.pop("_offset", 0)),
-            fallback_id=str(data.pop("_fallback_id", "")),
-            topic=topic,
-        )
+        data = dict(request.payload)
+        topic = request.topic_or(topics[0] if topics else "")
+        meta = request.message_meta(topic)
         return asyncio.run(self._project_one_message(topic, data, meta))
 
     async def _project_one_message(

@@ -14,7 +14,7 @@ import sys
 import threading
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Coroutine
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -32,6 +32,8 @@ from pydantic import (
 )
 
 from omnimarket.config.settings import Settings
+from omnimarket.models.model_projection_request import ModelProjectionRequest
+from omnimarket.models.model_projection_stats import ProjectionStats
 from omnimarket.projection.dlq import (
     build_dlq_envelope,
     correlation_id_from_payload,
@@ -187,16 +189,6 @@ class MessageMeta:
     offset: int
     fallback_id: str
     topic: str = ""
-
-
-@dataclass
-class ProjectionStats:
-    """In-memory projection stats."""
-
-    events_projected: int = 0
-    errors_count: int = 0
-    last_projected_at: datetime | None = None
-    topic_stats: dict[str, dict[str, int]] = field(default_factory=dict)
 
 
 class ModelProjectionRuntimeBinding(BaseModel):
@@ -612,6 +604,19 @@ class BaseProjectionRunner(ABC):
         Returns True if projection succeeded, False if DB unavailable.
         """
         ...
+
+    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+        # The runtime's projection arm calls handle(dict) and reads rows_upserted from
+        # the result. A handle annotated with a concrete model would be wired onto the
+        # typed dispatch arm instead (omnibase_infra OMN-16767) and stop receiving
+        # _db, _partition and _offset, so the dict is accepted here, once, and every
+        # runner implements project_request over the typed request.
+        return self.project_request(ModelProjectionRequest.from_injected(input_data))
+
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
+        # A runner the runtime dispatches in-process overrides this; a standalone runner
+        # owns its consume loop and is never handed a delivery.
+        raise NotImplementedError(type(self).__name__)
 
     @property
     def poison_dlq_topics(self) -> list[str]:
