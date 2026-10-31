@@ -42,7 +42,7 @@ from omnimarket.nodes.node_metering_summary_compute.models.model_metering_summar
     EnumBaselineState,
     ModelMeteringSummary,
 )
-from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_summary_newest_baseline import (
+from omnimarket.nodes.node_projection_metering_summary.newest_baseline import (
     newest_folded_baseline,
 )
 from omnimarket.nodes.node_projection_read_effect.handlers.handler_projection_read import (

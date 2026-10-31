@@ -73,5 +73,5 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: |-
-          curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_delegate_skill_orchestrator/handlers/handler_session_model.py" | grep -q 'SESSION_MODEL_METADATA_KEY = "session_model"' && curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch.py" | grep -q 'session_model=_SESSION_MODEL.get()'
+          curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_delegate_skill_orchestrator/session_model.py" | grep -q 'SESSION_MODEL_METADATA_KEY = "session_model"' && curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch.py" | grep -q 'session_model=_SESSION_MODEL.get()'
         cwd: "."
