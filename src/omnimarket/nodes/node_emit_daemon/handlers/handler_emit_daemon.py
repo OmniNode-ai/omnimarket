@@ -14,11 +14,14 @@ by the EmitSocketServer and KafkaPublisherLoop components.
 
 from __future__ import annotations
 
-from typing import Any
-
 from omnimarket.handlers.runtime_paths import runtime_path
 from omnimarket.nodes.node_emit_daemon.emit_lifecycle import (
     EmitLifecycle,
+)
+from omnimarket.nodes.node_emit_daemon.models.model_daemon_state import (
+    ModelEmitDaemonCommand,
+    ModelEmitDaemonCompletedEvent,
+    ModelEmitDaemonState,
 )
 
 
@@ -32,32 +35,25 @@ class HandlerEmitDaemon:
     def lifecycle(self) -> EmitLifecycle:
         return self._lifecycle
 
-    def handle(self, input_data: dict[str, Any] | object) -> dict[str, Any]:
-        """RuntimeLocal handler protocol shim.
+    def handle(
+        self, request: ModelEmitDaemonCommand
+    ) -> ModelEmitDaemonState | ModelEmitDaemonCompletedEvent:
+        """Apply the lifecycle transition the request's action names.
 
-        Delegates to the appropriate lifecycle transition based on the
-        'action' field in input_data.
+        A start moves the lifecycle to listening, a stop completes it, and any
+        other action (status, health) reports the state without moving it.
         """
-        if hasattr(input_data, "model_dump"):
-            input_data = input_data.model_dump(mode="json", exclude_none=True)
-        if not isinstance(input_data, dict):
-            raise TypeError("Emit daemon lifecycle command must be an object")
-        action = input_data.get("action", "status")
-        if action == "start":
-            socket_path = input_data.get(
-                "socket_path", runtime_path("emit_daemon.socket_path")
-            )
-            pid = input_data.get("pid", 0)
-            self._lifecycle.transition_to_binding(socket_path, pid)
+        if request.action == "start":
+            socket_path = request.socket_path or runtime_path("emit_daemon.socket_path")
+            self._lifecycle.transition_to_binding(socket_path, request.pid)
             self._lifecycle.transition_to_listening()
-            return self._lifecycle.state.model_dump(mode="json")
-        if action == "stop":
-            completed = self._lifecycle.transition_to_stopped(
-                events_published=input_data.get("events_published", 0),
-                events_dropped=input_data.get("events_dropped", 0),
+            return self._lifecycle.state
+        if request.action == "stop":
+            return self._lifecycle.transition_to_stopped(
+                events_published=request.events_published,
+                events_dropped=request.events_dropped,
             )
-            return completed.model_dump(mode="json")
-        return self._lifecycle.state.model_dump(mode="json")
+        return self._lifecycle.state
 
 
 __all__: list[str] = ["HandlerEmitDaemon"]

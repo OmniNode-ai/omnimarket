@@ -9,7 +9,10 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 
-from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayError,
+    load_structured_overlay,
+)
 from omnimarket.models.model_factory_floor_input import (
     ModelFactoryFloorRequest,
     ModelFloorSelection,
@@ -26,16 +29,24 @@ from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_runti
 )
 from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     SourceRefusedError,
+    load_cloud_accounts,
     load_compute_config,
     load_contract,
+    load_host_table,
     load_linear,
+    load_placed,
     load_placement,
     load_plans,
+    load_pool,
+    load_receipts,
+    load_runner_fleet,
     load_stoppages,
     load_watcher,
+    merge_linear_titles,
     newest_dated_file,
     newest_linear_snapshot,
     read_ledger_rows,
+    resolve_dir,
     resolve_home,
     write_result,
 )
@@ -62,12 +73,19 @@ class HandlerFactoryFloorEffect:
             raise SourceRefusedError(
                 f"{rt.plans_kb_env} is not set (fail fast, no default): export it or pass --kb"
             )
-        contains = (
-            request.plan_path_contains
-            or load_structured_overlay(
+        try:
+            overlay: ModelFactoryFloorOverlay | None = load_structured_overlay(
                 NODE_NAME, ModelFactoryFloorOverlay, file_env=rt.overlay_file_env
-            ).plan_path_contains
+            )
+        except NodeOverlayError:
+            # A run that names its plans on the command line needs no overlay; the machine bays then go undeclared.
+            if not request.plan_path_contains:
+                raise
+            overlay = None
+        contains = request.plan_path_contains or (
+            overlay.plan_path_contains if overlay is not None else ()
         )
+        machines = overlay.machines if overlay is not None else ()
         now = request.now or datetime.now(UTC)
         src = rt.sources
         plans_today_file = newest_dated_file(
@@ -79,6 +97,24 @@ class HandlerFactoryFloorEffect:
             else None
         )
         plugin_root = os.environ.get(rt.plugin_root_env, "").strip()
+        ls = rt.lane_sources
+        lane_dir = resolve_dir(
+            os.environ, ls.remote_lane_dir_env, ls.remote_lane_dir_fallback
+        )
+        placement_dir = resolve_dir(
+            os.environ, ls.placement_dir_env, ls.placement_dir_fallback
+        )
+        table_env = os.environ.get(ls.host_table_env, "").strip()
+        host_table_path = (
+            Path(table_env)
+            if table_env
+            else home / overlay.host_table_relpath
+            if overlay is not None and overlay.host_table_relpath
+            else None
+        )
+        titles = newest_linear_snapshot(
+            home / src.plans_today_dir, src.linear_titles_glob
+        )
         compute_request = ModelFactoryFloorRequest(
             generated_at=now,
             config=config,
@@ -96,19 +132,38 @@ class HandlerFactoryFloorEffect:
             ),
             ledger=read_ledger_rows(
                 window_days=rt.ledger_window_days,
+                cut_chars=rt.ledger_cut_chars,
                 plugin_root=Path(plugin_root) if plugin_root else None,
                 plugin_root_env=rt.plugin_root_env,
                 ledger_rows_file=Path(request.ledger_rows_file)
                 if request.ledger_rows_file
                 else None,
             ),
-            linear=load_linear(
-                newest_linear_snapshot(
-                    home / src.plans_today_dir, src.linear_snapshot_glob
-                )
+            linear=merge_linear_titles(
+                load_linear(
+                    newest_linear_snapshot(
+                        home / src.plans_today_dir, src.linear_snapshot_glob
+                    )
+                ),
+                load_linear(titles),
             ),
             placement=load_placement(home / src.placement_relpath),
             stoppages=load_stoppages(home / src.friction_report_relpath),
+            machines=machines,
+            pool=load_pool(lane_dir / ls.pool_receipt),
+            host_table=load_host_table(host_table_path)
+            if host_table_path is not None
+            else None,
+            placed=load_placed(placement_dir, ls.lane_marker_min_id),
+            receipts=load_receipts(
+                lane_dir,
+                now=now,
+                window_hours=ls.receipt_window_hours,
+                glob=ls.receipt_glob,
+                result_chars=ls.result_chars,
+            ),
+            cloud_accounts=load_cloud_accounts(placement_dir / ls.cloud_accounts_file),
+            runner_fleet=load_runner_fleet(home / src.runner_fleet_relpath),
         )
         result = HandlerFactoryFloor().handle(compute_request)
         target = home / rt.output.relpath
