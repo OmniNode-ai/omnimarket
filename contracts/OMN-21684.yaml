@@ -52,9 +52,15 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/test_binding_sites_pr_review_omn_21684.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21684-deploy-binding-sites-landed"
-    description: "Deploy check: the five container binding-site modules are present on the pull request branch as published, read through the GitHub contents API."
+    description: "Deploy check: the five published container binding-site modules at the revision under test each define handler factories; the merge base has no such binding sites."
     source: "manual"
     binds_ac: ["AC2"]
     checks:
       - check_type: "command"
-        check_value: "for p in node_exception_queue_effect/container/container_exception_queue_effect node_host_pool_alarm_effect/container/container_host_pool_alarm_effect node_pr_review_orchestrator/container/container_pr_review_orchestrator node_context_pack_orchestrator/container/container_context_pack_orchestrator node_context_compaction_orchestrator/container/container_context_compaction_orchestrator; do gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/$p.py?ref=omn-21684-handler-di-slice\" --jq .name | grep -q '.py' || exit 1; done"
+        check_value: |-
+          revision="$(git rev-parse HEAD)" || exit 1
+          for node in exception_queue_effect host_pool_alarm_effect pr_review_orchestrator context_pack_orchestrator context_compaction_orchestrator; do
+            source="$(gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_$node/container/container_$node.py?ref=$revision" --jq .content)" || exit 1
+            printf '%s\n' "$source" | base64 --decode | grep '^def create_handler_' || exit 1
+          done
+        cwd: "${OMNI_HOME}/omnimarket"
