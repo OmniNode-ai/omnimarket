@@ -1,12 +1,14 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Regenerate the factory floor record, then publish the page and the record to the serving host.
+"""Refresh the factory floor's inputs and record, then publish the page and its data to the serving host.
 
-The record is the JSON ``node_factory_floor_effect`` writes. This node copies it, and the page that reads
-it, to the directory a static server serves, over ssh, one file at a time, each written to a temporary
-name and renamed into place so a reader never sees a partial file and a failed copy leaves the previous
-file untouched. The host, the directory and the URL are deployment facts from the overlay; the paths,
-file names and timeouts are the contract's.
+One run executes the contract's input steps in order (the lab host advertisements, the friction report, the
+process-health series, and last the factory floor record itself), then copies the page, the status of every
+step, the process-health series when there is one, and the record to the directory a static server serves, over
+ssh, one file at a time: each is written to a temporary name and renamed into place, so a reader never sees a
+partial file and a failed copy leaves the previous file untouched. A step that is not required may fail; the
+status file says so and the page shows that source as unread rather than empty. The host, the directory, the
+URL and the bus lane are deployment facts from the overlay; the paths, names and time limits are the contract's.
 """
 
 from __future__ import annotations
@@ -30,6 +32,8 @@ from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_flo
     ModelFactoryFloorPublishRequest,
     ModelFactoryFloorPublishResult,
     ModelFactoryFloorPublishRuntime,
+    ModelPublishStep,
+    ModelPublishStepResult,
 )
 
 NODE_NAME = "node_factory_floor_publish_effect"
@@ -51,11 +55,7 @@ def run_process(
     """The one subprocess boundary of this node; tests replace it."""
     try:
         return subprocess.run(
-            list(argv),
-            input=stdin,
-            capture_output=True,
-            timeout=timeout,
-            check=False,
+            list(argv), input=stdin, capture_output=True, timeout=timeout, check=False
         )
     except subprocess.TimeoutExpired as exc:
         raise PublishRefusedError(
@@ -88,8 +88,20 @@ def remote_write_command(remote_dir: str, name: str) -> str:
     )
 
 
+def write_atomic(path: Path, data: bytes) -> None:
+    """Write ``data`` to ``path`` through a temporary file in the same directory."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_bytes(data)
+    tmp.replace(path)
+
+
+def _tail(raw: bytes) -> str:
+    return " | ".join(raw.decode("utf-8", "replace").strip().splitlines()[-3:])
+
+
 class HandlerFactoryFloorPublish:
-    """Boundary of the publish: the refresh, the reads and the copies happen here."""
+    """Boundary of the publish: the input steps, the reads and the copies happen here."""
 
     def __init__(self, runner: Runner = run_process) -> None:
         self._run = runner
@@ -115,45 +127,107 @@ class HandlerFactoryFloorPublish:
                 f"{rt.home_env} is not set (fail fast, no default): export it or pass --omni-home"
             )
         home = Path(home_value)
+        now = request.now or datetime.now(UTC)
 
-        refreshed = False
+        results: list[ModelPublishStepResult] = []
         if not request.skip_refresh:
-            self._refresh(rt, home)
-            refreshed = True
+            for step in rt.steps:
+                result = self._step(step, home, overlay)
+                results.append(result)
+                if result.status == "failed" and step.required:
+                    raise PublishRefusedError(
+                        f"the required step {step.name} failed ({result.detail}): {result.diagnostic}"
+                    )
 
         data = self._read_record(home / rt.source.relpath)
-        page = (NODE_DIR / rt.page_relpath).read_bytes()
         generated_at = str(json.loads(data)["generated_at"])
+        page = (NODE_DIR / rt.page_relpath).read_bytes()
+        health = self._read_process_health(home / rt.process_health_relpath)
+        status = json.dumps(
+            {
+                "published_at": now.astimezone(UTC).isoformat(),
+                "steps": [r.model_dump(exclude={"diagnostic"}) for r in results],
+                "process_health": "published" if health is not None else "absent",
+            },
+            sort_keys=True,
+        ).encode("utf-8")
 
-        # Page first, record last: a reader that gets the new record always finds a page that reads it.
-        for name, payload in ((rt.names.page, page), (rt.names.data, data)):
+        # The record goes last: a reader that gets the new record always finds a page that reads it.
+        files: list[tuple[str, bytes]] = [
+            (rt.names.page, page),
+            (rt.names.status, status),
+        ]
+        if health is not None:
+            files.append((rt.names.process_health, health))
+        files.append((rt.names.data, data))
+        for name, payload in files:
             self._copy(rt, overlay, name, payload)
 
         digest = hashlib.sha256(data).hexdigest()
         if request.state_dir:
             self._write_evidence(
                 Path(request.state_dir) / rt.evidence_file,
-                request.now or datetime.now(UTC),
+                now,
                 generated_at,
                 digest,
-                (rt.names.page, rt.names.data),
+                tuple(name for name, _ in files),
             )
         return ModelFactoryFloorPublishResult(
-            published=(rt.names.page, rt.names.data),
+            published=tuple(name for name, _ in files),
             generated_at=generated_at,
             data_sha256=digest,
             serve_url=overlay.serve_url,
-            refreshed=refreshed,
+            steps=tuple(results),
+            process_health_published=health is not None,
         )
 
-    def _refresh(self, rt: ModelFactoryFloorPublishRuntime, home: Path) -> None:
-        argv = [sys.executable, "-m", rt.refresh.module, "--home", str(home)]
-        done = self._run(argv, None, rt.refresh.timeout_seconds)
-        if done.returncode != 0:
-            tail = done.stderr.decode("utf-8", "replace").strip().splitlines()[-3:]
-            raise PublishRefusedError(
-                f"the refresh {rt.refresh.module} exited {done.returncode}: {' | '.join(tail)}"
+    def _step(
+        self,
+        step: ModelPublishStep,
+        home: Path,
+        overlay: ModelFactoryFloorPublishOverlay,
+    ) -> ModelPublishStepResult:
+        def fill(values: Sequence[str]) -> list[str]:
+            return [
+                v.replace("{home}", str(home)).replace("{bus_lane}", overlay.bus_lane)
+                for v in values
+            ]
+
+        def failed(detail: str, diagnostic: str = "") -> ModelPublishStepResult:
+            return ModelPublishStepResult(
+                name=step.name, status="failed", detail=detail, diagnostic=diagnostic
             )
+
+        try:
+            if step.kind == "copy":
+                if step.source_relpath is None or step.output_relpath is None:
+                    raise ValueError("a copy step names a source and an output")
+                raw = (home / step.source_relpath).read_bytes()
+                json.loads(raw)
+                write_atomic(home / step.output_relpath, raw)
+                return ModelPublishStepResult(name=step.name, status="ok")
+            if step.kind == "module":
+                if step.module is None:
+                    raise ValueError("a module step names a module")
+                argv = [sys.executable, "-m", step.module, *fill(step.args)]
+            else:
+                argv = fill(step.argv)
+            done = self._run(argv, None, step.timeout_seconds)
+        except (OSError, ValueError, PublishRefusedError) as exc:
+            return failed(type(exc).__name__, str(exc))
+        if done.returncode != 0:
+            return failed(f"exit {done.returncode}", _tail(done.stderr))
+        if step.kind == "capture":
+            if step.output_relpath is None:
+                return failed("ValueError", "a capture step names an output")
+            try:
+                parsed = json.loads(done.stdout)
+            except ValueError:
+                return failed("output is not JSON", _tail(done.stdout))
+            if not isinstance(parsed, list):
+                return failed("output is not a JSON list")
+            write_atomic(home / step.output_relpath, done.stdout)
+        return ModelPublishStepResult(name=step.name, status="ok")
 
     @staticmethod
     def _read_record(path: Path) -> bytes:
@@ -180,6 +254,23 @@ class HandlerFactoryFloorPublish:
             )
         return data
 
+    @staticmethod
+    def _read_process_health(path: Path) -> bytes | None:
+        """The process-health series, or ``None`` when absent or not a series (the page then says unread)."""
+        try:
+            data = path.read_bytes()
+            record = json.loads(data)
+        except (OSError, ValueError):
+            return None
+        if (
+            not isinstance(record, dict)
+            or not isinstance(record.get("generated_at"), str)
+            or not isinstance(record.get("days"), list)
+            or not isinstance(record.get("summary"), dict)
+        ):
+            return None
+        return data
+
     def _copy(
         self,
         rt: ModelFactoryFloorPublishRuntime,
@@ -199,9 +290,8 @@ class HandlerFactoryFloorPublish:
         ]
         done = self._run(argv, payload, rt.transport.transfer_timeout_seconds)
         if done.returncode != 0:
-            tail = done.stderr.decode("utf-8", "replace").strip().splitlines()[-2:]
             raise PublishRefusedError(
-                f"publishing {name} failed with exit {done.returncode}: {' | '.join(tail)}; "
+                f"publishing {name} failed with exit {done.returncode}: {_tail(done.stderr)}; "
                 "the previous file on the server is untouched"
             )
 
@@ -213,19 +303,27 @@ class HandlerFactoryFloorPublish:
         digest: str,
         names: tuple[str, ...],
     ) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_name(f".{path.name}.tmp")
-        tmp.write_text(
-            json.dumps(
-                {
-                    "published_at": now.astimezone(UTC).isoformat(),
-                    "record_generated_at": generated_at,
-                    "data_sha256": digest,
-                    "published": list(names),
-                },
-                sort_keys=True,
-            )
-            + "\n",
-            encoding="utf-8",
+        write_atomic(
+            path,
+            (
+                json.dumps(
+                    {
+                        "published_at": now.astimezone(UTC).isoformat(),
+                        "record_generated_at": generated_at,
+                        "data_sha256": digest,
+                        "published": list(names),
+                    },
+                    sort_keys=True,
+                )
+                + "\n"
+            ).encode("utf-8"),
         )
-        tmp.replace(path)
+
+
+__all__ = [
+    "HandlerFactoryFloorPublish",
+    "PublishRefusedError",
+    "load_runtime",
+    "remote_write_command",
+    "run_process",
+]

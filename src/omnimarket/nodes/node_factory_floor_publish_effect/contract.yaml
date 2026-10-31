@@ -10,7 +10,7 @@ contract_version:
   patch: 0
 node_version: 1.0.0
 description: >-
-  Regenerate the factory floor record with node_factory_floor_effect, then publish the page and the record
+  Refresh the factory floor's inputs and record (lab host reading, friction report, process-health series, node_factory_floor_effect), then publish the page and the data
   to the directory a static server on the lab serves, over ssh, each file written to a temporary name and
   renamed into place. The serving host, the directory and the URL come from the deployment overlay; this
   contract declares only where the record is, what the files are called and the time limits.
@@ -47,16 +47,20 @@ descriptor:
   idempotent: true
   timeout_ms: 900000
   side_effects:
-  - runs node_factory_floor_effect, which writes the factory floor JSON under the registry home
+  - runs the lab host reading, the friction report copy, node_process_health_effect and node_factory_floor_effect, which write their JSON under the registry home
   - reads the factory floor JSON and the packaged page
-  - writes index and record files to the serving host's directory over ssh
+  - writes the page, the status, the process-health series and the record to the serving host's directory over ssh
   - writes last-run.json into the tick's state directory
 
-# Where the record is and what the served files are called. The record path is relative to the registry home
-# (the environment variable named by home_env). The record path must equal runtime.output.relpath of
-# node_factory_floor_effect (OMN-21682). The serving host, its directory and the URL are the deployment
-# overlay's ssh_target, remote_dir and serve_url: a file named by overlay_file_env, else
-# <ONEX_SKILL_OVERLAY_ROOTS root>/node_factory_floor_publish_effect/overlay.yaml.
+# Where the record is, which input steps run before it is read, and what the served files are called. Paths are
+# relative to the registry home (the environment variable named by home_env); {home} and {bus_lane} in a step are
+# the registry home and the overlay's bus lane. The record path must equal runtime.output.relpath of
+# node_factory_floor_effect (OMN-21682), and the process-health path the output of node_process_health_effect
+# (OMN-21686, its ${ONEX_STATE_DIR}/process-health/process-health.json, the tick sets ONEX_STATE_DIR). The
+# serving host, its directory, the URL and the bus lane are the deployment overlay's: a file named by
+# overlay_file_env, else <ONEX_SKILL_OVERLAY_ROOTS root>/node_factory_floor_publish_effect/overlay.yaml.
+# Steps run in order. A step that is not required may fail: the status file records it and the page shows that
+# source as unread. The factory floor effect is last and required: without a record nothing is published.
 runtime:
   home_env: OMNI_HOME
   overlay_file_env: ONEX_FACTORY_FLOOR_PUBLISH_OVERLAY
@@ -64,12 +68,36 @@ runtime:
   evidence_file: last-run.json
   source:
     relpath: .claude_scratch/factory-floor/factory-floor.json
-  refresh:
-    module: omnimarket.nodes.node_factory_floor_effect
+  process_health_relpath: .onex_state/process-health/process-health.json
+  steps:
+  - name: hosts
+    kind: capture
+    required: false
+    timeout_seconds: 120
+    argv: ["{home}/omnibase_infra/scripts/onex", "lab-work", "hosts", "--json", "--bus-lane", "{bus_lane}"]
+    output_relpath: .claude_scratch/lab-run/hosts.json
+  - name: friction
+    kind: copy
+    required: false
+    timeout_seconds: 30
+    source_relpath: .onex_state/friction-rollup/latest.json
+    output_relpath: .claude_scratch/friction/friction-report.json
+  - name: process_health
+    kind: module
+    required: false
     timeout_seconds: 600
+    module: omnimarket.nodes.node_process_health_effect.runtime_process_health
+  - name: factory_floor
+    kind: module
+    required: true
+    timeout_seconds: 600
+    module: omnimarket.nodes.node_factory_floor_effect
+    args: ["--home", "{home}"]
   names:
     page: index.html
     data: factory-floor.json
+    process_health: process-health.json
+    status: publish-status.json
   transport:
     connect_timeout_seconds: 10
     transfer_timeout_seconds: 60

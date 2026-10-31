@@ -8,6 +8,8 @@ from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_flo
     ModelFactoryFloorPublishRequest,
     ModelFactoryFloorPublishResult,
     ModelFactoryFloorPublishRuntime,
+    ModelPublishStep,
+    ModelPublishStepResult,
 )
 
 __all__ = [
@@ -16,4 +18,6 @@ __all__ = [
     "ModelFactoryFloorPublishRequest",
     "ModelFactoryFloorPublishResult",
     "ModelFactoryFloorPublishRuntime",
+    "ModelPublishStep",
+    "ModelPublishStepResult",
 ]

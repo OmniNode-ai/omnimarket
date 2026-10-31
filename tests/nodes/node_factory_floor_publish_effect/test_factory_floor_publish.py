@@ -75,6 +75,7 @@ def _overlay(tmp_path: Path) -> ModelFactoryFloorPublishOverlay:
         ssh_target="lab-web",
         remote_dir=str(tmp_path / "site"),
         serve_url="http://example.invalid:8088/",
+        bus_lane="lane-x",
     )
 
 
@@ -161,6 +162,7 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
     assert sorted(p.name for p in site.iterdir()) == [
         "factory-floor.json",
         "index.html",
+        "publish-status.json",
     ]
     assert (
         json.loads((site / "factory-floor.json").read_text())["generated_at"]
@@ -169,8 +171,13 @@ def test_atomic_publish_writes_both_files_and_leaves_no_temporary(
     assert (site / "index.html").read_bytes() == (
         NODE_DIR / "page/index.html"
     ).read_bytes()
-    assert result.published == ("index.html", "factory-floor.json")
+    assert result.published == (
+        "index.html",
+        "publish-status.json",
+        "factory-floor.json",
+    )
     assert [c[0][-1].count("factory-floor.json") > 0 for c in ssh.calls] == [
+        False,
         False,
         True,
     ]
@@ -233,28 +240,138 @@ def test_atomic_unreadable_or_foreign_record_is_refused_before_any_copy(
     assert ssh.calls == []
 
 
-def test_refresh_runs_the_factory_floor_effect_first_and_a_failure_publishes_nothing(
-    tmp_path: Path,
-) -> None:
-    ssh = LocalSsh()
-    request = ModelFactoryFloorPublishRequest(
+class Scripted(LocalSsh):
+    """ssh runs locally; every other command answers from a table keyed by a word of its argv."""
+
+    def __init__(self, answers: dict[str, tuple[int, bytes, bytes]]) -> None:
+        super().__init__()
+        self.answers = answers
+
+    def __call__(
+        self, argv: Sequence[str], stdin: bytes | None, timeout: int
+    ) -> subprocess.CompletedProcess[bytes]:
+        if argv[0] == "ssh":
+            return super().__call__(argv, stdin, timeout)
+        self.calls.append((list(argv), stdin))
+        for word, (code, out, err) in self.answers.items():
+            if word in argv:
+                return subprocess.CompletedProcess(list(argv), code, out, err)
+        return subprocess.CompletedProcess(list(argv), 0, b"", b"")
+
+
+FACTORY = "omnimarket.nodes.node_factory_floor_effect"
+HEALTH_MODULE = "omnimarket.nodes.node_process_health_effect.runtime_process_health"
+HEALTH = {"generated_at": "2026-10-31T12:00:00Z", "days": [], "summary": {}}
+
+
+def _refresh_request(tmp_path: Path) -> ModelFactoryFloorPublishRequest:
+    return ModelFactoryFloorPublishRequest(
         home=str(_home(tmp_path)), overlay=_overlay(tmp_path)
     )
-    HandlerFactoryFloorPublish(ssh).handle(request, environ={})
-    first = ssh.calls[0][0]
-    assert first[1:3] == ["-m", "omnimarket.nodes.node_factory_floor_effect"]
 
-    class Failing(LocalSsh):
-        def __call__(
-            self, argv: Sequence[str], stdin: bytes | None, timeout: int
-        ) -> subprocess.CompletedProcess[bytes]:
-            self.calls.append((list(argv), stdin))
-            return subprocess.CompletedProcess(list(argv), 3, b"", b"no plans")
 
-    failing = Failing()
-    with pytest.raises(PublishRefusedError, match="exited 3"):
-        HandlerFactoryFloorPublish(failing).handle(request, environ={})
-    assert len(failing.calls) == 1
+def _program_calls(runner: LocalSsh) -> list[str]:
+    return [
+        c[0][2] if c[0][1] == "-m" else "hosts"
+        for c in runner.calls
+        if c[0][0] != "ssh"
+    ]
+
+
+def test_refresh_steps_run_in_contract_order_with_the_factory_floor_effect_last(
+    tmp_path: Path,
+) -> None:
+    runner = Scripted({"--json": (0, b"[]", b"")})
+    request = _refresh_request(tmp_path)
+    HandlerFactoryFloorPublish(runner).handle(request, environ={})
+    assert _program_calls(runner) == ["hosts", HEALTH_MODULE, FACTORY]
+    hosts = next(c[0] for c in runner.calls if c[0][0] != "ssh" and c[0][1] != "-m")
+    assert hosts[-2:] == ["--bus-lane", "lane-x"]
+    assert hosts[0].startswith(request.home or "")
+    assert (
+        Path(request.home or "") / ".claude_scratch/lab-run/hosts.json"
+    ).read_text() == "[]"
+    factory = next(c[0] for c in runner.calls if FACTORY in c[0])
+    assert factory[-2:] == ["--home", request.home]
+
+
+def test_refresh_a_required_step_failing_publishes_nothing(tmp_path: Path) -> None:
+    runner = Scripted({FACTORY: (3, b"", b"no plans")})
+    with pytest.raises(PublishRefusedError, match="required step factory_floor failed"):
+        HandlerFactoryFloorPublish(runner).handle(
+            _refresh_request(tmp_path), environ={}
+        )
+    assert not [c for c in runner.calls if c[0][0] == "ssh"]
+
+
+def test_refresh_an_optional_step_failing_is_published_as_failed_without_its_output(
+    tmp_path: Path,
+) -> None:
+    runner = Scripted({"--json": (1, b"", b"bus: /private/path refused")})
+    result = HandlerFactoryFloorPublish(runner).handle(
+        _refresh_request(tmp_path), environ={}
+    )
+    failed = {s.name: s for s in result.steps if s.status == "failed"}
+    assert set(failed) == {"hosts", "friction"}
+    assert failed["hosts"].detail == "exit 1"
+    assert "refused" in failed["hosts"].diagnostic
+    status = json.loads((tmp_path / "site/publish-status.json").read_text())
+    assert {s["name"]: s["status"] for s in status["steps"]}["hosts"] == "failed"
+    assert "diagnostic" not in json.dumps(status)
+    assert "private" not in json.dumps(status)
+    assert status["process_health"] == "absent"
+
+
+def test_refresh_a_capture_that_is_not_a_json_list_is_a_failed_step(
+    tmp_path: Path,
+) -> None:
+    runner = Scripted({"--json": (0, b'{"a": 1}', b"")})
+    result = HandlerFactoryFloorPublish(runner).handle(
+        _refresh_request(tmp_path), environ={}
+    )
+    hosts = next(s for s in result.steps if s.name == "hosts")
+    assert (hosts.status, hosts.detail) == ("failed", "output is not a JSON list")
+    assert not (tmp_path / "home/.claude_scratch/lab-run/hosts.json").exists()
+
+
+def test_refresh_the_friction_report_is_copied_only_when_it_is_json(
+    tmp_path: Path,
+) -> None:
+    request = _refresh_request(tmp_path)
+    source = Path(request.home or "") / ".onex_state/friction-rollup/latest.json"
+    source.parent.mkdir(parents=True)
+    source.write_text('{"classes": []}', encoding="utf-8")
+    result = HandlerFactoryFloorPublish(Scripted({})).handle(request, environ={})
+    assert next(s for s in result.steps if s.name == "friction").status == "ok"
+    copied = Path(request.home or "") / ".claude_scratch/friction/friction-report.json"
+    assert copied.read_text() == '{"classes": []}'
+    source.write_text("not json", encoding="utf-8")
+    again = HandlerFactoryFloorPublish(Scripted({})).handle(request, environ={})
+    assert next(s for s in again.steps if s.name == "friction").status == "failed"
+
+
+def test_process_health_is_published_beside_the_record_when_it_is_a_series(
+    tmp_path: Path,
+) -> None:
+    request = _request(tmp_path)
+    health = Path(request.home or "") / load_runtime().process_health_relpath
+    health.parent.mkdir(parents=True)
+    health.write_text(json.dumps(HEALTH), encoding="utf-8")
+    runner = LocalSsh()
+    result = HandlerFactoryFloorPublish(runner).handle(request, environ={})
+    assert result.process_health_published is True
+    assert result.published == (
+        "index.html",
+        "publish-status.json",
+        "process-health.json",
+        "factory-floor.json",
+    )
+    status = json.loads((tmp_path / "site/publish-status.json").read_text())
+    assert status["process_health"] == "published"
+    health.write_text('{"generated_at": "x"}', encoding="utf-8")
+    again = HandlerFactoryFloorPublish(LocalSsh()).handle(request, environ={})
+    assert again.process_health_published is False
+    assert "process-health.json" not in again.published
 
 
 def test_cli_refusal_exits_two(
@@ -279,7 +396,8 @@ def test_page_fetches_the_record_and_reads_every_field_the_node_writes() -> None
         "andon", "flag", "reason", "causes", "items", "feeders", "bays", "shipped", "waiting", "stoppages",
         "cost_minutes", "occurrences", "recurring", "tickets", "last_seen", "stale", "running", "free",
         "watcher_last_tick", "ledger_rows", "ledger_newest_row", "linear_issues", "placement_hosts",
-        "stoppage_report",
+        "stoppage_report", "comparisons", "before_status", "after_status", "verdict", "is_reset_day",
+        "covered_to", "reset_label", "publish-status.json", "process-health.json", "published_at",
     ):  # fmt: skip
         assert re.search(rf"\b{field}\b", PAGE), field
 

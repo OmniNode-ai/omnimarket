@@ -175,6 +175,24 @@ footer{font-size:.8rem;color:var(--muted);display:grid;gap:6px;max-width:80ch}
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
 </style>
 <style>
+.health{display:grid;gap:14px}
+.health .src{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.8rem;color:var(--muted)}
+.health .src b{font-weight:600;color:var(--ink)}
+.health .src .bad{color:var(--stop)} .health .src .part{color:var(--warn)}
+.htable{width:100%;border-collapse:collapse;font-size:.86rem}
+.htable th{font:500 .7rem/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);text-align:left;padding:6px 8px;border-bottom:1px solid var(--rule)}
+.htable td{padding:7px 8px;border-bottom:1px dashed var(--rule);vertical-align:middle}
+.htable td.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.htable .unread{color:var(--muted);font-style:italic}
+.verdict{font:500 .7rem/1 var(--f-mono);text-transform:uppercase;letter-spacing:.08em;padding:4px 7px;border-radius:3px;border:1px solid currentColor;white-space:nowrap}
+.verdict.better{color:var(--ok)} .verdict.worse{color:var(--stop)} .verdict.flat{color:var(--muted)} .verdict.info{color:var(--steel)} .verdict.unmeasured{color:var(--muted);border-style:dashed}
+.grey{background:color-mix(in srgb,var(--idle) 14%,var(--panel));border:1px solid var(--rule);border-radius:6px;padding:12px 14px;display:grid;gap:8px;color:var(--muted)}
+.grey h3{color:var(--muted)}
+.spark{display:block}
+.spark .ln{fill:none;stroke:var(--steel);stroke-width:1.5}
+.spark .pt{fill:var(--steel);stroke:var(--steel)} .spark .pt.part{fill:var(--panel)}
+.spark .rs{stroke:var(--warn);stroke-width:1;stroke-dasharray:2 2}
+.age-stale{color:var(--stop);font-weight:600}
 .banner{background:var(--stop-soft);color:var(--ink);border:1px solid var(--stop);border-radius:4px;padding:10px 14px;font-size:.9rem}
 .banner[hidden]{display:none}
 .empty{color:var(--muted);font-size:.9rem}
@@ -225,6 +243,11 @@ footer{font-size:.8rem;color:var(--muted);display:grid;gap:6px;max-width:80ch}
     </div>
   </section>
 
+  <section class="card health" aria-labelledby="ph">
+    <div><div class="eyebrow" id="phStamp">Process health</div><h2 id="ph">Process health since the factory reset</h2></div>
+    <div id="phBody"><p class="empty">Reading the process-health series.</p></div>
+  </section>
+
   <section class="card" aria-labelledby="stops">
     <div><div class="eyebrow">Friction report · stated cost in minutes</div><h2 id="stops">Biggest stoppages</h2></div>
     <div class="chart-scroll"><svg class="chart" id="stopChart" viewBox="0 0 760 120" role="img" aria-label="Stoppage cost by cause"></svg></div>
@@ -238,6 +261,8 @@ footer{font-size:.8rem;color:var(--muted);display:grid;gap:6px;max-width:80ch}
 
 <script>
 const DATA_FILE = "factory-floor.json";
+const STATUS_FILE = "publish-status.json";
+const HEALTH_FILE = "process-health.json";
 const POLL_MS = 60000;
 const STALE_MIN = 90;
 
@@ -370,7 +395,7 @@ function ageText(ms){
   return m < 1 ? "under a minute" : m < 120 ? `${m} min` : `${(m/60).toFixed(1)} h`;
 }
 
-function render(rec){
+function render(rec, aux){
   const lines = rec.lines || [];
   const floor = Object.assign({bays:[],shipped:[],waiting:[],stoppages:[]}, rec.floor || {});
   const gen = Date.parse(rec.generated_at);
@@ -385,23 +410,111 @@ function render(rec){
   el("shippedCount").textContent = String(floor.shipped.length);
   el("shipped").innerHTML = prList(floor.shipped);
   el("waiting").innerHTML = prList(floor.waiting);
-  const s = rec.sources || {};
-  el("sourceList").innerHTML = [
-    ["Pull request watcher, last tick", s.watcher_last_tick || "none"],
-    ["Ledger rows read", `${s.ledger_rows ?? 0}`],
-    ["Newest ledger row", s.ledger_newest_row || "none"],
-    ["Linear issues read", `${s.linear_issues ?? 0}`],
-    ["Lab hosts advertising", `${s.placement_hosts ?? 0}`],
-    ["Friction report supplied", s.stoppage_report ? "yes" : "no"]
-  ].map(([k,v]) => `<li><span>${esc(k)}</span><span>${esc(v)}</span></li>`).join("");
+  renderSources(rec.sources || {}, aux.status);
   renderStops(floor.stoppages);
+  renderHealth(aux.health, aux.healthError);
+}
+
+function ageSpan(iso){
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return `<span class="unread">${esc(iso || "unread")}</span>`;
+  const ms = Date.now() - t;
+  const cls = ms > STALE_MIN*60000 ? "age-stale" : "";
+  return `<span class="${cls}">${esc(ageText(ms))} ago</span> <small>${esc(new Date(t).toISOString().replace("T"," ").slice(0,16))} UTC</small>`;
+}
+
+function renderSources(s, status){
+  const rows = [
+    ["Pull request watcher, last tick", s.watcher_last_tick ? ageSpan(s.watcher_last_tick) : `<span class="unread">unread</span>`],
+    ["Newest ledger row read", s.ledger_newest_row ? ageSpan(s.ledger_newest_row) : `<span class="unread">unread</span>`],
+    ["Ledger rows read", esc(s.ledger_rows ?? 0)],
+    ["Linear issues read", esc(s.linear_issues ?? 0)],
+    ["Lab hosts advertising", s.placement_hosts ? esc(s.placement_hosts) : `<span class="unread">none read</span>`],
+    ["Friction report", s.stoppage_report ? "read" : `<span class="unread">not supplied</span>`]
+  ];
+  if (status && Array.isArray(status.steps)){
+    rows.push(["Published", ageSpan(status.published_at)]);
+    status.steps.forEach(st => rows.push([`Input step: ${st.name}`, st.status === "ok" ? "ok" : `<span class="age-stale">failed (${esc(st.detail)})</span>`]));
+  } else {
+    rows.push(["Input steps", `<span class="unread">status not published</span>`]);
+  }
+  el("sourceList").innerHTML = rows.map(([k,v]) => `<li><span>${esc(k)}</span><span>${v}</span></li>`).join("");
+}
+
+const GREY_PREFIXES = ["merges.", "delegation.", "lanes.terminals", "lanes.share_done", "lanes.share_handed_off", "friction.measured_lease_minutes"];
+const VERDICT = {improved:["better","Better"], worse:["worse","Worse"], flat:["flat","Flat"], informational:["info","Context"], unmeasured:["unmeasured","Unmeasured"]};
+
+function fmtValue(v, status, c){
+  if (v == null || status === "unread") return `<span class="unread">unread</span>`;
+  let text;
+  if (c.kind === "ratio") text = (v*100).toFixed(0) + "%";
+  else if (Number.isInteger(v)) text = v.toLocaleString("en-US");
+  else text = v.toLocaleString("en-US", {maximumFractionDigits: 1});
+  const unit = c.kind === "ratio" ? "" : " " + esc(c.comparable_unit || c.unit || "");
+  return esc(text) + `<small>${unit}${status === "partial" ? " (partial)" : ""}</small>`;
+}
+
+function spark(days, key){
+  const pts = days.map(d => {
+    const m = ((d.window || {}).metrics || []).find(x => x.key === key);
+    return m && m.value != null && m.status !== "unread" ? {v: m.value, part: m.status !== "read" || d.partial, reset: d.is_reset_day} : null;
+  });
+  const vals = pts.filter(Boolean).map(p => p.v);
+  if (!vals.length) return `<span class="unread">unread</span>`;
+  const lo = Math.min(...vals), hi = Math.max(...vals), w = 96, h = 24, span = hi - lo || 1;
+  const x = i => 3 + i*(w-6)/Math.max(1, pts.length-1), y = v => h-3 - (v-lo)/span*(h-6);
+  let path = "", pen = false;
+  pts.forEach((p,i) => { if (!p){ pen = false; return; } path += (pen ? "L" : "M") + x(i).toFixed(1) + " " + y(p.v).toFixed(1); pen = true; });
+  const resetI = pts.findIndex((p,i) => days[i].is_reset_day);
+  return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${days.length} day series">
+    ${resetI >= 0 ? `<line class="rs" x1="${x(resetI)}" y1="0" x2="${x(resetI)}" y2="${h}"/>` : ""}
+    <path class="ln" d="${path}"/>${pts.map((p,i) => p ? `<circle class="pt${p.part?" part":""}" cx="${x(i).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="2"/>` : "").join("")}</svg>`;
+}
+
+function healthRows(list, days){
+  return `<table class="htable"><thead><tr><th>Measure</th><th>Last ${days.length} days</th><th>Before reset</th><th>After reset</th><th>Verdict</th></tr></thead><tbody>${
+    list.map(c => { const [cls, label] = VERDICT[c.verdict] || ["flat", c.verdict];
+      return `<tr><td>${esc(c.label)}</td><td>${spark(days, c.key)}</td><td class="num">${fmtValue(c.before, c.before_status, c)}</td><td class="num">${fmtValue(c.after, c.after_status, c)}</td><td><span class="verdict ${cls}">${esc(label)}</span></td></tr>`; }).join("")
+  }</tbody></table>`;
+}
+
+function renderHealth(h, err){
+  const body = el("phBody"), stamp = el("phStamp");
+  if (!h){
+    stamp.textContent = "Process health · unread";
+    body.innerHTML = `<p class="empty">The process-health series is not published${err ? " (" + esc(err) + ")" : ""}. No figure is shown rather than a zero.</p>`;
+    return;
+  }
+  const gen = Date.parse(h.generated_at);
+  stamp.innerHTML = `Process health · computed ${ageSpan(h.generated_at)}`;
+  const sm = h.summary || {}, days = h.days || [];
+  const comps = sm.comparisons || [];
+  const grey = c => GREY_PREFIXES.some(p => c.key.startsWith(p));
+  const quality = comps.filter(c => !grey(c)), other = comps.filter(grey);
+  const srcs = (h.sources || []).map(s => `<span><b>${esc(s.name)}</b> <span class="${s.status === "read" ? "" : s.status === "partial" ? "part" : "bad"}">${esc(s.status)}</span>${s.covered_to ? ` to ${esc(s.covered_to.slice(0,16).replace("T"," "))}` : ""}</span>`).join("");
+  const measured = sm.measured !== false;
+  body.innerHTML = `
+    <p class="muted">${esc(h.reset_label || "Factory reset")}: ${measured ? `${sm.improved ?? 0} measures better, ${sm.worse ?? 0} worse, ${sm.flat ?? 0} flat, ${sm.unmeasured ?? 0} unmeasured, comparing the ${sm.window_hours ?? "?"} hours before the reset with the same span after it. A dashed marker in a series is the reset.` : esc(sm.reason || "the comparison could not be measured")}</p>
+    <div class="src">${srcs}</div>
+    <h3>Quality</h3>
+    ${healthRows(quality, days)}
+    <div class="grey"><h3>Throughput and cost</h3>${healthRows(other, days)}</div>`;
+}
+
+async function fetchOptional(name){
+  try {
+    const r = await fetch(name, {cache:"no-store"});
+    if (r.status === 404) return {data: null, error: "not published"};
+    if (!r.ok) return {data: null, error: "HTTP " + r.status};
+    return {data: await r.json(), error: ""};
+  } catch (e) { return {data: null, error: e.message}; }
 }
 
 async function load(){
   try {
-    const r = await fetch(DATA_FILE, {cache:"no-store"});
+    const [r, st, ph] = await Promise.all([fetch(DATA_FILE, {cache:"no-store"}), fetchOptional(STATUS_FILE), fetchOptional(HEALTH_FILE)]);
     if (!r.ok) throw new Error("HTTP " + r.status);
-    render(await r.json());
+    render(await r.json(), {status: st.data, health: ph.data, healthError: ph.error});
   } catch (e) {
     const banner = el("banner");
     banner.hidden = false;

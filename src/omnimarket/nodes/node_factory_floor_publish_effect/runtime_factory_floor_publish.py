@@ -20,7 +20,7 @@ from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_flo
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     ap = argparse.ArgumentParser(
         prog="factory_floor_publish",
-        description="Regenerate the factory floor record and publish it with its page to the serving host.",
+        description="Refresh the factory floor inputs and record and publish them with the page to the serving host.",
     )
     ap.add_argument(
         "--omni-home",
@@ -46,8 +46,14 @@ def main(argv: list[str] | None = None) -> int:
     except (PublishRefusedError, NodeOverlayError) as exc:
         sys.stderr.write(f"REFUSED factory-floor-publish: {exc}\n")
         return 2
+    for step in result.steps:
+        if step.status == "failed":
+            sys.stderr.write(
+                f"factory-floor-publish: step {step.name} failed ({step.detail}): {step.diagnostic}\n"
+            )
     sys.stdout.write(
         f"factory-floor-publish: published={','.join(result.published)} "
-        f"record={result.generated_at} sha256={result.data_sha256[:12]} refreshed={result.refreshed}\n"
+        f"record={result.generated_at} sha256={result.data_sha256[:12]} "
+        f"steps={','.join(f'{s.name}:{s.status}' for s in result.steps) or 'skipped'}\n"
     )
     return 0
