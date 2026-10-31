@@ -1,0 +1,39 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21752"
+title: "The delegate-skill handler splats a bare name into dispatch(), so the omnibase_infra delegation keyword-parity hook and CI job refuse every omnibase_infra commit and PR"
+summary: "omnimarket#4653 added a splat of a bare name, session_kwargs, to the handler's dispatch call. omnibase_infra's keyword-parity check reads that call with ast and resolves only a splat of a call to a module-level helper annotated with a module-level TypedDict, so it failed closed and refused every omnibase_infra commit and PR. The splat is now a call to such a helper, the session model still reaches only a port that declares it, and a test holds every splat at the call site to the same rule."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21752-typed-dict-splat"
+    statement: |-
+      Every keyword splat at the handler's dispatch call is a call to a module-level helper annotated to return a module-level TypedDict, so the omnibase_infra keyword-parity reader resolves it. The check is not widened.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the dispatch call splats a call to a module-level helper in handler_delegate_skill.py whose return annotation is a module-level TypedDict, so the omnibase_infra parity reader resolves it -- falsifier: cd $OMNI_HOME/omnibase_infra && ONEX_DELEGATION_CONSUMER_SOURCE=<fixed handler_delegate_skill.py> uv run pytest tests/integration/runtime/test_delegation_dispatch_port_consumer_kwarg_parity.py -q"
+      - id: "AC2"
+        statement: "AC2: a test in omnimarket reads the handler call site with ast and fails when any dispatch() splat is not a call to a module-level TypedDict-returning helper, and passes on the fix -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator -k dispatch_call_site_splats -q"
+      - id: "AC3"
+        statement: "AC3: the session model still reaches a port that declares it and is withheld from one that does not -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator -k session_model -q"
+evidence_requirements:
+  - kind: "tests"
+    description: "The call-site splat rule and the session-model keyword cases pass on the fix."
+    command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_dispatch_call_site_splats_omn21752.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21752-call-site"
+    description: "The call-site splat rule and the session-model cases pass."
+    source: "manual"
+    binds_ac: ["AC2", "AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_dispatch_call_site_splats_omn21752.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: "grep -q '_session_model_dispatch_kwargs' src/omnimarket/nodes/node_delegate_skill_orchestrator/handlers/handler_delegate_skill.py"
+        cwd: "."
