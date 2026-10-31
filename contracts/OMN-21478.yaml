@@ -44,3 +44,12 @@ dod_evidence:
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC2
+- id: dod-omn21478-core-pin-e3433152a2f6
+  description: pyproject.toml and uv.lock pin omnibase-core to the dev merge tag dev-20261031034124-e3433152a2f6.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: grep -q 'omnibase_core.git", tag = "dev-20261031034124-e3433152a2f6"' pyproject.toml && grep -q 'dev-20261031034124-e3433152a2f6' uv.lock
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2
