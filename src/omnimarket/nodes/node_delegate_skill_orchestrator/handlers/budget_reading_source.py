@@ -63,7 +63,8 @@ class ProjectionBudgetReadingSource:
         return f"projection {self._source.relation} via ${self._source.dsn_env}"
 
     def read(self, since: datetime, until: datetime) -> Sequence[ModelBudgetReading]:
-        dsn = os.environ.get(self._source.dsn_env)
+        # The variable name is the contract's own (dsn_env), not a fixed key.
+        dsn = os.environ.get(self._source.dsn_env)  # ONEX_FLAG_EXEMPT
         if not dsn or not dsn.strip():
             raise BudgetSourceUnreadableError(
                 f"{self._source.dsn_env} is not set; the readback reads "
