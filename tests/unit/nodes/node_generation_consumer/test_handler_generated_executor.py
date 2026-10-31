@@ -267,12 +267,12 @@ def test_deploy_writes_handler_and_contract_to_sandbox() -> None:
 
 
 @pytest.mark.unit
-def test_deploy_registers_node_for_execution() -> None:
+def test_deploy_reports_the_handler_path_execution_reads() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         sandbox = Path(tmp)
         executor = HandlerGeneratedExecutor(sandbox_dir=sandbox)
 
-        executor.deploy(
+        result = executor.deploy(
             {
                 "node_name": "node_echo2",
                 "contract_yaml": "",
@@ -283,8 +283,7 @@ def test_deploy_registers_node_for_execution() -> None:
             }
         )
 
-        assert "node_echo2" in executor._registry
-        assert executor._registry["node_echo2"] == sandbox / "node_echo2" / "handler.py"
+        assert result["handler_path"] == str(sandbox / "node_echo2" / "handler.py")
 
 
 @pytest.mark.unit
