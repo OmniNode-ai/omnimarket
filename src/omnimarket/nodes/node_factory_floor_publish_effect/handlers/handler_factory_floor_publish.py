@@ -109,6 +109,7 @@ class HandlerFactoryFloorPublish:
     def handle(
         self,
         request: ModelFactoryFloorPublishRequest,
+        *,
         environ: Mapping[str, str] | None = None,
     ) -> ModelFactoryFloorPublishResult:
         """Raises ``PublishRefusedError`` or ``NodeOverlayError`` naming what is missing."""

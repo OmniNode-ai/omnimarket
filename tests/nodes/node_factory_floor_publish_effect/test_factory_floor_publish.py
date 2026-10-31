@@ -432,7 +432,7 @@ def test_page_escapes_record_text_before_it_reaches_markup() -> None:
 
 
 def test_page_node_syntax_is_valid() -> None:
-    script = re.search(r"<script>(.*)</script>", PAGE, re.DOTALL)
+    script = re.search(r"<script>(.*)</script>", PAGE, re.DOTALL | re.IGNORECASE)
     assert script is not None
     node = shutil.which("node")
     if node is None:
