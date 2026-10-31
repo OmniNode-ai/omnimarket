@@ -49,6 +49,16 @@ requirements:
     acceptance:
       - id: "AC13"
         statement: "AC13: a hash naming a lane, line, machine or station opens a labelled panel over the tab with that item's detail, a name the record does not hold is said so, the panel closes by button, Escape, scrim and back with one history entry per open, the tab underneath never scrolls and each tab keeps its own scroll position -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -k page_drawer -q"
+  - id: "req-omn21733-undrawn-lines"
+    statement: |-
+      A declared line the board cannot draw is never silent: it is drawn stopped with its cause, the publish status names it when the record leaves it out, and a lane that ended blocked or an ask to the orchestrator nobody answered stops the line it belongs to, with its age.
+    acceptance:
+      - id: "AC14"
+        statement: "AC14: a declared plan text that matches no plan file is drawn as a stopped line with the cause plan file not found, and a matched plan with no tasks is drawn stopped with the cause no task table -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_undrawn_lines.py -q -k 'undrawn or declared_fragment or no_task_table or declares_no_line'"
+      - id: "AC15"
+        statement: "AC15: the publish status marks the factory_floor step not ok and names the declared lines when the record leaves any of them out -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q -k 'one_of_three_declared'"
+      - id: "AC16"
+        statement: "AC16: a line whose lane ended blocked, or whose ask to the orchestrator has no answer, is drawn stopped with the cause and its age in minutes, and the validators line reads the pill the hold-exemption rule demands -- falsifier: uv run pytest tests/nodes/node_factory_floor_compute/test_undrawn_lines.py -q -k 'blocked_terminal or unanswered or validators'"
 evidence_requirements:
   - kind: "tests"
     description: "Tests of the overlay refusals, the atomic remote write (executed through a local shell), the refresh ordering and the page."
@@ -164,6 +174,22 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k refresh"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac14"
+    description: "AC14 undrawn declared lines are drawn stopped with their cause."
+    source: "manual"
+    binds_ac: ["AC14"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_undrawn_lines.py -q --no-cov --tb=line -k 'undrawn or declared_fragment or no_task_table or declares_no_line'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-ac15"
+    description: "AC15 the publish status names a declared line the record leaves out."
+    source: "manual"
+    binds_ac: ["AC15"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k one_of_three_declared"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21733-ac13"
     description: "AC13 drawer tests pass."
     source: "manual"
@@ -178,3 +204,17 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_publish_effect/page/index.html?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^function drillContent(d){'"
+  - id: "dod-omn21733-ac16"
+    description: "AC16 a blocked lane or an unanswered ask stops its line with the cause and the age."
+    source: "manual"
+    binds_ac: ["AC16"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_undrawn_lines.py -q --no-cov --tb=line -k 'blocked_terminal or unanswered or validators'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21733-undrawn-deploy"
+    description: "Deploy probe reads the compute handler at the checked-out commit from GitHub and requires _undrawn, which draws a declared line no plan matched and is absent from the base handler."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_compute/handlers/handler_factory_floor.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^def _undrawn('"

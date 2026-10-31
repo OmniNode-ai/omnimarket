@@ -392,6 +392,93 @@ def _red_prs(
     )
 
 
+def _minutes(request: ModelFactoryFloorRequest, ts: datetime) -> int:
+    return int((request.generated_at - ts).total_seconds() // 60)
+
+
+def _resumed(row: ModelFloorLedgerRow, request: ModelFactoryFloorRequest) -> bool:
+    """True when a lane other than the row's writer claimed one of its tickets after it: the work moved on."""
+    return any(
+        other.kind == "CLAIM"
+        and other.ts > row.ts
+        and other.lane != row.lane
+        and _intersects(other.tickets, row.tickets)
+        for other in request.ledger
+    )
+
+
+def _asks_orchestrator(
+    row: ModelFloorLedgerRow, config: ModelFactoryFloorConfig
+) -> bool:
+    return any(
+        part.strip().startswith(recipient)
+        for part in row.to.split(",")
+        for recipient in config.ask_recipients
+    )
+
+
+def _ledger_stops(
+    plan: ModelFloorPlanInput, request: ModelFactoryFloorRequest
+) -> tuple[str, ...]:
+    """Open stops the ledger records on the plan's tickets: a lane that ended blocked, an ask nobody answered."""
+    config = request.config
+    scope = _scope(plan)
+    answered = {
+        row.re
+        for row in request.ledger
+        if row.kind in config.ask_answer_kinds and row.re
+    }
+    stops: tuple[str, ...] = ()
+    for row in sorted(request.ledger, key=_row_key):
+        if not _intersects(row.tickets, scope) or _resumed(row, request):
+            continue
+        said = (row.text or row.reason)[: config.note_chars]
+        age = _minutes(request, row.ts)
+        if row.kind == "TERMINAL" and row.outcome in config.stop_outcomes:
+            stops += (f"lane {row.lane} ended {row.outcome} {age} min ago: {said}",)
+        elif (
+            row.kind == "MSG"
+            and _asks_orchestrator(row, config)
+            and row.row_id not in answered
+        ):
+            stops += (f"MSG {row.row_id} to {row.to} unanswered for {age} min: {said}",)
+    return stops
+
+
+def _declared_fragment(
+    plan: ModelFloorPlanInput, request: ModelFactoryFloorRequest
+) -> str:
+    return next(
+        (t for t in request.selection.plan_path_contains if t in plan.plan_path), ""
+    )
+
+
+def _undrawn(request: ModelFactoryFloorRequest) -> tuple[ModelFloorLine, ...]:
+    """A declared line no plan matched is drawn stopped with its cause, never left out of the record."""
+    cause = request.config.undrawn_not_found_cause
+    return tuple(
+        ModelFloorLine(
+            line_id=token,
+            name=token,
+            plan_path="",
+            source="undrawn",
+            status_pill="stopped",
+            percent_built=0,
+            stations=(),
+            andon=ModelFloorAndon(
+                flag=True,
+                reason=f"{cause}: no plan path contains {token}"[
+                    : request.config.note_chars
+                ],
+                causes=(f"{cause}: no plan path contains {token}",),
+            ),
+            declared_fragment=token,
+        )
+        for token in dict.fromkeys(request.selection.plan_path_contains)
+        if not any(token in plan.plan_path for plan in request.plans)
+    )
+
+
 def _line(
     plan: ModelFloorPlanInput,
     all_holds: tuple[ModelFloorLedgerRow, ...],
@@ -436,7 +523,13 @@ def _line(
             and item.state == "stop"
         )
         + _red_prs(items, request)
+        + _ledger_stops(plan, request)
     )
+    if not tasks:
+        causes = (
+            f"{request.config.undrawn_no_tasks_cause}: the plan has neither a task manifest nor a plans-today table",
+            *causes,
+        )
     reason = (
         causes[0] + (f" (+{len(causes) - 1} more)" if len(causes) > 1 else "")
         if causes
@@ -470,6 +563,7 @@ def _line(
         andon=ModelFloorAndon(
             flag=bool(causes), reason=reason[: request.config.note_chars], causes=causes
         ),
+        declared_fragment=_declared_fragment(plan, request),
     )
 
 
@@ -591,7 +685,7 @@ def compute_factory_floor(request: ModelFactoryFloorRequest) -> ModelFactoryFloo
     return ModelFactoryFloorResult(
         schema_id=request.config.schema_id,
         generated_at=_stamp(request.generated_at),
-        lines=lines,
+        lines=lines + _undrawn(request),
         floor=_floor(request, selected, lines),
         sources=ModelFloorSources(
             watcher_last_tick=_stamp(request.watcher.last_tick),

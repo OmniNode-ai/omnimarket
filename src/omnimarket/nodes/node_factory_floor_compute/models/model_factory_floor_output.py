@@ -14,7 +14,7 @@ from omnimarket.models.model_factory_floor_input import (
 
 StatusPill = Literal["stopped", "done", "building", "queued"]
 CiOut = Literal["green", "red", "pending", "none", "unread", ""]
-LineSource = Literal["manifest", "plan-task-table"]
+LineSource = Literal["manifest", "plan-task-table", "undrawn"]
 
 
 class ModelFloorItem(BaseModel):
@@ -54,7 +54,7 @@ class ModelFloorAndon(BaseModel):
 
 
 class ModelFloorLine(BaseModel):
-    """One car on the line: a selected plan."""
+    """One car on the line: a selected plan, or a declared line no plan could be read for (``source`` undrawn)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -66,6 +66,8 @@ class ModelFloorLine(BaseModel):
     percent_built: int
     stations: tuple[ModelFloorStation, ...]
     andon: ModelFloorAndon
+    # The overlay-declared text that selected this line ("" when the run declared none).
+    declared_fragment: str = ""
 
 
 class ModelFloorBay(BaseModel):

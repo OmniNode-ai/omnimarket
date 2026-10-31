@@ -230,6 +230,8 @@ class ModelFactoryFloorPublishRuntime(BaseModel):
     process_health_relpath: str = Field(min_length=1)
     delegation_relpath: str = Field(min_length=1)
     lines_overlay: ModelLinesOverlay
+    # The step whose status the record's completeness is judged on: not ok while a declared line is not drawn.
+    record_step: str = Field(min_length=1, pattern=r"^[a-z][a-z0-9_]*$")
     steps: tuple[ModelPublishStep, ...] = Field(min_length=1)
     names: ModelPublishNames
     transport: ModelPublishTransport
