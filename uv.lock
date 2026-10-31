@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -11,7 +11,7 @@ resolution-markers = [
 [manifest]
 overrides = [
     { name = "omnibase-compat", specifier = "==0.5.7" },
-    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261031000524-fc6159b98026" },
+    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261031202110-8b4ae2bf4264" },
     { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261031054837-4284f5bf5587" },
     { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261028101803-7955bf0dff0f" },
 ]
@@ -3085,8 +3085,8 @@ wheels = [
 
 [[package]]
 name = "omnibase-core"
-version = "0.47.60"
-source = { git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261031000524-fc6159b98026#fc6159b9802687dcf8496ac34ff13a409a6d5230" }
+version = "0.47.61"
+source = { git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261031202110-8b4ae2bf4264#8b4ae2bf4264a2e7e26619ab1555003666dae9f3" }
 dependencies = [
     { name = "blake3" },
     { name = "click" },
@@ -3252,7 +3252,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "jsonschema", specifier = ">=4.18.0" },
     { name = "omnibase-compat", specifier = "==0.5.7" },
-    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261031000524-fc6159b98026" },
+    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261031202110-8b4ae2bf4264" },
     { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261031054837-4284f5bf5587" },
     { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261028101803-7955bf0dff0f" },
     { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?tag=dev-20261028085302-971553debfa3" },
