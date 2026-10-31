@@ -7,6 +7,18 @@ is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
+  - id: "req-omn21623-node-timeouts-a"
+    statement: |-
+      The sixteen nodes hold no timeout, interval, delay, backoff or TTL literal in code. Every duration is declared in the node contract with the value it held before, a name the contract does not declare stops the node, and an injected duration wins over the declared one.
+    acceptance:
+      - id: "AC6"
+        statement: "AC6: the contracts_and_di check reports no literal_timeout finding in the sixteen node directories of the slice -- falsifier: the command of dod-omn21623-timeouts-check-clean below exits nonzero when a timeout literal returns to any of them"
+      - id: "AC7"
+        statement: "AC7: every node of the slice declares its durations in its contract.yaml with the value its code held before -- falsifier: uv run pytest tests/test_node_timeouts_contract.py -k declares_every_duration fails when a declared value or name differs from the table"
+      - id: "AC8"
+        statement: "AC8: a contract with no timeouts section, or a name it does not declare, refuses instead of supplying a value -- falsifier: uv run pytest tests/test_node_timeouts_contract.py -k 'undeclared or without' fails when a fallback value returns"
+      - id: "AC9"
+        statement: "AC9: constructor defaults and module constants come from the contract and an injected duration wins -- falsifier: uv run pytest tests/test_node_timeouts_contract.py -k 'constructor or module_constants or injected' fails when a literal default returns"
   - id: "req-omn21623-github-web-origin"
     statement: |-
       The GitHub web origin is declared once, in configs/service_endpoints.yaml, and the resolver fails closed when the key is missing or empty. The ten modules of the slice build their GitHub URLs from the resolver and hold no literal of the origin in code, so the contracts_and_di check reports no literal_url finding on any of them.
@@ -37,7 +49,18 @@ requirements:
         statement: "AC3: a name the contract does not declare refuses instead of supplying a value -- falsifier: uv run pytest tests/test_node_timeouts_slice_b_contract.py -k undeclared fails when a fallback value returns"
       - id: "AC4"
         statement: "AC4: constructor defaults and module constants come from the contract and an injected duration wins -- falsifier: uv run pytest tests/test_node_timeouts_slice_b_contract.py -k 'constructor or module_constants or injected or cron_budgets' fails when a literal default returns"
+  - id: "req-omn21623-network-binding-authority"
+    statement: |-
+      Code that binds, probes or compares against a host, address or port reads it from the network-binding authority by reference, and code that needs an in-memory transport takes the one a binding site builds; an unknown reference fails at the call, and the previous values are unchanged.
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: configs/network_bindings.yaml holds each host, address and port and handlers/network_bindings.py resolves it by dotted reference, failing closed on a missing file, key or wrong shape, and the binding sites build the in-memory implementations -- falsifier: uv run pytest tests/unit/handlers/test_network_bindings.py -q --no-cov"
+      - id: "AC5"
+        statement: "AC5: the contracts_and_di check reports no inmemory_outside_injection, literal_host, literal_ip or literal_port finding on the modules of the slice -- falsifier: the command of dod-omn21623-network-clean below"
 evidence_requirements:
+  - kind: "tests"
+    description: "The contract timeout tests and the existing tests of the touched nodes pass."
+    command: "uv run pytest tests/test_node_timeouts_contract.py -q --no-cov"
   - kind: "tests"
     description: "The endpoint authority tests pass."
     command: "uv run pytest tests/test_service_endpoints_contract.py -q --no-cov"
@@ -47,11 +70,70 @@ evidence_requirements:
   - kind: "tests"
     description: "The contract timeout tests and the existing tests of the touched nodes pass."
     command: "uv run pytest tests/test_node_timeouts_slice_b_contract.py -q --no-cov"
+  - kind: "tests"
+    description: "The authority tests and the tests of the touched nodes pass."
+    command: "uv run pytest tests/unit/handlers/test_network_bindings.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn21623-timeouts-contract-tests"
+    description: "Declared values, refusals, contract-sourced defaults and injection all behave as stated."
+    source: "manual"
+    binds_ac: ["AC7", "AC8", "AC9"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_node_timeouts_contract.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21623-timeouts-check-clean"
+    description: "The pinned contracts_and_di validator scans all sixteen node directories; its structured findings contain no literal_timeout rule. Import, scan and path errors fail the probe."
+    source: "manual"
+    binds_ac: ["AC6"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_node_timeouts_contract.py -k slice_has_no_literal_timeout_findings -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "command"
+        check_value: |-
+          uv run --frozen python -c '
+          from pathlib import Path
+          from omnibase_core.validation.validator_contracts_and_di import ValidatorContractsAndDi
+          names = "node_ab_compare_orchestrator node_adr_decision_extraction_llm_effect node_adr_extraction_grader_llm_effect node_adr_segmentation_llm_effect node_antipattern_index_effect node_antipattern_match_effect node_architecture_graph_populate_effect node_auto_merge_effect node_automation_liveness_deadman_effect node_automation_liveness_watchdog_compute node_automation_liveness_watchdog_effect node_automation_run_observer_effect node_baseline_capture node_beacon_trace_capture_effect node_canonical_clone_refresh_effect node_captured_secret_store_effect".split()
+          paths = [Path("src/omnimarket/nodes") / name for name in names]
+          assert all(path.is_dir() for path in paths), "a target node is missing"
+          result = ValidatorContractsAndDi().validate(paths)
+          assert result.metadata.files_processed >= len(paths), "the validator did not scan the targets"
+          findings = [issue for issue in result.issues if issue.rule_name == "literal_timeout"]
+          print(f"files_processed={result.metadata.files_processed}; literal_timeout={len(findings)}")
+          assert not findings, findings
+          '
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21623-deploy-timeouts-source-readback"
+    description: |-
+      Hosted-runner container readback: execute the timeout loader against this tree in an
+      isolated Python container with a read-only source mount. Assert the contract-declared
+      auto-merge poll interval and secret-store timeout and the refusal of an undeclared name.
+      Missing code, missing declarations and changed values fail the running container.
+      This exercises the composition adapter; it does not assert a fleet rollout.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -v "$PWD/src:/product:ro" -w /tmp python:3.12-bookworm sh -ec '
+          python -m pip install --disable-pip-version-check --quiet pydantic==2.13.5 PyYAML==6.0.3
+          PYTHONPATH=/product python - <<"PY"
+          from unittest import TestCase
+          from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
+          poll = load_node_timeouts("node_auto_merge_effect").get("poll_interval_s")
+          store = load_node_timeouts("node_captured_secret_store_effect").get("store_call_timeout_seconds")
+          assert poll == 60, poll
+          assert store == 5.0, store
+          TestCase().assertRaises(KeyError, load_node_timeouts("node_auto_merge_effect").get, "undeclared")
+          print(dict(poll_interval_s=poll, store_call_timeout_seconds=store, undeclared="refused"))
+          PY
+          '
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21623-endpoint-authority"
     description: "The endpoint authority exposes the web origin and every slice module resolves it instead of spelling it."
     source: "manual"
@@ -187,4 +269,69 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "grep -c '^timeouts:' src/omnimarket/nodes/node_session_orchestrator/contract.yaml && grep -c 'load_packaged_contract_section' src/omnimarket/nodes/node_session_orchestrator/handlers/handler_session_orchestrator.py"
+  - id: "dod-omn21623-network-authority"
+    description: "The authority serves every previous value, fails closed, and the binding sites build the in-memory implementations."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/test_network_bindings.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21623-network-clean"
+    description: "The contracts_and_di check over the modules of the slice reports none of the four rules."
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/test_network_bindings.py -k test_network_slice_has_no_targeted_findings -q --no-cov"
+        cwd: "."
+      - check_type: "command"
+        check_value: |-
+          uv run --frozen python - <<'PY'
+          from pathlib import Path
+          from omnibase_core.validation.validator_contracts_and_di import ValidatorContractsAndDi
+
+          paths = [
+              Path("src/omnimarket/delegated_test_loop/lane_bus.py"),
+              Path("src/omnimarket/handlers/container/container_inmemory.py"),
+              Path("src/omnimarket/models/delegation/wire/model_probe_ladder.py"),
+              Path("src/omnimarket/nodes/node_binding_parity_orchestrator/handlers/handler_run_local.py"),
+              Path("src/omnimarket/nodes/node_binding_parity_orchestrator/stubs/stub_bus.py"),
+              Path("src/omnimarket/nodes/node_claude_review_gateway_effect/models/model_claude_review_gateway.py"),
+              Path("src/omnimarket/nodes/node_golden_chain_sweep/census_collector.py"),
+              Path("src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_inference_intent.py"),
+              Path("src/omnimarket/nodes/node_pr_handoff_orchestrator/state_codec.py"),
+              Path("src/omnimarket/nodes/node_process_watchdog/handlers/checktargets_production.py"),
+              Path("src/omnimarket/nodes/node_work_ledger_emit_effect/handlers/handler_work_ledger_emit_guard.py"),
+              Path("src/omnimarket/projection/api_server.py"),
+              Path("src/omnimarket/rsd/v4_static_policy.py"),
+          ]
+          rules = {"inmemory_outside_injection", "literal_host", "literal_ip", "literal_port"}
+          assert all(path.is_file() for path in paths), "a network slice module is missing"
+          validator = ValidatorContractsAndDi()
+          enabled = {rule.rule_id for rule in validator.contract.rules if rule.enabled}
+          assert rules <= enabled, f"network rules are not enabled: {sorted(rules - enabled)}"
+          result = validator.validate(paths)
+          assert result.metadata is not None and result.metadata.files_processed == len(paths), "not every network slice module was checked"
+          offenders = [str(issue) for issue in result.issues if issue.rule_name in rules | {"unparseable_file"}]
+          assert not offenders, "\n".join(offenders)
+          print(f"contracts_and_di: {result.metadata.files_processed} network slice modules checked; no targeted findings")
+          PY
+        cwd: "."
+  - id: "dod-omn21623-deploy-published-network-readback"
+    description: |-
+      Hosted-runner source-artifact readback: fetch the network-binding authority at the
+      evaluated published commit and require it to declare the emit daemon port. A missing
+      key fails the command. No lab service, credentials or broker is required. This checks
+      the published source artifact and does not assert a live runtime rollout.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/configs/network_bindings.yaml" | uv run --frozen python -c '
+          import sys, yaml
+          doc = yaml.safe_load(sys.stdin.read())
+          assert doc["emit_daemon"]["port"], "emit_daemon.port missing"
+          print("Published network-binding authority readback: emit_daemon.port PASS")
+          '
         cwd: "."

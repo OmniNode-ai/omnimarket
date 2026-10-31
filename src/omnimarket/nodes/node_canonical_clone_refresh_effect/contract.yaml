@@ -67,3 +67,6 @@ metadata:
   created: "2026-10-04"
   tags: ["effect", "canonical-clone", "OMN-20496"]
   related_tickets: ["OMN-20496"]
+
+timeouts:
+  sync_timeout_seconds: 300  # Bounds the canonical clone sync subprocess.
