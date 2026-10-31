@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# A two-node toy design: an intake compute node accepts a request and an effect node
+# records it. One crossing; both sides declare the same wire projection.
+design_id: toy_intake_record
+nodes:
+  - node_name: node_toy_intake_compute
+    archetype: compute
+    description: Accept one intake request and emit that it was accepted.
+  - node_name: node_toy_record_effect
+    archetype: effect
+    description: Record an accepted intake and emit that it was recorded.
+crossings:
+  - crossing_id: toy.intake_accepted
+    topic: onex.evt.toy.intake-accepted.v1
+    producer: node_toy_intake_compute
+    consumer: node_toy_record_effect
+    producer_side:
+      envelope_model: ModelToyIntakeAccepted
+      envelope_version: v1
+      key_fields:
+        - {name: correlation_id, field_type: str}
+        - {name: intake_id, field_type: str}
+    consumer_side:
+      envelope_model: ModelToyIntakeAccepted
+      envelope_version: v1
+      key_fields:
+        - {name: correlation_id, field_type: str}
+        - {name: intake_id, field_type: str}
+head:
+  topic: onex.cmd.toy.intake-requested.v1
+  node_name: node_toy_intake_compute
+tail:
+  topic: onex.evt.toy.recorded.v1
+  node_name: node_toy_record_effect
