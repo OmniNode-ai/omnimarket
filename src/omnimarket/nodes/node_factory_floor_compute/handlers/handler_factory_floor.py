@@ -355,11 +355,49 @@ def _stations(
     return stations
 
 
+def _line_id(plan: ModelFloorPlanInput) -> str:
+    return plan.plan_path.rsplit("/", 1)[-1].removesuffix(".md")
+
+
+def _exempts(
+    hold: ModelFloorLedgerRow,
+    plan: ModelFloorPlanInput,
+    request: ModelFactoryFloorRequest,
+) -> bool:
+    """True when a sentence of the hold's own text exempts this plan's line by name."""
+    config = request.config
+    slug = re.sub(r"^\d{4}-\d{2}-\d{2}-", "", _line_id(plan))
+    phrase = "-".join(slug.split("-")[: config.hold_exemption_slug_tokens]).casefold()
+    markers = tuple(m.casefold() for m in config.hold_exemption_markers)
+    return any(
+        phrase in sentence and any(m in sentence for m in markers)
+        for sentence in (hold.text or hold.reason).casefold().split(". ")
+    )
+
+
+def _red_prs(
+    items: tuple[ModelFloorItem, ...], request: ModelFactoryFloorRequest
+) -> tuple[str, ...]:
+    """The open pull requests of parts being built whose CI is red: the cause a line is really stopped by."""
+    red = {
+        pr.key: pr.ci_note
+        for pr in request.watcher.prs
+        if pr.state == "OPEN" and (pr.red or pr.ci == "red")
+    }
+    found = dict.fromkeys(
+        pr for item in items if item.state == "active" for pr in item.prs if pr in red
+    )
+    return tuple(
+        f"PR {pr} CI red" + (f" ({red[pr]})" if red[pr] else "") for pr in found
+    )
+
+
 def _line(
     plan: ModelFloorPlanInput,
-    holds: tuple[ModelFloorLedgerRow, ...],
+    all_holds: tuple[ModelFloorLedgerRow, ...],
     request: ModelFactoryFloorRequest,
 ) -> ModelFloorLine:
+    holds = tuple(h for h in all_holds if not _exempts(h, plan, request))
     manifest = plan.manifest
     has_manifest = manifest is not None and bool(manifest.tasks)
     tasks = (
@@ -377,23 +415,27 @@ def _line(
         if has_manifest
         else tuple(_table_item(row, holds, request) for row in plan.table_tasks)
     )
-    causes = tuple(
-        f"HOLD {hold.row_id}: {hold.reason}"
-        for hold in holds
-        if _andon(hold, request.config)
-        and (
-            _intersects(hold.tickets, _scope(plan))
-            or any(
-                _hold_matches(hold, task, item.prs, request)
-                for task, item in zip(tasks, items, strict=True)
+    causes = (
+        tuple(
+            f"HOLD {hold.row_id}: {hold.reason or hold.text}"
+            for hold in holds
+            if _andon(hold, request.config)
+            and (
+                _intersects(hold.tickets, _scope(plan))
+                or any(
+                    _hold_matches(hold, task, item.prs, request)
+                    for task, item in zip(tasks, items, strict=True)
+                )
             )
         )
-    ) + tuple(
-        f"GATE {item.id} failed"
-        for item in items
-        if has_manifest
-        and item.kind == request.config.gate_kind
-        and item.state == "stop"
+        + tuple(
+            f"GATE {item.id} failed"
+            for item in items
+            if has_manifest
+            and item.kind == request.config.gate_kind
+            and item.state == "stop"
+        )
+        + _red_prs(items, request)
     )
     reason = (
         causes[0] + (f" (+{len(causes) - 1} more)" if len(causes) > 1 else "")
@@ -410,7 +452,7 @@ def _line(
         if non_gates
         else 0
     )
-    line_id = plan.plan_path.rsplit("/", 1)[-1].removesuffix(".md")
+    line_id = _line_id(plan)
     return ModelFloorLine(
         line_id=line_id,
         name=(manifest.title if manifest is not None else "") or plan.title or line_id,

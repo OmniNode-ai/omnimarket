@@ -329,6 +329,8 @@ class ModelFactoryFloorConfig(BaseModel):
     waiting_limit: int = Field(gt=0)
     stoppage_limit: int = Field(gt=0)
     note_chars: int = Field(gt=20)
+    hold_exemption_markers: tuple[str, ...] = Field(min_length=1)
+    hold_exemption_slug_tokens: int = Field(gt=0)
     lane_live_window_minutes: int = Field(gt=0)
     stall_minutes: int = Field(gt=0)
     status_chars: int = Field(gt=20)

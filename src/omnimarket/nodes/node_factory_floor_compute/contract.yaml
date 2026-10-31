@@ -73,6 +73,10 @@ config:
   waiting_limit: 40
   stoppage_limit: 10
   note_chars: 200
+  # A HOLD stops a line only when no sentence of its text that carries one of these markers also names the line: the
+  # first hold_exemption_slug_tokens words of the plan's file name (after its date), joined by hyphens.
+  hold_exemption_markers: [exempt]
+  hold_exemption_slug_tokens: 3
   # Live lanes (OMN-21733): a lane is live while its newest CLAIM has no TERMINAL after it and it wrote a row inside
   # lane_live_window_minutes; it is stalled after stall_minutes without a row of any kind.
   lane_live_window_minutes: 180
