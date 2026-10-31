@@ -66,7 +66,7 @@ def _relapses(ctx: Context, window: Window) -> Computed:
 
 
 def _lease_minutes(ctx: Context, window: Window) -> Computed:
-    kinds: Counter[str] = Counter()
+    kinds: defaultdict[str, float] = defaultdict(float)
     for lease in ctx.request.leases:
         if window.contains(lease.released_at):
             kinds[lease.kind] += lease.worker_minutes

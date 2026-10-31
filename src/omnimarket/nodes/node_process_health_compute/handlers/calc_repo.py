@@ -95,7 +95,7 @@ def _gap_hours(ctx: Context, start: datetime, end: datetime) -> float:
 
 
 def _reds_hours(ctx: Context, window: Window) -> Computed:
-    hours: Counter[str] = Counter()
+    hours: defaultdict[str, float] = defaultdict(float)
     for episode in episodes(ctx, ctx.request.generated_at):
         start, end = max(episode.start, window.start), min(episode.end, window.end)
         if end > start:

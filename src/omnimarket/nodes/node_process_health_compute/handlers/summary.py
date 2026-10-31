@@ -4,8 +4,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from datetime import timedelta
+from typing import Protocol
 
 from omnimarket.models.process_health import (
     EnumMetricKind,
@@ -23,7 +23,12 @@ from omnimarket.nodes.node_process_health_compute.handlers.metric_builder import
 )
 from omnimarket.nodes.node_process_health_compute.handlers.window import Window
 
-WindowCalculator = Callable[[Window], ModelWindowMetrics]
+
+class WindowCalculator(Protocol):
+    """Computes the metric list of one window."""
+
+    def __call__(self, window: Window) -> ModelWindowMetrics: ...
+
 
 _PER_DAY = frozenset(
     {EnumMetricKind.COUNT, EnumMetricKind.HOURS, EnumMetricKind.MINUTES}

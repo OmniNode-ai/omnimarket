@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import datetime
 from functools import partial
 
@@ -241,7 +241,7 @@ def _friction_bucket(ctx: Context, row: ParsedRow) -> str:
 
 
 def _friction_minutes(ctx: Context, window: Window, bucket: str) -> Computed:
-    minutes: Counter[str] = Counter()
+    minutes: defaultdict[str, float] = defaultdict(float)
     unparsed = 0
     for row in _rows(ctx, window, "FRICTION"):
         if _friction_bucket(ctx, row) != bucket:
