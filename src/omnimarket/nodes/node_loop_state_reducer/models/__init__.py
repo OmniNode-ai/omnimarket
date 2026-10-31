@@ -11,5 +11,17 @@ from omnimarket.nodes.node_loop_state_reducer.models.model_build_loop_intent imp
 from omnimarket.nodes.node_loop_state_reducer.models.model_build_loop_state import (
     ModelBuildLoopState,
 )
+from omnimarket.nodes.node_loop_state_reducer.models.model_loop_state_reduce_request import (
+    ModelLoopStateReduceRequest,
+)
+from omnimarket.nodes.node_loop_state_reducer.models.model_loop_state_reduce_result import (
+    ModelLoopStateReduceResult,
+)
 
-__all__ = ["ModelBuildLoopEvent", "ModelBuildLoopIntent", "ModelBuildLoopState"]
+__all__ = [
+    "ModelBuildLoopEvent",
+    "ModelBuildLoopIntent",
+    "ModelBuildLoopState",
+    "ModelLoopStateReduceRequest",
+    "ModelLoopStateReduceResult",
+]
