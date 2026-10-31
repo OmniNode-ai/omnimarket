@@ -1,0 +1,117 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Trusted pre-merge criteria check (OMN-21676)
+name: node_dod_criteria_check_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: EFFECT_GENERIC
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  The trusted pre-merge criteria-drift check. The hosted repo-evidence / dod-verify
+  job holds no Linear credential and no repository secret, so it records the
+  comparison of a ticket contract's accepted criteria with the live ticket as
+  delegated. This node makes the comparison before the merge, on a lab host, for
+  one pull request head: it reads the pull request (refusing a head that moved
+  past the request), the contracts/<ticket>.yaml of every ticket the title cites
+  at that head, and for a contract that records criteria the live ticket through
+  the project tracker the ticketing nodes use (twice, as the verifier does),
+  and compares with the verifier's own rule (evaluate_criteria). Drift blocks the
+  merge (merge_blocked), and so does anything unreadable: the pull request, its
+  contract, the Linear credential or the ticket. A contract that records no
+  criteria, or a ticket with no contract at the head, is not engaged.
+
+input_model:
+  name: ModelDodCriteriaCheckRequest
+  module: omnimarket.nodes.node_dod_criteria_check_effect.models.model_dod_criteria_check
+
+output_model:
+  name: ModelDodCriteriaCheckResult
+  module: omnimarket.nodes.node_dod_criteria_check_effect.models.model_dod_criteria_check
+
+handler:
+  module: omnimarket.nodes.node_dod_criteria_check_effect.handlers.handler_dod_criteria_check
+  class: HandlerDodCriteriaCheck
+  input_model: omnimarket.nodes.node_dod_criteria_check_effect.models.model_dod_criteria_check.ModelDodCriteriaCheckRequest
+
+operations:
+  - name: read_pull_request
+    description: "GET /repos/{owner}/{repo}/pulls/{number}: title, state and head sha."
+    transport: rest
+  - name: read_contract
+    description: "GET /repos/{owner}/{repo}/contents/contracts/{ticket}.yaml?ref={head sha}, once per ticket the title cites."
+    transport: rest
+  - name: read_ticket
+    description: "ProtocolProjectTracker.get_issue through the Linear project tracker, twice per engaged ticket."
+    transport: project_tracker
+
+# `onex node` runs the handler once with the request file; the landing controller
+# runs it before each merge or enqueue and refuses the merge on merge_blocked.
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.dod-criteria-check-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.dod-criteria-check-completed.v1
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 120000
+  runtime_profiles:
+    - effects
+
+runtime_profiles:
+  - effects
+
+dependencies:
+  - name: "ProtocolProjectTracker"
+    type: "protocol"
+    required: true
+    module: "omnibase_spi.protocols.services.protocol_project_tracker"
+    description: "The Linear project tracker the ticketing nodes read tickets through; built from the LINEAR_API_KEY ref below."
+
+secrets:
+  GITHUB_TOKEN:
+    description: "GitHub PAT or Actions token for the pull request and contract reads."
+    required: true
+  # The lab key store (Infisical) holds the value. It is never a repository or
+  # organization Actions secret, and it is never present in the hosted job.
+  LINEAR_API_KEY:
+    description: "Linear API key the ticket is read with; resolved from the lab key store."
+    required: true
+
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - onex.cmd.omnimarket.dod-criteria-check-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.dod-criteria-check-completed.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.dod-criteria-check.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.dod-criteria-check-completed.v1
+
+published_events:
+  - event_type: "DodCriteriaCheckCompleted"
+    topic: onex.evt.omnimarket.dod-criteria-check-completed.v1
+    description: "One pull request head was checked: the verdict (not_engaged, pass, drift, unreadable), whether the merge is blocked and each ticket's verdict."
+
+handler_routing:
+  routing_strategy: "payload_type_match"
+  handlers:
+    - operation: "dod_criteria.check"
+      message_category: "command"
+      handler:
+        name: "HandlerDodCriteriaCheck"
+        module: "omnimarket.nodes.node_dod_criteria_check_effect.handlers.handler_dod_criteria_check"
+      event_model:
+        name: "ModelDodCriteriaCheckRequest"
+        module: "omnimarket.nodes.node_dod_criteria_check_effect.models.model_dod_criteria_check"
+      topic: onex.cmd.omnimarket.dod-criteria-check-requested.v1
+      description: "One pull request head's criteria check; answered by one completed event."
+
+metadata:
+  transport_type: kafka

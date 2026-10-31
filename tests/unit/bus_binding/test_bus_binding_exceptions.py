@@ -22,7 +22,9 @@ from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
 
 from omnimarket.handlers.bus_binding import outbox, select
 from omnimarket.models.bus_binding import EnumBusBinding
-from omnimarket.nodes.node_exception_queue_effect.handler import HandlerExceptionQueue
+from omnimarket.nodes.node_exception_queue_effect.container.container_exception_queue_effect import (
+    create_handler_exception_queue,
+)
 from omnimarket.nodes.node_exception_queue_effect.models import (
     ModelExceptionQueueRequest,
 )
@@ -87,7 +89,7 @@ def _open(switch: _Switch, workspace: Path, state: Path, at: datetime = START):
 
 def _rows(state: Path, audience: str = "orchestrator") -> list[dict]:
     return (
-        HandlerExceptionQueue()
+        create_handler_exception_queue()
         .handle(ModelExceptionQueueRequest(state / "exception-queue", audience))
         .rows
     )
@@ -368,8 +370,8 @@ async def test_replay_of_the_recorded_episode_from_2026_10_28_resolves_both_rows
     from datetime import UTC, datetime
 
     from omnimarket.handlers.bus_binding import recovery
-    from omnimarket.nodes.node_exception_queue_effect.handler import (
-        HandlerExceptionEmit,
+    from omnimarket.nodes.node_exception_queue_effect.container.container_exception_queue_effect import (
+        create_handler_exception_emit,
     )
     from omnimarket.nodes.node_exception_queue_effect.models import (
         ModelExceptionEmitRequest,
@@ -385,7 +387,7 @@ async def test_replay_of_the_recorded_episode_from_2026_10_28_resolves_both_rows
             "outage_seconds=1896.95; durable bus health read failed: Kafka",
         ),
     ):
-        HandlerExceptionEmit().handle(
+        create_handler_exception_emit().handle(
             ModelExceptionEmitRequest(
                 state_dir=tmp_path / "exception-queue",
                 row=ModelExceptionRow(

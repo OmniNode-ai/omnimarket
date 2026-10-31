@@ -33,16 +33,16 @@ from omnimarket.models.context_pack_orchestrator import (
 from omnimarket.models.context_profile_resolve.model_context_profile_resolve_request import (
     ModelContextProfileResolveRequest,
 )
+from omnimarket.nodes.node_context_pack_orchestrator.container.container_context_pack_orchestrator import (
+    create_handler_context_pack_orchestrator,
+    create_handler_context_profile_resolver,
+)
 from omnimarket.nodes.node_context_pack_orchestrator.handlers.handler_context_pack_orchestrator import (
     TASK_KIND_UNKNOWN,
-    HandlerContextPackOrchestrator,
     default_implementation_identity,
 )
 from omnimarket.nodes.node_context_pack_orchestrator.protocols import (
     ProtocolContextTierSource,
-)
-from omnimarket.nodes.node_context_profile_resolver_effect.handlers.handler_context_profile_resolver import (
-    HandlerContextProfileResolver,
 )
 from omnimarket.nodes.node_session_context_sources_effect.handlers.handler_session_context_sources import (
     HandlerSessionContextSources,
@@ -75,7 +75,7 @@ def test_fixture_source_is_a_protocol_context_tier_source() -> None:
 def test_compaction_fixture_builds_with_four_required_factors() -> None:
     built = orchestrator().handle(command())
     assert built.status is EnumContextPackOrchestratorStatus.OK, built.errors
-    expected = HandlerContextProfileResolver().handle(
+    expected = create_handler_context_profile_resolver().handle(
         ModelContextProfileResolveRequest(profile_name="compaction_orchestrator")
     )
     assert built.profile_name == "compaction_orchestrator"
@@ -111,9 +111,9 @@ def test_tier_read_timings_survive_budget_selection(budget: int | None) -> None:
         for index in range(len(selected))
         for value in (float(index), index + (index + 1) / 16)
     )
-    built = HandlerContextPackOrchestrator(bound, clock=lambda: next(ticks)).handle(
-        command(token_budget_override=budget)
-    )
+    built = create_handler_context_pack_orchestrator(
+        bound, clock=lambda: next(ticks)
+    ).handle(command(token_budget_override=budget))
     assert built.status is EnumContextPackOrchestratorStatus.OK, built.errors
     tiers = {tier.factor: tier for tier in built.tier_statuses}
     for index, factor in enumerate(selected):
@@ -140,9 +140,9 @@ def test_raising_source_still_records_read_timing() -> None:
 
     bound = sources(open_work=Broken(EnumContextFactor.OPEN_WORK))
     ticks = iter(float(index) / 4 for index in range(12))
-    built = HandlerContextPackOrchestrator(bound, clock=lambda: next(ticks)).handle(
-        command()
-    )
+    built = create_handler_context_pack_orchestrator(
+        bound, clock=lambda: next(ticks)
+    ).handle(command())
     assert built.failure_class is EnumContextPackFailure.REQUIRED_FACTOR_MISSING
     tier = next(
         t for t in built.tier_statuses if t.factor is EnumContextFactor.OPEN_WORK
