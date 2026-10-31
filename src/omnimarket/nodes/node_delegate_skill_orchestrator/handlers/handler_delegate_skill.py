@@ -324,6 +324,32 @@ def _terminal_measure_dispatch_kwargs(
     return kwargs
 
 
+class _SessionModelDispatchKwargs(TypedDict, total=False):
+    """The caller's session model, for a port that declares it (OMN-20557).
+
+    Passed only when the request names a session model AND the port declares
+    ``session_model`` (or takes ``**kwargs``). omnibase_infra's released runtime
+    port declares neither and would raise ``TypeError`` on the keyword. The
+    splat at the dispatch call site is a call to this module-level helper
+    returning this TypedDict, because the keyword-parity check in
+    omnibase_infra reads the call site statically and resolves only that splat
+    shape (OMN-19817); a splat of a bare name fails it closed (OMN-21752).
+    """
+
+    session_model: str
+
+
+def _session_model_dispatch_kwargs(
+    request: ModelDelegateSkillRequest, dispatch: Callable[..., object]
+) -> _SessionModelDispatchKwargs:
+    session_model = session_model_dispatch_kwargs(request, dispatch).get(
+        "session_model"
+    )
+    if isinstance(session_model, str):
+        return {"session_model": session_model}
+    return {}
+
+
 class _NamedTestsDispatchKwargs(TypedDict, total=False):
     """The tests a code-class request names, for the port (OMN-21077).
 
@@ -1687,8 +1713,11 @@ class HandlerDelegateSkill:
                     **_terminal_measure_dispatch_kwargs(
                         request, queue_wait_ms, self._dispatch_port.dispatch
                     ),
-                    # OMN-20557: only when named and declared by the port.
-                    **session_kwargs,
+                    # OMN-20557: only when named and declared by the port -- see
+                    # _SessionModelDispatchKwargs.
+                    **_session_model_dispatch_kwargs(
+                        request, self._dispatch_port.dispatch
+                    ),
                 ),
                 timeout=float(execution_timeout_seconds + wait_allowance_seconds),
             )
