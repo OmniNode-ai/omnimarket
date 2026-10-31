@@ -124,6 +124,8 @@ sources:
     precedence:
       probe: adr_segmentation_bridge_key
 not_routing_resolution_sites:
+  - site: "src/omnimarket/nodes/node_dev_runtime_mutation_guard_effect/handlers/handler_contract_policy_source.py:find_node_overlay(NODE_NAME)"
+    reason: adds protected compose projects, container names and verbs to a guard that refuses a dev runtime container mutation; it chooses no backend, model or tier
   - site: "src/omnimarket/handlers/execution_budget_overlay.py:find_node_overlay(EXECUTION_BUDGET_OVERLAY_ID)"
     reason: a site's per-class execution time limit; it bounds how long a delegation may run and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_idle_slot_fill_effect/handlers/ruling_live_checks.py:find_node_overlay('node_review_voters_overlay_compute')"

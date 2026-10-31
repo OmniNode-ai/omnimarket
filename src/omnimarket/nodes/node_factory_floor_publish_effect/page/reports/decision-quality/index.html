@@ -29,7 +29,7 @@ a{color:var(--link)}
 a:focus-visible{outline:2px solid var(--link);outline-offset:2px}
 .eyebrow{font:500 .72rem/1 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
 .hazard{height:10px;border-radius:2px;background:repeating-linear-gradient(-45deg,var(--safety) 0 12px,var(--belt) 12px 24px)}
-.nav{font-size:.86rem}
+.nav{font-size:.86rem;display:flex;flex-wrap:wrap;gap:6px 16px}
 header{display:grid;gap:12px}
 .note{font-size:.88rem;color:var(--muted);max-width:72ch}
 .banner{border:1px solid var(--stop);border-radius:4px;padding:10px 14px;font-size:.9rem}
@@ -54,12 +54,13 @@ header{display:grid;gap:12px}
 .doc td{padding:5px 8px;border-bottom:1px dashed var(--rule);vertical-align:top}
 footer{font-size:.84rem;color:var(--muted);display:grid;gap:8px}
 </style>
+<style>html.embed .hazard,html.embed .nav,html.embed h1{display:none}html.embed .wrap{padding-block:14px 20px}</style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <div class="hazard" aria-hidden="true"></div>
-    <nav class="nav"><a href="../">All reports</a></nav>
+    <nav class="nav"><a href="../">All reports</a><a href="../../">Factory floor</a></nav>
     <div class="eyebrow" id="stamp">Reading the report</div>
     <p class="note">A lane's written report on how the operator's October rulings held up. It is a snapshot, not a node's output: its age is the report file's modified time, shown above and on the reports index. It names roles, not people.</p>
   </header>
@@ -74,6 +75,7 @@ footer{font-size:.84rem;color:var(--muted);display:grid;gap:8px}
   </footer>
 </div>
 <script>
+if (typeof location !== "undefined" && document.documentElement && /[?&]embed=1/.test(location.search)) document.documentElement.classList.add("embed");
 const REPORT_FILE = "decision-quality.md";
 const MANIFEST_FILE = "../manifest.json";
 const REPORT_ID = "decision_quality";
