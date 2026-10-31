@@ -7,12 +7,8 @@ from __future__ import annotations
 import re
 import subprocess
 
-from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
-
 _SHA = re.compile(r"^[0-9a-f]{7,64}$")
-_GIT_TIMEOUT_SECONDS: float = load_node_timeouts("node_review_finding_veto_effect").get(
-    "git_diff_timeout_seconds"
-)
+_GIT_TIMEOUT_SECONDS = 120
 _HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(?P<start>\d+)(?:,(?P<count>\d+))? @@")
 
 

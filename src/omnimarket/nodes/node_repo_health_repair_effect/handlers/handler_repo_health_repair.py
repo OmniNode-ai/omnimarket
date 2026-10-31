@@ -43,6 +43,7 @@ from omnimarket.handlers.handler_lane_intake import (
     resolve_label_id,
     stamp_description,
 )
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_repo_health_repair_effect.models.model_repair_command import (
@@ -53,6 +54,8 @@ from omnimarket.nodes.node_repo_health_repair_effect.models.model_repair_emitted
 )
 
 logger = logging.getLogger(__name__)
+
+_TIMEOUTS = load_node_timeouts("node_repo_health_repair_effect")
 
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 
@@ -149,7 +152,9 @@ class LinearRepairHttpClient:
             },
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(
+            req, timeout=_TIMEOUTS.get("linear_graphql_timeout_seconds")
+        ) as resp:
             data = json.loads(resp.read())
         if "errors" in data:
             raise RuntimeError(f"Linear GraphQL error: {data['errors']}")

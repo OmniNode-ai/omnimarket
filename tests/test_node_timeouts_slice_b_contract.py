@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Ten nodes read their timeouts from their contract.yaml, with every value as before."""
+"""Eleven nodes read their timeouts from their contract.yaml, with every value as before."""
 
 from __future__ import annotations
 
@@ -11,9 +11,8 @@ import pytest
 from pydantic import SecretStr
 
 from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
-from omnimarket.nodes.node_review_finding_veto_effect.handlers import (
-    adapter_git_diff,
-    adapter_git_head,
+from omnimarket.nodes.node_report_anchor_probe_effect.handlers import (
+    handler_report_anchor_probe,
 )
 from omnimarket.nodes.node_runtime_sweep import broker_probe
 from omnimarket.nodes.node_secret_store_effect.adapters.handler_infisical_http import (
@@ -38,10 +37,8 @@ from omnimarket.nodes.node_topic_activity_sampler_effect.handlers import (
 
 # node -> {declared name: the value the node's code held as a literal before it moved}
 DECLARED: dict[str, dict[str, float]] = {
-    "node_review_finding_veto_effect": {
-        "git_diff_timeout_seconds": 120,
-        "git_head_timeout_seconds": 60,
-    },
+    "node_repo_health_repair_effect": {"linear_graphql_timeout_seconds": 30},
+    "node_report_anchor_probe_effect": {"subprocess_timeout_seconds": 30},
     "node_runtime_sweep": {
         "admin_request_timeout_seconds": 10.0,
         "admin_result_timeout_seconds": 15.0,
@@ -100,8 +97,7 @@ def test_an_undeclared_name_stops_the_node(node_name: str) -> None:
 
 @pytest.mark.unit
 def test_module_constants_come_from_the_contract() -> None:
-    assert adapter_git_diff._GIT_TIMEOUT_SECONDS == 120
-    assert adapter_git_head._GIT_TIMEOUT_SECONDS == 60
+    assert handler_report_anchor_probe._SUBPROCESS_TIMEOUT_SECONDS == 30
     assert broker_probe._ADMIN_REQUEST_TIMEOUT_S == 10.0
     assert broker_probe._ADMIN_RESULT_TIMEOUT_S == 15.0
     assert handler_placement_share_alarm.FILL_INTERVAL_MINUTES == 20

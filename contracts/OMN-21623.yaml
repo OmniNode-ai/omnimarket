@@ -1,8 +1,8 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-21623"
-title: "Burn-down of the contracts_and_di findings of omnimarket, third slice: the GitHub web origin is read from the service endpoint authority"
-summary: "Ten modules across eight node packages spelled the GitHub web origin as a literal in code. The origin is now a key of configs/service_endpoints.yaml (github.web_url), and every module of the slice builds its repository, clone and release URLs from it through the existing service_endpoint_url resolver. The contracts_and_di check over src/omnimarket and scripts reports 1575 findings before the slice and fewer after, and no file of the slice carries a literal_url finding."
+title: "Burn-down of the contracts_and_di literal_timeout findings of omnimarket, slice B: eleven nodes declare their timeouts in their contract"
+summary: "Eleven node packages (node_report_anchor_probe_effect through node_topic_activity_sampler_effect, the free tail of the alphabetical second half) held 30 timeout, interval and tick-budget literals in code. Each value is now declared in its node's contract.yaml under timeouts and is read through the shared omnimarket.handlers.node_timeouts_reader adapter or injected through the constructor; the secret-store HTTP handler takes its call timeout from the overlay its factory already passes, so its default left the code. The contracts_and_di check over src/omnimarket and scripts reports 1577 findings before the slice; no literal_timeout finding remains in the eleven node directories."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -27,10 +27,10 @@ requirements:
         statement: "AC5: the contracts_and_di check reports no literal_path finding on the modules of the slice -- falsifier: the command of dod-omn21623-paths-clean below"
   - id: "req-omn21623-node-timeouts-b"
     statement: |-
-      The ten nodes hold no timeout, interval or tick-budget literal in code. Every duration is declared in the node contract with the value it held before, a name the contract does not declare stops the node, and an injected duration wins over the declared one.
+      The eleven nodes hold no timeout, interval or tick-budget literal in code. Every duration is declared in the node contract with the value it held before, a name the contract does not declare stops the node, and an injected duration wins over the declared one.
     acceptance:
       - id: "AC1"
-        statement: "AC1: the contracts_and_di check reports no literal_timeout finding in the ten node directories of the slice -- falsifier: the command of dod-omn21623-timeouts-b-check-clean below exits nonzero when a timeout literal returns to any of them"
+        statement: "AC1: the contracts_and_di check reports no literal_timeout finding in the eleven node directories of the slice -- falsifier: the command of dod-omn21623-timeouts-b-check-clean below exits nonzero when a timeout literal returns to any of them"
       - id: "AC2"
         statement: "AC2: every node of the slice declares its durations in its contract.yaml with the value its code held before -- falsifier: uv run pytest tests/test_node_timeouts_slice_b_contract.py -k declares_every_duration fails when a declared value or name differs from the table"
       - id: "AC3"
@@ -170,12 +170,12 @@ dod_evidence:
         check_value: "uv run pytest tests/test_node_timeouts_slice_b_contract.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21623-timeouts-b-check-clean"
-    description: "The contracts_and_di check of the pinned omnibase_core reports no literal_timeout finding in the ten node directories."
+    description: "The contracts_and_di check of the pinned omnibase_core reports no literal_timeout finding in the eleven node directories."
     source: "manual"
     binds_ac: ["AC1"]
     checks:
       - check_type: "command"
-        check_value: "! uv run --frozen python -m omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run omnibase_core.validation.validator_contracts_and_di:ValidatorContractsAndDi src/omnimarket/nodes/node_review_finding_veto_effect src/omnimarket/nodes/node_runtime_sweep src/omnimarket/nodes/node_secret_store_effect src/omnimarket/nodes/node_session_bootstrap src/omnimarket/nodes/node_session_orchestrator src/omnimarket/nodes/node_shadow_review_effect src/omnimarket/nodes/node_silent_failure_alarm_compute src/omnimarket/nodes/node_swarm_endpoint_health_effect src/omnimarket/nodes/node_swarm_fleet_discovery_effect src/omnimarket/nodes/node_topic_activity_sampler_effect 2>&1 | grep -q literal_timeout"
+        check_value: "! uv run --frozen python -m omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run omnibase_core.validation.validator_contracts_and_di:ValidatorContractsAndDi src/omnimarket/nodes/node_report_anchor_probe_effect src/omnimarket/nodes/node_repo_health_repair_effect src/omnimarket/nodes/node_runtime_sweep src/omnimarket/nodes/node_secret_store_effect src/omnimarket/nodes/node_session_bootstrap src/omnimarket/nodes/node_session_orchestrator src/omnimarket/nodes/node_shadow_review_effect src/omnimarket/nodes/node_silent_failure_alarm_compute src/omnimarket/nodes/node_swarm_endpoint_health_effect src/omnimarket/nodes/node_swarm_fleet_discovery_effect src/omnimarket/nodes/node_topic_activity_sampler_effect 2>&1 | grep -q literal_timeout"
         cwd: "."
   - id: "dod-omn21623-deploy-timeouts-b-source-readback"
     description: |-
