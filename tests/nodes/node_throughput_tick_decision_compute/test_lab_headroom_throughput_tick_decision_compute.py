@@ -221,7 +221,7 @@ def test_a_stale_or_future_reading_is_no_reading() -> None:
         assert line.startswith(
             f"UNKNOWN lab-headroom:h201 | no placement reading in the last 15 min (newest {started})"
         )
-        assert "onex_lab_run.py --hosts" in line
+        assert "onex_lab_run.py --hosts --lane <lane>" in line
         assert result.exit_code == 1
 
 
