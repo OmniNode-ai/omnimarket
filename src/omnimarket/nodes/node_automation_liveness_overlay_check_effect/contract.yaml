@@ -44,12 +44,15 @@ descriptor:
   runtime_profiles:
     - effects
 
-runtime_dispatch:
-  external_trigger: "The onex-automation-liveness-check console script builds the request from its flags and prints the result."
-
 event_bus:
-  subscribe_topics: []
-  publish_topics: []
+  subscribe_topics: [onex.cmd.omnimarket.automation-liveness-overlay-check-run-requested.v1]
+  publish_topics: [onex.evt.omnimarket.automation-liveness-overlay-check-run-completed.v1]
+
+terminal_event: onex.evt.omnimarket.automation-liveness-overlay-check-run-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.automation-liveness-overlay-check-run-requested.v1
+  external_trigger: "The onex-automation-liveness-check console script builds the request from its flags and prints the result."
+externally_consumed_topics: [onex.evt.omnimarket.automation-liveness-overlay-check-run-completed.v1]
 
 metadata:
   ticket: OMN-21536

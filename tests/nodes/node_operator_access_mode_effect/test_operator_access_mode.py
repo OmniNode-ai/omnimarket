@@ -88,7 +88,7 @@ MARKER = installer_module.MARKER
 bare_ids = reply_module.bare_ids
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
-NODE_DIR = Path(cli.__file__).resolve().parents[1]
+NODE_DIR = Path(cli.__file__).resolve().parent
 LOCAL, REMOTE, HEADLESS = (
     EnumAccessMode.LOCAL,
     EnumAccessMode.REMOTE,
