@@ -1,26 +1,38 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-21623"
-title: "The demo rehearsal and drift-detector probes take the dashboard URL and timeout from the contract and an overlay instead of code"
-summary: "Both demo nodes fell back to a literal loopback URL when the dashboard setting was absent and fixed the probe timeout in the handler. The timeout is now the probe_policy section of each node contract and the dashboard address is a deployment overlay (or the existing DEMO_DASHBOARD_URL setting) injected into the handler. With neither, the probe refuses and names the setting. First burn-down slice of the contracts_and_di check over this repository: eight findings in these two nodes, four URL and four timeout, are cleared."
+title: "Burn-down of the contracts_and_di findings of omnimarket, third slice: the GitHub web origin is read from the service endpoint authority"
+summary: "Ten modules across eight node packages spelled the GitHub web origin as a literal in code. The origin is now a key of configs/service_endpoints.yaml (github.web_url), and every module of the slice builds its repository, clone and release URLs from it through the existing service_endpoint_url resolver. The contracts_and_di check over src/omnimarket and scripts reports 1575 findings before the slice and fewer after, and no file of the slice carries a literal_url finding."
 is_seam_ticket: false
-interface_change: true
-interfaces_touched:
-  - "public_api"
+interface_change: false
+interfaces_touched: []
 requirements:
+  - id: "req-omn21623-github-web-origin"
+    statement: |-
+      The GitHub web origin is declared once, in configs/service_endpoints.yaml, and the resolver fails closed when the key is missing or empty. The ten modules of the slice build their GitHub URLs from the resolver and hold no literal of the origin in code, so the contracts_and_di check reports no literal_url finding on any of them.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: configs/service_endpoints.yaml declares github.web_url and service_endpoint_url resolves it -- falsifier: uv run pytest tests/test_service_endpoints_contract.py -k github_web_url -q --no-cov"
+      - id: "AC2"
+        statement: "AC2: none of the ten modules of the slice holds the GitHub web origin as a string constant in code -- falsifier: uv run pytest tests/test_service_endpoints_contract.py -k TestGithubWebOriginIsResolved -q --no-cov"
+      - id: "AC3"
+        statement: "AC3: the contracts_and_di check reports no literal_url finding on the files of the slice -- falsifier: the command of dod-omn21623-check-clean below"
   - id: "req-omn21623-demo-probe-injection"
     statement: |-
       The demo probes read the dashboard address and the request timeout from injected values (contract policy and deployment overlay) and hold neither as a literal; an absent address refuses by name and never probes a guessed one.
     acceptance:
-      - id: "AC1"
-        statement: "AC1: an injected overlay and policy decide the URL and the timeout of every dashboard probe in both nodes -- falsifier: uv run pytest tests/nodes/node_demo_rehearsal/test_probe_config.py tests/nodes/node_demo_drift_detector/test_probe_config.py -q -k injected fails when a probe builds its client with a literal timeout or URL"
-      - id: "AC2"
-        statement: "AC2: the timeout default is the probe_policy section of the node contract and DEMO_DASHBOARD_URL still supplies the address when nothing is injected -- falsifier: the same files with -k 'contract or environment' fail when the handler stops reading the contract section or the setting"
-      - id: "AC3"
-        statement: "AC3: with no overlay, no setting and no overlay root, a probe raises an error naming DEMO_DASHBOARD_URL before any client is created -- falsifier: the same files with -k missing fail when a localhost default returns"
       - id: "AC4"
-        statement: "AC4: the contracts_and_di check from the pinned omnibase_core reports no finding in the two node directories -- falsifier: the runtime_validator_run command of the last dod_evidence entry exits nonzero when a literal URL or timeout returns"
+        statement: "AC4: an injected overlay and policy decide the URL and the timeout of every dashboard probe in both nodes -- falsifier: uv run pytest tests/nodes/node_demo_rehearsal/test_probe_config.py tests/nodes/node_demo_drift_detector/test_probe_config.py -q -k injected fails when a probe builds its client with a literal timeout or URL"
+      - id: "AC5"
+        statement: "AC5: the timeout default is the probe_policy section of the node contract and DEMO_DASHBOARD_URL still supplies the address when nothing is injected -- falsifier: the same files with -k 'contract or environment' fail when the handler stops reading the contract section or the setting"
+      - id: "AC6"
+        statement: "AC6: with no overlay, no setting and no overlay root, a probe raises an error naming DEMO_DASHBOARD_URL before any client is created -- falsifier: the same files with -k missing fail when a localhost default returns"
+      - id: "AC7"
+        statement: "AC7: the contracts_and_di check from the pinned omnibase_core reports no finding in the two node directories -- falsifier: the runtime_validator_run command of the last dod_evidence entry exits nonzero when a literal URL or timeout returns"
 evidence_requirements:
+  - kind: "tests"
+    description: "The endpoint authority tests pass."
+    command: "uv run pytest tests/test_service_endpoints_contract.py -q --no-cov"
   - kind: "tests"
     description: "The probe injection tests of both nodes and the existing handler tests pass."
     command: "uv run pytest tests/nodes/node_demo_rehearsal tests/nodes/node_demo_drift_detector tests/integration/node_demo_drift_detector -q --no-cov"
@@ -29,10 +41,71 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn21623-endpoint-authority"
+    description: "The endpoint authority exposes the web origin and every slice module resolves it instead of spelling it."
+    source: "manual"
+    binds_ac: ["AC1", "AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_service_endpoints_contract.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21623-check-clean"
+    description: "The contracts_and_di check over the ten slice modules reports no literal_url finding."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_service_endpoints_contract.py -k TestGithubWebOriginIsResolved -q --no-cov"
+        cwd: "."
+      - check_type: "command"
+        check_value: |-
+          uv run --frozen python - <<'PY'
+          from pathlib import Path
+          from omnibase_core.validation.validator_contracts_and_di import ValidatorContractsAndDi
+
+          paths = [
+              Path("src/omnimarket/nodes/node_contractor_integration_note_effect/services/note_composer.py"),
+              Path("src/omnimarket/nodes/node_git_query_mirror_effect/git_mirror.py"),
+              Path("src/omnimarket/nodes/node_lab_work_unit_effect/protocols/local_shell_work_runner.py"),
+              Path("src/omnimarket/nodes/node_linear_triage/services/local_github_pr_reads.py"),
+              Path("src/omnimarket/nodes/node_local_dashboard_serve_effect/bundle.py"),
+              Path("src/omnimarket/nodes/node_pr_head_stage_compute/handlers/handler_pr_head_stage.py"),
+              Path("src/omnimarket/nodes/node_push_validation_effect/protocols/ephemeral_container_focused_run_subprocess.py"),
+              Path("src/omnimarket/nodes/node_push_validation_effect/protocols/gate_runner_suite_evaluation_subprocess.py"),
+              Path("src/omnimarket/nodes/node_push_validation_effect/protocols/git_push_validation_subprocess.py"),
+              Path("src/omnimarket/nodes/node_remote_lane_effect/handlers/handler_remote_lane_ref.py"),
+          ]
+          assert all(path.is_file() for path in paths), "a slice module is missing"
+          validator = ValidatorContractsAndDi()
+          assert any(rule.rule_id == "literal_url" and rule.enabled for rule in validator.contract.rules), "literal_url rule is not enabled"
+          result = validator.validate(paths)
+          assert result.metadata is not None and result.metadata.files_processed == len(paths), "not every slice module was checked"
+          offenders = [str(issue) for issue in result.issues if issue.rule_name in {"literal_url", "unparseable_file"}]
+          assert not offenders, "\n".join(offenders)
+          print(f"contracts_and_di: {result.metadata.files_processed} slice modules checked; no literal_url findings")
+          PY
+        cwd: "."
+  - id: "dod-omn21623-deploy-published-endpoint-readback"
+    description: |-
+      Hosted-runner source-artifact readback: fetch the endpoint authority file at the
+      evaluated published commit and require it to declare github.web_url. A missing
+      key fails the command. No lab service, credentials or broker is required. This
+      checks the published source artifact and does not assert a live runtime rollout.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/configs/service_endpoints.yaml" | uv run --frozen python -c '
+          import sys, yaml
+          doc = yaml.safe_load(sys.stdin.read())
+          assert "web_url" in doc["github"], "github.web_url missing"
+          print("Published endpoint authority readback: github.web_url PASS")
+          '
+        cwd: "."
   - id: "dod-omn21623-probe-injection"
     description: "Injected overlay and policy, the contract-declared timeout, the setting and the refusal all behave as stated, for both nodes."
     source: "manual"
-    binds_ac: ["AC1", "AC2", "AC3", "AC4"]
+    binds_ac: ["AC4", "AC5", "AC6", "AC7"]
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_demo_rehearsal/test_probe_config.py tests/nodes/node_demo_drift_detector/test_probe_config.py tests/nodes/node_demo_rehearsal/test_handler_demo_rehearsal.py tests/nodes/node_demo_drift_detector/test_handler_demo_drift_detector.py tests/integration/node_demo_drift_detector/test_demo_drift_detector_multiparam.py -q --no-cov"
