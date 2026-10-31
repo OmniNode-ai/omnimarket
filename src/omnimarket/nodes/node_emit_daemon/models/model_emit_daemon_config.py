@@ -15,6 +15,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from omnimarket.handlers.runtime_paths import runtime_location
+
 
 class EnumCircuitBreakerState(StrEnum):
     """Circuit breaker states for Kafka connectivity."""
@@ -25,29 +27,19 @@ class EnumCircuitBreakerState(StrEnum):
 
 
 def _default_socket_path() -> str:
-    """Resolve default socket path via env or XDG or /tmp fallback."""
-    import os
-
-    env_path = os.environ.get("ONEX_EMIT_SOCKET_PATH")
-    if env_path:
-        return env_path
-    xdg = os.environ.get("XDG_RUNTIME_DIR")
-    if xdg:
-        return os.path.join(xdg, "onex", "emit.sock")
-    return "/tmp/onex-emit.sock"
+    """Resolve default socket path via env or XDG or the runtime-path authority."""
+    return runtime_location(
+        "emit_daemon.socket_path", "ONEX_EMIT_SOCKET_PATH", ("onex", "emit.sock")
+    )
 
 
 def _default_spool_dir() -> Path:
-    """Resolve default spool directory via env or XDG or /tmp fallback."""
-    import os
-
-    env_path = os.environ.get("ONEX_EMIT_SPOOL_DIR")
-    if env_path:
-        return Path(env_path)
-    xdg = os.environ.get("XDG_RUNTIME_DIR")
-    if xdg:
-        return Path(xdg) / "onex" / "event-spool"
-    return Path("/tmp") / "onex-event-spool"
+    """Resolve default spool directory via env or XDG or the runtime-path authority."""
+    return Path(
+        runtime_location(
+            "emit_daemon.spool_dir", "ONEX_EMIT_SPOOL_DIR", ("onex", "event-spool")
+        )
+    )
 
 
 class ModelEmitDaemonConfig(BaseModel):

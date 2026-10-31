@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from omnimarket.handlers.runtime_paths import runtime_path
 from omnimarket.nodes.node_emit_daemon.emit_lifecycle import (
     EmitLifecycle,
 )
@@ -43,7 +44,9 @@ class HandlerEmitDaemon:
             raise TypeError("Emit daemon lifecycle command must be an object")
         action = input_data.get("action", "status")
         if action == "start":
-            socket_path = input_data.get("socket_path", "/tmp/onex-emit.sock")
+            socket_path = input_data.get(
+                "socket_path", runtime_path("emit_daemon.socket_path")
+            )
             pid = input_data.get("pid", 0)
             self._lifecycle.transition_to_binding(socket_path, pid)
             self._lifecycle.transition_to_listening()
