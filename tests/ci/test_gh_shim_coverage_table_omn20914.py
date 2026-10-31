@@ -53,7 +53,7 @@ _SHIM_CLAUSE = re.compile(r"replaces gh ([a-z]+) ([a-z]+)\.")
 # must still be served exactly once and match a one-line, explicit HTTP request.
 _API_CLAUSE = re.compile(
     r"  - name: ([a-z_]+)\n    description: [^\n]*replaces "
-    r'(gh api --method (?:POST|PATCH|PUT|DELETE) /repos/[^\s".]+)\.'
+    r'(gh api (?:--method (?:POST|PATCH|PUT|DELETE) /repos/[^\s".]+|graphql [a-z][A-Za-z]+))\.'
 )
 
 

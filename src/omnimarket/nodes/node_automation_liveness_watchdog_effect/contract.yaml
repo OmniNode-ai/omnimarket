@@ -70,3 +70,7 @@ metadata:
   tags:
     - "effect"
     - "liveness"
+
+timeouts:
+  alert_command_timeout_seconds: 30  # Bounds the alert-channel alarm subprocess.
+  sqlite_lock_timeout_seconds: 30  # Bounds SQLite lock acquisition for the delivery outbox.

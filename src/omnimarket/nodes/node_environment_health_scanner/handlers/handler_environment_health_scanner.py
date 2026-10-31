@@ -12,6 +12,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from omnimarket.handlers.runtime_paths import runtime_path
+
 if TYPE_CHECKING:
     from omnimarket.nodes.node_environment_health_scanner.handlers.prober_projections import (
         ModelProjectionSpec,
@@ -128,7 +130,8 @@ class NodeEnvironmentHealthScanner:
             )
 
             socket_path = os.environ.get(  # contract-config-ok: config
-                "ONEX_EMIT_DAEMON_SOCKET", "/tmp/onex_emit.sock"
+                "ONEX_EMIT_DAEMON_SOCKET",
+                runtime_path("emit_daemon.health_probe_socket_path"),
             )
             log_dir = str(Path(onex_state_dir) / "emit")
             results.append(
