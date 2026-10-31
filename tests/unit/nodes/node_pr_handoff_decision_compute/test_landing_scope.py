@@ -96,13 +96,13 @@ def test_the_same_request_is_refused_under_one_overlay_and_ready_under_another()
     assert ready.verdict is EnumPrHandoffVerdict.READY
 
 
-def test_in_scope_decision_is_the_decision_of_an_absent_scope() -> None:
-    assert _decide(_scope(OVERLAY_LANDING_THE_REPO)) == _decide(None)
-    assert _decide(None).verdict is EnumPrHandoffVerdict.READY
+def test_in_scope_decision_equals_the_decision_with_a_wider_scope() -> None:
+    assert _decide((REPO,)) == _decide(_scope(OVERLAY_LANDING_THE_REPO))
+    assert _decide((REPO,)).verdict is EnumPrHandoffVerdict.READY
 
 
-def test_absent_scope_is_not_a_refusal_and_an_empty_scope_lands_nothing() -> None:
-    assert _decide(None).error_code is None
+def test_valid_scope_is_not_a_refusal_and_an_empty_scope_lands_nothing() -> None:
+    assert _decide((REPO,)).error_code is None
     assert _decide(()).error_code is E.REPO_OUT_OF_LANDING_SCOPE
 
 
@@ -114,7 +114,7 @@ def test_scope_match_is_exact_not_a_prefix() -> None:
 def test_out_of_scope_is_refused_without_waiting_for_an_observation() -> None:
     decision = _decide(_scope(OVERLAY_NOT_LANDING_THE_REPO), observed=False)
     assert decision.error_code is E.REPO_OUT_OF_LANDING_SCOPE
-    assert _decide(None, observed=False).verdict is EnumPrHandoffVerdict.WAIT
+    assert _decide((REPO,), observed=False).verdict is EnumPrHandoffVerdict.WAIT
 
 
 def test_refusal_row_is_data_on_the_decision_and_the_decision_writes_nothing() -> None:

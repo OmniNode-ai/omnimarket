@@ -21,6 +21,9 @@ class EnumPrHandoffErrorCode(StrEnum):
     REPO_OUT_OF_LANDING_SCOPE = "repo-out-of-landing-scope"
     """The request's repository is outside the landing scope the caller supplied, so the landing controller will not land it."""
 
+    SCOPE_UNREAD = "scope-unread"
+    """The request carries no usable landing scope: absent, unreadable or invalid."""
+
     STALE_HEAD = "stale_head"
     """An observation made after the request shows a head other than the one the lane pushed: someone else pushed, or the push failed."""
 
@@ -69,9 +72,13 @@ DECISION_REFUSAL_CODES: frozenset[EnumPrHandoffErrorCode] = frozenset(
     }
 )
 
-# The orchestrator does not pass a scope yet, so it has no trigger for this code.
+# The orchestrator passes the landing scope and routes both scope refusals
+# through their own ``evaluated_<code>`` triggers (WAITING to REFUSED).
 LANDING_SCOPE_REFUSAL_CODES: frozenset[EnumPrHandoffErrorCode] = frozenset(
-    {EnumPrHandoffErrorCode.REPO_OUT_OF_LANDING_SCOPE}
+    {
+        EnumPrHandoffErrorCode.REPO_OUT_OF_LANDING_SCOPE,
+        EnumPrHandoffErrorCode.SCOPE_UNREAD,
+    }
 )
 
 
