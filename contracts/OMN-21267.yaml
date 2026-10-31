@@ -1,0 +1,78 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21267"
+title: "A developer can limit delegation to local models only or free models only, and any model outside the rule is skipped"
+summary: "onex models only local (or free) records one rule in the developer's own config, beside the model tests; onex models only --clear removes it, and onex models list says the rule in force first. With a rule set, the local dispatch skips every chosen model outside it before any attempt and names each skip and its reason under skipped_rungs, then moves on in the order the run would have taken. When the rule leaves no model, the run is refused with MODEL_SCOPE_LEAVES_NO_MODEL (DelegationModelScopeRefusedError) before any provider call. A local model is one added by URL or a keyless local-tier rung (Ollama); a free model is a local one or one the provider catalogue declares free (a free-tier plan, a model tagged free such as an OpenRouter :free id, or a zero declared price). An explicit backend pin and a probe ladder are not narrowed by the rule. With no rule, routing is unchanged."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21267-rule-config"
+    statement: |-
+      onex models sets, clears and lists a local-only or free-only rule in the developer's own config.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: `onex models` sets and clears a local-only or free-only rule in the developer's own config, and `onex models list` shows the rule in force -- falsifier: uv run pytest -k model_scope_rule finds the rule missing from the config after set, or still present after clear
+  - id: "req-omn21267-skip"
+    statement: |-
+      With a rule set, delegation skips every chosen model outside it, records each skip with its reason, and makes no attempt on it.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: with a rule set, delegation skips every chosen model outside it and records each skip with its reason, without making an attempt -- falsifier: uv run pytest -k model_scope_rule with one local and one paid stub model finds an attempt on the paid model under local-only
+  - id: "req-omn21267-refuse"
+    statement: |-
+      When the rule leaves no chosen model, delegation refuses with a named error before any provider call.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: when the rule leaves no chosen model, delegation refuses with a named error before any provider call -- falsifier: uv run pytest -k model_scope_rule finds a provider call or an unnamed error when no model satisfies the rule
+  - id: "req-omn21267-unset"
+    statement: |-
+      With no rule set, routing is unchanged.
+    acceptance:
+      - id: "AC4"
+        statement: |-
+          AC4: with no rule set, routing is unchanged -- falsifier: uv run pytest -k model_scope_rule finds a different route with the rule unset than on dev before the change
+evidence_requirements:
+  - kind: "tests"
+    description: "onex models only sets, lists and clears the rule; the local dispatch skips a model outside it with a named reason and no attempt, refuses with MODEL_SCOPE_LEAVES_NO_MODEL before any provider call when no model is left, and routes as before with no rule."
+    command: "uv run pytest tests/unit/cli/test_omn21267_model_scope_rule.py -q -n 0 --no-cov -k model_scope_rule"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21267-ac1-rule-set-clear-list"
+    description: "onex models only local and onex models only free each write the rule file beside the model tests, onex models list says the rule in force (the --json rows keep their one-provider-per-line shape), and onex models only --clear removes the file and the line. An unknown rule is refused and nothing is written. Fails at the merge base, which has no onex models only command."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn21267_model_scope_rule.py -q -n 0 --no-cov -k 'model_scope_rule and (set_list_and_clear or unknown_rule)'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21267-ac2-skip-without-attempt"
+    description: "With a local model and a paid OpenRouter model chosen to be tried first, under local-only the only model call is the local model, no attempt names the paid model, and skipped_rungs names byok-openrouter on the paid model with a reason naming the rule. Under free-only a key's paid model is skipped and its :free model answers; a local model is kept. Fails at the merge base, where the paid model is called first."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn21267_model_scope_rule.py -q -n 0 --no-cov -k 'model_scope_rule and (skips_the_paid or skips_paid_and_tries_free or keeps_a_local)'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21267-ac3-named-refusal"
+    description: "With only a paid key and a local-only rule, the dispatch raises DelegationModelScopeRefusedError carrying MODEL_SCOPE_LEAVES_NO_MODEL and the skipped model, and the stub provider records no call. Fails at the merge base, where the paid model is called."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn21267_model_scope_rule.py -q -n 0 --no-cov -k 'model_scope_rule and no_model_is_left'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21267-ac4-unset-unchanged"
+    description: "With no rule, a paid model chosen to be tried first is still called first, and without a choice the local model is still first, with no skipped_rungs; both tests pass unchanged at the merge base."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn21267_model_scope_rule.py -q -n 0 --no-cov -k 'model_scope_rule and unset'"
+        cwd: "${OMNI_HOME}/omnimarket"
