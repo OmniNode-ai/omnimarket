@@ -159,3 +159,8 @@ metadata:
   plan: OMN-21433
   transport_type: inmemory
   replaces_skill: lean_contract_seams
+
+# The environment of the in-memory event bus a run drives when none is injected; the consumer
+# group is the run configuration's drive_consumer_group. container/container_inmemory.py binds it.
+in_memory_bindings:
+  event_bus_environment: contract-seams

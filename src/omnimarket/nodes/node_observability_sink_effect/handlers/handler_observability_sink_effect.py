@@ -17,6 +17,9 @@ from datetime import UTC, datetime
 from typing import Literal, Protocol
 from uuid import NAMESPACE_URL, UUID, uuid5
 
+from omnimarket.nodes.node_observability_sink_effect.container.container_inmemory import (
+    bind_local_sink,
+)
 from omnimarket.nodes.node_observability_sink_effect.models.model_observability_sink_input import (
     ModelActionEvent,
     ModelObservabilitySinkInput,
@@ -102,7 +105,7 @@ class HandlerObservabilitySinkEffect:
         # The in-memory/local sink is the contract default. Kafka/Postgres
         # adapters are overrides supplied by runtime wiring; absent them the
         # effect degrades to local persistence rather than raising.
-        local_default = InMemoryObservabilitySink()
+        local_default = bind_local_sink()
         self._kafka_sink: ProtocolObservabilityKafkaSink = (
             kafka_sink if kafka_sink is not None else local_default
         )

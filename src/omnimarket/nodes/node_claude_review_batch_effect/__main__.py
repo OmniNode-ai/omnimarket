@@ -20,8 +20,6 @@ import json
 import sys
 from pathlib import Path
 
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
-
 from omnimarket.nodes.node_claude_review_batch_effect.handlers.adapter_delegation_call_transport import (
     DelegationCallTransport,
 )
@@ -38,6 +36,8 @@ from omnimarket.nodes.node_claude_review_batch_effect.handlers.stub_review_admis
 from omnimarket.nodes.node_claude_review_batch_effect.models import (
     ModelClaudeReviewBatchRequest,
 )
+
+from .container.container_inmemory import bind_event_bus
 
 
 async def _run(args: argparse.Namespace) -> int:
@@ -57,7 +57,7 @@ async def _run(args: argparse.Namespace) -> int:
             sink=sink,
         )
 
-    bus = EventBusInmemory(environment="local", group="claude-review-batch")
+    bus = bind_event_bus()
     await bus.start()
     try:
         events = await serve_and_read_back(bus, request, build)
