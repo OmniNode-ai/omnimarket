@@ -38,3 +38,16 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_pr_thread_resolve.py -q --no-cov -k not_replied"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn21641-deploy-published-source-readback"
+    description: |-
+      Hosted-runner source-artifact readback: fetch the pr_thread_resolve service at the
+      evaluated commit and require the resolveReviewThread mutation. A missing file or a
+      missing marker fails the command.
+      No lab service, credentials or broker is required. This checks the published
+      source artifact and does not assert a live runtime rollout.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_github_repo_write_effect/services/pr_thread_resolve.py" | grep -q "resolveReviewThread"
+        cwd: "."
