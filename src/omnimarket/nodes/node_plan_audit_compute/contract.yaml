@@ -12,12 +12,26 @@ description: >
   non-empty id and title fields, and may declare dependencies or depends_on
   as a list of task id strings). Markdown plans get structure (H1 title),
   Linear ticket linkage (OMN-XXXX), and verified-state marker checks
-  (missing verified-state is advisory WARN). Unsupported file formats are
+  (missing verified-state is advisory WARN). A Markdown plan with a task
+  catalogue and a state_as_of on or after plan_rules.companion_readable.
+  effective_from_state_as_of must link a non-empty human-readable companion
+  (<plan>.readable.md) from its top, else FAIL; companion files are audited
+  for structure only. Unsupported file formats are
   reported as SKIPPED with a reason, never a crash. plan_path may reference a
   single file or a directory of plan files; a run that audits zero files is
   an error, never a vacuous pass. Produces a per-file PASS/WARN/FAIL/SKIPPED
   verdict plus an aggregate verdict. Pure deterministic transform — no LLM
   calls.
+
+# Contract-declared plan rules (OMN-21632). The handler reads this block; the
+# rule's numbers live here, not in code. Plans whose state_as_of is before
+# effective_from_state_as_of are not subject to the rule (no baseline file).
+plan_rules:
+  companion_readable:
+    effective_from_state_as_of: "2026-10-31"
+    companion_suffix: ".readable.md"
+    link_within_lines: 30
+    task_catalogue_heading_pattern: '^#{1,6}\s+[^\n]*\b(?:tasks?|task catalogue|task catalog)\b'
 
 handler:
   module: omnimarket.nodes.node_plan_audit_compute.handlers.handler_plan_audit_compute
