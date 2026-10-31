@@ -1629,6 +1629,7 @@ ignore = [
 # channel to the Claude Code client.
 "src/omnimarket/nodes/node_operator_access_mode_effect/runtime_operator_hook_cli.py" = ["T201"]
 "src/omnimarket/nodes/node_lab_secret_store_override_effect/runtime_lab_secret_store_override_cli.py" = ["T201"]
+"src/omnimarket/nodes/node_ilo_redfish_effect/runtime_ilo_redfish_cli.py" = ["T201"]
 "src/omnimarket/nodes/node_legacy_worktree_audit_effect/handlers/handler_legacy_worktree_audit.py" = ["T201"]
 "src/omnimarket/nodes/node_claude_pool_refill_effect/runtime_claude_pool_refill.py" = ["T201"]
 "src/omnimarket/nodes/node_friction_synthesis_effect/runtime_friction_synthesis_cli.py" = ["T201"]
