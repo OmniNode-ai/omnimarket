@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import stat
 import subprocess
 from collections.abc import Sequence
@@ -433,11 +434,11 @@ def test_page_escapes_record_text_before_it_reaches_markup() -> None:
 def test_page_node_syntax_is_valid() -> None:
     script = re.search(r"<script>(.*)</script>", PAGE, re.DOTALL)
     assert script is not None
-    node = subprocess.run(["node", "--version"], capture_output=True, check=False)
-    if node.returncode != 0:
+    node = shutil.which("node")
+    if node is None:
         pytest.skip("node is not installed")
     checked = subprocess.run(
-        ["node", "--check", "-"],
+        [node, "--check", "-"],
         input=script.group(1).encode(),
         capture_output=True,
         check=False,
