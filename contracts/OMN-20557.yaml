@@ -1,0 +1,77 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-20557"
+title: "The savings baseline uses the developer's Claude Code session model, sent by the /onex:delegate plugin"
+summary: "A delegate request names the caller's Claude Code session model in its metadata map under session_model. The delegate-skill handler resolves the receipt's baseline from it (baseline_source session_model), passes it to the local dispatch port so the evidence row and the saving are stated against the same baseline, and the end-of-delegate metering fold is keyed by it. onex metering with no --baseline reads the row the newest fold wrote. An unpriced session model is BASELINE_UNRESOLVED with a null saving; no session model still resolves the fixed default and says so. A port that does not declare session_model never receives it, and its saving, priced against another baseline, is dropped from the receipt."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn20557-session-baseline"
+    statement: |-
+      The caller's session model, carried on the delegate request, is the run's savings baseline on the receipt, on the evidence row and in the metering rows onex metering prints. An unpriced session model is unresolved with a null saving, and a request without one resolves the fixed default and names that case.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a delegation whose request carries the session model names baseline_source session_model and that model on its receipt, with the saving stated against it -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_session_model_baseline_omn20557.py -k 'receipt_baseline or port_without' -q"
+      - id: "AC2"
+        statement: "AC2: a session model absent from the pricing manifest yields BASELINE_UNRESOLVED with a null saving, never the fixed default and never a number -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_session_model_baseline_omn20557.py -k unpriced -q"
+      - id: "AC3"
+        statement: "AC3: a request with no session model still resolves the fixed default and the receipt says fixed_default; after a session-model run, the next run without one restores the fixed default in metering -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_session_model_baseline_omn20557.py -k 'no_session_model or blank or newest_run' -q"
+      - id: "AC4"
+        statement: "AC4 (local half): the run's metering rows are folded under the session model and onex metering --json prints it as the baseline, then the newest run's baseline -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_session_model_baseline_omn20557.py -k 'metering' -q"
+evidence_requirements:
+  - kind: "tests"
+    description: "The real local path, HandlerDelegateSkill over LocalDelegationDispatchPort on a fresh HOME, with only the provider stubbed at the transport boundary."
+    command: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_session_model_baseline_omn20557.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn20557-receipt-session-model"
+    description: "The receipt names session_model and the session's model, and the saving is stated against it."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_session_model_baseline_omn20557.py -k 'receipt_baseline or port_without' -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20557-unpriced-unresolved"
+    description: "An unpriced session model is BASELINE_UNRESOLVED with a null saving."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_session_model_baseline_omn20557.py -k unpriced -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20557-fixed-default"
+    description: "No session model resolves the fixed default and the receipt says so; a later run without a session model restores the fixed default in metering."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_session_model_baseline_omn20557.py -k 'no_session_model or blank or newest_run' -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20557-metering-baseline"
+    description: "onex metering --json prints the session model as the baseline after a run from that session."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_session_model_baseline_omn20557.py -k metering -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20557-deploy-published-source-readback"
+    description: |-
+      Hosted-runner source-artifact readback: fetch the handler module and the
+      local dispatch port at the evaluated published commit and confirm the
+      session-model metadata key and the port's session-model keyword are in
+      them. A missing file or symbol fails the command. No lab service,
+      credentials or broker is required. This checks the published source
+      artifact and does not assert a live runtime rollout.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_delegate_skill_orchestrator/session_model.py" | grep -c 'SESSION_MODEL_METADATA_KEY = "session_model"' >/dev/null && curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch.py" | grep -c 'session_model=_SESSION_MODEL.get()' >/dev/null
+        cwd: "."

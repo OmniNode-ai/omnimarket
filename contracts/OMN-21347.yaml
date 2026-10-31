@@ -1,0 +1,63 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21347"
+title: "When the session model is unknown, the savings baseline is the model the developer uses most, not a fixed Sonnet"
+summary: "resolve_baseline_model takes the developer's model history as a mapping of model id to use count. With no session model and no configured overlay or store baseline, the most-used model is the baseline and the selection case, carried on the receipt as baseline_source, is most_used. With no history the fixed default claude-sonnet-5-5 stays, named fixed_default. A tie goes to the lowest model id; an unpriced most-used model is BASELINE_UNRESOLVED."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn21347-most-used-baseline"
+    statement: |-
+      With no session model, the savings baseline is the model the developer has used most, and the fixed default applies only when there is no history.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: with no session model and a history where Opus 5.5 is most used, the receipt's baseline is Opus 5.5 and baseline_source names most_used -- falsifier: uv run pytest on a pricing test with a stub history asserting the baseline model and source"
+      - id: "AC2"
+        statement: "AC2: with no session model and no history, the baseline stays claude-sonnet-5-5 with baseline_source fixed_default -- falsifier: uv run pytest on the same test with an empty history"
+evidence_requirements:
+  - kind: "tests"
+    description: "The most-used and no-history cases fail on the base resolver, which takes no history, and pass on the fix."
+    command: "uv run pytest tests/unit/test_most_used_baseline_omn21347.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21347-most-used"
+    description: "A stub history whose most-used model is claude-opus-5-5 resolves that baseline, named most_used on the receipt."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_most_used_baseline_omn21347.py -k ac1 -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21347-no-history"
+    description: "An empty history keeps claude-sonnet-5-5, named fixed_default."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_most_used_baseline_omn21347.py -k ac2 -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21347-deploy-published-source-readback"
+    description: |-
+      Hosted-runner source-artifact readback: fetch the baseline fallback module at the
+      evaluated published commit and run it over a stub history. A missing file or a wrong
+      selection fails the command. No lab service, credentials or broker is required; this
+      checks the published source artifact and does not assert a live runtime rollout.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/models/baseline_fallback.py" | python3 -c '
+          import sys
+          ns = {"__name__": "published_baseline_fallback"}
+          exec(compile(sys.stdin.read(), "published_baseline_fallback", "exec"), ns)
+          pick = ns["configured_or_most_used"]
+          assert pick({}, {}, {"claude-opus-5-5": 9, "claude-sonnet-5-5": 2}) == ("claude-opus-5-5", "most_used")
+          assert pick({}, {}, {}) is None
+          print("Published baseline fallback readback: 2 assertions PASS")
+          '
+        cwd: "."

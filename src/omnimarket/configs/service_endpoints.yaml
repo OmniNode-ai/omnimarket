@@ -12,6 +12,8 @@
 # Fail-closed: any missing required key raises KeyError at startup.
 
 github:
+  # Web origin: repository pages, clone remotes and release downloads.
+  web_url: "https://github.com"
   rest_url: "https://api.github.com"
   graphql_url: "https://api.github.com/graphql"
 

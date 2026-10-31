@@ -20,20 +20,15 @@ from __future__ import annotations
 import re
 import shlex
 
+from omnimarket.handlers.runtime_paths import runtime_path_list
+
 from ..models.model_brief_prerequisites import (
     ModelBriefPrerequisitesRequest,
     ModelBriefPrerequisitesResult,
 )
 
 HOST_RE = r"[A-Za-z0-9][A-Za-z0-9_.-]*"
-HOME_ROOTS = (
-    "/",
-    "~/",
-    "$HOME/",
-    "${HOME}/",
-    "$ONEX_REGISTRY_ROOT/",
-    "${ONEX_REGISTRY_ROOT}/",
-)
+HOME_ROOTS = runtime_path_list("brief_prerequisites.home_roots")
 
 
 class HandlerBriefPrerequisites:
