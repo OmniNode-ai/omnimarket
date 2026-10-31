@@ -163,6 +163,7 @@ class _StubTriageOrchestrator(HandlerTriageOrchestrator):
             "deadbeefoid",
         ),
     ) -> None:
+        super().__init__()
         self._graphql_id = graphql_id
         self._refs = refs
         self._failing_run_id = failing_run_id
