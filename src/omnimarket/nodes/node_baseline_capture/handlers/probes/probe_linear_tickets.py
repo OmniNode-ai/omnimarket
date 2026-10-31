@@ -7,6 +7,7 @@ import os
 from datetime import datetime
 
 from omnimarket.config.service_endpoints import LINEAR_GRAPHQL_URL
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.nodes.node_baseline_capture.models.model_baseline import (
     ModelLinearTicketSnapshot,
     ProbeSnapshotItem,
@@ -53,7 +54,11 @@ class ProbeLinearTickets:
             return []
 
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(
+                timeout=load_node_timeouts("node_baseline_capture").get(
+                    "linear_tickets_timeout_seconds"
+                )
+            ) as client:
                 response = await client.post(
                     _LINEAR_API_URL,
                     json={"query": _QUERY},

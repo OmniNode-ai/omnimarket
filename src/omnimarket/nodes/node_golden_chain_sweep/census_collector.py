@@ -43,6 +43,7 @@ from pathlib import Path
 
 import yaml
 
+from omnimarket.handlers.container.container_inmemory import bind_database_adapter
 from omnimarket.nodes.node_golden_chain_sweep.handlers.handler_golden_chain_sweep import (
     GoldenChainSweepRequest,
     ModelChainCensus,
@@ -53,10 +54,7 @@ from omnimarket.nodes.node_golden_chain_sweep.reachability import (
     derive_chain_reachability,
 )
 from omnimarket.nodes.node_golden_chain_sweep.registry import load_registry
-from omnimarket.projection.protocol_database import (
-    InmemoryDatabaseAdapter,
-    ProtocolProjectionDatabaseSync,
-)
+from omnimarket.projection.protocol_database import ProtocolProjectionDatabaseSync
 from omnimarket.projection.tenant_registry_resolution import (
     TENANT_REGISTRY_MIRROR_TABLE,
 )
@@ -184,7 +182,7 @@ def collect_census(
             payload[chain.timestamp_field] = now_iso
 
         event = event_model(**payload)
-        db: ProtocolProjectionDatabaseSync = InmemoryDatabaseAdapter()
+        db: ProtocolProjectionDatabaseSync = bind_database_adapter()
         db.upsert(
             TENANT_REGISTRY_MIRROR_TABLE,
             "tenant_slug",
