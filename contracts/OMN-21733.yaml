@@ -32,9 +32,9 @@ requirements:
       The floor page shows where everything runs: a bay per machine with its placed lanes against its cap, its load, memory, swap, CI runners and unit work, a cloud bay, and for every lane its ticket title, kind, newest status with its age, pull request with CI state, run time, a stalled mark and a link to the assembly-line station it builds, all read from the record.
     acceptance:
       - id: "AC9"
-        statement: "AC9: the page draws a bay for every machine in the record with its lanes against its cap, draws a machine the pool could not read as unread and one in repair as repair, draws the cloud bay with its stop lamp, and draws each lane with its title, kind, engine, status, PR and CI state, stalled mark, full detail and station link, escaping every character of the record -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -k page_draws -q"
+        statement: "AC9: the page draws a bay for every machine in the record with its lanes against its cap, draws a machine the pool could not read as unread and one in repair as repair, draws the cloud bay with its stop lamp, and draws each lane with its title, kind, engine, status, PR and CI state, stalled mark, full detail and station link, escaping every character of the record -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -k page_draws -q"
       - id: "AC10"
-        statement: "AC10: the publish contract runs the pool read of the machines before the record is computed, a failed pool step is recorded as failed and the machines are then drawn unread -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect -k refresh -q"
+        statement: "AC10: the publish contract runs the pool read of the machines before the record is computed, a failed pool step is recorded as failed and the machines are then drawn unread -- falsifier: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -k refresh -q"
 evidence_requirements:
   - kind: "tests"
     description: "Tests of the overlay refusals, the atomic remote write (executed through a local shell), the refresh ordering and the page."
@@ -118,7 +118,7 @@ dod_evidence:
     binds_ac: ["AC9"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k page_draws"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k page_draws"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21733-ac10"
     description: "AC10 refresh step tests pass."
@@ -126,5 +126,5 @@ dod_evidence:
     binds_ac: ["AC10"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect -q --no-cov --tb=line -k refresh"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_factory_floor_publish.py -q --no-cov --tb=line -k refresh"
         cwd: "${OMNI_HOME}/omnimarket"

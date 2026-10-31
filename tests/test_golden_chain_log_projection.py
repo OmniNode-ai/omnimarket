@@ -17,6 +17,7 @@ from omnimarket.logging.structured_logger import LOG_ENTRY_TOPIC, StructuredEven
 from omnimarket.nodes.node_log_projection.handlers.handler_log_projection import (
     EnumLogLevel,
     ModelLogEntry,
+    ModelLogProjectionRequest,
     ModelLogProjectionSnapshot,
     ModelLogProjectionState,
     ModelLogQuery,
@@ -291,3 +292,29 @@ class TestLogProjectionGoldenChain:
         round_tripped = ModelLogProjectionSnapshot(**deserialized)
         assert round_tripped.total_count == 2
         assert round_tripped.error_count == 1
+
+
+class TestHandleTypedRequest:
+    """handle takes one typed request and returns the new projection state."""
+
+    def test_handle_projects_the_entry_onto_the_given_state(self) -> None:
+        first = _make_entry(message="first")
+        state = NodeLogProjection.project(first, ModelLogProjectionState())
+
+        new_state = NodeLogProjection.handle(
+            ModelLogProjectionRequest(
+                entry=_make_entry(level=EnumLogLevel.ERROR, message="second"),
+                state=state,
+            )
+        )
+
+        assert isinstance(new_state, ModelLogProjectionState)
+        assert new_state.total_count == 2
+        assert new_state.error_count == 1
+
+    def test_handle_without_state_starts_from_empty(self) -> None:
+        new_state = NodeLogProjection.handle(
+            ModelLogProjectionRequest(entry=_make_entry())
+        )
+
+        assert new_state.total_count == 1

@@ -48,7 +48,6 @@ node_context_exploration_policy_compute onex.evt.omnimarket.context-exploration-
 node_context_exploration_policy_compute selection_reason_class
 node_context_roi_compute onex.evt.omnimarket.context-roi-score-completed.v1
 node_context_roi_compute onex.evt.omnimarket.context-roi-score-failed.v1
-node_contract_reducer reduced
 node_cross_cli_originator onex.cmd.omnimarket.cross-cli-delegation-requested.v1
 node_cross_cli_originator onex.evt.omnimarket.cross-cli-delegation-completed.v1
 node_cross_cli_originator onex.evt.omnimarket.cross-cli-originator-completed.v1
