@@ -1,0 +1,65 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-21835
+title: iLO 4 Redfish effect node for the Gen8 and Gen9 lab servers, read verbs and approval-gated power, virtual-media and boot-once verbs
+summary: The operator asked for HPE Gen8 and Gen9 servers to be managed through the iLO RESTful API instead of the web UI, read-only by default. node_ilo_redfish_effect holds the logic. Read verbs (discover, identity, inventory, health, logs, power-status) change nothing. Write verbs (power, virtual-media, boot-once) refuse without a cited operator approval row that names the action and the host, refuse when the live serial or product is not the overlay's, never send a second time for an approval whose journal shows an attempt, and confirm by reading state back. TLS verification is never disabled (the host's certificate is pinned), credentials come only from the lab secret store, hosts and addresses come only from a private overlay, and every returned field is redacted. Smart Array and RAID configuration is not offered. The tests use mocked iLO 4 response shapes for both generations and make no network call.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21835-node
+  statement: node_ilo_redfish_effect refuses a write without an approval, refuses on an identity mismatch, does not repeat a write whose journal shows an attempt, and is proven by mocked Gen8 and Gen9 response shapes with no network call.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: every write verb (power, virtual-media, boot-once) refuses without an approval record naming the action and the target, and a refused write issues no HTTP write -- falsifier: uv run pytest tests/nodes/node_ilo_redfish_effect -k refused_write'
+  - id: AC3
+    statement: 'AC3: a write whose live serial or product differs from the overlay identity raises an identity mismatch and issues no write -- falsifier: uv run pytest tests/nodes/node_ilo_redfish_effect -k identity_mismatch'
+  - id: AC4
+    statement: 'AC4: a retried power action whose idempotency key already has a recorded result is not sent a second time -- falsifier: uv run pytest tests/nodes/node_ilo_redfish_effect -k retry_not_repeated'
+  - id: AC5
+    statement: 'AC5: tests run with mocked iLO 4 Gen8 and Gen9 response shapes and make no network call, on the lab -- falsifier: uv run pytest tests/nodes/node_ilo_redfish_effect on a lab host exits 0 with the receipt cited in the PR body'
+evidence_requirements:
+- kind: tests
+  description: The node's tests, run on a lab host at the pushed head.
+  command: uv run pytest tests/nodes/node_ilo_redfish_effect tests/test_routing_sources_omn20601.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21835-ac2-refused-write
+  description: AC2 runs the refused-write tests. A write with no approval_ref, an unknown consent row, a consent for another action, another host or another image, an unlisted approver, a self-approval, an expired or future-dated row, a host not live or a missing write credential is refused before any connection is opened and sends no write.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_ilo_redfish_effect -k refused_write -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21835-ac3-identity-mismatch
+  description: AC3 runs the identity-mismatch tests. A serial that differs, a product that differs, a model of the other generation and an overlay with no expected serial all refuse the write after the live system is read, with no write call and no journal record.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_ilo_redfish_effect -k "identity_mismatch or identity_unconfirmed" -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21835-ac4-retry-not-repeated
+  description: AC4 runs the retry tests. After a completed restart, after a crash that left only the intent record, and after an unknown outcome, the same request returns already_attempted and the device saw one reset only; a rejected attempt may be retried; a new approval is a new key.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_ilo_redfish_effect -k "retry_not_repeated or rejected_write_may_be_retried or new_approval_is_a_new_key" -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21835-ac5-mocked-shapes-on-the-lab
+  description: AC5 runs the whole node test directory and the routing-source inventory test on a lab host at the pushed head. The Gen8 and Gen9 shapes are synthetic resource trees built from the HPE iLO 4 data model names, no test opens a connection to anything but a loopback listener with a generated certificate.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_ilo_redfish_effect tests/test_routing_sources_omn20601.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
