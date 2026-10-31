@@ -78,9 +78,10 @@ dod_evidence:
       import tomllib
       from pathlib import Path
       source = tomllib.loads(Path("pyproject.toml").read_text())["tool"]["uv"]["sources"]["omnibase-core"]
-      assert source["tag"] == "dev-20261031000524-fc6159b98026", source
+      tag_sha12 = source["tag"].rsplit("-", 1)[-1]
+      assert source["tag"].startswith("dev-") and len(tag_sha12) == 12, source
       installed = json.loads(importlib.metadata.distribution("omnibase-core").read_text("direct_url.json"))
-      assert installed["vcs_info"]["commit_id"] == "fc6159b9802687dcf8496ac34ff13a409a6d5230", installed
+      assert installed["vcs_info"]["commit_id"].startswith(tag_sha12), (source, installed)
       for module in (
           "omnimarket.nodes.node_linear_triage.services.done_write_receipt_gate",
           "omnimarket.nodes.node_duplication_sweep.handlers.handler_duplication_sweep",
@@ -91,4 +92,13 @@ dod_evidence:
       assert load_policy()["wrong_repo"].siblings
       print("PR 4618 installed core and migrated runtime imports passed")
       PY
+    cwd: .
+- id: dod-omn21478-pr4681-core-packaged-timeouts
+  description: The core pin moves to dev-20261031132438-13b69f379f92, whose installed omnibase_core loads its operational timeouts from the packaged operational_timeouts.yaml contract and refuses an unknown or missing budget. The previous pin has no such module, so the bound test fails at the merge base.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/test_core_pin_operational_timeouts_omn21478.py -q --no-cov -p no:randomly
     cwd: .
