@@ -23,7 +23,7 @@ requirements:
 evidence_requirements:
 - kind: tests
   description: The tests of the nodes whose command line entry moved, run on a lab host at the pushed head.
-  command: uv run pytest tests/nodes/node_automation_liveness_overlay_check_compute tests/nodes/node_automation_liveness_overlay_check_effect tests/nodes/node_architecture_discovery_orchestrator tests/nodes/node_claude_code_hook_adapter_effect tests/nodes/node_friction_synthesis_effect tests/nodes/node_host_thermal_observe_effect tests/nodes/node_hourly_tick_effect tests/nodes/node_lab_disk_growth_effect tests/nodes/node_lab_fill_receipt_table_compute tests/nodes/node_landing_tlc_receipt_effect tests/nodes/node_linear_ticket_write_effect tests/nodes/node_operator_access_mode_effect tests/nodes/node_rsd_migration_orchestrator tests/nodes/node_runtime_deploy_effect tests/test_session_capability_digest.py tests/test_golden_chain_patch_apply_dispatch_effect.py -q --no-cov --tb=line
+  command: uv run pytest tests/nodes/node_automation_liveness_overlay_check_effect/test_overlay_check_run.py tests/nodes/node_automation_liveness_overlay_check_compute tests/nodes/node_architecture_discovery_orchestrator tests/nodes/node_claude_code_hook_adapter_effect tests/nodes/node_friction_synthesis_effect tests/nodes/node_host_thermal_observe_effect tests/nodes/node_hourly_tick_effect tests/nodes/node_lab_disk_growth_effect tests/nodes/node_lab_fill_receipt_table_compute tests/nodes/node_landing_tlc_receipt_effect tests/nodes/node_linear_ticket_write_effect tests/nodes/node_operator_access_mode_effect tests/nodes/node_rsd_migration_orchestrator tests/nodes/node_runtime_deploy_effect tests/test_session_capability_digest.py tests/test_golden_chain_patch_apply_dispatch_effect.py -q --no-cov --tb=line
 emergency_bypass:
   enabled: false
   justification: ''
@@ -41,6 +41,9 @@ dod_evidence:
       test -z "$(git ls-files src | grep -E 'handlers/handler_(automation_liveness_overlay_check_cli|runtime_coverage_cli|architecture_discovery_cli|claude_code_hook_cli|compaction_latency_cli|friction_synthesis_cli|host_thermal_cli|hourly_tick_cli|lab_disk_growth_cli|lab_fill_receipt_table_cli|lab_secret_store_override_cli|landing_tlc_receipt_cli|operator_hook_cli|capture_cli|patch_apply_dispatch_cli|rsd_migration_cli|runtime_deploy_cli|session_capability_digest_cli|lab_proof)\.py$')";
       test "$(git ls-files src | grep -E '/runtime_[a-z_]*(_cli|lab_proof)\.py$' | xargs grep -lE '^def main\(' | wc -l)" -ge 19
     cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_linear_ticket_write_effect/test_lab_proof.py tests/nodes/node_operator_access_mode_effect/test_operator_access_mode.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21536-ac2-file-shape
   description: AC2 runs the canonical-file-shape hook over the whole tree of the committed head and checks that none of the moved modules is still listed in the burn-down file.
   source: manual
@@ -57,6 +60,9 @@ dod_evidence:
       set -eu;
       test -z "$(grep -E 'handler_(automation_liveness_overlay_check|runtime_coverage|architecture_discovery|claude_code_hook|compaction_latency|friction_synthesis|host_thermal|hourly_tick|lab_disk_growth|lab_fill_receipt_table|lab_secret_store_override|landing_tlc_receipt|operator_hook|capture|patch_apply_dispatch|rsd_migration|runtime_deploy|session_capability_digest)_cli\.py|handler_lab_proof\.py' .onex_ratchets/canonical_file_shape_burndown_baseline.txt)"
     cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_canonical_file_shape_burndown_omn21524.py -k committed_burndown -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn21536-ac3-touched-node-tests
   description: AC3 runs the tests of the nodes whose command line entry moved.
   source: manual
@@ -64,7 +70,7 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_automation_liveness_overlay_check_compute tests/nodes/node_automation_liveness_overlay_check_effect tests/nodes/node_architecture_discovery_orchestrator tests/nodes/node_claude_code_hook_adapter_effect tests/nodes/node_friction_synthesis_effect tests/nodes/node_host_thermal_observe_effect tests/nodes/node_hourly_tick_effect tests/nodes/node_lab_disk_growth_effect tests/nodes/node_lab_fill_receipt_table_compute tests/nodes/node_landing_tlc_receipt_effect tests/nodes/node_linear_ticket_write_effect tests/nodes/node_operator_access_mode_effect tests/nodes/node_rsd_migration_orchestrator tests/nodes/node_runtime_deploy_effect tests/test_session_capability_digest.py tests/test_golden_chain_patch_apply_dispatch_effect.py -q --no-cov --tb=line
+    check_value: uv run pytest tests/nodes/node_automation_liveness_overlay_check_effect/test_overlay_check_run.py tests/nodes/node_automation_liveness_overlay_check_compute tests/nodes/node_architecture_discovery_orchestrator tests/nodes/node_claude_code_hook_adapter_effect tests/nodes/node_friction_synthesis_effect tests/nodes/node_host_thermal_observe_effect tests/nodes/node_hourly_tick_effect tests/nodes/node_lab_disk_growth_effect tests/nodes/node_lab_fill_receipt_table_compute tests/nodes/node_landing_tlc_receipt_effect tests/nodes/node_linear_ticket_write_effect tests/nodes/node_operator_access_mode_effect tests/nodes/node_rsd_migration_orchestrator tests/nodes/node_runtime_deploy_effect tests/test_session_capability_digest.py tests/test_golden_chain_patch_apply_dispatch_effect.py -q --no-cov --tb=line
     cwd: ${OMNI_HOME}/omnimarket
 
   - id: "dod-omn21536-s4-ac1-no-envelope-in-core"
