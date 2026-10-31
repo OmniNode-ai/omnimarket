@@ -17,7 +17,7 @@ from omnimarket.inference.secret_store_resolver import (
     resolve_api_key_async,
     secret_store_from_config_path,
 )
-from omnimarket.models.model_swap_validation_service.model_model_swap_service_config import (
+from omnimarket.nodes.node_model_swap_validation_effect.models.model_model_swap_service_config import (
     ModelModelSwapServiceConfig,
 )
 

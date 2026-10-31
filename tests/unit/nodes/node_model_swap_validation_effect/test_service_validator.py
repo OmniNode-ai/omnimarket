@@ -17,14 +17,14 @@ from omnibase_spi.protocols.validation.protocol_model_swap_validator import (
     ProtocolModelSwapValidator,
 )
 
-from omnimarket.handlers.rightmodeler_validation.http_transport import (
+from omnimarket.nodes.node_model_swap_validation_effect.adapters.rightmodeler.http_transport import (
     RightModelerHttpTransport,
     RightModelerServiceTransportError,
 )
-from omnimarket.handlers.rightmodeler_validation.validator import (
+from omnimarket.nodes.node_model_swap_validation_effect.adapters.rightmodeler.validator import (
     ValidatorRightModeler,
 )
-from omnimarket.models.model_swap_validation_service.model_model_swap_service_config import (
+from omnimarket.nodes.node_model_swap_validation_effect.models.model_model_swap_service_config import (
     ModelModelSwapServiceConfig,
 )
 

@@ -5,7 +5,7 @@
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.models.model_swap_validation_service.model_model_swap_service_config import (
+from omnimarket.nodes.node_model_swap_validation_effect.models.model_model_swap_service_config import (
     ModelModelSwapServiceConfig,
 )
 
