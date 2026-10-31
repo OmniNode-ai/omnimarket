@@ -349,3 +349,12 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_cloud_session_placement_effect/test_handler_cloud_session_placement.py -q --no-cov -k placement_order"
     binds_ac: ["AC1"]
+  - id: "dod-omn21373-ac1-cloud-hold-positive-credit"
+    description: "AC1 contribution only: the cloud placement node keeps an account with positive recorded cloud credit open on a subscription allowed_warning, releases an existing warning-only hold, and still holds a refused rate, zero or unknown credit, an observed promotional fallback and an operator hold. Fails at the merge base, whose cloud_accounts handler has no _credit_releases_warning. The AC1 read on the private data repository itself stays pending for the epic."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -c _credit_releases_warning src/omnimarket/nodes/node_cloud_session_placement_effect/handlers/cloud_accounts.py"
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_cloud_session_placement_effect/test_cloud_accounts.py -q --no-cov"
+    binds_ac: ["AC1"]
