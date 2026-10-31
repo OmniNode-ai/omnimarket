@@ -13,7 +13,7 @@ description: >
 handler:
   module: omnimarket.nodes.node_evidence_pipeline_orchestrator.handlers.handler_evidence_pipeline_orchestrator
   class: HandlerEvidencePipelineOrchestrator
-  input_model: omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_pipeline_command.ModelEvidencePipelineCommand
+  input_model: omnimarket.models.evidence_pipeline.wire.model_evidence_pipeline_command.ModelEvidencePipelineCommand
 
 handler_routing:
   handlers:
@@ -24,11 +24,11 @@ handler_routing:
 
 input_model:
   name: ModelEvidencePipelineCommand
-  module: omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_pipeline_command
+  module: omnimarket.models.evidence_pipeline.wire.model_evidence_pipeline_command
   description: "Trigger payload containing repo, PR, ticket, commit, and correlation identity."
 output_model:
   name: ModelEvidenceValidationResult
-  module: omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_validation_result
+  module: omnimarket.models.evidence_pipeline.wire.model_evidence_validation_result
   description: "Validation of the product repository contract for this run."
 
 descriptor:

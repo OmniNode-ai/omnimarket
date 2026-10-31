@@ -23,9 +23,6 @@ from uuid import uuid4
 
 import pytest
 import yaml
-from omnibase_compat.contracts.evidence_pipeline.wire.model_deployment_readiness_result import (
-    ModelDeploymentReadinessResult,
-)
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.protocols import ProtocolEventBusLike
 from omnibase_infra.runtime.auto_wiring.handler_wiring import _make_dispatch_callback
@@ -33,6 +30,9 @@ from omnibase_infra.runtime.service_dispatch_result_applier import (
     build_contract_result_applier,
 )
 
+from omnimarket.models.evidence_pipeline.wire.model_deployment_readiness_result import (
+    ModelDeploymentReadinessResult,
+)
 from omnimarket.nodes.node_readiness_gate_orchestrator.handlers.handler_readiness_gate_orchestrator import (
     HandlerReadinessGateOrchestrator,
 )

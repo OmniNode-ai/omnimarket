@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_bundle import (
+from omnimarket.models.evidence_pipeline.wire.model_evidence_bundle import (
     ModelEvidenceBundle,
 )
-from omnibase_compat.contracts.evidence_pipeline.wire.model_raw_evidence_payload import (
+from omnimarket.models.evidence_pipeline.wire.model_raw_evidence_payload import (
     ModelRawEvidencePayload,
 )
-
 from omnimarket.nodes.evidence_pipeline_native import coerce_raw, extract_evidence
 
 

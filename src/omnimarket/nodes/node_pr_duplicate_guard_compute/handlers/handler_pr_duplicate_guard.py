@@ -17,6 +17,13 @@ when any of these holds, naming the pull request to take over:
   or the new body's markers;
 - ``claim``: another lane's live CLAIM carries the same ``cause=`` cell.
 
+Files that say nothing about a shared fix never count: the generic ones every change touches (a lock file, the
+ledger) and the ones a repository regenerates in every pull request of a kind (the count rows of a rendered
+plan index). Neither list is code: the generic ones are ``config.generic_paths`` in this node's
+``contract.yaml``, and the per-repository generated ones are the request's ``generated_paths``, which the
+snapshot effect reads from the deployment overlay (private repositories are named only there). Overlap in an
+authored file still counts.
+
 Two pull requests on the same file that change different lines, with unrelated titles, are not duplicates:
 they pass, and the overlap is reported in ``notes``. A pull request whose diff was not read passes on its
 diff and is listed in ``unread``; the other evidence still applies to it.
@@ -26,13 +33,16 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
-from fnmatch import fnmatch
-from typing import Final
+from pathlib import Path
+from typing import Any, Final
+
+import yaml
 
 from omnimarket.handlers.handler_ledger_claims import claim_lane, live_claims
 from omnimarket.models.model_pr_duplicate_guard import (
     EnumDuplicateEvidence,
     ModelDuplicateEvidence,
+    ModelDuplicateGuardRules,
     ModelFileTouch,
     ModelOpenPr,
     ModelPrDuplicateGuardRequest,
@@ -40,6 +50,7 @@ from omnimarket.models.model_pr_duplicate_guard import (
     ModelPrTouch,
 )
 
+NODE_ROOT: Final[Path] = Path(__file__).resolve().parents[1]
 #: A CLAIM's lane is live this long after its last ledger row (the same bar every cause reader uses).
 CLAIM_LIVE_HOURS: Final[float] = 0.75
 #: Distinctive title words two pull requests on one file must share to count as one change, and the share
@@ -56,14 +67,6 @@ _STRENGTH: Final[dict[EnumDuplicateEvidence, int]] = {
     EnumDuplicateEvidence.CLAIM: 3,
     EnumDuplicateEvidence.FILES_AND_TITLE: 4,
 }
-#: Files every kind of change touches; sharing one says nothing about a shared fix.
-_GENERIC_FILES: Final[tuple[str, ...]] = (
-    "*.lock",
-    "package-lock.json",
-    "CHANGELOG*",
-    "contracts/OMN-*.yaml",
-    "*ROLLING_WORK_LEDGER*",
-)
 _STOP_WORDS: Final[frozenset[str]] = frozenset(
     [
         "fix",
@@ -145,11 +148,12 @@ def _short(repo: str) -> str:
     return repo.strip().split("/")[-1].casefold()
 
 
-def is_generic(path: str) -> bool:
-    return any(
-        fnmatch(path, pattern) or fnmatch(path.rsplit("/", 1)[-1], pattern)
-        for pattern in _GENERIC_FILES
+def load_generic_paths() -> tuple[str, ...]:
+    """The files every change touches, from this node's ``contract.yaml``."""
+    contract: dict[str, Any] = yaml.safe_load(
+        (NODE_ROOT / "contract.yaml").read_text(encoding="utf-8")
     )
+    return tuple(contract["config"]["generic_paths"])
 
 
 def distinctive_words(title: str) -> frozenset[str]:
@@ -189,14 +193,19 @@ def _pr_ref(repo: str, number: int) -> str:
     return f"{repo}#{number}"
 
 
-def overlap(new: ModelPrTouch, other: ModelPrTouch) -> tuple[list[str], list[str]]:
-    """(same-line hits, shared non-generic files) between two diffs, each sorted."""
+def overlap(
+    new: ModelPrTouch,
+    other: ModelPrTouch,
+    rules: ModelDuplicateGuardRules,
+    repo: str,
+) -> tuple[list[str], list[str]]:
+    """(same-line hits, shared files that are neither generic nor generated in ``repo``) between two diffs, each sorted."""
     theirs: dict[str, ModelFileTouch] = {f.path: f for f in other.files}
     lines: list[str] = []
     shared: list[str] = []
     for mine in new.files:
         match = theirs.get(mine.path)
-        if match is None or is_generic(mine.path):
+        if match is None or rules.ignores(repo, mine.path):
             continue
         shared.append(mine.path)
         if mine.added and match.added:
@@ -275,10 +284,19 @@ def _claim_prs(row: str, repo: str, open_numbers: set[int]) -> list[int]:
 class HandlerPrDuplicateGuard:
     """Fold one new pull request against the open ones and the live CLAIMs."""
 
+    def __init__(self, generic_paths: tuple[str, ...] | None = None) -> None:
+        self._generic_paths = (
+            generic_paths if generic_paths is not None else load_generic_paths()
+        )
+
     def handle(
         self, request: ModelPrDuplicateGuardRequest
     ) -> ModelPrDuplicateGuardResult:
         repo = _short(request.repo)
+        rules = ModelDuplicateGuardRules(
+            generic_paths=self._generic_paths,
+            generated_paths=request.generated_paths,
+        )
         evidence: list[ModelDuplicateEvidence] = []
         notes: list[str] = []
         unread: list[str] = []
@@ -307,7 +325,7 @@ class HandlerPrDuplicateGuard:
                 continue  # the new pull request is stacked on this one
             hit = False
             if request.touch is not None and pr.touch is not None:
-                lines, shared = overlap(request.touch, pr.touch)
+                lines, shared = overlap(request.touch, pr.touch, rules, repo)
                 words = sorted(new_words & distinctive_words(pr.title))
                 if lines:
                     hit = True
