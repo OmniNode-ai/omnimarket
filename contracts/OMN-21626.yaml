@@ -1,0 +1,59 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21626"
+title: "One node fills every lab host's Claude Code token pool from the secret store, probes through the delegation effect, and spreads draw order and usage limits across hosts"
+summary: "The lab keeps one pool of Claude Code tokens in the secret store (operator ruling 2026-10-31T01:21:16Z). node_claude_pool_refill_effect adds each store token a host's local pool is missing through a pipe between two remote sessions, probes the credential the host's lane runner draws, and moves the host past an expired, revoked or refused token. The probe is a minimal typed request placed by node_llm_delegation_call_effect, the sanctioned model-call seam, and the refill node names no claude command. A usage limit is marked on the account across every served host that holds the token, and each host draws its own first token, from the overlay's token order rotated by the host's place in the overlay's host list and set on the host's pool by a new reorder operation of the pool node. Every host, key, path and answer pattern is the private pool overlay's."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn21626-pool-refill"
+    statement: |-
+      A lab host whose Claude Code token pool is short, expired or refused is refilled and moved to a live token by one run of the node, the probe goes through the delegation effect, a usage limit found on one host is not found again on another, and no two hosts draw the same first token.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the credential probe is a typed request and receipt of the delegation effect, bound in its contract, reading the credential from the host's environment only, bounded and redacted, and the refill node holds no claude command -- falsifier: uv run pytest tests/nodes/node_llm_delegation_call_effect/test_claude_credential_probe.py tests/nodes/node_claude_pool_refill_effect/test_claude_pool_refill.py -q fails the process-boundary, redaction or no-claude-command case"
+      - id: "AC2"
+        statement: "AC2: a usage limit found by one host's probe is marked on every served host whose pool holds the same token and not on a host holding another value under that label, and those hosts spend no probe finding it -- falsifier: the account-wide limit case in tests/nodes/node_claude_pool_refill_effect/test_claude_pool_refill.py fails"
+      - id: "AC3"
+        statement: "AC3: each host's draw order is the overlay's token order rotated by the host's place in the overlay's host list, deterministic, distinct in its first token per host, and set on an established pool by the reorder operation, which refuses an unknown or repeated label and changes nothing -- falsifier: the draw-order and reorder cases in tests/nodes/node_claude_pool_refill_effect/test_claude_pool_refill.py and tests/nodes/node_claude_token_pool_effect/test_claude_token_pool.py fail"
+      - id: "AC4"
+        statement: "AC4: the node is registered as a local-invocation node with its command line in runtime_claude_pool_refill, its handler bound in its contract, and the repository's canonical-shape and runtime inventory checks pass -- falsifier: uv run pytest tests/test_market_node_runtime_dogfood.py -q fails, or pre-commit refuses the node"
+evidence_requirements:
+  - kind: "tests"
+    description: "The pool refill, credential probe and token pool cases."
+    command: "uv run pytest tests/nodes/node_claude_pool_refill_effect tests/nodes/node_llm_delegation_call_effect/test_claude_credential_probe.py tests/nodes/node_claude_token_pool_effect tests/test_market_node_runtime_dogfood.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21626-refill-and-probe"
+    description: "The refill decisions, the typed probe boundary, the account-wide limit and the draw order, with the remote calls replaced by fakes and the claude executable by a fixture script."
+    source: "manual"
+    binds_ac: ["AC1", "AC2", "AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_claude_pool_refill_effect tests/nodes/node_llm_delegation_call_effect/test_claude_credential_probe.py tests/nodes/node_claude_token_pool_effect -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21626-registration"
+    description: "The runtime inventory classifies the registered node."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_market_node_runtime_dogfood.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21626-deploy-published-readback"
+    description: |-
+      Read the published refill command line at the evaluated revision. It is a runtime file beside the node
+      contract and holds no claude command. This source artifact readback needs no broker, store or lab host and
+      does not assert a live rollout.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          set -eu;
+          curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_claude_pool_refill_effect/runtime_claude_pool_refill.py" | grep -q "def main"
+        cwd: "."
