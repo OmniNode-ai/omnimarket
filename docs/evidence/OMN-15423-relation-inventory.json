@@ -6504,6 +6504,7 @@
       "partitioning": [],
       "producer": "node_projection_local_environment",
       "readers": [
+        "node_local_alert_transition_compute",
         "node_projection_local_environment",
         "service:omnimarket_projection_migration_runner"
       ],

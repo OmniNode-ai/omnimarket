@@ -7,6 +7,9 @@ import sys
 from pathlib import Path
 
 from omnimarket.events.worktree_reconcile import ModelWorktreeReconcileCommand
+from omnimarket.nodes.node_worktree_reconcile_effect.container.container_worktree_reconcile_effect import (
+    create_handler_worktree_reconcile,
+)
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_commands import (
     CommandWorktreeDecider,
     CommandWorktreePinner,
@@ -22,9 +25,6 @@ from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_publisher 
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_remover import (
     GitWorktreeRemover,
 )
-from omnimarket.nodes.node_worktree_reconcile_effect.handlers.handler_worktree_reconcile import (
-    HandlerWorktreeReconcile,
-)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -32,7 +32,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--input", required=True, help="path to a JSON command")
     args = parser.parse_args(argv)
     decided, completed = publish_topics()
-    handler = HandlerWorktreeReconcile(
+    handler = create_handler_worktree_reconcile(
         probe=GitWorktreeFactsProbe(),
         decider=CommandWorktreeDecider(),
         pinner=CommandWorktreePinner(),
