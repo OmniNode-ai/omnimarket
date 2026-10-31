@@ -146,6 +146,8 @@ class HandlerClaudeTokenPool:
                 self._mark(pool, request)
             elif request.operation == "mark_revoked":
                 alert = self._revoke(pool, request)
+            elif request.operation == "reorder":
+                self._reorder(pool, request)
             chosen, token = (None, None)
             if request.operation == "resolve":
                 chosen, token = self._resolve(pool)
@@ -242,6 +244,21 @@ class HandlerClaudeTokenPool:
             raise ClaudeTokenPoolRefusedError(f"{label} is not in this host's pool")
         until = _stamp(self._now() + timedelta(seconds=request.seconds))
         entry["until"] = max(until, entry.get("until") or "")
+
+    def _reorder(
+        self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest
+    ) -> None:
+        wanted = list(request.labels)
+        if len(set(wanted)) != len(wanted):
+            raise ClaudeTokenPoolRefusedError("reorder names a label twice")
+        by_label = {t["label"]: t for t in pool["tokens"]}
+        missing = [label for label in wanted if label not in by_label]
+        if missing:
+            raise ClaudeTokenPoolRefusedError(
+                f"{', '.join(missing)} not in this host's pool"
+            )
+        rest = [t for t in pool["tokens"] if t["label"] not in set(wanted)]
+        pool["tokens"] = [by_label[label] for label in wanted] + rest
 
     def _revoke(
         self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest

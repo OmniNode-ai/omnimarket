@@ -12,8 +12,15 @@ boundary, not a cross-node reach-in.
 
 from __future__ import annotations
 
+from omnimarket.models.delegation.model_claude_credential_probe import (
+    ModelClaudeCredentialProbeReceipt,
+    ModelClaudeCredentialProbeRequest,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_agent_session import (
     HandlerAgentSession,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_claude_credential_probe import (
+    HandlerClaudeCredentialProbe,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_cloud_session_start import (
     cloud_start_script,
@@ -61,6 +68,7 @@ __all__ = [
     "HandlerAgentSession",
     "HandlerAntigravityArguments",
     "HandlerClaudeCodeArguments",
+    "HandlerClaudeCredentialProbe",
     "HandlerClaudeGlmArguments",
     "HandlerCodexArguments",
     "HandlerCodexHarnessAttempt",
@@ -69,6 +77,8 @@ __all__ = [
     "HandlerHarnessEvalProcess",
     "HandlerLabJobDelegation",
     "HandlerLlmDelegationCall",
+    "ModelClaudeCredentialProbeReceipt",
+    "ModelClaudeCredentialProbeRequest",
     "ModelCodexHarnessPolicy",
     "ModelCodexHarnessReceipt",
     "ModelCodexHarnessRequest",
