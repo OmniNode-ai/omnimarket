@@ -17,8 +17,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from omnimarket.nodes.node_operator_access_mode_effect.handlers import (
-    handler_operator_hook_cli as cli,
+from omnimarket.nodes.node_operator_access_mode_effect import (
+    runtime_operator_hook_cli as cli,
 )
 from omnimarket.nodes.node_operator_access_mode_effect.handlers.handler_lab_dispatch_gate import (
     MAC_DESTINATIONS,
