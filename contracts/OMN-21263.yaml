@@ -63,4 +63,6 @@ dod_evidence:
     source: manual
     checks:
       - check_type: command
-        check_value: gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/byok_provider_backends.v1.yaml?ref='"$(git rev-parse HEAD)" --jq .content | base64 -d | grep '^  - provider: openai_compatible$' >/dev/null
+        check_value: >-
+          gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/configs/byok_provider_backends.v1.yaml?ref='"$(git rev-parse HEAD)"
+          --jq .content | base64 -d | grep -x '  - provider: openai_compatible' >/dev/null
