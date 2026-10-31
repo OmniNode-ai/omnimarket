@@ -3307,6 +3307,7 @@
   "tests/unit/nodes/node_work_ledger_seq_gap_effect/test_work_ledger_seq_gap.py": 2.01,
   "tests/unit/nodes/node_worktree_lease_compute/test_handler_worktree_lease.py": 0.1,
   "tests/unit/nodes/test_canonical_handler_routing_migration.py": 7.33,
+  "tests/unit/nodes/test_cdi_main_entrypoint_binding_sites.py": 1.5,
   "tests/unit/nodes/test_contract_secret_ref.py": 0.16,
   "tests/unit/nodes/test_golden_chain_ask_state.py": 0.13,
   "tests/unit/nodes/test_golden_chain_build_loop_events.py": 0.02,

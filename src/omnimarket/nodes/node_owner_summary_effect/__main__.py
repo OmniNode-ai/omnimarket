@@ -10,7 +10,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from .handlers import HandlerOwnerSummary
+from .container.container_owner_summary_effect import build_handler_owner_summary
 from .models import ModelOwnerSummaryRequest
 
 
@@ -74,7 +74,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         now=getattr(args, "now", ""),
         full_list_link=getattr(args, "full_list_link", ""),
     )
-    result = HandlerOwnerSummary().handle(request)
+    result = build_handler_owner_summary().handle(request)
     if result.facts is not None:
         sys.stdout.write(result.facts.model_dump_json(indent=1) + "\n")
     for problem in result.problems:

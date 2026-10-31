@@ -25,10 +25,10 @@ from pathlib import Path
 
 import yaml
 
+from omnimarket.nodes.node_compliance_sweep.container import container_compliance_sweep
 from omnimarket.nodes.node_compliance_sweep.handlers.handler_compliance_sweep import (
     DEFAULT_BASELINE,
     ComplianceSweepRequest,
-    NodeComplianceSweep,
 )
 
 _log = logging.getLogger(__name__)
@@ -113,7 +113,7 @@ def main() -> None:
             baseline_path=str(baseline_path),
         )
 
-    handler = NodeComplianceSweep()
+    handler = container_compliance_sweep.build_node_compliance_sweep()
     result = handler.handle(request)
 
     if args.write_baseline:
