@@ -1,8 +1,8 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-21623"
-title: "Burn-down of the contracts_and_di handler_hand_construction findings of omnimarket, slice B: twenty-two nodes construct their handlers only at a binding site"
-summary: "Twenty-two node packages (node_skill_dispatch_engine_orchestrator through node_worktree_reconcile_effect, alphabetically, among the directories no open pull request or pushed branch holds) built 30 handler or node classes by hand in command-line entry points, consumers and default fallbacks. Each node now keeps those constructions in one container/container_<node>.py binding site and every caller takes the instance from that site's factory. The contracts_and_di check over src/omnimarket/nodes reports 447 handler_hand_construction findings before the slice and 417 after; the in-memory event bus of node_version_skew_detector moved to the same site, so inmemory_outside_injection goes from 34 to 33."
+title: "Burn-down of the contracts_and_di literal_timeout findings of omnimarket, slice B: eleven nodes declare their timeouts in their contract"
+summary: "Eleven node packages (node_report_anchor_probe_effect through node_topic_activity_sampler_effect, the free tail of the alphabetical second half) held 30 timeout, interval and tick-budget literals in code. Each value is now declared in its node's contract.yaml under timeouts and is read through the existing omnimarket.handlers.handler_packaged_contract_loader adapter or injected through the constructor; the secret-store HTTP handler takes its call timeout from the overlay its factory already passes, so its default left the code. The contracts_and_di check over src/omnimarket and scripts reports 1577 findings before the slice; no literal_timeout finding remains in the eleven node directories."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -47,6 +47,18 @@ requirements:
         statement: "AC4: configs/runtime_paths.yaml holds each fallback location and handlers/runtime_paths.py resolves it by dotted reference, failing closed on a missing file, key or wrong shape -- falsifier: uv run pytest tests/unit/handlers/test_runtime_paths.py -q --no-cov"
       - id: "AC5"
         statement: "AC5: the contracts_and_di check reports no literal_path finding on the modules of the slice -- falsifier: the command of dod-omn21623-paths-clean below"
+  - id: "req-omn21623-node-timeouts-b"
+    statement: |-
+      The eleven nodes hold no timeout, interval or tick-budget literal in code. Every duration is declared in the node contract with the value it held before, a name the contract does not declare stops the node, and an injected duration wins over the declared one.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the contracts_and_di check reports no literal_timeout finding in the eleven node directories of the slice -- falsifier: the command of dod-omn21623-timeouts-b-check-clean below exits nonzero when a timeout literal returns to any of them"
+      - id: "AC2"
+        statement: "AC2: every node of the slice declares its durations in its contract.yaml with the value its code held before -- falsifier: uv run pytest tests/test_node_timeouts_slice_b_contract.py -k declares_every_duration fails when a declared value or name differs from the table"
+      - id: "AC3"
+        statement: "AC3: a name the contract does not declare refuses instead of supplying a value -- falsifier: uv run pytest tests/test_node_timeouts_slice_b_contract.py -k undeclared fails when a fallback value returns"
+      - id: "AC4"
+        statement: "AC4: constructor defaults and module constants come from the contract and an injected duration wins -- falsifier: uv run pytest tests/test_node_timeouts_slice_b_contract.py -k 'constructor or module_constants or injected or cron_budgets' fails when a literal default returns"
   - id: "req-omn21623-network-binding-authority"
     statement: |-
       Code that binds, probes or compares against a host, address or port reads it from the network-binding authority by reference, and code that needs an in-memory transport takes the one a binding site builds; an unknown reference fails at the call, and the previous values are unchanged.
@@ -68,6 +80,9 @@ evidence_requirements:
   - kind: "tests"
     description: "The authority tests and the tests of the touched nodes pass."
     command: "uv run pytest tests/unit/handlers/test_runtime_paths.py -q --no-cov"
+  - kind: "tests"
+    description: "The contract timeout tests and the existing tests of the touched nodes pass."
+    command: "uv run pytest tests/test_node_timeouts_slice_b_contract.py -q --no-cov"
   - kind: "tests"
     description: "The authority tests and the tests of the touched nodes pass."
     command: "uv run pytest tests/unit/handlers/test_network_bindings.py -q --no-cov"
@@ -267,6 +282,32 @@ dod_evidence:
           print("Published runtime-path authority readback: emit_daemon.socket_path PASS")
           '
         cwd: "."
+  - id: "dod-omn21623-timeouts-b-contract-tests"
+    description: "Declared values, refusals, contract-sourced defaults and injection all behave as stated."
+    source: "manual"
+    binds_ac: ["AC2", "AC3", "AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_node_timeouts_slice_b_contract.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21623-timeouts-b-check-clean"
+    description: "The contracts_and_di check of the pinned omnibase_core reports no literal_timeout finding in the eleven node directories."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "command"
+        check_value: "! uv run --frozen python -m omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run omnibase_core.validation.validator_contracts_and_di:ValidatorContractsAndDi src/omnimarket/nodes/node_report_anchor_probe_effect src/omnimarket/nodes/node_repo_health_repair_effect src/omnimarket/nodes/node_runtime_sweep src/omnimarket/nodes/node_secret_store_effect src/omnimarket/nodes/node_session_bootstrap src/omnimarket/nodes/node_session_orchestrator src/omnimarket/nodes/node_shadow_review_effect src/omnimarket/nodes/node_silent_failure_alarm_compute src/omnimarket/nodes/node_swarm_endpoint_health_effect src/omnimarket/nodes/node_swarm_fleet_discovery_effect src/omnimarket/nodes/node_topic_activity_sampler_effect 2>&1 | grep -q literal_timeout"
+        cwd: "."
+  - id: "dod-omn21623-deploy-timeouts-b-source-readback"
+    description: |-
+      Hosted-runner source readback: the checked-out commit carries the timeouts section in the
+      contract of node_session_orchestrator and the handler that reads it through the packaged contract loader. grep -c exits
+      nonzero on a tree without them, so the command fails at the merge base. It reads the
+      source artifact and does not assert a live runtime rollout.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -c '^timeouts:' src/omnimarket/nodes/node_session_orchestrator/contract.yaml && grep -c 'load_packaged_contract_section' src/omnimarket/nodes/node_session_orchestrator/handlers/handler_session_orchestrator.py"
   - id: "dod-omn21623-network-authority"
     description: "The authority serves every previous value, fails closed, and the binding sites build the in-memory implementations."
     source: "manual"
