@@ -598,7 +598,7 @@ class TestErrorChainD3CloudTierRouting:
 class TestErrorChainD9MissingWheelModule:
     """D9 regression guard: contract module must be present in deployed wheel.
 
-    If omnibase_compat.contracts.evidence_pipeline is absent from the deployed
+    If omnimarket.models.evidence_pipeline is absent from the deployed
     image, the node fails to start and events are silently dropped.
     This chain guards against that failure mode.
     """
@@ -618,7 +618,7 @@ class TestErrorChainD9MissingWheelModule:
         packaging gap. If it passes here but fails on .201, it's a wheel-only gap.
         """
         try:
-            import omnibase_compat.contracts  # noqa: F401
+            import omnimarket.models.evidence_pipeline  # noqa: F401
 
             # Module exists in source — D9 is a wheel/deployment gap if it appears on .201
             module_accessible = True
@@ -640,13 +640,11 @@ class TestErrorChainD9MissingWheelModule:
 
         mock_loader = MagicMock(spec=importlib.util.find_spec("importlib"))
         mock_loader.side_effect = ImportError(
-            "No module named 'omnibase_compat.contracts.evidence_pipeline'"
+            "No module named 'omnimarket.models.evidence_pipeline'"
         )
 
         with pytest.raises(ImportError, match="evidence_pipeline"):
-            raise ImportError(
-                "No module named 'omnibase_compat.contracts.evidence_pipeline'"
-            )
+            raise ImportError("No module named 'omnimarket.models.evidence_pipeline'")
 
     def test_d9_sweep_flags_absent_module_as_failure(self) -> None:
         """Chain fails when startup-module-check field absent from projection."""

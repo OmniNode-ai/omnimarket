@@ -833,6 +833,7 @@ node_session_bootstrap = "omnimarket.nodes.node_session_bootstrap"
 node_session_phase_reducer = "omnimarket.nodes.node_session_phase_reducer"
 node_session_post_mortem = "omnimarket.nodes.node_session_post_mortem"
 node_onboarding = "omnimarket.nodes.node_onboarding"
+node_onex_setup_effect = "omnimarket.nodes.node_onex_setup_effect"
 node_integration_test_runner = "omnimarket.nodes.node_integration_test_runner"
 node_similarity_compute = "omnimarket.nodes.node_similarity_compute"
 node_persona_builder_compute = "omnimarket.nodes.node_persona_builder_compute"
@@ -1181,6 +1182,10 @@ lab-archive = "omnimarket.nodes.node_lab_history_archive_effect.cli:lab_archive_
 # `onex lab-story-log` -- write one ISO week of the work ledger as a sanitized story log for the
 # lab-journey article series; run weekly by a host tick. Discovered over installed distributions.
 lab-story-log = "omnimarket.nodes.node_lab_story_log_effect.cli:lab_story_log_command"
+# `onex setup` -- set up this machine for ONEX, the first command a new developer runs: the
+# onboarding walk a CLI user needs from omnibase install.sh. omnibase_core names it as the root
+# quickstart. Discovered over installed distributions like the groups above.
+setup = "omnimarket.nodes.node_onex_setup_effect.cli:setup_command"
 # OMN-19998: `onex lab claude-token` -- store, deploy, probe and rotate a lab
 # host's Claude token by reference (node_lab_claude_token_effect). Discovered
 # over installed distributions like the groups above.

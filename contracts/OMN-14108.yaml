@@ -1,0 +1,78 @@
+schema_version: 1.0.0
+ticket_id: OMN-14108
+title: 'omnibase_compat is retired: the symbols only omnimarket uses move into omnimarket'
+summary: RULING 2026-10-22T21:43:04Z retires omnibase_compat. The evidence-pipeline wire DTOs and their topic constants, the sweep result and the routing-degraded event are used by omnimarket alone, so they move into
+  omnimarket (omnimarket.models.evidence_pipeline, node_aislop_sweep.models, node_model_router.models) with their tests,
+  and every import and contract module reference follows them. The PR OCC stamp schema, which three repositories use,
+  returns to omnibase_core separately.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched: [public_api]
+requirements:
+- id: req-omn14108-omnimarket-only-symbols
+  statement: The compat symbols only omnimarket uses live in omnimarket, and omnimarket imports none of them from omnibase_compat.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: no first-party repository imports omnibase_compat -- falsifier: `uv run pytest tests/unit/models/evidence_pipeline/wire/test_types.py tests/unit/models/evidence_pipeline/wire/test_dashboard_wire_dtos.py tests/unit/models/evidence_pipeline/wire/test_topics.py tests/unit/models/evidence_pipeline/wire/test_evidence_pipeline_wire_dtos.py
+      tests/test_evidence_pipeline_native_nodes.py tests/test_evidence_pipeline_contracts.py -q` passes against the omnimarket
+      modules, and `git grep -nE "^\s*(from|import) omnibase_compat\.(contracts\.evidence_pipeline|telemetry|routing)" -- "*.py"`
+      prints nothing'
+evidence_requirements:
+- kind: tests
+  description: The moved wire DTO, topic and contract tests and the evidence-pipeline node tests pass against omnimarket's own modules.
+  command: uv run pytest tests/unit/models/evidence_pipeline/wire/test_types.py tests/unit/models/evidence_pipeline/wire/test_dashboard_wire_dtos.py tests/unit/models/evidence_pipeline/wire/test_topics.py tests/unit/models/evidence_pipeline/wire/test_evidence_pipeline_wire_dtos.py tests/test_evidence_pipeline_native_nodes.py tests/test_evidence_pipeline_contracts.py
+    tests/test_deployment_evidence_reducer_wiring.py tests/test_evidence_pipeline_deployment_wiring.py tests/test_evidence_readiness_envelope_unwrap.py
+    -q -o addopts=''
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn14108-ac2-omnimarket-move-in
+  description: The moved models and the evidence-pipeline nodes pass their tests with the omnimarket modules.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/evidence_pipeline/wire/test_types.py tests/unit/models/evidence_pipeline/wire/test_dashboard_wire_dtos.py tests/unit/models/evidence_pipeline/wire/test_topics.py tests/unit/models/evidence_pipeline/wire/test_evidence_pipeline_wire_dtos.py tests/test_evidence_pipeline_native_nodes.py tests/test_evidence_pipeline_contracts.py
+      tests/test_deployment_evidence_reducer_wiring.py tests/test_evidence_pipeline_deployment_wiring.py tests/test_evidence_readiness_envelope_unwrap.py
+      -q -o addopts=''
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac: [AC2]
+- id: dod-omn14108-deploy-published-wire-command
+  description: |
+    Hosted source deployment probe: fetch the moved wire command from public GitHub
+    at the evaluated commit, construct its typed payload and round-trip it through
+    the installed omnimarket model. Also import the contract-backed topic exports.
+    Requires public HTTPS only. Fails before the move because the published module
+    is absent. This reads published source and installed package behavior, not a
+    rollout on a production host.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      published="$(mktemp)";
+      trap 'rm -f "$published"' EXIT;
+      curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/models/evidence_pipeline/wire/model_evidence_pipeline_command.py" --output "$published";
+      env PYTHONDONTWRITEBYTECODE=1 uv run --locked python - "$published" <<'PY'
+      import runpy
+      import sys
+      from pydantic import ValidationError
+      from omnimarket.models.evidence_pipeline.wire import ModelEvidencePipelineCommand
+      from omnimarket.models.evidence_pipeline.wire import topics
+      published_model = runpy.run_path(sys.argv[1])["ModelEvidencePipelineCommand"]
+      payload = dict(correlation_id="deploy-probe", validation_run_id="deploy-probe", ticket_id="OMN-14108", repository="omnimarket", source_commit_sha="1234567", requested_at="2026-10-30T00:00:00Z", trigger_surface="manual")
+      published_command = published_model.model_validate(payload)
+      installed_command = ModelEvidencePipelineCommand.model_validate_json(published_command.model_dump_json())
+      assert installed_command.model_dump() == published_command.model_dump()
+      try:
+          published_model.model_validate({**payload, "trigger_surface": "invalid"})
+      except ValidationError:
+          pass
+      else:
+          raise AssertionError("published command accepted an invalid trigger surface")
+      assert len(topics.__all__) == 8
+      assert len({getattr(topics, name) for name in topics.__all__}) == 8
+      print("published wire command round trip, invalid-trigger refusal and eight contract-backed topics passed")
+      PY
+    cwd: .
