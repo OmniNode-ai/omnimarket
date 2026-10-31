@@ -16,17 +16,13 @@ import pytest
 from omnibase_core.enums.enum_node_kind import EnumNodeKind
 
 from omnimarket.models.model_review_finding import EnumFindingCategory
-from omnimarket.nodes.node_github_diff_effect.handlers.handler_github_diff import (
-    HandlerGithubDiffEffect,
+from omnimarket.nodes.node_pr_review_orchestrator.container.container_pr_review_orchestrator import (
+    create_handler_github_diff_effect,
+    create_handler_prompt_builder_compute,
+    create_handler_response_parser_compute,
 )
 from omnimarket.nodes.node_review_convergence_compute.handlers.handler_convergence_compute import (
     HandlerConvergenceCompute,
-)
-from omnimarket.nodes.node_review_prompt_builder_compute.handlers.handler_prompt_builder_compute import (
-    HandlerPromptBuilderCompute,
-)
-from omnimarket.nodes.node_review_response_parser_compute.handlers.handler_response_parser_compute import (
-    HandlerResponseParserCompute,
 )
 from omnimarket.review.node_io import (
     ModelConvergenceInput,
@@ -44,7 +40,7 @@ from omnimarket.review.response_parser import ModelParseResult
 @pytest.mark.asyncio
 async def test_prompt_builder_compute_returns_result() -> None:
     cid = uuid4()
-    out = await HandlerPromptBuilderCompute().handle(
+    out = await create_handler_prompt_builder_compute().handle(
         ModelReviewPromptBuilderRequest(
             correlation_id=cid,
             prompt_template_id="adversarial_reviewer_pr",
@@ -72,7 +68,7 @@ async def test_response_parser_compute_returns_findings() -> None:
             }
         ]
     )
-    out = await HandlerResponseParserCompute().handle(
+    out = await create_handler_response_parser_compute().handle(
         ModelReviewResponseParserRequest(
             correlation_id=uuid4(), raw_text=raw, source_model="m"
         )
@@ -109,7 +105,7 @@ async def test_github_diff_effect_reads_local_file(tmp_path: Path) -> None:
     target = tmp_path / "sample.py"
     target.write_text("print('hello')\n", encoding="utf-8")
 
-    out = await HandlerGithubDiffEffect().handle(
+    out = await create_handler_github_diff_effect().handle(
         ModelGithubDiffCommand(correlation_id=uuid4(), file_path=str(target))
     )
     assert out.node_kind == EnumNodeKind.EFFECT

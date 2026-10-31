@@ -1,0 +1,60 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21684"
+title: "omnimarket contracts_and_di handler_hand_construction burn-down, slice rf1140-c2: hand-built handler dependencies are injected through DI from the node contract"
+summary: "Thirty-one handler_hand_construction findings in the exception-queue family, the pull-request review orchestrator and the two context orchestrators are cleared. Each of the five nodes gains a container binding site (container/container_<node>.py) that holds the only construction of its handler and node classes. Handlers that compose other handlers take them as constructor parameters, and every caller in source and tests builds through the binding-site factories."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn21684-handler-injection"
+    statement: |-
+      No handler or node class of the five nodes (node_exception_queue_effect, node_host_pool_alarm_effect, node_pr_review_orchestrator, node_context_pack_orchestrator, node_context_compaction_orchestrator) and of their two outside callers (bus_binding/recovery.py, work_ledger_consume/consume_watch.py) is constructed by hand outside a container binding site; composed handlers arrive through constructor parameters.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the contracts_and_di count for handler_hand_construction over the slice paths drops to zero and the repo total drops by the slice size, with no baseline entry or suppression added -- falsifier: onex run of runtime_validator_run with the contracts_and_di reference over omnimarket src before and after, counts compared per rule"
+      - id: "AC2"
+        statement: "AC2: every hand-built dependency is taken through an injected parameter bound from the node contract and no hand construction remains in the touched code -- falsifier: uv run pytest tests/unit -q over the touched modules plus the checker re-run on the slice paths"
+      - id: "AC3"
+        statement: "AC3: the slice lands as one PR titled with this ticket id and carries lab proof of the tests and the checker re-run -- falsifier: uv run pytest tests/unit -q on the lab through lab-run at the PR head, receipt path in the PR body"
+evidence_requirements:
+  - kind: "tests"
+    description: "The binding-site tests of the slice and the existing tests of the five nodes pass."
+    command: "uv run pytest tests/unit/test_binding_sites_exception_queue_omn_21684.py tests/unit/test_binding_sites_pr_review_omn_21684.py tests/unit/test_binding_sites_context_omn_21684.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21684-binding-site-tests"
+    description: "Each factory returns the right class with its injected dependency wired, and an explicit fake dependency is the one the handler uses; the existing tests of the five nodes still pass."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_binding_sites_exception_queue_omn_21684.py tests/unit/test_binding_sites_pr_review_omn_21684.py tests/unit/test_binding_sites_context_omn_21684.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21684-handler-hand-construction-zero"
+    description: "The contracts_and_di check of the pinned omnibase_core reports no handler_hand_construction finding over the slice paths."
+    source: "manual"
+    binds_ac: ["AC1", "AC2"]
+    checks:
+      - check_type: "command"
+        check_value: "uv run python -m omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run omnibase_core.validation.validator_contracts_and_di:ValidatorContractsAndDi src/omnimarket/nodes/node_exception_queue_effect src/omnimarket/nodes/node_host_pool_alarm_effect src/omnimarket/nodes/node_pr_review_orchestrator src/omnimarket/nodes/node_context_pack_orchestrator src/omnimarket/nodes/node_context_compaction_orchestrator src/omnimarket/handlers/bus_binding/recovery.py src/omnimarket/handlers/work_ledger_consume/consume_watch.py --report-json /tmp/omn21684-contracts-and-di.json; python3 -c \"import json,sys; d=json.load(open('/tmp/omn21684-contracts-and-di.json')); sys.exit(1 if any(f['rule_id']=='handler_hand_construction' for f in d['findings']) else 0)\""
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21684-unit-suite"
+    description: "The pull-request-review binding-site test passes at the pull request head; the whole unit suite runs in the PR's CI, outside the verifier's per-check budget."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/test_binding_sites_pr_review_omn_21684.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21684-deploy-binding-sites-landed"
+    description: "Deploy check: the five container binding-site modules are present on the pull request branch as published, read through the GitHub contents API."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "command"
+        check_value: "for p in node_exception_queue_effect/container/container_exception_queue_effect node_host_pool_alarm_effect/container/container_host_pool_alarm_effect node_pr_review_orchestrator/container/container_pr_review_orchestrator node_context_pack_orchestrator/container/container_context_pack_orchestrator node_context_compaction_orchestrator/container/container_context_compaction_orchestrator; do gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/$p.py?ref=omn-21684-handler-di-slice\" --jq .name | grep -q '.py' || exit 1; done"
