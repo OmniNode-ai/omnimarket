@@ -32,32 +32,42 @@ dod_evidence:
     binds_ac: ["AC2"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/test_omn21735_node_timeouts.py -q --no-cov"
-        cwd: "${OMNI_HOME}/omnimarket"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/test_omn21735_node_timeouts.py -q --no-cov"
+        cwd: "."
   - id: "dod-omn21735-check-clean"
     description: "The pinned contracts_and_di validator scans both node directories; its structured findings contain no literal_timeout rule. Import, scan and path errors fail the probe."
     source: "manual"
     binds_ac: ["AC1"]
     checks:
-      - check_type: "command"
-        check_value: |-
-          uv run --frozen python -c '
-          from pathlib import Path
-          from omnibase_core.validation.validator_contracts_and_di import ValidatorContractsAndDi
-          paths = [Path("src/omnimarket/nodes") / name for name in ("node_ci_fix_effect", "node_pr_delegated_fix_effect")]
-          assert all(path.is_dir() for path in paths), "a target node is missing"
-          result = ValidatorContractsAndDi().validate(paths)
-          assert result.metadata.files_processed >= len(paths), "the validator did not scan the targets"
-          findings = [issue for issue in result.issues if issue.rule_name == "literal_timeout"]
-          print(f"files_processed={result.metadata.files_processed}; literal_timeout={len(findings)}")
-          assert not findings, findings
-          '
-        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/test_omn21735_node_timeouts.py -q --no-cov -k test_slice_has_no_literal_timeout_findings"
+        cwd: "."
   - id: "dod-omn21735-lab-proof"
-    description: "The slice tests ran on a lab host at the PR head; the receipt path is in the PR body."
+    description: "The CI fix and delegated fix golden chains run against this checkout. The lab readback and receipt path are recorded in the PR body."
     source: "manual"
     binds_ac: ["AC3"]
     checks:
+      - check_type: "test_passes"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_ci_fix_effect/test_golden_chain_ci_fix_effect.py tests/test_golden_chain_pr_delegated_fix_effect.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21735-deploy-timeout-reader-readback"
+    description: "Hosted source readback at the evaluated commit: both published fix handlers and the diff classifier load their node's contract timeouts. The behavior checks above exercise those imports and durations without a broker or lab service. This checks published source and wiring, not a production rollout."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
       - check_type: "command"
-        check_value: "test -s contracts/OMN-21735.yaml"
-        cwd: "${OMNI_HOME}/omnimarket"
+        check_value: |-
+          set -eu;
+          head_sha="$(git rev-parse HEAD)";
+          root="https://raw.githubusercontent.com/OmniNode-ai/omnimarket/${head_sha}/src/omnimarket/nodes";
+          ci="$(curl --fail --silent --show-error --location --max-time 60 "${root}/node_ci_fix_effect/handlers/handler_ci_fix.py")";
+          delegated="$(curl --fail --silent --show-error --location --max-time 60 "${root}/node_pr_delegated_fix_effect/handlers/handler_delegated_fix.py")";
+          classifier="$(curl --fail --silent --show-error --location --max-time 60 "${root}/node_pr_delegated_fix_effect/handlers/diff_classifier.py")";
+          printf '%s\n' "$ci" | grep -Fq '_TIMEOUTS = load_node_timeouts("node_ci_fix_effect")';
+          printf '%s\n' "$ci" | grep -Fq 'timeout=_TIMEOUTS.get("test_run_s")';
+          printf '%s\n' "$delegated" | grep -Fq '_TIMEOUTS = load_node_timeouts("node_pr_delegated_fix_effect")';
+          printf '%s\n' "$delegated" | grep -Fq 'timeout=_TIMEOUTS.get("polish_cli_s")';
+          printf '%s\n' "$classifier" | grep -Fq '_TIMEOUTS = load_node_timeouts("node_pr_delegated_fix_effect")';
+          printf '%s\n' "$classifier" | grep -Fq 'timeout=_TIMEOUTS.get("git_probe_s")';
+          printf 'Published timeout reader wiring verified at %s\n' "$head_sha"
+        cwd: "."
