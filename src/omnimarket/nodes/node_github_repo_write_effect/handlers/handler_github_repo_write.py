@@ -100,7 +100,10 @@ from omnimarket.handlers.handler_lane_write_identity import (
     ModelLaneWriteIdentity,
     assert_github_token_is_actor,
 )
-from omnimarket.inference.secret_store_resolver import resolve_api_key_async
+from omnimarket.inference.secret_store_resolver import (
+    SecretStoreConfigurationError,
+    resolve_api_key_async,
+)
 from omnimarket.models.model_github_quota_floor import ModelGithubQuotaFloor
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_dod_verify.services.contract_prerequisite import (
@@ -151,6 +154,15 @@ async def _credential_from_store(ref: str) -> SecretStr | None:
     """Absence permits the next choice; a broken resolver refuses safely."""
     try:
         return await resolve_api_key_async(ref, env_var_fallback=ref, required=False)
+    except SecretStoreConfigurationError as exc:
+        # This error names only variables and logical names, never a value
+        # (OMN-16984), so its message is what tells the lane which bootstrap
+        # variable its host lacks. Folding it into the generic text below left
+        # a lane on the in-memory fallback with no way to see the host defect.
+        raise GitHubAppCredentialMissingError(
+            f"GitHub write: the secret store for declared ref {ref!r} cannot be "
+            f"built on this host: {exc}"
+        ) from None
     except Exception:
         # A store/SDK error may carry a secret. Do not expose its message or cause.
         raise GitHubAppCredentialMissingError(
