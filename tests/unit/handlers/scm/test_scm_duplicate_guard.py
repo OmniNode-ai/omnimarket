@@ -472,3 +472,35 @@ def test_stacked_git_ancestry_with_default_base_reads_only_tip_ancestor_delta(
     assert request.touch == parse_diff(
         git(world.lane, "diff", "-U0", f"{tip}...{new_head}")
     )
+
+
+def test_stacked_follows_the_branch_tip_when_the_watcher_recorded_an_older_head(
+    world: World,
+) -> None:
+    parent_branch = "fix/omn-21533-protocol-binding-race"
+    git(world.lane, "checkout", "-q", "-b", NEW_BRANCH, f"origin/{parent_branch}")
+    new_head = commit_edit(world.lane, "src/metrics.py", 15, "new lane behavior")
+    tip = git(world.lane, "rev-parse", f"origin/{parent_branch}").strip()
+    orphan = git(
+        world.lane, "commit-tree", f"{new_head}^{{tree}}", "-m", "stale"
+    ).strip()
+    state = json.loads(world.state.read_text())
+    state["prs"]["omnibase_core#2159"]["facts"]["head_sha"] = orphan
+    state["prs"]["omnibase_core#2159"]["facts"]["head_ref"] = parent_branch
+    world.state.write_text(json.dumps(state))
+    request = read_request(
+        repo=TARGET,
+        head_ref=NEW_BRANCH,
+        base="dev",
+        title=TITLE,
+        body="",
+        lane=LANE,
+        cause=None,
+        watcher_state=world.state,
+        ledger=world.ledger,
+        clone=world.root / "omnibase_core",
+        worktree=world.lane,
+    )
+    prs = {pr.number: pr for pr in request.open_prs}
+    assert prs[2159].stacked
+    assert tip != orphan
