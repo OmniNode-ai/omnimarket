@@ -6,13 +6,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from omnimarket.models.automation_liveness_overlay_check import (
+    ModelAutomationLivenessOverlayCheckRequest,
+    ModelAutomationLivenessScannedFile,
+)
 from omnimarket.nodes.node_automation_liveness_overlay_check_compute.handlers import (
     HandlerAutomationLivenessOverlayCheck,
 )
 from omnimarket.nodes.node_automation_liveness_overlay_check_compute.models import (
-    ModelAutomationLivenessOverlayCheckRequest,
     ModelAutomationLivenessOverlayCheckResult,
-    ModelAutomationLivenessScannedFile,
 )
 from omnimarket.nodes.node_automation_liveness_overlay_check_effect.handlers import (
     HandlerAutomationLivenessOverlayCheckRun,

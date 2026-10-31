@@ -14,16 +14,16 @@ from pathlib import Path
 
 import yaml
 
+from omnimarket.models.automation_liveness_overlay_check import (
+    ModelAutomationLivenessOverlayCheckRequest,
+    ModelAutomationLivenessScannedFile,
+)
 from omnimarket.nodes.node_automation_liveness_overlay_check_compute.handlers.handler_automation_liveness_installer_scan import (
     EXCLUDED_DIRECTORIES,
     is_candidate_path,
 )
 from omnimarket.nodes.node_automation_liveness_overlay_check_compute.handlers.handler_automation_liveness_overlay_check import (
     HandlerAutomationLivenessOverlayCheck,
-)
-from omnimarket.nodes.node_automation_liveness_overlay_check_compute.models import (
-    ModelAutomationLivenessOverlayCheckRequest,
-    ModelAutomationLivenessScannedFile,
 )
 
 from ..models import (

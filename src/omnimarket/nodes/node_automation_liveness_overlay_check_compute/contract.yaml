@@ -21,7 +21,7 @@ description: >
 handler:
   module: omnimarket.nodes.node_automation_liveness_overlay_check_compute.handlers.handler_automation_liveness_overlay_check
   class: HandlerAutomationLivenessOverlayCheck
-  input_model: omnimarket.nodes.node_automation_liveness_overlay_check_compute.models.model_automation_liveness_overlay_check_request.ModelAutomationLivenessOverlayCheckRequest
+  input_model: omnimarket.models.automation_liveness_overlay_check.model_automation_liveness_overlay_check_request.ModelAutomationLivenessOverlayCheckRequest
   output_model: omnimarket.nodes.node_automation_liveness_overlay_check_compute.models.model_automation_liveness_overlay_check_result.ModelAutomationLivenessOverlayCheckResult
 
 handler_routing:
@@ -37,7 +37,7 @@ handler_routing:
       handler:
         name: HandlerAutomationLivenessOverlayCheck
         module: omnimarket.nodes.node_automation_liveness_overlay_check_compute.handlers.handler_automation_liveness_overlay_check
-      input_model: omnimarket.nodes.node_automation_liveness_overlay_check_compute.models.model_automation_liveness_overlay_check_request.ModelAutomationLivenessOverlayCheckRequest
+      input_model: omnimarket.models.automation_liveness_overlay_check.model_automation_liveness_overlay_check_request.ModelAutomationLivenessOverlayCheckRequest
       output_model: omnimarket.nodes.node_automation_liveness_overlay_check_compute.models.model_automation_liveness_overlay_check_result.ModelAutomationLivenessOverlayCheckResult
 
 descriptor:
