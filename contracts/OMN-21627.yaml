@@ -1,0 +1,81 @@
+schema_version: 1.0.0
+ticket_id: OMN-21627
+title: 'node_contract_seams_orchestrator and node_contract_seams_reducer: contracts and seams first for a design'
+summary: >
+  The node-backed form of the lean_contract_seams bootstrap skill (omniclaude#3056). The orchestrator walks its
+  contract's execution graph over one design (emit contracts, scaffold through node_generate_node_effect, read the
+  seam graph, match every crossing, walk the declared state machines and drive the chain on the bus, gate the
+  chains, sweep the golden chain, confirm connected) and folds every step into node_contract_seams_reducer, which
+  owns the run's state machine. node_generate_node_effect takes an optional contract_yaml so the scaffold keeps the
+  contract written first.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21627-orchestrator
+  statement: An orchestrator with a reducer runs contracts and seams first for a design and refuses a design whose seams do not match.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: The reducer FSM carries the run states drafted, contracts_written, scaffolded, seams_matched, chains_generated,
+      golden_chain_passed, connected, refused and failed; it passes analyze_fsm and core''s contract walker finds one golden
+      path whose triggers equal the orchestrator graph''s triggers in order, with no dead, unreachable or uncovered state
+      -- falsifier: test_contract_seams_fsm.py and test_reducer_fsm_walks_one_golden_path_in_graph_order'
+  - id: AC2
+    statement: 'AC2: A planted design whose consumer declares a different envelope model is refused at match_seams, naming
+      the crossing and the field envelope_model, and nothing after the seam runs -- falsifier: test_planted_mismatched_seam_refuses_at_match_seams'
+  - id: AC3
+    statement: 'AC3: A two-node toy design runs to connected on the in-memory overlay, both through the handler with an injected
+      in-memory bus and through core''s RuntimeLocal reading the orchestrator contract, and the head event reaches the tail
+      through the scaffolded contracts only -- falsifier: test_toy_design_connects_on_the_in_memory_overlay and test_core_local_runtime_runs_the_toy_design_from_the_contract'
+  - id: AC4
+    statement: 'AC4: The scaffold keeps a contract written before it; without one it writes the template -- falsifier: the
+      two contract_yaml cases in tests/test_node_generate_node_effect.py'
+evidence_requirements:
+- kind: tests
+  description: Focused node tests.
+  command: uv run pytest tests/nodes/node_contract_seams_orchestrator tests/nodes/node_contract_seams_reducer tests/test_node_generate_node_effect.py
+    -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21627-ac1
+  description: AC1 falsifier tests pass.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_contract_seams_reducer/test_contract_seams_fsm.py tests/nodes/node_contract_seams_orchestrator/test_contract_seams_run.py
+      -q --no-cov --tb=line -k "fsm or golden_path"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21627-ac2
+  description: AC2 falsifier test passes.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_contract_seams_orchestrator/test_contract_seams_run.py -q --no-cov --tb=line
+      -k planted_mismatched_seam
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21627-ac3
+  description: AC3 falsifier tests pass.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_contract_seams_orchestrator/test_contract_seams_run.py -q --no-cov --tb=line
+      -k "in_memory_overlay or local_runtime"
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21627-ac4
+  description: AC4 falsifier tests pass.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_node_generate_node_effect.py -q --no-cov --tb=line -k contract
+    cwd: ${OMNI_HOME}/omnimarket
