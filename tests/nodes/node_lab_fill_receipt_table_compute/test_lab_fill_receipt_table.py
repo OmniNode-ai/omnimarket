@@ -17,11 +17,11 @@ from typing import Any
 
 import pytest
 
-from omnimarket.nodes.node_lab_fill_receipt_table_compute.handlers import (
-    HandlerLabFillReceiptTable,
+from omnimarket.nodes.node_lab_fill_receipt_table_compute import (
+    runtime_lab_fill_receipt_table_cli as cli,
 )
 from omnimarket.nodes.node_lab_fill_receipt_table_compute.handlers import (
-    handler_lab_fill_receipt_table_cli as cli,
+    HandlerLabFillReceiptTable,
 )
 from omnimarket.nodes.node_lab_fill_receipt_table_compute.models import (
     EnumLaneState,

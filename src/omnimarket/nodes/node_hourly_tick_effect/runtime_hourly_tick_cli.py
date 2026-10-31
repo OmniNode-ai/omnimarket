@@ -23,7 +23,7 @@ from omnimarket.nodes.node_hourly_tick_effect.models.model_hourly_tick import (
     ModelHourlyTickResult,
 )
 
-CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
+CONTRACT = Path(__file__).resolve().parent / "contract.yaml"
 
 
 def dispatch(
