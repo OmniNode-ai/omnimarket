@@ -171,9 +171,8 @@ class HandlerGatewayReadClient:
 
     def read(self, request: ModelGithubGatewayRequest) -> GithubGatewayResult:
         """Raises :class:`GatewayReadError` when no typed result comes back."""
-        if self._route is None:
-            self._route = read_in_process if _token_resolves() else read_over_bus
-        return self._route(request)
+        route = self._route or (read_in_process if _token_resolves() else read_over_bus)
+        return route(request)
 
 
 __all__: list[str] = [

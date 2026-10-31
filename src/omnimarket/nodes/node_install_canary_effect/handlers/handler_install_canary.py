@@ -1032,7 +1032,8 @@ class HandlerInstallCanary:
                     if f.is_file():
                         rel = f.relative_to(root).as_posix()
                         if not self.runtime["ignored"](rel):
-                            destinations[self.source_path(target, strip, rel)] = f
+                            adopted_from = self.source_path(target, strip, rel)
+                            destinations[adopted_from] = f
             pairs = sorted(destinations.items())
         for src, dest in pairs:
             if only is not None and src not in only:
