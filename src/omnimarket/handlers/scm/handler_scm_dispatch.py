@@ -168,6 +168,12 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         replaces="gh api --method POST /repos/{o}/{r}/pulls/{n}/comments/{id}/replies",
     ),
     ModelScmVerb(
+        verb="pr-thread-resolve",
+        node=_W,
+        operation="pr_thread_resolve",
+        replaces="gh api graphql resolveReviewThread",
+    ),
+    ModelScmVerb(
         verb="workflow-run",
         node=_W,
         operation="workflow_dispatch",
@@ -217,15 +223,8 @@ LANDING_CONTROLLER: Final[str] = (
 SCM_REFUSED_VERBS: Final[tuple[ModelScmRefusedVerb, ...]] = tuple(
     ModelScmRefusedVerb(verb=verb, handled_by=LANDING_CONTROLLER)
     for verb in (
-        "pr-merge",
-        "merge",
-        "arm",
-        "pr-arm",
-        "rerun",
-        "run-rerun",
-        "pr-rerun",
-        "update-branch",
-        "pr-update-branch",
+        *("pr-merge", "merge", "arm", "pr-arm", "rerun"),
+        *("run-rerun", "pr-rerun", "update-branch", "pr-update-branch"),
     )
 )
 

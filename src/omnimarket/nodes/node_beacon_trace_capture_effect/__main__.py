@@ -12,6 +12,7 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.nodes.node_beacon_trace_capture_effect.handlers.adapter_io import (
     FileBeaconLogReader,
     KafkaHookEventPublisher,
@@ -26,21 +27,13 @@ from omnimarket.nodes.node_beacon_trace_capture_effect.models.model_beacon_trace
 
 
 async def _readback(event_ids: tuple[UUID, ...]) -> list[dict[str, Any]]:
-    """Poll every five seconds, with a hard sixty-second deadline."""
-    reader = ProjectionReadback()
-    rows: list[dict[str, Any]] = []
-    expected = set(event_ids)
-    if not expected:
-        return rows
-    try:
-        async with asyncio.timeout(60):
-            while True:
-                rows = await reader.read(event_ids)
-                if {row["event_id"] for row in rows} >= expected:
-                    return rows
-                await asyncio.sleep(5)
-    except TimeoutError:
-        return rows
+    """Poll the projection on the contract's interval, up to the contract's deadline."""
+    timeouts = load_node_timeouts("node_beacon_trace_capture_effect")
+    return await ProjectionReadback().read_until_visible(
+        event_ids,
+        poll_interval_seconds=timeouts.get("readback_poll_interval_seconds"),
+        deadline_seconds=timeouts.get("readback_deadline_seconds"),
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

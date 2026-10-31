@@ -187,6 +187,8 @@ not_routing_configs:
     reason: input token budget per backend and task class; it refuses an oversized prompt and selects no backend, tier or route
   - path: src/omnimarket/configs/inference_protocols.v1.yaml
     reason: provider protocol directives keyed by model pattern; they shape a request and select no route
+  - path: src/omnimarket/configs/network_bindings.yaml
+    reason: loopback and wildcard addresses and fixed local ports that code binds or compares against; they select no delegation route
   - path: src/omnimarket/configs/provider_quota_limits.v1.yaml
     reason: a provider's declared call limit per window; it selects no route, it only withholds a rung whose window is spent
   - path: src/omnimarket/configs/runtime_paths.yaml

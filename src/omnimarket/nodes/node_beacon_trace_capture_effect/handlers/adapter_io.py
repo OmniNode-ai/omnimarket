@@ -132,3 +132,25 @@ class ProjectionReadback:
             )
         finally:
             await adapter.close()
+
+    async def read_until_visible(
+        self,
+        event_ids: tuple[UUID, ...],
+        *,
+        poll_interval_seconds: float,
+        deadline_seconds: float,
+    ) -> list[dict[str, Any]]:
+        """Poll until every event is visible or the deadline passes; return the last rows read."""
+        rows: list[dict[str, Any]] = []
+        expected = set(event_ids)
+        if not expected:
+            return rows
+        try:
+            async with asyncio.timeout(deadline_seconds):
+                while True:
+                    rows = await self.read(event_ids)
+                    if {row["event_id"] for row in rows} >= expected:
+                        return rows
+                    await asyncio.sleep(poll_interval_seconds)
+        except TimeoutError:
+            return rows
