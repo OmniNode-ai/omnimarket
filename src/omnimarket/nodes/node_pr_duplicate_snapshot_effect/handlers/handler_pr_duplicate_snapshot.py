@@ -329,16 +329,42 @@ def _open_prs(
                 draft=bool(facts.get("draft", False)),
                 stacked=bool(
                     new_head
-                    and sha
-                    and sha != new_head
-                    and (
-                        _is_ancestor((worktree, clone), sha, new_head)
-                        or _is_ancestor((worktree, clone), new_head, sha)
+                    and any(
+                        tip != new_head
+                        and (
+                            _is_ancestor((worktree, clone), tip, new_head)
+                            or _is_ancestor((worktree, clone), new_head, tip)
+                        )
+                        for tip in _tips(
+                            (worktree, clone), sha, str(facts.get("head_ref") or "")
+                        )
                     )
                 ),
             )
         )
     return tuple(out)
+
+
+def _tips(dirs: tuple[Path | None, ...], sha: str, head_ref: str) -> tuple[str, ...]:
+    """A pull request's head as the watcher recorded it, and its branch's tip as the lane's repository holds it now.
+
+    The watcher ticks every five minutes, so a push since then moves the branch past the recorded sha.
+    """
+    found = [sha] if sha else []
+    if _BRANCH.match(head_ref):
+        for repo_dir in dirs:
+            if repo_dir is None or not repo_dir.is_dir():
+                continue
+            tip = _git(
+                repo_dir,
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                f"refs/remotes/origin/{head_ref}^{{commit}}",
+            )
+            if tip and tip.strip() not in found:
+                found.append(tip.strip())
+    return tuple(found)
 
 
 def _is_ancestor(dirs: tuple[Path | None, ...], ancestor: str, head: str) -> bool:
@@ -390,9 +416,11 @@ def _stack_base(
             != repo.split("/")[-1].casefold()
         ):
             continue
-        sha = str(facts.get("head_sha") or "")
-        if sha and sha != head and _is_ancestor(dirs, sha, head):
-            ancestors[str(facts.get("head_ref") or "")] = sha
+        for sha in _tips(
+            dirs, str(facts.get("head_sha") or ""), str(facts.get("head_ref") or "")
+        ):
+            if sha != head and _is_ancestor(dirs, sha, head):
+                ancestors[str(facts.get("head_ref") or "")] = sha
     if base in ancestors:
         return None
     candidates = sorted(set(ancestors.values()))

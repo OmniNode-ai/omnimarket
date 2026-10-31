@@ -61,6 +61,8 @@ SHARED_WORDS_NEEDED: Final[int] = 4
 SHARED_WORDS_SHARE: Final[float] = 0.5
 #: Notes name this many same-file overlaps; the rest are counted.
 NOTES_SHOWN: Final[int] = 5
+#: A note names this many overlapping places of one pull request; the rest are counted.
+HITS_SHOWN: Final[int] = 3
 #: How strongly each kind says the fix is already owned; the pull request to adopt comes from the strongest.
 _STRENGTH: Final[dict[EnumDuplicateEvidence, int]] = {
     EnumDuplicateEvidence.BRANCH: 0,
@@ -404,7 +406,7 @@ class HandlerPrDuplicateGuard:
                 ) or _same_change(request.touch, pr.touch, hit_paths)
                 if lines and not same_intent:
                     notes.append(
-                        f"{ref} also changes {', '.join(lines)} but carries a different intent (other ticket, different change): not the same fix"
+                        f"{ref} also changes {_hits(lines)} but carries a different intent (other ticket, different change): not the same fix"
                     )
                 if lines and same_intent:
                     hit = True
@@ -514,6 +516,15 @@ class HandlerPrDuplicateGuard:
                 f"(adopted={adopt_pr or target})."
             ),
         )
+
+
+def _hits(lines: list[str]) -> str:
+    shown = ", ".join(lines[:HITS_SHOWN])
+    return (
+        shown
+        if len(lines) <= HITS_SHOWN
+        else f"{shown} and {len(lines) - HITS_SHOWN} more"
+    )
 
 
 def _shown(notes: list[str]) -> tuple[str, ...]:
