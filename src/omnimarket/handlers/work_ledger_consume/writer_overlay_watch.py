@@ -71,7 +71,12 @@ class ModelWriterOverlay(BaseModel):
 
 
 class ProtocolWriterSet(Protocol):
-    def set_writer_principals(self, writer_principals: Iterable[str]) -> None: ...
+    def replace(self, writers: Iterable[str]) -> None: ...
+
+
+class ProtocolWriterSetHolder(Protocol):
+    @property
+    def writers(self) -> ProtocolWriterSet: ...
 
 
 def load_writer_overlay_policy() -> ModelWriterOverlayPolicy:
@@ -210,7 +215,7 @@ class WriterOverlayWatch:
 
 async def follow_overlay_writers(
     host: WorkLedgerAppendHost,
-    handler: ProtocolWriterSet,
+    handler: ProtocolWriterSetHolder,
     static_writers: Iterable[str],
     environment: Mapping[str, str] | None = None,
 ) -> WriterOverlayWatch:
@@ -227,7 +232,7 @@ async def follow_overlay_writers(
         )
 
     async def apply(writers: frozenset[str]) -> bool:
-        handler.set_writer_principals(writers)
+        handler.writers.replace(writers)
         return await host.set_writer_principals(writers)
 
     watch = WriterOverlayWatch(
