@@ -12,7 +12,7 @@ description: >
 handler:
   module: omnimarket.nodes.node_evidence_collector_effect.handlers.handler_evidence_collector_effect
   class: HandlerEvidenceCollectorEffect
-  input_model: omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_pipeline_command.ModelEvidencePipelineCommand
+  input_model: omnimarket.models.evidence_pipeline.wire.model_evidence_pipeline_command.ModelEvidencePipelineCommand
 
 handler_routing:
   handlers:
@@ -23,11 +23,11 @@ handler_routing:
 
 input_model:
   name: ModelEvidencePipelineCommand
-  module: omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_pipeline_command
+  module: omnimarket.models.evidence_pipeline.wire.model_evidence_pipeline_command
   description: "Pipeline trigger command identifying repository, PR, ticket, commit, and correlation identity."
 output_model:
   name: ModelRawEvidencePayload
-  module: omnibase_compat.contracts.evidence_pipeline.wire.model_raw_evidence_payload
+  module: omnimarket.models.evidence_pipeline.wire.model_raw_evidence_payload
   description: "Normalized raw evidence payload for pure extraction."
 
 descriptor:

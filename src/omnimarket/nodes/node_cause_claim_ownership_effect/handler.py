@@ -492,6 +492,23 @@ def load_queue_status(path: Path) -> Any:
     return module
 
 
+def landing_open_records(
+    watcher_state: Mapping[str, Any] | None,
+) -> dict[str, dict[str, Any]]:
+    """Return the open PRs the tick's repo-status verdict counts: OPEN, not a draft, not held-excluded.
+
+    A shared red's members are the PRs it judged (OMN-19998).
+    """
+    return {
+        key: rec
+        for key, rec in ((watcher_state or {}).get("prs") or {}).items()
+        if isinstance(rec, dict)
+        and (rec.get("facts") or {}).get("state") == "OPEN"
+        and not (rec.get("facts") or {}).get("draft")
+        and rec.get("cls") != "held-excluded"
+    }
+
+
 class HandlerCauseClaimOwnership:
     """Turn the tick's MISSING repo-status line of a shared red a live cause CLAIM owns into a NOTE naming the lane.
 
@@ -518,11 +535,7 @@ class HandlerCauseClaimOwnership:
             if not request.registry_root:
                 raise RuntimeError("ONEX_REGISTRY_ROOT is not set")
             qs = load_queue_status(request.queue_status)
-            records = {
-                k: v
-                for k, v in ((request.watcher_state or {}).get("prs") or {}).items()
-                if isinstance(v, dict) and (v.get("facts") or {}).get("state") == "OPEN"
-            }
+            records = landing_open_records(request.watcher_state)
             local = types.SimpleNamespace(
                 open_records=lambda: records, raw=request.watcher_state
             )

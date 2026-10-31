@@ -19,12 +19,15 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Final
 
+import yaml
+
 from omnimarket.handlers.scm.handler_scm_local_state import (
     WATCHER_SCHEMA,
     default_clone_path,
     default_watcher_state_path,
 )
 from omnimarket.models.model_pr_duplicate_guard import (
+    ModelDuplicateGuardRules,
     ModelFileTouch,
     ModelOpenPr,
     ModelPrDuplicateGuardRequest,
@@ -36,6 +39,12 @@ from omnimarket.models.model_pr_duplicate_guard import (
 logger = logging.getLogger(__name__)
 
 LEDGER_ENV: Final[str] = "ONEX_LEDGER_PATH"
+#: Where a deployment's overlay for the guard is found: the roots every node overlay is read from, then the
+#: workspace configuration root's overlays directory.
+OVERLAY_ROOTS_ENV: Final[str] = "ONEX_SKILL_OVERLAY_ROOTS"
+WORKSPACE_CONFIG_ENV: Final[str] = "ONEX_WORKSPACE_CONFIG_ROOT"
+OVERLAY_NODE: Final[str] = "node_pr_duplicate_guard_compute"
+OVERLAY_FILE: Final[str] = "overlay.yaml"
 #: The watcher ticks every five minutes; a record this much older than now says the watcher is down.
 WATCHER_MAX_AGE: Final[timedelta] = timedelta(minutes=15)
 FETCH_TIMEOUT_S: Final[int] = 120
@@ -282,6 +291,37 @@ def _open_prs(
     return tuple(out)
 
 
+def _overlay_candidates() -> list[Path]:
+    roots = [r for r in os.environ.get(OVERLAY_ROOTS_ENV, "").split(os.pathsep) if r]
+    config_root = os.environ.get(WORKSPACE_CONFIG_ENV)
+    if config_root:
+        roots.append(str(Path(config_root) / "config" / "onex" / "overlays"))
+    return [Path(root) / OVERLAY_NODE / OVERLAY_FILE for root in roots]
+
+
+def load_generated_paths() -> dict[str, tuple[str, ...]]:
+    """The deployment overlay's per-repository generated paths: the first overlay found, or none declared.
+
+    An overlay that exists and is not exactly a ``generated_paths`` mapping is unchecked, never ignored: a
+    guard that silently dropped its declarations would refuse every plan pull request again.
+    """
+    path = next((c for c in _overlay_candidates() if c.is_file()), None)
+    if path is None:
+        return {}
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict) or set(raw) != {"generated_paths"}:
+            raise ValueError("overlay must contain exactly generated_paths")
+        return ModelDuplicateGuardRules.model_validate(
+            {"generated_paths": raw["generated_paths"]}
+        ).generated_paths
+    except (OSError, UnicodeError, yaml.YAMLError, ValueError, TypeError) as exc:
+        raise DuplicateGuardUncheckedError(
+            f"the duplicate guard's deployment overlay {path} is invalid ({type(exc).__name__}): "
+            "it must be a mapping with exactly generated_paths, repository to a list of paths"
+        ) from None
+
+
 def read_request(
     *,
     repo: str,
@@ -315,6 +355,7 @@ def read_request(
         touch=new_branch_touch(repo, head_ref, base, worktree or Path.cwd(), where),
         open_prs=_open_prs(state, repo, base, where),
         ledger_text=ledger_text,
+        generated_paths=load_generated_paths(),
     )
 
 

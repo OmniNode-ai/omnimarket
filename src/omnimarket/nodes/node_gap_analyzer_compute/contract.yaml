@@ -11,7 +11,7 @@ description: >
 handler:
   module: omnimarket.nodes.node_gap_analyzer_compute.handlers.handler_gap_analyzer_compute
   class: HandlerGapAnalyzerCompute
-  input_model: omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_validation_result.ModelEvidenceValidationResult
+  input_model: omnimarket.models.evidence_pipeline.wire.model_evidence_validation_result.ModelEvidenceValidationResult
 
 handler_routing:
   handlers:
@@ -22,11 +22,11 @@ handler_routing:
 
 input_model:
   name: ModelEvidenceValidationResult
-  module: omnibase_compat.contracts.evidence_pipeline.wire.model_evidence_validation_result
+  module: omnimarket.models.evidence_pipeline.wire.model_evidence_validation_result
   description: "Validation results for a deployment evidence scope."
 output_model:
   name: ModelGapReport
-  module: omnibase_compat.contracts.evidence_pipeline.wire.model_gap_report
+  module: omnimarket.models.evidence_pipeline.wire.model_gap_report
   description: "Deployment-level gap report with typed evidence classifications."
 
 descriptor:
