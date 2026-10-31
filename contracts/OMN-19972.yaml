@@ -182,7 +182,7 @@ dod_evidence:
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn19972-composed-boot-covers-run-trace-writer"
     binds_ac: ["AC2"]
-    description: "The composed boot workflow names omnimarket-projection-run-trace in its render step's required set and in the stopped-service negative control's loop, so a bundle that drops the writer fails the render and the health step is shown to fail with the writer stopped. Both tests fail at the merge base, where neither list names the writer. This proves list coverage in the workflow only; it is not an executed boot, a stopped-container receipt or a served-trace readback."
+    description: "The two tests require omnimarket-projection-run-trace to appear in the composed boot render required set and in the stopped-service negative-control loop. Both tests fail at the merge base, where neither list names the writer. This proves list coverage in the workflow only; it is not an executed boot, a stopped-container receipt or a served-trace readback."
     source: "manual"
     checks:
       - check_type: "test_passes"
