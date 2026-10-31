@@ -1,0 +1,57 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21623"
+title: "Burn-down of the contracts_and_di literal_timeout findings of omnimarket, slice A: seventeen nodes declare their timeouts in their contract"
+summary: "Seventeen node packages (node_ab_compare_orchestrator through node_captured_secret_store_effect, alphabetically, without node_build_loop_orchestrator) held 31 timeout, interval, delay, backoff and TTL literals in code. Each value is now declared in its node's contract.yaml under timeouts (the three ADR nodes read the config entry their contract already declared) and is read through the shared omnimarket.handlers.node_timeouts_reader adapter or injected through the constructor. The contracts_and_di check over src/omnimarket and scripts reports 1575 findings before the slice; no literal_timeout finding remains in the seventeen node directories."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21623-node-timeouts-a"
+    statement: |-
+      The seventeen nodes hold no timeout, interval, delay, backoff or TTL literal in code. Every duration is declared in the node contract with the value it held before, a name the contract does not declare stops the node, and an injected duration wins over the declared one.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the contracts_and_di check reports no literal_timeout finding in the seventeen node directories of the slice -- falsifier: the command of dod-omn21623-timeouts-check-clean below exits nonzero when a timeout literal returns to any of them"
+      - id: "AC2"
+        statement: "AC2: every node of the slice declares its durations in its contract.yaml with the value its code held before -- falsifier: uv run pytest tests/test_node_timeouts_contract.py -k declares_every_duration fails when a declared value or name differs from the table"
+      - id: "AC3"
+        statement: "AC3: a contract with no timeouts section, or a name it does not declare, refuses instead of supplying a value -- falsifier: uv run pytest tests/test_node_timeouts_contract.py -k 'undeclared or without' fails when a fallback value returns"
+      - id: "AC4"
+        statement: "AC4: constructor defaults and module constants come from the contract and an injected duration wins -- falsifier: uv run pytest tests/test_node_timeouts_contract.py -k 'constructor or module_constants or injected' fails when a literal default returns"
+evidence_requirements:
+  - kind: "tests"
+    description: "The contract timeout tests and the existing tests of the touched nodes pass."
+    command: "uv run pytest tests/test_node_timeouts_contract.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21623-timeouts-contract-tests"
+    description: "Declared values, refusals, contract-sourced defaults and injection all behave as stated."
+    source: "manual"
+    binds_ac: ["AC2", "AC3", "AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_node_timeouts_contract.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21623-timeouts-check-clean"
+    description: "The contracts_and_di check of the pinned omnibase_core reports no literal_timeout finding in the seventeen node directories."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "command"
+        check_value: "! uv run --frozen python -m omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run omnibase_core.validation.validator_contracts_and_di:ValidatorContractsAndDi src/omnimarket/nodes/node_ab_compare_orchestrator src/omnimarket/nodes/node_adr_decision_extraction_llm_effect src/omnimarket/nodes/node_adr_extraction_grader_llm_effect src/omnimarket/nodes/node_adr_segmentation_llm_effect src/omnimarket/nodes/node_antipattern_index_effect src/omnimarket/nodes/node_antipattern_match_effect src/omnimarket/nodes/node_architecture_graph_populate_effect src/omnimarket/nodes/node_auto_merge_effect src/omnimarket/nodes/node_automation_liveness_deadman_effect src/omnimarket/nodes/node_automation_liveness_watchdog_compute src/omnimarket/nodes/node_automation_liveness_watchdog_effect src/omnimarket/nodes/node_automation_run_observer_effect src/omnimarket/nodes/node_baseline_capture src/omnimarket/nodes/node_beacon_trace_capture_effect src/omnimarket/nodes/node_canonical_clone_refresh_effect src/omnimarket/nodes/node_capture_item_identity_effect src/omnimarket/nodes/node_captured_secret_store_effect 2>&1 | grep -q literal_timeout"
+        cwd: "."
+  - id: "dod-omn21623-deploy-timeouts-source-readback"
+    description: |-
+      Hosted-runner source readback: the checked-out commit carries the timeouts section in the
+      contract of node_auto_merge_effect and the loader adapter that reads it. grep -c exits
+      nonzero on a tree without them, so the command fails at the merge base. It reads the
+      source artifact and does not assert a live runtime rollout.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -c '^timeouts:' src/omnimarket/nodes/node_auto_merge_effect/contract.yaml && grep -c 'def load_node_timeouts' src/omnimarket/handlers/node_timeouts_reader.py"
+        cwd: "."

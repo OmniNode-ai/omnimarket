@@ -81,6 +81,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
+
 if TYPE_CHECKING:
     from omnimarket.nodes.node_capture_item_identity_effect.models import (
         ModelCaptureItemIdentityRequest,
@@ -115,7 +117,9 @@ ITEM_DIRNAME = "hook_items"
 
 #: A hook of a pair waits this long for its partner before its entry is stale
 #: (a PreToolUse waits for its call to finish).
-ENTRY_TTL_SECONDS = 3600
+ENTRY_TTL_SECONDS: float = load_node_timeouts("node_capture_item_identity_effect").get(
+    "entry_ttl_seconds"
+)
 
 #: Open entries kept per session; the oldest are dropped past this.
 MAX_ENTRIES = 256
@@ -211,7 +215,11 @@ def _flock_bounded(fd: int, path: Path) -> None:
             pass
         if time.monotonic() >= deadline:
             raise TimeoutError(f"item state lock {path} busy for {wait_s:g}s")
-        time.sleep(0.01)
+        time.sleep(
+            load_node_timeouts("node_capture_item_identity_effect").get(
+                "lock_retry_delay_seconds"
+            )
+        )
 
 
 def _locked_json(path: Path, update: Any) -> Any:

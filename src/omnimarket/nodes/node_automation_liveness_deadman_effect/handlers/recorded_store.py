@@ -14,6 +14,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.models.liveness.model_automation_liveness_deadman import (
     EnumDeadmanPhase,
     ModelDeadmanEpisodeKey,
@@ -38,7 +39,13 @@ class RecordedStore:
 
     @contextmanager
     def _transaction(self) -> Iterator[sqlite3.Connection]:
-        db = sqlite3.connect(self._path, isolation_level=None, timeout=30)
+        db = sqlite3.connect(
+            self._path,
+            isolation_level=None,
+            timeout=load_node_timeouts("node_automation_liveness_deadman_effect").get(
+                "sqlite_lock_timeout_seconds"
+            ),
+        )
         try:
             db.execute("BEGIN IMMEDIATE")
             try:
