@@ -19,6 +19,9 @@ from uuid import UUID
 from omnimarket.nodes.node_verify_effect.models.model_verify_check import (
     ModelVerifyCheck,
 )
+from omnimarket.nodes.node_verify_effect.models.model_verify_input import (
+    ModelVerifyInput,
+)
 from omnimarket.nodes.node_verify_effect.models.model_verify_result import (
     ModelVerifyResult,
 )
@@ -110,11 +113,7 @@ class HandlerVerify:
     def handler_category(self) -> HandlerCategory:
         return "EFFECT"
 
-    async def handle(
-        self,
-        correlation_id: UUID,
-        dry_run: bool = False,
-    ) -> ModelVerifyResult:
+    async def handle(self, request: ModelVerifyInput) -> ModelVerifyResult:
         """Execute verification checks.
 
         Checks are supplied via ProtocolHealthChecker implementations.
@@ -124,12 +123,14 @@ class HandlerVerify:
             3. Data flow verification (non-critical)
 
         Args:
-            correlation_id: Cycle correlation ID.
-            dry_run: Skip actual checks and return synthetic pass results.
+            request: Cycle correlation ID and the dry-run flag (skips actual
+                checks and returns synthetic pass results).
 
         Returns:
             ModelVerifyResult with check outcomes.
         """
+        correlation_id = request.correlation_id
+        dry_run = request.dry_run
         logger.info(
             "Verify phase started (correlation_id=%s, dry_run=%s)",
             correlation_id,

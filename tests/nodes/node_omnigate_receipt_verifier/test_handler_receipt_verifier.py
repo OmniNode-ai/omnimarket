@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from uuid import UUID
 
 import pytest
 import yaml
@@ -19,7 +18,6 @@ from omnimarket.nodes.node_omnigate_receipt_verifier.models.model_receipt_verifi
 
 pytestmark = pytest.mark.unit
 
-_CORRELATION_ID = UUID("00000000-0000-4000-a000-000000000145")
 _NODE_DIR = (
     Path(__file__).resolve().parents[3]
     / "src"
@@ -76,10 +74,7 @@ async def test_receipt_verifier_returns_fixed_decision(tmp_path: Path) -> None:
         actor="contributor",
     )
 
-    result = await HandlerReceiptVerifier(verifier=verify).handle(
-        _CORRELATION_ID,
-        request,
-    )
+    result = await HandlerReceiptVerifier(verifier=verify).handle(request)
 
     assert result.ok is True
     assert result.action == "pass"
