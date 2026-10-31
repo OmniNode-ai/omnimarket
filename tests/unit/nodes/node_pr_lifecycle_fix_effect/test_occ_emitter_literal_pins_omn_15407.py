@@ -67,6 +67,9 @@ from typing import Any
 
 import pytest
 import yaml
+from omnibase_core.nodes.node_contract_evidence_check_effect.substance_floor_finding import (
+    SUBSTANCE_FLOOR,
+)
 
 from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
     EvidenceCollector,
@@ -416,13 +419,13 @@ def _omni_home_sibling(repo: str) -> Path | None:
 # needed and nothing skips.
 _CORE_PORTS = {
     "scripts/lint_contract_check_values.py": (
-        "omnibase_core.handlers.handler_contract_check_values_lint"
+        "omnibase_core.nodes.node_contract_evidence_check_effect.handler_contract_check_values_lint"
     ),
     "scripts/validation/check_contract_substance_floor.py": (
-        "omnibase_core.handlers.handler_contract_substance_floor"
+        "omnibase_core.nodes.node_contract_evidence_check_effect.handler_contract_substance_floor"
     ),
     "src/onex_change_control/scripts/contract_compliance_check.py": (
-        "omnibase_core.handlers.handler_contract_compliance_check"
+        "omnibase_core.nodes.node_contract_evidence_check_effect.handler_contract_compliance_check"
     ),
     "src/onex_change_control/validation/evidence_admissibility.py": (
         "omnibase_core.handlers.handler_evidence_admissibility"
@@ -486,9 +489,9 @@ class TestConsumerGateParityOnTheDeployBearingContract:
         )
         value = deploy_assessment_check_value(pr_number=_PR, repo=_REPO)
         tier = module.derive_proof_tier("command", value)
-        assert tier.satisfies(module.SUBSTANCE_FLOOR), (
+        assert tier.satisfies(SUBSTANCE_FLOOR), (
             f"deploy item derives {tier.value}, below the substance floor "
-            f"{module.SUBSTANCE_FLOOR.value}: {value!r}"
+            f"{SUBSTANCE_FLOOR.value}: {value!r}"
         )
         assert tier.value != "L0", value
 
