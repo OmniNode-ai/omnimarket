@@ -1,0 +1,65 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-21839
+title: The lab-fill generator tells a ticket whose criteria it could not read from a ticket that has none
+summary: A snapshot issue with no description field was read as an empty description and dropped as no-criteria. The ticket model now carries description as optional (None is unread, empty is read), the plan reports criteria-unread as its own drop reason and counter, and a typed live read (request and result models, beside the existing live gate) supplies the text for tickets the snapshot did not carry.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21839-criteria-unread
+  statement: A ticket whose description was never read is reported as criteria-unread, distinct from no-criteria, and is admitted when the live read returns labelled criteria.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a failing-first test builds a snapshot issue with no description whose live text has labelled criteria and asserts the generator does not drop it as no-criteria -- falsifier: uv run pytest tests/unit/handlers/test_rules_lab_fill_tickets_criteria_unread.py -k criteria_unread -q fails on main and passes on the fix'
+  - id: AC2
+    statement: 'AC2: the generator reports criteria-unread as its own drop reason and counter, distinct from no-criteria, so an absent description is never read as an empty one -- falsifier: uv run pytest on a test asserting an issue with description absent yields reason criteria_unread and an issue with an empty description yields no_criteria'
+  - id: AC3
+    statement: 'AC3: the choice between the snapshot carrying the description and the generator reading criteria live is made in the PR body with the reason it keeps the generator input a typed contract -- falsifier: the PR body names both options and the typed model field that carries the result'
+  - id: AC4
+    statement: 'AC4: a dry read over the 2026-10-31 snapshot or a refreshed one on the lab shows how many of the 31 dropped tickets become dispatchable -- falsifier: uv run python plan_ticket_backlog dry read output in the PR body lists items count before and after'
+evidence_requirements:
+- kind: tests
+  description: The unit tests of the change, run on a lab host at the pushed head.
+  command: uv run pytest tests/unit/handlers/test_rules_lab_fill_tickets_criteria_unread.py tests/unit/handlers/test_rules_lab_fill_tickets_omn20864.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21839-ac1-live-text-admits
+  description: AC1 admits a snapshot issue with no description when the live text carries labelled criteria.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/test_rules_lab_fill_tickets_criteria_unread.py -k criteria_unread -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21839-ac2-distinct-reason
+  description: AC2 yields criteria-unread for an absent description and no-criteria for an empty one, each with its own counter.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/test_rules_lab_fill_tickets_criteria_unread.py -k "criteria_unread or empty_description" -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21839-ac3-typed-contract
+  description: AC3 checks the typed fields that carry the unread state and the live text; the PR body names both options.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/test_rules_lab_fill_tickets_criteria_unread.py -k typed_contract -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21839-ac4-dry-read
+  description: AC4 counts the unread tickets of snapshot-shaped issues; the lab dry read output is in the PR body.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/test_rules_lab_fill_tickets_criteria_unread.py -k dry_read -q --no-cov --tb=line
+    cwd: .
