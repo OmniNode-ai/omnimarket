@@ -21,11 +21,11 @@ from omnimarket.models.model_review_finding import (
     EnumFindingCategory,
     EnumFindingSeverity,
 )
+from omnimarket.nodes.node_pr_review_orchestrator.container.container_pr_review_orchestrator import (
+    create_handler_response_parser_compute,
+)
 from omnimarket.nodes.node_review_response_parser_compute.handlers.handler_compact_strict_parse import (
     FAMILY_CATEGORY,
-)
-from omnimarket.nodes.node_review_response_parser_compute.handlers.handler_response_parser_compute import (
-    HandlerResponseParserCompute,
 )
 from omnimarket.nodes.node_review_response_parser_compute.models.model_compact_verdict import (
     FAMILIES,
@@ -63,7 +63,7 @@ async def _parse(
     standing_rules: dict[str, bool] | None = None,
     max_findings: int = 25,
 ) -> ModelParseResult:
-    output = await HandlerResponseParserCompute().handle(
+    output = await create_handler_response_parser_compute().handle(
         ModelReviewResponseParserRequest(
             correlation_id=uuid4(),
             raw_text=raw,
@@ -377,7 +377,7 @@ async def test_frozen_v1_reply_still_passes_in_default_mode() -> None:
             }
         ]
     )
-    output = await HandlerResponseParserCompute().handle(
+    output = await create_handler_response_parser_compute().handle(
         ModelReviewResponseParserRequest(
             correlation_id=uuid4(), raw_text=raw, source_model="qwen3-coder"
         )
