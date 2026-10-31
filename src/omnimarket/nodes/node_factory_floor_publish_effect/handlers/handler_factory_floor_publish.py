@@ -164,7 +164,7 @@ class HandlerFactoryFloorPublish:
         results: list[ModelPublishStepResult] = []
         if not request.skip_refresh:
             for step in rt.steps:
-                result = self._step(step, home, overlay)
+                result = self._step(step, home, overlay, rt.plugin_root_env, env)
                 results.append(result)
                 if result.status == "failed" and step.required:
                     raise PublishRefusedError(
@@ -224,10 +224,19 @@ class HandlerFactoryFloorPublish:
         step: ModelPublishStep,
         home: Path,
         overlay: ModelFactoryFloorPublishOverlay,
+        plugin_root_env: str,
+        env: Mapping[str, str],
     ) -> ModelPublishStepResult:
         def fill(values: Sequence[str]) -> list[str]:
+            plugin_root = env.get(plugin_root_env, "").strip()
+            if not plugin_root and any("{plugin_root}" in v for v in values):
+                raise PublishRefusedError(
+                    f"{plugin_root_env} is not set (fail fast, no default): export the plugin root"
+                )
             return [
-                v.replace("{home}", str(home)).replace("{bus_lane}", overlay.bus_lane)
+                v.replace("{home}", str(home))
+                .replace("{bus_lane}", overlay.bus_lane)
+                .replace("{plugin_root}", plugin_root)
                 for v in values
             ]
 

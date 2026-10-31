@@ -141,17 +141,65 @@ header{display:grid;gap:14px}
 @keyframes dash{to{stroke-dashoffset:-20}}
 .wheel{transform-box:fill-box;transform-origin:center}
 
-/* bays */
-.bays{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
-.bay{background:var(--panel);border:1px solid var(--rule);border-radius:4px;padding:14px;display:grid;gap:10px;align-content:start}
-.bay-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
-.bay-top b{font:800 1.25rem/1 var(--f-display)}
-.slots{display:flex;flex-wrap:wrap;gap:5px}
-.slots i{width:16px;height:16px;border-radius:3px;border:1.5px solid var(--idle)}
-.slots i.on{background:var(--ok);border-color:var(--ok);animation:hum 2.6s ease-in-out infinite}
-.slots i.on:nth-child(3n){animation-delay:.7s}.slots i.on:nth-child(3n+1){animation-delay:1.4s}
-@keyframes hum{50%{opacity:.55}}
-.bay small{color:var(--muted);font-size:.78rem}
+/* machine bays */
+.mgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:14px;align-items:start}
+.mbay{background:var(--panel);border:1px solid var(--rule);border-left:5px solid var(--ok);border-radius:4px;padding:14px;display:grid;gap:12px;align-content:start;min-width:0}
+.mbay.stale{border-left-color:var(--warn)}
+.mbay.unread{border-style:dashed;border-left:5px dashed var(--idle);background:color-mix(in srgb,var(--idle) 12%,var(--panel))}
+.mbay.repair{border-left-color:var(--warn);background:repeating-linear-gradient(-45deg,color-mix(in srgb,var(--safety) 14%,var(--panel)) 0 10px,var(--panel) 10px 20px)}
+.mbay-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.mbay-top b{font:800 1.4rem/1 var(--f-display);text-transform:uppercase}
+.mbay-top .pill{font:500 .66rem/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;padding:4px 7px;border-radius:3px;border:1px solid var(--rule)}
+.cap{display:flex;flex-wrap:wrap;gap:4px}
+.cap i{width:16px;height:16px;border-radius:3px;border:1.5px solid var(--idle);display:block}
+.cap i.claude{background:var(--car);border-color:var(--car-edge)}
+.cap i.codex{background:var(--safety);border-color:var(--belt)}
+.cap i.none{background:var(--idle);border-color:var(--steel)}
+.cap i.stall{background:repeating-linear-gradient(45deg,var(--stop) 0 3px,var(--panel) 3px 6px);border-color:var(--stop)}
+.cap i.over{outline:2px solid var(--stop);outline-offset:1px}
+.cap.unread{height:16px;width:100%;border-radius:3px;border:1.5px dashed var(--idle);background:repeating-linear-gradient(45deg,transparent 0 5px,var(--idle) 5px 6px);display:block}
+.capline{font-size:.8rem;color:var(--muted)}
+.gauges{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px 14px}
+.gauge{display:grid;gap:4px;font-size:.78rem;color:var(--muted);min-width:0}
+.gauge .v{font:500 .82rem/1.2 var(--f-mono);color:var(--ink);overflow-wrap:anywhere}
+.gauge .v.unread{color:var(--muted)}
+.gbar{height:6px;border-radius:3px;background:var(--rule);overflow:hidden}
+.gbar b{display:block;height:100%;width:var(--w);background:var(--steel)}
+.lanes{display:grid;gap:8px}
+.lane{border:1px solid var(--rule);border-left:4px solid var(--car);border-radius:4px;background:var(--floor);min-width:0}
+.lane.codex{border-left-color:var(--safety)}
+.lane.stalled{border-left-color:var(--stop);background:color-mix(in srgb,var(--stop) 7%,var(--floor))}
+.lane summary{display:grid;gap:5px;cursor:pointer;padding:9px 11px;list-style:none}
+.lane summary::-webkit-details-marker{display:none}
+.lane summary:focus-visible{outline:2px solid var(--safety);outline-offset:-2px}
+.lane .tt{font-weight:600;line-height:1.3;overflow-wrap:anywhere}
+.lane .tk{font:500 .72rem/1 var(--f-mono);color:var(--muted)}
+.lane .doing{font-size:.84rem;color:var(--ink);overflow-wrap:anywhere}
+.lane .when{font:500 .7rem/1.3 var(--f-mono);color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{font:500 .64rem/1 var(--f-mono);letter-spacing:.06em;text-transform:uppercase;padding:4px 6px;border:1px solid var(--rule);border-radius:3px;background:var(--panel);color:var(--ink)}
+.chip.ci-green{border-color:var(--ok);color:var(--ok)}
+.chip.ci-red{border-color:var(--stop);color:var(--stop)}
+.chip.ci-pending{border-color:var(--warn);color:var(--warn)}
+.chip.ci-unread,.chip.ci-none{border-style:dashed;color:var(--muted)}
+.chip.stall{background:var(--stop);border-color:var(--stop);color:var(--panel)}
+.lane-body{padding:9px 11px 11px;display:grid;gap:6px;font-size:.84rem;border-top:1px dashed var(--rule)}
+.lane-body dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;margin:0}
+.lane-body dt{color:var(--muted);font:500 .68rem/1.6 var(--f-mono);letter-spacing:.08em;text-transform:uppercase}
+.lane-body dd{margin:0;overflow-wrap:anywhere}
+.lane-body a,.stlink{color:var(--car-edge)}
+.stlink{font:500 .72rem/1.3 var(--f-mono)}
+.lamp-stop{border:1px solid var(--stop);background:var(--stop-soft);border-radius:4px;padding:10px 12px;display:grid;gap:3px;font-size:.86rem}
+.lamp-stop b{display:flex;gap:8px;align-items:center}
+.lamp-stop b::before{content:"";width:12px;height:12px;border-radius:50%;background:var(--stop);flex:none}
+.lamp-stop small{color:var(--muted);overflow-wrap:anywhere}
+.sessions{list-style:none;margin:0;padding:0;display:grid;gap:6px;font-size:.84rem}
+.sessions li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;border-bottom:1px dashed var(--rule);padding-bottom:6px}
+.sessions li small{grid-column:1/-1;color:var(--muted);overflow-wrap:anywhere}
+.st.flash,.items li.flash{animation:flash 1.6s ease-out 1}
+@keyframes flash{0%{box-shadow:0 0 0 4px var(--safety)}100%{box-shadow:0 0 0 0 transparent}}
+.builtby{display:block;font-size:.7rem}
+.builtby a{color:var(--car-edge)}
 
 /* dock + delegation */
 .two{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:20px}
@@ -208,11 +256,6 @@ html{scroll-behavior:smooth;scroll-padding-top:64px}
 .items small{overflow-wrap:anywhere}
 .st.solo .items{grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:10px 24px}
 
-/* bays: unread drawing */
-.bay.unread{border-style:dashed;background:color-mix(in srgb,var(--idle) 12%,var(--panel))}
-.slots.unread{height:16px;border-radius:3px;border:1.5px dashed var(--idle);background:repeating-linear-gradient(45deg,transparent 0 5px,var(--idle) 5px 6px)}
-.bay.stale .slots i.on{background:var(--warn);border-color:var(--warn);animation:none}
-
 /* dock lists */
 details.more summary{cursor:pointer;color:var(--muted);font-size:.8rem;padding:2px 0}
 details.more[open] summary{margin-bottom:8px}
@@ -252,14 +295,14 @@ details.more[open] summary{margin-bottom:8px}
   <header id="top">
     <div class="hazard" aria-hidden="true"></div>
     <nav class="sitenav" aria-label="Sections">
-      <a href="#shift">Shift report</a><a href="#lines">Lines</a><a href="#bays">Lab bays</a><a href="#dock">Shipping</a><a href="#deleg">Delegation</a><a href="#stops">Stoppages</a><a href="#reports">Reports</a><a href="reports/">All reports</a>
+      <a href="#shift">Shift report</a><a href="#lines">Lines</a><a href="#bays">Machines</a><a href="#dock">Shipping</a><a href="#deleg">Delegation</a><a href="#stops">Stoppages</a><a href="#reports">Reports</a><a href="reports/">All reports</a>
     </nav>
     <div class="head-row">
       <div>
         <div class="eyebrow" id="stamp">Reading the factory record</div>
         <h1>Lean Factory Floor</h1>
       </div>
-      <p class="lede">Every plan is a car on its own assembly line. Each station is a stage or wave, and the car is built part by part as stations finish. Feeder lines under a station are the work that supplies it. Bays are the lab machines doing the work. Everything below is read from the factory record, the process-health series and the reports, published on every tick; a source that could not be read is drawn as unread.</p>
+      <p class="lede">Every plan is a car on its own assembly line. Each station is a stage or wave, and the car is built part by part as stations finish. Feeder lines under a station are the work that supplies it. Bays are the machines doing the work, with the lanes placed on each. Everything below is read from the factory record, the process-health series and the reports, published on every tick; a source that could not be read is drawn as unread.</p>
     </div>
     <div class="banner" id="banner" role="alert" hidden></div>
     <div class="andon" role="list" aria-label="Andon board" id="andon"></div>
@@ -284,8 +327,10 @@ details.more[open] summary{margin-bottom:8px}
   <div id="lines" style="display:grid;gap:28px"></div>
 
   <section aria-labelledby="baysH" style="display:grid;gap:14px" id="bays">
-    <div><div class="eyebrow">Where the work runs</div><h2 id="baysH">Lab bays</h2></div>
-    <div class="bays" id="bayGrid"></div>
+    <div><div class="eyebrow">Where the work runs</div><h2 id="baysH">Machines</h2></div>
+    <p class="muted" id="baysNote" style="max-width:68ch"></p>
+    <p class="muted" style="max-width:72ch;font-size:.86rem">One bay per machine. Each square is a lane placed there, against the machine's cap: blue for Claude, amber for Codex, hatched red for a lane that has written nothing for the stall time. Tap a lane to read its newest row in full; its station link jumps to the part of the car it builds.</p>
+    <div class="mgrid" id="bayGrid"></div>
   </section>
 
   <section class="two">
@@ -484,11 +529,11 @@ function renderLine(slot, i){
         <div class="stations">${f.stations.map((s, k) => {
           const builds = PART_ORDER.filter((_, p) => map[p].includes(k)).map(x => PART_NAMES[x].toLowerCase()).join(" and ");
           return `
-          <div class="st ${esc(s.state)}${f.n === 1 ? " solo" : ""}">
+          <div class="st ${esc(s.state)}${f.n === 1 ? " solo" : ""}" id="st-${sid}-${safeId(s.id)}">
             <div class="st-top"><span class="st-num mono">${k}</span><span class="pill ${esc(s.state)}">${esc(STATE_LABEL[s.state] || s.state)}</span></div>
             <h3>${esc(s.name)}</h3>
             ${builds ? `<span class="part">Builds the ${esc(builds)}</span>` : ""}
-            <ul class="items">${(s.items || []).map(it => `<li class="${esc(it.state)}"><i></i><span>${esc(it.title)}${it.note || (it.prs && it.prs.length) ? `<small>${esc([it.note].concat(it.prs || []).filter(Boolean).join(" · "))}</small>` : ""}</span></li>`).join("")}</ul>
+            <ul class="items">${(s.items || []).map(it => `<li class="${esc(it.state)}" id="part-${sid}-${safeId(s.id)}-${safeId(it.id)}"><i></i><span>${esc(it.title)}${it.note || (it.prs && it.prs.length) ? `<small>${esc([it.note].concat(it.prs || []).filter(Boolean).join(" · "))}</small>` : ""}${(LANES_BY_ITEM[[L.line_id, s.id, it.id].join("|")] || []).map(b => `<small class="builtby">Built by <a data-jump="lane-${esc(safeId(b.lane))}" href="#lane-${esc(safeId(b.lane))}">${esc(b.lane)}</a>${b.stalled ? " (stalled)" : ""}</small>`).join("")}</span></li>`).join("")}</ul>
             ${(s.feeders || []).length ? `<div class="feed"><span class="eyebrow">Feeder lines</span>${s.feeders.map(x => `<div>${esc(stationName(f.stations, x))}<small>feeds this station</small></div>`).join("")}</div>` : ""}
           </div>`;
         }).join("")}
@@ -521,11 +566,14 @@ function renderAndon(slots, floor, health, bayState){
     const sub = f.stopped ? ((L.andon && L.andon.reason) || "").replace(/[:\s]+$/, "") : `Station ${f.cur + 1} of ${f.n}${cur ? `, ${cur.name}` : ""}; ${f.done} of ${f.items.length} parts done`;
     return `<div class="lamp ${cls}" role="listitem"><i></i><b>${esc(letter)} · ${esc(word)}</b><span>${esc(sub)}</span></div>`;
   });
-  if (bayState.read){
-    const stale = floor.bays.filter(b => b.stale).length;
-    lamps.push(`<div class="lamp ${stale ? "c-warn" : "c-ok"}" role="listitem"><i></i><b>Lab bays · ${bayState.free} slots free</b><span>${bayState.running} running on ${floor.bays.length} hosts; ${stale} advertisements stale</span></div>`);
+  if (bayState.declared){
+    const bad = bayState.unread + bayState.repair;
+    lamps.push(`<div class="lamp ${bayState.unread ? "c-warn" : "c-ok"}" role="listitem"><i></i><b>Machines · ${bayState.placed} lanes placed</b><span>${bayState.read} of ${bayState.declared} read, against ${bayState.cap} lane slots${bad ? `; ${bayState.unread} unread, ${bayState.repair} in repair` : ""}</span></div>`);
+    lamps.push(`<div class="lamp ${bayState.stalled ? "c-stop" : "c-ok"}" role="listitem"><i></i><b>Lanes · ${bayState.lanes} live</b><span>${bayState.stalled ? `${bayState.stalled} stalled: nothing written for the stall time` : "none stalled"}</span></div>`);
+    const c = bayState.cloud;
+    if (c) lamps.push(`<div class="lamp ${(c.lamps || []).length ? "c-stop" : c.state === "read" ? "c-ok" : "c-idle"}" role="listitem"><i></i><b>Cloud · ${(c.lamps || []).length ? "stop" : c.state === "read" ? "clear" : "unread"}</b><span>${(c.lamps || []).length ? esc(c.lamps[0].text) : c.state === "read" ? `${(c.accounts || []).length} account${(c.accounts || []).length === 1 ? "" : "s"} signed in` : "the cloud accounts file was not read"}</span></div>`);
   } else {
-    lamps.push(`<div class="lamp c-idle" role="listitem"><i></i><b>Lab bays · unread</b><span>No lab host advertised its slots</span></div>`);
+    lamps.push(`<div class="lamp c-idle" role="listitem"><i></i><b>Machines · unread</b><span>The record declares no machine bays</span></div>`);
   }
   lamps.push(`<div class="lamp c-ok" role="listitem"><i></i><b>Shipping · ${floor.shipped.length}</b><span>${floor.waiting.length} waiting at the dock</span></div>`);
   if (health && health.summary){
@@ -536,10 +584,6 @@ function renderAndon(slots, floor, health, bayState){
     lamps.push(`<div class="lamp c-idle" role="listitem"><i></i><b>Process health · unread</b><span>The series is not published</span></div>`);
   }
   el("andon").innerHTML = lamps.join("");
-}
-
-function bayFacts(bays){
-  return {read: bays.length > 0, running: bays.reduce((a, b) => a + num(b.running), 0), free: bays.reduce((a, b) => a + (b.stale ? 0 : num(b.free)), 0), slots: bays.reduce((a, b) => a + num(b.slots), 0)};
 }
 
 function renderShift(slots, floor, rec, bayState){
@@ -553,7 +597,7 @@ function renderShift(slots, floor, rec, bayState){
     paras.push(`<p>${t}</p>`);
   });
   let fl = `${floor.shipped.length} changes are in the shipped list and ${floor.waiting.length} are waiting at the dock.`;
-  fl += bayState.read ? ` ${floor.bays.length} lab hosts report ${bayState.free} free slots of ${bayState.slots}, with ${bayState.running} running.` : ` No lab host advertised its slots, so the bays are unread.`;
+  fl += bayState.declared ? ` ${bayState.read} of ${bayState.declared} machines were read, ${bayState.placed} lanes are placed on them against ${bayState.cap} lane slots, and ${bayState.stalled} of the ${bayState.lanes} live lanes are stalled.` : ` The record declares no machine bays, so they are unread.`;
   const top = floor.stoppages.slice().sort((a, b) => b.cost_minutes - a.cost_minutes)[0];
   fl += top ? ` The costliest stoppage in the friction report is ${esc(top.name)}: ${fmt(top.cost_minutes)} minutes over ${num(top.occurrences)} occurrences.` : ` No friction report was supplied.`;
   paras.push(`<p>${fl}</p>`);
@@ -563,7 +607,7 @@ function renderShift(slots, floor, rec, bayState){
   const sh = rec.sources || {};
   el("tally").innerHTML = [
     [`<b class="mono">${floor.shipped.length}</b>`, "changes in the shipped list"],
-    [bayState.read ? `<b class="mono">${bayState.running}</b>` : `<b class="unread-n">unread</b>`, bayState.read ? "workers running in the bays" : "no host advertised its slots"],
+    [bayState.declared ? `<b class="mono">${bayState.lanes}</b>` : `<b class="unread-n">unread</b>`, bayState.declared ? `live lanes, ${bayState.stalled} stalled` : "no machine bays in the record"],
     [`<b class="mono">${inFlight}</b>`, "parts being built across the lines"],
     [`<b class="mono">${cords}</b>`, cords === 1 ? "andon cord pulled" : "andon cords pulled"],
     [`<b class="mono">${num(sh.ledger_rows).toLocaleString("en-US")}</b>`, "ledger rows read"],
@@ -571,20 +615,175 @@ function renderShift(slots, floor, rec, bayState){
   ].map(([b, s]) => `<div>${b}<span>${esc(s)}</span></div>`).join("");
 }
 
-function renderBays(bays, status){
-  const hosts = status && Array.isArray(status.steps) ? status.steps.find(s => s.name === "hosts") : null;
-  if (!bays.length){
-    const why = hosts ? (hosts.status === "ok" ? "The placement reading ran and no host advertised." : `The placement reading failed (${esc(hosts.detail)}).`) : "The placement reading step has no status in this publish.";
-    el("bayGrid").innerHTML = `<div class="bay unread"><div class="bay-top"><b>unread</b><span class="eyebrow">no host</span></div>
-      <div class="slots unread" role="img" aria-label="No bay is drawn: no lab host advertised its slots"></div>
-      <small>No lab host advertised its slots. ${why}</small></div>`;
-    return;
-  }
-  el("bayGrid").innerHTML = bays.map(b => `
-    <div class="bay${b.stale ? " stale" : ""}"><div class="bay-top"><b>${esc(b.host)}</b><span class="eyebrow">${num(b.slots)} slots</span></div>
-    <div class="slots" role="img" aria-label="${num(b.running)} running, ${num(b.free)} free">${"<i class=on></i>".repeat(Math.max(0, num(b.running)))}${"<i></i>".repeat(Math.max(0, num(b.free)))}</div>
-    <small><span class="mono">${num(b.running)}</span> working · <span class="mono">${num(b.free)}</span> free${b.stale ? " · advertisement stale" : ""}</small></div>`).join("");
+// ---- Machines, lanes and the cloud bay. Every figure comes from floor.machines, floor.lanes and floor.cloud.
+const KIND_NOTE = {claude: "Claude", codex: "Codex"};
+let LANES_BY_ITEM = {};
+let ITEM_INDEX = {};
+const itemKey = r => [r.line_id, r.station_id, r.item_id].join("|");
+
+function indexLines(slots){
+  ITEM_INDEX = {};
+  slots.forEach((slot, i) => {
+    if (!slot.line) return;
+    const L = slot.line;
+    (L.stations || []).forEach(st => (st.items || []).forEach(it => {
+      ITEM_INDEX[[L.line_id, st.id, it.id].join("|")] = {letter: "Line " + (LETTERS[i] || i + 1), line: L, station: st, item: it};
+    }));
+  });
 }
+
+function indexLanes(lanes){
+  LANES_BY_ITEM = {};
+  lanes.forEach(l => { if (l.station){ const k = itemKey(l.station); (LANES_BY_ITEM[k] = LANES_BY_ITEM[k] || []).push(l); } });
+}
+
+function unreadSpan(why){ return `<span class="unread">unread${why ? ` (${esc(why)})` : ""}</span>`; }
+
+function sinceText(iso){
+  const t = Date.parse(iso);
+  return Number.isNaN(t) ? "unread" : ageText(Date.now() - t);
+}
+
+function ciChip(l){
+  if (!l.pr) return `<span class="chip ci-none" title="This lane has written no pull request">no PR yet</span>`;
+  const word = {green: "CI green", red: "CI red", pending: "CI pending", none: "no CI runs", unread: "CI unread"}[l.pr_ci] || "CI unread";
+  const state = l.pr_state && l.pr_state !== "OPEN" && l.pr_state !== "unread" ? ` · ${String(l.pr_state).toLowerCase()}` : "";
+  return `<span class="chip ci-${esc(l.pr_ci || "unread")}" title="${esc(l.pr + (l.pr_title ? ": " + l.pr_title : "") + (l.pr_ci_note ? " · " + l.pr_ci_note : ""))}">${esc(l.pr)} · ${word}${esc(state)}</span>`;
+}
+
+function stationLink(l){
+  if (!l.station) return `<span class="unread">no station on the lines holds this ticket</span>`;
+  const hit = ITEM_INDEX[itemKey(l.station)];
+  if (!hit) return `<span class="unread">${esc(l.station.line_id)} · station ${esc(l.station.station_id)}</span>`;
+  const target = "st-" + safeId(l.station.line_id) + "-" + safeId(l.station.station_id);
+  return `<a class="stlink" data-jump="${esc(target)}" href="#${esc(target)}">${esc(hit.letter)} · ${esc(hit.station.name)} · ${esc(hit.item.title)}</a>`;
+}
+
+function laneHTML(l){
+  const titleNote = l.title_source === "claim" ? " (from the lane's claim)" : l.title_source === "unread" ? "" : "";
+  const title = l.title ? esc(l.title) : `<span class="unread">ticket title unread</span>`;
+  const doing = l.status_text
+    ? esc(l.status_text)
+    : `<span class="unread">no status written</span>`;
+  const hover = [l.ticket, l.title, l.status_full].filter(Boolean).join(" · ");
+  const sid = safeId(l.lane);
+  const cls = ["lane", l.engine === "codex" ? "codex" : "", l.stalled ? "stalled" : ""].filter(Boolean).join(" ");
+  return `<details class="${cls}" id="lane-${sid}">
+    <summary title="${esc(hover)}">
+      <span class="tk">${esc(l.ticket || "no ticket")} · ${esc(l.lane)}</span>
+      <span class="tt">${title}</span>
+      <span class="chips"><span class="chip">${esc(l.kind)}</span><span class="chip">${esc(KIND_NOTE[l.engine] || "engine unread")}</span>${ciChip(l)}${l.stalled ? `<span class="chip stall">stalled · silent ${esc(ageText(num(l.silent_minutes) * 60000))}</span>` : ""}</span>
+      <span class="doing">${doing}</span>
+      <span class="when">${l.status_source === "status" ? "newest status" : "claim, no status yet"} ${esc(sinceText(l.status_at))} ago · running ${esc(sinceText(l.started_at))}</span>
+    </summary>
+    <div class="lane-body"><dl>
+      <dt>Ticket</dt><dd>${esc(l.ticket || "none named")}${l.title ? ` · ${esc(l.title)}${esc(titleNote)}` : ""}</dd>
+      <dt>Newest row</dt><dd>${l.status_full ? esc(l.status_full) : unreadSpan("the lane wrote no text")}</dd>
+      <dt>Written</dt><dd>${esc(l.status_at)} UTC · ${esc(sinceText(l.status_at))} ago</dd>
+      <dt>Claimed for</dt><dd>${l.claim_full ? esc(l.claim_full) : unreadSpan("")}</dd>
+      <dt>Running</dt><dd>${esc(sinceText(l.started_at))} since ${esc(l.started_at)} UTC</dd>
+      <dt>Pull request</dt><dd>${l.pr ? `${esc(l.pr)}${l.pr_title ? ` · ${esc(l.pr_title)}` : ""}${l.pr_ci_note ? ` · ${esc(l.pr_ci_note)}` : ""}` : "none written yet"}</dd>
+      <dt>Builds</dt><dd>${stationLink(l)}</dd>
+    </dl></div>
+  </details>`;
+}
+
+function gauge(label, value, frac, unreadWhy){
+  if (value == null) return `<div class="gauge"><span>${esc(label)}</span><span class="v unread">unread${unreadWhy ? ` (${esc(unreadWhy)})` : ""}</span></div>`;
+  const bar = frac == null ? "" : `<div class="gbar" role="img" aria-label="${esc(label)}"><b style="--w:${Math.max(0, Math.min(100, Math.round(frac * 100)))}%"></b></div>`;
+  return `<div class="gauge"><span>${esc(label)}</span><span class="v">${esc(value)}</span>${bar}</div>`;
+}
+
+function machineHTML(m, byId){
+  const lanes = (m.lanes || []).map(id => byId[id]).filter(Boolean);
+  const stateWord = m.state === "read" ? (m.stale ? "reading stale" : "read") : m.state === "repair" ? "in repair" : "unread";
+  const cls = m.state === "read" ? (m.stale ? " stale" : "") : m.state === "repair" ? " repair" : " unread";
+  const cap = m.cap == null ? null : num(m.cap);
+  let slots;
+  if (m.state === "read" && cap != null){
+    const used = lanes.map(l => `<i class="${l.stalled ? "stall" : l.engine || "none"}" title="${esc(l.lane + (l.title ? ": " + l.title : ""))}"></i>`);
+    const over = Math.max(0, lanes.length - cap);
+    const free = Math.max(0, cap - lanes.length);
+    slots = `<div class="cap" role="img" aria-label="${lanes.length} lanes placed of ${cap}">${used.join("")}${"<i></i>".repeat(free)}</div>
+      <div class="capline"><span class="mono">${lanes.length}</span> lanes placed of a cap of <span class="mono">${cap}</span>${over ? ` · <b class="age-stale">${over} over the cap</b>` : ""}${m.refusal ? ` · placement refuses new work: ${esc(m.refusal)}` : ""}</div>`;
+  } else if (m.state === "read"){
+    slots = `<div class="cap">${lanes.map(l => `<i class="${l.stalled ? "stall" : l.engine || "none"}"></i>`).join("")}</div><div class="capline"><span class="mono">${lanes.length}</span> lanes placed · cap ${unreadSpan("no cap in the host table or the pool read")}</div>`;
+  } else {
+    slots = `<div class="cap unread" role="img" aria-label="Nothing is drawn: ${esc(m.state === "repair" ? "the machine is in repair" : "the machine was not read")}"></div>
+      <div class="capline">${esc(m.note || "no reading")}${lanes.length ? ` · the ledger still places ${lanes.length} lane${lanes.length === 1 ? "" : "s"} here` : ""}</div>`;
+  }
+  const rd = m.state === "read";
+  const memFrac = rd && m.mem_total_gb ? 1 - num(m.mem_free_gb) / num(m.mem_total_gb) : null;
+  const runners = m.runners || {};
+  const gauges = rd ? [
+    gauge("load per core", m.load_per_core == null ? null : String(m.load_per_core), m.load_per_core == null ? null : num(m.load_per_core)),
+    gauge("memory free", m.mem_free_gb == null ? null : `${fmt(m.mem_free_gb)} GB${m.mem_total_gb ? " of " + fmt(m.mem_total_gb) : ""}`, memFrac),
+    gauge("swap used", m.swap_used_pct == null ? null : `${fmt(m.swap_used_pct)}%`, m.swap_used_pct == null ? null : num(m.swap_used_pct) / 100, "not reported on this host"),
+    gauge("CI runners", runners.state === "read" ? `${num(runners.busy)} busy of ${num(runners.total)}` : null, runners.state === "read" && num(runners.total) ? num(runners.busy) / num(runners.total) : null, runners.note),
+    gauge("unit work", m.unit_work == null ? null : `${num(m.unit_work)} placed beside the lanes`, null, "placement markers not read")
+  ].join("") : "";
+  const age = m.read_age_min == null ? "" : `read ${ageText(num(m.read_age_min) * 60000)} ago`;
+  return `<article class="mbay${cls}" id="bay-${safeId(m.host)}" aria-label="${esc(m.label)}">
+    <div class="mbay-top"><b>${esc(m.label)}</b><span class="pill">${esc(stateWord)}${age ? ` · ${esc(age)}` : ""}</span></div>
+    ${slots}
+    ${gauges ? `<div class="gauges">${gauges}</div>` : ""}
+    ${lanes.length ? `<div class="lanes">${lanes.map(laneHTML).join("")}</div>` : (rd ? `<p class="empty">No lane is placed here.</p>` : "")}
+  </article>`;
+}
+
+function cloudHTML(cloud, lanes){
+  if (!cloud) return `<article class="mbay unread"><div class="mbay-top"><b>Cloud</b><span class="pill">unread</span></div><p class="capline">The record carries no cloud bay.</p></article>`;
+  const live = lanes.filter(l => l.placement === "cloud");
+  const accts = (cloud.accounts || []).map(a => `<li><span><b>${esc(a.name)}</b> · ${a.ready ? "signed in" : esc(a.login || "not signed in")}</span><span class="mono">${num(a.open_sessions)} open${a.cap != null ? " of " + num(a.cap) : ""}</span>
+      <small>${a.credit_remaining != null ? `credit left: ${fmt(a.credit_remaining)} (read ${esc(sinceText(a.credit_read_at))} ago)` : "credit unread"}${a.rate_status ? ` · rate: ${esc(a.rate_status)}` : ""}</small></li>`).join("");
+  const sessions = (cloud.sessions || []).map(s => `<li><span>${esc(s.lane)} · ${esc(s.account || "account unread")}</span><span class="mono">${s.open ? "open" : esc(s.status)} · ${esc(ageText(num(s.run_minutes) * 60000))}</span>${s.result ? `<small>${esc(s.result)}</small>` : ""}</li>`).join("");
+  const lamps = (cloud.lamps || []).map(x => `<div class="lamp-stop" role="alert"><b>${esc(x.text)}</b><small>${x.evidence ? esc(x.evidence) + " · " : ""}since ${esc(x.since)} UTC</small></div>`).join("");
+  return `<article class="mbay${cloud.state === "read" ? "" : " unread"}" id="bay-cloud" aria-label="Cloud">
+    <div class="mbay-top"><b>Cloud</b><span class="pill">${cloud.state === "read" ? "read" : "unread"}</span></div>
+    ${lamps}
+    ${cloud.state === "read" ? (accts ? `<ul class="sessions">${accts}</ul>` : `<p class="empty">No cloud account is signed in.</p>`) : `<p class="capline">${esc(cloud.note || "the cloud accounts file could not be read")}</p>`}
+    ${cloud.note && cloud.state === "read" ? `<p class="capline">${esc(cloud.note)}</p>` : ""}
+    ${live.length ? `<div class="lanes">${live.map(laneHTML).join("")}</div>` : ""}
+    ${sessions ? `<h3>Cloud sessions</h3><ul class="sessions">${sessions}</ul>` : ""}
+  </article>`;
+}
+
+function renderMachines(floor){
+  const ms = floor.machines || [];
+  const lanes = floor.lanes || [];
+  const byId = {};
+  lanes.forEach(l => { byId[l.lane] = l; });
+  const unplaced = lanes.filter(l => l.placement === "unplaced");
+  el("baysNote").textContent = ms.length ? "" : "The record declares no machine bays: the deployment overlay lists none, or the record was written before the bays existed.";
+  const cards = ms.map(m => machineHTML(m, byId));
+  cards.push(cloudHTML(floor.cloud, lanes));
+  if (unplaced.length) cards.push(`<article class="mbay unread" id="bay-unplaced"><div class="mbay-top"><b>No machine recorded</b><span class="pill">${unplaced.length} lane${unplaced.length === 1 ? "" : "s"}</span></div>
+    <p class="capline">These lanes are live in the ledger, but neither their claim nor a remote-lane receipt names a machine the floor draws.</p>
+    <div class="lanes">${unplaced.map(laneHTML).join("")}</div></article>`);
+  el("bayGrid").innerHTML = cards.join("");
+}
+
+function machineFacts(floor){
+  const ms = floor.machines || [], lanes = floor.lanes || [];
+  const read = ms.filter(m => m.state === "read");
+  return {declared: ms.length, read: read.length, repair: ms.filter(m => m.state === "repair").length,
+    unread: ms.filter(m => m.state === "unread").length, placed: ms.reduce((a, m) => a + num(m.lanes_placed), 0),
+    cap: read.reduce((a, m) => a + num(m.cap), 0), lanes: lanes.length, stalled: lanes.filter(l => l.stalled).length,
+    cloud: floor.cloud || null};
+}
+
+// A lane link jumps to its station on the belt and flashes it; the station's part links back to the lane.
+document.addEventListener("click", ev => {
+  const a = ev.target && ev.target.closest ? ev.target.closest("a[data-jump]") : null;
+  if (!a) return;
+  const target = document.getElementById(a.dataset.jump);
+  if (!target) return;
+  ev.preventDefault();
+  target.scrollIntoView({behavior: "smooth", block: "center", inline: "center"});
+  target.classList.remove("flash");
+  void target.offsetWidth;
+  target.classList.add("flash");
+});
 
 function prList(items){
   const row = p => `<li><span>${esc(p.title)} (${esc(p.pr)})</span><span>${esc(p.detail || p.line_id)}</span></li>`;
@@ -655,7 +854,13 @@ function renderSources(s, status){
     ["Newest ledger row read", s.ledger_newest_row ? ageSpan(s.ledger_newest_row) : `<span class="unread">unread</span>`],
     ["Ledger rows read", esc(num(s.ledger_rows).toLocaleString("en-US"))],
     ["Linear issues read", esc(num(s.linear_issues).toLocaleString("en-US"))],
-    ["Lab hosts advertising", s.placement_hosts ? esc(s.placement_hosts) : `<span class="unread">none read</span>`],
+    ["Lab hosts advertising slots", s.placement_hosts ? esc(s.placement_hosts) : `<span class="unread">none read</span>`],
+    ["Pool read of the machines", s.pool_read_at ? ageSpan(s.pool_read_at) : `<span class="unread">unread</span>`],
+    ["Lab host table (caps, repair)", s.host_table_read ? "read" : `<span class="unread">unread</span>`],
+    ["Placement markers (units)", s.placement_markers_read ? "read" : `<span class="unread">unread</span>`],
+    ["Remote-lane receipts", s.receipts_read ? "read" : `<span class="unread">unread</span>`],
+    ["Cloud accounts", s.cloud_accounts_read ? "read" : `<span class="unread">unread</span>`],
+    ["CI runner fleet observation", s.runner_fleet_read ? "read" : `<span class="unread">unread</span>`],
     ["Friction report", s.stoppage_report ? "read" : `<span class="unread">not supplied</span>`]
   ];
   if (status && Array.isArray(status.steps)){
@@ -718,13 +923,15 @@ function render(parts){
   if (key === last) return;
   last = key;
   const lines = rec.lines || [];
-  const floor = Object.assign({bays: [], shipped: [], waiting: [], stoppages: []}, rec.floor || {});
+  const floor = Object.assign({machines: [], lanes: [], cloud: null, shipped: [], waiting: [], stoppages: []}, rec.floor || {});
   const built = buildSlots(lines, parts.status);
-  const bayState = bayFacts(floor.bays);
+  const bayState = machineFacts(floor);
+  indexLines(built.slots);
+  indexLanes(floor.lanes);
   renderAndon(built.slots, floor, parts.health, bayState);
   renderShift(built.slots, floor, rec, bayState);
   renderLines(built.slots, built.declared, built.reason);
-  renderBays(floor.bays, parts.status);
+  renderMachines(floor);
   el("shippedCount").textContent = String(floor.shipped.length);
   el("shipped").innerHTML = prList(floor.shipped);
   el("waiting").innerHTML = prList(floor.waiting);

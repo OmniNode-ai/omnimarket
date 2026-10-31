@@ -273,9 +273,16 @@ def _refresh_request(tmp_path: Path) -> ModelFactoryFloorPublishRequest:
     )
 
 
+PLUGIN = {"CLAUDE_PLUGIN_ROOT": "/plugin-root"}
+
+
 def _program_calls(runner: LocalSsh) -> list[str]:
     return [
-        c[0][2] if c[0][1] == "-m" else "hosts"
+        c[0][2]
+        if c[0][1] == "-m"
+        else "pool"
+        if any("onex_lab_run.py" in word for word in c[0])
+        else "hosts"
         for c in runner.calls
         if c[0][0] != "ssh"
     ]
@@ -286,8 +293,16 @@ def test_refresh_steps_run_in_contract_order_with_the_factory_floor_effect_last(
 ) -> None:
     runner = Scripted({"--json": (0, b"[]", b"")})
     request = _refresh_request(tmp_path)
-    HandlerFactoryFloorPublish(runner).handle(request, environ={})
-    assert _program_calls(runner) == ["hosts", HEALTH_MODULE, FACTORY]
+    HandlerFactoryFloorPublish(runner).handle(request, environ=PLUGIN)
+    assert _program_calls(runner) == ["hosts", "pool", HEALTH_MODULE, FACTORY]
+    pool = next(c[0] for c in runner.calls if any("onex_lab_run.py" in w for w in c[0]))
+    assert pool == [
+        "python3",
+        "/plugin-root/scripts/onex_lab_run.py",
+        "--lane",
+        "factory-floor-pool",
+        "--hosts",
+    ]
     hosts = next(c[0] for c in runner.calls if c[0][0] != "ssh" and c[0][1] != "-m")
     assert hosts[-2:] == ["--bus-lane", "lane-x"]
     assert hosts[0].startswith(request.home or "")
@@ -312,7 +327,7 @@ def test_refresh_an_optional_step_failing_is_published_as_failed_without_its_out
 ) -> None:
     runner = Scripted({"--json": (1, b"", b"bus: /private/path refused")})
     result = HandlerFactoryFloorPublish(runner).handle(
-        _refresh_request(tmp_path), environ={}
+        _refresh_request(tmp_path), environ=PLUGIN
     )
     failed = {s.name: s for s in result.steps if s.status == "failed"}
     assert set(failed) == {"hosts", "friction"}
@@ -453,8 +468,15 @@ def test_page_fetches_the_record_and_reads_every_field_the_node_writes() -> None
     assert runtime.names.page == "index.html"
     for field in (
         "generated_at", "lines", "floor", "sources", "line_id", "status_pill", "percent_built", "stations",
-        "andon", "flag", "reason", "causes", "items", "feeders", "bays", "shipped", "waiting", "stoppages",
-        "cost_minutes", "occurrences", "recurring", "tickets", "last_seen", "stale", "running", "free",
+        "andon", "flag", "reason", "causes", "items", "feeders", "machines", "lanes", "cloud", "shipped", "waiting",
+        "stoppages", "cost_minutes", "occurrences", "recurring", "tickets", "last_seen", "stale",
+        "state", "note", "label", "cap", "lanes_placed", "load_per_core", "mem_free_gb", "mem_total_gb",
+        "swap_used_pct", "unit_work", "runners", "refusal", "read_age_min", "title", "title_source", "kind",
+        "engine", "placement", "status_text", "status_full", "status_at", "status_source", "silent_minutes",
+        "stalled", "pr_ci", "pr_ci_note", "pr_title", "pr_state", "started_at", "claim_full", "station",
+        "station_id", "item_id", "accounts", "sessions", "lamps", "evidence", "open_sessions", "credit_remaining",
+        "pool_read_at", "host_table_read", "placement_markers_read", "receipts_read", "cloud_accounts_read",
+        "runner_fleet_read",
         "watcher_last_tick", "ledger_rows", "ledger_newest_row", "linear_issues", "placement_hosts",
         "stoppage_report", "lines_declared", "plan_path_contains", "plan_path", "improved", "worse", "flat",
         "unmeasured", "measured", "publish-status.json", "process-health.json", "reports/manifest.json",
@@ -510,7 +532,7 @@ FLOOR_HARNESS = textwrap.dedent(
     const els = {};
     const mk = id => ({id, innerHTML: "", textContent: "", hidden: true, dataset: {}, style: {},
       querySelectorAll: () => [], setAttribute() {}, addEventListener() {}, replaceChildren() {}});
-    globalThis.document = {getElementById: id => els[id] || (els[id] = mk(id)),
+    globalThis.document = {getElementById: id => els[id] || (els[id] = mk(id)), addEventListener() {},
       querySelectorAll: () => [], createElement: () => mk("created")};
     globalThis.getComputedStyle = () => ({getPropertyValue: () => "1"});
     globalThis.setInterval = () => 0;
@@ -610,7 +632,7 @@ def test_page_draws_the_declared_lines_in_order_with_an_unmatched_one_unread() -
 def test_page_shows_each_number_from_the_record_and_never_a_baked_one() -> None:
     out = _run_floor({"factory-floor.json": FLOOR_RECORD})
     assert "7,311" in out["tally"]
-    assert "unread" in out["bayGrid"]
+    assert "Machines · unread" in out["andon"]
     assert "lab-idle" in out["stopChart"]
     assert "4,321" in out["stopChart"]
     assert "Unread" in out["delegBody"]
@@ -618,16 +640,193 @@ def test_page_shows_each_number_from_the_record_and_never_a_baked_one() -> None:
         assert baked not in PAGE
 
 
-def test_page_draws_the_bays_and_the_delegation_card_from_their_files() -> None:
-    record = {
-        **FLOOR_RECORD,
-        "floor": {
-            **FLOOR_RECORD["floor"],
-            "bays": [
-                {"host": "bay-x", "slots": 5, "running": 3, "free": 2, "stale": False}
-            ],
+def lane_cells(**cells: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "lane": "lane-one",
+        "ticket": "OMN-9",
+        "title": "Show every lane on the floor",
+        "title_source": "linear",
+        "kind": "fix",
+        "engine": "claude",
+        "placement": "machine",
+        "host": "bay-x",
+        "cloud_account": "",
+        "started_at": "2098-12-31T23:00:00Z",
+        "run_minutes": 60,
+        "status_text": "pushed the effect fields",
+        "status_full": "pushed the effect fields; waiting on CI for the long full row",
+        "status_at": "2098-12-31T23:50:00Z",
+        "status_age_min": 10,
+        "status_source": "status",
+        "silent_minutes": 10,
+        "stalled": False,
+        "pr": "repo#7",
+        "pr_title": "feat: lanes",
+        "pr_state": "OPEN",
+        "pr_ci": "red",
+        "pr_ci_note": "2 red of 150",
+        "station": {"line_id": "plan-two", "station_id": "1", "item_id": "b"},
+        "claim_full": "Fix the reds on the floor stack",
+    }
+    return {**base, **cells}
+
+
+def machine_cells(**cells: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "host": "bay-x",
+        "label": "bay-x",
+        "state": "read",
+        "note": "",
+        "read_at": "2098-12-31T23:58:00Z",
+        "read_age_min": 2,
+        "stale": False,
+        "cores": 8,
+        "load1": 4.0,
+        "load_per_core": 0.5,
+        "busy_cores": 3.0,
+        "mem_free_gb": 12.0,
+        "mem_total_gb": 32.0,
+        "swap_used_pct": None,
+        "cap": 4,
+        "refusal": "",
+        "lanes_placed": 2,
+        "lanes": ["lane-one", "lane-two"],
+        "units_placed": 3,
+        "unit_work": 1,
+        "runners": {
+            "state": "unread",
+            "total": None,
+            "online": None,
+            "busy": None,
+            "observed_at": "",
+            "note": "no runner fleet observation has been recorded",
         },
     }
+    return {**base, **cells}
+
+
+BAYS_RECORD = {
+    **FLOOR_RECORD,
+    "floor": {
+        **FLOOR_RECORD["floor"],
+        "machines": [
+            machine_cells(),
+            machine_cells(host="bay-y", label="bay-y", state="unread", note="rc=255 timed out after 20s", lanes=[], lanes_placed=0, cap=None, load_per_core=None, mem_free_gb=None, mem_total_gb=None),
+            machine_cells(host="bay-z", label="bay-z", state="repair", note="down for repair", lanes=[], lanes_placed=0),
+        ],
+        "lanes": [
+            lane_cells(),
+            lane_cells(lane="lane-two", ticket="", title="", title_source="unread", engine="codex", status_text="", status_full="", status_source="claim", stalled=True, silent_minutes=90, pr="", pr_ci="", pr_state="", station=None),
+            lane_cells(lane="lane-lost", host="", placement="unplaced"),
+            lane_cells(lane="lane-cloud", host="", placement="cloud", cloud_account="acct-a"),
+        ],
+        "cloud": {
+            "state": "read",
+            "note": "",
+            "accounts": [{"name": "acct-a", "ready": True, "login": "ok", "cap": 14, "open_sessions": 1, "credit_remaining": 244.0, "credit_read_at": "2098-12-30T00:00:00Z", "rate_status": "allowed", "rate_resets_at": ""}],
+            "sessions": [{"lane": "lane-cloud", "run_id": "r1", "account": "acct-a", "started_at": "2098-12-31T23:00:00Z", "run_minutes": 60, "status": "running", "open": True, "result": ""}],
+            "lamps": [{"id": "cloud-no-push", "text": "Cloud sessions are ending without a pull request", "since": "2098-12-31T12:00:00Z", "evidence": "push refused (403)"}],
+        },
+    },
+}  # fmt: skip
+
+
+def test_page_draws_a_bay_per_machine_with_its_lanes_against_the_cap() -> None:
+    out = _run_floor({"factory-floor.json": BAYS_RECORD})
+    grid = out["bayGrid"]
+    assert "bay-x" in grid
+    assert '2</span> lanes placed of a cap of <span class="mono">4' in grid
+    assert grid.count('class="cap"') >= 1
+    assert "0.5" in grid
+    assert "12 GB of 32" in grid
+    assert "swap used" in grid
+    assert "unit work" in grid
+    assert "1 placed beside the lanes" in grid
+    assert "CI runners" in grid
+
+
+def test_page_draws_a_machine_the_pool_could_not_read_as_unread_and_one_in_repair_as_repair() -> (
+    None
+):
+    grid = _run_floor({"factory-floor.json": BAYS_RECORD})["bayGrid"]
+    assert "mbay unread" in grid
+    assert "rc=255 timed out after 20s" in grid
+    assert "mbay repair" in grid
+    assert "down for repair" in grid
+    assert "Nothing is drawn" in grid
+
+
+def test_page_draws_a_lane_with_title_kind_engine_status_pr_ci_and_a_station_link() -> (
+    None
+):
+    grid = _run_floor({"factory-floor.json": BAYS_RECORD})["bayGrid"]
+    assert "Show every lane on the floor" in grid
+    assert "OMN-9" in grid
+    assert '<span class="chip">fix</span>' in grid
+    assert "Claude" in grid
+    assert "pushed the effect fields" in grid
+    assert "repo#7 · CI red" in grid
+    assert "pushed the effect fields; waiting on CI for the long full row" in grid
+    assert 'data-jump="st-plan-two-1"' in grid
+    assert "Line A · Then build · Part B" in grid
+    assert (
+        'title="OMN-9 · Show every lane on the floor · pushed the effect fields; waiting'
+        in grid
+    )
+
+
+def test_page_marks_a_stalled_lane_and_a_lane_with_no_title_or_status_as_unread() -> (
+    None
+):
+    grid = _run_floor({"factory-floor.json": BAYS_RECORD})["bayGrid"]
+    assert "chip stall" in grid
+    assert "stalled · silent 90 min" in grid
+    assert "ticket title unread" in grid
+    assert "no status written" in grid
+    assert "no PR yet" in grid
+    assert "no station on the lines holds this ticket" in grid
+
+
+def test_page_puts_a_lane_with_no_machine_in_its_own_bay_and_a_cloud_lane_in_the_cloud_bay() -> (
+    None
+):
+    grid = _run_floor({"factory-floor.json": BAYS_RECORD})["bayGrid"]
+    unplaced = grid[grid.index('id="bay-unplaced"') :]
+    assert "lane-lost" in unplaced
+    cloud = grid[grid.index('id="bay-cloud"') : grid.index('id="bay-unplaced"')]
+    assert "lane-cloud" in cloud
+    assert "acct-a" in cloud
+    assert "244" in cloud
+    assert "Cloud sessions are ending without a pull request" in cloud
+    assert "push refused (403)" in cloud
+
+
+def test_page_lights_the_andon_lamps_for_machines_lanes_and_the_cloud_stop() -> None:
+    andon = _run_floor({"factory-floor.json": BAYS_RECORD})["andon"]
+    assert "Machines · 2 lanes placed" in andon
+    assert "1 of 3 read" in andon
+    assert "1 unread, 1 in repair" in andon
+    assert "Lanes · 4 live" in andon
+    assert "1 stalled" in andon
+    assert "Cloud · stop" in andon
+
+
+def test_page_shows_the_part_of_the_car_a_lane_builds_with_a_link_back_to_the_lane() -> (
+    None
+):
+    lines = _run_floor({"factory-floor.json": BAYS_RECORD})["lines"]
+    assert 'id="st-plan-two-1"' in lines
+    assert 'id="part-plan-two-1-b"' in lines
+    assert 'Built by <a data-jump="lane-lane-one"' in lines
+
+
+def test_page_without_machine_fields_says_the_bays_are_unread_never_empty() -> None:
+    out = _run_floor({"factory-floor.json": FLOOR_RECORD})
+    assert "declares no machine bays" in out["baysNote"]
+    assert "Machines · unread" in out["andon"]
+
+
+def test_page_draws_the_delegation_card_from_its_file() -> None:
     delegation = {
         "generated_at": "2099-01-01T00:00:00Z",
         "window": {"start": "2098-12-31T19:12:00Z", "end": "2099-01-01T07:12:00Z"},
@@ -639,9 +838,9 @@ def test_page_draws_the_bays_and_the_delegation_card_from_their_files() -> None:
         "routes": [{"label": "Local lab model", "done": 9, "total": 9}],
         "why": "A reason the file states.",
     }
-    out = _run_floor({"factory-floor.json": record, "delegation.json": delegation})
-    assert "bay-x" in out["bayGrid"]
-    assert "5 slots" in out["bayGrid"]
+    out = _run_floor(
+        {"factory-floor.json": FLOOR_RECORD, "delegation.json": delegation}
+    )
     assert "9 completed" in out["delegBody"]
     assert "9 of 9" in out["delegBody"]
     assert "A reason the file states." in out["delegBody"]
