@@ -234,18 +234,26 @@ def test_unpriced_session_model_is_unresolved_with_null_savings(home: Path) -> N
 def test_no_session_model_resolves_the_fixed_default_and_says_so(
     home: Path,
 ) -> None:
-    """AC3: the receipt states the selection case."""
+    """AC3: the receipt states the selection case, and no session leaks across runs.
+
+    A run from a session comes first in the same store, so a baseline that
+    stuck to the store or the process would show up on the next run.
+    """
+    assert _delegate(SESSION_MODEL).baseline_source == "session_model"
+
     response = _delegate(None)
 
     assert response.status == "completed"
     assert response.baseline_source == "fixed_default"
     assert response.model_cloud_baseline == pricing.DEFAULT_BASELINE_MODEL
     assert response.baseline_state == "RESOLVED"
-    assert _folded_baselines(home) == {pricing.DEFAULT_BASELINE_MODEL}
+    assert _folded_baselines(home) == {SESSION_MODEL, pricing.DEFAULT_BASELINE_MODEL}
     assert _metering_json()["baseline_model"] == pricing.DEFAULT_BASELINE_MODEL
 
 
 def test_blank_session_model_is_no_session_model(home: Path) -> None:
+    assert _delegate(SESSION_MODEL).baseline_source == "session_model"
+
     response = _delegate("   ")
 
     assert response.baseline_source == "fixed_default"
