@@ -41,6 +41,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
+from omnimarket.config.service_endpoints import service_endpoint_url
 from omnimarket.events.github import pr_merged_event_id
 from omnimarket.nodes.node_event_emit_effect import (
     EnumDurabilityTier,
@@ -128,7 +129,7 @@ def default_remote_url(repo: str) -> str:
         code, out, _ = _git(clone, "remote", "get-url", "origin")
         if code == 0 and repo.split("/", 1)[1] in out:
             return out.strip()
-    return f"https://github.com/{repo}.git"
+    return f"{service_endpoint_url('github.web_url')}/{repo}.git"
 
 
 def default_gh_runner(argv: list[str]) -> tuple[int, str, str]:

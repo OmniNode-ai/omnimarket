@@ -39,6 +39,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
+from omnimarket.config.service_endpoints import service_endpoint_url
 from omnimarket.github_api import GitHubApiError, download_release_asset
 
 #: Where a verified bundle is unpacked. Keyed by digest, so a pin bump lands
@@ -66,7 +67,7 @@ class BundlePin:
     @property
     def url(self) -> str:
         return (
-            f"https://github.com/{self.repository}/releases/download/"
+            f"{service_endpoint_url('github.web_url')}/{self.repository}/releases/download/"
             f"{self.version}/{self.asset}"
         )
 
