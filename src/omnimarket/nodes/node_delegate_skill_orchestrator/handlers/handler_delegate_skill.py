@@ -124,9 +124,10 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delega
     ProtocolDelegationEventBus,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.session_model import (
+    bind_session_model,
+    current_session_model,
     drop_saving_priced_elsewhere,
     request_session_model,
-    session_model_dispatch_kwargs,
 )
 from omnimarket.nodes.node_delegation_output_extract_compute import (
     ModelDelegationOutputExtractRequest,
@@ -322,32 +323,6 @@ def _terminal_measure_dispatch_kwargs(
     if queue_wait_ms is not None and ("queue_wait_ms" in parameters or accepts_kwargs):
         kwargs["queue_wait_ms"] = queue_wait_ms
     return kwargs
-
-
-class _SessionModelDispatchKwargs(TypedDict, total=False):
-    """The caller's session model, for a port that declares it (OMN-20557).
-
-    Passed only when the request names a session model AND the port declares
-    ``session_model`` (or takes ``**kwargs``). omnibase_infra's released runtime
-    port declares neither and would raise ``TypeError`` on the keyword. The
-    splat at the dispatch call site is a call to this module-level helper
-    returning this TypedDict, because the keyword-parity check in
-    omnibase_infra reads the call site statically and resolves only that splat
-    shape (OMN-19817); a splat of a bare name fails it closed (OMN-21752).
-    """
-
-    session_model: str
-
-
-def _session_model_dispatch_kwargs(
-    request: ModelDelegateSkillRequest, dispatch: Callable[..., object]
-) -> _SessionModelDispatchKwargs:
-    session_model = session_model_dispatch_kwargs(request, dispatch).get(
-        "session_model"
-    )
-    if isinstance(session_model, str):
-        return {"session_model": session_model}
-    return {}
 
 
 class _NamedTestsDispatchKwargs(TypedDict, total=False):
@@ -1642,9 +1617,9 @@ class HandlerDelegateSkill:
             and requested_grace_seconds is not None
             else execution_budget.terminal_delivery_margin_seconds
         )
-        session_kwargs = session_model_dispatch_kwargs(
-            request, self._dispatch_port.dispatch
-        )
+        # OMN-20557 / OMN-21752: the session model rides a context variable,
+        # not a dispatch() keyword -- see session_model.py.
+        session_token = bind_session_model(request, self._dispatch_port)
         progress = ModelDelegationDispatchProgress()
         progress_token = current_dispatch_progress.set(progress)
         try:
@@ -1712,11 +1687,6 @@ class HandlerDelegateSkill:
                     # OMN-19448: evidence only, when the port accepts the keywords.
                     **_terminal_measure_dispatch_kwargs(
                         request, queue_wait_ms, self._dispatch_port.dispatch
-                    ),
-                    # OMN-20557: only when named and declared by the port -- see
-                    # _SessionModelDispatchKwargs.
-                    **_session_model_dispatch_kwargs(
-                        request, self._dispatch_port.dispatch
                     ),
                 ),
                 timeout=float(execution_timeout_seconds + wait_allowance_seconds),
@@ -1834,8 +1804,12 @@ class HandlerDelegateSkill:
 
         finally:
             current_dispatch_progress.reset(progress_token)
+            if session_token is not None:
+                current_session_model.reset(session_token)
 
-        result = drop_saving_priced_elsewhere(result, request, session_kwargs)
+        result = drop_saving_priced_elsewhere(
+            result, request, session_token is not None
+        )
         return delegate_skill_terminal_from_response(
             _response_from_result(
                 request,

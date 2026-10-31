@@ -12,8 +12,11 @@ omnimarket#4653 (OMN-20557) did with ``**session_kwargs``.
 
 The first test holds the call site to that rule from this repository, so a
 splat it cannot resolve is red here and not in a downstream repository. The
-rest pin the behaviour the helper keeps: the session model reaches a port that
-declares it, and a port that does not never sees the keyword.
+check also holds every keyword the call site can send to what the runtime
+port declares, and that port declares no ``session_model``; so the session
+model travels in a context variable the handler sets around the dispatch, and
+the rest pin that: a port that reads it sees it, a port that does not never
+does, and the dispatch call names no such keyword.
 """
 
 from __future__ import annotations
@@ -30,8 +33,15 @@ from omnimarket.models.delegation.wire.model_delegate_skill_request import (
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers import (
     handler_delegate_skill,
 )
-from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
-    _session_model_dispatch_kwargs,
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
+    LocalDelegationDispatchPort,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.session_model import (
+    READS_SESSION_MODEL_ATTRIBUTE,
+    bind_session_model,
+    current_session_model,
+    drop_saving_priced_elsewhere,
+    port_reads_session_model,
 )
 
 pytestmark = pytest.mark.unit
@@ -139,34 +149,62 @@ def _request(**metadata: str) -> ModelDelegateSkillRequest:
     )
 
 
-async def _port_declaring_session_model(*, prompt: str, session_model: str) -> None:
-    del prompt, session_model
+class _Port:
+    """A dispatch port that records the session model it sees mid-dispatch."""
+
+    def __init__(self, *, reads_session_model: bool) -> None:
+        if reads_session_model:
+            self.reads_session_model = True
+        self.seen: str | None = "unset"
+
+    async def dispatch(self, *, prompt: str) -> dict[str, object]:
+        del prompt
+        self.seen = current_session_model.get()
+        return {}
 
 
-async def _port_without_session_model(*, prompt: str) -> None:
-    del prompt
+def test_session_model_is_bound_for_a_port_that_reads_it_and_reset_after() -> None:
+    port = _Port(reads_session_model=True)
+    token = bind_session_model(_request(session_model="claude-opus-5-5"), port)
+    assert token is not None
+    assert current_session_model.get() == "claude-opus-5-5"
+    current_session_model.reset(token)
+    assert current_session_model.get() is None
 
 
-async def _port_taking_kwargs(*, prompt: str, **extra: object) -> None:
-    del prompt, extra
-
-
-def test_session_model_reaches_a_port_that_declares_it() -> None:
+def test_session_model_is_not_bound_for_a_port_that_does_not_read_it() -> None:
+    port = _Port(reads_session_model=False)
     request = _request(session_model="claude-opus-5-5")
-    assert _session_model_dispatch_kwargs(request, _port_declaring_session_model) == {
-        "session_model": "claude-opus-5-5"
+    assert bind_session_model(request, port) is None
+    assert current_session_model.get() is None
+
+
+def test_no_session_model_binds_nothing() -> None:
+    assert bind_session_model(_request(), _Port(reads_session_model=True)) is None
+    assert current_session_model.get() is None
+
+
+def test_session_model_is_dropped_saving_only_when_named_and_not_delivered() -> None:
+    named = _request(session_model="claude-opus-5-5")
+    result: dict[str, object] = {"cost_savings_usd": 9.0, "content": "x"}
+    assert drop_saving_priced_elsewhere(result, named, False) == {"content": "x"}
+    assert drop_saving_priced_elsewhere(result, named, True) == result
+    assert drop_saving_priced_elsewhere(result, _request(), False) == result
+
+
+def test_local_port_says_it_reads_the_session_model() -> None:
+    """The marker the handler checks is spelled the way the module says."""
+    assert READS_SESSION_MODEL_ATTRIBUTE == "reads_session_model"
+    assert port_reads_session_model(LocalDelegationDispatchPort)
+
+
+def test_dispatch_call_site_sends_no_session_model_keyword() -> None:
+    """The runtime port declares no session_model, so the call site must not."""
+    tree = ast.parse(_HANDLER_SOURCE.read_text(encoding="utf-8"))
+    sent = {
+        keyword.arg
+        for call in _dispatch_calls(tree)
+        for keyword in call.keywords
+        if keyword.arg is not None
     }
-    assert _session_model_dispatch_kwargs(request, _port_taking_kwargs) == {
-        "session_model": "claude-opus-5-5"
-    }
-
-
-def test_session_model_is_withheld_from_a_port_that_does_not_declare_it() -> None:
-    request = _request(session_model="claude-opus-5-5")
-    assert _session_model_dispatch_kwargs(request, _port_without_session_model) == {}
-
-
-def test_no_session_model_passes_no_keyword() -> None:
-    assert (
-        _session_model_dispatch_kwargs(_request(), _port_declaring_session_model) == {}
-    )
+    assert "session_model" not in sent
