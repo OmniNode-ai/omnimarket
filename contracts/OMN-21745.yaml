@@ -1,0 +1,47 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-21745
+title: omnimarket contracts_and_di handler_hand_construction burn-down, slice rf1320-c1
+summary: Twenty-six __main__.py entrypoints of twenty-six node packages built their Handler or Node class inline. Each node now has a container package with one binding module whose build_* factory holds the one construction, and the entrypoint calls the factory. The contracts_and_di check over src/omnimarket reports handler_hand_construction 514 before and 488 after at dev 0a777fad4, with no other rule changing, and no baseline entry or suppression added.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21745-main-entrypoint-binding
+  statement: The __main__ entrypoints of the twenty-six slice nodes resolve their handler through the node's binding module and hold no inline construction, so the handler_hand_construction count over src/omnimarket drops by thirty.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the contracts_and_di count for handler_hand_construction over the slice paths drops to zero and the repo total drops by the slice size, with no baseline entry or suppression added -- falsifier: onex run of runtime_validator_run with the contracts_and_di reference over omnimarket src before and after, counts compared per rule'
+  - id: AC2
+    statement: 'AC2: every hand-built handler is resolved through the container and its dependencies are injected, none constructed inline in the touched code -- falsifier: uv run pytest tests/unit -q over the touched modules plus the checker re-run on the slice paths'
+  - id: AC3
+    statement: 'AC3: the slice lands as one PR titled with this ticket id and carries lab proof of the tests and the checker re-run -- falsifier: uv run pytest tests/unit -q on the lab through lab-run at the PR head, receipt path in the PR body'
+evidence_requirements:
+- kind: tests
+  description: The slice test and the two tests that follow the moved construction, run on a lab host at the pushed head.
+  command: uv run pytest tests/unit/nodes/test_cdi_main_entrypoint_binding_sites.py tests/test_golden_chain_platform_readiness.py tests/test_node_runtime_coverage.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21745-slice-check-clean
+  description: The contracts_and_di check reports no handler_hand_construction finding on any __main__.py of the twenty-six slice nodes.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/test_cdi_main_entrypoint_binding_sites.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn21745-touched-tests
+  description: The tests that import or patch the moved constructions pass.
+  source: manual
+  binds_ac:
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_platform_readiness.py tests/test_node_runtime_coverage.py -q --no-cov --tb=line
+    cwd: .
