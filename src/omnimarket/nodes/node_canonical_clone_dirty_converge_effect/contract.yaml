@@ -10,9 +10,10 @@
 # WHAT IT DOES. The sync engine only fast-forwards a clean clone. A clone refused for tracked changes
 # stayed behind for days (a host's omniclaude, 8 days; another host's omnidash, 143103 s). One tick runs
 # the engine with its refusal bound set to the age below, so the engine names every clone refused that
-# long. For each, source paths are pushed to a rescue branch, paths that look generated or carry a host
-# value stay only in the converge archive (never pushed), then converge-canonical-clone.sh resets the
-# clone to its upstream and writes the one ledger row, naming what was saved.
+# long. Each is converged to its upstream and what it held is dropped: no rescue branch, no pin, no tar
+# (operator ruling 2026-10-31 about 20:00Z; the work is redone from its ticket). converge-canonical-clone.sh
+# resets the clone and writes the one ledger row, which names what was dropped. A clone a live lane is
+# using (an open CLAIM naming it, or a process whose working directory is inside it) is left alone.
 name: "node_canonical_clone_dirty_converge_effect"
 lifecycle: experimental
 node_type: "EFFECT_GENERIC"
@@ -66,22 +67,5 @@ dirty_converge:
   converge_script: omniclaude/scripts/converge-canonical-clone.sh
   ticket: OMN-21821
   lane: canonical-clone-sync
-  rescue_branch_prefix: rescue/
   tracking_branches: [main, dev, master]
-  # A path whose added lines match any of host_value_patterns keeps its content out of every remote: the
-  # converge archive is its only copy. generated_path_patterns match the path; generated_markers match
-  # the first 2000 characters of the file or of its committed version.
-  host_value_patterns:
-    - '/(Users|home|Volumes)/[^\s/]+'
-    - '\.ts\.net\b'
-    - '\b(192\.168|10\.\d{1,3}|172\.(1[6-9]|2\d|3[01])|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7]))\.\d{1,3}\.\d{1,3}\b'
-    - '(sk-|ghp_|gho_|xox[bp]-|AKIA)[A-Za-z0-9_-]{8,}'
-    - 'BEGIN [A-Z ]*PRIVATE KEY'
-    - '(?i)(password|secret|token|api_?key)\s*[:=]\s*\S'
-  generated_path_patterns:
-    - '(^|/)(generated|__generated__)/'
-    - '\.generated\.'
-    - '\.tsbuildinfo$'
-    - '\.min\.(js|css)$'
-  generated_markers:
-    - '(?i)@generated|auto-?generated|generated (by|file)|do not edit'
+  max_listed: 8  # Paths and commits named in the ledger row; the rest are counted.

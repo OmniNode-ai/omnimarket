@@ -1,39 +1,31 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""HandlerCanonicalCloneDirtyConverge -- converge a canonical clone that has been refused for
+"""HandlerCanonicalCloneDirtyConvergeEffect -- converge a canonical clone that has been refused for
 tracked changes for a declared age (OMN-21821).
 
 The canonical-clone sync engine only fast-forwards a clean clone and refuses the rest. Nothing
 escalated that refusal: a host's omniclaude sat 120 commits behind under four staged files for
 eight days, and an omnidash clone logged REFUSED_TOO_LONG for 143103 s over a stale generated file.
 
-One tick of this handler runs the engine with its refusal bound set to the declared age. The engine
-then names each clone refused that long (``REFUSED_TOO_LONG <clone> refused for <n>s: <reason>``)
-and this handler acts on exactly those clones, in this order:
+One tick runs the engine with its refusal bound set to the declared age. The engine then names each
+clone refused that long (``REFUSED_TOO_LONG <clone> refused for <n>s: <reason>``) and this handler
+converges exactly those clones to their upstream and DROPS what they held: no rescue branch, no pin,
+no tar (operator ruling 2026-10-31 about 20:00Z; the work is redone from its ticket).
+converge-canonical-clone.sh writes the one ledger row, which names the dropped paths and local commits
+and the head the clone was converged to (``--note``).
 
-1. every dirty tracked path is classified. A path that looks generated, or whose added lines
-   carry a host value or a credential, is kept only in the converge archive and never pushed. Every
-   other path is source;
-2. the source paths are committed on top of the clone's HEAD in a throwaway index, so the clone's
-   own index, HEAD and refs are untouched, and that commit is pushed to a rescue branch. When the
-   push fails nothing else happens and the clone stays refused;
-3. converge-canonical-clone.sh preserves the whole tree again, resets the clone to its upstream and
-   writes the one ledger row, which names the rescue branch and the archive-only paths (``--note``).
-
-A clone that is ahead of or diverged from its upstream, has an operation in progress, or is not on a
-tracking branch is left alone: converging it would lose commits, not edits.
+Left alone: a clone a live lane is using (an open CLAIM naming its path, or a process whose working
+directory is inside it, or a host where that cannot be told), a clone off a tracking branch, one with
+an operation in progress, and one with no tracked changes.
 """
 
 from __future__ import annotations
 
-import contextlib
 import os
 import re
-import socket
 import subprocess
 import sys
-import time
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -120,11 +112,6 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
                 "timer",
             ]
         )
-        self._patterns = {
-            "host": [re.compile(p) for p in self.declaration.host_value_patterns],
-            "path": [re.compile(p) for p in self.declaration.generated_path_patterns],
-            "marker": [re.compile(p) for p in self.declaration.generated_markers],
-        }
 
     # -- git ----------------------------------------------------------------------------------
     def _git(
@@ -193,101 +180,76 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
             paths.append(entry[3:])
         return paths
 
-    # -- classification -----------------------------------------------------------------------
-    def classify(
-        self, clone: Path, paths: Iterable[str]
-    ) -> tuple[list[str], dict[str, str]]:
-        """(source paths to push, {archive-only path: why})."""
-        source: list[str] = []
-        archive_only: dict[str, str] = {}
-        for path in sorted(set(paths)):
-            _, diff = self._git(clone, "diff", "HEAD", "--no-color", "--", path)
-            added = "\n".join(
-                line[1:]
-                for line in diff.splitlines()
-                if line.startswith("+") and not line.startswith("+++")
-            )
-            try:
-                working = (clone / path).read_text(errors="ignore")[:2000]
-            except OSError:
-                working = ""
-            committed = self._out(clone, "show", f"HEAD:{path}")[:2000]
-            if any(p.search(added) for p in self._patterns["host"]):
-                archive_only[path] = "carries a host value"
-            elif any(p.search(path) for p in self._patterns["path"]) or any(
-                p.search(text)
-                for p in self._patterns["marker"]
-                for text in (working, committed)
-            ):
-                archive_only[path] = "generated file"
-            else:
-                source.append(path)
-        return source, archive_only
-
-    def _rescue_commit(
-        self, clone: Path, git_dir: Path, paths: Sequence[str]
-    ) -> str | None:
-        """A commit on HEAD holding the working-tree content of ``paths``, built in a throwaway
-        index so the clone's own index, HEAD and refs are untouched."""
-        index = git_dir / f"dirty-converge-index.{os.getpid()}"
-        idx = {"GIT_INDEX_FILE": str(index)}
-        who = self.declaration.lane
-        ident = {
-            "GIT_AUTHOR_NAME": who,
-            "GIT_AUTHOR_EMAIL": f"{who}@users.noreply.github.com",
-            "GIT_COMMITTER_NAME": who,
-            "GIT_COMMITTER_EMAIL": f"{who}@users.noreply.github.com",
-        }
+    # -- live use -----------------------------------------------------------------------------
+    def _open_claim_naming(self, clone: Path) -> str:
+        """The lane of an open CLAIM that names the clone's path, else an empty string."""
+        ledger = self._env.get("ONEX_LEDGER_PATH", "")
+        if not ledger:
+            return ""
         try:
-            if self._git(clone, "read-tree", "HEAD", extra_env=idx)[0]:
-                return None
-            for path in paths:
-                full = clone / path
-                if not full.exists() and not full.is_symlink():
-                    code, _ = self._git(
-                        clone,
-                        "update-index",
-                        "--force-remove",
-                        "--",
-                        path,
-                        extra_env=idx,
-                    )
-                else:
-                    code, blob = self._git(clone, "hash-object", "-w", "--", str(full))
-                    if code:
-                        return None
-                    mode = (
-                        "120000"
-                        if full.is_symlink()
-                        else ("100755" if os.access(full, os.X_OK) else "100644")
-                    )
-                    code, _ = self._git(
-                        clone,
-                        "update-index",
-                        "--add",
-                        "--cacheinfo",
-                        f"{mode},{blob},{path}",
-                        extra_env=idx,
-                    )
-                if code:
-                    return None
-            code, tree = self._git(clone, "write-tree", extra_env=idx)
-            if code:
-                return None
-            code, commit = self._git(
-                clone,
-                "commit-tree",
-                tree,
-                "-p",
-                "HEAD",
-                "-m",
-                "Rescue: tracked changes saved before the canonical clone was converged",
-                extra_env={**idx, **ident},
+            lines = (
+                Path(ledger).read_text(encoding="utf-8", errors="replace").splitlines()
             )
-            return commit if code == 0 else None
-        finally:
-            with contextlib.suppress(OSError):
-                index.unlink()
+        except OSError:
+            return ""
+        open_claims: dict[str, str] = {}
+        for line in lines:
+            parts = [p.strip() for p in line.split(" | ", 3)]
+            if len(parts) < 3 or not parts[2].startswith("lane="):
+                continue
+            lane = parts[2][5:]
+            if parts[1] == "CLAIM":
+                open_claims[lane] = line
+            elif parts[1] == "TERMINAL":
+                open_claims.pop(lane, None)
+        named = re.compile(
+            "("
+            + re.escape(str(clone))
+            + r"|\$OMNI_HOME/"
+            + re.escape(clone.name)
+            + ")(?![\\w.-])"
+        )
+        return next(
+            (lane for lane, text in open_claims.items() if named.search(text)), ""
+        )
+
+    def _process_inside(self, clone: Path) -> str:
+        """A process whose working directory is inside the clone; 'unknown' when lsof cannot say."""
+        proc = Path("/proc")
+        if (proc / "self" / "cwd").exists():
+            root = str(clone.resolve())
+            for entry in proc.iterdir():
+                if not entry.name.isdigit():
+                    continue
+                try:
+                    cwd = os.readlink(entry / "cwd")
+                except OSError:
+                    continue  # another user's process, or one that just exited
+                if cwd == root or cwd.startswith(root + "/"):
+                    return f"pid {entry.name}"
+            return ""
+        try:
+            done = self._run(
+                ["lsof", "-d", "cwd", "-F", "pn"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return "unknown"
+        if done.returncode not in (0, 1):
+            return "unknown"
+        root = str(clone.resolve())
+        pid = ""
+        for line in (done.stdout or "").splitlines():
+            if line.startswith("p"):
+                pid = line[1:]
+            elif line.startswith("n") and (
+                line[1:] == root or line[1:].startswith(root + "/")
+            ):
+                return f"pid {pid}"
+        return ""
 
     # -- one clone ----------------------------------------------------------------------------
     def converge_clone(
@@ -317,60 +279,42 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
         if not remote or not merge_ref.startswith("refs/heads/"):
             return outcome(skipped, f"branch {branch} has no remote upstream")
         before = self._out(clone, "rev-parse", "--verify", "--quiet", "HEAD")
-        target = self._out(
-            clone,
-            "rev-parse",
-            "--verify",
-            "--quiet",
-            f"refs/remotes/{remote}/{merge_ref[11:]}",
-        )
+        upstream = f"refs/remotes/{remote}/{merge_ref[11:]}"
+        target = self._out(clone, "rev-parse", "--verify", "--quiet", upstream)
         git_dir_text = self._out(clone, "rev-parse", "--absolute-git-dir")
         if not (before and target and git_dir_text):
             return outcome(skipped, "HEAD or the upstream tip does not resolve")
-        git_dir = Path(git_dir_text)
         if before == target:
             return outcome(skipped, "already at the upstream tip")
-        if any((git_dir / marker).exists() for marker in _IN_PROGRESS):
+        if any((Path(git_dir_text) / marker).exists() for marker in _IN_PROGRESS):
             return outcome(skipped, "a git operation is in progress in the clone")
-        if self._git(clone, "merge-base", "--is-ancestor", before, target)[0]:
-            return outcome(
-                skipped,
-                "the clone is ahead of or diverged from its upstream: commits would be lost",
-            )
         dirty = self._dirty_paths(clone)
+        commits = [
+            c
+            for c in self._out(
+                clone, "log", "--format=%h", f"{target}..HEAD"
+            ).splitlines()
+            if c
+        ]
         if not dirty:
             return outcome(skipped, "no tracked changes: the refusal has another cause")
-        source, archive_only = self.classify(clone, dirty)
+        lane = self._open_claim_naming(clone)
+        if lane:
+            return outcome(skipped, f"an open CLAIM of lane {lane} names the clone")
+        inside = self._process_inside(clone)
+        if inside:
+            return outcome(skipped, f"a process is using the clone ({inside})")
 
-        saved: list[str] = []
-        branch_name = ""
-        if source:
-            stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-            slug = re.sub(r"[^A-Za-z0-9._-]", "-", clone.name)
-            host = re.sub(r"[^A-Za-z0-9._-]", "-", socket.gethostname().split(".")[0])
-            branch_name = f"{self.declaration.rescue_branch_prefix}{host}-{slug}-dirty-converge-{stamp}"
-            commit = self._rescue_commit(clone, git_dir, source)
-            if commit is None:
-                return outcome(failed, "the rescue commit could not be built")
-            code, text = self._git(
-                clone,
-                "push",
-                remote,
-                f"{commit}:refs/heads/{branch_name}",
-                timeout=_TIMEOUTS.get("dirty_converge_rescue_push_seconds"),
-            )
-            if code:
-                return outcome(failed, f"the rescue push failed: {text[-300:]}")
-            saved.append(
-                f"{len(source)} source path(s) pushed to {remote} branch {branch_name} ({', '.join(source[:5])})"
-            )
-        if archive_only:
-            listing = ", ".join(
-                f"{p} ({why})" for p, why in sorted(archive_only.items())[:5]
-            )
-            saved.append(
-                f"{len(archive_only)} path(s) kept only in the converge archive, never pushed: {listing}"
-            )
+        listed = self.declaration.max_listed
+
+        def named(items: Sequence[str]) -> str:
+            more = f" and {len(items) - listed} more" if len(items) > listed else ""
+            return ", ".join(items[:listed]) + more
+
+        dropped = f"{len(dirty)} tracked path(s) ({named(dirty)})"
+        if commits:
+            dropped += f" and {len(commits)} local commit(s) ({named(commits)})"
+        note = f"dropped, not saved: {dropped}; converged to {target[:12]}"
         script = self.registry_root / self.declaration.converge_script
         try:
             done = self._run(
@@ -384,7 +328,7 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
                     "--lane",
                     self.declaration.lane,
                     "--note",
-                    "; ".join(saved),
+                    note,
                 ],
                 capture_output=True,
                 text=True,
@@ -394,24 +338,20 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
             )
         except (OSError, subprocess.SubprocessError) as exc:
             return outcome(
-                failed,
-                f"converge could not run: {type(exc).__name__}: {exc}",
-                rescue_branch=branch_name,
+                failed, f"converge could not run: {type(exc).__name__}: {exc}"
             )
         head = self._out(clone, "rev-parse", "--verify", "--quiet", "HEAD")
         if done.returncode or head != target:
             tail = " ".join((done.stderr or done.stdout or "").split())[-300:]
             return outcome(
-                failed,
-                f"converge-canonical-clone.sh exit {done.returncode}: {tail}",
-                rescue_branch=branch_name,
+                failed, f"converge-canonical-clone.sh exit {done.returncode}: {tail}"
             )
         return outcome(
             EnumDirtyConvergeStatus.CONVERGED,
-            "; ".join(saved),
-            rescue_branch=branch_name,
-            source_paths=tuple(source),
-            archive_only_paths=archive_only,
+            note,
+            dropped_paths=tuple(dirty),
+            dropped_commits=tuple(commits),
+            converged_to=target,
         )
 
     # -- the tick -----------------------------------------------------------------------------

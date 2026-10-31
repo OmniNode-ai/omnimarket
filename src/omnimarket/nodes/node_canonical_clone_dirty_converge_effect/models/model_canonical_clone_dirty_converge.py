@@ -25,11 +25,8 @@ class ModelDirtyConvergeDeclaration(BaseModel):
     converge_script: str
     ticket: str = Field(pattern=r"^OMN-\d+$")
     lane: str
-    rescue_branch_prefix: str
     tracking_branches: tuple[str, ...] = Field(min_length=1)
-    host_value_patterns: tuple[str, ...]
-    generated_path_patterns: tuple[str, ...]
-    generated_markers: tuple[str, ...]
+    max_listed: int = Field(ge=1)
 
     @model_validator(mode="after")
     def _relative(self) -> Self:
@@ -50,9 +47,9 @@ class ModelDirtyConvergeOutcome(BaseModel):
     status: EnumDirtyConvergeStatus
     reason: str = Field(default="", max_length=2000)
     refused_for_seconds: int = Field(ge=0)
-    rescue_branch: str = ""
-    source_paths: tuple[str, ...] = ()
-    archive_only_paths: dict[str, str] = Field(default_factory=dict)
+    dropped_paths: tuple[str, ...] = ()
+    dropped_commits: tuple[str, ...] = ()
+    converged_to: str = ""
 
 
 class ModelDirtyConvergeTickRequest(BaseModel):

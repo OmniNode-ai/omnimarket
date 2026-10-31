@@ -55,7 +55,7 @@ clone="$1"; shift
 note=""
 while [ $# -gt 0 ]; do case "$1" in --note) note="$2"; shift ;; esac; shift; done
 git -C "$clone" reset --hard --quiet '@{u}'
-echo "STATUS converged $clone saved: $note" >> "$ROW_FILE"
+echo "2026-10-31T00:00:00Z | STATUS | lane=l | converged $clone; saved: $note." >> "$ROW_FILE"
 """
 
 
@@ -203,7 +203,7 @@ def test_the_age_is_the_contracts_and_the_overlay_replaces_it() -> None:
     assert declared_age_seconds({}) == 14400
     assert declared_age_seconds({AGE_ENV: "90"}) == 90
     assert declared_age_seconds({AGE_ENV: "junk"}) == 14400
-    assert load_declaration().rescue_branch_prefix == "rescue/"
+    assert load_declaration().max_listed >= 1
 
 
 def test_a_clone_not_yet_refused_for_the_age_is_left_alone(
@@ -214,10 +214,12 @@ def test_a_clone_not_yet_refused_for_the_age_is_left_alone(
     before = _git("rev-parse", "HEAD", cwd=staged_case.clone)
     assert handler.tick() == []
     assert _git("rev-parse", "HEAD", cwd=staged_case.clone) == before
-    assert staged_case.branches() == ["dev"]
+    assert (
+        _git("diff", "--cached", "--name-only", cwd=staged_case.clone) == "a.txt\nb.txt"
+    )
 
 
-def test_staged_source_files_go_to_a_rescue_branch_then_the_clone_converges(
+def test_staged_source_files_are_dropped_and_the_row_names_them(
     staged_case: Planted,
 ) -> None:
     handler = staged_case.handler(**{AGE_ENV: str(AGE)})
@@ -226,17 +228,16 @@ def test_staged_source_files_go_to_a_rescue_branch_then_the_clone_converges(
     assert outcome.status is EnumDirtyConvergeStatus.CONVERGED, outcome
     assert _git("rev-parse", "HEAD", cwd=staged_case.clone) == staged_case.tip
     assert _clean(staged_case.clone)
-    (rescue,) = [b for b in staged_case.branches() if b.startswith("rescue/")]
-    assert rescue == outcome.rescue_branch
-    assert "platform-dirty-converge" in rescue
-    assert (
-        _git("show", f"{rescue}:a.txt", cwd=staged_case.remote) == "staged source edit"
-    )
+    assert staged_case.branches() == ["dev"]  # no rescue branch, nothing pushed
+    assert set(outcome.dropped_paths) == {"a.txt", "b.txt"}
+    assert outcome.converged_to == staged_case.tip
     row = staged_case.row_text()
-    assert f"2 source path(s) pushed to origin branch {rescue}" in row
+    assert row.count("| STATUS |") == 1
+    assert "dropped, not saved: 2 tracked path(s) (a.txt, b.txt)" in row
+    assert f"converged to {staged_case.tip[:12]}" in row
 
 
-def test_a_generated_file_with_a_host_value_is_archived_and_never_pushed(
+def test_a_stale_generated_file_is_dropped_and_its_content_is_in_no_remote(
     generated_case: Planted,
 ) -> None:
     handler = generated_case.handler(**{AGE_ENV: str(AGE)})
@@ -245,51 +246,69 @@ def test_a_generated_file_with_a_host_value_is_archived_and_never_pushed(
     assert outcome.status is EnumDirtyConvergeStatus.CONVERGED, outcome
     assert _clean(generated_case.clone)
     assert generated_case.branches() == ["dev"]
-    assert outcome.archive_only_paths == {
-        "src/data-source-defaults.ts": "carries a host value"
-    }
-    assert (
-        "kept only in the converge archive, never pushed" in generated_case.row_text()
-    )
-    if REAL_ROOT:
-        (archive,) = (
-            generated_case.home / ".onex_state/canonical-clone-converge"
-        ).glob("omnidash-*")
-        assert HOST_VALUE in (archive / "full-vs-HEAD.patch").read_text()
+    assert outcome.dropped_paths == ("src/data-source-defaults.ts",)
+    assert "src/data-source-defaults.ts" in generated_case.row_text()
+    assert HOST_VALUE not in generated_case.row_text()
 
 
-def test_a_failed_rescue_push_leaves_the_clone_dirty(staged_case: Planted) -> None:
-    _git(
-        "remote",
-        "set-url",
-        "--push",
-        "origin",
-        str(staged_case.home / "missing.git"),
-        cwd=staged_case.clone,
-    )
-    handler = staged_case.handler(**{AGE_ENV: str(AGE)})
-    staged_case.refuse_for(handler, 3 * AGE)
-    before = _git("rev-parse", "HEAD", cwd=staged_case.clone)
-    (outcome,) = handler.tick()
-    assert outcome.status is EnumDirtyConvergeStatus.FAILED
-    assert "the rescue push failed" in outcome.reason
-    assert _git("rev-parse", "HEAD", cwd=staged_case.clone) == before
-    assert (
-        _git("diff", "--cached", "--name-only", cwd=staged_case.clone) == "a.txt\nb.txt"
-    )
-
-
-def test_a_clone_ahead_of_its_upstream_is_never_converged(
+def test_local_commits_on_a_dirty_clone_are_dropped_and_named(
     staged_case: Planted,
 ) -> None:
     clone = staged_case.clone
-    _git("reset", "--soft", "HEAD", cwd=clone)
     (clone / "local.txt").write_text("local commit\n")
     _git("add", "local.txt", cwd=clone)
     _git("commit", "--quiet", "-m", "local", cwd=clone)
+    local = _git("rev-parse", "--short", "HEAD", cwd=clone)
+    (clone / "a.txt").write_text("dirty again\n")
     handler = staged_case.handler(**{AGE_ENV: str(AGE)})
     staged_case.refuse_for(handler, 3 * AGE)
     (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.CONVERGED, outcome
+    assert outcome.dropped_commits == (local,)
+    assert _git("rev-parse", "HEAD", cwd=clone) == staged_case.tip
+    assert f"1 local commit(s) ({local})" in staged_case.row_text()
+
+
+def test_a_clone_an_open_claim_names_is_left_alone(
+    staged_case: Planted, tmp_path: Path
+) -> None:
+    ledger = tmp_path / "ledger.md"
+    ledger.write_text(
+        "2026-10-31T10:00:00Z | CLAIM | lane=other-lane | ticket=OMN-1 | works in "
+        f"{staged_case.clone} right now\n"
+    )
+    handler = staged_case.handler(
+        **{AGE_ENV: str(AGE), "ONEX_LEDGER_PATH": str(ledger)}
+    )
+    staged_case.refuse_for(handler, 3 * AGE)
+    (outcome,) = handler.tick()
     assert outcome.status is EnumDirtyConvergeStatus.SKIPPED
-    assert "diverged" in outcome.reason
-    assert (clone / "local.txt").exists()
+    assert "other-lane" in outcome.reason
+    assert (
+        _git("diff", "--cached", "--name-only", cwd=staged_case.clone) == "a.txt\nb.txt"
+    )
+    ledger.write_text(
+        ledger.read_text()
+        + "2026-10-31T11:00:00Z | TERMINAL | lane=other-lane | ticket=OMN-1 | done\n"
+    )
+    assert (
+        staged_case.handler(
+            **{AGE_ENV: str(AGE), "ONEX_LEDGER_PATH": str(ledger)}
+        )._open_claim_naming(staged_case.clone)
+        == ""
+    )
+
+
+def test_a_clone_a_process_works_inside_is_left_alone(staged_case: Planted) -> None:
+    handler = staged_case.handler(**{AGE_ENV: str(AGE)})
+    staged_case.refuse_for(handler, 3 * AGE)
+    with subprocess.Popen(["sleep", "60"], cwd=staged_case.clone) as sleeper:
+        try:
+            (outcome,) = handler.tick()
+        finally:
+            sleeper.kill()
+    assert outcome.status is EnumDirtyConvergeStatus.SKIPPED
+    assert "process" in outcome.reason
+    assert (
+        _git("diff", "--cached", "--name-only", cwd=staged_case.clone) == "a.txt\nb.txt"
+    )
