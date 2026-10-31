@@ -18,7 +18,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 from click.testing import CliRunner, Result
@@ -1126,48 +1126,130 @@ def test_write_timeout_is_not_retried(
     assert retry_pauses == []
 
 
-def test_write_timeout_reports_missing_consumer_without_republishing(
-    monkeypatch: pytest.MonkeyPatch, retry_pauses: list[float]
-) -> None:
+_Reason = Literal[
+    "no_consumer_for_topic",
+    "consumer_present_no_terminal",
+    "consumer_evidence_unreadable",
+]
+
+
+def _install_evidence(monkeypatch: pytest.MonkeyPatch, reason: _Reason) -> list[str]:
+    """Make the post-timeout broker read answer ``reason``; returns the topics it read."""
     from omnimarket.handlers.scm import handler_scm_consumer_diagnostics as diagnostics
     from omnimarket.models.scm.model_scm_consumer_evidence import (
         ModelScmConsumerEvidence,
     )
 
-    bus = FakeBus(answer=False)
-    _install(monkeypatch, bus)
-    observed = []
+    read: list[str] = []
 
     async def diagnose(
         opened: object, node: EnumScmNode, topic: str
     ) -> ModelScmConsumerEvidence:
-        observed.append((opened, node, topic))
+        read.append(topic)
         return ModelScmConsumerEvidence(
-            reason="no_consumer_for_topic",
+            reason=reason,
             command_topic=topic,
             physical_topic=topic,
-            consumer_count=0,
+            consumer_count=0 if reason == "no_consumer_for_topic" else None,
         )
 
     monkeypatch.setattr(diagnostics, "diagnose_scm_timeout", diagnose)
-    result = _run(
-        [
-            "pr-create",
-            *_WRITE_ARGS["pr-create"],
-            "--lane",
-            "lane-x",
-            "--timeout-s",
-            "0.01",
-        ]
-    )
+    return read
+
+
+_WRITE_VERBS = ("pr-create", "pr-comment")
+
+
+def _write_args(verb: str) -> list[str]:
+    return [verb, *_WRITE_ARGS[verb], "--lane", "lane-x", "--timeout-s", "0.01"]
+
+
+@pytest.mark.parametrize("verb", _WRITE_VERBS)
+def test_write_retries_when_no_consumer_and_keeps_its_idempotency_key(
+    monkeypatch: pytest.MonkeyPatch, retry_pauses: list[float], verb: str
+) -> None:
+    """The recreate window of 2026-10-31: no consumer for 103 s, then one rejoins."""
+    unanswered, completed = FakeBus(answer=False), FakeBus()
+    opened = _install_bus_attempts(monkeypatch, [unanswered, completed])
+    read = _install_evidence(monkeypatch, "no_consumer_for_topic")
+
+    result = _run(_write_args(verb))
+
+    assert result.exit_code == 0, result.output
+    answer = _answer(result)
+    assert answer["outcome"] == "completed"
+    assert answer["attempts"] == 2
+    assert len(result.stdout.strip().splitlines()) == 1
+    assert len(opened) == 2
+    assert read == [WRITE.command]
+    first, second = unanswered.published[0][1], completed.published[0][1]
+    assert unanswered.published[0][0] == completed.published[0][0] == WRITE.command
+    assert first["correlation_id"] != second["correlation_id"]
+    assert second["payload"]["correlation_id"] == second["correlation_id"]
+    assert first["payload"]["idempotency_key"] == second["payload"]["idempotency_key"]
+    assert answer["bus"]["correlation_id"] == second["correlation_id"]
+    assert retry_pauses == [20]
+
+
+@pytest.mark.parametrize("verb", _WRITE_VERBS)
+def test_write_retries_when_no_consumer_exhausts_three_attempts(
+    monkeypatch: pytest.MonkeyPatch, retry_pauses: list[float], verb: str
+) -> None:
+    bus = FakeBus(answer=False)
+    _install(monkeypatch, bus)
+    _install_evidence(monkeypatch, "no_consumer_for_topic")
+
+    result = _run(_write_args(verb))
+
     assert result.exit_code == scm_cli.EXIT_NO_TERMINAL, result.output
     answer = _answer(result)
+    assert answer["status"] == "no_terminal"
     assert answer["reason"] == "no_consumer_for_topic"
-    assert answer["command_topic"] == WRITE.command
     assert answer["consumer_count"] == 0
+    assert answer["attempts"] == 3
+    assert len(bus.published) == 3
+    keys = {envelope["payload"]["idempotency_key"] for _, envelope in bus.published}
+    assert len(keys) == 1
+    assert answer["correlation_id"] == bus.published[-1][1]["correlation_id"]
+    assert retry_pauses == [20, 20]
+
+
+@pytest.mark.parametrize(
+    "reason", ["consumer_present_no_terminal", "consumer_evidence_unreadable"]
+)
+@pytest.mark.parametrize("verb", _WRITE_VERBS)
+def test_write_is_not_republished_unless_the_broker_shows_no_consumer(
+    monkeypatch: pytest.MonkeyPatch,
+    retry_pauses: list[float],
+    verb: str,
+    reason: _Reason,
+) -> None:
+    bus = FakeBus(answer=False)
+    opened = _install_bus_attempts(monkeypatch, [bus])
+    _install_evidence(monkeypatch, reason)
+
+    result = _run(_write_args(verb))
+
+    assert result.exit_code == scm_cli.EXIT_NO_TERMINAL, result.output
+    answer = _answer(result)
+    assert answer["reason"] == reason
     assert answer["attempts"] == 1
-    assert observed == [(bus, EnumScmNode.WRITE, WRITE.command)]
-    assert len(bus.published) == 1
+    assert len(opened) == len(bus.published) == 1
+    assert retry_pauses == []
+
+
+@pytest.mark.parametrize("error_type", [scm_cli.LabRunBusError, InfraConnectionError])
+def test_write_is_not_republished_when_the_bus_does_not_open(
+    monkeypatch: pytest.MonkeyPatch,
+    retry_pauses: list[float],
+    error_type: type[Exception],
+) -> None:
+    opened = _install_bus_attempts(monkeypatch, [error_type("unavailable")])
+
+    result = _run(_write_args("pr-create"))
+
+    assert result.exit_code == scm_cli.EXIT_BUS_UNAVAILABLE, result.output
+    assert len(opened) == 1
     assert retry_pauses == []
 
 
