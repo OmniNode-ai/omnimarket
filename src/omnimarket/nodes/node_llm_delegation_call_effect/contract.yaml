@@ -374,15 +374,6 @@ handler_routing:
         name: "HandlerInferenceIntent"
         module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent"
       description: "Handle ModelInferenceIntent from delegation orchestrator; publish ModelInferenceResponseData to inference-response.v1 (OMN-12294). event_model type-scopes the dispatcher + validates the payload before handle()."
-    - operation: "probe_claude_credential"
-      event_type: "omnimarket.claude-credential-probe"
-      event_model:
-        name: "ModelClaudeCredentialProbeRequest"
-        module: "omnimarket.models.delegation.model_claude_credential_probe"
-      handler:
-        name: "HandlerClaudeCredentialProbe"
-        module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_claude_credential_probe"
-      description: "Prove the credential in the host's environment with one Claude Code call (OMN-21626); handle() returns the typed redacted receipt. Reached by runtime_claude_probe on the host that holds the credential, never over a customer topic."
   default_handler: "HandlerLlmDelegationCall"
 
 # Maps HandlerInferenceIntent's returned model to its publish topic so the
@@ -500,9 +491,15 @@ codex_harness:
 
 # Credential probe (OMN-21626): one Claude Code call that proves the credential in the host's environment.
 # The credential is CLAUDE_CODE_OAUTH_TOKEN, exported by the caller on the host whose pool holds it; it is
-# never a field of the request or the receipt. CLI: python -m
+# never a field of the request or the receipt. The probe handler is reached only by its command line on the host and
+# is not in handler_routing: a routed handler needs a subscribed topic, and a probe must never be triggered from the
+# bus. The `handler` entry below binds it to this node's contract, and the loader refuses a block whose bound
+# module is not the handler that reads it. CLI: python -m
 # omnimarket.nodes.node_llm_delegation_call_effect.runtime_claude_probe (request JSON on stdin).
 claude_credential_probe:
+  handler:
+    name: "HandlerClaudeCredentialProbe"
+    module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_claude_credential_probe"
   executable: claude
   argv: ["-p", "--output-format", "text"]
   scrubbed_env: [ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, CLAUDECODE]

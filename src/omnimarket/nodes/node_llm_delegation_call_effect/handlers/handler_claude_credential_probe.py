@@ -49,9 +49,11 @@ def load_claude_credential_probe_policy() -> ModelClaudeCredentialProbePolicy:
         .joinpath("contract.yaml")
         .read_text()
     )
-    return ModelClaudeCredentialProbePolicy.model_validate(
-        contract["claude_credential_probe"]
-    )
+    block = dict(contract["claude_credential_probe"])
+    bound = block.pop("handler", None)
+    if not isinstance(bound, dict) or bound.get("module") != __name__:
+        raise ValueError("claude_credential_probe is not bound to this handler module")
+    return ModelClaudeCredentialProbePolicy.model_validate(block)
 
 
 def _terminate(process: subprocess.Popen[str], grace: float) -> str:

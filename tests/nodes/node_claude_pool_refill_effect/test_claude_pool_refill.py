@@ -12,6 +12,7 @@ the only source of hosts, keys and patterns.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,9 @@ from omnimarket.nodes.node_claude_pool_refill_effect.models.model_claude_pool_re
 pytestmark = pytest.mark.unit
 
 _SCRIPT = Path(refill_mod.__file__)
+_PRIVATE_IPV4 = re.compile(
+    r"\b(?:10\.\d+|172\.(?:1[6-9]|2\d|3[01])|192\.168)\.\d+\.\d+"
+)
 _NODE = _SCRIPT.parents[1]
 
 _OVERLAY = """
@@ -212,7 +216,8 @@ def test_the_script_names_no_host_address_model_or_store_path() -> None:
     text = _SCRIPT.read_text(encoding="utf-8")
     assert '"claude"' not in text
     assert "claude -p" not in text
-    for literal in ("192.168.", "/shared/", "sonnet", "opus", ".omnibase"):
+    assert _PRIVATE_IPV4.search(text) is None
+    for literal in ("/shared/", "sonnet", "opus", ".omnibase"):
         assert literal not in text, literal
 
 
