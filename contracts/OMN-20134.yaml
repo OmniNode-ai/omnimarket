@@ -75,17 +75,17 @@ requirements:
       checks into the row of the pin pull request (prior row in, next row out), counting a merge with no fix push and no CI
       re-run as untouched, recording audit, guard and conflict refusals, and flagging a failed updater run or a first
       touch exactly once -- falsifier:
-      uv run pytest tests/nodes/node_projection_receipt_gate_pin_friction -q -p no:randomly --no-cov fails at the
+      uv run pytest tests/nodes/node_projection_receipt_gate_pin_friction/test_golden_chain_pin_friction_projection.py tests/nodes/node_projection_receipt_gate_pin_friction/test_pin_friction_fold.py -q -p no:randomly --no-cov fails at the
       merge base, where the node does not exist'
   - id: AC8
     statement: 'AC8: a query over the projection''s rows and a window returns, per pin kind, the pull requests opened,
       the number merged untouched, the median time to merge, the touches per pull request and the refusals -- falsifier:
-      uv run pytest tests/nodes/node_receipt_gate_pin_friction_report_compute -q -p no:randomly --no-cov fails at the
+      uv run pytest tests/nodes/node_receipt_gate_pin_friction_report_compute/test_pin_friction_report.py -q -p no:randomly --no-cov fails at the
       merge base, where the node does not exist'
   - id: AC9
     statement: 'AC9: a pin friction event is appended to the rolling ledger as a FRICTION row with class=pin-advance, the
       site, a parseable cost and an existing ticket, which the friction rollup counts by class, and the append is answered
-      accepted, duplicate, refused, error or pending -- falsifier: uv run pytest tests/nodes/node_receipt_gate_pin_friction_ledger_effect
+      accepted, duplicate, refused, error or pending -- falsifier: uv run pytest tests/nodes/node_receipt_gate_pin_friction_ledger_effect/test_golden_chain_pin_friction_ledger.py
       -q -p no:randomly --no-cov fails at the merge base, where the node does not exist'
   - id: AC10
     statement: 'AC10: the webhook ingress folds a workflow run''s attempt number onto its observation, so an attempt above
@@ -109,13 +109,13 @@ evidence_requirements:
     -q -p no:randomly --no-cov -k "outcome or refused or redelivered or dry_run"
 - kind: tests
   description: 'AC7: the reducer fold and handler.'
-  command: uv run pytest tests/nodes/node_projection_receipt_gate_pin_friction -q -p no:randomly --no-cov
+  command: uv run pytest tests/nodes/node_projection_receipt_gate_pin_friction/test_golden_chain_pin_friction_projection.py tests/nodes/node_projection_receipt_gate_pin_friction/test_pin_friction_fold.py -q -p no:randomly --no-cov
 - kind: tests
   description: 'AC8: the per-pin-kind query.'
-  command: uv run pytest tests/nodes/node_receipt_gate_pin_friction_report_compute -q -p no:randomly --no-cov
+  command: uv run pytest tests/nodes/node_receipt_gate_pin_friction_report_compute/test_pin_friction_report.py -q -p no:randomly --no-cov
 - kind: tests
   description: 'AC9: the FRICTION ledger row.'
-  command: uv run pytest tests/nodes/node_receipt_gate_pin_friction_ledger_effect -q -p no:randomly --no-cov
+  command: uv run pytest tests/nodes/node_receipt_gate_pin_friction_ledger_effect/test_golden_chain_pin_friction_ledger.py -q -p no:randomly --no-cov
 - kind: tests
   description: 'AC10: the workflow-run attempt on the ingress observation.'
   command: uv run pytest tests/nodes/node_github_webhook_ingress_effect/test_webhook_fold_red_checks.py -q -p no:randomly --no-cov
@@ -204,7 +204,7 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_projection_receipt_gate_pin_friction -q -p no:randomly --no-cov
+    check_value: uv run pytest tests/nodes/node_projection_receipt_gate_pin_friction/test_golden_chain_pin_friction_projection.py tests/nodes/node_projection_receipt_gate_pin_friction/test_pin_friction_fold.py -q -p no:randomly --no-cov
   binds_ac:
   - AC7
 - id: dod-omn20134-friction-report
@@ -212,7 +212,7 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_receipt_gate_pin_friction_report_compute -q -p no:randomly --no-cov
+    check_value: uv run pytest tests/nodes/node_receipt_gate_pin_friction_report_compute/test_pin_friction_report.py -q -p no:randomly --no-cov
   binds_ac:
   - AC8
 - id: dod-omn20134-friction-ledger-row
@@ -220,7 +220,7 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_receipt_gate_pin_friction_ledger_effect -q -p no:randomly --no-cov
+    check_value: uv run pytest tests/nodes/node_receipt_gate_pin_friction_ledger_effect/test_golden_chain_pin_friction_ledger.py -q -p no:randomly --no-cov
   binds_ac:
   - AC9
 - id: dod-omn20134-run-attempt
