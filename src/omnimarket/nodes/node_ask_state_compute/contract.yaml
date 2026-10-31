@@ -111,6 +111,18 @@ config:
   reason_cell: reason
   seq_cell: seq
   excerpt_chars: 140
+  owned_state: owned
+  owner_cell: owner
+  done_state: done
+  answer_kinds: [SENT-ON-BEHALF, MSG]
+  promote_unclassified: true
+  promote_rules:
+    # A why-question that challenges (still, not, nothing, why do we, why don't you) is a request to fix.
+    - kinds: [status_question]
+      pattern: "\\bwhy\\b.*\\b(?:still|not|nothing|instead|so much)\\b|\\bwhy (?:do|don'?t) (?:we|you)\\b|\\bwhat happened to (?:our|the) plan\\b"
+    # A directive stated as a rule ("Everything should be one runtime", "Don't forget X") is a request.
+    - kinds: [decision]
+      pattern: "^\\s*(?:don'?t (?:forget|let)\\b|everything should\\b|we (?:also )?(?:don'?t )?need\\b)"
   wip_limit: null
 
 metadata:

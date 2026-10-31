@@ -63,6 +63,15 @@ class ModelAskPrompt(BaseModel):
     items: tuple[ModelAskPromptItem, ...] = ()
 
 
+class ModelAskPromoteRule(BaseModel):
+    """Wording that makes an item of an untracked kind an ask: a challenge or a directive is a request."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kinds: tuple[str, ...] = Field(min_length=1)
+    pattern: str = Field(min_length=1)
+
+
 class ModelAskStateConfig(BaseModel):
     """Vocabularies and limits. The handler holds none; the contract's config block supplies them."""
 
@@ -104,6 +113,18 @@ class ModelAskStateConfig(BaseModel):
     reason_cell: str = Field(min_length=1)
     seq_cell: str = Field(min_length=1)
     excerpt_chars: int = Field(ge=20)
+    owned_state: str = Field(min_length=1)
+    owner_cell: str = Field(min_length=1)
+    done_state: str = Field(min_length=1)
+    answer_kinds: tuple[str, ...] = Field(
+        description="row kinds that deliver an answer: a send or a message; one citing an ask closes it",
+    )
+    promote_rules: tuple[ModelAskPromoteRule, ...] = Field(
+        description="wording that promotes an untracked item (a why-challenge, a directive) to an ask",
+    )
+    promote_unclassified: bool = Field(
+        description="read the sentences of a prompt the capture classified into no item",
+    )
     wip_limit: int | None = Field(
         default=None,
         ge=1,

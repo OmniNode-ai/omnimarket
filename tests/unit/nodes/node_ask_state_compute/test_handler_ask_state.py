@@ -486,3 +486,173 @@ def test_parked_queue_orders_restated_then_leverage_then_seq_and_marks_wip() -> 
     assert [p.within_wip for p in report.parked_queue] == [True, False, False, False]
     unknown = _run((*prompts, *more), rows)
     assert {p.within_wip for p in unknown.parked_queue} == {None}
+
+
+# OMN-21713 follow-up: the three undercounts measured on 2026-10-31 (real prompts and row shapes).
+
+
+def _by_words(report: ModelAskStateReport, words: str) -> ModelAskEntry:
+    return next(e for e in report.asks if words in e.words)
+
+
+def test_status_owned_row_names_the_owner() -> None:
+    rows = (
+        "2026-10-31T14:27:47Z | STATUS | lane=orchestrator-31d9 | ask="
+        + ask_id(1)
+        + " | state=owned | owner=factory-floor-host-1255 | ticket=OMN-21682 | "
+        "Mock-up delivered, live version is node_factory_floor",
+    )
+    report = _run(
+        (_prompt(1, "Maybe with little animations.", said=SAID),),
+        rows,
+        now=datetime(2026, 10, 31, 14, 40, tzinfo=UTC),
+    )
+    entry = _entry(report, 1)
+    assert entry.state is EnumAskState.OWNED
+    assert entry.owner_lane == "factory-floor-host-1255"
+    assert report.wip.owned_lanes == ("factory-floor-host-1255",)
+
+
+def test_sent_on_behalf_row_closes_the_ask_it_cites() -> None:
+    rows = (
+        "2026-10-31T02:01:08Z | SENT-ON-BEHALF | lane=orchestrator-31d9 | ask="
+        + ask_id(1)
+        + " | to=cloud-owner | via Slack DM",
+    )
+    report = _run((_prompt(1, "And send it.", said=SAID),), rows)
+    entry = _entry(report, 1)
+    assert entry.state is EnumAskState.DONE
+    assert entry.resolution == "answered"
+
+
+def test_message_row_closes_but_a_pull_request_handoff_does_not() -> None:
+    answer = (
+        "2026-10-31T08:30:00Z | MSG | from=orchestrator-31d9 | to=operator | ask="
+        + ask_id(1)
+        + " | Chat reply: items 2 and 4 explained"
+    )
+    handoff = (
+        "2026-10-31T08:30:00Z | MSG | from=lane-a | to=landing-controller | ask="
+        + ask_id(2)
+        + " | pr=omnimarket#4682 | head=abc | needs=land"
+    )
+    report = _run(
+        (_prompt(1, "Tell me about 2 and 4"), _prompt(2, "Build the ask node")),
+        (answer, handoff),
+    )
+    assert _state(report, 1) is EnumAskState.DONE
+    assert _state(report, 2) is not EnumAskState.DONE
+
+
+def test_done_status_with_a_cited_send_row_closes_the_ask() -> None:
+    send = (
+        "2026-10-31T09:00:00Z | SENT-ON-BEHALF | lane=orchestrator-31d9 | Slack reply"
+    )
+    done = (
+        "2026-10-31T14:19:08Z | STATUS | lane=orchestrator-31d9 | ask="
+        + ask_id(1)
+        + " | state=done | evidence=SENT-ON-BEHALF:2026-10-31T09:00:00Z | answered"
+    )
+    report = _run((_prompt(1, "check MSK, and send."),), (send, done))
+    assert _state(report, 1) is EnumAskState.DONE
+    assert _entry(report, 1).resolution == "closes-ask"
+
+
+def test_done_status_citing_a_row_that_does_not_exist_closes_nothing() -> None:
+    done = (
+        "2026-10-31T14:19:08Z | STATUS | lane=orchestrator-31d9 | ask="
+        + ask_id(1)
+        + " | state=done | evidence=SENT-ON-BEHALF:2026-10-31T09:00:00Z | answered"
+    )
+    report = _run((_prompt(1, "check MSK, and send."),), (done,))
+    assert _state(report, 1) is EnumAskState.DROPPED
+
+
+def test_done_status_without_evidence_closes_nothing() -> None:
+    done = (
+        "2026-10-31T14:19:08Z | STATUS | lane=orchestrator-31d9 | ask="
+        + ask_id(1)
+        + " | state=done | evidence=slack DM sent earlier | answered"
+    )
+    report = _run((_prompt(1, "And send it."),), (done,))
+    assert _state(report, 1) is EnumAskState.DROPPED
+
+
+@pytest.mark.parametrize(
+    ("kind", "quote"),
+    [
+        ("status_question", "why do we have 82 containers still?"),
+        (
+            "status_question",
+            "What happened to our plan to reduce the number of runtimes and external other containers?",
+        ),
+        ("decision", "Everything should be one runtime."),
+        ("decision", "We also don't need separate runtime effects containers."),
+        ("status_question", "Why are you not sending stuff to the cloud?"),
+        ("status_question", "Why are we still running so much on 201?"),
+        ("decision", "Don't let the lab sit idle."),
+    ],
+)
+def test_challenge_and_directive_items_of_untracked_kinds_are_asks(
+    kind: str, quote: str
+) -> None:
+    report = _run((_prompt(1, quote, kind=kind),))
+    assert report.counts.total == 1
+    assert _state(report, 1) is EnumAskState.DROPPED
+    assert report.not_tracked == ()
+
+
+@pytest.mark.parametrize(
+    ("kind", "quote"),
+    [
+        ("status_question", "What else is running in the lab right now?"),
+        ("status_question", "Why does it matter?"),
+        ("status_question", "What about the cloud?"),
+        ("decision", "Yes, I totally agree."),
+        ("decision", "Don't worry about racking 51 yet."),
+    ],
+)
+def test_plain_questions_and_decisions_stay_untracked(kind: str, quote: str) -> None:
+    report = _run((_prompt(1, quote, kind=kind),))
+    assert report.counts.total == 0
+    assert report.not_tracked[0].kind == kind
+
+
+def test_unclassified_prompt_with_an_ask_sentence_becomes_an_ask() -> None:
+    prompt = ModelAskPrompt(
+        capture_id="3439b6e94feb3a40",
+        session_id="sess-1",
+        said_at=SAID,
+        text="Can we create a web server in the lab to host the factory floor page?",
+    )
+    rows = (
+        "2026-10-31T14:28:14Z | STATUS | lane=orchestrator-31d9 | ask=ask-3439b6e94f | "
+        "state=owned | owner=factory-floor-host-1255 | ticket=OMN-17427 | web server",
+    )
+    report = _run((prompt,), rows)
+    assert [e.ask_id for e in report.asks] == ["ask-3439b6e94f"]
+    assert report.asks[0].state is EnumAskState.OWNED
+    assert report.unclassified == ()
+
+
+def test_unclassified_prompt_a_row_cites_is_adopted_and_others_stay_listed() -> None:
+    cited = ModelAskPrompt(
+        capture_id="0fd74581d1ab75d5",
+        session_id="sess-1",
+        said_at=SAID,
+        text="The Gen 9 is coming tomorrow, and we got an NVMe drive.",
+    )
+    other = ModelAskPrompt(
+        capture_id="95b635443dfbf536",
+        session_id="sess-1",
+        said_at=SAID,
+        text="Okay, I'm going to bed.",
+    )
+    rows = (
+        "2026-10-31T14:20:00Z | STATUS | lane=orchestrator-31d9 | ask=ask-0fd74581d1 | "
+        "state=parked | reason=hardware arrives 2026-11-01 | seq=2 | Gen9 bring-up",
+    )
+    report = _run((cited, other), rows)
+    assert report.asks[0].ask_id == "ask-0fd74581d1"
+    assert report.asks[0].state is EnumAskState.PARKED
+    assert [u.capture_id for u in report.unclassified] == ["95b635443dfbf536"]
