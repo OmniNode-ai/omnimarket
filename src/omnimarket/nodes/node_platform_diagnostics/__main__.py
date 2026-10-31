@@ -9,8 +9,10 @@ import asyncio
 import json
 import sys
 
+from omnimarket.nodes.node_platform_diagnostics.container import (
+    container_platform_diagnostics,
+)
 from omnimarket.nodes.node_platform_diagnostics.handlers.handler_platform_diagnostics import (
-    HandlerPlatformDiagnostics,
     ModelDiagnosticsRequest,
 )
 from omnimarket.nodes.node_platform_diagnostics.models.model_diagnostics_result import (
@@ -67,7 +69,7 @@ async def _main() -> None:
         freshness_threshold_hours=args.freshness_threshold_hours,
     )
 
-    handler = HandlerPlatformDiagnostics()
+    handler = container_platform_diagnostics.build_handler_platform_diagnostics()
     result = await handler.handle(request)
     print(json.dumps(result.model_dump(mode="json"), indent=2))  # noqa: T201
     if result.overall_status.value == "FAIL":

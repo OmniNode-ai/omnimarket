@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.nodes.node_lab_disk_growth_effect.handlers import (
-    handler_lab_disk_growth_cli as cli,
+from omnimarket.nodes.node_lab_disk_growth_effect import (
+    runtime_lab_disk_growth_cli as cli,
 )
 
 pytestmark = pytest.mark.unit

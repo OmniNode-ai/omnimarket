@@ -27,12 +27,12 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.nodes.node_landing_tlc_receipt_effect import (
+    runtime_landing_tlc_receipt_cli as cli,
+)
 from omnimarket.nodes.node_landing_tlc_receipt_effect.handlers import (
     HandlerLandingTlcPublish,
     HandlerLandingTlcSync,
-)
-from omnimarket.nodes.node_landing_tlc_receipt_effect.handlers import (
-    handler_landing_tlc_receipt_cli as cli,
 )
 from omnimarket.nodes.node_landing_tlc_receipt_effect.models import (
     ModelLandingTlcPublishRequest,

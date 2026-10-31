@@ -4,7 +4,6 @@
 # down. Delete a line when its file is removed, moved into a canonical
 # location or rewritten as contract + node + handler. A new line is refused
 # and the file is never deleted, even when empty.
-src/omnimarket/handlers/handler_automation_liveness_overlay_check_cli.py
 src/omnimarket/handlers/handler_capability_start.py
 src/omnimarket/handlers/handler_contract_routing_overlay.py
 src/omnimarket/handlers/handler_engine_ladder.py
@@ -23,7 +22,6 @@ src/omnimarket/handlers/handler_modelled_terminal_savings.py
 src/omnimarket/handlers/handler_packaged_contract_loader.py
 src/omnimarket/handlers/handler_projection_derived_write.py
 src/omnimarket/handlers/handler_projection_runtime_writer.py
-src/omnimarket/handlers/handler_runtime_coverage_cli.py
 src/omnimarket/handlers/handler_runtime_coverage_read.py
 src/omnimarket/handlers/handler_size_band_measurement.py
 src/omnimarket/handlers/rescue_patch_review/handler_junk_paths.py
@@ -37,7 +35,6 @@ src/omnimarket/handlers/session_stream_barrier.py
 src/omnimarket/handlers/work_contracts/control_evaluator.py
 src/omnimarket/nodes/node_aislop_sweep/__main__.py
 src/omnimarket/nodes/node_architecture_discovery_orchestrator/adapters/handler_coding_agent_bus.py
-src/omnimarket/nodes/node_architecture_discovery_orchestrator/handlers/handler_architecture_discovery_cli.py
 src/omnimarket/nodes/node_beacon_trace_capture_effect/__main__.py
 src/omnimarket/nodes/node_beacon_trace_capture_effect/handlers/handler_beacon_event_mapping.py
 src/omnimarket/nodes/node_binding_parity_orchestrator/handlers/handler_compare_runs.py
@@ -50,10 +47,8 @@ src/omnimarket/nodes/node_build_loop_orchestrator/assemble_live.py
 src/omnimarket/nodes/node_bus_audit_compute/__main__.py
 src/omnimarket/nodes/node_canonical_clone_refresh_effect/handlers/handler_canonical_clone_refresh_serve.py
 src/omnimarket/nodes/node_ci_watch/__main__.py
-src/omnimarket/nodes/node_claude_code_hook_adapter_effect/handlers/handler_claude_code_hook_cli.py
 src/omnimarket/nodes/node_claude_code_hook_adapter_effect/handlers/handler_client_bindings_loader.py
 src/omnimarket/nodes/node_claude_code_hook_adapter_effect/handlers/handler_client_verdict.py
-src/omnimarket/nodes/node_claude_code_hook_adapter_effect/handlers/handler_compaction_latency_cli.py
 src/omnimarket/nodes/node_claude_code_hook_adapter_effect/handlers/handler_compaction_latency_run.py
 src/omnimarket/nodes/node_claude_code_hook_adapter_effect/handlers/handler_compaction_verdict.py
 src/omnimarket/nodes/node_claude_code_hook_adapter_effect/handlers/handler_input_messages_hash.py
@@ -96,7 +91,6 @@ src/omnimarket/nodes/node_dispatch_watchdog_orchestrator/handlers/handler_watchd
 src/omnimarket/nodes/node_dispatch_worker/__main__.py
 src/omnimarket/nodes/node_dod_verify/__main__.py
 src/omnimarket/nodes/node_dod_verify/handlers/handler_dod_evidence_github_effect.py
-src/omnimarket/nodes/node_dod_verify/handlers/handler_dod_ticket_criteria_linear_effect.py
 src/omnimarket/nodes/node_dod_verify/handlers/handler_occ_replay.py
 src/omnimarket/nodes/node_dod_verify/handlers/handler_runtime_sha_verify.py
 src/omnimarket/nodes/node_duplication_sweep/__main__.py
@@ -105,7 +99,6 @@ src/omnimarket/nodes/node_emit_daemon/health_probe.py
 src/omnimarket/nodes/node_environment_health_scanner/__main__.py
 src/omnimarket/nodes/node_filesystem_crawler_effect/handlers/handler_filesystem_crawler.py
 src/omnimarket/nodes/node_fixer_dispatcher/__main__.py
-src/omnimarket/nodes/node_friction_synthesis_effect/handlers/handler_friction_synthesis_cli.py
 src/omnimarket/nodes/node_gap_compute/__main__.py
 src/omnimarket/nodes/node_git_query_mirror_effect/__main__.py
 src/omnimarket/nodes/node_github_repo_gateway_effect/__main__.py
@@ -116,10 +109,8 @@ src/omnimarket/nodes/node_golden_chain_sweep/census_collector.py
 src/omnimarket/nodes/node_handshake_policy_gate_effect/__main__.py
 src/omnimarket/nodes/node_harness_invocation_check_effect/__main__.py
 src/omnimarket/nodes/node_hook_chain_probe_effect/__main__.py
-src/omnimarket/nodes/node_host_thermal_observe_effect/handlers/handler_host_thermal_cli.py
 src/omnimarket/nodes/node_host_thermal_observe_effect/handlers/handler_host_thermal_report.py
 src/omnimarket/nodes/node_hostile_reviewer_orchestrator/handlers/handler_delegation_review_inference.py
-src/omnimarket/nodes/node_hourly_tick_effect/handlers/handler_hourly_tick_cli.py
 src/omnimarket/nodes/node_house_routing_overlay_effect/publish_house_overlay_command.py
 src/omnimarket/nodes/node_idle_slot_fill_effect/handlers/handler_ruling_recovery.py
 src/omnimarket/nodes/node_install_superset_guard_effect/handlers/handler_install_superset_cli.py
@@ -128,19 +119,14 @@ src/omnimarket/nodes/node_intelligence_reducer/handlers/handler_pattern_lifecycl
 src/omnimarket/nodes/node_intelligence_reducer/handlers/handler_process.py
 src/omnimarket/nodes/node_lab_claude_token_effect/handlers/handler_lab_host_shell.py
 src/omnimarket/nodes/node_lab_claude_token_effect/handlers/handler_local_token_store.py
-src/omnimarket/nodes/node_lab_disk_growth_effect/handlers/handler_lab_disk_growth_cli.py
-src/omnimarket/nodes/node_lab_fill_receipt_table_compute/handlers/handler_lab_fill_receipt_table_cli.py
 src/omnimarket/nodes/node_lab_job_reducer/handlers/handler_lab_job_reducer.py
-src/omnimarket/nodes/node_lab_secret_store_override_effect/handlers/handler_lab_secret_store_override_cli.py
 src/omnimarket/nodes/node_landing_tlc_receipt_effect/handlers/handler_landing_tlc_gate.py
-src/omnimarket/nodes/node_landing_tlc_receipt_effect/handlers/handler_landing_tlc_receipt_cli.py
 src/omnimarket/nodes/node_lane_placement_recovery_effect/handlers/handler_codex_lane_limit.py
 src/omnimarket/nodes/node_lane_placement_recovery_effect/handlers/handler_lane_engine_failover.py
 src/omnimarket/nodes/node_lane_placement_recovery_effect/handlers/handler_lane_placement_recovery.py
 src/omnimarket/nodes/node_ledger_reconcile_orchestrator/__main__.py
 src/omnimarket/nodes/node_legacy_worktree_audit_effect/handlers/handler_legacy_worktree_audit.py
 src/omnimarket/nodes/node_linear_comments_sweep_orchestrator/handlers/handler_sweep_bus.py
-src/omnimarket/nodes/node_linear_ticket_write_effect/handlers/handler_lab_proof.py
 src/omnimarket/nodes/node_linear_triage/__main__.py
 src/omnimarket/nodes/node_linear_triage/demotion_guard_cli.py
 src/omnimarket/nodes/node_linear_triage/guard_cli.py
@@ -165,17 +151,14 @@ src/omnimarket/nodes/node_morning_ground_state_orchestrator/tools/server.py
 src/omnimarket/nodes/node_omniclaude_pin_bump_compute/__main__.py
 src/omnimarket/nodes/node_operator_access_mode_effect/handlers/handler_access_mode_detect.py
 src/omnimarket/nodes/node_operator_access_mode_effect/handlers/handler_access_mode_state.py
-src/omnimarket/nodes/node_operator_access_mode_effect/handlers/handler_operator_hook_cli.py
 src/omnimarket/nodes/node_operator_access_mode_effect/handlers/handler_operator_hooks_installer.py
 src/omnimarket/nodes/node_operator_access_mode_effect/handlers/handler_refusal_row.py
-src/omnimarket/nodes/node_operator_capture_effect/handlers/handler_capture_cli.py
 src/omnimarket/nodes/node_operator_capture_effect/handlers/handler_capture_digest.py
 src/omnimarket/nodes/node_operator_capture_effect/handlers/handler_capture_process.py
 src/omnimarket/nodes/node_operator_capture_effect/handlers/handler_capture_serve.py
 src/omnimarket/nodes/node_overnight/__main__.py
 src/omnimarket/nodes/node_overseer_verifier/__main__.py
 src/omnimarket/nodes/node_owner_summary_effect/__main__.py
-src/omnimarket/nodes/node_patch_apply_dispatch_effect/handlers/handler_patch_apply_dispatch_cli.py
 src/omnimarket/nodes/node_pipeline_fill/__main__.py
 src/omnimarket/nodes/node_plan_to_tickets/__main__.py
 src/omnimarket/nodes/node_platform_readiness/__main__.py
@@ -239,12 +222,9 @@ src/omnimarket/nodes/node_routing_complexity_compute/handlers/handler_complexity
 src/omnimarket/nodes/node_routing_policy_engine/handlers/handler_retry_strategy.py
 src/omnimarket/nodes/node_routing_policy_engine/handlers/handler_score_lookup.py
 src/omnimarket/nodes/node_routing_policy_engine/handlers/handler_task_shape_extractor.py
-src/omnimarket/nodes/node_rsd_migration_orchestrator/handlers/handler_rsd_migration_cli.py
-src/omnimarket/nodes/node_runtime_deploy_effect/handlers/handler_runtime_deploy_cli.py
 src/omnimarket/nodes/node_runtime_sweep/__main__.py
 src/omnimarket/nodes/node_secret_store_effect/adapters/handler_infisical_http.py
 src/omnimarket/nodes/node_session_bootstrap/__main__.py
-src/omnimarket/nodes/node_session_capability_digest_effect/handlers/handler_session_capability_digest_cli.py
 src/omnimarket/nodes/node_session_orchestrator/__main__.py
 src/omnimarket/nodes/node_session_phase_evaluator/__main__.py
 src/omnimarket/nodes/node_session_phase_reducer/__main__.py

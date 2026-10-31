@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.nodes.node_linear_ticket_write_effect.handlers import handler_lab_proof
+from omnimarket.nodes.node_linear_ticket_write_effect import runtime_lab_proof
 
 pytestmark = pytest.mark.unit
 
@@ -52,14 +52,14 @@ def _complete_proof() -> dict[str, object]:
 
 
 def test_complete_proof_passes() -> None:
-    assert handler_lab_proof.verify(_complete_proof()) == []
+    assert runtime_lab_proof.verify(_complete_proof()) == []
 
 
 def test_recorded_acl_refusal_is_refused(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr(sys, "argv", ["handler_lab_proof", str(RECORDED_PROOF)])
-    assert handler_lab_proof.main() == 1
+    monkeypatch.setattr(sys, "argv", ["runtime_lab_proof", str(RECORDED_PROOF)])
+    assert runtime_lab_proof.main() == 1
     output = capsys.readouterr().out
     assert "lab proof is incomplete" in output
     for host in ("h101", "h201", "h202"):
@@ -73,7 +73,7 @@ def test_missing_host_read_is_refused(host: str) -> None:
     reads = proof["remote_reads"]
     assert isinstance(reads, list)
     proof["remote_reads"] = [r for r in reads if r["host"] != host]
-    assert handler_lab_proof.verify(proof) == [
+    assert runtime_lab_proof.verify(proof) == [
         f"{host}: missing remote lane read receipt naming OMN-20570 and its title"
     ]
 
@@ -81,7 +81,7 @@ def test_missing_host_read_is_refused(host: str) -> None:
 def test_guard_refusal_without_unfalsified_criterion_is_refused() -> None:
     proof = _complete_proof()
     proof["guard_refusal"] = {"run_id": "refusal-run", "finding_codes": ["other"]}
-    assert handler_lab_proof.verify(proof) == [
+    assert runtime_lab_proof.verify(proof) == [
         "missing lab guard refusal with unfalsified_criterion"
     ]
 
@@ -92,7 +92,7 @@ def test_scratch_operation_without_terminal_is_refused(operation: str) -> None:
     scratch = proof["scratch"]
     assert isinstance(scratch, dict)
     scratch[operation] = {"run_id": f"{operation}-run"}
-    assert handler_lab_proof.verify(proof) == [
+    assert runtime_lab_proof.verify(proof) == [
         f"scratch {operation}: missing bus terminal receipt"
     ]
 
@@ -102,7 +102,7 @@ def test_scratch_not_canceled_is_refused() -> None:
     scratch = proof["scratch"]
     assert isinstance(scratch, dict)
     scratch["final_state"] = "Todo"
-    assert handler_lab_proof.verify(proof) == ["scratch ticket is not proven canceled"]
+    assert runtime_lab_proof.verify(proof) == ["scratch ticket is not proven canceled"]
 
 
 def test_unreadable_proof_is_refused(
@@ -110,7 +110,7 @@ def test_unreadable_proof_is_refused(
 ) -> None:
     path = tmp_path / "proof.json"
     path.write_text(json.dumps([1, 2]))
-    monkeypatch.setattr(sys, "argv", ["handler_lab_proof", str(path)])
-    assert handler_lab_proof.main() == 1
-    monkeypatch.setattr(sys, "argv", ["handler_lab_proof", str(tmp_path / "absent")])
-    assert handler_lab_proof.main() == 1
+    monkeypatch.setattr(sys, "argv", ["runtime_lab_proof", str(path)])
+    assert runtime_lab_proof.main() == 1
+    monkeypatch.setattr(sys, "argv", ["runtime_lab_proof", str(tmp_path / "absent")])
+    assert runtime_lab_proof.main() == 1

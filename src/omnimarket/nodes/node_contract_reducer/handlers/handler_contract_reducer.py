@@ -13,6 +13,9 @@ from __future__ import annotations
 import logging
 from typing import Literal, cast
 
+from omnimarket.nodes.node_contract_reducer.models.model_reducer_input import (
+    ModelReducerInput,
+)
 from omnimarket.nodes.node_contract_reducer.models.model_reducer_result import (
     ModelReducerResult,
 )
@@ -92,16 +95,13 @@ class HandlerContractReducer:
             is_terminal=is_terminal,
         )
 
-    def handle(self, input_data: dict[str, object]) -> dict[str, object]:
-        """Thin dict-in / dict-out wrapper for runtime dispatch."""
-        result = self.reduce(
-            state=cast(dict[str, object], input_data["current_state"]),
-            response=str(input_data["user_response"]),
-            transitions=cast(
-                list[dict[str, object]], input_data["contract_transitions"]
-            ),
+    def handle(self, request: ModelReducerInput) -> ModelReducerResult:
+        """Reduce one typed request; the runtime owns the dispatch envelope."""
+        return self.reduce(
+            state=dict(request.current_state),
+            response=request.user_response,
+            transitions=list(request.contract_transitions),
         )
-        return result.model_dump(mode="json")
 
 
 def _find_transition(
