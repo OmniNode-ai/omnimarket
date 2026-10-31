@@ -333,6 +333,9 @@ dod_evidence:
           assert not offenders, "\n".join(offenders)
           PY
         cwd: "."
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_node_timeouts_slice_b_contract.py -k declares_every_duration -q --no-cov"
+        cwd: "."
   - id: "dod-omn21623-deploy-timeouts-b-source-readback"
     description: |-
       Hosted-runner source readback: the checked-out commit carries the timeouts section in the
