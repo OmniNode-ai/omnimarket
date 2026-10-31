@@ -1,0 +1,34 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21632"
+title: "Plans carry a human-readable companion: the plan audit refuses a new plan with a task catalogue and no linked companion"
+summary: "The plan audit node now holds a contract-declared rule: a Markdown plan with a task catalogue whose state_as_of is on or after 2026-10-31 must link a non-empty companion file named after the plan with the readable suffix from its top. Older plans are not subject to the rule and no baseline file is added; the date and suffix are data in the node contract."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21632-companion-rule"
+    statement: |-
+      A plan with a task catalogue and a state_as_of on or after the contract's effective date fails the audit unless it links an existing non-empty companion within the first lines; a plan dated before that date is not failed by the rule.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a plan with a task catalogue and state_as_of on or after 2026-10-31 and no linked companion fails the audit, and the same plan with a linked non-empty companion passes -- falsifier: uv run pytest src/omnimarket/nodes/node_plan_audit_compute/tests/test_handler_plan_audit_compute.py -q fails the planted-fixture case"
+      - id: "AC2"
+        statement: "AC2: a plan with state_as_of before 2026-10-31 is not failed by the companion rule, and the date, suffix and link window are data in the node contract -- falsifier: the same test file fails the before-effective-date case"
+evidence_requirements:
+  - kind: "tests"
+    description: "The planted failing fixture and the passing, unlinked, empty and before-date cases."
+    command: "uv run pytest src/omnimarket/nodes/node_plan_audit_compute tests/integration/node_plan_audit_compute -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21632-audit"
+    description: "The audit's companion cases pass."
+    source: "manual"
+    binds_ac: ["AC1", "AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest src/omnimarket/nodes/node_plan_audit_compute tests/integration/node_plan_audit_compute -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
