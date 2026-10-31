@@ -715,6 +715,7 @@ node_projection_runtime_error_fingerprints = "omnimarket.nodes.node_projection_r
 node_projection_lab_lane_health = "omnimarket.nodes.node_projection_lab_lane_health"
 node_projection_lab_container_memory = "omnimarket.nodes.node_projection_lab_container_memory"
 node_projection_lab_proof_receipts = "omnimarket.nodes.node_projection_lab_proof_receipts"
+node_projection_delegation_budget_readings = "omnimarket.nodes.node_projection_delegation_budget_readings"
 node_projection_compaction_receipts = "omnimarket.nodes.node_projection_compaction_receipts"
 node_projection_work_ledger = "omnimarket.nodes.node_projection_work_ledger"
 node_work_ledger_render_effect = "omnimarket.nodes.node_work_ledger_render_effect"
@@ -1015,6 +1016,7 @@ node_ticket_plan_compute = "omnimarket.nodes.node_ticket_plan_compute"
 node_insights_to_plan_compute = "omnimarket.nodes.node_insights_to_plan_compute"
 node_plan_audit_compute = "omnimarket.nodes.node_plan_audit_compute"
 node_plans_today_effect = "omnimarket.nodes.node_plans_today_effect"
+node_claude_pool_refill_effect = "omnimarket.nodes.node_claude_pool_refill_effect"
 node_resume_session_compute = "omnimarket.nodes.node_resume_session_compute"
 node_rewind_compute = "omnimarket.nodes.node_rewind_compute"
 node_rrh_compute = "omnimarket.nodes.node_rrh_compute"
@@ -1049,6 +1051,8 @@ node_landing_placement_wait_effect = "omnimarket.nodes.node_landing_placement_wa
 node_landing_tick_bounds_compute = "omnimarket.nodes.node_landing_tick_bounds_compute"
 node_landing_tick_speed_effect = "omnimarket.nodes.node_landing_tick_speed_effect"
 node_landing_upstream_gate_compute = "omnimarket.nodes.node_landing_upstream_gate_compute"
+node_process_health_compute = "omnimarket.nodes.node_process_health_compute"
+node_process_health_effect = "omnimarket.nodes.node_process_health_effect"
 node_host_capability_compute = "omnimarket.nodes.node_host_capability_compute"
 node_lane_guard_admission_compute = "omnimarket.nodes.node_lane_guard_admission_compute"
 node_lane_placement_recovery_effect = "omnimarket.nodes.node_lane_placement_recovery_effect"
@@ -1074,6 +1078,8 @@ node_delegation_seam_orchestrator = "omnimarket.nodes.node_delegation_seam_orche
 node_design_record_check_compute = "omnimarket.nodes.node_design_record_check_compute"
 node_fsm_single_source_check_compute = "omnimarket.nodes.node_fsm_single_source_check_compute"
 node_design_process_reducer = "omnimarket.nodes.node_design_process_reducer"
+node_contract_seams_reducer = "omnimarket.nodes.node_contract_seams_reducer"
+node_contract_seams_orchestrator = "omnimarket.nodes.node_contract_seams_orchestrator"
 node_seam_read_orchestrator = "omnimarket.nodes.node_seam_read_orchestrator"
 node_seam_reading_compute = "omnimarket.nodes.node_seam_reading_compute"
 node_seam_classify_compute = "omnimarket.nodes.node_seam_classify_compute"
@@ -1115,6 +1121,7 @@ omnimarket-projection-api = "omnimarket.projection.api_server:main"
 onex-ledger-reconcile = "omnimarket.nodes.node_ledger_reconcile_orchestrator.__main__:main"
 onex-secret-store-override = "omnimarket.nodes.node_lab_secret_store_override_effect.handlers.handler_lab_secret_store_override_cli:main"
 onex-legacy-worktree-audit = "omnimarket.nodes.node_legacy_worktree_audit_effect.handlers.handler_legacy_worktree_audit:main"
+onex-claude-pool-refill = "omnimarket.nodes.node_claude_pool_refill_effect.runtime_claude_pool_refill:main"
 
 [project.entry-points."onex.cli"]
 market = "omnimarket.cli.market:market"
@@ -1243,6 +1250,8 @@ omnimarket = "omnimarket.nodes"
 # OMN-21386: infra#5407 vendors the work-ledger 0006 first-ingest migration.
 # OMN-17427: infra#5449 reaches the done-write gate through omnibase_core's node contract,
 # so this tag imports no handler module that core#2135 moved.
+# OMN-17427: infra#5469 vendors the delegation budget readings migrations and
+# declares the runtime SELECT/INSERT/UPDATE grants needed by this projection.
 # OMN-17427: infra#5483 pins omnibase-core at the core tag below; the two tags
 # move together (tests/ci/test_sibling_core_pin_pair_omn17427.py).
 omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261031054837-4284f5bf5587" }
@@ -1613,6 +1622,7 @@ ignore = [
 "src/omnimarket/nodes/node_operator_access_mode_effect/handlers/handler_operator_hook_cli.py" = ["T201"]
 "src/omnimarket/nodes/node_lab_secret_store_override_effect/handlers/handler_lab_secret_store_override_cli.py" = ["T201"]
 "src/omnimarket/nodes/node_legacy_worktree_audit_effect/handlers/handler_legacy_worktree_audit.py" = ["T201"]
+"src/omnimarket/nodes/node_claude_pool_refill_effect/runtime_claude_pool_refill.py" = ["T201"]
 "src/omnimarket/nodes/node_friction_synthesis_effect/handlers/handler_friction_synthesis_cli.py" = ["T201"]
 "src/omnimarket/nodes/node_host_thermal_observe_effect/handlers/handler_host_thermal_cli.py" = ["T201"]
 # OMN-18300 delegation ladder. The runner and the bundle builder are CLIs and

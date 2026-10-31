@@ -25,6 +25,7 @@ from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
 )
 from pydantic import JsonValue, ValidationError
 
+from omnimarket.handlers.overlay_source import OverlaySource
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     require_lane_model,
 )
@@ -162,7 +163,7 @@ class HandlerMorningGroundState:
         # this handler inside the effects runtime, and a constructor that raises
         # there takes every other node's runtime down with it, so nothing here
         # touches the deployment: an absent overlay is refused when a run starts.
-        self._overlay = overlay
+        self._overlay = OverlaySource(load_morning_overlay, overlay)
         # agent_delegation is pending a capability (task-class contract), so the
         # phases run as bus lab work until an agent-capable producer exists.
         self.gateway = gateway or HandlerMorningPhaseLabWork(event_bus, overlay=overlay)
@@ -176,9 +177,7 @@ class HandlerMorningGroundState:
     @property
     def overlay(self) -> ModelMorningOverlay:
         """The deployment overlay, read on first use; absent or invalid is a refusal."""
-        if self._overlay is None:
-            self._overlay = load_morning_overlay()
-        return self._overlay
+        return self._overlay.get()
 
     @property
     def templates(self) -> dict[str, str]:

@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import logging
 from typing import Literal
-from uuid import UUID
 
 from omnimarket.nodes.node_monitor_alert_responder.models.model_alert_event import (
     ModelAlertEvent,
@@ -55,11 +54,7 @@ class HandlerAlertClassify:
     def handler_category(self) -> Literal["EFFECT"]:
         return "EFFECT"
 
-    async def handle(
-        self,
-        correlation_id: UUID,
-        input_data: ModelAlertEvent,
-    ) -> ModelAlertResponse:
+    async def handle(self, request: ModelAlertEvent) -> ModelAlertResponse:
         """Classify the alert and produce a routing decision.
 
         Tier logic:
@@ -69,17 +64,16 @@ class HandlerAlertClassify:
           4. Anything else → UNKNOWN.
         """
         logger.info(
-            "AlertClassify: correlation_id=%s alert_id=%s severity=%s pattern=%s",
-            correlation_id,
-            input_data.alert_id,
-            input_data.severity,
-            input_data.pattern_matched,
+            "AlertClassify: alert_id=%s severity=%s pattern=%s",
+            request.alert_id,
+            request.severity,
+            request.pattern_matched,
         )
 
-        tier, notes = self._classify(input_data)
+        tier, notes = self._classify(request)
 
         return ModelAlertResponse(
-            alert_id=input_data.alert_id,
+            alert_id=request.alert_id,
             tier=tier,
             notes=notes,
         )
