@@ -79,6 +79,11 @@ runtime_dispatch:
 capacity:
   capacity_topic: "onex.evt.omnimarket.lab-host-capacity-advertised.v1"
   cadence_seconds: 10
+  # A host that has published no advertisement for this long exits non-zero and its supervisor
+  # restarts it (EXIT_ADVERTISER_SILENT). On 2026-10-31 a broker outage ended every host's
+  # advertiser while the process and its command consumer stayed up, and the pool read no host
+  # for hours (OMN-21811). Twelve cadences: a few failed beats are retried, a lost one is not.
+  silent_exit_seconds: 120
 # HOW THE CALLER READS. The caller (omnimarket.lab_work.bus.LabWorkCaller, behind
 # `onex lab-work run` and `onex lab-work hosts`) is a one-shot reader: it listens for
 # one capacity window and one receipt and leaves. It joins no consumer group
