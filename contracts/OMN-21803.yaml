@@ -58,3 +58,24 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/test_contract_topic_resolution_omn21803.py -q --no-cov"
         cwd: "."
+  - id: "dod-omn21803-deploy-import-check"
+    description: "Hosted package deploy smoke: the installed package imports the contract-resolved topic modules and every resolved topic is a declared onex topic. This checks the evaluated checkout package, not a production rollout."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          uv sync --locked;
+          uv run --locked python -c '
+          import importlib
+          from omnimarket.nodes.node_model_router.handlers import handler_model_router as m
+          topics = [m.TOPIC_MODEL_ROUTING_DEGRADED, m.TOPIC_MODEL_LLM_ROUTE_RESOLVED, m.TOPIC_MODEL_LLM_ROUTE_REJECTED]
+          assert all(t.startswith("onex.") for t in topics), topics
+          assert len(set(topics)) == 3, topics
+          for name in ("node_code_embedding_effect.handlers.handler_code_embedding_effect", "node_code_enrichment_effect.handlers.handler_code_enrichment_effect"):
+              importlib.import_module("omnimarket.nodes." + name)
+          print("contract-resolved topics import and resolve:", topics)
+          '
+        cwd: "."
