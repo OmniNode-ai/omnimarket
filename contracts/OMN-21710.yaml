@@ -120,6 +120,9 @@ dod_evidence:
   binds_ac:
   - AC2
   checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_contract_own_file_omn21710.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
   - check_type: command
     check_value: |
       set -eu;
