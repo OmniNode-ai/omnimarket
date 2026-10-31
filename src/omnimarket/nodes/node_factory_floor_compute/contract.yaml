@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_factory_floor_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: >-
+  Join plans, their task manifests, the PR watcher state, the ledger's CLAIM, TERMINAL, HOLD, RELEASE and
+  gate STATUS rows, the Linear snapshot plans-today writes, the lab placement reading and the landing
+  controller's merges into one assembly-line record per selected plan (line id, name, status pill, percent
+  built, stations with items and feeders, andon flag with reason) and one floor section (bays, shipped and
+  waiting pull requests, stoppages from the friction report). A plan with no manifest falls back to the
+  plans-today task table. Pure and deterministic: the caller supplies every fact, including the time.
+input_model:
+  name: ModelFactoryFloorRequest
+  module: omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_input
+  description: Typed facts read by the caller, with the vocabularies and limits from this contract's config block.
+output_model:
+  name: ModelFactoryFloorResult
+  module: omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_output
+  description: One line per selected plan and the floor section.
+handler:
+  module: omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor
+  class: HandlerFactoryFloor
+  input_model: omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_input.ModelFactoryFloorRequest
+  output_model: omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_output.ModelFactoryFloorResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor:HandlerFactoryFloor
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerFactoryFloor
+      module: omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: node_factory_floor_effect (runtime_factory_floor.py) reads the sources, calls HandlerFactoryFloor.handle with this contract's config block and writes the JSON.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 30000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+
+# Vocabularies and limits the handler reads from its request (ModelFactoryFloorConfig). The handler holds none.
+config:
+  schema_id: omni.factory-floor/1
+  andon_markers: [andon]
+  gate_kind: gate
+  gate_state: gate
+  gate_fail_verdicts: [fail]
+  gate_pass_verdicts: [pass]
+  done_outcomes: [done, merged, handed-off]
+  blocked_outcomes: [blocked, failed, partial]
+  live_claim_minutes: 45
+  advertisement_stale_factor: 3
+  station_name_template: "Wave {wave}"
+  fallback_station_id: tasks
+  fallback_station_name: Task table (no manifest)
+  shipped_window_hours: 24
+  shipped_limit: 20
+  waiting_limit: 40
+  stoppage_limit: 10
+  note_chars: 200
