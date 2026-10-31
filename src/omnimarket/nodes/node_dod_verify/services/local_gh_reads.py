@@ -44,6 +44,7 @@ from pathlib import Path
 from typing import Any, Final
 from urllib.parse import parse_qs, urlsplit
 
+from omnimarket.config.service_endpoints import service_endpoint_url
 from omnimarket.nodes.node_dod_verify.handlers.dod_evidence_local_source import (
     DodEvidenceLocalSource,
 )
@@ -148,7 +149,7 @@ def _pr_view(args: list[str], source: DodEvidenceLocalSource) -> str | None:
         if name == "number":
             out[name] = number
         elif name == "url":
-            out[name] = f"https://github.com/{repo}/pull/{number}"
+            out[name] = f"{service_endpoint_url('github.web_url')}/{repo}/pull/{number}"
         elif name == "state":
             out[name] = view.get("state")
         elif name == "isDraft":
