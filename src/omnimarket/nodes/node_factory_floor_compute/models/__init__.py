@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Typed models for node_factory_floor_compute."""
 
-from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_input import (
+from omnimarket.models.model_factory_floor_input import (
     ModelFactoryFloorConfig,
     ModelFactoryFloorRequest,
 )

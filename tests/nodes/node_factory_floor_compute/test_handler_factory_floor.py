@@ -10,14 +10,14 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor import (
-    HandlerFactoryFloor,
-    compute_factory_floor,
-)
-from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_input import (
+from omnimarket.models.model_factory_floor_input import (
     ModelFloorLedgerRow,
     ModelFloorLinearIssue,
     ModelFloorStoppage,
+)
+from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor import (
+    HandlerFactoryFloor,
+    compute_factory_floor,
 )
 from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_output import (
     ModelFactoryFloorResult,

@@ -8,7 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_input import (
+from omnimarket.models.model_factory_floor_input import (
     ItemState,
 )
 

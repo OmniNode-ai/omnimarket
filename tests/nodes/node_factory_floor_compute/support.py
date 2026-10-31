@@ -10,10 +10,7 @@ from typing import Any
 
 import yaml
 
-from omnimarket.models.model_host_capacity_advertisement import (
-    ModelHostCapacityAdvertisement,
-)
-from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_input import (
+from omnimarket.models.model_factory_floor_input import (
     ModelFactoryFloorConfig,
     ModelFactoryFloorRequest,
     ModelFloorLedgerRow,
@@ -26,6 +23,9 @@ from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_inpu
     ModelFloorTableTask,
     ModelFloorWatcher,
     PrState,
+)
+from omnimarket.models.model_host_capacity_advertisement import (
+    ModelHostCapacityAdvertisement,
 )
 
 CONTRACT = (

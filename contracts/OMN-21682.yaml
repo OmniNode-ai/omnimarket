@@ -38,7 +38,7 @@ dod_evidence:
     binds_ac: ["AC1"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_factory_floor_compute -q --no-cov --tb=line -k purity"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_handler_factory_floor.py -q --no-cov --tb=line -k purity"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21682-ac2"
     description: "AC2 manifest tests pass."
@@ -46,7 +46,7 @@ dod_evidence:
     binds_ac: ["AC2"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_factory_floor_compute -q --no-cov --tb=line -k manifest"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_handler_factory_floor.py -q --no-cov --tb=line -k manifest"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21682-ac3"
     description: "AC3 andon and fallback tests pass."
@@ -54,7 +54,7 @@ dod_evidence:
     binds_ac: ["AC3"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_factory_floor_compute -q --no-cov --tb=line -k andon_or_fallback"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_handler_factory_floor.py -q --no-cov --tb=line -k andon_or_fallback"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21682-ac4"
     description: "AC4 floor tests pass."
@@ -62,7 +62,7 @@ dod_evidence:
     binds_ac: ["AC4"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_factory_floor_compute -q --no-cov --tb=line -k floor"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_handler_factory_floor.py -q --no-cov --tb=line -k floor"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21682-ac5"
     description: "AC5 determinism and command line tests pass."
@@ -70,7 +70,7 @@ dod_evidence:
     binds_ac: ["AC5"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_factory_floor_compute tests/nodes/node_factory_floor_effect -q --no-cov --tb=line -k determinism_or_cli"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_handler_factory_floor.py tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py -q --no-cov --tb=line -k determinism_or_cli"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21682-ac6"
     description: "AC6 the whole suite passes on the lab host."
@@ -78,5 +78,11 @@ dod_evidence:
     binds_ac: ["AC6"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_factory_floor_compute tests/nodes/node_factory_floor_effect -q --no-cov --tb=line"
+        check_value: "uv run pytest tests/nodes/node_factory_floor_compute/test_handler_factory_floor.py tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py -q --no-cov --tb=line"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21682-deploy-probe"
+    description: "Deploy probe. The effect node's handler file that GitHub serves at the checked-out commit declares HandlerFactoryFloorEffect, the entry this change adds; the probe reads it from GitHub at that commit and exits nonzero on a tree without it, so it fails at the merge base."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_effect/handlers/handler_factory_floor_effect.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^class HandlerFactoryFloorEffect:'"

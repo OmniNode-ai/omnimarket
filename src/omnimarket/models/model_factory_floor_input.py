@@ -1,6 +1,11 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Typed facts the factory floor compute reads: every source is data the caller already read."""
+"""Shared factory floor facts: the typed input of node_factory_floor_compute.
+
+node_factory_floor_effect reads the sources into these models and calls the compute node with them, so
+they live here and not in either node's package (no cross-node model reach-in). Every source is data the
+caller already read.
+"""
 
 from __future__ import annotations
 

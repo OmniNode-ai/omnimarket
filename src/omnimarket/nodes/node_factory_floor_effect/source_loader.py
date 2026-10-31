@@ -18,10 +18,7 @@ from typing import Any
 
 import yaml
 
-from omnimarket.models.model_host_capacity_advertisement import (
-    ModelHostCapacityAdvertisement,
-)
-from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_input import (
+from omnimarket.models.model_factory_floor_input import (
     ModelFactoryFloorConfig,
     ModelFloorLedgerRow,
     ModelFloorLinearIssue,
@@ -32,6 +29,9 @@ from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_inpu
     ModelFloorStoppage,
     ModelFloorTableTask,
     ModelFloorWatcher,
+)
+from omnimarket.models.model_host_capacity_advertisement import (
+    ModelHostCapacityAdvertisement,
 )
 from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_runtime import (
     ModelFactoryFloorEffectContract,

@@ -7,7 +7,7 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime, timedelta
 
-from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_input import (
+from omnimarket.models.model_factory_floor_input import (
     ItemState,
     ModelFactoryFloorConfig,
     ModelFactoryFloorRequest,

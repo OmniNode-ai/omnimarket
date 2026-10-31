@@ -10,12 +10,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
-from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor import (
-    HandlerFactoryFloor,
-)
-from omnimarket.nodes.node_factory_floor_compute.models.model_factory_floor_input import (
+from omnimarket.models.model_factory_floor_input import (
     ModelFactoryFloorRequest,
     ModelFloorSelection,
+)
+from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor import (
+    HandlerFactoryFloor,
 )
 from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_run import (
     ModelFactoryFloorRunRequest,
