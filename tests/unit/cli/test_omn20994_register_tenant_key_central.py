@@ -29,9 +29,8 @@ from omnimarket.nodes.node_secret_store_effect.handlers.handler_secret_store imp
 from omnimarket.nodes.node_secret_store_effect.models import ModelSecretStoreOverlay
 from omnimarket.projection import credential_publisher
 
-# OMN-21059: every shipped row has the customer choose the model; this file
-# registers a key with no model, which a row reaches with that flag off.
-pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("catalogue_picks_models")]
+# OMN-21217: hosted intake requires an explicit customer model choice.
+pytestmark = pytest.mark.unit
 _VALUE = "sk-test-central-secret-never-printed-or-published"
 _TENANT = "omninode"
 _TENANT_FOLDER = "/tenant-inference-credentials"
@@ -136,6 +135,8 @@ def _register(*extra: str) -> Any:
             "--store",
             "central",
             *extra,
+            "--model",
+            "glm-5",
         ],
         input=f"{_VALUE}\n",
     )
@@ -176,6 +177,8 @@ def test_register_tenant_key_central_is_the_only_store_choice_that_skips_local(
             "general_api",
             "--expires",
             "2099-01-01",
+            "--model",
+            "glm-5",
         ],
         input=f"{_VALUE}\n",
     )

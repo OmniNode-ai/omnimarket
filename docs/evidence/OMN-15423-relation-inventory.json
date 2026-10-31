@@ -1454,7 +1454,6 @@
       "readers": [],
       "target_schema": "public",
       "writers": [
-        "node_delegation_routing_reducer",
         "node_projection_tenant_credentials",
         "service:omnimarket_projection_migration_runner"
       ]
@@ -4850,7 +4849,6 @@
       ],
       "target_schema": "public",
       "writers": [
-        "node_delegation_routing_reducer",
         "node_projection_tenant_credentials",
         "service:omnimarket_projection_migration_runner"
       ]
@@ -8945,6 +8943,7 @@
       "producer": "node_projection_tenant_credentials",
       "readers": [
         "node_claude_review_gateway_effect",
+        "node_delegation_routing_reducer",
         "node_key_pool_expiry_alert_compute",
         "node_local_secret_store_effect",
         "node_projection_tenant_credentials"

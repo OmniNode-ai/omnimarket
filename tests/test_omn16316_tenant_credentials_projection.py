@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -56,6 +57,19 @@ def _credential_call(mock_db: AsyncMock) -> tuple[object, ...]:
     return tuple(calls[0].args)
 
 
+def _catalog_rows(rows: list[dict[str, Any]]) -> Any:
+    """Answer the credential catalog's own statements with ``rows``, and the
+    route statements with nothing: a route write returns a route row, never a
+    catalog row (OMN-21217 publishes each to its own state topic)."""
+
+    async def execute(sql: str, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+        if sql.lstrip().startswith("INSERT INTO tenant_inference_credentials"):
+            return rows
+        return []
+
+    return execute
+
+
 @pytest.fixture
 def mock_db() -> AsyncMock:
     db = AsyncMock()
@@ -79,7 +93,17 @@ class TestContractShape:
     def test_subscribe_topics_match_publisher_topics(
         self, runner: HandlerTenantCredentialsProjectionRunner
     ) -> None:
-        assert runner.subscribe_topics == [TOPIC_REGISTERED, TOPIC_REVOKED]
+        # OMN-21217: the node also reads back its own compacted state topics,
+        # the credential and routing overlay registries' reconcile sources.
+        assert runner.subscribe_topics == [
+            TOPIC_REGISTERED,
+            TOPIC_REVOKED,
+            "onex.evt.omnimarket.tenant-credential-state.v1",
+            "onex.evt.omnimarket.tenant-routing-overlay-state.v1",
+            # OMN-19996: the delegation terminals, for each key's last use.
+            "onex.evt.omnimarket.delegate-skill-completed.v1",
+            "onex.evt.omnimarket.delegate-skill-failed.v1",
+        ]
 
     def test_known_table_guard_rejects_unlisted_table(self) -> None:
         from omnimarket.nodes.node_projection_tenant_credentials.handlers import (
@@ -170,16 +194,18 @@ class TestCredentialRegistered:
         under that default -- regression coverage for the CodeRabbit finding
         on omnimarket#2117."""
         mock_db.execute = AsyncMock(
-            return_value=[
-                {
-                    "api_key_ref": "cred_acme_openrouter_abc123",
-                    "tenant_id": "acme",
-                    "name": "my-openrouter-key",
-                    "provider": "openrouter",
-                    "created_at": "2026-08-21T00:00:00Z",
-                    "revoked_at": None,
-                }
-            ]
+            side_effect=_catalog_rows(
+                [
+                    {
+                        "api_key_ref": "cred_acme_openrouter_abc123",
+                        "tenant_id": "acme",
+                        "name": "my-openrouter-key",
+                        "provider": "openrouter",
+                        "created_at": "2026-08-21T00:00:00Z",
+                        "revoked_at": None,
+                    }
+                ]
+            )
         )
         data = {
             "tenant_id": "acme",
@@ -194,8 +220,12 @@ class TestCredentialRegistered:
             result = await runner.project_event(TOPIC_REGISTERED, data, _make_meta())
 
         assert result is True
-        mock_publish.assert_awaited_once()
-        assert mock_publish.call_args.kwargs["tenant_id"] == "acme"
+        # OMN-21217: one publish per bus-backed exposure (the served exposure and
+        # the credential-state topic); each carries the row's own tenant.
+        assert mock_publish.await_count == 2
+        assert all(
+            call.kwargs["tenant_id"] == "acme" for call in mock_publish.await_args_list
+        )
 
 
 class TestCredentialRevoked:
@@ -207,16 +237,18 @@ class TestCredentialRevoked:
         branch fires, setting revoked_at without touching tenant_id/name/
         provider."""
         mock_db.execute = AsyncMock(
-            return_value=[
-                {
-                    "api_key_ref": "cred_omninode_openrouter_abc123",
-                    "tenant_id": "omninode",
-                    "name": "my-openrouter-key",
-                    "provider": "openrouter",
-                    "created_at": "2026-08-21T00:00:00Z",
-                    "revoked_at": "2026-08-21T00:05:00Z",
-                }
-            ]
+            side_effect=_catalog_rows(
+                [
+                    {
+                        "api_key_ref": "cred_omninode_openrouter_abc123",
+                        "tenant_id": "omninode",
+                        "name": "my-openrouter-key",
+                        "provider": "openrouter",
+                        "created_at": "2026-08-21T00:00:00Z",
+                        "revoked_at": "2026-08-21T00:05:00Z",
+                    }
+                ]
+            )
         )
         data = {
             "tenant_id": "omninode",
@@ -243,16 +275,18 @@ class TestCredentialRevoked:
         Postgres companion test for the end-to-end proof that the UPSERT's
         ON CONFLICT branch actually preserves this across the two calls."""
         mock_db.execute = AsyncMock(
-            return_value=[
-                {
-                    "api_key_ref": "cred_never_seen",
-                    "tenant_id": "omninode",
-                    "name": None,
-                    "provider": None,
-                    "created_at": "2026-08-21T00:00:00Z",
-                    "revoked_at": "2026-08-21T00:00:00Z",
-                }
-            ]
+            side_effect=_catalog_rows(
+                [
+                    {
+                        "api_key_ref": "cred_never_seen",
+                        "tenant_id": "omninode",
+                        "name": None,
+                        "provider": None,
+                        "created_at": "2026-08-21T00:00:00Z",
+                        "revoked_at": "2026-08-21T00:00:00Z",
+                    }
+                ]
+            )
         )
         data = {"tenant_id": "omninode", "api_key_ref": "cred_never_seen"}
 
@@ -417,7 +451,7 @@ class TestExpiresAt:
 
     def test_snapshot_exposure_lists_expires_at(self) -> None:
         contract = yaml.safe_load((_NODE_DIR / "contract.yaml").read_text())
-        assert "expires_at" in contract["projection_api"]["columns"]
+        assert "expires_at" in contract["projection_api"]["exposures"][0]["columns"]
 
     def test_sqlite_store_writes_expires_at(self, tmp_path: Path) -> None:
         db = SqliteDatabaseAdapter(tmp_path / "store.sqlite")
@@ -483,7 +517,7 @@ class TestBoundHost:
 
     def test_tenant_credentials_bound_host_is_on_the_snapshot_exposure(self) -> None:
         contract = yaml.safe_load((_NODE_DIR / "contract.yaml").read_text())
-        assert "bound_host" in contract["projection_api"]["columns"]
+        assert "bound_host" in contract["projection_api"]["exposures"][0]["columns"]
 
     def test_tenant_credentials_bound_host_sqlite_store_writes_and_keeps_it(
         self, tmp_path: Path
@@ -567,7 +601,7 @@ class TestWorkspaceId:
 
     def test_tenant_credentials_workspace_id_is_on_the_snapshot_exposure(self) -> None:
         contract = yaml.safe_load((_NODE_DIR / "contract.yaml").read_text())
-        assert "workspace_id" in contract["projection_api"]["columns"]
+        assert "workspace_id" in contract["projection_api"]["exposures"][0]["columns"]
 
     def test_tenant_credentials_workspace_id_sqlite_store_writes_and_keeps_it(
         self, tmp_path: Path

@@ -319,6 +319,9 @@ from omnimarket.nodes.node_projection_llm_cost.handlers.handler_projection_llm_c
     HandlerProjectionLlmCost,
     ModelLlmCallCompletedEvent,
 )
+from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_store import (
+    apply_credential_last_used,
+)
 from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_projection_usage_by_model_day import (
     HandlerProjectionUsageByModelDay,
 )
@@ -5561,6 +5564,9 @@ class LocalDelegationDispatchPort:
                 tenant_id=tenant_id,
                 terminal_at=terminal_at,
             )
+            self._record_credential_last_used(
+                correlation_id=correlation_id, secret_ref=result.secret_ref
+            )
         # OMN-20154: the SAME terminal the local row was projected from also
         # goes on the bus, on this node's own contract terminal topic, so the
         # platform's delegation_events (which the dashboards, quota tracking
@@ -5569,6 +5575,40 @@ class LocalDelegationDispatchPort:
         # local store. Idempotent downstream: the projection upserts on
         # correlation_id.
         self._publish_terminal(payload, quality_passed=quality_passed)
+
+    def _record_credential_last_used(
+        self, *, correlation_id: UUID, secret_ref: str | None
+    ) -> None:
+        """Stamp the run's key with the run's terminal time (OMN-19996).
+
+        The time is the ``timestamp`` the evidence row was just stored with,
+        read back rather than re-derived, so the Credentials page and the
+        run's own row show one instant. No tenant predicate: this store is one
+        install's own file, and its keys carry the tenant given to
+        ``onex secret`` (for example ``dev``), not the install's minted
+        identity the run is recorded under. A run that resolved no key, and a
+        key with no catalog row, record nothing. Best-effort like the evidence
+        write: a failure is logged and the delegation response is untouched.
+        """
+        if not secret_ref:
+            return
+        try:
+            rows = self._evidence_db.query(
+                "delegation_events", {"correlation_id": str(correlation_id)}
+            )
+            stored = rows[0].get("timestamp") if rows else None
+            if stored is None:
+                return
+            used_at = (
+                stored.isoformat() if isinstance(stored, datetime) else str(stored)
+            )
+            apply_credential_last_used(secret_ref, used_at, self._evidence_db)
+        except Exception:
+            logger.warning(
+                "Failed to record credential last use for correlation_id=%s",
+                correlation_id,
+                exc_info=True,
+            )
 
     def _project_refusal(
         self,
