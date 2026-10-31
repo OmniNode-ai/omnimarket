@@ -112,7 +112,37 @@ dod_evidence:
     binds_ac: ["AC5"]
     checks:
       - check_type: "command"
-        check_value: "! uv run --frozen python -m omnibase_core.nodes.node_validation_report_write_effect.runtime_validator_run omnibase_core.validation.validator_contracts_and_di:ValidatorContractsAndDi src/omnimarket/delegated_test_loop/lane_bus.py src/omnimarket/handlers/container/container_inmemory.py src/omnimarket/models/delegation/wire/model_probe_ladder.py src/omnimarket/nodes/node_binding_parity_orchestrator/handlers/handler_run_local.py src/omnimarket/nodes/node_binding_parity_orchestrator/stubs/stub_bus.py src/omnimarket/nodes/node_claude_review_gateway_effect/models/model_claude_review_gateway.py src/omnimarket/nodes/node_golden_chain_sweep/census_collector.py src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_inference_intent.py src/omnimarket/nodes/node_pr_handoff_orchestrator/state_codec.py src/omnimarket/nodes/node_process_watchdog/handlers/checktargets_production.py src/omnimarket/nodes/node_work_ledger_emit_effect/handlers/handler_work_ledger_emit_guard.py src/omnimarket/projection/api_server.py src/omnimarket/rsd/v4_static_policy.py 2>&1 | grep -qE 'inmemory_outside_injection|literal_host|literal_ip|literal_port'"
+        check_value: |-
+          uv run --frozen python - <<'PY'
+          from pathlib import Path
+          from omnibase_core.validation.validator_contracts_and_di import ValidatorContractsAndDi
+
+          paths = [
+              Path("src/omnimarket/delegated_test_loop/lane_bus.py"),
+              Path("src/omnimarket/handlers/container/container_inmemory.py"),
+              Path("src/omnimarket/models/delegation/wire/model_probe_ladder.py"),
+              Path("src/omnimarket/nodes/node_binding_parity_orchestrator/handlers/handler_run_local.py"),
+              Path("src/omnimarket/nodes/node_binding_parity_orchestrator/stubs/stub_bus.py"),
+              Path("src/omnimarket/nodes/node_claude_review_gateway_effect/models/model_claude_review_gateway.py"),
+              Path("src/omnimarket/nodes/node_golden_chain_sweep/census_collector.py"),
+              Path("src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/handler_inference_intent.py"),
+              Path("src/omnimarket/nodes/node_pr_handoff_orchestrator/state_codec.py"),
+              Path("src/omnimarket/nodes/node_process_watchdog/handlers/checktargets_production.py"),
+              Path("src/omnimarket/nodes/node_work_ledger_emit_effect/handlers/handler_work_ledger_emit_guard.py"),
+              Path("src/omnimarket/projection/api_server.py"),
+              Path("src/omnimarket/rsd/v4_static_policy.py"),
+          ]
+          rules = {"inmemory_outside_injection", "literal_host", "literal_ip", "literal_port"}
+          assert all(path.is_file() for path in paths), "a network slice module is missing"
+          validator = ValidatorContractsAndDi()
+          enabled = {rule.rule_id for rule in validator.contract.rules if rule.enabled}
+          assert rules <= enabled, f"network rules are not enabled: {sorted(rules - enabled)}"
+          result = validator.validate(paths)
+          assert result.metadata is not None and result.metadata.files_processed == len(paths), "not every network slice module was checked"
+          offenders = [str(issue) for issue in result.issues if issue.rule_name in rules | {"unparseable_file"}]
+          assert not offenders, "\n".join(offenders)
+          print(f"contracts_and_di: {result.metadata.files_processed} network slice modules checked; no targeted findings")
+          PY
         cwd: "."
   - id: "dod-omn21623-deploy-published-network-readback"
     description: |-
