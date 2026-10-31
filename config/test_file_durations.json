@@ -695,6 +695,7 @@
   "tests/nodes/node_design_process_reducer/test_design_process_fsm.py": 1.95,
   "tests/nodes/node_design_record_check_compute/test_check_design_record.py": 1.02,
   "tests/nodes/node_dev_cause_lane_receiver_effect/test_dev_cause_lane_receiver_omn17427.py": 0.8,
+  "tests/nodes/node_dev_runtime_mutation_guard_effect/test_handler_dev_runtime_mutation_guard.py": 5.71,
   "tests/nodes/node_dev_tag_pin_mover_compute/test_golden_chain_dev_tag_pin_mover_compute.py": 0.17,
   "tests/nodes/node_developer_lane_admission_compute/test_developer_lane_admission.py": 3.13,
   "tests/nodes/node_dispatch_brief_shape_compute/test_dispatch_brief_shape.py": 0.02,
