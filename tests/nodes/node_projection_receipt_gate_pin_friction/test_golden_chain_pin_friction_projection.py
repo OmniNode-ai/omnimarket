@@ -23,6 +23,7 @@ from omnimarket.models.receipt_gate_pin_friction import (
     ModelPinFrictionFoldRequest,
     ModelPinFrictionFoldResult,
     ModelPinFrictionRow,
+    ModelPinOutcomeEvent,
 )
 from omnimarket.nodes.node_projection_receipt_gate_pin_friction.handlers.handler_pin_friction_reducer import (
     HandlerReceiptGatePinFrictionReducer,
@@ -146,6 +147,27 @@ def test_an_observation_naming_no_known_branch_changes_nothing() -> None:
     assert result.friction_event is None
 
 
+def test_the_updaters_outcome_event_alone_is_enough_to_flag_a_failed_run() -> None:
+    handler = HandlerReceiptGatePinFrictionReducer()
+    failed = ModelPinOutcomeEvent.model_validate(
+        _outcome(
+            outcome="refused",
+            branch_head_sha=None,
+            pr_number=None,
+            seconds_tag_to_pr_opened=None,
+            refusal_class="unmatched",
+            detail="pin_site_unmatched: no pin line",
+        )
+    )
+    opened = ModelPinOutcomeEvent.model_validate(_outcome())
+    flagged = handler.handle(failed)
+    assert flagged.friction_event is not None
+    assert flagged.friction_event.reason is EnumPinFrictionReason.UPDATER_FAILED
+    # a redelivered outcome folds to the same event, so the ledger request id repeats
+    assert handler.handle(failed).friction_event == flagged.friction_event
+    assert handler.handle(opened).friction_event is None
+
+
 def test_an_observation_of_an_unknown_kind_is_refused() -> None:
     with pytest.raises(ValueError, match="kind"):
         _request(None, {"kind": "deploy", "repo": REPO})
@@ -161,6 +183,28 @@ def test_the_contract_publishes_the_fold_result_and_the_ledger_effect_listens() 
         "onex.evt.omnimarket.pin-friction-folded.v1"
     ]
     assert contract["terminal_event"] == "onex.evt.omnimarket.pin-friction-folded.v1"
+    assert {
+        h["event_model"]["name"]: h["topic"]
+        for h in contract["handler_routing"]["handlers"]
+    } == {
+        "ModelPinFrictionFoldRequest": "onex.cmd.omnimarket.pin-friction-fold-requested.v1",
+        "ModelPinOutcomeEvent": "onex.evt.omnimarket.receipt-gate-pin-outcome.v1",
+    }
+    effect = yaml.safe_load(
+        (
+            CONTRACT.parent.parent
+            / "node_receipt_gate_pin_advance_effect"
+            / "contract.yaml"
+        ).read_text()
+    )
+    assert (
+        "onex.evt.omnimarket.receipt-gate-pin-outcome.v1"
+        in (effect["event_bus"]["publish_topics"])
+    )
+    assert (
+        "onex.evt.omnimarket.receipt-gate-pin-outcome.v1"
+        in (contract["event_bus"]["subscribe_topics"])
+    )
     assert contract["runtime_dispatch"]["command_topic"] == (
         "onex.cmd.omnimarket.pin-friction-fold-requested.v1"
     )

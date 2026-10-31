@@ -19,6 +19,7 @@ import yaml
 from omnimarket.models.receipt_gate_pin_friction import (
     ModelPinFrictionFoldRequest,
     ModelPinFrictionFoldResult,
+    ModelPinOutcomeEvent,
 )
 from omnimarket.nodes.node_projection_receipt_gate_pin_friction.models import (
     ModelPinFrictionConfig,
@@ -65,9 +66,17 @@ class HandlerReceiptGatePinFrictionReducer:
         )
 
     def handle(
-        self, request: ModelPinFrictionFoldRequest
+        self, message: ModelPinFrictionFoldRequest | ModelPinOutcomeEvent
     ) -> ModelPinFrictionFoldResult:
-        """The next row and, when the observation newly flagged one, its friction event."""
+        """The next row and, when the observation newly flagged one, its friction event.
+
+        An outcome event arriving on its own topic is folded with no prior row.
+        """
+        request = (
+            ModelPinFrictionFoldRequest(observation=message)
+            if isinstance(message, ModelPinOutcomeEvent)
+            else message
+        )
         folded = self.fold(request)
         return ModelPinFrictionFoldResult(
             row=folded.row,

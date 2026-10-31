@@ -20,7 +20,8 @@
 #
 # The reducer keeps no state and reads no clock: the caller that holds the rows
 # sends the prior row and persists the answer, and every timestamp comes from the
-# observation. A failed or refused updater run, or the first touch of a pin pull
+# observation. It also consumes the updater's outcome event directly, with no prior
+# row, which is enough to flag a failed or refused updater run. A failed or refused updater run, or the first touch of a pin pull
 # request, also leaves one typed friction event in the answer, which
 # node_receipt_gate_pin_friction_ledger_effect writes as a FRICTION ledger row with
 # class=pin-advance. The comparison per pin kind over a window is
@@ -51,13 +52,34 @@ handler:
   input_model: omnimarket.models.receipt_gate_pin_friction.ModelPinFrictionFoldRequest
 
 handler_routing:
-  routing_strategy: operation_match
-  default_handler: omnimarket.nodes.node_projection_receipt_gate_pin_friction.handlers.handler_pin_friction_reducer:HandlerReceiptGatePinFrictionReducer
+  routing_strategy: payload_type_match
   handlers:
+    # A caller that holds the rows sends the prior row with an observation.
     - operation: fold_pin_friction
+      message_category: command
       handler:
         name: HandlerReceiptGatePinFrictionReducer
         module: omnimarket.nodes.node_projection_receipt_gate_pin_friction.handlers.handler_pin_friction_reducer
+      event_model:
+        name: ModelPinFrictionFoldRequest
+        module: omnimarket.models.receipt_gate_pin_friction
+      topic: onex.cmd.omnimarket.pin-friction-fold-requested.v1
+      description: "Fold one observation into the prior row of a pin pull request."
+    # The updater's outcome event needs no prior row to be friction: a failed or
+    # refused run is, whatever came before it. Folded alone it yields the same
+    # friction event on every redelivery, and the ledger deduplicates on its
+    # request id, so this route writes the FRICTION row for an updater failure
+    # with nothing held.
+    - operation: fold_pin_outcome
+      message_category: event
+      handler:
+        name: HandlerReceiptGatePinFrictionReducer
+        module: omnimarket.nodes.node_projection_receipt_gate_pin_friction.handlers.handler_pin_friction_reducer
+      event_model:
+        name: ModelPinOutcomeEvent
+        module: omnimarket.models.receipt_gate_pin_friction
+      topic: onex.evt.omnimarket.receipt-gate-pin-outcome.v1
+      description: "Fold the updater's outcome alone: a failed or refused run is friction."
 
 descriptor:
   node_archetype: reducer
@@ -92,6 +114,7 @@ event_bus:
     patch: 0
   subscribe_topics:
     - onex.cmd.omnimarket.pin-friction-fold-requested.v1
+    - onex.evt.omnimarket.receipt-gate-pin-outcome.v1
   publish_topics:
     - onex.evt.omnimarket.pin-friction-folded.v1
 
@@ -100,6 +123,12 @@ event_bus:
 externally_produced_topics:
   - topic: onex.cmd.omnimarket.pin-friction-fold-requested.v1
     producer: "the runner that holds the pin friction rows: it sends the prior row with each observation of a pin pull request"
+
+consumed_events:
+  - topic: onex.evt.omnimarket.receipt-gate-pin-outcome.v1
+    event_type: "PinOutcomeEvent"
+    message_category: "EVENT"
+    description: "The updater's outcome at one caller: opened, replayed, refused or failed."
 
 published_events:
   - event_type: "PinFrictionFoldResult"

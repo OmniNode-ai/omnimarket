@@ -97,12 +97,6 @@ event_bus:
     - onex.evt.omnimarket.receipt-gate-pin-advance-completed.v1
     - onex.evt.omnimarket.receipt-gate-pin-outcome.v1
 
-# The outcome events are consumed by whatever holds the pin friction rows: it sends
-# each, with the pull request's prior row, to node_projection_receipt_gate_pin_friction
-# (OMN-20134).
-externally_consumed_topics:
-  - onex.evt.omnimarket.receipt-gate-pin-outcome.v1
-
 # Produced by node_github_webhook_ingress_effect, which folds a signed push
 # delivery of a dev-<UTC14>-<sha12> tag into this event. Declared here as the
 # edge the contract-topic-graph gate reads.

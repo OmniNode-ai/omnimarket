@@ -266,3 +266,38 @@ def test_the_contract_subscribes_to_the_friction_topic_the_projection_publishes(
     )
     assert contract["event_bus"]["publish_topics"] == [contract["terminal_event"]]
     assert set(CONFIG.cost_by_reason) == set(EnumPinFrictionReason)
+
+
+def test_a_failed_updater_outcome_becomes_a_friction_row_class_pin_advance_end_to_end() -> (
+    None
+):
+    """Outcome event, then the reducer, then the ledger effect: the row the readers count."""
+    from omnimarket.models.receipt_gate_pin_friction import ModelPinOutcomeEvent
+    from omnimarket.nodes.node_projection_receipt_gate_pin_friction.handlers.handler_pin_friction_reducer import (
+        HandlerReceiptGatePinFrictionReducer,
+    )
+
+    outcome = ModelPinOutcomeEvent.model_validate(
+        {
+            "outcome": "failed",
+            "pin_kind": "sha",
+            "repository": "OmniNode-ai/omnibase_infra",
+            "core_tag": TAG,
+            "branch": f"pin-advance/receipt-gate/{TAG}",
+            "outcome_at": NOW.isoformat(),
+            "refusal_class": "audit",
+            "detail": "runner-routing audit refused the caller",
+        }
+    )
+    folded = HandlerReceiptGatePinFrictionReducer().handle(outcome)
+    appender = FakeAppender()
+    handler = HandlerReceiptGatePinFrictionLedger(appender, "h200", clock=lambda: NOW)
+    answered = asyncio.run(handler.handle(folded))
+    assert answered is not None
+    assert answered.status is EnumPinFrictionLedgerStatus.ACCEPTED
+    (row,) = rollup.parse_markdown_rows(appender.requests[0].rows, "planted")
+    assert row.first("class") == "pin-advance"
+    assert row.first("site") == "OmniNode-ai/omnibase_infra"
+    assert row.first("reason") == "updater-failed"
+    assert row.first("refusals") == "audit"
+    assert rollup.parse_cost_minutes(row.first("cost")) == 15.0
