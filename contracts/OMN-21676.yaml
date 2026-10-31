@@ -1,0 +1,49 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21676"
+title: "The hosted dod-verify holds no Linear credential and delegates the criteria comparison to a trusted pre-merge check"
+summary: "The criteria-drift check (OMN-20858) read live Linear from the hosted dod-verify job, which holds no credential, so every contract that records criteria ended VERIFICATION_UNRESOLVED ticket_unavailable. A hosted run with no ticket reader now reads nothing and records criteria_delegated on its verdict. node_dod_criteria_check_effect makes the comparison before the merge, on a lab host that the landing controller starts it on, reading the PR head, the contracts its title cites and the live tickets through the project tracker the ticketing nodes use, with the credential in the lab key store. Drift and anything unreadable block the merge. The direct Linear read that took its key from the environment by name is removed."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "tests"
+    description: "A contract with a requirements list verifies hosted with no credential; real drift and an unreadable ticket block at the trusted check."
+    command: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_21676_criteria_delegation.py tests/unit/nodes/node_dod_criteria_check_effect tests/test_golden_chain_node_dod_criteria_check_effect.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21676-hosted-delegation"
+    description: "A hosted run with no ticket reader and no credential verifies a contract that records criteria, builds no tracker and records criteria_delegated; the local Done gate still refuses an unreadable ticket."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_verify/test_omn_21676_criteria_delegation.py tests/unit/nodes/node_dod_verify/test_omn_20858_criteria_drift.py tests/unit/nodes/node_dod_verify/test_omn_20858_ticket_effect_and_pins.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21676-trusted-check"
+    description: "The trusted check passes unchanged criteria, blocks an edited or deleted criterion, an unreadable ticket, a missing Linear credential, a moved head and anything GitHub cannot answer, and does not block a contract that records no criteria."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dod_criteria_check_effect tests/test_golden_chain_node_dod_criteria_check_effect.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21676-deploy-published-source-readback"
+    description: |-
+      Hosted-runner source-artifact readback: fetch the published verifier and trusted-check sources at the
+      evaluated commit and fail if the verifier still reads a Linear credential from the environment by name or
+      the trusted check does not answer a merge_blocked verdict. This checks the published source artifact and
+      does not assert a live runtime rollout.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          base="https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes"
+          verify="$(curl --fail --silent --show-error --location --max-time 20 "$base/node_dod_verify/services/evidence_collector.py")"
+          check="$(curl --fail --silent --show-error --location --max-time 20 "$base/node_dod_criteria_check_effect/models/model_dod_criteria_check.py")"
+          printf '%s' "$verify" | grep -q '_criteria_delegated'
+          printf '%s' "$verify" | grep -vq 'LINEAR_API_KEY_ENV'
+          printf '%s' "$check" | grep -q 'merge_blocked'
+          echo "Published criteria-delegation readback: PASS"
+        cwd: "."
