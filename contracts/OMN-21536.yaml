@@ -65,3 +65,7 @@ dod_evidence:
           print("pr-review FSM reducer handler: typed command in, one projection out, no envelope named")
           '
         cwd: "."
+      - check_type: "command"
+        check_value: |-
+          gh api repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_review_fsm_reducer/handlers/handler_pr_review_fsm.py?ref=30662b29a01e632438efea302a9bef711a0e4d98 --jq '.content' | base64 -d | grep -c 'request: ModelPrReviewAdvanceCommand'
+        cwd: "."
