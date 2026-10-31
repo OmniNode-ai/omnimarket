@@ -527,8 +527,8 @@ def refill(
     spread: list[str] = []
     if not dry_run:
         state.pools[host.name] = pool
-        for label in state.limited:
-            spread += _spread_limit(ov, state, host, pool, label)
+        for known in state.limited:
+            spread += _spread_limit(ov, state, host, pool, known)
     first_label: str | None = None
     tried: list[str] = []
     label, verdict, excerpt = probe(ov, host)
