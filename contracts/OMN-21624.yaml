@@ -13,7 +13,7 @@ requirements:
       Pull requests that overlap only in files the deployment declares generated, or in the generic files every change touches, are not duplicates of each other; pull requests that overlap in an authored file still are, and a repository that does not declare the file still has it counted.
     acceptance:
       - id: "AC1"
-        statement: "AC1: the generic paths are data in the node contract and the handler source holds no file list -- falsifier: uv run pytest tests/nodes/node_pr_duplicate_guard_compute -q fails the shipped-generic-files case or the no-file-list case"
+        statement: "AC1: the generic paths are data in the node contract and the handler source holds no file list -- falsifier: uv run pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard.py -q fails the shipped-generic-files case or the no-file-list case"
       - id: "AC2"
         statement: "AC2: two plan pull requests that change only the regenerated index rows plus different plan files pass as clear, end to end through the scm check with a real overlay file -- falsifier: uv run pytest tests/unit/handlers/scm/test_scm_duplicate_guard_generated_paths.py fails the clear case"
       - id: "AC3"
@@ -21,7 +21,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "The planted cases of 2026-10-30: plan pull requests overlapping only in the regenerated index rows pass; the same plan file edited or added twice is refused; the undeclared repository is refused."
-    command: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute tests/unit/handlers/scm/test_scm_duplicate_guard_generated_paths.py tests/unit/handlers/scm/test_scm_duplicate_guard.py -q --no-cov"
+    command: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard.py tests/nodes/node_pr_duplicate_guard_compute/test_golden_chain_pr_duplicate_guard_compute.py tests/unit/handlers/scm/test_scm_duplicate_guard_generated_paths.py tests/unit/handlers/scm/test_scm_duplicate_guard.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -33,7 +33,7 @@ dod_evidence:
     binds_ac: ["AC1", "AC3"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute -q -n 0 --no-cov"
+        check_value: "uv run pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard.py tests/nodes/node_pr_duplicate_guard_compute/test_golden_chain_pr_duplicate_guard_compute.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21624-scm-end-to-end"
     description: "The scm check against real git checkouts, watcher state and overlay file."
@@ -41,5 +41,25 @@ dod_evidence:
     binds_ac: ["AC2", "AC3"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/handlers/scm/test_scm_duplicate_guard_generated_paths.py -q -n 0 --no-cov"
+        check_value: "uv run pytest tests/unit/handlers/scm/test_scm_duplicate_guard_generated_paths.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21624-deploy-published-model-readback"
+    description: |-
+      Read the published model at the evaluated revision and exercise its generated-path
+      matching. The declared index is ignored across repository spellings; authored paths,
+      undeclared repositories and a same-named index elsewhere still count. This source
+      artifact readback needs no broker or lab service and does not assert a live rollout.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/models/model_pr_duplicate_guard.py" | uv run python -c '
+          import sys
+          exec(compile(sys.stdin.read(), "published_duplicate_guard_model", "exec"))
+          rules = ModelDuplicateGuardRules(generated_paths={"example_plans_repo": ("plans/INDEX.md",)})
+          assert rules.ignores("SomeOrg/example-plans-repo", "plans/INDEX.md")
+          assert not rules.ignores("example_plans_repo", "plans/authored.md")
+          assert not rules.ignores("undeclared_repo", "plans/INDEX.md")
+          assert not rules.ignores("example_plans_repo", "docs/INDEX.md")
+          print("Published duplicate-guard model readback: 4 path decisions PASS")
+          '
