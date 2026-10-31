@@ -32,9 +32,6 @@ from omnimarket.models.context_compaction import (
 from omnimarket.models.context_pack_render.model_context_pack_render_message import (
     ModelContextPackRenderMessage,
 )
-from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_compaction_latency_cli import (
-    main,
-)
 from omnimarket.nodes.node_claude_code_hook_adapter_effect.handlers.handler_compaction_latency_run import (
     HandlerCompactionLatencyRun,
     ReceiptRecorder,
@@ -48,6 +45,9 @@ from omnimarket.nodes.node_claude_code_hook_adapter_effect.models import (
     ModelCompactionLatencyRunResult,
     ModelCompactionLatencyTrip,
     ModelReceiptEvent,
+)
+from omnimarket.nodes.node_claude_code_hook_adapter_effect.runtime_compaction_latency_cli import (
+    main,
 )
 from omnimarket.nodes.node_context_compaction_latency_compute.handlers.handler_latency_qualification import (
     HandlerLatencyQualification,
@@ -582,7 +582,7 @@ def test_source_has_no_topic_literals_or_compute_imports() -> None:
     for relative in (
         "models/model_compaction_latency_run.py",
         "handlers/handler_compaction_latency_run.py",
-        "handlers/handler_compaction_latency_cli.py",
+        "runtime_compaction_latency_cli.py",
     ):
         source = (root / relative).read_text(encoding="utf-8")
         assert "onex.cmd." not in source

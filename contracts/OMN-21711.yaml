@@ -1,0 +1,170 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-21711
+title: the 19 handler CLI mains move out of handler modules into node runtime modules (omnimarket#4635 contract split)
+summary: Slice 2 of the omnimarket handler-shape burn-down (omnimarket#4635). The handler-shape validator of omnibase_core reports a handler module that holds module functions and no handler class (module_function_handler). Nineteen of those were command line entries, a main and its helpers in a handler_*_cli module. Each moves beside its node's contract.yaml as a runtime_*.py module, the location the canonical-file-shape rule cli_entry_outside_node names for a command line entry, and its project.scripts entry, contract, tests and burn-down line follow. The overlay check, which read files and the environment inside a compute node, gets an effect node for the reading and keeps its compute node pure. The acceptance items of this PR moved here from the shared contracts/OMN-21536.yaml.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn21711-own-contract
+  statement: The 19 handler CLI mains of omnimarket#4635 live in node runtime modules, and the PR's acceptance items live in this contract file, not in the shared contracts/OMN-21536.yaml.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the 19 handler CLI mains of omnimarket#4635 live in node runtime modules and the handler-shape count over them drops as the PR states -- falsifier: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_landing_tlc_receipt_effect/test_landing_tlc_receipt_effect.py tests/nodes/node_automation_liveness_overlay_check_effect/test_overlay_check_run.py -q --no-cov, together with the moved-module and file-shape checks below'
+  - id: AC2
+    statement: 'AC2: the PR''s acceptance items live in contracts/OMN-21711.yaml and the PR does not edit contracts/OMN-21536.yaml -- falsifier: git diff --stat origin/dev...HEAD on the PR head lists contracts/OMN-21711.yaml and not contracts/OMN-21536.yaml'
+evidence_requirements:
+- kind: tests
+  description: The tests of the nodes whose command line entry moved, run on a lab host at the pushed head.
+  command: uv run pytest tests/nodes/node_automation_liveness_overlay_check_effect/test_overlay_check_run.py tests/nodes/node_automation_liveness_overlay_check_compute tests/nodes/node_architecture_discovery_orchestrator tests/nodes/node_claude_code_hook_adapter_effect tests/nodes/node_friction_synthesis_effect tests/nodes/node_host_thermal_observe_effect tests/nodes/node_hourly_tick_effect tests/nodes/node_lab_disk_growth_effect tests/nodes/node_lab_fill_receipt_table_compute tests/nodes/node_landing_tlc_receipt_effect tests/nodes/node_linear_ticket_write_effect tests/nodes/node_operator_access_mode_effect tests/nodes/node_rsd_migration_orchestrator tests/nodes/node_runtime_deploy_effect tests/test_session_capability_digest.py tests/test_golden_chain_patch_apply_dispatch_effect.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21536-ac3-no-handler-main
+  description: AC1 checks that the nineteen old module paths are gone and that each runtime_*.py module that replaced one defines main.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      test -z "$(git ls-files src | grep -E 'handlers/handler_(automation_liveness_overlay_check_cli|runtime_coverage_cli|architecture_discovery_cli|claude_code_hook_cli|compaction_latency_cli|friction_synthesis_cli|host_thermal_cli|hourly_tick_cli|lab_disk_growth_cli|lab_fill_receipt_table_cli|lab_secret_store_override_cli|landing_tlc_receipt_cli|operator_hook_cli|capture_cli|patch_apply_dispatch_cli|rsd_migration_cli|runtime_deploy_cli|session_capability_digest_cli|lab_proof)\.py$')";
+      test "$(git ls-files src | grep -E '/runtime_[a-z_]*(_cli|lab_proof)\.py$' | xargs grep -lE '^def main\(' | wc -l)" -ge 19
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_linear_ticket_write_effect/test_lab_proof.py tests/nodes/node_operator_access_mode_effect/test_operator_access_mode.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21536-ac4-file-shape
+  description: AC1 runs the canonical-file-shape hook over the whole tree of the committed head and checks that none of the moved modules is still listed in the burn-down file.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      uv run python -m omnibase_core.nodes.node_canonical_file_shape_check_compute.runtime_canonical_file_shape_check --rules file-shape --head HEAD
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: |
+      set -eu;
+      test -z "$(grep -E 'handler_(automation_liveness_overlay_check|runtime_coverage|architecture_discovery|claude_code_hook|compaction_latency|friction_synthesis|host_thermal|hourly_tick|lab_disk_growth|lab_fill_receipt_table|lab_secret_store_override|landing_tlc_receipt|operator_hook|capture|patch_apply_dispatch|rsd_migration|runtime_deploy|session_capability_digest)_cli\.py|handler_lab_proof\.py' .onex_ratchets/canonical_file_shape_burndown_baseline.txt)"
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_canonical_file_shape_burndown_omn21524.py -k committed_burndown -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21536-ac5-touched-node-tests
+  description: AC1 runs the tests of the nodes whose command line entry moved.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_automation_liveness_overlay_check_effect/test_overlay_check_run.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_automation_liveness_overlay_check_compute/test_automation_liveness_installer_scan_omn20804.py tests/nodes/node_automation_liveness_overlay_check_compute/test_automation_liveness_overlay_refuses_gaps_omn20804.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_architecture_discovery_orchestrator/test_golden_chain_architecture_discovery.py tests/nodes/node_architecture_discovery_orchestrator/test_infra_03871_compatibility.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_adapter.py tests/nodes/node_claude_code_hook_adapter_effect/test_adapter_template_compact_binding.py tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_hook_input_omn21099.py tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_latency_run.py tests/nodes/node_claude_code_hook_adapter_effect/test_compaction_verdict.py tests/nodes/node_claude_code_hook_adapter_effect/test_contracts.py tests/nodes/node_claude_code_hook_adapter_effect/test_install.py tests/nodes/node_claude_code_hook_adapter_effect/test_render.py tests/nodes/node_claude_code_hook_adapter_effect/test_render_loader_dollar_rule_omn21099.py tests/nodes/node_claude_code_hook_adapter_effect/test_session_barrier_producer_omn21099.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_friction_synthesis_effect/test_friction_synthesis.py tests/nodes/node_friction_synthesis_effect/test_golden_chain_friction_synthesis_effect.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_host_thermal_observe_effect/test_golden_chain_host_thermal_observe_effect.py tests/nodes/node_host_thermal_observe_effect/test_host_thermal_observe.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_hourly_tick_effect/test_golden_chain_hourly_tick_effect.py tests/nodes/node_hourly_tick_effect/test_hourly_tick.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_lab_disk_growth_effect/test_golden_chain_lab_disk_growth_effect.py tests/nodes/node_lab_disk_growth_effect/test_lab_disk_growth_cli.py tests/nodes/node_lab_disk_growth_effect/test_lab_disk_growth_effect.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_lab_fill_receipt_table_compute/test_golden_chain_lab_fill_receipt_table_compute.py tests/nodes/node_lab_fill_receipt_table_compute/test_lab_fill_receipt_table.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_landing_tlc_receipt_effect/test_landing_tlc_receipt_effect.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_linear_ticket_write_effect/test_golden_chain_linear_ticket_write_effect.py tests/nodes/node_linear_ticket_write_effect/test_lab_proof.py tests/nodes/node_linear_ticket_write_effect/test_ticket_cli.py tests/nodes/node_linear_ticket_write_effect/test_ticket_guard_identity.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_operator_access_mode_effect/test_foreground_wait_guard.py -q --no-cov --tb=line -k 'test_a_wait_refuses_both_modes_and_names_the_workflow'
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_operator_access_mode_effect/test_foreground_wait_guard.py -q --no-cov --tb=line -k 'test_a_wait_is_background_allowed_inside_a_workflow_agent or test_the_wait_refusal_is_mode_independent'
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_operator_access_mode_effect/test_foreground_wait_guard.py -q --no-cov --tb=line -k 'not test_a_wait_refuses_both_modes_and_names_the_workflow and not test_a_wait_is_background_allowed_inside_a_workflow_agent and not test_the_wait_refusal_is_mode_independent'
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_operator_access_mode_effect/test_golden_chain_operator_access_mode_effect.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_operator_access_mode_effect/test_lab_dispatch_gate.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_operator_access_mode_effect/test_operator_access_mode.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_operator_access_mode_effect/test_operator_hooks_refusal_row_omn21020.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_operator_access_mode_effect/test_silence_guard.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_rsd_migration_orchestrator/test_handler_rsd_migration_orchestrator.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_runtime_deploy_effect/test_golden_chain_runtime_deploy_effect.py tests/nodes/node_runtime_deploy_effect/test_runtime_deploy_effect.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_session_capability_digest.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_golden_chain_patch_apply_dispatch_effect.py -q --no-cov --tb=line
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21536-deploy-cli-script-readback
+  description: Hosted-runner source-artifact readback of the eight registered console scripts whose entry modules moved. Fetch pyproject.toml at the evaluated commit and require each script to name its new runtime module. This checks the published revision, not a production rollout; missing source or any old handler mapping fails.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/pyproject.toml" | python3 -c '
+      import sys, tomllib
+      scripts = tomllib.loads(sys.stdin.read())["project"]["scripts"]
+      expected = {
+          "onex-hourly-tick": "omnimarket.nodes.node_hourly_tick_effect.runtime_hourly_tick_cli:main",
+          "onex-host-thermal": "omnimarket.nodes.node_host_thermal_observe_effect.runtime_host_thermal_cli:main",
+          "onex-automation-liveness-check": "omnimarket.nodes.node_automation_liveness_overlay_check_effect.runtime_automation_liveness_overlay_check_cli:main",
+          "onex-patch-apply-dispatch": "omnimarket.nodes.node_patch_apply_dispatch_effect.runtime_patch_apply_dispatch_cli:main",
+          "onex-runtime-deploy": "omnimarket.nodes.node_runtime_deploy_effect.runtime_deploy_cli:main",
+          "onex-architecture-discovery": "omnimarket.nodes.node_architecture_discovery_orchestrator.runtime_architecture_discovery_cli:main",
+          "onex-claude-code-hook": "omnimarket.nodes.node_claude_code_hook_adapter_effect.runtime_claude_code_hook_cli:main",
+          "onex-secret-store-override": "omnimarket.nodes.node_lab_secret_store_override_effect.runtime_lab_secret_store_override_cli:main",
+      }
+      for name, entry in expected.items():
+          assert scripts.get(name) == entry, (name, scripts.get(name), entry)
+      print("OMN-21536 published-source CLI readback: 8 console script mappings PASS")
+      '
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21711-ac2-own-contract-file
+  description: 'AC2 reads the PR''s diff against the base branch: it lists this ticket''s own contract file and does not list the shared parent contract file.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      git diff --name-only origin/dev...HEAD -- contracts/ | grep -qx 'contracts/OMN-21711.yaml';
+      ! git diff --name-only origin/dev...HEAD -- contracts/ | grep -qx 'contracts/OMN-21536.yaml'
+    cwd: .

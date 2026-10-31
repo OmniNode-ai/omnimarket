@@ -12,9 +12,9 @@ from pathlib import Path
 
 from omnimarket.handlers.runtime_paths import runtime_dir
 
-from ..models import ModelLandingTlcPublishRequest, ModelLandingTlcSyncRequest
-from .handler_landing_tlc_publish import HandlerLandingTlcPublish
-from .handler_landing_tlc_sync import HandlerLandingTlcSync
+from .handlers.handler_landing_tlc_publish import HandlerLandingTlcPublish
+from .handlers.handler_landing_tlc_sync import HandlerLandingTlcSync
+from .models import ModelLandingTlcPublishRequest, ModelLandingTlcSyncRequest
 
 
 def _repository(value: str) -> str:
