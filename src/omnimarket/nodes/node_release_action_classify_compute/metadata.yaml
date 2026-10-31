@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_release_action_classify_compute
+version: 1.0.0
+description: Classify an action as a release kind and decide admit, refuse or blocked from supplied facts, grant facts and the release_gate policy.
+pack: operator_tooling
+node_role: compute
+display_name: Release Action Classify Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_release_action_classify_compute: omnimarket.nodes.node_release_action_classify_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+- pydantic>=2.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- release-gate
+- OMN-21492

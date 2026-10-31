@@ -24,6 +24,8 @@ rows:
   - {node: node_plugin_bump_stuck_compute, protocols: []}
   - {node: node_landing_worker_engine_compute, protocols: []}
   - {node: node_throughput_tick_decision_compute, protocols: []}
+  - {node: node_release_action_classify_compute, protocols: []}
+  - {node: node_release_grant_read_effect, protocols: [BUS, LED, CHG, CLK]}
   # effects of the table that exist; none declares its row yet, so none is in the checked set
   - {node: node_exception_queue_effect, protocols: [LED, STO, CHG, HST, CLK]}
   - {node: node_work_ledger_append_effect, protocols: [BUS, LED, CLK]}
@@ -60,7 +62,15 @@ checked_nodes:
   - node_plugin_bump_stuck_compute
   - node_landing_worker_engine_compute
   - node_throughput_tick_decision_compute
+  - node_release_action_classify_compute
+  - node_release_grant_read_effect
 # Shared model packages that a checked node's models live in, read as model sources.
 model_dirs:
   node_binding_conformance_compute:
     - src/omnimarket/models/binding_conformance
+  node_release_action_classify_compute:
+    - src/omnimarket/models/release_gate
+    - src/omnimarket/models/change_source
+  node_release_grant_read_effect:
+    - src/omnimarket/models/release_gate
+    - src/omnimarket/models/change_source

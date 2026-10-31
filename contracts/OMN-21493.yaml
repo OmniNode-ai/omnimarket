@@ -1,0 +1,232 @@
+schema_version: 1.0.0
+ticket_id: OMN-21493
+title: 'T-R2: release grant read and the release-gate required check'
+summary: node_release_grant_read_effect (operation read_release_grant, with record_authorization_receipt
+  and check_release_gate) reads a change's label and push history through the change source, accepts a
+  grant only from a person in a grantor role list of the release_gate overlay who applied the label after
+  the current head was pushed and did not remove it, writes the authorization receipt at merge, and runs
+  the release-gate check fresh at the check, the merge and the release. The required-check workflow and
+  ruleset wiring wait for the delivery bootstrap and the release path enforcement tasks.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn21493-release-grant-read
+  statement: A grant is read from the change's history, bound to one head and one repository; an unreadable
+    history blocks.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: A label applied by a role holder after the head''s last push is a grant, and the
+      same label applied before a later push is not -- falsifier: two pytest cases, the second with a
+      push event after the label event'
+  - id: AC2
+    statement: 'AC2: The label applied by an agent identity, by an app or bot account, or by a login in
+      neither role list is not a grant -- falsifier: three pytest cases'
+  - id: AC3
+    statement: 'AC3: The grant label''s name written in the pull request body or a comment is not a grant
+      -- falsifier: the pytest case'
+  - id: AC4
+    statement: 'AC4: A grant whose label was later removed is not a grant -- falsifier: the pytest case
+      with an unlabel event'
+  - id: AC5
+    statement: 'AC5: An unreadable label history is `blocked` and the required check fails closed -- falsifier:
+      a change source that raises on the label read'
+  - id: AC6
+    statement: 'AC6: A grant that was green and is then revoked stops the merge and the release: grant,
+      successful check, label removed, attempted merge and attempted release both refuse -- falsifier:
+      the pytest case over the local host with the re-run on the unlabel event and the fresh read at each
+      boundary'
+  - id: AC7
+    statement: 'AC7: A pull request that edits the gate''s workflow file, its caller or the overlay file
+      in its own head does not change what runs or what is read: the gate evaluates the base side and
+      the private overlay -- falsifier: three pytest cases that edit each in the head and still get the
+      refusal'
+  - id: AC8
+    statement: 'AC8: The train is recognised by the identity the run carries, and an agent run named like
+      the train, on the train''s branch name, is refused -- falsifier: the pytest case with a matching
+      actor string and branch and a different run identity'
+  - id: AC9
+    statement: 'AC9: A grant is bound to one head commit and one repository: the same label on another
+      pull request does not admit this one. At merge, the effect writes an authorization receipt that
+      links the repository, the pull request, the granted head, the resulting merge commit, the grant
+      event''s id and the overlay''s policy digest -- falsifier: the pytest case, and one receipt case
+      each for squash, merge and rebase'
+  - id: AC10
+    statement: 'AC10: Configuration: the label name, the role lists and the agent identities are the `release_gate`
+      overlay (private); no login is in the node, a test or this plan -- falsifier: the repository''s
+      public-name check passes and the same events give a different grant under a fixture overlay with
+      different role lists'
+  - id: AC11
+    statement: 'AC11: Bindings: depends on BUS, LED, CHG and CLK through the contract''s `protocol_dependencies`,
+      bound by the `factory_bindings` overlay -- falsifier: this task''s tests run under the `local` profile
+      (the local git host records label events as ledger rows) and under the `lab` profile (recorded)
+      through the parity run (T-B2) and assert identical grant facts; a stub change source that returns
+      the label''s present state without its history makes the comparison fail'
+evidence_requirements:
+- kind: tests
+  description: The grant read node's focused test files and the binding conformance suite.
+  command: uv run pytest tests/nodes/node_release_grant_read_effect tests/nodes/node_binding_conformance_compute
+    -q --no-cov --refuse-skips
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn21493-ac1
+  description: Pytest cases for AC1. They fail at the merge base, which has neither node.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_release_grant_read_effect/test_release_grant_read.py::test_role_holder_label_after_head_push_is_granted_without_disclosing_login
+      tests/nodes/node_release_grant_read_effect/test_release_grant_read.py::test_label_before_a_new_head_push_does_not_grant_the_new_head
+      tests/nodes/node_release_grant_read_effect/test_release_grant_read.py::test_label_in_the_same_second_as_the_push_does_not_grant
+      -q --no-cov --refuse-skips
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21493-ac2
+  description: Pytest cases for AC2. They fail at the merge base, which has neither node.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_release_grant_read_effect/test_release_grant_read.py::test_agent_app_bot_and_unlisted_appliers_cannot_grant
+      -q --no-cov --refuse-skips
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21493-ac3
+  description: Pytest cases for AC3. They fail at the merge base, which has neither node.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_release_grant_read_effect/test_release_grant_read.py::test_grant_label_mentioned_in_text_is_not_a_label_event
+      -q --no-cov --refuse-skips
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21493-ac4
+  description: Pytest cases for AC4. They fail at the merge base, which has neither node.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_release_grant_read_effect/test_release_grant_read.py::test_removal_and_reapplication_use_the_latest_label_event
+      -q --no-cov --refuse-skips
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21493-ac5
+  description: Pytest cases for AC5. They fail at the merge base, which has neither node.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_release_grant_read_effect/test_release_grant_read.py::test_unreadable_history_is_blocked
+      tests/nodes/node_release_grant_read_effect/test_release_gate_check.py::test_unreadable_history_fails_closed_with_blocked_exit_code
+      tests/nodes/node_release_grant_read_effect/test_release_gate_check.py::test_unwired_checker_is_blocked
+      tests/nodes/node_release_grant_read_effect/test_release_gate_check.py::test_policy_loader_failure_is_blocked_without_exposing_exception_text
+      -q --no-cov --refuse-skips
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21493-ac6
+  description: Pytest cases for AC6. They fail at the merge base, which has neither node.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_release_grant_read_effect/test_release_gate_check.py::test_local_host_revocation_is_rechecked_at_check_merge_and_release
+      tests/nodes/node_release_grant_read_effect/test_release_gate_check.py::test_push_after_grant_refuses_the_new_head
+      tests/nodes/node_release_grant_read_effect/test_release_gate_check.py::test_checker_does_not_cache_authorization_between_calls
+      -q --no-cov --refuse-skips
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21493-ac7
+  description: Pytest cases for AC7. They fail at the merge base, which has neither node.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_release_grant_read_effect/test_release_gate_check.py::test_head_edits_cannot_supply_policy_or_change_the_running_check
+      tests/nodes/node_release_grant_read_effect/test_release_gate_check.py::test_only_a_head_overlay_is_unreadable_policy_and_blocks_the_check
+      -q --no-cov --refuse-skips
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21493-ac8
+  description: Pytest cases for AC8. They fail at the merge base, which has neither node.
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_release_grant_read_effect/test_release_gate_check.py::test_train_authority_requires_the_identity_carried_by_the_run
+      tests/nodes/node_release_action_classify_compute/test_release_action_classify.py::test_a_train_login_and_branch_without_its_run_identity_are_not_the_train
+      -q --no-cov --refuse-skips
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21493-ac9
+  description: Pytest cases for AC9. They fail at the merge base, which has neither node.
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_release_grant_read_effect/test_release_grant_read.py::test_grant_on_another_change_cannot_admit_the_requested_repository_and_head
+      tests/nodes/node_release_grant_read_effect/test_release_grant_read.py::test_merge_receipt_links_the_granted_head_to_the_resulting_commit
+      tests/nodes/node_release_grant_read_effect/test_release_grant_read.py::test_label_removed_before_merge_prevents_an_authorization_receipt
+      tests/nodes/node_release_grant_read_effect/test_release_grant_read.py::test_receipt_append_failure_is_reported_after_a_successful_grant_read
+      tests/nodes/node_release_grant_read_effect/test_release_grant_read.py::test_decision_ledger_row_carries_policy_and_boundary_without_logins
+      -q --no-cov --refuse-skips
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21493-ac10
+  description: Pytest cases for AC10. They fail at the merge base, which has neither node.
+  source: manual
+  binds_ac:
+  - AC10
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_release_grant_read_effect/test_release_grant_read.py::test_policy_alone_changes_authorization_and_its_digest
+      tests/nodes/node_release_grant_read_effect/test_release_grant_read.py::test_node_and_shared_policy_sources_contain_no_fixture_logins
+      tests/nodes/node_release_grant_read_effect/test_release_gate_check.py::test_policy_loader_reads_a_valid_private_overlay
+      tests/nodes/node_release_grant_read_effect/test_release_gate_check.py::test_missing_overlay_names_release_gate
+      tests/nodes/node_release_grant_read_effect/test_release_gate_check.py::test_invalid_overlay_is_rejected_without_echoing_policy_values
+      tests/nodes/node_release_grant_read_effect/test_release_gate_check.py::test_policy_loader_rejects_bad_tag_patterns
+      -q --no-cov --refuse-skips
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21493-ac11
+  description: Pytest cases for AC11. They fail at the merge base, which has neither node.
+  source: manual
+  binds_ac:
+  - AC11
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_release_grant_read_effect/test_release_grant_read.py::test_contract_and_binding_table_declare_all_four_protocols
+      tests/nodes/node_release_grant_read_effect/test_release_grant_read.py::test_local_ledger_and_lab_timeline_produce_identical_grant_facts
+      tests/nodes/node_release_grant_read_effect/test_release_grant_read.py::test_present_label_without_push_history_is_blocked_and_fails_parity
+      -q --no-cov --refuse-skips
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21493-deploy-import
+  description: 'Hosted deploy check: the grant read package imports from the installed omnimarket and
+    resolves its onex.nodes entry point. Fails at the merge base, where the package and entry point are
+    absent.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: 'uv run --locked python -c "from importlib.metadata import entry_points; eps={e.name:
+      e for e in entry_points(group=''onex.nodes'')}; eps[''node_release_grant_read_effect''].load();
+      print(''entry point loads'')"'
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn21493-delegation-join
+  description: 'Delegation join, not bound to a criterion line (DS-6 and DS-7 of the delegation seam).
+    Four Codex draft runs of this pull request''s head (code drafts f5d492ce and dbbd6199, test drafts
+    a1bbbeea and 5126b14f; full ids in the check) each published a terminal that the delegation_events
+    projection holds as one row with the lane release-gate-r1r2-1945 and terminal_ok true. The check exits
+    0 only when exactly those four rows are present and exits 1 when one id is changed. It is a lab readback:
+    it reads the lab projection over ssh, so the hosted deploy check does not run it.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: |-
+      ssh -o BatchMode=yes "$ONEX_RUNTIME_SSH_HOST" 'docker exec -i omnibase-infra-postgres psql -X -q -U postgres -d omnidash_analytics -tA' <<'SQL' | grep -Fx 4
+      SET default_transaction_read_only = on;
+      SELECT count(*) FROM delegation_events WHERE correlation_id::text IN ('f5d492ce-11f3-4c5a-9cc0-edacfdb7a0ef', 'dbbd6199-350d-4f5f-8518-2b2372d8247b', 'a1bbbeea-611f-428b-b5e4-6926bfabbca1', '5126b14f-6f1f-47d5-9815-20d2d514e581') AND caller_lane = 'release-gate-r1r2-1945' AND terminal_ok IS TRUE;
+      SQL
