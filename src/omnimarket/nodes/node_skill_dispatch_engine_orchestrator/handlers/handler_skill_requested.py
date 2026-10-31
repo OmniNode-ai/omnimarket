@@ -50,8 +50,12 @@ class HandlerSkillRequested:
     def __init__(
         self, event_bus: Any, router: HandlerDispatchEngineRouter | None = None
     ) -> None:
+        from omnimarket.nodes.node_skill_dispatch_engine_orchestrator.container.container_skill_dispatch_engine_orchestrator import (
+            create_handler_dispatch_engine_router,
+        )
+
         self._event_bus = event_bus
-        self._router = router or HandlerDispatchEngineRouter()
+        self._router = router or create_handler_dispatch_engine_router()
 
     async def handle(
         self, request: ModelSkillRequest | Mapping[str, Any]
