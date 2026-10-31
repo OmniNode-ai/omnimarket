@@ -1,0 +1,44 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-21692"
+title: "omnimarket contracts_and_di literal_host/literal_ip/literal_port burn-down, slice rf1145-c2: a host, address or port comes from the node contract or overlay through DI"
+summary: "Four modules (the captured secret store handler, the local dashboard model, the ticket text handler and the customer key terminus) compared against or bound the loopback name localhost, the address 127.0.0.1 and the port 3002 as literals. Each now reads them from configs/network_bindings.yaml through omnimarket.handlers.network_bindings, with every previous value unchanged. The contracts_and_di check over src/omnimarket reports literal_host 6, literal_ip 5 and literal_port 1 before the slice and literal_host 1, literal_ip 4 and literal_port 0 after; the two cli_secret findings and the projection runner finding are left because open pull requests hold those files, and the two write guard findings are left because the projection write-path gate asks for a real-Postgres test change that a loopback-name edit does not warrant."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn21692-network-bindings-slice"
+    statement: |-
+      The four modules hold no host, address or port literal. Each reads the loopback name, address or port from the network-binding authority by reference, an unknown reference fails at the call, and the values are those the code held before.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the contracts_and_di count for literal_host, literal_ip and literal_port over the slice paths drops to zero and the repo total drops by the slice size, with no baseline entry or suppression added -- falsifier: onex run of runtime_validator_run with the contracts_and_di reference over omnimarket src before and after, counts compared per rule"
+      - id: "AC2"
+        statement: "AC2: every moved value is taken through an injected parameter bound from the node contract or overlay and none remains hard-coded in the touched code -- falsifier: uv run pytest tests/unit -q over the touched modules plus the checker re-run on the slice paths"
+      - id: "AC3"
+        statement: "AC3: the slice lands as one PR titled with this ticket id and carries lab proof of the tests and the checker re-run -- falsifier: uv run pytest tests/unit -q on the lab through lab-run at the PR head, receipt path in the PR body"
+evidence_requirements:
+  - kind: "tests"
+    description: "The slice scan, the previous-value checks and the existing tests of the touched modules pass."
+    command: "uv run pytest tests/unit/handlers/test_network_bindings_slice_b.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn21692-slice-tests"
+    description: "The four modules keep their previous loopback names and port, and the contracts_and_di check reports no literal_host, literal_ip or literal_port finding on them."
+    source: "manual"
+    binds_ac: ["AC1", "AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/test_network_bindings_slice_b.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21692-touched-module-tests"
+    description: "The existing tests of the touched modules pass with the values read from the authority."
+    source: "manual"
+    binds_ac: ["AC2", "AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_ticket_text_effect/test_ticket_text.py tests/unit/nodes/test_golden_chain_captured_secret_store_effect.py tests/test_omn17082_customer_key_terminus.py -q --no-cov"
+        cwd: "."
