@@ -992,6 +992,8 @@ SHELL_MANIFEST = {
     "reports": [
         {"id": "factory_floor", "title": "Floor", "refresh": "tick", "data": [
             {"name": "Factory record", "status": "read", "as_of": "2099-01-01T00:00:00Z"}]},
+        {"id": "process_health", "title": "Process", "refresh": "tick", "data": [
+            {"name": "Process-health series", "status": "read", "as_of": "2099-01-01T00:00:00Z"}]},
         {"id": "decision_map", "title": "Map", "refresh": "snapshot", "data": [
             {"name": "Decision map data", "status": "read", "as_of": "2098-12-30T00:00:00Z"}]},
         {"id": "decision_quality", "title": "Quality", "refresh": "snapshot", "data": [
@@ -1168,6 +1170,7 @@ def test_page_dashboard_shows_the_age_of_every_source_and_marks_an_old_or_unread
     assert "a snapshot, not refreshed by a tick" in dash
     assert "Process-health series" in dash
     assert "1 of 2 inputs read" in dash
+    assert dash.count("Process-health series") == 1
 
 
 def test_page_tabs_carry_a_lamp_and_a_caption_read_from_the_same_files() -> None:
