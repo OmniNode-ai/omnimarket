@@ -107,9 +107,6 @@ from omnimarket.nodes.node_task_execution_orchestrator.models.model_task_executi
 from omnimarket.nodes.node_ticket_work.protocols.protocol_git_client import (
     ModelRunResult,
 )
-from omnimarket.nodes.node_verification_receipt_generator.handlers.handler_verification_receipt import (
-    HandlerVerificationReceiptGenerator,
-)
 
 _log = logging.getLogger(__name__)
 
@@ -413,19 +410,23 @@ class HandlerTaskExecutionOrchestrator:
     def _get_mechanical_check_executor(self) -> ProtocolMechanicalCheckExecutor:
         if self._mechanical_check_executor is not None:
             return self._mechanical_check_executor
-        return HandlerVerificationReceiptGenerator()
+        from omnimarket.nodes.node_task_execution_orchestrator.container.container_task_execution_orchestrator import (
+            create_handler_verification_receipt_generator,
+        )
+
+        return create_handler_verification_receipt_generator()
 
     def _get_delegation_executor(self) -> ProtocolDelegationExecutor:
         if self._delegation_executor is not None:
             return self._delegation_executor
-        from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
-            HandlerDelegateSkill,
+        from omnimarket.nodes.node_task_execution_orchestrator.container.container_task_execution_orchestrator import (
+            create_handler_delegate_skill,
         )
 
         # Defaults to the canonical delegation handler, which resolves its own
         # runtime dispatch port. The runtime DI container injects a bus-wired
         # delegation_executor; task.execute never selects transport itself.
-        handler = HandlerDelegateSkill()
+        handler = create_handler_delegate_skill()
 
         class _DelegationExecutor:
             async def handle(

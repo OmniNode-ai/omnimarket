@@ -1017,7 +1017,10 @@ class TestOmn15800ExposureParity:
         # the Environment panel's and the API Keys card's served rows.
         # 77 after OMN-21336: onex.snapshot.projection.compaction-receipts.v1,
         # bus-backed with its writer in the same change.
-        assert len(topic_map) == 77
+        # 79 after OMN-21217: onex.evt.omnimarket.tenant-credential-state.v1
+        # and onex.evt.omnimarket.tenant-routing-overlay-state.v1, the
+        # credential and routing overlay registries' compacted sources.
+        assert len(topic_map) == 79
         for liveness_topic in (
             "onex.snapshot.projection.automation-liveness.v1",
             "onex.snapshot.projection.automation-liveness-runs.v1",

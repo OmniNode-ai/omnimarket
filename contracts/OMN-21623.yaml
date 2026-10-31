@@ -1,12 +1,22 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-21623"
-title: "Burn-down of the contracts_and_di literal_timeout findings of omnimarket, slice A: sixteen nodes declare their timeouts in their contract"
-summary: "Sixteen node packages (node_ab_compare_orchestrator through node_captured_secret_store_effect, alphabetically, without node_build_loop_orchestrator and node_capture_item_identity_effect, whose hook module may import only the standard library) held 29 timeout, interval, delay, backoff and TTL literals in code. Each value is now declared in its node's contract.yaml under timeouts (the three ADR nodes read the config entry their contract already declared) and is read through the shared omnimarket.handlers.node_timeouts_reader adapter or injected through the constructor. The contracts_and_di check over src/omnimarket and scripts reports 1575 findings before the slice; no literal_timeout finding remains in the sixteen node directories."
+title: "Burn-down of the contracts_and_di handler_hand_construction findings of omnimarket, slice B: twenty-two nodes construct their handlers only at a binding site"
+summary: "Twenty-two node packages (node_skill_dispatch_engine_orchestrator through node_worktree_reconcile_effect, alphabetically, among the directories no open pull request or pushed branch holds) built 30 handler or node classes by hand in command-line entry points, consumers and default fallbacks. Each node now keeps those constructions in one container/container_<node>.py binding site and every caller takes the instance from that site's factory. The contracts_and_di check over src/omnimarket/nodes reports 447 handler_hand_construction findings before the slice and 417 after; the in-memory event bus of node_version_skew_detector moved to the same site, so inmemory_outside_injection goes from 34 to 33."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
+  - id: "req-omn21623-handler-binding-b"
+    statement: |-
+      The twenty-two nodes hold no handler or node class construction outside their container binding site. Each factory returns the class the call site built before, with the arguments the call site passed.
+    acceptance:
+      - id: "AC10"
+        statement: "AC10: the contracts_and_di check reports no handler_hand_construction finding in the twenty-two node directories of the slice -- falsifier: uv run pytest tests/test_cdi_handler_binding_sites_b.py -k constructs_no_handler_by_hand fails when a hand construction returns to any of them"
+      - id: "AC11"
+        statement: "AC11: the check still fires on the same construction outside a binding site and stays silent at one -- falsifier: uv run pytest tests/test_cdi_handler_binding_sites_b.py -k fires_outside fails when the rule row stops separating the two paths"
+      - id: "AC12"
+        statement: "AC12: each factory returns the handler class its call site built before, and the injected event bus of the version skew detector wins over the in-memory one -- falsifier: uv run pytest tests/test_cdi_handler_binding_sites_b.py -k 'factory' fails when a factory returns another class or ignores an injected bus"
   - id: "req-omn21623-node-timeouts-a"
     statement: |-
       The sixteen nodes hold no timeout, interval, delay, backoff or TTL literal in code. Every duration is declared in the node contract with the value it held before, a name the contract does not declare stops the node, and an injected duration wins over the declared one.
@@ -59,6 +69,9 @@ requirements:
         statement: "AC5: the contracts_and_di check reports no inmemory_outside_injection, literal_host, literal_ip or literal_port finding on the modules of the slice -- falsifier: the command of dod-omn21623-network-clean below"
 evidence_requirements:
   - kind: "tests"
+    description: "The binding-site tests and the existing tests of the touched nodes pass."
+    command: "uv run pytest tests/test_cdi_handler_binding_sites_b.py -q --no-cov"
+  - kind: "tests"
     description: "The contract timeout tests and the existing tests of the touched nodes pass."
     command: "uv run pytest tests/test_node_timeouts_contract.py -q --no-cov"
   - kind: "tests"
@@ -78,6 +91,32 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn21623-dispatch-binding-import-order"
+    description: "In a fresh interpreter, either import order resolves the dispatch factory and constructor type hints and builds the router with its default collaborators."
+    source: "manual"
+    binds_ac: ["AC12"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_dispatch_binding_imports.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn21623-binding-site-tests"
+    description: "The twenty-two nodes build no handler by hand, the rule separates a binding site from any other path, and every factory returns its class."
+    source: "manual"
+    binds_ac: ["AC10", "AC11", "AC12"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_cdi_handler_binding_sites_b.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21623-deploy-binding-site-source-readback"
+    description: |-
+      Hosted-runner source readback: the checked-out commit carries the binding site of
+      node_skill_tree_read_effect and its __main__ entry reads the handler from it. grep -c
+      exits nonzero on a tree without them, so the command fails at the merge base. It reads the
+      source artifact and does not assert a live runtime rollout.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -c 'def create_handler_skill_tree_read' src/omnimarket/nodes/node_skill_tree_read_effect/container/container_skill_tree_read_effect.py && grep -c 'create_handler_skill_tree_read()' src/omnimarket/nodes/node_skill_tree_read_effect/__main__.py"
   - id: "dod-omn21623-timeouts-contract-tests"
     description: "Declared values, refusals, contract-sourced defaults and injection all behave as stated."
     source: "manual"

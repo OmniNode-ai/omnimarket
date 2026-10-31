@@ -459,7 +459,14 @@ def test_tenant_credentials_exposure_is_declared_tenant_scoped() -> None:
         / "node_projection_tenant_credentials"
         / "contract.yaml"
     )
-    section = yaml.safe_load(contract_path.read_text())["projection_api"]
+    # OMN-21217: the node declares two exposures; this is the served one.
+    section = next(
+        exposure
+        for exposure in yaml.safe_load(contract_path.read_text())["projection_api"][
+            "exposures"
+        ]
+        if exposure["topic"] == "onex.snapshot.projection.tenant-credentials.v1"
+    )
     assert section["bus_backed"] is True
     assert section["tenant_column"] == "tenant_id"
     assert section["tenant_column"] in section["columns"]
