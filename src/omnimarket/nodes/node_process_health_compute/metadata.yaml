@@ -1,0 +1,22 @@
+name: node_process_health_compute
+version: "1.0.0"
+description: "Pure daily process-health series (reds, regressions, bugs, validation failures, lane outcomes, merges, andon stops, friction, delegation) and a before and after summary around the factory reset"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_process_health_compute: "omnimarket.nodes.node_process_health_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "process-health", "factory-floor", "pure"]
+pack: "routing"
+display_name: "Process Health Compute"
+node_role: "compute"

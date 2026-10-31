@@ -8,6 +8,7 @@ import subprocess
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.nodes.node_baseline_capture.models.model_baseline import (
     ModelGitHubPRSnapshot,
     ProbeSnapshotItem,
@@ -65,7 +66,9 @@ class ProbeGitHubPRs:
                     ],
                     capture_output=True,
                     text=True,
-                    timeout=30,
+                    timeout=load_node_timeouts("node_baseline_capture").get(
+                        "github_prs_timeout_seconds"
+                    ),
                 )
                 if proc.returncode != 0:
                     logger.warning(

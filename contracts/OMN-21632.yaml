@@ -43,6 +43,9 @@ dod_evidence:
       evaluated source, not a production rollout; no broker or lab route is needed.
     source: "manual"
     checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest src/omnimarket/nodes/node_plan_audit_compute/tests/test_handler_plan_audit_compute.py -q --no-cov"
+        cwd: "."
       - check_type: "command"
         check_value: |
           docker run --rm \

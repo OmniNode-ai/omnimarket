@@ -70,3 +70,7 @@ metadata:
     - "effect"
     - "liveness"
     - "deadman"
+
+timeouts:
+  ledger_command_timeout_seconds: 60  # Bounds the ledger append subprocess.
+  sqlite_lock_timeout_seconds: 30  # Bounds SQLite lock acquisition for recorded episodes.

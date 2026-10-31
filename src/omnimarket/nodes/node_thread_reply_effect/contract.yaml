@@ -21,7 +21,7 @@ handler_routing:
 handler:
   module: omnimarket.nodes.node_thread_reply_effect.handlers.handler_thread_reply
   class: HandlerThreadReply
-  input_model: omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_request.ModelThreadReplyCommand
+  input_model: omnimarket.nodes.node_thread_reply_effect.models.model_thread_reply_request.ModelThreadReplyRequest
 
 env_dependencies:
   BIFROST_CONTRACT_PATH:

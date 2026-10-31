@@ -7,6 +7,7 @@ import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.nodes.node_baseline_capture.models.model_baseline import (
     ModelGitBranchSnapshot,
     ProbeSnapshotItem,
@@ -24,7 +25,9 @@ def _get_branch_age_days(worktree_path: Path) -> float:
             ["git", "-C", str(worktree_path), "log", "-1", "--format=%ct"],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=load_node_timeouts("node_baseline_capture").get(
+                "git_branch_age_timeout_seconds"
+            ),
         )
         if proc.returncode != 0 or not proc.stdout.strip():
             return 0.0
@@ -42,7 +45,9 @@ def _get_current_branch(worktree_path: Path) -> str | None:
             ["git", "-C", str(worktree_path), "rev-parse", "--abbrev-ref", "HEAD"],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=load_node_timeouts("node_baseline_capture").get(
+                "git_branch_name_timeout_seconds"
+            ),
         )
         if proc.returncode != 0:
             return None

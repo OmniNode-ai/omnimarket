@@ -62,6 +62,7 @@ from typing import Any
 from omnibase_spi.protocols.services import ProtocolSecretStore
 from pydantic import SecretStr
 
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.models.captured_secret.model_captured_secret_store_overlay import (
     CAPTURED_SECRET_STORE_BLOCK,
     load_captured_secret_store_overlay,
@@ -89,7 +90,9 @@ logger = logging.getLogger(__name__)
 
 #: One API call may take this long. A store that does not answer must not hold
 #: a backgrounded capture process open.
-TIMEOUT_SECONDS = 5.0
+TIMEOUT_SECONDS: float = load_node_timeouts("node_captured_secret_store_effect").get(
+    "store_call_timeout_seconds"
+)
 
 
 def _plain_http_allowed(hostname: str | None) -> bool:
@@ -226,8 +229,14 @@ class _HeldWriterCredentials:
     async def health_check(self) -> bool:
         return True
 
-    async def close(self, timeout_seconds: float = 30.0) -> None:
-        return None
+    async def close(self, timeout_seconds: float | None = None) -> None:
+        timeout_seconds = (
+            timeout_seconds
+            if timeout_seconds is not None
+            else load_node_timeouts("node_captured_secret_store_effect").get(
+                "credential_close_timeout_seconds"
+            )
+        )
 
 
 def _run[T](coroutine: Coroutine[Any, Any, T]) -> T:

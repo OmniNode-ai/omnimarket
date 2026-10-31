@@ -16,6 +16,7 @@ import subprocess
 from pathlib import Path
 from uuid import UUID
 
+from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.nodes.node_automation_liveness_watchdog_effect.models.model_watchdog_delivery import (
     ModelAlarmSendReceipt,
 )
@@ -29,9 +30,15 @@ def _failed(reason: str) -> ModelAlarmSendReceipt:
 
 
 class AlertChannelAlarmSender:
-    def __init__(self, library: Path, *, timeout_seconds: int = 30) -> None:
+    def __init__(self, library: Path, *, timeout_seconds: float | None = None) -> None:
         self._library = library
-        self._timeout = timeout_seconds
+        self._timeout = (
+            timeout_seconds
+            if timeout_seconds is not None
+            else load_node_timeouts("node_automation_liveness_watchdog_effect").get(
+                "alert_command_timeout_seconds"
+            )
+        )
 
     def send(
         self, *, episode_id: UUID, category: str, text: str
@@ -55,7 +62,7 @@ class AlertChannelAlarmSender:
                 check=False,
             )
         except subprocess.TimeoutExpired:
-            return _failed(f"alert_channel_alarm timed out after {self._timeout}s")
+            return _failed(f"alert_channel_alarm timed out after {self._timeout:g}s")
         except OSError as exc:
             return _failed(f"alert_channel_alarm could not start: {exc}")
         if proc.returncode != 0:
