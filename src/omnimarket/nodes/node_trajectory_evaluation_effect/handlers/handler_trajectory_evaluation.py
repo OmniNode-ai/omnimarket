@@ -41,11 +41,11 @@ from omnimarket.inference.secret_store_resolver import (
     resolve_api_key_async,
 )
 from omnimarket.nodes.contract_topics import contract_secret_ref
+from omnimarket.nodes.node_trajectory_evaluation_effect.container.container_inmemory import (
+    bind_evaluator,
+)
 from omnimarket.nodes.node_trajectory_evaluation_effect.evaluators.evaluator_dharma import (
     EvaluatorDharma,
-)
-from omnimarket.nodes.node_trajectory_evaluation_effect.evaluators.evaluator_in_memory import (
-    EvaluatorInMemory,
 )
 from omnimarket.nodes.node_trajectory_evaluation_effect.handlers.pacer import Pacer
 from omnimarket.nodes.node_trajectory_evaluation_effect.handlers.public_repository_guard import (
@@ -180,7 +180,7 @@ class HandlerTrajectoryEvaluation:
             transport=transport,
             timeout_seconds=self._scoping.visibility_timeout_ms / 1000.0,
         )
-        self._in_memory: ProtocolTrajectoryEvaluator = evaluator or EvaluatorInMemory()
+        self._in_memory: ProtocolTrajectoryEvaluator = evaluator or bind_evaluator()
         self._external: dict[str, ProtocolTrajectoryEvaluator] = dict(
             external_evaluators or {}
         )

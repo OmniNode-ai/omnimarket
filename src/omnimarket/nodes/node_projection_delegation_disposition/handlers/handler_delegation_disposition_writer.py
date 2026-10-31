@@ -10,13 +10,17 @@ from typing import Any
 
 import yaml
 
+from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_delegation_disposition.handlers.handler_projection_delegation_disposition import (
     HandlerProjectionDelegationDisposition,
 )
 from omnimarket.nodes.node_projection_delegation_disposition.models import (
     ModelDelegationDispositionProjectionRequest,
 )
-from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
+from omnimarket.projection.runner import (
+    BaseProjectionRunner,
+    MessageMeta,
+)
 
 _UPSERT_DISPOSITION = """
     INSERT INTO public.delegation_dispositions (
@@ -63,17 +67,12 @@ class HandlerDelegationDispositionWriter(BaseProjectionRunner):
     def topics(self) -> list[str]:
         return self.subscribe_topics
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        data = dict(input_data)
+    def project_request(self, request: ModelProjectionRequest) -> dict[str, Any]:
+        data = dict(request.payload)
         # The kernel injects its synchronous adapter. This runner owns the
         # tenant-scoped async pool, connected inside the dispatch loop below.
         data.pop("_db", None)
-        meta = MessageMeta(
-            topic=str(data.pop("_topic", self.subscribe_topics[0])),
-            partition=int(data.pop("_partition", 0)),
-            offset=int(data.pop("_offset", 0)),
-            fallback_id=str(data.pop("_fallback_id", "")),
-        )
+        meta = request.message_meta(request.topic_or(self.subscribe_topics[0]))
         return asyncio.run(self._project_one_message(data, meta))
 
     async def _project_one_message(
