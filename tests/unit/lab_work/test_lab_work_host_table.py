@@ -24,10 +24,10 @@ from typing import Any
 import pytest
 import yaml
 from click.testing import CliRunner
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
 )
+from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.lab_work import cli
 from omnimarket.lab_work.bus import LabWorkCaller, LabWorkHost

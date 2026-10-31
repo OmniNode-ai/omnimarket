@@ -121,3 +121,17 @@ externally_consumed_topics:
 
 metadata:
   transport_type: kafka
+
+# OMN-21753 (under OMN-21288): when the one-runtime fold moves this writer from
+# its own container into the runtime, the runtime's consumer group starts from
+# the committed offsets of the container's group,
+# {env}.omnimarket-projections.tenant-registry-writer.consume.v1, instead of the bus default
+# (latest), so events published while the container is stopped and the runtime
+# has not yet joined are projected. The container's runner reads a partition it
+# never committed from the earliest offset, and the handover does the same.
+# omnibase_infra's HandlerContractSubscribePreflight reads this key.
+consumer_group_handover:
+  from_service: omnimarket-projections
+  from_node: tenant-registry-writer
+  from_version: v1
+  from_auto_offset_reset: earliest

@@ -25,9 +25,9 @@ from uuid import UUID, uuid5
 
 import pytest
 import yaml
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.models.event_bus.model_event_message import ModelEventMessage
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.protocols import ProtocolEventBusLike
 from omnibase_infra.runtime.auto_wiring import (
     subscribe_wired_contract_topics,
