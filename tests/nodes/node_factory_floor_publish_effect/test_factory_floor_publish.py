@@ -10,8 +10,10 @@ import re
 import shutil
 import stat
 import subprocess
+import textwrap
 from collections.abc import Sequence
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -380,6 +382,58 @@ def test_process_health_is_published_beside_the_record_when_it_is_a_series(
     assert "process-health.json" not in again.published
 
 
+def test_declared_lines_come_from_the_effects_overlay_and_are_published_in_the_status(
+    tmp_path: Path,
+) -> None:
+    overlay = tmp_path / "effect-overlay.yaml"
+    overlay.write_text(
+        "plan_path_contains:\n  - first-plan\n  - second-plan\nsome_other_field: kept\n",
+        encoding="utf-8",
+    )
+    env = {load_runtime().lines_overlay.file_env: str(overlay)}
+    HandlerFactoryFloorPublish(LocalSsh()).handle(_request(tmp_path), environ=env)
+    status = json.loads((tmp_path / "site/publish-status.json").read_text())
+    assert status["lines_declared"] == {
+        "state": "read",
+        "plan_path_contains": ["first-plan", "second-plan"],
+    }
+
+
+def test_declared_lines_without_an_overlay_are_published_as_unread_with_no_path(
+    tmp_path: Path,
+) -> None:
+    HandlerFactoryFloorPublish(LocalSsh()).handle(_request(tmp_path), environ={})
+    status = json.loads((tmp_path / "site/publish-status.json").read_text())
+    assert status["lines_declared"]["state"] == "unread"
+    assert "/" not in status["lines_declared"]["reason"]
+
+
+def test_delegation_counts_are_published_only_when_they_are_a_window_with_outcomes(
+    tmp_path: Path,
+) -> None:
+    request = _request(tmp_path)
+    source = Path(request.home or "") / load_runtime().delegation_relpath
+    source.parent.mkdir(parents=True)
+    source.write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-10-31T12:00:00Z",
+                "outcomes": [{"label": "completed", "count": 3, "tone": "ok"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = HandlerFactoryFloorPublish(LocalSsh()).handle(request, environ={})
+    assert result.delegation_published is True
+    assert "delegation.json" in result.published
+    source.write_text("[]", encoding="utf-8")
+    again = HandlerFactoryFloorPublish(LocalSsh()).handle(request, environ={})
+    assert again.delegation_published is False
+    assert "delegation.json" not in again.published
+    status = json.loads((tmp_path / "site/publish-status.json").read_text())
+    assert status["delegation"] == "absent"
+
+
 def test_cli_refusal_exits_two(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -402,8 +456,9 @@ def test_page_fetches_the_record_and_reads_every_field_the_node_writes() -> None
         "andon", "flag", "reason", "causes", "items", "feeders", "bays", "shipped", "waiting", "stoppages",
         "cost_minutes", "occurrences", "recurring", "tickets", "last_seen", "stale", "running", "free",
         "watcher_last_tick", "ledger_rows", "ledger_newest_row", "linear_issues", "placement_hosts",
-        "stoppage_report", "comparisons", "before_status", "after_status", "verdict", "is_reset_day",
-        "covered_to", "reset_label", "publish-status.json", "process-health.json", "published_at",
+        "stoppage_report", "lines_declared", "plan_path_contains", "plan_path", "improved", "worse", "flat",
+        "unmeasured", "measured", "publish-status.json", "process-health.json", "reports/manifest.json",
+        "delegation.json", "outcomes", "routes", "published_at", "as_of",
     ):  # fmt: skip
         assert re.search(rf"\b{field}\b", PAGE), field
 
@@ -444,3 +499,149 @@ def test_page_node_syntax_is_valid() -> None:
         check=False,
     )
     assert checked.returncode == 0, checked.stderr.decode()
+
+
+FLOOR_HARNESS = textwrap.dedent(
+    """
+    const fs = require("fs");
+    const [pagePath, filesJson] = process.argv.slice(1);
+    const files = JSON.parse(filesJson);
+    const script = /<script>([\\s\\S]*?)<\\/script>/.exec(fs.readFileSync(pagePath, "utf8"))[1];
+    const els = {};
+    const mk = id => ({id, innerHTML: "", textContent: "", hidden: true, dataset: {}, style: {},
+      querySelectorAll: () => [], setAttribute() {}, addEventListener() {}, replaceChildren() {}});
+    globalThis.document = {getElementById: id => els[id] || (els[id] = mk(id)),
+      querySelectorAll: () => [], createElement: () => mk("created")};
+    globalThis.getComputedStyle = () => ({getPropertyValue: () => "1"});
+    globalThis.setInterval = () => 0;
+    globalThis.fetch = async url => {
+      const key = Object.keys(files).find(k => url === k);
+      if (!key) return {ok: false, status: 404, json: async () => ({})};
+      return {ok: true, status: 200, json: async () => JSON.parse(files[key])};
+    };
+    (async () => {
+      new Function(script).call(globalThis);
+      await new Promise(r => setTimeout(r, 150));
+      const out = {};
+      for (const [k, v] of Object.entries(els)) out[k] = v.innerHTML + "|" + v.textContent;
+      console.log(JSON.stringify(out));
+    })();
+    """
+)
+
+FLOOR_RECORD = {
+    "schema_id": "factory-floor/1",
+    "generated_at": "2099-01-01T00:00:00Z",
+    "lines": [
+        {
+            "line_id": "plan-two",
+            "name": "Second plan",
+            "plan_path": "beta/plans/two-plan.md",
+            "source": "manifest",
+            "status_pill": "stopped",
+            "percent_built": 37,
+            "andon": {"flag": True, "reason": "gate failed", "causes": ["G9"]},
+            "stations": [
+                {"id": "0", "name": "Look first", "state": "done", "feeders": [],
+                 "items": [{"id": "a", "title": "Part A", "kind": "lane", "state": "done", "note": "merged", "tickets": [], "prs": []}]},
+                {"id": "1", "name": "Then build", "state": "stop", "feeders": ["0"],
+                 "items": [{"id": "b", "title": "Part B", "kind": "gate", "state": "stop", "note": "", "tickets": [], "prs": []}]},
+            ],
+        }
+    ],
+    "floor": {
+        "bays": [],
+        "shipped": [{"pr": "repo#1", "title": "Shipped one", "line_id": "plan-two", "detail": "merged"}],
+        "waiting": [],
+        "stoppages": [{"name": "lab-idle", "occurrences": 7, "cost_minutes": 4321.0, "recurring": True, "tickets": [], "last_seen": "x"}],
+    },
+    "sources": {"watcher_last_tick": "2099-01-01T00:00:00Z", "ledger_rows": 7311, "ledger_newest_row": "", "linear_issues": 0, "placement_hosts": 0, "stoppage_report": True},
+}  # fmt: skip
+
+
+def _run_floor(files: dict[str, object]) -> dict[str, str]:
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    done = subprocess.run(
+        [
+            node,
+            "-e",
+            FLOOR_HARNESS,
+            str(NODE_DIR / "page/index.html"),
+            json.dumps({k: json.dumps(v) for k, v in files.items()}),
+        ],
+        capture_output=True,
+        check=False,
+        timeout=60,
+    )
+    assert done.returncode == 0, done.stderr.decode()
+    return cast(
+        "dict[str, str]", json.loads(done.stdout.decode().strip().splitlines()[-1])
+    )
+
+
+def test_page_draws_the_declared_lines_in_order_with_an_unmatched_one_unread() -> None:
+    declared = {
+        "state": "read",
+        "plan_path_contains": ["first-plan", "two-plan", "third-plan"],
+    }
+    out = _run_floor(
+        {
+            "factory-floor.json": FLOOR_RECORD,
+            "publish-status.json": {
+                "published_at": "2099-01-01T00:00:00Z",
+                "steps": [],
+                "lines_declared": declared,
+            },
+        }
+    )
+    lines = out["lines"]
+    assert lines.index("Line A") < lines.index("Line B") < lines.index("Line C")
+    assert "No plan read for this line" in lines
+    assert "first-plan" in lines
+    assert "third-plan" in lines
+    assert "Frame finished" in lines
+    assert "Cord pulled: gate failed" in lines
+    assert "37% of the car built" in lines
+    assert "Line C · not in the record" in out["andon"]
+
+
+def test_page_shows_each_number_from_the_record_and_never_a_baked_one() -> None:
+    out = _run_floor({"factory-floor.json": FLOOR_RECORD})
+    assert "7,311" in out["tally"]
+    assert "unread" in out["bayGrid"]
+    assert "lab-idle" in out["stopChart"]
+    assert "4,321" in out["stopChart"]
+    assert "Unread" in out["delegBody"]
+    for baked in ("251 of 251", "287 completed", "456 delegation"):
+        assert baked not in PAGE
+
+
+def test_page_draws_the_bays_and_the_delegation_card_from_their_files() -> None:
+    record = {
+        **FLOOR_RECORD,
+        "floor": {
+            **FLOOR_RECORD["floor"],
+            "bays": [
+                {"host": "bay-x", "slots": 5, "running": 3, "free": 2, "stale": False}
+            ],
+        },
+    }
+    delegation = {
+        "generated_at": "2099-01-01T00:00:00Z",
+        "window": {"start": "2098-12-31T19:12:00Z", "end": "2099-01-01T07:12:00Z"},
+        "total": 11,
+        "outcomes": [
+            {"label": "completed", "count": 9, "tone": "ok"},
+            {"label": "timed out", "count": 2, "tone": "warn"},
+        ],
+        "routes": [{"label": "Local lab model", "done": 9, "total": 9}],
+        "why": "A reason the file states.",
+    }
+    out = _run_floor({"factory-floor.json": record, "delegation.json": delegation})
+    assert "bay-x" in out["bayGrid"]
+    assert "5 slots" in out["bayGrid"]
+    assert "9 completed" in out["delegBody"]
+    assert "9 of 9" in out["delegBody"]
+    assert "A reason the file states." in out["delegBody"]
